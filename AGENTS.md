@@ -18,6 +18,25 @@ Deux principes non négociables issus de la spec :
 2. Les contraintes obligatoires (dures) et les préférences (souples) seront
    distinguées. La première version ne traite que les contraintes dures.
 
+## Cadre du cours (module PTS Informatique, ISEP)
+
+Le détail est dans `docs/planning.md`. L'essentiel :
+
+- **Attendus techniques du module** : interface graphique ou web, base de
+  données, gestion de version GitHub, tests unitaires et d'intégration.
+- **Notation** : documentation 3 pts, usage de Git/GitHub en équipe 3 pts,
+  tests 3 pts, soutenance 3 pts, travail individuel en séance 8 pts.
+  Conséquence : **chaque membre commit sous son propre compte GitHub**, avec
+  des PR à son nom. Un assistant ne fait pas le travail de tout le monde
+  depuis une seule machine.
+- **Livrables documentaires** : spécifications fonctionnelles (description,
+  fonctionnalités classées obligatoire / utile / optionnelle, diagramme de
+  classes UML), spécifications techniques et organisation (stack, lots,
+  planning, outils), documentation utilisateur, soutenance.
+- **Jalons** : démarrage du code le 05/10/2026, tests unitaires le 12/10,
+  tests d'intégration le 02/11, fin des développements le 16/11,
+  documentation utilisateur le 23/11, soutenance le 14/12/2026.
+
 ## Langue
 
 Code, commentaires, commits, issues et documentation en **français**. Les noms
@@ -28,8 +47,14 @@ d'identifiants dans le code peuvent être en anglais si c'est plus lisible
 
 - Moteur : Python 3.11+, solveur de contraintes (OR-Tools CP-SAT).
 - Interface : application web lancée en local (serveur local + navigateur).
-- Rien n'est imposé par le cours. Ne pas ajouter de dépendance lourde sans
-  l'écrire dans une issue ou une PR.
+- Stockage : base de données SQLite (attendu « base de données » du module,
+  sans serveur à installer).
+- Conception orientée objet avec un diagramme de classes UML tenu à jour dans
+  `docs/` : le code doit refléter le diagramme, et inversement.
+- Tests : `pytest`, tests unitaires par classe/contrainte et tests
+  d'intégration (données → génération → résultat).
+- Le langage est libre (Python par défaut dans le module). Ne pas ajouter de
+  dépendance lourde sans l'écrire dans une issue ou une PR.
 
 ## Workflow git
 
