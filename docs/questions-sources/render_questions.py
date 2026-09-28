@@ -1,48 +1,35 @@
-"""Transforme le questionnaire JSON produit par le workflow en Markdown numéroté."""
+"""Transforme le questionnaire JSON en Markdown. Les identifiants stockés sont conservés
+(les doublons supprimés laissent un trou dans la numérotation, volontairement)."""
 import json
 import sys
 from collections import Counter
 
 src, dst = sys.argv[1], sys.argv[2]
 data = json.load(open(src, encoding="utf-8"))
-sections = data["questionnaire"]["sections"] if "questionnaire" in data else data["sections"]
-
+sections = data["sections"]
 ORDER = {"bloquante": 0, "importante": 1, "detail": 2}
 MARK = {"bloquante": "🔴", "importante": "🟠", "detail": "⚪"}
 
-lines = []
-total = Counter()
-for s in sections:
-    for q in s["questions"]:
-        total[q["priorite"]] += 1
+total = Counter(q["priorite"] for s in sections for q in s["questions"])
 n_total = sum(total.values())
-
-lines.append("# Questions avant le développement\n")
-lines.append(
-    "Questionnaire à remplir avant de coder la première version. Chaque question "
-    "propose un **défaut** : si la réponse est « OK », ce défaut sera appliqué. "
-    "Répondre par le numéro de la question suffit (ex. « 3.2 : non, plutôt… »).\n"
-)
-lines.append(
+lines = ["# Questions avant le développement\n",
+    "Questionnaire à remplir avant de coder la première version. Chaque question propose un **défaut** : "
+    "si la réponse est « OK », ce défaut sera appliqué. Répondre par le numéro suffit (ex. « 3.2 : non, plutôt… »). "
+    "Les numéros sont stables : les trous correspondent à des doublons retirés.\n",
     f"**{n_total} questions** : 🔴 {total['bloquante']} bloquantes (impossible de bien coder sans réponse), "
-    f"🟠 {total['importante']} importantes (changent la conception), "
-    f"⚪ {total['detail']} détails (réglables plus tard).\n"
-)
-lines.append("## Sommaire\n")
-for i, s in enumerate(sections, 1):
+    f"🟠 {total['importante']} importantes (changent la conception), ⚪ {total['detail']} détails (réglables plus tard).\n",
+    "## Sommaire\n"]
+for s in sections:
     c = Counter(q["priorite"] for q in s["questions"])
-    lines.append(f"{i}. {s['titre']} ({len(s['questions'])} questions, {c['bloquante']} bloquantes)")
+    num = s["questions"][0]["id"].split(".")[0]
+    lines.append(f"{num}. {s['titre']} ({len(s['questions'])} questions, {c['bloquante']} bloquantes)")
 lines.append("")
-
-for i, s in enumerate(sections, 1):
-    lines.append(f"## {i}. {s['titre']}\n")
-    qs = sorted(s["questions"], key=lambda q: ORDER[q["priorite"]])
-    for j, q in enumerate(qs, 1):
-        lines.append(f"**{i}.{j}** {MARK[q['priorite']]} {q['question'].strip()}")
+for s in sections:
+    num = s["questions"][0]["id"].split(".")[0]
+    lines.append(f"## {num}. {s['titre']}\n")
+    for q in sorted(s["questions"], key=lambda q: (ORDER[q["priorite"]], int(q["id"].split(".")[1]))):
+        lines.append(f"**{q['id']}** {MARK[q['priorite']]} {q['question'].strip()}")
         lines.append(f"- *Pourquoi* : {q['pourquoi'].strip()}")
-        lines.append(f"- *Défaut proposé* : {q['defaut'].strip()}")
-        lines.append("")
-
+        lines.append(f"- *Défaut proposé* : {q['defaut'].strip()}\n")
 open(dst, "w", encoding="utf-8", newline="\n").write("\n".join(lines))
-print(f"{n_total} questions, {len(sections)} sections -> {dst}")
-print(dict(total))
+print(f"{n_total} questions, {len(sections)} sections -> {dst}", dict(total))

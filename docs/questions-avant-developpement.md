@@ -1,30 +1,30 @@
 # Questions avant le développement
 
-Questionnaire à remplir avant de coder la première version. Chaque question propose un **défaut** : si la réponse est « OK », ce défaut sera appliqué. Répondre par le numéro de la question suffit (ex. « 3.2 : non, plutôt… »).
+Questionnaire à remplir avant de coder la première version. Chaque question propose un **défaut** : si la réponse est « OK », ce défaut sera appliqué. Répondre par le numéro suffit (ex. « 3.2 : non, plutôt… »). Les numéros sont stables : les trous correspondent à des doublons retirés.
 
-**426 questions** : 🔴 91 bloquantes (impossible de bien coder sans réponse), 🟠 210 importantes (changent la conception), ⚪ 125 détails (réglables plus tard).
+**400 questions** : 🔴 88 bloquantes (impossible de bien coder sans réponse), 🟠 197 importantes (changent la conception), ⚪ 115 détails (réglables plus tard).
 
 ## Sommaire
 
-1. Périmètre, utilisateurs et démonstration (15 questions, 5 bloquantes)
-2. Données réelles du directeur et confidentialité (25 questions, 9 bloquantes)
+1. Périmètre, utilisateurs et démonstration (14 questions, 5 bloquantes)
+2. Données réelles du directeur et confidentialité (23 questions, 9 bloquantes)
 3. Import, identifiants et jeu de données synthétique (22 questions, 4 bloquantes)
 4. Calendrier et horizon de génération (10 questions, 2 bloquantes)
-5. Grille horaire et créneaux (18 questions, 4 bloquantes)
-6. Structure académique et groupes (7 questions, 3 bloquantes)
+5. Grille horaire et créneaux (17 questions, 4 bloquantes)
+6. Structure académique et groupes (6 questions, 3 bloquantes)
 7. Séances, volumes et règles de répartition (19 questions, 2 bloquantes)
 8. Enseignants (5 questions, 1 bloquantes)
 9. Salles, campus et déplacements (17 questions, 4 bloquantes)
 10. Accessibilité et cas particuliers (21 questions, 4 bloquantes)
-11. Moteur de résolution (23 questions, 4 bloquantes)
-12. Interface utilisateur (33 questions, 6 bloquantes)
+11. Moteur de résolution (22 questions, 5 bloquantes)
+12. Interface utilisateur (32 questions, 6 bloquantes)
 13. Exports et impression (6 questions, 1 bloquantes)
-14. Architecture technique et stockage (31 questions, 6 bloquantes)
+14. Architecture technique et stockage (30 questions, 8 bloquantes)
 15. Tests, qualité et intégration continue (20 questions, 0 bloquantes)
 16. Organisation d'équipe, Git, documentation et notation (43 questions, 6 bloquantes)
 17. Compléments issus de la critique (1 questions, 0 bloquantes)
-18. Hébergement et multi-utilisateurs (plus tard) (35 questions, 8 bloquantes)
-19. Réaménagement temporaire en cas d'imprévu (42 questions, 12 bloquantes)
+18. Hébergement et multi-utilisateurs (plus tard) (23 questions, 3 bloquantes)
+19. Réaménagement temporaire en cas d'imprévu (36 questions, 11 bloquantes)
 20. Pilotage par requêtes en langage naturel (LLM) (33 questions, 10 bloquantes)
 
 ## 1. Périmètre, utilisateurs et démonstration
@@ -52,10 +52,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **1.6** 🟠 L'application est-elle strictement mono-utilisateur (un seul navigateur sur la machine locale), ou faut-il tolérer plusieurs onglets ou plusieurs personnes sur le réseau local en même temps ?
 - *Pourquoi* : Le multi-utilisateur impose sessions, verrous d'écriture SQLite, gestion des conflits d'édition et générations concurrentes, ce qui alourdit fortement la couche web.
 - *Défaut proposé* : Mono-utilisateur : le serveur écoute sur 127.0.0.1, une seule génération à la fois avec un message si un calcul tourne déjà.
-
-**1.7** 🟠 Faut-il un écran de connexion et des rôles distincts (planificateur qui édite, enseignant ou étudiant en lecture seule), ou aucune authentification ?
-- *Pourquoi* : L'authentification ajoute une table utilisateurs, une gestion de session, un écran de connexion et un mode lecture seule sur toutes les vues.
-- *Défaut proposé* : Aucune authentification en V1, un seul rôle qui peut tout faire ; le mode lecture seule est classé optionnel.
 
 **1.8** 🟠 Qui saisit les indisponibilités des enseignants : uniquement la scolarité depuis la fiche de chaque professeur, ou chaque enseignant en libre-service via une page dédiée ou un lien partageable ?
 - *Pourquoi* : Le libre-service impose une page publique par professeur avec un accès distinct, ce qui change le modèle de navigation et de droits.
@@ -179,14 +175,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Chaque métrique est du code et des tests supplémentaires, mais c'est un argument fort en soutenance.
 - *Défaut proposé* : Quatre métriques : conflits dans le réel, pourcentage de séances placées, taux d'occupation des salles, nombre de changements de campus par jour.
 
-**2.23** ⚪ Faut-il conserver et afficher les emails des enseignants, présents dans le schéma actuel ?
-- *Pourquoi* : C'est une donnée personnelle sans usage fonctionnel en V1.
-- *Défaut proposé* : Colonne conservée mais laissée vide pour les données réelles, jamais affichée dans le calendrier.
-
-**2.24** ⚪ Les pseudonymes irréversibles du type « PROF_042 » et « SALLE_17 » rendent la démo illisible et peu crédible : accepte-t-on de générer des pseudonymes réalistes et stables (noms fictifs tirés d'une liste à seed fixe, codes de salles conservant le préfixe de campus et de bâtiment), la table de correspondance restant hors dépôt ?
-- *Pourquoi* : Un jury qui voit « PROF_042 » dans « SALLE_17 » ne reconnaît pas un emploi du temps ISEP ; un pseudonyme qui conserve la structure du code préserve aussi la logique d'inférence campus / type de salle utilisée par l'import, qui sinon échoue sur les données pseudonymisées.
-- *Défaut proposé* : Script de pseudonymisation qui remplace les enseignants par des noms fictifs à seed fixe, conserve les codes de matières, réécrit les salles en gardant préfixe de campus et bâtiment (« N204 » → « N2xx ») ; table de correspondance dans data/prive/ ignorée par git.
-
 **2.25** ⚪ Quel style de pseudonymisation : codes techniques (« PROF_042 ») ou noms fictifs réalistes générés avec une graine fixe (Faker en français), plus lisibles à l'écran en soutenance ? Accepte-t-on qu'un enseignant reste ré-identifiable par recoupement (seule personne à enseigner telle matière sur tel campus) ?
 - *Pourquoi* : Des codes rendent les captures et la démo illisibles ; des faux noms réalistes sont plus crédibles mais peuvent être pris pour de vrais ; et pseudonymiser le nom ne suffit pas si la matière et le campus identifient la personne.
 - *Défaut proposé* : Noms fictifs réalistes générés avec Faker et graine fixe, bandeau « données pseudonymisées » dans l'interface en mode démo ; la ré-identification par recoupement est acceptée pour un usage interne et en soutenance, mais les matières rares sont renommées si le dépôt est public.
@@ -283,9 +271,9 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 
 ## 4. Calendrier et horizon de génération
 
-**4.1** 🔴 Faut-il générer une semaine type répétée à l'identique tout le semestre, ou un calendrier réel avec dates, vacances, jours fériés, semaines banalisées et matières qui ne durent que quelques semaines ? Quel horizon pour la démo ?
+**4.1** 🔴 Faut-il générer une semaine type répétée à l'identique tout le semestre, ou un calendrier réel avec dates, vacances, jours fériés, semaines banalisées et matières qui ne durent que quelques semaines ? Quel horizon pour la démo ? Si semaine type, acceptez-vous qu'un imprévu daté (« mardi 12 novembre ») ne puisse pas être représenté ?
 - *Pourquoi* : Le passage au calendrier daté multiplie les variables par le nombre de semaines (22 créneaux contre plus de 300), impose un calendrier de semaines actives par promotion et change le modèle de données (date au lieu de jour de semaine).
-- *Défaut proposé* : V1 : semaine type (jour + créneau, sans date) avec un champ semaine/date prévu dans le schéma ; V2 : réplication sur N semaines avec calendrier de semaines actives et indisponibilités datées.
+- *Défaut proposé* : Semaine type générée par le solveur, puis instanciée sur un calendrier réel (table des semaines datées, vacances et jours fériés) ; les dérogations s'appliquent aux instances datées, jamais à la semaine type.
 
 **4.2** 🔴 Le nombre de séances à placer est-il exprimé par semaine (2 TD de maths chaque semaine) ou par semestre (24 h à répartir sur 12 semaines) ? Les semaines réelles sont-elles quasi identiques, ou très différentes (matière qui démarre en semaine 5, TP une semaine sur deux) ?
 - *Pourquoi* : Une charge semestrielle impose un horizon multi-semaines et une contrainte de répartition, incompatible avec une semaine type.
@@ -373,10 +361,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Un écran Paramètres permet d'adapter la grille aux données réelles pendant la démo, mais impose que le calendrier et le solveur lisent ces valeurs dynamiquement.
 - *Défaut proposé* : Table `parametres` en SQLite avec les valeurs de la spec préremplies, écran Paramètres avec bouton « Rétablir les valeurs par défaut » ; la grille et le calendrier se régénèrent à partir de ces valeurs.
 
-**5.13** ⚪ Quand un TP est autorisé le samedi, le solveur doit-il l'y placer seulement en dernier recours, ou le samedi est-il un jour comme un autre pour lui ?
-- *Pourquoi* : « Dernier recours » = terme de pénalité dans la fonction objectif.
-- *Défaut proposé* : Samedi pénalisé dès qu'un objectif est activé ; jour comme un autre en mode faisabilité pure.
-
 **5.14** ⚪ Le samedi matin concerne-t-il toutes les semaines, ou seulement certains samedis précis (rattrapages, semaines chargées) ?
 - *Pourquoi* : Avec un calendrier réel il faudrait une liste de samedis ouverts au lieu d'un simple jour de la semaine.
 - *Défaut proposé* : Tous les samedis sont ouverts si la fonctionnalité est activée.
@@ -422,10 +406,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **6.6** 🟠 Faut-il pouvoir déclarer des indisponibilités récurrentes par groupe ou classe (sport, journée entreprise, stage le vendredi) ?
 - *Pourquoi* : Même mécanisme que les indisponibilités des enseignants, appliqué aux groupes ; à prévoir dans le schéma et le modèle.
 - *Défaut proposé* : Oui : (jour, créneau) indisponibles par groupe, même table et même écran que pour les enseignants.
-
-**6.7** ⚪ Quelle nomenclature officielle l'ISEP utilise-t-elle pour les promotions, classes et groupes (« A1-G3 », « I2-B ») ? Le « SI2I-A » du coéquipier est-il une convention réelle ?
-- *Pourquoi* : Les libellés affichés et les clés d'import doivent parler le langage de la scolarité pour que la démo soit crédible.
-- *Défaut proposé* : Libellés libres importés tels quels, code interne stable généré par l'application.
 
 ## 7. Séances, volumes et règles de répartition
 
@@ -701,6 +681,10 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Les projets de ce type échouent quand on découvre à J-7 que le solveur ne termine pas sur la vraie taille ; la date de bascule vers le synthétique (12/10) protège le jalon tests, pas la soutenance ; un test `perf` empêche qu'une contrainte ajoutée en novembre multiplie le temps par vingt sans que personne le voie avant la répétition.
 - *Défaut proposé* : Jalon « réalité » le 09/11, une semaine avant la fin des développements, avec compte rendu ; plan B décidé le jour même dans l'ordre découpage par promotion puis réduction du périmètre de démo ; test tests/perf/test_charge.py marqué `perf`, seuil 120 s sur le jeu grand, exécuté en job nocturne et avant chaque jalon.
 
+**11.18** 🔴 Pendant le calcul, la page peut-elle être bloquée, ou faut-il un lancement en arrière-plan avec barre de progression, temps écoulé, solutions intermédiaires et bouton « Arrêter » ?
+- *Pourquoi* : Le mode arrière-plan impose un thread, un état de tâche partagé, une route d'interrogation et le `StopSearch` de CP-SAT, ce qui structure l'API entre moteur et interface.
+- *Défaut proposé* : Arrière-plan dans un thread, page qui interroge `/generation/{id}/etat` chaque seconde, indicateur animé, temps écoulé et bouton Arrêter ; un seul job à la fois.
+
 **11.5** 🟠 Les sept contraintes « envisagées » de la section 3 de la spec (capacité, type de salle, indisponibilités enseignants, indisponibilités salles, groupes, nombre de séances, matériel) sont-elles toutes attendues en V1 ?
 - *Pourquoi* : Chaque contrainte ajoute des variables et trois tests ; l'ordre d'implémentation et la charge du lot moteur en dépendent.
 - *Défaut proposé* : Toutes en V1, en dur, chacune activable ou désactivable.
@@ -753,10 +737,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Chaque contrainte devient un module avec un indicateur d'activation ; utile pour la démo, le diagnostic et les tests, sans violer le principe de la spec.
 - *Défaut proposé* : Cases à cocher dans l'interface, tout activé par défaut, désactivation tracée dans le résultat.
 
-**11.18** 🟠 Pendant le calcul, la page peut-elle être bloquée, ou faut-il un lancement en arrière-plan avec barre de progression, temps écoulé, solutions intermédiaires et bouton « Arrêter » ?
-- *Pourquoi* : Le mode arrière-plan impose un thread, un état de tâche partagé, une route d'interrogation et le `StopSearch` de CP-SAT, ce qui structure l'API entre moteur et interface.
-- *Défaut proposé* : Arrière-plan dans un thread, page qui interroge `/generation/{id}/etat` chaque seconde, indicateur animé, temps écoulé et bouton Arrêter ; un seul job à la fois.
-
 **11.19** 🟠 Quand des séances figées ou verrouillées (occupations externes, événements importés, verrous du planificateur, EDT réel importé comme verrous) violent déjà entre elles une contrainte dure (deux séances figées dans la même salle, trajet inter-campus de 15 min dans le réel), le solveur doit-il refuser de démarrer, ignorer ces violations héritées en n'exigeant que de ne pas en créer de nouvelles, ou exclure les séances fautives ?
 - *Pourquoi* : Le réel importé contiendra des violations de nos règles ; si le solveur applique ses contraintes à des séances figées incohérentes, le modèle est infaisable avant même de placer quoi que ce soit, et le message « aucune solution » sera imputé à tort au générateur pendant la démo.
 - *Défaut proposé* : Pré-vérification qui liste les violations héritées entre séances figées ; par défaut génération refusée avec la liste ; option « tolérer les violations héritées » qui n'applique les contraintes qu'aux paires impliquant au moins une séance libre et marque le résultat « valide hors violations héritées ».
@@ -768,10 +748,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **11.21** ⚪ Le moteur doit-il être appelable en ligne de commande (JSON ou SQLite en entrée, résultat en sortie) indépendamment de l'interface web, pour la CI et les tests d'intégration ?
 - *Pourquoi* : Définit une API stable `generer(donnees, options) -> resultat` et un point d'entrée CLI séparé du serveur web.
 - *Défaut proposé* : Oui : `python -m edt generer` plus API Python.
-
-**11.22** ⚪ Faut-il injecter l'emploi du temps réel importé comme indice de départ (AddHint) du solveur, pour accélérer la recherche et obtenir un résultat proche de ce que la scolarité connaît, ou préfère-t-on montrer une solution « neuve » pour prouver que le générateur ne recopie pas le réel ?
-- *Pourquoi* : Un indice cohérent divise souvent le temps de résolution par dix sur des instances réelles et rend la comparaison réel / généré lisible ; mais un jury peut objecter que le solveur n'a rien fait, et un indice qui viole nos règles est simplement ignoré par CP-SAT, ce qu'il faut savoir expliquer.
-- *Défaut proposé* : Option « partir de l'EDT de référence » désactivée par défaut, activable dans l'écran de lancement ; la démo montre d'abord une génération sans indice sur une promotion, puis avec indice sur le périmètre complet.
 
 **11.23** ⚪ Faut-il injecter l'EDT réel de l'année passée comme indice de départ (AddHint) du solveur pour que l'emploi du temps généré ressemble à celui de la scolarité (mêmes jours, mêmes salles quand c'est possible) et converge plus vite, ou préfère-t-on une solution « neutre » qui montre que l'outil ne recopie pas le réel ?
 - *Pourquoi* : Un indice tiré du réel accélère fortement la résolution sur l'instance réelle et produit un résultat que la scolarité reconnaît, mais il brouille l'argument « généré automatiquement » et impose un rapprochement séance à séance entre besoins et référence.
@@ -810,10 +786,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **12.8** 🟠 Pour les indisponibilités des enseignants, des salles et des groupes, préférez-vous une grille hebdomadaire cliquable (cocher les créneaux interdits) ou une liste de plages « jour + début + fin » ?
 - *Pourquoi* : La grille cliquable nécessite un composant JavaScript dédié mais rend la saisie et la vérification bien plus rapides pendant la démo.
 - *Défaut proposé* : Grille hebdomadaire cliquable réutilisée à l'identique pour les trois entités ; une liste texte est générée en dessous pour vérification.
-
-**12.9** 🟠 Faut-il conserver un historique des emplois du temps générés (horodatage, périmètre, paramètres, durée de calcul) avec possibilité de rouvrir ou restaurer une version, ou seule la dernière génération compte ?
-- *Pourquoi* : L'historique ajoute une table de versions, un écran de liste et un sélecteur de version dans toutes les vues du calendrier.
-- *Défaut proposé* : Table `generation` horodatée avec paramètres et statut ; l'interface affiche la dernière et permet d'en rouvrir, restaurer ou supprimer une ; pas de comparaison visuelle entre deux versions.
 
 **12.10** 🟠 Le calendrier doit-il mettre en évidence les conflits (cours superposés, salle trop petite, enseignant indisponible), par exemple après une modification manuelle ou un import incohérent, avec un panneau listant les conflits ?
 - *Pourquoi* : La détection côté interface repose sur le vérificateur indépendant du solveur, réutilisé dans les tests d'intégration.
@@ -963,6 +935,14 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : OR-Tools ne fournit des roues binaires que pour certaines combinaisons OS/Python ; 3.11 apporte tomllib et StrEnum ; scripts, chemins et encodages diffèrent selon l'OS.
 - *Défaut proposé* : `requires-python >= 3.11`, chaque membre installe 3.11 ou 3.12 via python.org ou `uv python install`, et on vérifie `pip install ortools` chez chacun dès la séance du 05/10.
 
+**14.12** 🔴 ORM (SQLAlchemy, SQLModel, peewee) ou `sqlite3` de la bibliothèque standard comme dans le code existant ?
+- *Pourquoi* : Un ORM est une dépendance lourde et une couche à expliquer en soutenance ; le SQL brut demande plus de code mais reste lisible et proche de l'existant.
+- *Défaut proposé* : `sqlite3` standard + dataclasses, un module `depot` par entité, clés étrangères activées.
+
+**14.29** 🔴 Les routes HTMX renvoyant du HTML, faut-il aussi exposer une API JSON documentée (préfixe /api, schéma OpenAPI généré par FastAPI) pour les tests, les scripts et une éventuelle interface future, ou est-ce une double surface à maintenir inutilement ?
+- *Pourquoi* : Une API JSON rend les tests d'intégration lisibles et donne un argument d'architecture en soutenance, mais chaque écran existe alors en deux versions à tester ; le choix fixe la structure de web/.
+- *Défaut proposé* : API JSON minimale limitée à ce que la CLI et les tests utilisent (import, génération, état du calcul, export), documentation OpenAPI automatique, écrans HTML par-dessus ; pas de duplication des formulaires CRUD.
+
 **14.7** 🟠 Les machines des membres sont-elles des PC personnels avec droits administrateur, ou des postes ISEP verrouillés (installation impossible, proxy, pas de Docker) ?
 - *Pourquoi* : Un poste verrouillé impose un mode portable (venv relatif, pas d'installateur) et interdit certaines dépendances.
 - *Défaut proposé* : PC personnels, installation libre via pip dans un venv du projet.
@@ -983,10 +963,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Quatre développeurs modifieront le schéma en parallèle ; sans stratégie, une base locale obsolète provoque des erreurs SQL incompréhensibles.
 - *Défaut proposé* : Scripts SQL numérotés dans `edt/stockage/migrations/` appliqués selon `PRAGMA user_version`, pas d'Alembic.
 
-**14.12** 🟠 ORM (SQLAlchemy, SQLModel, peewee) ou `sqlite3` de la bibliothèque standard comme dans le code existant ?
-- *Pourquoi* : Un ORM est une dépendance lourde et une couche à expliquer en soutenance ; le SQL brut demande plus de code mais reste lisible et proche de l'existant.
-- *Défaut proposé* : `sqlite3` standard + dataclasses, un module `depot` par entité, clés étrangères activées.
-
 **14.13** 🟠 La base est-elle la source de vérité (l'interface modifie la base, les fichiers ne servent qu'à l'import), ou les fichiers du directeur restent-ils la référence à réimporter à chaque lancement ?
 - *Pourquoi* : Cela décide si les écrans CRUD écrivent en base et si un import écrase ou fusionne les données existantes.
 - *Défaut proposé* : La base est la source de vérité ; l'import écrit en base avec un choix « remplacer » ou « ajouter », l'export permet de repartir en fichiers.
@@ -994,10 +970,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **14.14** 🟠 Comment stocker horaires et jours : texte « 08:30 » (existant), minutes depuis minuit, index de créneau, entier jour (0 = lundi), date ISO ? Le moteur peut-il raisonner uniquement en indices (jour 0..5, créneau 0..3) et convertir à la frontière ?
 - *Pourquoi* : La colonne `heure_debut TEXT` actuelle empêche de trier et de comparer ; le solveur travaille sur des entiers et le texte oblige des conversions à chaque lecture.
 - *Défaut proposé* : Table `creneau` de référence, le solveur travaille en indices ; en base, minutes depuis minuit + jour entier 0-5 + colonne `date` ISO nullable pour la V2, vue SQL lisible pour le débogage, affichage « 8h30 » et import acceptant « HH:MM » et « HhMM ».
-
-**14.15** 🟠 Le professeur impose-t-il un patron précis (MVC strict, architecture en couches) ou uniquement « conception orientée objet + diagramme de classes » ?
-- *Pourquoi* : Un MVC strict impose des noms de classes et un découpage à retrouver tels quels dans le diagramme et le code.
-- *Défaut proposé* : Architecture en couches modèle / contraintes / solveur / stockage / web, chaque couche étant un paquet et un bloc du diagramme.
 
 **14.16** 🟠 Validez-vous la liste minimale de classes Campus, Batiment, Salle, Enseignant, Promotion, Groupe, Matiere, Seance (à placer), Creneau, Placement (résultat), Contrainte (abstraite), Solveur, EmploiDuTemps ?
 - *Pourquoi* : Les noms de classes fixent les tables SQL, les modules et le vocabulaire de toute la documentation.
@@ -1050,10 +1022,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **14.28** ⚪ Faut-il une sauvegarde automatique de la base SQLite avant chaque opération destructrice (import « Tout remplacer », réinitialisation, suppression d'une génération), avec un moyen de la restaurer depuis l'interface ?
 - *Pourquoi* : C'est le filet de sécurité le moins cher contre une fausse manipulation pendant la démo ou une séance notée, mais il faut décider où vont les copies, combien on en garde et si la restauration est un écran.
 - *Défaut proposé* : Copie `data/sauvegardes/edt-AAAAMMJJ-HHMMSS.sqlite` avant chaque opération destructrice, dix copies conservées, restauration par la commande `edt restaurer` et par une liste dans l'écran Paramètres.
-
-**14.29** ⚪ Les routes HTMX renvoyant du HTML, faut-il aussi exposer une API JSON documentée (préfixe /api, schéma OpenAPI généré par FastAPI) pour les tests, les scripts et une éventuelle interface future, ou est-ce une double surface à maintenir inutilement ?
-- *Pourquoi* : Une API JSON rend les tests d'intégration lisibles et donne un argument d'architecture en soutenance, mais chaque écran existe alors en deux versions à tester ; le choix fixe la structure de web/.
-- *Défaut proposé* : API JSON minimale limitée à ce que la CLI et les tests utilisent (import, génération, état du calcul, export), documentation OpenAPI automatique, écrans HTML par-dessus ; pas de duplication des formulaires CRUD.
 
 **14.30** ⚪ Comment valider les données entrantes (lignes d'import, formulaires) : modèles pydantic (déjà tirés par FastAPI) partagés entre l'import et les formulaires, ou validation manuelle dans les dataclasses du modèle ?
 - *Pourquoi* : Deux mécanismes de validation divergent vite (une règle vérifiée à l'import et pas dans le formulaire) ; pydantic centralise les messages d'erreur en français mais introduit une deuxième famille de classes à côté des dataclasses du modèle et dans le diagramme UML.
@@ -1339,26 +1307,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : La liste des rôles fixe le modèle utilisateur et impose de séparer dès la V1 les routes de lecture des routes de modification pour y accrocher des permissions sans tout réécrire.
 - *Défaut proposé* : Trois rôles prévus dans le modèle (admin, enseignant, lecteur) ; la V1 locale n'en active qu'un seul, admin, sans écran de connexion.
 
-**18.4** 🔴 Comment représenter le besoin d'accessibilité : un drapeau sur le groupe ou la classe (« contient une personne à mobilité réduite »), un identifiant anonyme d'étudiant, ou le nom de l'étudiant et la nature du handicap ?
-- *Pourquoi* : Une donnée de santé nominative est une donnée sensible au sens du RGPD ; l'héberger impose chiffrement, restriction d'accès et registre, alors qu'un drapeau par groupe n'identifie personne.
-- *Défaut proposé* : Un drapeau booléen « besoin_accessibilite » sur le groupe ou la classe, sans identité ni nature du handicap stockée.
-
-**18.5** 🔴 Doit-on construire dès la V1 une API HTTP JSON (REST) distincte du front, ou une application monolithique avec pages rendues côté serveur, sachant que des fonctions Python internes suffiraient tant que l'application tourne en local ?
-- *Pourquoi* : Le pilotage par LLM, l'hébergement et tout client futur (script, mobile, autre front) doivent appeler les fonctionnalités sans passer par l'interface, ce qu'un monolithe à templates ne permet pas sans découpage ; mais une API complète est du travail supplémentaire avant le 16/11 et le choix du cadre web en dépend.
-- *Défaut proposé* : Fonctions Python de service en V1, exposées en JSON par FastAPI dans src/edt/api avec documentation OpenAPI automatique ; front statique dans web/ servi par le même processus ; toute fonctionnalité existe d'abord comme fonction de service puis comme endpoint, ces routes servant d'API hébergée plus tard sans réécriture.
-
-**18.6** 🔴 Quel framework web pour le serveur local : FastAPI, Flask ou Django ?
-- *Pourquoi* : Le choix fixe la structure du dépôt, la façon d'écrire les tests d'intégration et l'obtention gratuite d'une documentation d'API (OpenAPI) que le pilotage LLM pourra réutiliser.
-- *Défaut proposé* : FastAPI + uvicorn (pydantic pour valider les entrées, OpenAPI automatique), lancement par `uvicorn edt.api:app`.
-
-**18.7** 🔴 Garde-t-on le module sqlite3 brut (comme database.py actuel), ou passe-t-on dès la V1 à SQLAlchemy avec migrations Alembic ?
-- *Pourquoi* : Avec SQLAlchemy, passer de SQLite à PostgreSQL revient à changer une URL, alors qu'avec sqlite3 brut chaque requête et chaque type devront être réécrits.
-- *Défaut proposé* : SQLAlchemy 2 + Alembic dès la V1 ; SQLite en développement et en test ; aucune requête SQL spécifique à SQLite.
-
-**18.8** 🔴 Le lancement d'une génération ou d'un réaménagement doit-il bloquer la requête HTTP jusqu'au résultat, ou renvoyer immédiatement un identifiant de tâche que l'interface interroge ensuite (tâche de fond avec notification quand c'est prêt) ?
-- *Pourquoi* : Les plateformes d'hébergement et les reverse-proxies coupent les requêtes au-delà de 30 à 60 s alors que CP-SAT peut tourner plusieurs minutes ; une V1 synchrone devrait être entièrement réécrite, et le choix pèse sur l'architecture web dès la V1.
-- *Défaut proposé* : POST /generations et POST /reamenagements renvoient un job_id et lancent le solveur dans un processus séparé ; GET /jobs/{id} donne l'état, la progression et le résultat, que l'interface interroge toutes les secondes.
-
 **18.9** 🟠 Où pensez-vous héberger : PaaS gratuit (Render, Fly.io, Railway), VPS loué (OVH, Hetzner), serveur de l'ISEP via la DSI, ou machine personnelle / Raspberry Pi ?
 - *Pourquoi* : Un PaaS a un disque éphémère (un fichier SQLite y est perdu à chaque redéploiement) et coupe les requêtes longues, alors qu'un VPS ou une Raspberry impose de gérer soi-même reverse-proxy, HTTPS et sauvegardes.
 - *Défaut proposé* : Une image Docker unique déployable partout, validée sur un PaaS gratuit avec volume persistant ; le serveur ISEP n'est envisagé que si un contact DSI est obtenu avant novembre.
@@ -1375,10 +1323,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Le SSO impose un enregistrement OAuth auprès de l'ISEP et une bibliothèque OIDC, les comptes locaux imposent hachage et réinitialisation des mots de passe, et le mot de passe partagé ne permet aucun rôle.
 - *Défaut proposé* : Comptes locaux avec mots de passe hachés (argon2), compte admin créé par une commande CLI, pas de réinitialisation par email en V1.
 
-**18.13** 🟠 Les enseignants doivent-ils pouvoir eux-mêmes déclarer une indisponibilité ou une absence (imprévu) depuis l'application, ou tout passe-t-il par l'administrateur ?
-- *Pourquoi* : Un accès enseignant en écriture implique des comptes individuels, une validation par l'admin et une file d'imprévus, alors qu'une saisie par l'admin seul se contente d'un formulaire.
-- *Défaut proposé* : Tout passe par l'administrateur en V1 ; la table des indisponibilités porte déjà un champ « déclaré par » pour la suite.
-
 **18.14** 🟠 Combien d'utilisateurs simultanés faut-il viser sur l'instance hébergée : une dizaine (scolarité + équipe), ou des centaines (étudiants qui consultent leur emploi du temps) ?
 - *Pourquoi* : Une dizaine d'utilisateurs tient sur un seul processus et SQLite, des centaines imposent PostgreSQL, plusieurs workers et une mise en cache des lectures.
 - *Défaut proposé* : Moins de 20 utilisateurs simultanés ; les étudiants ne consultent pas via l'application en 2026-2027.
@@ -1387,25 +1331,9 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Une page publique oblige à séparer strictement ce qui est visible de tous (créneaux, salles, matières) des données personnelles (noms complets, indisponibilités, accessibilité).
 - *Défaut proposé* : Rien de public en hébergé ; en local tout est ouvert ; les exports par classe sont servis derrière authentification.
 
-**18.16** 🟠 Faut-il une liste nominative des étudiants en base, ou seulement les classes et groupes avec leur effectif ?
-- *Pourquoi* : Une table d'étudiants nominative multiplie les données personnelles hébergées sans servir au solveur, qui ne raisonne que par groupe et effectif.
-- *Défaut proposé* : Pas de table étudiant : classes et groupes avec effectif et drapeau d'accessibilité uniquement.
-
-**18.17** 🟠 Front en HTML/JavaScript sans étape de build (ou HTMX), ou framework type React/Vue avec Vite (le .gitignore mentionne déjà node_modules et .vite) ?
-- *Pourquoi* : Un build Node ajoute une deuxième chaîne d'outils au déploiement et à la CI, et un membre sans Node installé ne peut plus lancer le projet.
-- *Défaut proposé* : HTML + JavaScript sans build, fichiers statiques servis par le serveur Python ; un framework n'est adopté que sur décision d'équipe dans une issue.
-
 **18.18** 🟠 Le passage à PostgreSQL en hébergé est-il acté, ou souhaitez-vous rester sur SQLite (fichier sur volume persistant) tant que le nombre d'utilisateurs reste faible ?
 - *Pourquoi* : Cela décide si la CI teste sur les deux moteurs, si on s'interdit les types et fonctions propres à SQLite, et si le déploiement doit provisionner une base externe.
 - *Défaut proposé* : SQLite pour la V1 et la démo, code compatible PostgreSQL ; migration seulement si l'usage réel par la scolarité est confirmé.
-
-**18.19** 🟠 Le fichier emploi_du_temps.db est actuellement suivi par git : le retire-t-on du dépôt (avec *.db dans .gitignore) au profit d'un script de peuplement, ou garde-t-on une base de démo versionnée ?
-- *Pourquoi* : Un fichier binaire versionné crée des conflits git impossibles à fusionner, peut contenir des données réelles par erreur et n'est pas utilisable sur un serveur au disque éphémère.
-- *Défaut proposé* : git rm du fichier, *.db et data/ dans .gitignore, base créée par les migrations et peuplée par une commande `edt seed` à partir d'un jeu de démo JSON/CSV versionné.
-
-**18.20** 🟠 En développement, où doit vivre la base : chemin relatif au dossier courant (comportement actuel de database.py), ou chemin fixé par une variable d'environnement avec un défaut dans un dossier data/ ?
-- *Pourquoi* : Un chemin relatif au dossier courant change selon l'endroit d'où on lance les tests ou le serveur, et ne peut pas pointer vers un volume monté en hébergé.
-- *Défaut proposé* : Variable EDT_DATABASE_URL, défaut sqlite:///./data/edt.db, dossier data/ créé au démarrage et ignoré par git ; un .env.example documente toutes les variables.
 
 **18.21** 🟠 Les fichiers importés (CSV/Excel des données du directeur) et les exports (ICS, PDF) doivent-ils être conservés sur le serveur, ou traités à la volée sans stockage ?
 - *Pourquoi* : Sur un PaaS le disque est éphémère ; conserver des fichiers impose un volume ou un stockage objet, alors qu'un traitement en mémoire n'a aucune exigence d'infrastructure.
@@ -1439,17 +1367,9 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Chaque champ personnel hébergé ajoute une obligation d'information et de conservation ; l'email n'est utile que si des notifications ou des comptes enseignants sont prévus.
 - *Défaut proposé* : Email optionnel, vide dans le jeu anonymisé, conservé dans le schéma pour un futur compte enseignant.
 
-**18.29** ⚪ Que faire des données réelles à la fin du projet : suppression après la soutenance, ou conservation pour une reprise éventuelle l'année suivante ?
-- *Pourquoi* : Cela conditionne une commande d'effacement, l'exclusion des données réelles des sauvegardes et une mention dans la documentation utilisateur.
-- *Défaut proposé* : Suppression des données réelles de tous les postes et sauvegardes après la soutenance ; seul le jeu anonymisé reste dans le dépôt.
-
 **18.30** ⚪ Doit-on tracer qui a modifié quoi et quand sur toutes les tables (utile en multi-utilisateurs et pour justifier un réaménagement auprès des enseignants) ?
 - *Pourquoi* : Ajouter des colonnes d'audit après coup sur toutes les tables demande une migration et une reprise de tout le code d'écriture.
 - *Défaut proposé* : Colonnes created_at, updated_at, created_by sur chaque table principale dès la V1 ; pas de journal d'audit complet.
-
-**18.31** ⚪ Quels exports sont attendus : ICS par classe et par enseignant, CSV/Excel, PDF imprimable ?
-- *Pourquoi* : Les exports par personne sont les premières routes en lecture seule par rôle, et le PDF ajoute une dépendance lourde côté serveur.
-- *Défaut proposé* : ICS et CSV par classe et par enseignant en V1, pas de PDF.
 
 **18.32** ⚪ Le HTTPS sera-t-il fourni par la plateforme d'hébergement, ou devrez-vous l'installer vous-mêmes (Caddy ou nginx + Let's Encrypt sur un VPS) ?
 - *Pourquoi* : Derrière un proxy, l'application doit faire confiance aux en-têtes X-Forwarded-* et marquer ses cookies « secure » ; sur un VPS il faut en plus livrer une configuration de reverse-proxy.
@@ -1472,10 +1392,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **19.1** 🔴 Quels types d'imprévus doivent être gérés en priorité : absence d'un enseignant, salle indisponible, campus entier fermé, événement réquisitionnant plusieurs salles, sortie scolaire d'une classe, grève de transports, jour férié non prévu ? Pouvez-vous les classer par fréquence réelle à l'ISEP ?
 - *Pourquoi* : Chaque type se modélise comme une indisponibilité d'une ressource différente (enseignant, salle, classe, campus) et les types retenus fixent le schéma de la table des imprévus et les cas de test prioritaires.
 - *Défaut proposé* : V1 : absence d'enseignant et indisponibilité de salle sur des dates données ; les autres types sont représentés comme des indisponibilités multiples sans code dédié.
-
-**19.2** 🔴 La première version doit-elle générer un emploi du temps daté (semaines réelles du semestre avec vacances et jours fériés) ou une semaine type répétée ? Si semaine type, acceptez-vous qu'un imprévu « mardi 12 novembre » ou « du 3 au 7 novembre » ne puisse pas être représenté ?
-- *Pourquoi* : Un imprévu est daté : sans calendrier réel dès la V1, l'API ne peut pas exprimer « cette semaine seulement », et la table des séances (aujourd'hui `cours` avec un `jour` textuel) et tout le modèle devront être refaits plus tard.
-- *Défaut proposé* : Semaine type générée par le solveur, puis instanciée sur un calendrier réel (table des semaines datées, vacances et jours fériés) ; les dérogations s'appliquent aux instances datées, jamais à la semaine type.
 
 **19.3** 🔴 Le réaménagement remplace-t-il l'emploi du temps sur la période, ou est-il une couche de dérogations datées (« séance X, le 12/11, remplacée par… ») au-dessus d'un EDT de référence unique qui redevient la référence après l'imprévu ? Ou préférez-vous une copie complète de l'emploi du temps pour chaque semaine du semestre ?
 - *Pourquoi* : Le choix fixe le schéma central : dérogations = table « exception » liée à une séance de référence et une date, ce qui oblige l'API de lecture d'une semaine à fusionner base + exceptions mais permet le retour automatique à la normale et la liste exacte de ce qui a changé ; copies = table « seance_datee » avec un écart calculé par rapport à la référence, ce qui change toutes les requêtes d'affichage et d'export.
@@ -1561,10 +1477,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : La limite dimensionne la machine hébergée (CPU/RAM), se passe au solveur comme paramètre configurable et décide si l'exécution doit être asynchrone ; un réaménagement d'urgence n'a pas la même tolérance qu'une génération annuelle.
 - *Défaut proposé* : Réaménagement : 30 s ; génération complète : 10 min ; les deux en variables d'environnement, avec renvoi de la meilleure solution trouvée à l'échéance.
 
-**19.24** 🟠 Quelle est la taille réelle à traiter : nombre de classes, d'enseignants, de salles, de campus et de séances par semaine dans les données de l'année passée ?
-- *Pourquoi* : L'ordre de grandeur décide si un réaménagement sur l'établissement entier reste interactif ou s'il faut obligatoirement le découpage en sous-problème local.
-- *Défaut proposé* : Hypothèse de travail : 30 classes, 100 enseignants, 60 salles, 2 campus, 600 séances par semaine.
-
 **19.25** 🟠 À la fin de l'imprévu, les séances reviennent-elles automatiquement à l'emploi du temps de référence, et les rattrapages placés après cette date restent-ils en place ?
 - *Pourquoi* : Détermine si les dérogations portent une date de fin de validité et si un traitement automatique (ou une action de l'utilisateur) les clôture.
 - *Défaut proposé* : Retour automatique : les dérogations sont bornées par la période de l'imprévu ; les rattrapages hors période sont des dérogations valables jusqu'à leur propre date.
@@ -1577,14 +1489,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Plusieurs propositions imposent soit plusieurs résolutions avec des pondérations différentes, soit une collecte de solutions diverses, ce qui multiplie le temps de calcul, impose une structure « proposition » en base et un score de dérangement comparable dès la V1.
 - *Défaut proposé* : Une solution optimale plus une variante « sans cascade » quand elle existe ; l'utilisateur (formulaire ou LLM) peut demander « une autre proposition » qui exclut la précédente.
 
-**19.28** 🟠 Le gestionnaire peut-il modifier à la main une proposition (forcer une séance sur un créneau) puis demander à l'application de vérifier ou de compléter le reste ?
-- *Pourquoi* : Cela nécessite un mode « réparer autour de choix fixés » où les séances éditées deviennent des constantes, donc une API de résolution acceptant une liste de séances imposées.
-- *Défaut proposé* : Oui : toute séance peut être épinglée manuellement avant de relancer le calcul.
-
-**19.29** 🟠 L'utilisateur peut-il marquer certaines séances « intouchables » avant le calcul (examens, intervenants extérieurs, séances déjà communiquées aux étudiants) ?
-- *Pourquoi* : Un attribut « verrouillée » sur la séance datée devient une contrainte d'égalité dans le modèle de réaménagement et doit exister dans le schéma.
-- *Défaut proposé* : Oui : champ booléen « verrouillée » sur chaque séance datée, coché automatiquement pour les séances passées.
-
 **19.30** 🟠 Les données réelles de l'année passée contiendront-elles des imprévus réellement survenus et les réaménagements faits à la main, afin de comparer la solution de l'application avec ce que les gestionnaires ont fait ?
 - *Pourquoi* : Sans cas réels, la métrique de perturbation sera calibrée à l'aveugle ; avec, on peut écrire des tests d'intégration « imprévu réel → solution au plus aussi perturbante que la solution humaine ».
 - *Défaut proposé* : On construira des scénarios synthétiques à partir de l'EDT réel (absence d'un enseignant tiré au hasard, salle fermée une journée).
@@ -1593,10 +1497,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 - *Pourquoi* : Une contrainte spéciale par type d'imprévu demande du code dédié dans le solveur, alors qu'une indisponibilité générique réutilise le mécanisme standard sans rien ajouter.
 - *Défaut proposé* : Indisponibilité générique du campus ou des salles ; pas de mode distanciel ni de regroupement spécial en V1.
 
-**19.32** ⚪ Pour un jour férié ou un pont absent du calendrier initial, les séances tombent-elles simplement (pas de rattrapage) ou doivent-elles être rattrapées comme après une absence d'enseignant ?
-- *Pourquoi* : Détermine si chaque imprévu porte un attribut « rattrapage attendu » qui active ou non les termes de rattrapage dans la fonction objectif.
-- *Défaut proposé* : Attribut « rattrapage attendu » par imprévu : vrai pour une absence d'enseignant, faux pour un jour férié.
-
 **19.33** ⚪ Quand une classe entière est absente (sortie, voyage), faut-il libérer ses enseignants et ses salles pour d'autres réaménagements de la même période, et rattraper ses cours ensuite ?
 - *Pourquoi* : Une classe absente est une indisponibilité de ressource « classe » qui libère implicitement enseignants et salles : le solveur doit savoir que ces créneaux redeviennent disponibles pour d'autres séances.
 - *Défaut proposé* : Oui : la classe est indisponible, ses séances passent « à rattraper », enseignants et salles sont libérés sur la période.
@@ -1604,10 +1504,6 @@ Questionnaire à remplir avant de coder la première version. Chaque question pr
 **19.34** ⚪ Une séance peut-elle être avancée (placée avant l'imprévu) lorsque celui-ci est connu à l'avance, ou seulement reportée après ?
 - *Pourquoi* : Autoriser l'avance élargit le domaine des variables aux créneaux entre « maintenant » et le début de l'imprévu et pose une question métier (supports de cours prêts ?).
 - *Défaut proposé* : Report uniquement ; l'avance est une option désactivée par défaut.
-
-**19.35** ⚪ La distance du déplacement compte-t-elle : décaler un cours d'un créneau dans la même journée est-il moins dérangeant que le passer au lendemain, ou tout déplacement d'horaire a-t-il le même coût ?
-- *Pourquoi* : Une distance en créneaux ajoute une variable de différence absolue par séance déplacée ; un coût forfaitaire n'est qu'un booléen.
-- *Défaut proposé* : Coût par palier (même jour / même semaine / autre semaine) plutôt qu'une distance continue.
 
 **19.36** ⚪ Un rattrapage placé dans un trou existant d'une classe et d'un enseignant est-il toujours acceptable, même s'il produit une journée 8 h 30-18 h pleine ?
 - *Pourquoi* : Détermine si des contraintes de confort (amplitude journalière maximale, nombre de cours par jour) doivent exister dès la V1 comme contraintes dures.
