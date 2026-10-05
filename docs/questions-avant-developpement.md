@@ -683,90 +683,106 @@ R: comme une seule ligne
 **11.1** 🔴 La V1 doit-elle seulement trouver un emploi du temps valide (première solution faisable, potentiellement pleine de trous et de cours à 8 h 30 tous les jours), ou faut-il déjà un critère de qualité minimal ?
 - *Pourquoi* : Sans objectif, CP-SAT s'arrête à la première solution faisable (rapide mais peu convaincante en démo) ; avec objectif, il faut définir les termes et accepter un temps de calcul plus long.
 - *Défaut proposé* : Mode « faisable » par défaut, plus un objectif de compacité optionnel (minimiser les trous des classes) activable dans l'interface.
+R: défaut (mode « faisable », compacité optionnelle), mais on active l'objectif de compacité pour la démo, avec une limite de temps.
 
 **11.2** 🔴 En cas d'infaisabilité, que doit afficher l'application : un simple message, des pré-vérifications arithmétiques (« le groupe A2-G1 demande 22 h pour 20 h disponibles », « 3 TP info le lundi matin pour 2 salles info »), le noyau des contraintes en conflit, ou des suggestions de relaxation ?
 - *Pourquoi* : C'est la fonctionnalité qui illustre le principe « aucune contrainte n'est abandonnée » devant le jury ; message = trivial, noyau = littéraux d'hypothèse CP-SAT, suggestions = résolutions successives et temps multiplié.
 - *Défaut proposé* : Pré-vérifications rapides par famille (charge par groupe, enseignant, type de salle, salles accessibles) affichées comme avertissements avant même de lancer, puis panneau « Pourquoi ça échoue » listant le noyau de contraintes en conflit obtenu par hypothèses ; suggestions en V2.
-
+R: défaut. Les pré-vérifications par famille sont obligatoires en V1. Le panneau « Pourquoi ça échoue » est classé « utile », car dans CP-SAT les hypothèses imposent 1 worker et aucun objectif. Les suggestions passent en V2.
 **11.3** 🔴 Quelle formulation CP-SAT retient-on : une variable booléenne par (séance, créneau, salle), ou une variable entière « créneau » plus une variable entière « salle » par séance avec non-chevauchement conditionnel, ou une résolution en deux phases (créneaux et campus d'abord, salles ensuite par appariement) ? Comment casse-t-on les symétries entre salles interchangeables et entre séances identiques (deux TD de la même matière pour le même groupe) ?
 - *Pourquoi* : C'est le premier facteur de lenteur : 800 séances × 22 créneaux × 100 salles font 1,7 million de booléens, et des dizaines de salles interchangeables multiplient les solutions équivalentes que le solveur explore une à une ; l'affectation des salles est un appariement quasi trivial une fois les créneaux fixés, mais la contrainte de campus et l'accessibilité doivent alors être connues dès la phase 1.
 - *Défaut proposé* : Variables entières créneau + salle par séance, domaine salle pré-filtré par type, capacité et accessibilité, non-chevauchement par ressource via booléens d'égalité ; bris de symétrie par ordre imposé entre séances identiques ; deux phases seulement si le test de charge dépasse la limite ; choix documenté dans docs/solveur.md.
+R: défaut (variables entières créneau et salle, domaine de salles pré-filtré, bris de symétrie entre séances identiques). Il faut mesurer dès le jeu moyen, et passer à la résolution en deux phases si le temps dépasse la limite.
 
 **11.4** 🔴 À quelle date au plus tard fait-on la « preuve de faisabilité sur le réel » (génération réussie en moins de 60 s sur les données réelles à l'échelle de la démo, toutes contraintes dures actives), quel est le plan B si elle échoue (réduction à une promotion, une semaine ou un campus ; découpage par promotion ; deux phases), et ajoute-t-on un test de performance en CI avec seuil sur le jeu « grand » ?
 - *Pourquoi* : Les projets de ce type échouent quand on découvre à J-7 que le solveur ne termine pas sur la vraie taille ; la date de bascule vers le synthétique (12/10) protège le jalon tests, pas la soutenance ; un test `perf` empêche qu'une contrainte ajoutée en novembre multiplie le temps par vingt sans que personne le voie avant la répétition.
 - *Défaut proposé* : Jalon « réalité » le 09/11, une semaine avant la fin des développements, avec compte rendu ; plan B décidé le jour même dans l'ordre découpage par promotion puis réduction du périmètre de démo ; test tests/perf/test_charge.py marqué `perf`, seuil 120 s sur le jeu grand, exécuté en job nocturne et avant chaque jalon.
+défaut. Jalon « réalité » le 09/11, plan B dans l'ordre découpage par promotion puis réduction du périmètre, et test perf avec un seuil de 120 s sur le jeu grand.
 
 **11.18** 🔴 Pendant le calcul, la page peut-elle être bloquée, ou faut-il un lancement en arrière-plan avec barre de progression, temps écoulé, solutions intermédiaires et bouton « Arrêter » ?
 - *Pourquoi* : Le mode arrière-plan impose un thread, un état de tâche partagé, une route d'interrogation et le `StopSearch` de CP-SAT, ce qui structure l'API entre moteur et interface.
 - *Défaut proposé* : Arrière-plan dans un thread, page qui interroge `/generation/{id}/etat` chaque seconde, indicateur animé, temps écoulé et bouton Arrêter ; un seul job à la fois.
+R: défaut (thread en arrière-plan, interrogation de l'état chaque seconde, temps écoulé, bouton Arrêter, un seul job à la fois). Les solutions intermédiaires ne sont pas nécessaires.
 
 **11.5** 🟠 Les sept contraintes « envisagées » de la section 3 de la spec (capacité, type de salle, indisponibilités enseignants, indisponibilités salles, groupes, nombre de séances, matériel) sont-elles toutes attendues en V1 ?
 - *Pourquoi* : Chaque contrainte ajoute des variables et trois tests ; l'ordre d'implémentation et la charge du lot moteur en dépendent.
 - *Défaut proposé* : Toutes en V1, en dur, chacune activable ou désactivable.
-
+R: oui, toutes en V1. La plupart se résument à filtrer les domaines (capacité, type de salle, matériel, indisponibilités), donc elles coûtent peu.
 **11.6** 🟠 Parmi les contraintes présentées comme dures dans la spec, y en a-t-il que vous considérez en réalité comme des préférences (changement de campus, samedi) ?
 - *Pourquoi* : Une contrainte souple devient un terme pénalisé de l'objectif au lieu d'une contrainte, ce qui change la formulation et le comportement en cas d'infaisabilité.
 - *Défaut proposé* : Tout ce qui est dans la section 2 de la spec est dur, campus compris.
+tout est dur, y compris le campus. Le samedi n'est pas une préférence mais une permission réservée aux TP.
+
 
 **11.7** 🟠 Si un objectif est retenu, quel ordre de priorité entre trous des classes, changements de campus, cours à 8 h 30 ou 16 h, samedi, équilibrage des jours, regroupement des cours d'un enseignant ?
 - *Pourquoi* : Pondération ou ordre lexicographique à coder ; un mauvais ordre produit des emplois du temps contre-intuitifs devant le jury.
 - *Défaut proposé* : Somme pondérée : 10 × trous + 5 × changements de campus + 2 × samedi + 1 × créneaux extrêmes.
-
+R: défaut (10 × trous + 5 × changements de campus + 2 × samedi + 1 × créneaux extrêmes).
 **11.8** 🟠 Faut-il déjà stocker les préférences d'enseignants (éviter 8 h 30, regrouper sur deux jours) même si la V1 ne les optimise pas, et doivent-elles apparaître grisées dans l'interface ou être masquées ?
 - *Pourquoi* : Prévoir dès le départ un champ `dure` et un `poids` sur chaque contrainte évite une refonte du schéma et du solveur en V2.
 - *Défaut proposé* : Chaque contrainte porte `dure: bool` et `poids: int`, seules les dures sont actives en V1 ; préférences masquées dans l'interface en V1.
+R: défaut. Chaque contrainte porte dure et poids, et les préférences sont masquées dans l'interface en V1.
 
 **11.9** 🟠 Quel temps de calcul est acceptable pour une génération complète pendant la démo (5 s, 30 s, 2 min) et sur quelle machine (nombre de cœurs) ? Que se passe-t-il au dépassement ?
 - *Pourquoi* : Fixe `max_time_in_seconds`, le nombre de workers, l'ambition de l'objectif et l'affichage d'une progression.
 - *Défaut proposé* : Limite de 60 s réglable dans les Paramètres, 4 à 8 workers ; au dépassement, on affiche la meilleure solution trouvée si toutes les contraintes dures sont satisfaites, sinon l'échec ; cible 200 séances en moins de 30 s sur un portable.
+R: défaut. Limite de 60 s réglable, 4 à 8 workers, cible de 200 séances en moins de 30 s.
 
 **11.10** 🟠 Le même jeu de données doit-il toujours produire exactement le même emploi du temps (tests reproductibles, démo prévisible), ou un résultat différent d'une exécution à l'autre est-il acceptable ?
 - *Pourquoi* : CP-SAT en multi-threads n'est pas déterministe ; la reproductibilité impose `random_seed` fixe et `num_workers = 1`, donc un calcul plus lent.
 - *Défaut proposé* : Mode déterministe (graine fixe, 1 worker) pour les tests et en option dans l'interface ; multi-workers sinon.
+R: défaut. Mode déterministe (graine fixe, 1 worker) pour les tests, multi-workers sinon.
 
 **11.11** 🟠 Est-il acceptable, dans un mode « diagnostic » explicitement signalé, de produire un emploi du temps partiel (maximum de séances placées, liste des non placées) sans contredire le principe « aucune contrainte n'est abandonnée » ?
 - *Pourquoi* : Nécessite une variable « placée » par séance et un objectif de maximisation : chemin de code distinct du mode normal.
 - *Défaut proposé* : Échec global par défaut ; mode diagnostic séparé, jamais présenté comme un emploi du temps valide.
-
+R:le mode diagnostic est classé optionnel (V2). En V1, c'est un échec global.
 **11.12** 🟠 Si le temps limite est atteint sans solution, faut-il distinguer « prouvé impossible » de « pas trouvé dans le temps imparti » et proposer de relancer plus longtemps ?
 - *Pourquoi* : Deux statuts CP-SAT différents (INFEASIBLE vs UNKNOWN) qui appellent deux messages et deux cas de test.
 - *Défaut proposé* : Deux messages distincts et un bouton « relancer 5 min ».
+R: oui, deux messages distincts et un bouton « relancer 5 min ».
 
 **11.13** 🟠 L'utilisateur doit-il pouvoir placer manuellement ou verrouiller certaines séances (jour, créneau, salle imposés, cadenas sur la case) puis relancer le solveur pour compléter le reste, par exemple après l'absence d'un enseignant ?
 - *Pourquoi* : Le verrouillage transforme des variables en constantes, impose une génération incrémentale, une validation préalable des verrous entre eux, et c'est un excellent scénario de démo (forcer une salle inaccessible et voir l'échec).
 - *Défaut proposé* : Champ `verrouille` avec créneau et salle fixés, respecté comme contrainte dure ; conflit entre verrous signalé avant résolution ; cadenas dans le calendrier classé utile.
-
+R: défaut. Les verrous sont des contraintes dures et les conflits entre verrous sont signalés avant de lancer. C'est un bon scénario de démo.
 **11.14** 🟠 Après une modification (enseignant malade, salle en travaux, besoin PMR ajouté), le solveur doit-il minimiser les changements par rapport à l'emploi du temps précédent, ou peut-il tout recalculer ?
 - *Pourquoi* : Minimiser = solution précédente injectée comme indice (AddHint) et objectif sur le nombre de séances déplacées ; recalcul = rien à faire.
 - *Défaut proposé* : Regénération complète avec indice systématique et option « conserver au maximum l'emploi du temps actuel ».
-
+R: recalcul complet, avec la solution précédente donnée comme indice. L'option « conserver au maximum » est classée utile.
 **11.15** 🟠 La génération doit-elle pouvoir se limiter à un périmètre (une promotion, quelques classes, un jour, un campus) en gardant tout le reste figé ?
 - *Pourquoi* : Équivaut à verrouiller automatiquement tout ce qui est hors périmètre, et ajoute un écran de sélection avant lancement.
 - *Défaut proposé* : Écran de lancement avec cases à cocher par promotion, tout coché par défaut ; le résultat remplace uniquement les groupes du périmètre, le reste étant verrouillé automatiquement.
+R: optionnel. Les verrous couvrent déjà le besoin, et l'écran de sélection du périmètre passe en V2.
 
 **11.16** 🟠 Souhaitez-vous un vérificateur indépendant du solveur (fonction Python pure qui liste les violations d'un emploi du temps donné), utilisable pour valider une modification manuelle, l'EDT réel de l'année passée ou un EDT saisi à la main, et servant d'oracle aux tests ?
 - *Pourquoi* : Double implémentation de chaque contrainte, mais indispensable pour les tests exigés par AGENTS.md, la détection de conflits dans l'interface et la comparaison avec le réel.
 - *Défaut proposé* : Module `verificateur` avec une fonction par contrainte et le même catalogue que le solveur, renvoyant une liste de violations typées (contrainte, séances, message) ; liste vide = EDT valide.
+R:oui, c'est prioritaire. Le vérificateur est à coder avant le solveur, car il sert d'oracle à tous les tests.
 
 **11.17** 🟠 L'utilisateur doit-il pouvoir activer ou désactiver une contrainte avant génération (« ignorer la capacité pour ce test ») sans qu'elle soit jamais abandonnée automatiquement ?
 - *Pourquoi* : Chaque contrainte devient un module avec un indicateur d'activation ; utile pour la démo, le diagnostic et les tests, sans violer le principe de la spec.
 - *Défaut proposé* : Cases à cocher dans l'interface, tout activé par défaut, désactivation tracée dans le résultat.
-
+R: défaut. Tout est coché par défaut, et chaque désactivation est notée dans le résultat.
 **11.19** 🟠 Quand des séances figées ou verrouillées (occupations externes, événements importés, verrous du planificateur, EDT réel importé comme verrous) violent déjà entre elles une contrainte dure (deux séances figées dans la même salle, trajet inter-campus de 15 min dans le réel), le solveur doit-il refuser de démarrer, ignorer ces violations héritées en n'exigeant que de ne pas en créer de nouvelles, ou exclure les séances fautives ?
 - *Pourquoi* : Le réel importé contiendra des violations de nos règles ; si le solveur applique ses contraintes à des séances figées incohérentes, le modèle est infaisable avant même de placer quoi que ce soit, et le message « aucune solution » sera imputé à tort au générateur pendant la démo.
 - *Défaut proposé* : Pré-vérification qui liste les violations héritées entre séances figées ; par défaut génération refusée avec la liste ; option « tolérer les violations héritées » qui n'applique les contraintes qu'aux paires impliquant au moins une séance libre et marque le résultat « valide hors violations héritées ».
+R: défaut. La génération est refusée par défaut avec la liste des violations héritées, avec une option pour les tolérer.
 
 **11.20** ⚪ L'utilisateur doit-il pouvoir demander « une autre solution » différente de la précédente ?
 - *Pourquoi* : Relance avec une graine différente, ou contrainte d'exclusion de la solution précédente.
 - *Défaut proposé* : Bouton « regénérer » avec une nouvelle graine.
+R:défaut, un bouton « regénérer » avec une nouvelle graine.
 
 **11.21** ⚪ Le moteur doit-il être appelable en ligne de commande (JSON ou SQLite en entrée, résultat en sortie) indépendamment de l'interface web, pour la CI et les tests d'intégration ?
 - *Pourquoi* : Définit une API stable `generer(donnees, options) -> resultat` et un point d'entrée CLI séparé du serveur web.
 - *Défaut proposé* : Oui : `python -m edt generer` plus API Python.
+R: oui, python -m edt generer et une API Python.
 
 **11.23** ⚪ Faut-il injecter l'EDT réel de l'année passée comme indice de départ (AddHint) du solveur pour que l'emploi du temps généré ressemble à celui de la scolarité (mêmes jours, mêmes salles quand c'est possible) et converge plus vite, ou préfère-t-on une solution « neutre » qui montre que l'outil ne recopie pas le réel ?
 - *Pourquoi* : Un indice tiré du réel accélère fortement la résolution sur l'instance réelle et produit un résultat que la scolarité reconnaît, mais il brouille l'argument « généré automatiquement » et impose un rapprochement séance à séance entre besoins et référence.
 - *Défaut proposé* : Option « partir de l'emploi du temps réel » désactivée par défaut, disponible seulement quand une référence est importée et rapprochée ; la démo montre d'abord la génération sans indice.
+R: défaut. Option désactivée par défaut, et la démo montre d'abord la génération sans indice.
 
 ## 12. Interface utilisateur
 
