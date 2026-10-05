@@ -265,8 +265,14 @@ def lister(
         conditions.append(or_(*alternatives))
     appliques = valeurs_filtres(session, description, filtres)
     for filtre in description.filtres:
-        if appliques[filtre.nom]:
-            conditions.append(filtre.condition(appliques[filtre.nom]))
+        valeur = appliques[filtre.nom]
+        if valeur:
+            try:
+                conditions.append(filtre.condition(valeur))
+            except ValueError as erreur:
+                raise ErreurDonneesInvalides(
+                    f"Filtre « {filtre.libelle} » : valeur invalide « {valeur} »."
+                ) from erreur
     requete = requete.where(*conditions)
 
     total = session.scalar(select(func.count()).select_from(requete.order_by(None).subquery()))
