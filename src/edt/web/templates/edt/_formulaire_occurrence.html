@@ -1,0 +1,35 @@
+{#
+  Formulaire de déplacement d'une séance datée (fragment). Changer la date ou l'heure
+  recharge le formulaire. Variables : f (modifications.FormulaireOccurrence), retour, resultat.
+#}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+{%- set adresse = "/emploi-du-temps/occurrences/" ~ f.bloc.occurrence_id %}
+<form id="edt-formulaire" class="formulaire" method="post" action="{{ adresse }}/deplacer"
+  hx-post="{{ adresse }}/deplacer" hx-target="#edt-panneau" hx-swap="innerHTML">
+  <h3>{{ "Programmer la séance" if f.bloc.statut.value == "a_programmer" else "Déplacer cette séance seulement" }}</h3>
+  {%- if resultat %}
+  {{ ui.message(resultat.message, resultat.niveau, resultat.remarques) }}
+  {{ edt.anomalies(resultat.anomalies) }}
+  {%- endif %}
+  <input type="hidden" name="retour" value="{{ retour }}">
+  {%- set rechargement = {"hx-get": adresse ~ "/formulaire", "hx-trigger": "change", "hx-include": "closest form", "hx-target": "#edt-formulaire", "hx-swap": "outerHTML"} %}
+  {{ ui.champ("date", "Date", f.date.isoformat(), type="date", requis=true, attributs=dict(rechargement, min=f.date_min.isoformat(), max=f.date_max.isoformat())) }}
+  {%- if f.fermeture %}
+  {{ ui.message("Ce jour est fermé : " ~ f.fermeture ~ ".", "attention") }}
+  {%- endif %}
+  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ ".") }}
+  <div class="champ">
+    <label for="champ-salle_id">Salle</label>
+    <select id="champ-salle_id" name="salle_id">
+      {%- for s in f.salles %}
+      <option value="{{ s.id }}"{% if s.id == f.salle_id %} selected{% endif %}>{{ s.libelle }}</option>
+      {%- else %}
+      <option value="">Aucune salle compatible</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">Vérifier et enregistrer</button>
+  </div>
+</form>

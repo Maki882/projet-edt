@@ -124,6 +124,45 @@ class ResultatModification:
     remarques: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class AnomaliesSeance:
+    """Anomalies actuelles d'une séance, ou la raison pour laquelle on ne les connaît pas."""
+
+    controle: raccords.Controle
+    anomalies: tuple[Anomalie, ...]
+
+
+def anomalies_seance(session: Session, seance_hebdo_id: int) -> AnomaliesSeance:
+    """Anomalies de la semaine type qui concernent cette séance (pour le panneau de détail)."""
+    seance = _seance(session, seance_hebdo_id)
+    controle = raccords.controler(raccords.verifier_version, session, seance.version_id)
+    if controle.verification is None:
+        return AnomaliesSeance(controle, ())
+    identifiant = id_seance(seance.besoin_id, seance.rang)
+    return AnomaliesSeance(
+        controle,
+        _triees(a for a in controle.verification.anomalies if identifiant in a.seances),
+    )
+
+
+def anomalies_occurrence(session: Session, occurrence_id: int) -> AnomaliesSeance:
+    """Anomalies datées qui concernent cette occurrence, vérifiées sur son jour."""
+    occurrence = _occurrence(session, occurrence_id)
+    controle = raccords.controler(
+        raccords.verifier_occurrences_version,
+        session,
+        occurrence.version_id,
+        date_debut=occurrence.date,
+        date_fin=occurrence.date,
+    )
+    if controle.verification is None:
+        return AnomaliesSeance(controle, ())
+    return AnomaliesSeance(
+        controle,
+        _triees(a for a in controle.verification.anomalies if occurrence.id in a.occurrences),
+    )
+
+
 # --------------------------------------------------------------------------- #
 # Séances hebdomadaires
 # --------------------------------------------------------------------------- #

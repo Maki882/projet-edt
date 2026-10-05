@@ -6,8 +6,8 @@
  * 1. Recherche rapide : un champ `data-filtre="<id du select>"` masque les options
  *    du sélecteur qui ne contiennent pas le texte saisi (sans tenir compte des accents).
  * 2. Envoi automatique : un `select[data-envoi-auto]` soumet son formulaire au
- *    changement ; `data-desactiver="<nom>"` retire d'abord ce champ de l'envoi
- *    (changer de semestre ne doit pas garder la version de l'ancien).
+ *    changement ; `data-desactiver="<nom> <nom>"` retire d'abord ces champs de l'envoi
+ *    (changer de semestre ne doit garder ni la version ni le groupe de l'ancien).
  * 3. Impression : un bouton `data-imprimer` ouvre l'impression du navigateur
  *    (c'est l'export PDF).
  * 4. Panneau latéral : un clic sur un bloc le met en évidence ; `data-fermer-panneau`
@@ -70,12 +70,14 @@
     if (!champ.matches || !champ.matches("select[data-envoi-auto]") || !champ.form) {
       return;
     }
-    var aRetirer = champ.dataset.desactiver;
-    if (aRetirer) {
-      Array.prototype.forEach.call(champ.form.querySelectorAll("[name='" + aRetirer + "']"), function (element) {
+    (champ.dataset.desactiver || "").split(" ").forEach(function (nom) {
+      if (!nom) {
+        return;
+      }
+      Array.prototype.forEach.call(champ.form.querySelectorAll("[name='" + nom + "']"), function (element) {
         element.disabled = true;
       });
-    }
+    });
     champ.form.requestSubmit ? champ.form.requestSubmit() : champ.form.submit();
   });
 

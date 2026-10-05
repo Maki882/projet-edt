@@ -124,6 +124,16 @@ def exiger_semestre(session: Session, semestre_id: int) -> ResumeSemestre:
     return semestre
 
 
+def annee_du_semestre(session: Session, semestre_id: int) -> int:
+    """Identifiant de l'année scolaire du semestre (les groupes sont rattachés à l'année)."""
+    annee_id = session.scalar(
+        select(m.Semestre.annee_scolaire_id).where(m.Semestre.id == semestre_id)
+    )
+    if annee_id is None:
+        raise ErreurIntrouvable(f"Le semestre n° {semestre_id} n'existe pas.")
+    return annee_id
+
+
 def lire_version(session: Session, version_id: int) -> ResumeVersion:
     """Résumé d'une version ; lève `ErreurIntrouvable` si elle n'existe pas."""
     version = session.get(m.VersionEdt, version_id)
