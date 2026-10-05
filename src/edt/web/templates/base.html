@@ -1,0 +1,66 @@
+{#
+  Gabarit de base de tous les écrans.
+
+  Blocs à redéfinir :
+  - titre       : titre de la page (onglet du navigateur et titre principal) ;
+  - actions     : boutons placés à droite du titre (facultatif) ;
+  - contenu     : le corps de la page.
+
+  Variables fournies par `edt.web.gabarits.rendre` : menu, chemin, messages, id_requete.
+#}
+{% import "macros.html" as ui %}
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block titre %}Accueil{% endblock %} - EDT</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/app.css?v={{ version_application }}">
+  <script src="/static/js/htmx.min.js?v={{ version_application }}" defer></script>
+  <script src="/static/js/app.js?v={{ version_application }}" defer></script>
+</head>
+<body>
+  <a class="lien-evitement" href="#contenu">Aller au contenu</a>
+  <div class="bandeau-fictif" role="note">
+    <strong>Données fictives.</strong>
+    Les personnes, groupes et emplois du temps affichés sont générés pour la démonstration.
+  </div>
+  <div class="cadre">
+    <aside class="navigation">
+      <a class="marque" href="/">
+        <span class="marque-sigle">EDT</span>
+        <span class="marque-texte">Emplois du temps</span>
+      </a>
+      <nav aria-label="Navigation principale">
+        {%- for section in menu %}
+        {%- if section.titre %}
+        <h2>{{ section.titre }}</h2>
+        {%- endif %}
+        <ul>
+          {%- for entree in section.entrees %}
+          <li>
+            <a href="{{ entree.url }}"{% if entree.est_active(chemin) %} class="actif" aria-current="page"{% endif %}>{{ entree.libelle }}</a>
+          </li>
+          {%- endfor %}
+        </ul>
+        {%- endfor %}
+      </nav>
+    </aside>
+    <main id="contenu">
+      <header class="entete-page">
+        <h1>{{ self.titre() }}</h1>
+        <div class="entete-actions">{% block actions %}{% endblock %}</div>
+      </header>
+      <div id="messages" class="messages" aria-live="polite">
+        {{ ui.messages(messages) }}
+      </div>
+      {% block contenu %}{% endblock %}
+    </main>
+  </div>
+  <footer class="pied">
+    EDT {{ version_application }} - générateur d'emplois du temps
+    {%- if id_requete %} - <span class="discret">requête {{ id_requete }}</span>{% endif %}
+  </footer>
+</body>
+</html>

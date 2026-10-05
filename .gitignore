@@ -7,14 +7,11 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+build/
+dist/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-
-# Node
-node_modules/
-dist/
-.vite/
 
 # Secrets et config locale
 .env
@@ -27,6 +24,10 @@ dist/
 .DS_Store
 Thumbs.db
 
-# Sorties générées
+# Données et sorties générées (jamais dans le dépôt)
+data/
+logs/
+*.db
+*.sqlite*
 *.log
 output/

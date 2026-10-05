@@ -1,0 +1,64 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "edt"
+dynamic = ["version"]
+description = "Générateur automatique d'emplois du temps pour une école d'ingénieurs (projet ISEP 2026-2027)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "ortools>=9.15",
+    "sqlalchemy>=2.0",
+    "fastapi>=0.121",
+    "uvicorn[standard]",
+    "jinja2",
+    "python-multipart",
+    "typer>=0.27",
+    "openpyxl",
+    "icalendar",
+    "python-dateutil",
+    "faker",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "httpx",
+    "ruff",
+]
+
+[project.scripts]
+edt = "edt.cli:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "edt.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+edt = ["web/templates/**/*.html", "web/static/**/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+testpaths = ["tests"]
+markers = [
+    "perf: test de charge long, exclu de la CI courante (pytest -m \"not perf\")",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# Fichiers d'origine de l'équipe ou scripts hors paquet : on ne les reformate pas.
+extend-exclude = ["docs"]
+force-exclude = true
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501", # la longueur des lignes est gérée par `ruff format` (les messages français restent entiers)
+    "B008", # `Depends(...)` et `typer.Option(...)` en valeur par défaut sont l'usage normal
+]
