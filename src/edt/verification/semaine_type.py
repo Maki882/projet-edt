@@ -28,13 +28,14 @@ from collections.abc import Iterable, Iterator, Sequence
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
-from edt.domaine.instantane import Instantane, Placement, SeanceAPlacer
+from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification.contexte import (
     Contexte,
     Element,
     cle_chronologique,
     cle_tri,
+    creneau_impose,
     defauts_de_plage,
     resoudre_codes,
 )
@@ -122,12 +123,6 @@ def valider_placements(instantane: Instantane, placements: Sequence[Placement]) 
         )
 
 
-def est_imposee(seance: SeanceAPlacer) -> bool:
-    """Vrai si le créneau de la séance est imposé (début imposé, besoin ponctuel ou verrou)."""
-    besoin = seance.besoin
-    return besoin.debut_impose is not None or besoin.ponctuel or seance.verrou is not None
-
-
 def construire_elements(
     instantane: Instantane, placements: Sequence[Placement]
 ) -> tuple[list[Element], list[tuple[int, Placement]]]:
@@ -150,7 +145,9 @@ def construire_elements(
                 position=position,
                 seance_id=seance.id,
                 semaines=seance.semaines,
-                imposee=est_imposee(seance),
+                imposee=creneau_impose(
+                    seance.besoin, seance.verrou, placement.jour, placement.debut
+                ),
                 jour_impose=seance.jour_impose,
             )
         )
@@ -187,16 +184,7 @@ def _volume(
         return
 
     for _, placement in inconnus:
-        yield ctx.anomalie(
-            CodeContrainte.VOLUME,
-            Gravite.ERREUR,
-            f"Le placement du {nom_jour(placement.jour)} {plage(placement.debut, placement.fin)} "
-            f"désigne une séance inconnue dans ce semestre (« {placement.seance_id} ») : "
-            "il ne peut pas être vérifié.",
-            seances=(placement.seance_id,),
-            salles=() if placement.salle_id is None else (placement.salle_id,),
-            jour=placement.jour,
-        )
+        yield _placement_inconnu(ctx, placement)
 
     par_seance: dict[str, list[Element]] = defaultdict(list)
     for element in elements:
@@ -230,6 +218,55 @@ def _volume(
                 salles=[e.salle_id for e in places if e.salle_id is not None],
                 **ressources,
             )
+
+
+CONSEIL_RECALCUL = "Relancer le calcul pour remettre l'emploi du temps en accord avec les besoins."
+CAUSES_SEANCE_RETIREE = (
+    "la période du besoin ou celle du semestre a été raccourcie, ou le nombre de séances "
+    "demandées a diminué"
+)
+
+
+def _placement_inconnu(ctx: Contexte, placement: Placement) -> Anomalie:
+    """Placement d'une séance que les besoins du semestre ne demandent plus (ou jamais demandée).
+
+    Cas typique : le semestre ou la période d'un besoin a été raccourci après le
+    calcul, et la version garde des séances que le dépliage ne produit plus.
+    Le message nomme le besoin quand il existe encore (l'identifiant technique
+    reste dans le champ `seances`) et dit quoi faire.
+    """
+    ou = f"le {nom_jour(placement.jour)} {plage(placement.debut, placement.fin)}"
+    if placement.salle_id is not None:
+        ou += f" en salle {ctx.salle(placement.salle_id).code}"
+    besoin_id, _, rang = placement.seance_id.partition("-")
+    besoin = ctx.besoin(int(besoin_id)) if besoin_id.isdigit() else None
+    salles = () if placement.salle_id is None else (placement.salle_id,)
+    if besoin is None:
+        reference = (
+            f"n° {besoin_id}" if besoin_id.isdigit() else f"référence « {placement.seance_id} »"
+        )
+        return ctx.anomalie(
+            CodeContrainte.VOLUME,
+            Gravite.ERREUR,
+            f"La séance placée {ou} se rattache à un besoin qui n'existe pas dans ce semestre "
+            f"({reference}) : elle ne peut pas être vérifiée. {CONSEIL_RECALCUL}",
+            seances=(placement.seance_id,),
+            salles=salles,
+            jour=placement.jour,
+        )
+    numero = f"n° {rang} " if rang.isdigit() else ""
+    return ctx.anomalie(
+        CodeContrainte.VOLUME,
+        Gravite.ERREUR,
+        f"La séance {numero}de « {ctx.libelle_seance(besoin, None)} », placée {ou}, n'est plus "
+        f"demandée : {CAUSES_SEANCE_RETIREE}. {CONSEIL_RECALCUL}",
+        seances=(placement.seance_id,),
+        besoins=(besoin.id,),
+        salles=salles,
+        enseignants=besoin.enseignants,
+        groupes=besoin.groupes,
+        jour=placement.jour,
+    )
 
 
 def _verrous(ctx: Contexte, elements: list[Element]) -> Iterator[Anomalie]:
