@@ -15,7 +15,9 @@ Déroulement d'un calcul
 4. **Amélioration** (seulement avec `options.optimiser`) : l'objectif de
    qualité est ajouté au modèle et la recherche repart de la solution valide,
    dans le temps qui reste. Si elle ne trouve pas mieux, ou n'a plus de
-   temps, c'est la solution valide qui est rendue.
+   temps, c'est la solution valide qui est rendue. Elle s'arrête d'elle-même
+   quand elle ne progresse plus (`options.arret_sur_stagnation`, voir
+   `delai_de_stagnation`), sans attendre le temps limite.
 
 Le tout est borné par `options.temps_limite_s` (construction du modèle
 comprise) et interruptible par `arret`.
@@ -37,11 +39,19 @@ Issues
 
 Jamais de solution partielle : `placements` est vide hors `SOLUTION`.
 
+Pour une solution, `statistiques["raison_arret"]` dit pourquoi la recherche
+s'est arrêtée là : `premiere_solution` (pas d'amélioration demandée),
+`optimum_prouve`, `stagnation` (plus de progrès, durée dans
+`duree_sans_progres_s`), `temps_limite`, `temps_manquant` (pas le temps
+d'améliorer) ou `arret_utilisateur`.
+
 Graine
 ------
 `options.graine` fixe l'ordre dans lequel CP-SAT examine les variables : une
 même graine redonne la même solution (avec un seul fil de calcul), une autre
-graine en donne une autre, même sur un petit problème.
+graine en donne une autre, même sur un petit problème. Cela vaut tant que la
+recherche n'est pas coupée par l'horloge : temps limite ou arrêt sur
+stagnation (que `options.arret_sur_stagnation` permet de désactiver).
 """
 
 from __future__ import annotations
@@ -84,10 +94,25 @@ TEMPS_MIN_AMELIORATION_S = 1.0
 """En dessous de ce temps restant, l'amélioration n'est pas tentée."""
 NB_SOLUTIONS_GARDEES = 20
 """Dernières solutions d'horaires gardées pour la phase des salles (amélioration)."""
+STAGNATION_MIN_S = 10.0
+"""Durée sans progrès au bout de laquelle l'amélioration s'arrête d'elle-même, au moins."""
+STAGNATION_PART = 0.25
+"""... et au moins cette part du temps écoulé depuis le lancement du calcul."""
 
 MESSAGE_SOLUTION_CONSERVEE = (
     "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
 )
+
+
+def delai_de_stagnation(ecoule_s: float) -> float:
+    """Durée sans progrès qui arrête l'amélioration, `ecoule_s` secondes après le lancement.
+
+    Un petit problème atteint vite son palier : `STAGNATION_MIN_S` suffit à le
+    constater. Un gros progresse par à-coups de plus en plus espacés : la
+    patience grandit avec le temps déjà passé (`STAGNATION_PART`), pour ne pas
+    couper une recherche qui avance encore. Mesures dans docs/solveur.md.
+    """
+    return max(STAGNATION_MIN_S, STAGNATION_PART * ecoule_s)
 
 
 class _Interruption(Exception):
@@ -118,10 +143,15 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
         self._dernier_message = float("-inf")
         self.nb_solutions = 0
         self.solutions: list[tuple[int | None, tuple[int, ...]]] = []
+        self.dernier_progres: float | None = None
+        """Instant (secondes depuis le lancement) de la dernière solution trouvée."""
+        self.stagnation_s: float | None = None
+        """Durée sans progrès constatée quand la recherche a été arrêtée pour stagnation."""
 
     def on_solution_callback(self) -> None:
         self.nb_solutions += 1
         ecoule = time.perf_counter() - self._debut
+        self.dernier_progres = ecoule
         objectif = round(self.objective_value) if self._modele.objectif_actif else None
         self.solutions.append((objectif, self._modele.choix(self.boolean_value)))
         del self.solutions[:-NB_SOLUTIONS_GARDEES]
@@ -303,6 +333,7 @@ def resoudre(
         surveillant = threading.Thread(
             target=_surveiller,
             args=(solveur, arret, fini, journal_calcul, debut, suivi),
+            kwargs={"stagnation": amelioration and options.arret_sur_stagnation},
             name="edt-surveillance-calcul",
             daemon=True,
         )
@@ -386,6 +417,7 @@ def resoudre(
     # 4. Amélioration : on repart de la solution valide, dans le temps qui reste.
     bilan: Bilan | None = None
     optimal = amelioration_lancee = temps_manquant = False
+    stagnation_s: float | None = None
     if options.optimiser and not arret_demande():
         if reste() - reserve < TEMPS_MIN_AMELIORATION_S:
             temps_manquant = True
@@ -418,6 +450,7 @@ def resoudre(
                     "Horaires améliorés (objectif %d) écartés : les salles ne suivent pas",
                     candidat.objectif,
                 )
+            stagnation_s = suivi.stagnation_s
             if suivi.solutions:
                 stats["borne_objectif"] = round(solveur.best_objective_bound)
                 optimal = code == cp_model.OPTIMAL and bilan.objectif <= round(
@@ -452,21 +485,34 @@ def resoudre(
         if mesures:
             message += f" Bilan sur l'ensemble du semestre : {' et '.join(mesures)}."
     if arret_demande():
+        stats["raison_arret"] = "arret_utilisateur"
         stats["arrete_par_utilisateur"] = True
         avertissements.append(MESSAGE_SOLUTION_CONSERVEE)
         message += f" {MESSAGE_SOLUTION_CONSERVEE}"
     elif optimal:
+        stats["raison_arret"] = "optimum_prouve"
         message += " On ne peut pas faire mieux avec les préférences actuelles."
+    elif stagnation_s is not None:
+        stats["raison_arret"] = "stagnation"
+        stats["duree_sans_progres_s"] = round(stagnation_s, 1)
+        message += (
+            " L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis "
+            f"{stagnation_s:.0f} s."
+        )
     elif amelioration_lancee:
+        stats["raison_arret"] = "temps_limite"
         message += (
             " L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut "
             "encore l'affiner."
         )
     elif temps_manquant:
+        stats["raison_arret"] = "temps_manquant"
         message += (
             " Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un "
             "emploi du temps plus confortable."
         )
+    else:
+        stats["raison_arret"] = "premiere_solution"
     if options.contraintes_desactivees:
         libelles = sorted(CATALOGUE[code_].libelle for code_ in options.contraintes_desactivees)
         message += " Contraintes ignorées à votre demande : " + ", ".join(libelles) + "."
@@ -496,8 +542,15 @@ def _surveiller(
     journal_calcul: logging.Logger,
     debut: float,
     suivi: _Suivi,
+    *,
+    stagnation: bool = False,
 ) -> None:
-    """Fil de surveillance : relaie la demande d'arrêt et journalise la progression."""
+    """Fil de surveillance : relaie la demande d'arrêt et journalise la progression.
+
+    Avec `stagnation`, il arrête aussi la recherche quand aucune solution
+    n'est venue depuis `delai_de_stagnation` (le compte part de la première
+    solution de cette recherche, pas du chargement du modèle).
+    """
     prochain_point = (time.perf_counter() - debut) + INTERVALLE_SUIVI_S
     annonce = False
     while not fini.wait(PERIODE_SURVEILLANCE_S):
@@ -509,6 +562,19 @@ def _surveiller(
             solveur.stop_search()
             continue
         ecoule = time.perf_counter() - debut
+        if stagnation and suivi.dernier_progres is not None:
+            sans_progres = ecoule - suivi.dernier_progres
+            if suivi.stagnation_s is not None or sans_progres >= delai_de_stagnation(ecoule):
+                if suivi.stagnation_s is None:
+                    suivi.stagnation_s = sans_progres
+                    journal_calcul.info(
+                        "Plus de progrès depuis %.0f s : l'amélioration s'arrête d'elle-même "
+                        "(objectif %s).",
+                        sans_progres,
+                        suivi.objectif,
+                    )
+                solveur.stop_search()
+                continue
         if ecoule >= prochain_point:
             prochain_point += INTERVALLE_SUIVI_S
             if suivi.objectif is not None:

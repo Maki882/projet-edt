@@ -61,7 +61,11 @@ class OptionsSolveur:
     - `utiliser_indices` : partir des placements de la version précédente
       (`SeanceAPlacer.indice`) ;
     - `tolerer_violations_heritees` : accepter que des séances verrouillées
-      violent déjà entre elles une contrainte, au lieu de refuser le calcul.
+      violent déjà entre elles une contrainte, au lieu de refuser le calcul ;
+    - `arret_sur_stagnation` : avec `optimiser`, laisser l'amélioration
+      s'arrêter d'elle-même quand elle ne progresse plus, sans attendre le
+      temps limite. Ce critère lit l'horloge : le désactiver quand on veut un
+      résultat strictement reproductible d'une exécution à l'autre.
     """
 
     temps_limite_s: float = 60.0
@@ -71,6 +75,7 @@ class OptionsSolveur:
     nb_workers: int = 0
     utiliser_indices: bool = True
     tolerer_violations_heritees: bool = False
+    arret_sur_stagnation: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -113,6 +118,7 @@ class OptionsSolveur:
             "nb_workers": self.nb_workers,
             "utiliser_indices": self.utiliser_indices,
             "tolerer_violations_heritees": self.tolerer_violations_heritees,
+            "arret_sur_stagnation": self.arret_sur_stagnation,
         }
 
 

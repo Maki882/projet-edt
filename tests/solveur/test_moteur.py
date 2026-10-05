@@ -94,6 +94,7 @@ def test_statistiques_et_journal(caplog):
     assert stats["nb_variables"] > 0 and stats["nb_contraintes"] > 0
     assert stats["statut_cp_sat"] in ("OPTIMAL", "FEASIBLE")
     assert {"duree_s", "duree_construction_s", "duree_resolution_s", "nb_workers"} <= set(stats)
+    assert stats["raison_arret"] == "premiere_solution"  # pas d'amélioration demandée
     journal = caplog.text
     assert "Domaines : débuts par séance min" in journal
     assert "Modèle des horaires construit" in journal
@@ -130,6 +131,8 @@ def test_mode_optimise_fait_baisser_l_objectif_du_verificateur():
     assert apres.trous_creneaux <= avant.trous_creneaux
     assert "objectif" not in faisable.statistiques
     stats = optimise.statistiques
+    assert stats["raison_arret"] == "temps_limite"
+    assert "L'amélioration s'est arrêtée au temps limite" in optimise.message
     assert stats["objectif"] >= stats["borne_objectif"]
     # L'amélioration part de la première solution valide et ne fait jamais moins bien.
     assert stats["objectif"] <= stats["objectif_premiere_solution"]
@@ -196,6 +199,7 @@ def test_mode_optimise_rend_la_solution_valide_quand_le_temps_manque(monkeypatch
     resultat = resoudre(instantane, options(optimiser=True))
     verifier_solution(instantane, resultat)
     assert "objectif" not in resultat.statistiques
+    assert resultat.statistiques["raison_arret"] == "temps_manquant"
     assert "Le temps a manqué pour l'améliorer" in resultat.message
 
 
@@ -208,6 +212,7 @@ def test_objectif_prefere_eviter_le_trou_et_le_samedi():
     resultat = resoudre(instantane, options(optimiser=True))
     places = verifier_solution(instantane, resultat)
     assert resultat.statistiques["optimal"] is True
+    assert resultat.statistiques["raison_arret"] == "optimum_prouve"
     indicateurs = calculer_indicateurs(instantane, resultat.placements)
     assert indicateurs.trous_creneaux == 0 and indicateurs.seances_samedi == 0
     assert {p.jour for p in places.values()} == {LUNDI}
@@ -255,8 +260,95 @@ def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee():
     resultat = resultats[0]
     verifier_solution(instantane, resultat)
     assert resultat.statistiques["arrete_par_utilisateur"] is True
+    assert resultat.statistiques["raison_arret"] == "arret_utilisateur"
     conservee = "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
     assert conservee in resultat.avertissements and conservee in resultat.message
+
+
+def test_l_amelioration_s_arrete_d_elle_meme_quand_elle_ne_progresse_plus(monkeypatch):
+    """Plus de progrès : le calcul rend la main bien avant le temps limite, et le dit."""
+    from edt.solveur import moteur
+
+    monkeypatch.setattr(moteur, "STAGNATION_MIN_S", 1.0)  # 10 s en vrai : trop long pour un test
+    instantane, _ = generer(60, graine=4)
+    debut = time.perf_counter()
+    resultat = resoudre(
+        instantane,
+        options(optimiser=True, temps_limite_s=120, nb_workers=2, arret_sur_stagnation=True),
+    )
+    duree = time.perf_counter() - debut
+    verifier_solution(instantane, resultat)
+    stats = resultat.statistiques
+    assert stats["raison_arret"] == "stagnation", resultat.message
+    assert duree < 60, f"arrêt après {duree:.1f} s pour un temps limite de 120 s"
+    assert stats["duree_sans_progres_s"] >= 1.0
+    assert stats["optimal"] is False
+    assert stats["objectif"] <= stats["objectif_premiere_solution"]
+    # Le message distingue cet arrêt du temps limite et de l'optimum prouvé, en clair.
+    assert (
+        "L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis "
+        f"{stats['duree_sans_progres_s']:.0f} s."
+    ) in resultat.message
+    assert "temps limite" not in resultat.message
+    assert "On ne peut pas faire mieux" not in resultat.message
+
+
+class _FauxSolveur:
+    """Ce que le fil de surveillance demande à CP-SAT : arrêter la recherche."""
+
+    def __init__(self) -> None:
+        self.arrets = 0
+
+    def stop_search(self) -> None:
+        self.arrets += 1
+
+
+class _FauxSuivi:
+    """Une recherche qui a trouvé une solution au lancement, puis plus rien."""
+
+    nb_solutions = 1
+    objectif = 100
+    dernier_progres: float | None = 0.0
+    stagnation_s: float | None = None
+
+
+def _surveiller_une_seconde(monkeypatch, **reglages) -> tuple[_FauxSolveur, _FauxSuivi]:
+    from edt.solveur import moteur
+
+    monkeypatch.setattr(moteur, "STAGNATION_MIN_S", 0.3)
+    solveur, suivi, fini = _FauxSolveur(), _FauxSuivi(), threading.Event()
+    fil = threading.Thread(
+        target=moteur._surveiller,
+        args=(solveur, None, fini, logging.getLogger("edt.calcul"), time.perf_counter(), suivi),
+        kwargs=reglages,
+    )
+    fil.start()
+    time.sleep(1.0)
+    fini.set()
+    fil.join(timeout=5)
+    assert not fil.is_alive()
+    return solveur, suivi
+
+
+def test_regle_de_stagnation(monkeypatch):
+    """Patience : 10 s au moins, et un quart du temps déjà écoulé depuis le lancement."""
+    from edt.solveur import moteur
+
+    assert [moteur.delai_de_stagnation(t) for t in (5, 40, 100, 400)] == [10, 10, 25, 100]
+
+    # Le fil de surveillance arrête la recherche restée sans progrès plus longtemps que cela...
+    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=True)
+    assert solveur.arrets >= 1
+    assert suivi.stagnation_s is not None and 0.3 <= suivi.stagnation_s < 1.0
+
+    # ... mais pas si le critère est désactivé (`OptionsSolveur.arret_sur_stagnation` à faux),
+    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=False)
+    assert solveur.arrets == 0 and suivi.stagnation_s is None
+
+    # ni tant que cette recherche n'a pas trouvé sa première solution (chargement du modèle).
+    monkeypatch.setattr(_FauxSuivi, "dernier_progres", None)
+    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=True)
+    assert solveur.arrets == 0 and suivi.stagnation_s is None
 
 
 def test_graines_differentes_solutions_differentes_avec_un_seul_fil():
