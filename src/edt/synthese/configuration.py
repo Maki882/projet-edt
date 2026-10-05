@@ -223,11 +223,11 @@ MOYEN = ConfigurationJeu(
 GRAND = ConfigurationJeu(
     nom="grand",
     promotions=(
-        ConfigPromotion(annee=1, nb_classes=8),
-        ConfigPromotion(annee=2, nb_classes=8),
-        ConfigPromotion(annee=3, nb_classes=6, nb_classes_apprentis=2),
-        ConfigPromotion(annee=4, nb_classes=6, nb_classes_apprentis=2),
-        ConfigPromotion(annee=5, nb_classes=5, nb_classes_apprentis=2),
+        ConfigPromotion(annee=1, nb_classes=9),
+        ConfigPromotion(annee=2, nb_classes=9),
+        ConfigPromotion(annee=3, nb_classes=7, nb_classes_apprentis=2),
+        ConfigPromotion(annee=4, nb_classes=7, nb_classes_apprentis=2),
+        ConfigPromotion(annee=5, nb_classes=6, nb_classes_apprentis=2),
     ),
     salles=(
         (
@@ -246,7 +246,7 @@ GRAND = ConfigurationJeu(
         (
             "ISSY",
             SallesSite(
-                amphis=(320, 220, 120),
+                amphis=(320, 280, 150),
                 cours=20,
                 informatique=8,
                 electronique=5,

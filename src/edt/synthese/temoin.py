@@ -211,7 +211,10 @@ class Demande:
     - `options` : pour une séance ponctuelle dont la date reste à choisir,
       les `(jour, masque)` possibles ; le résultat dit laquelle est retenue ;
     - `enseignants_fixes` : enseignants imposés (`()` = aucun) ; sinon
-      `nb_enseignants` enseignants sont choisis dans le vivier `discipline`.
+      `nb_enseignants` enseignants sont choisis dans le vivier `discipline` ;
+    - `freres` : groupes frères (même parent) ; les créneaux où l'un d'eux a
+      déjà cours sont préférés, ce qui regroupe par exemple les TP des deux
+      demi-groupes d'une classe et laisse la classe libre le reste du temps.
     """
 
     cle: int
@@ -228,6 +231,7 @@ class Demande:
     discipline: str | None = None
     nb_enseignants: int = 0
     enseignants_fixes: tuple[EnseignantTemoin, ...] | None = None
+    freres: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -455,8 +459,9 @@ class Temoin:
         """Créneaux possibles `(jour, début, fin, masque, option)`, les plus prometteurs d'abord.
 
         Ordre : jours de semaine avant le samedi, jours sans autre séance du
-        même besoin d'abord, jours où les groupes sont le moins chargés, puis
-        un tirage (déterministe) pour départager.
+        même besoin d'abord, créneaux où un groupe frère a déjà cours, jours où
+        les groupes sont le moins chargés, puis un tirage (déterministe) pour
+        départager.
         """
         bruts: list[tuple[int, int, int, int]] = []
         if demande.options:
@@ -476,10 +481,21 @@ class Temoin:
             charge = max(
                 (self._charge_jour[g][jour] for g in groupes if g in self._charge_jour), default=0
             )
-            cle = (jour == SAMEDI, jour in jours_pris, charge, self._rng.random())
+            seul = not self._frere_occupe(demande, jour, debut, debut + demande.duree, masque_candidat)
+            cle = (jour == SAMEDI, jour in jours_pris, seul, charge, self._rng.random())
             tries.append((cle, (jour, debut, debut + demande.duree, masque_candidat, option)))
         tries.sort(key=lambda element: element[0])
         return [candidat for _, candidat in tries]
+
+    def _frere_occupe(self, demande: Demande, jour: int, debut: int, fin: int, masque: int) -> bool:
+        """Vrai si un groupe frère a déjà une séance qui recouvre ce créneau."""
+        for frere in demande.freres:
+            jours = self._occ_groupe.get(frere)
+            if jours and any(
+                m & masque and d < fin and debut < f for d, f, m, _, _ in jours[jour]
+            ):
+                return True
+        return False
 
     def _debuts(self, demande: Demande, jour: int) -> tuple[int, ...]:
         if demande.debut_impose is not None:

@@ -176,7 +176,7 @@ ANNEES_PARCOURS = (4, 5)
 TAILLE_GROUPE_TRANSVERSE = 34
 """Effectif visé d'un groupe transverse (niveau d'anglais, groupe de LV2, parcours)."""
 
-VAGUES_ANGLAIS: dict[int, int] = {2: 2}
+VAGUES_ANGLAIS: dict[int, int] = {3: 2}
 """Années dont l'anglais est réparti en plusieurs vagues (sinon une seule barrette)."""
 
 ANNEES_SPORT = (1, 2)
@@ -284,7 +284,7 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         Module(
             "IP",
             "Mécanique du point",
-            (td(), tp("physique", total=5, fenetre=FENETRE_TP, alternance=True)),
+            (tp("physique", total=5, fenetre=FENETRE_TP, alternance=True),),
         ),
         Module("IL", "Langue vivante 2", (langue("lv2"),)),
         Module("IH", "Expression écrite et orale", (td(total=6, fenetre=PREMIERE_MOITIE),)),
@@ -306,7 +306,7 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         Module(
             "IP",
             "Électromagnétisme",
-            (td(), tp("physique", total=5, fenetre=FENETRE_TP, alternance=True)),
+            (tp("physique", total=5, fenetre=FENETRE_TP, alternance=True),),
         ),
         Module("IL", "Langue vivante 2", (langue("lv2"),)),
         Module("IH", "Économie de l'entreprise", (td(total=6, fenetre=PREMIERE_MOITIE),)),
@@ -326,7 +326,7 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         Module(
             "IP",
             "Ondes et optique",
-            (td(), tp("physique", total=5, fenetre=FENETRE_TP, alternance=True)),
+            (tp("physique", total=5, fenetre=FENETRE_TP, alternance=True),),
         ),
         Module("IL", "Langue vivante 2", (langue("lv2"),)),
         Module(
@@ -352,7 +352,7 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         Module(
             "IP",
             "Thermodynamique",
-            (td(), tp("physique", total=5, fenetre=FENETRE_TP, alternance=True)),
+            (tp("physique", total=5, fenetre=FENETRE_TP, alternance=True),),
         ),
         Module("IL", "Langue vivante 2", (langue("lv2"),)),
         Module("IH", "Droit du numérique", (td(total=6, fenetre=PREMIERE_MOITIE),)),

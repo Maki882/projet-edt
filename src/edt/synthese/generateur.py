@@ -96,7 +96,8 @@ PLAFONDS: dict[StatutEnseignant, int] = {
 SERVICE_VISE = 11 * H
 """Service hebdomadaire moyen visé pour dimensionner le vivier initial."""
 TYPES_SEANCE_REQUIS = ("CM", "TD", "TP", "PROJET", "LANGUE", "DST", "EXAMEN", "AUTRE")
-SEMAINES_CONFERENCE = (5, 6, 7, 8, 9)
+SEMAINES_CONFERENCE = tuple(range(3, 15))
+"""Semaines où peut se tenir la conférence métiers d'une promotion (la date est choisie par le témoin)."""
 
 
 def generer_jeu(
@@ -899,16 +900,25 @@ class _Generateur:
 
     @staticmethod
     def _priorite(ens: cat.Enseignement, groupes: tuple, barrette: str | None) -> int:
-        """Ordre de placement : les besoins les plus contraints d'abord."""
+        """Ordre de placement : les besoins les plus contraints d'abord.
+
+        Imposés (0), barrettes (1), séances de promotion (2), séances de
+        classe (3), séances longues de demi-groupe (4), TP (5), séances des
+        matières courtes (6). Les TP passent après les classes : deux
+        demi-groupes peuvent être en TP en même temps, et le samedi matin
+        leur reste ouvert.
+        """
         if barrette:
             return 1
         if ens.cible in ("promotion", "option") or len(groupes) > 1:
             return 2
-        if ens.duree >= 4 * H:
+        if ens.cible == "classe" and not ens.total:
             return 3
-        if ens.type_seance == "TP":
+        if ens.duree >= 4 * H:
             return 4
-        return 6 if ens.total else 5
+        if ens.type_seance == "TP" and not ens.total:
+            return 5
+        return 6
 
     def _preparer_dst(self, promotion: _Promotion, code: str, s: int) -> None:
         jour, debut = cat.ANNEES_DST[promotion.annee]
@@ -967,7 +977,7 @@ class _Generateur:
             )
             self._ajouter(
                 semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=7,
+                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=0,
                 mode=ModeVolume.PONCTUEL, date_ponctuelle=premiere.lundi, debut_impose=10 * H,
                 salle_imposee=amphis[0] if amphis else None, libelle="Amphi de rentrée",
             )
@@ -982,13 +992,13 @@ class _Generateur:
         dates = tuple(
             semaines[n - 1].date_du(j)
             for n in cat_semaines(SEMAINES_CONFERENCE, len(semaines))
-            for j in (1, 2, 3)
+            for j in range(5)
             if self._date_ouverte(semaines[n - 1].date_du(j), [promotion.groupe.id])
         )
         if dates:
             self._ajouter(
                 semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=8,
+                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=2,
                 mode=ModeVolume.PONCTUEL, dates_possibles=dates, libelle="Conférence métiers",
             )
 
@@ -1139,7 +1149,12 @@ class _Generateur:
                 and (campus_id is None or x.campus_id == campus_id)
                 and (spec.salle_imposee is None or x.id == spec.salle_imposee.id)
             ),
-            key=lambda x: (rang_site.get(x.campus_id, 9), x.capacite, x.code),
+            key=lambda x: (
+                rang_site.get(x.campus_id, 9),
+                types.index(x.type_code) if x.type_code in types else 0,
+                x.capacite,
+                x.code,
+            ),
         )
         semaines = self.semaines[spec.semestre]
         options: tuple[tuple[int, int], ...] = ()
@@ -1176,7 +1191,18 @@ class _Generateur:
             enseignants_fixes=spec.enseignants_fixes
             if spec.enseignants_fixes is not None
             else (None if spec.nb_enseignants and spec.discipline else ()),
+            freres=self._freres(groupes),
         )
+
+    def _freres(self, groupes: tuple[int, ...]) -> tuple[int, ...]:
+        """Groupes qui ont le même parent qu'un groupe de la liste (eux exclus)."""
+        freres = {
+            frere
+            for g in groupes
+            if self.parents.get(g) is not None
+            for frere in self.enfants.get(self.parents[g], ())
+        }
+        return tuple(sorted(freres - set(groupes)))
 
     def _placer_semestre(self, code: str) -> None:
         specs = [spec for spec in self.specs if spec.semestre == code]
