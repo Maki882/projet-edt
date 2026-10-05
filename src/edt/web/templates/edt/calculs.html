@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+
+{% block titre %}Générer un emploi du temps{% endblock %}
+
+{% block actions %}
+{%- if semestre %}
+<a class="bouton" href="/versions?semestre_id={{ semestre.id }}">Historique et versions</a>
+{%- endif %}
+{% endblock %}
+
+{% block contenu %}
+{%- if not semestre %}
+{{ ui.message("Aucun semestre n'existe encore : initialiser la base de données, puis saisir les données.", "attention") }}
+{%- else %}
+{{ edt.choix_semestre(semestres, semestre, "/calculs") }}
+
+{%- if en_cours %}
+<section class="carte">
+  {%- with r = en_cours %}{% include "edt/_suivi_calcul.html" %}{% endwith %}
+  {%- if en_cours.semestre.id != semestre.id %}
+  <p class="discret">Ce calcul concerne le {{ en_cours.semestre.libelle|lower }}. Un seul calcul peut tourner à la fois.</p>
+  {%- endif %}
+</section>
+{%- endif %}
+
+<section class="carte">
+  <h2>Ce que le calcul va placer</h2>
+  {%- if recap.erreur %}
+  {{ ui.message("Les données du semestre ne peuvent pas être lues telles quelles :", "erreur", [recap.erreur]) }}
+  {%- else %}
+  <ul class="compteurs">
+    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_besoins }}</span><span class="compteur-libelle">besoins d'enseignement</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_seances }}</span><span class="compteur-libelle">séances par semaine type</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_groupes }}</span><span class="compteur-libelle">groupes concernés</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_enseignants }}</span><span class="compteur-libelle">enseignants concernés</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_salles }}</span><span class="compteur-libelle">salles disponibles</span></li>
+  </ul>
+  {%- if not recap.nb_besoins %}
+  {{ ui.message("Ce semestre n'a encore aucun besoin d'enseignement : il n'y a rien à placer.", "attention") }}
+  {%- endif %}
+  {%- endif %}
+</section>
+
+<section class="carte" id="pre-verifications">
+  {% include "edt/_pre_verifications.html" %}
+</section>
+
+{%- if not en_cours %}
+<form id="formulaire-calcul" class="formulaire edt-formulaire-calcul" method="post" action="/calculs">
+  <h2>Lancer le calcul</h2>
+  <input type="hidden" name="semestre_id" value="{{ semestre.id }}">
+  <input type="hidden" name="contraintes_envoyees" value="1">
+  <fieldset hx-get="/calculs/verifications" hx-trigger="change" hx-include="#formulaire-calcul" hx-target="#pre-verifications" hx-swap="innerHTML">
+    <legend>Règles à respecter</legend>
+    <p class="aide">Toutes les règles sont cochées par défaut. Décocher une règle permet de comprendre ce qui bloque ; ce choix est rappelé dans le résultat.</p>
+    <div class="edt-contraintes">
+      {%- for c in contraintes %}
+      <label>
+        <input type="checkbox" name="contraintes" value="{{ c.code }}"{% if c.active %} checked{% endif %}>
+        <span>{{ c.libelle }}<small>{{ c.description }}</small></span>
+      </label>
+      {%- endfor %}
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Durée de la recherche</legend>
+    <div class="edt-choix-en-ligne">
+      <label><input type="radio" name="duree" value="court"{% if choix.duree != "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_court_texte }}</label>
+      <label><input type="radio" name="duree" value="long"{% if choix.duree == "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_long_texte }}</label>
+    </div>
+  </fieldset>
+  <fieldset>
+    <legend>Options</legend>
+    {{ ui.champ("optimiser", "Chercher un emploi du temps plus confortable (moins de trous, moins de changements de campus, moins de samedis) : la recherche dure plus longtemps", choix.optimiser, type="checkbox") }}
+    {{ ui.champ("autre_solution", "Proposer une autre solution que la précédente", choix.autre_solution, type="checkbox") }}
+  </fieldset>
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">Lancer le calcul</button>
+    <span class="discret">Le calcul tourne en arrière-plan ; on peut suivre son avancement et l'arrêter.</span>
+  </div>
+</form>
+{%- else %}
+<p class="discret">Un seul calcul peut tourner à la fois : le formulaire de lancement revient à la fin du calcul en cours.</p>
+{%- endif %}
+
+{%- if dernier %}
+<section class="carte">
+  <h2>Dernier calcul de ce semestre</h2>
+  <p>
+    {{ ui.etiquette(dernier.titre, {"reussi": "succes", "en_cours": "info", "temps_depasse": "attention", "arrete": "attention"}.get(dernier.issue, "erreur")) }}
+    Lancé le {{ dernier.suivi.demarre_le|dateheure_fr }}, durée : {{ dernier.temps_texte }}.
+    <a href="/calculs/{{ dernier.suivi.id }}">Voir le détail</a>
+  </p>
+</section>
+{%- endif %}
+{%- endif %}
+{% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

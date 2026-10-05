@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+
+{% block titre %}Historique des calculs et des versions{% endblock %}
+
+{% block actions %}
+{%- if historique %}
+<a class="bouton bouton-principal" href="/calculs?semestre_id={{ historique.semestre.id }}">Lancer un calcul</a>
+{%- endif %}
+{% endblock %}
+
+{% block contenu %}
+{%- if not historique %}
+{{ ui.message("Aucun semestre n'existe encore.", "attention") }}
+{%- else %}
+{{ edt.choix_semestre(semestres, historique.semestre, "/versions") }}
+
+<section class="carte">
+  <h2>Versions de l'emploi du temps</h2>
+  <p class="aide">La version active est celle que l'on consulte par défaut et que le prochain calcul prend comme point de départ (séances verrouillées comprises).</p>
+  {%- if historique.versions %}
+  <div class="tableau-defilant">
+    <table class="tableau">
+      <thead>
+        <tr>
+          <th scope="col">Version</th>
+          <th scope="col">Origine</th>
+          <th scope="col">Créée le</th>
+          <th scope="col">Séances</th>
+          <th scope="col">État</th>
+          <th scope="col" class="colonne-actions">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for v in historique.versions %}
+        <tr>
+          <td>{{ v.libelle }}</td>
+          <td>{{ v.origine.libelle }}{% if v.calcul_id %} (<a href="/calculs/{{ v.calcul_id }}">calcul n° {{ v.calcul_id }}</a>){% endif %}</td>
+          <td>{{ v.cree_le|dateheure_fr }}</td>
+          <td>{{ v.nb_seances }} par semaine{% if v.nb_occurrences %}, {{ v.nb_occurrences }} datées{% endif %}{% if v.nb_a_programmer %}, <strong>{{ v.nb_a_programmer }} à programmer</strong>{% endif %}</td>
+          <td>{% if v.active %}{{ ui.etiquette("Active", "succes") }}{% else %}<span class="discret">Inactive</span>{% endif %}</td>
+          <td class="colonne-actions">
+            <a class="bouton" href="/emploi-du-temps?version_id={{ v.id }}">Consulter</a>
+            {%- if not v.active %}
+            <form class="en-ligne" method="post" action="/versions/{{ v.id }}/activer">
+              <button type="submit" class="bouton">Rendre active</button>
+            </form>
+            {{ ui.bouton_suppression("/versions/" ~ v.id ~ "/supprimer", confirmation="Supprimer définitivement « " ~ v.libelle ~ " » et toutes ses séances ?") }}
+            {%- endif %}
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- else %}
+  <p class="vide">Aucune version pour ce semestre : lancer un calcul pour en produire une.</p>
+  {%- endif %}
+</section>
+
+<section class="carte">
+  <h2>Calculs</h2>
+  {%- if historique.calculs %}
+  <div class="tableau-defilant">
+    <table class="tableau">
+      <thead>
+        <tr>
+          <th scope="col">N°</th>
+          <th scope="col">Lancé le</th>
+          <th scope="col">Durée</th>
+          <th scope="col">Résultat</th>
+          <th scope="col">Règles décochées</th>
+          <th scope="col">Version produite</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for c in historique.calculs %}
+        <tr>
+          <td><a href="/calculs/{{ c.id }}">{{ c.id }}</a></td>
+          <td>{{ c.demarre_le|dateheure_fr }}</td>
+          <td>{{ fmt.duree_secondes(c.duree_s) if c.duree_s is not none else "en cours" }}</td>
+          <td>{{ ui.etiquette(c.etat.libelle, {"reussi": "succes", "en_cours": "info", "temps_depasse": "attention", "arrete": "attention"}.get(c.etat.value, "erreur")) }}</td>
+          <td>{% if c.contraintes_desactivees %}{{ fmt.libelles_contraintes(c.contraintes_desactivees)|join(", ") }}{% else %}<span class="discret">aucune</span>{% endif %}</td>
+          <td>{% if c.version_id %}<a href="/emploi-du-temps?version_id={{ c.version_id }}">Version {{ c.version_numero }}</a>{% else %}<span class="discret">aucune</span>{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- if historique.calculs_tronques %}
+  <p class="discret">Seuls les {{ historique.calculs|length }} calculs les plus récents sont affichés.</p>
+  {%- endif %}
+  {%- else %}
+  <p class="vide">Aucun calcul n'a encore été lancé pour ce semestre.</p>
+  {%- endif %}
+</section>
+{%- endif %}
+{% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

@@ -25,8 +25,11 @@ python -m venv .venv
 ```
 
 La troisième commande crée la base `data/edt.db` avec son schéma et ses données
-par défaut (grille horaire, types de séance, calendrier de l'année). Les
-exemples suivants supposent l'environnement virtuel activé
+par défaut (grille horaire, types de séance, calendrier de l'année). Il n'y a
+pas de migrations : si une mise à jour a changé les colonnes d'une table déjà
+créée, `init-db` s'arrête sans rien modifier, liste les écarts, et il faut
+relancer `python -m edt init-db --reset`, qui recrée la base et efface les
+données. Les exemples suivants supposent l'environnement virtuel activé
 (`.venv\Scripts\activate` sous Windows, `source .venv/bin/activate` ailleurs).
 
 ## Lancer
@@ -42,9 +45,10 @@ Toute fonctionnalité est aussi une commande :
 |---|---|
 | `python -m edt --help` | liste des commandes |
 | `python -m edt init-db [--reset]` | crée la base ; `--reset` efface tout d'abord |
+| `python -m edt verifier-schema` | compare la base au modèle : code 0 à jour, 1 périmée (écarts listés), 2 inaccessible |
 | `python -m edt jeu-minimal` | charge un tout petit jeu de données cohérent |
 | `python -m edt serve [--port 8000] [--reload]` | lance le serveur web |
-| `python -m edt doctor` | vérifie l'installation (Python, OR-Tools, base, journaux, port) |
+| `python -m edt doctor` | vérifie l'installation (Python, OR-Tools, base, schéma, journaux, port) |
 | `python -m edt version` | affiche la version |
 
 Réglages par variables d'environnement, toutes facultatives : `EDT_DB_URL`

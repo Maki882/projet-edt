@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+
+{% block titre %}Calcul n° {{ r.suivi.id }}{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Écran « Générer »</a>
+<a class="bouton" href="/versions?semestre_id={{ r.semestre.id }}">Historique et versions</a>
+{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <p class="discret">{{ r.semestre.libelle }} - lancé le {{ r.suivi.demarre_le|dateheure_fr }}
+    {%- if r.optimiser %} - recherche d'un emploi du temps plus confortable{% endif %}</p>
+  {% include "edt/_suivi_calcul.html" %}
+</section>
+{% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

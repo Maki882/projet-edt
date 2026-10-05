@@ -1,0 +1,24 @@
+{#
+  Vérifications préalables d'un calcul (fragment, aussi rafraîchi par HTMX quand on coche
+  ou décoche une contrainte). Variable : pre (calculs.PreVerification).
+#}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+<h2>Vérifications avant le calcul</h2>
+{%- if pre.motif %}
+{{ ui.message(pre.motif, pre.niveau_motif, ["Le calcul peut être lancé, mais ces contrôles n'ont pas été faits."] if pre.niveau_motif == "attention" else []) }}
+{%- endif %}
+{%- if pre.problemes or pre.erreurs %}
+{{ ui.message("Le calcul ne peut pas être lancé tant que ces points ne sont pas corrigés, ou que la contrainte concernée n'est pas décochée :", "erreur", pre.problemes|list + pre.erreurs|map(attribute="message")|list) }}
+{%- endif %}
+{%- if pre.avertissements %}
+{{ edt.anomalies(pre.avertissements, "À vérifier (le calcul peut quand même être lancé)") }}
+{%- endif %}
+{%- if pre.informations %}
+{{ edt.anomalies(pre.informations, "Pour information") }}
+{%- endif %}
+{%- if pre.vide %}
+{{ ui.message("Aucun problème relevé avant le calcul.", "succes") }}
+{%- elif not pre.motif and not pre.problemes and not pre.erreurs %}
+<p class="discret">Aucun point bloquant : le calcul peut être lancé.</p>
+{%- endif %}

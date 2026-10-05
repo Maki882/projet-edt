@@ -1,0 +1,19 @@
+{# Liste des besoins : ajout rapide, liste filtrable, charge hebdomadaire par groupe. #}
+{% extends "donnees/liste.html" %}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+
+{% block avant_liste %}
+<details class="carte repliable">
+  <summary>Ajout rapide d'un besoin hebdomadaire</summary>
+  <form method="post" action="{{ ecran.prefixe }}">
+    <input type="hidden" name="_retour" value="{{ url_liste }}">
+    <input type="hidden" name="mode_volume" value="{{ mode_par_semaine }}">
+    {{ d.rubriques(ajout_rapide) }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal">Ajouter le besoin</button>
+      <span class="discret">Pour un volume total, une séance datée ou des exigences de salle : « {{ entite.nouveau }} ».</span>
+    </div>
+  </form>
+</details>
+{% endblock %}

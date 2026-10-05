@@ -1,0 +1,150 @@
+{#
+  Macros des écrans de l'emploi du temps. À importer avec le contexte (elles utilisent `fmt`,
+  le module edt.services.emploi_du_temps.presentation, fourni par les routes) :
+
+      {% import "edt/_ui.html" as edt with context %}
+
+  - edt.encart_controle(controle)              vérification indisponible ou en échec : encart clair
+  - edt.indicateurs(controle, nb_a_programmer) les quatre indicateurs de l'équipe
+  - edt.anomalies(liste)                       anomalies en phrases, avec leur gravité
+  - edt.etiquette_gravite(gravite)             pastille « Erreur », « Avertissement »...
+  - edt.ressources(liste)                      feuilles de style et script des écrans
+  - edt.perimetre(vue, url_vue)                ce que la grille affiche et ce qu'elle laisse de côté
+#}
+{% import "macros.html" as ui %}
+
+{% macro ressources() -%}
+<link rel="stylesheet" href="/static/css/edt.css?v={{ version_application }}">
+{%- endmacro %}
+
+{% macro script() -%}
+<script src="/static/js/edt.js?v={{ version_application }}" defer></script>
+{%- endmacro %}
+
+{% macro etiquette_gravite(gravite) -%}
+{%- set niveaux = {"erreur": "erreur", "avertissement": "attention", "information": "info"} -%}
+{{ ui.etiquette(gravite.libelle, niveaux[gravite.value]) }}
+{%- endmacro %}
+
+{% macro encart_controle(controle) -%}
+{%- if controle is not none and not controle.disponible %}
+{{ ui.message(controle.motif, controle.niveau) }}
+{%- endif %}
+{%- endmacro %}
+
+{% macro anomalies(liste, titre=None) -%}
+{%- if liste %}
+{%- if titre %}<h3>{{ titre }}</h3>{% endif %}
+<ul class="edt-anomalies">
+  {%- for anomalie in liste %}
+  <li>{{ etiquette_gravite(anomalie.gravite) }} <span>{{ anomalie.message }}</span> <small class="discret">{{ fmt.libelle_contrainte(anomalie.code) }}</small></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- endmacro %}
+
+{% macro valeur(texte) -%}
+{%- if texte is none or texte == "" -%}<span class="discret" title="Valeur non disponible">-</span>{%- else -%}{{ texte }}{%- endif -%}
+{%- endmacro %}
+
+{% macro indicateurs(controle, nb_a_programmer=None) -%}
+{%- if controle is not none %}
+{%- if not controle.disponible %}
+{{ ui.message(controle.motif, controle.niveau) }}
+{%- else %}
+{%- set verification = controle.verification %}
+{%- set i = verification.indicateurs %}
+<ul class="compteurs edt-indicateurs">
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(fmt.pourcentage(i.pourcentage_seances_placees) if i else none) }}</span>
+    <span class="compteur-libelle">des séances placées</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ verification.nb_erreurs }}</span>
+    <span class="compteur-libelle">{{ "conflit" if verification.nb_erreurs < 2 else "conflits" }} (règles non respectées)</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(fmt.pourcentage(i.pourcentage_utilisation_salles) if i else none) }}</span>
+    <span class="compteur-libelle">d'utilisation des salles</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(i.changements_campus if i else none) }}</span>
+    <span class="compteur-libelle">changements de campus
+      {%- if i and i.changements_campus_par_semaine is not none %} <small>sur le semestre, soit {{ i.changements_campus_par_semaine|string|replace(".", ",") }} par semaine</small>{% endif %}</span>
+  </li>
+  {%- if nb_a_programmer %}
+  <li class="compteur">
+    <span class="compteur-nombre">{{ nb_a_programmer }}</span>
+    <span class="compteur-libelle">{{ "séance" if nb_a_programmer < 2 else "séances" }} à programmer</span>
+  </li>
+  {%- endif %}
+</ul>
+{%- if i is none %}
+<p class="discret">Le vérificateur n'a pas fourni d'indicateurs de qualité pour cette version.</p>
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+{% macro choix_semestre(semestres, semestre, action, nom="semestre_id", autres={}) -%}
+<form class="edt-barre-outils" method="get" action="{{ action }}">
+  <div class="champ">
+    <label for="choix-semestre">Semestre</label>
+    <select id="choix-semestre" name="{{ nom }}" data-envoi-auto>
+      {%- for s in semestres %}
+      <option value="{{ s.id }}"{% if semestre and s.id == semestre.id %} selected{% endif %}>{{ s.libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- for cle, valeur_cachee in autres.items() %}
+  <input type="hidden" name="{{ cle }}" value="{{ valeur_cachee }}">
+  {%- endfor %}
+  <button type="submit" class="bouton">Afficher</button>
+</form>
+{%- endmacro %}
+
+{#- Liste de codes de groupes, abrégée au-delà de `limite`. #}
+{% macro codes(liste, limite=8) -%}
+{{ liste[:limite]|join(", ") }}{% if liste|length > limite %} et {{ liste|length - limite }} autre{{ "s" if liste|length - limite > 1 }}{% endif %}
+{%- endmacro %}
+
+{#- « ses classes et demi-groupes » pour une promotion, « ses demi-groupes » pour une classe. #}
+{% macro sous_groupes(p) -%}
+{%- if p.nature.value == "promotion" %}ses classes et demi-groupes{% elif p.nature.value == "classe" %}ses demi-groupes{% else %}ses sous-groupes{% endif -%}
+{%- endmacro %}
+
+{#
+  Bandeau au-dessus de la grille : ce qui est affiché, ce qui ne l'est pas, et le lien qui
+  bascule entre la vue restreinte (le groupe et ses ascendants) et la vue étendue.
+#}
+{% macro perimetre(vue, url_vue) -%}
+{%- if vue.cible and vue.cible.nature.value != "groupe" %}
+<p class="edt-perimetre edt-ecran-seulement">Affiché : toutes les séances {{ "de cet enseignant" if vue.cible.nature.value == "enseignant" else "de cette salle" }}.</p>
+{%- elif vue.perimetre %}
+{%- set p = vue.perimetre %}
+<div class="edt-perimetre edt-ecran-seulement" role="note">
+  {%- if not p.etendu %}
+  <p><strong>Affiché :</strong> les séances de {{ p.groupe }}{% if p.ascendants %} et de {{ codes(p.ascendants) }}, que suivent tous ses étudiants{% endif %}.</p>
+  {%- if p.extensible %}
+  <p><strong>Non affiché :</strong>
+    {%- if p.descendants %} les séances propres à {{ sous_groupes(p) }} ({{ codes(p.descendants) }}){% endif %}
+    {%- if p.descendants and p.autres %} et{% endif %}
+    {%- if p.autres %} celles des groupes qui réunissent une partie de ses étudiants ({{ codes(p.autres) }}){% endif %}
+    {%- if p.nb_masquees %}, soit {{ fmt.pluriel(p.nb_masquees, "séance") }} de plus{% endif %}.</p>
+  <p><a class="bouton" href="{{ url_vue(etendu=('1' if not p.etendu_par_defaut else none), seance=none) }}">Afficher aussi les classes, demi-groupes et groupes de langues</a></p>
+  {%- else %}
+  <p>Aucun autre groupe ne partage ses étudiants : rien n'est laissé de côté.</p>
+  {%- endif %}
+  {%- else %}
+  <p><strong>Affiché :</strong> tout ce que suivent ses étudiants : les séances de {{ p.groupe }}
+    {%- if p.ascendants %}, de {{ codes(p.ascendants) }}{% endif %}
+    {%- if p.descendants %}, de {{ sous_groupes(p) }} ({{ codes(p.descendants) }}){% endif %}
+    {%- if p.autres %} et des groupes qui réunissent une partie de ses étudiants ({{ codes(p.autres) }}){% endif %}.
+    {%- if p.descendants or p.autres %} Les séances hachurées ne concernent qu'une partie du groupe.{% endif %}</p>
+  {%- if p.extensible %}
+  <p><a class="bouton" href="{{ url_vue(etendu=('0' if p.etendu_par_defaut else none), seance=none) }}">N'afficher que les séances de tout le groupe</a></p>
+  {%- endif %}
+  {%- endif %}
+</div>
+{%- endif %}
+{%- endmacro %}

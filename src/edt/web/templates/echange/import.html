@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Import{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="/export/gabarit.xlsx">Télécharger le gabarit</a>
+{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h2>Importer des fichiers</h2>
+  <p>
+    Les <strong>données de l'établissement</strong> s'importent dans le format du gabarit
+    (classeur XLSX à onglets, ou un fichier CSV par feuille, éventuellement dans une archive ZIP).
+    Un <strong>emploi du temps existant</strong> s'importe sous forme de tableau de séances
+    (CSV ou XLSX) ou de fichier iCal (.ics).
+  </p>
+  <p class="discret">
+    Commencer par « Simuler » : rien n'est écrit, l'aperçu, le bilan et le rapport s'affichent ;
+    appliquer ensuite. Les lignes valides entrent, les autres sont listées. Réimporter un fichier
+    met à jour sans créer de doublon. {{ taille_max_mo }} Mo au plus par envoi ; les fichiers ne
+    sont pas conservés sur le serveur.
+  </p>
+
+  <form id="formulaire-import" class="formulaire" method="post" action="/import/simuler" enctype="multipart/form-data">
+    {{ ui.champ("fichiers", "Fichiers", type="file", requis=true,
+                aide="Un ou plusieurs fichiers : " ~ extensions ~ ".",
+                attributs={"multiple": "multiple", "accept": extensions}) }}
+    {{ ui.champ("mode", "Que contiennent les fichiers ?", valeur="donnees", type="select", options=modes,
+                aide="Référence : version pour comparaison. Verrous : séances que le générateur gardera à leur place. À replacer : seulement les besoins, le générateur placera tout.") }}
+    {{ ui.champ("semestre_id", "Semestre de l'emploi du temps", valeur=semestre_defaut, type="select", options=semestres,
+                aide="Seulement pour un emploi du temps existant.") }}
+    {{ ui.champ("semaine_type", "Semaine type imposée (facultatif)", type="date",
+                aide="Une date de la semaine à retenir comme semaine type ; vide = la semaine la plus fréquente de chaque promotion.") }}
+    {{ ui.champ("tout_remplacer", "Tout remplacer : vider d'abord toutes les données de l'établissement (confirmation demandée avant d'appliquer)", type="checkbox") }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal"
+              hx-post="/import/simuler" hx-target="#resultat-import" hx-encoding="multipart/form-data"
+              hx-indicator="#indicateur-import">Simuler l'import</button>
+      <span id="indicateur-import" class="htmx-indicator discret">Lecture des fichiers…</span>
+    </div>
+  </form>
+</section>
+
+<div id="resultat-import">
+  {% if rapport %}{% include "echange/_resultat.html" %}{% endif %}
+</div>
+{% endblock %}

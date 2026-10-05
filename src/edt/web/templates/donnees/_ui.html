@@ -1,0 +1,85 @@
+{#
+  Macros des écrans « Données » (voir edt/web/donnees). À importer :
+
+      {% import "donnees/_ui.html" as d %}
+
+  - d.champ(c)                 un champ décrit (edt.web.donnees.formulaires.ChampAffiche)
+  - d.rubriques(liste)         les rubriques d'un formulaire, chacune dans un fieldset
+  - d.barre_liste(...)         recherche et filtres d'une liste (HTMX, et sans JavaScript)
+  - d.cellule(colonne, valeur, detail)  contenu d'une cellule de liste (liste abrégée « +n »,
+                               texte libre sur deux lignes au plus, détail au survol)
+  - d.retour(ecran)            lien vers la page parente d'un écran
+#}
+{% import "macros.html" as ui %}
+
+{% macro champ(c) -%}
+{{ ui.champ(c.nom, c.libelle, valeur=c.valeur, type=c.type, requis=c.requis, aide=c.aide, erreur=c.erreur, options=c.options, attributs=c.attributs, unite=c.unite, conteneur=c.conteneur, large=c.large) }}
+{%- endmacro %}
+
+{% macro rubriques(liste) -%}
+{%- for rubrique in liste %}
+<fieldset>
+  {%- if rubrique.titre %}
+  <legend>{{ rubrique.titre }}</legend>
+  {%- endif %}
+  <div class="grille-champs">
+    {%- for c in rubrique.champs %}
+    {{ champ(c) }}
+    {%- endfor %}
+  </div>
+</fieldset>
+{%- endfor %}
+{%- endmacro %}
+
+{% macro barre_liste(ecran, etat, filtres) -%}
+<form class="barre-liste" method="get" action="{{ ecran.prefixe }}" role="search"
+      hx-get="{{ ecran.prefixe }}" hx-target="#zone-liste" hx-push-url="true"
+      hx-trigger="input delay:350ms, submit" hx-sync="this:replace">
+  {%- if ecran.entite.cherchable %}
+  <div class="champ champ-recherche">
+    <label for="recherche-{{ ecran.entite.code }}">Rechercher</label>
+    <input type="search" id="recherche-{{ ecran.entite.code }}" name="q" value="{{ etat.recherche }}"
+           placeholder="Saisir un mot, un code..." autocomplete="off">
+  </div>
+  {%- endif %}
+  {%- for filtre, options, valeur in filtres %}
+  <div class="champ">
+    <label for="filtre-{{ filtre.nom }}">{{ filtre.libelle }}</label>
+    <select id="filtre-{{ filtre.nom }}" name="{{ filtre.nom }}">
+      <option value="">Tous</option>
+      {%- for valeur_option, libelle_option in options %}
+      <option value="{{ valeur_option }}"{% if valeur_option == valeur %} selected{% endif %}>{{ libelle_option }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- endfor %}
+  {%- if etat.tri %}<input type="hidden" name="tri" value="{{ etat.tri }}">{% endif %}
+  {%- if etat.descendant %}<input type="hidden" name="sens" value="desc">{% endif %}
+  <button type="submit" class="bouton sans-js">Filtrer</button>
+</form>
+{%- endmacro %}
+
+{% macro cellule(colonne, valeur, detail=None) -%}
+{%- if colonne.format == "couleur" and valeur -%}
+{{ ui.couleur(valeur) }}<code>{{ valeur }}</code>
+{%- elif valeur is iterable and valeur is not string -%}
+{%- set elements = valeur|list -%}
+{%- if not elements -%}
+<span class="discret">-</span>
+{%- else -%}
+{%- set montres = elements[:colonne.apercu] -%}
+<span class="liste-abregee" title="{{ elements|join(', ') }}"><span class="elements">{{ montres|join(", ") }}</span>
+{%- if elements|length > montres|length %}<span class="plus">+{{ elements|length - montres|length }}</span>{% endif %}</span>
+{%- endif -%}
+{%- elif colonne.texte and valeur -%}
+<span class="deux-lignes" title="{{ detail or valeur }}">{{ valeur }}</span>
+{%- elif detail -%}
+<span class="abrege" title="{{ detail }}">{{ valeur }}</span>
+{%- else -%}
+{{ ui.cellule(valeur) }}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro retour(ecran) -%}
+{%- if ecran.parent %}<a class="bouton" href="{{ ecran.parent[1] }}">{{ ecran.parent[0] }}</a>{% endif -%}
+{%- endmacro %}

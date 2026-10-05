@@ -1,13 +1,93 @@
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
 
 {% block titre %}Accueil{% endblock %}
 
 {% block contenu %}
+{%- if etape %}
+<section class="carte edt-prochaine-etape">
+  <h2>Prochaine étape</h2>
+  <p>{{ etape.phrase }}</p>
+  {%- if etape.lien or etape.autres_liens %}
+  <p class="edt-boutons">
+    {%- if etape.lien %}
+    <a class="bouton bouton-principal" href="{{ etape.lien }}">{{ etape.libelle_lien }}</a>
+    {%- endif %}
+    {%- for adresse, libelle in etape.autres_liens %}
+    <a class="bouton" href="{{ adresse }}">{{ libelle }}</a>
+    {%- endfor %}
+  </p>
+  {%- endif %}
+</section>
+{%- endif %}
+
+{%- if tableau and tableau.semestre %}
+<section class="carte">
+  <h2>Emploi du temps du {{ tableau.semestre.libelle[:1]|lower }}{{ tableau.semestre.libelle[1:] }}</h2>
+  {%- if tableau.calcul_en_cours %}
+  <p>{{ ui.etiquette("Calcul en cours", "info") }} Un calcul tourne depuis {{ fmt.duree_secondes(tableau.calcul_en_cours.temps_ecoule_s) }}.
+    <a href="/calculs/{{ tableau.calcul_en_cours.id }}">Suivre le calcul</a></p>
+  {%- endif %}
+  {%- if tableau.version %}
+  <p>
+    {{ ui.etiquette("Version active", "succes") }} {{ tableau.version.libelle }} :
+    {{ tableau.version.nb_seances }} séances par semaine type{% if tableau.version.nb_occurrences %}, {{ tableau.version.nb_occurrences }} séances datées{% endif %}.
+    <a href="/emploi-du-temps?version_id={{ tableau.version.id }}">Consulter</a>
+  </p>
+  {{ edt.indicateurs(tableau.controle, tableau.nb_a_programmer) }}
+  <p>
+    {%- if tableau.nb_a_traiter is not none %}
+    {%- set reste = tableau.nb_a_traiter + tableau.nb_a_programmer %}
+    {{ ui.etiquette(fmt.pluriel(reste, "point") ~ " à traiter", "erreur" if reste else "succes") }}
+    {%- else %}
+    {{ ui.etiquette(fmt.pluriel(tableau.nb_a_programmer, "séance") ~ " à programmer", "attention" if tableau.nb_a_programmer else "info") }}
+    <span class="discret">(anomalies non comptées : vérifications pas encore disponibles)</span>
+    {%- endif %}
+    <a href="/a-traiter?semestre_id={{ tableau.semestre.id }}">Voir ce qui reste à traiter</a>
+  </p>
+  {%- else %}
+  <p class="vide">Aucun emploi du temps n'a encore été généré pour ce semestre ({{ fmt.pluriel(tableau.nb_besoins, "besoin") }} d'enseignement saisi{{ "s" if tableau.nb_besoins > 1 }}).</p>
+  {%- endif %}
+</section>
+{%- endif %}
+
+{% if etat.initialisee %}
+<section class="carte">
+  <h2>Dernier calcul</h2>
+  {%- set calcul = (tableau.dernier_calcul if tableau and tableau.dernier_calcul else dernier_calcul) %}
+  {% if calcul %}
+  <p>
+    {{ ui.etiquette(calcul.etat.libelle, "succes" if calcul.reussi else ("info" if calcul.en_cours else "attention")) }}
+    Lancé le {{ calcul.demarre_le|dateheure_fr }}
+    ({{ fmt.duree_secondes(calcul.temps_ecoule_s) }}).
+    <a href="/calculs/{{ calcul.id }}">Voir le détail</a>
+  </p>
+  {% if calcul.message %}<p class="pre-ligne">{{ calcul.message }}</p>{% endif %}
+  {% else %}
+  <p class="vide">Aucun emploi du temps n'a encore été généré.</p>
+  {% endif %}
+</section>
+
+<section class="carte">
+  <h2>Contenu</h2>
+  <ul class="compteurs">
+    {% for libelle, nombre in etat.compteurs.items() %}
+    <li class="compteur">
+      <span class="compteur-nombre">{{ nombre }}</span>
+      <span class="compteur-libelle">{{ libelle }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
 <section class="carte">
   <h2>État de la base de données</h2>
   {% if not etat.accessible %}
     {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "Vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
+  {% elif etat.ecarts_schema %}
+    {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
   {% elif not etat.initialisee %}
     {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["Lancer « python -m edt init-db », puis recharger cette page."]) }}
   {% else %}
@@ -26,32 +106,8 @@
     <dd>{{ "production" if environnement == "prod" else "développement" }}</dd>
   </dl>
 </section>
-
-{% if etat.initialisee %}
-<section class="carte">
-  <h2>Contenu</h2>
-  <ul class="compteurs">
-    {% for libelle, nombre in etat.compteurs.items() %}
-    <li class="compteur">
-      <span class="compteur-nombre">{{ nombre }}</span>
-      <span class="compteur-libelle">{{ libelle }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-</section>
-
-<section class="carte">
-  <h2>Dernier calcul</h2>
-  {% if dernier_calcul %}
-  <p>
-    {{ ui.etiquette(dernier_calcul.etat.libelle, "succes" if dernier_calcul.reussi else ("info" if dernier_calcul.en_cours else "attention")) }}
-    Lancé le {{ dernier_calcul.demarre_le|dateheure_fr }}
-    ({{ dernier_calcul.temps_ecoule_s }} s).
-  </p>
-  {% if dernier_calcul.message %}<p class="pre-ligne">{{ dernier_calcul.message }}</p>{% endif %}
-  {% else %}
-  <p class="vide">Aucun emploi du temps n'a encore été généré.</p>
-  {% endif %}
-</section>
-{% endif %}
 {% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}
