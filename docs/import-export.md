@@ -59,11 +59,18 @@ sont tout de même entrées, sauf avec `--simuler`).
 Web :
 
 - `GET /import` : dépôt d'un ou plusieurs fichiers, choix du mode, puis
-  « Simuler » (fragment HTMX : bilan, semaine type, rapport, aperçu des 20
-  premières lignes de chaque tableau, rapport CSV téléchargeable) et
-  « Appliquer l'import » (le navigateur renvoie les mêmes fichiers : rien
-  n'est conservé sur le serveur). 20 Mo au plus par envoi.
-- `GET /export` : gabarit vide, données, emploi du temps d'une version.
+  « Simuler » (fragment HTMX : bilan, semaine type, les 200 premiers
+  signalements avec leur total, aperçu des 20 premières lignes de chaque
+  tableau) et « Appliquer l'import » (HTMX aussi : le navigateur renvoie les
+  mêmes fichiers, rien n'est conservé sur le serveur). 20 Mo au plus par envoi.
+- `POST /import/rapport.csv` : le rapport complet en CSV, recalculé par une
+  simulation sur les fichiers du formulaire (le bouton « Télécharger le
+  rapport » le renvoie). Il n'est jamais encodé dans la page. Après une
+  application, il liste les lignes qui ne sont pas entrées.
+- L'import, le calcul de la page et son rendu s'exécutent dans le pool de
+  fils du serveur : un gros fichier ne gèle pas les autres requêtes.
+- `GET /export` : gabarit vide, données, emploi du temps d'une version (la
+  version active du semestre en cours est présélectionnée).
 - `GET /export/gabarit.xlsx`, `/export/gabarit.zip`, `/export/donnees.xlsx`,
   `/export/donnees.zip`.
 - `GET /export/emploi-du-temps.csv` et `GET /export/emploi-du-temps.ics` :
@@ -86,6 +93,12 @@ Deux présentations équivalentes :
 - **un fichier CSV par feuille** (`salles.csv`...), réunis dans une archive
   ZIP pour le téléchargement, avec `LISEZ-MOI.txt`. Les CSV produits sont en
   UTF-8 avec BOM, séparateur point-virgule.
+
+Dans tous les fichiers produits (CSV et XLSX : données, emploi du temps,
+rapport), un texte qui commence par `=`, `+`, `-`, `@`, une tabulation ou un
+retour chariot reçoit une espace insécable en tête : un tableur ne le prend
+pas pour une formule. La relecture retire cette espace, le texte revient
+donc à l'identique ; un nombre (« -1 ») n'est pas modifié.
 
 Un import accepte des CSV, des classeurs, des archives ZIP de CSV, et
 plusieurs fichiers à la fois. Une feuille est reconnue par le nom de son
@@ -163,7 +176,35 @@ Chaque signalement a une gravité : **erreur** (ligne, séance ou fichier qui
 n'est pas entré), **avertissement** (entré, mais à vérifier : repli
 d'encodage, colonnes non reconnues, enseignant inconnu remplacé),
 **information** (trace d'un traitement normal : doublon fusionné, séance
-annulée non comptée). Le rapport se télécharge en CSV.
+annulée non comptée). Le rapport se télécharge en CSV. Il garde au plus
+20 000 signalements détaillés ; au-delà, ils sont comptés (le bilan compte
+toujours toutes les lignes) et une dernière ligne du rapport le dit.
+
+### Bornes
+
+Le site est ouvert sans connexion : un fichier ne doit pas pouvoir épuiser
+la mémoire ou le processeur du serveur. Au-delà d'une borne, le fichier ou
+le tableau concerné est **refusé en entier** avec un signalement d'erreur
+qui dit quoi faire ; il n'est jamais tronqué en silence.
+
+| Borne | Valeur | Où |
+|---|---|---|
+| Taille d'un envoi (tous fichiers) | 20 Mo | `services.echange.TAILLE_MAX_OCTETS` |
+| Archive ZIP | 50 fichiers, 20 Mo une fois décompressée | `lecture.MAX_MEMBRES_ARCHIVE`, `TAILLE_MAX_DECOMPRESSEE` |
+| Classeur XLSX (c'est aussi une archive) | 300 parties, 20 Mo une fois décompressé | `lecture.MAX_MEMBRES_CLASSEUR`, `TAILLE_MAX_DECOMPRESSEE` |
+| Tableau (un CSV ou un onglet) | 50 000 lignes de données, 100 000 lignes lues (vides comprises), 500 colonnes | `lecture.MAX_LIGNES_TABLEAU`, `MAX_LIGNES_LUES`, `MAX_COLONNES` |
+| Envoi (tous fichiers et onglets) | 100 000 lignes de données ou séances iCal | `lecture.MAX_LIGNES_ENVOI` |
+| Fichier iCal | 50 000 événements ; 1 000 occurrences par règle de récurrence | `ical.MAX_EVENEMENTS`, `MAX_OCCURRENCES` |
+| Emploi du temps importé | 200 000 séances une fois les lignes hebdomadaires développées | `reconstitution.MAX_SEANCES_DEVELOPPEES` |
+| Rapport | 20 000 signalements détaillés | `rapport.MAX_SIGNALEMENTS` |
+| Page de résultat | 200 signalements, 500 besoins, 20 aperçus de 40 colonnes | `web.routes.echange.LIMITE_*` |
+
+Les tailles décompressées sont celles que déclare l'archive, vérifiées avant
+toute décompression : à la lecture, un membre qui dépasse sa taille déclarée
+lève une erreur au lieu de déborder. Un membre abîmé ou chiffré est signalé.
+Un établissement réel reste loin de ces bornes : le classeur exporté du jeu
+minimal fait 0,2 Mo décompressé, et un emploi du temps de 800 séances par
+semaine sur 30 semaines compte 24 000 lignes.
 
 ### Feuilles
 
@@ -475,6 +516,8 @@ semaine type, créé / mis à jour / inchangé) avant toute écriture.
   depuis `LOCATION`, libellé depuis `SUMMARY`.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
   jours n'est pas une séance : il est signalé et non importé.
+- Une règle de récurrence qui donnerait plus de 1 000 occurrences (par
+  exemple toutes les minutes) n'est pas un cours : elle est refusée.
 
 ## Exports
 
@@ -531,8 +574,13 @@ modèle.
 - Campus, trajets, années, semestres et inscriptions n'ont pas de champs de
   provenance : leurs colonnes non reconnues ne sont pas conservées (le
   rapport le dit).
-- Le rapport d'un import n'est pas conservé en base : il est affiché et
-  téléchargeable (CSV), et le journal garde le bilan.
+- Le rapport d'un import n'est pas conservé en base : il est affiché (200
+  premiers signalements) et téléchargeable (CSV, recalculé par simulation
+  sur les mêmes fichiers), et le journal garde le bilan.
+- Les bornes (section « Bornes ») protègent la mémoire et le processeur,
+  pas le débit : rien ne limite le nombre d'imports qu'un visiteur lance à
+  la suite. Un import de 50 000 lignes valides prend une vingtaine de
+  secondes et occupe la base en écriture pendant ce temps.
 - Une année créée par import ne reçoit ni semestre ni jour férié
   automatiquement : les décrire dans les feuilles `semestres` et
   `jours_fermes` (l'export les contient).
