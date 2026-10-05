@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import random
 
-from edt.domaine.calendrier import semaines_entre
+from edt.domaine.calendrier import Semaine, semaines_entre
 from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.depliage import deplier, repartition_reguliere
+from edt.domaine.depliage import deplier, repartition_reguliere, semaines_ouvertes
 from edt.domaine.enumerations import ModeVolume, NatureJourFerme
 from edt.domaine.instantane import Besoin, JourFerme
 
@@ -132,3 +133,103 @@ def test_semaine_d_examens_ferme_les_cours_mais_pas_les_seances_ponctuelles():
     assert 14 in par_id["2-1"].semaines  # la fermeture ne vise pas l'autre groupe
     assert par_id["3-1"].semaines == frozenset({14})  # l'examen, lui, a bien lieu
     assert resultat.problemes == ()
+
+
+# --------------------------------------------------------------------------- #
+# Non-régression : le calcul rapide des semaines ouvertes suit la règle à la lettre
+# --------------------------------------------------------------------------- #
+
+
+def semaines_ouvertes_de_reference(un_besoin, semaines, jours_fermes) -> tuple[Semaine, ...]:
+    """La règle écrite au plus simple, jour par jour, avec `JourFerme.concerne`.
+
+    C'est la définition (lente : une question par fermeture, par jour et par
+    semaine). `semaines_ouvertes` doit toujours donner exactement ce résultat.
+    """
+    ouvertes = []
+    for semaine in semaines:
+        if un_besoin.date_debut is not None and semaine.dimanche < un_besoin.date_debut:
+            continue
+        if un_besoin.date_fin is not None and semaine.lundi > un_besoin.date_fin:
+            continue
+        entierement_fermee = all(
+            any(
+                ferme.concerne(
+                    semaine.date_du(jour), un_besoin.groupes, ponctuelle=un_besoin.ponctuel
+                )
+                for ferme in jours_fermes
+            )
+            for jour in range(5)
+        )
+        if not entierement_fermee:
+            ouvertes.append(semaine)
+    return tuple(ouvertes)
+
+
+def _fermeture_au_hasard(tirage: random.Random) -> JourFerme:
+    lundi = SEMAINES[0].lundi + dt.timedelta(weeks=tirage.randint(-2, len(SEMAINES) + 1))
+    debut = lundi + dt.timedelta(days=tirage.choice((0, 0, 0, 1, 2, 3, 4, 5, 6)))
+    duree = tirage.choice((1, 1, 2, 3, 5, 5, 7, 12, 14, 40))
+    return JourFerme(
+        debut,
+        debut + dt.timedelta(days=duree - 1),
+        "Fermeture",
+        tirage.choice(list(NatureJourFerme)),
+        groupes=tirage.choice(
+            (None, None, frozenset(tirage.sample(range(1, 7), tirage.randint(1, 3))))
+        ),
+    )
+
+
+def _besoin_au_hasard(tirage: random.Random, identifiant: int) -> Besoin:
+    champs: dict = {"groupes": frozenset(tirage.sample(range(1, 7), tirage.randint(1, 3)))}
+    jour = SEMAINES[0].lundi + dt.timedelta(days=tirage.randint(-10, 7 * len(SEMAINES) + 10))
+    if tirage.random() < 0.4:
+        champs["date_debut"] = jour
+    if tirage.random() < 0.4:
+        champs["date_fin"] = jour + dt.timedelta(days=tirage.randint(0, 60))
+    if tirage.random() < 0.3:
+        champs.update(mode_volume=ModeVolume.PONCTUEL, date_ponctuelle=jour)
+    return besoin(identifiant, **champs)
+
+
+def test_semaines_ouvertes_identiques_a_la_regle_de_reference():
+    tirage = random.Random(20261005)
+    avec_semaine_fermee = 0
+    for numero in range(400):
+        fermetures = [_fermeture_au_hasard(tirage) for _ in range(tirage.randint(0, 12))]
+        un_besoin = _besoin_au_hasard(tirage, numero)
+        # Le plus souvent le semestre entier ; parfois des semaines éparses, dans le désordre.
+        semaines = list(SEMAINES)
+        if numero % 5 == 0:
+            semaines = tirage.sample(semaines, tirage.randint(0, len(semaines)))
+
+        attendues = semaines_ouvertes_de_reference(un_besoin, semaines, fermetures)
+
+        assert semaines_ouvertes(un_besoin, semaines, fermetures) == attendues, (
+            un_besoin,
+            fermetures,
+        )
+        dans_la_fenetre = semaines_ouvertes_de_reference(un_besoin, semaines, [])
+        avec_semaine_fermee += len(attendues) < len(dans_la_fenetre)
+    # Le tirage exerce bien la règle : des semaines entièrement fermées dans de nombreux cas.
+    assert avec_semaine_fermee > 100
+
+
+def test_le_depliage_complet_suit_la_regle_de_reference():
+    tirage = random.Random(5102026)
+    for _ in range(40):
+        fermetures = [_fermeture_au_hasard(tirage) for _ in range(tirage.randint(0, 12))]
+        besoins = [_besoin_au_hasard(tirage, numero) for numero in range(1, 13)]
+        resultat = deplier(besoins, SEMAINES, fermetures)
+
+        par_besoin = {s.besoin.id: s for s in resultat.seances}
+        sans_semaine = {p.besoin_id for p in resultat.problemes}
+        for un_besoin in besoins:
+            if un_besoin.ponctuel:
+                continue
+            attendues = semaines_ouvertes_de_reference(un_besoin, SEMAINES, fermetures)
+            if not attendues:
+                assert un_besoin.id in sans_semaine and un_besoin.id not in par_besoin
+            else:
+                assert par_besoin[un_besoin.id].semaines == {s.numero for s in attendues}

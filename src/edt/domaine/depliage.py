@@ -45,6 +45,9 @@ from edt.domaine.instantane import Besoin, JourFerme, ProblemeDepliage, SeanceAP
 JOURS_OUVRES = range(5)
 """Lundi à vendredi : les jours examinés pour dire qu'une semaine est entièrement fermée."""
 
+_JoursFermes = tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]
+"""Jours fermés pour tous, puis plages de jours fermés pour certains groupes (numéros de jour)."""
+
 
 @dataclass(frozen=True)
 class Depliage:
@@ -88,22 +91,18 @@ class _Fermetures:
             for semaine, lundi in ((semaine, semaine.lundi.toordinal()) for semaine in semaines)
         )
         self._fermetures = tuple(jours_fermes)
-        # Par nature de séance (ponctuelle ou non) : les jours fermés pour tous, puis les
-        # plages de jours fermés pour certains groupes seulement. Rempli à la demande.
-        self._preparees: dict[bool, tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]]
-        self._preparees = {}
+        # Une préparation par nature de séance (ponctuelle ou non), faite à la demande.
+        self._preparees: dict[bool, _JoursFermes] = {}
 
-    def _preparer(
-        self, ponctuelle: bool
-    ) -> tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]:
+    def _preparer(self, ponctuelle: bool) -> _JoursFermes:
         if not self._semaines:
             return frozenset(), ()
-        premier = min(jours.start for _, _, jours in self._semaines)
-        dernier = max(jours.stop for _, _, jours in self._semaines) - 1
+        premier = min(lundi for _, lundi, _ in self._semaines)
+        dernier = max(lundi for _, lundi, _ in self._semaines) + 6
         pour_tous: set[int] = set()
         par_groupes: list[tuple[frozenset[int], range]] = []
         for ferme in self._fermetures:
-            # Seuls comptent les jours du semestre : on borne la plage à ses semaines.
+            # Seuls comptent les jours des semaines données : on y borne la plage.
             jours = range(
                 max(ferme.date_debut.toordinal(), premier),
                 min(ferme.date_fin.toordinal(), dernier) + 1,
