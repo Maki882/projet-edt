@@ -1,14 +1,24 @@
 /*
  * Feuille de style de l'application EDT.
  * Sobre, sans dépendance. Les couleurs et espacements sont des variables :
- * un écran n'écrit pas de couleur en dur, il réutilise les classes ci-dessous
- * (carte, tableau, formulaire, champ, bouton, message, etiquette, compteurs).
+ * un écran n'écrit pas de couleur en dur, il réutilise les classes ci-dessous.
+ * Le catalogue des classes réutilisables est dans docs/interface.md.
+ *
+ *  1. Variables et bases            7. Tableaux, tri et pagination
+ *  2. Bandeau, barre et onglets     8. Formulaires et boutons
+ *  3. Sous-navigation et cadre      9. Listes : recherche et filtres
+ *  4. Cartes et définitions        10. Panneau Assistant
+ *  5. Messages et étiquettes       11. Utilitaires
+ *  6. Compteurs                    12. Petits écrans et impression
  */
+
+/* ----- 1. Variables et bases ------------------------------------------------ */
 
 :root {
   --fond: #f4f6f9;
   --surface: #ffffff;
   --bordure: #d9dee7;
+  --bordure-forte: #aab3c0;
   --texte: #1f2733;
   --texte-discret: #5d6878;
   --marque: #1d4f91;
@@ -25,6 +35,8 @@
   --rayon: 6px;
   --espace: 1rem;
   --largeur-navigation: 15rem;
+  --largeur-assistant: 24rem;
+  --ombre: 0 6px 24px rgba(20, 35, 60, 0.18);
   --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --police-code: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 }
@@ -82,9 +94,17 @@ h2 {
   font-size: 1.1rem;
 }
 
+h3 {
+  font-size: 1rem;
+}
+
 :focus-visible {
   outline: 3px solid #f0a500;
   outline-offset: 2px;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 .lien-evitement {
@@ -95,7 +115,7 @@ h2 {
 .lien-evitement:focus {
   left: 0.5rem;
   top: 0.5rem;
-  z-index: 10;
+  z-index: 50;
   background: var(--surface);
   padding: 0.5rem 0.75rem;
   border-radius: var(--rayon);
@@ -109,40 +129,35 @@ h2 {
   white-space: pre-line;
 }
 
-/* ----- Bandeau « données fictives » ------------------------------------- */
+/* ----- 2. Bandeau, barre et onglets ------------------------------------------ */
 
 .bandeau-fictif {
   background: var(--attention-pale);
   color: #5c3b00;
   border-bottom: 1px solid #ecd9a8;
-  padding: 0.35rem var(--espace);
-  font-size: 0.875rem;
+  padding: 0.3rem var(--espace);
+  font-size: 0.85rem;
   text-align: center;
 }
 
-/* ----- Cadre général ------------------------------------------------------ */
-
-.cadre {
-  flex: 1;
+.barre {
   display: flex;
   align-items: stretch;
-  min-height: 0;
-}
-
-.navigation {
-  flex: 0 0 var(--largeur-navigation);
+  gap: 1.5rem;
+  padding: 0 calc(var(--espace) * 1.5);
   background: var(--marque-fonce);
   color: #dfe8f4;
-  padding: var(--espace) 0;
+  position: relative;
+  z-index: 20;
 }
 
 .marque {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 0.5rem;
-  padding: 0 var(--espace) var(--espace);
   color: #ffffff;
   text-decoration: none;
+  white-space: nowrap;
 }
 
 .marque:hover {
@@ -150,7 +165,7 @@ h2 {
 }
 
 .marque-sigle {
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: 0.04em;
 }
@@ -160,38 +175,156 @@ h2 {
   opacity: 0.85;
 }
 
-.navigation h2 {
-  margin: 1rem var(--espace) 0.3rem;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #a9bcd6;
+.onglets {
+  display: flex;
+  min-width: 0;
 }
 
-.navigation ul {
+.onglets > ul {
+  display: flex;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.navigation li a {
-  display: block;
-  padding: 0.4rem var(--espace);
-  color: inherit;
-  text-decoration: none;
-  border-left: 3px solid transparent;
+.onglet {
+  position: relative;
+  display: flex;
 }
 
-.navigation li a:hover {
+.onglet > a {
+  display: flex;
+  align-items: center;
+  padding: 0.85rem 1rem 0.75rem;
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 3px solid transparent;
+  white-space: nowrap;
+}
+
+.onglet > a:hover {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
 }
 
-.navigation li a.actif {
-  background: rgba(255, 255, 255, 0.14);
-  border-left-color: #ffffff;
+.onglet > a.actif {
   color: #ffffff;
+  font-weight: 600;
+  border-bottom-color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Menu déroulant d'un onglet : toutes ses pages, ouvert au survol ou au clavier. */
+.menu-deroulant {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  display: flex;
+  gap: 1.5rem;
+  min-width: 14rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  color: var(--texte);
+  border: 1px solid var(--bordure);
+  border-radius: 0 0 var(--rayon) var(--rayon);
+  box-shadow: var(--ombre);
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 120ms ease-in, visibility 0s linear 120ms;
+}
+
+.onglet-deroulant:hover .menu-deroulant,
+.onglet-deroulant:focus-within .menu-deroulant {
+  visibility: visible;
+  opacity: 1;
+  transition-delay: 150ms, 0s;
+}
+
+.menu-groupe {
+  min-width: 11rem;
+}
+
+.menu-groupe-titre {
+  margin: 0 0 0.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texte-discret);
+  white-space: nowrap;
+}
+
+.menu-groupe ul {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+}
+
+.menu-groupe a {
+  display: block;
+  padding: 0.2rem 0.4rem;
+  margin: 0 -0.4rem;
+  border-radius: 4px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.menu-groupe a:hover,
+.menu-groupe a.actif {
+  background: var(--marque-pale);
+}
+
+/* ----- 3. Sous-navigation et cadre --------------------------------------------- */
+
+.cadre {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.sous-navigation {
+  flex: 0 0 var(--largeur-navigation);
+  background: var(--surface);
+  border-right: 1px solid var(--bordure);
+  padding: var(--espace) 0;
+}
+
+.sous-navigation h2 {
+  margin: 1rem var(--espace) 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texte-discret);
+}
+
+.sous-navigation h2:first-child {
+  margin-top: 0;
+}
+
+.sous-navigation ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sous-navigation li a {
+  display: block;
+  padding: 0.3rem var(--espace);
+  color: var(--texte);
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.sous-navigation li a:hover {
+  background: var(--fond);
+}
+
+.sous-navigation li a.actif {
+  background: var(--marque-pale);
+  border-left-color: var(--marque);
+  color: var(--marque-fonce);
   font-weight: 600;
 }
 
@@ -199,7 +332,7 @@ main {
   flex: 1;
   min-width: 0;
   padding: calc(var(--espace) * 1.5);
-  max-width: 78rem;
+  max-width: 84rem;
 }
 
 .entete-page {
@@ -221,6 +354,12 @@ main {
   gap: 0.5rem;
 }
 
+.introduction {
+  margin: -0.4rem 0 var(--espace);
+  color: var(--texte-discret);
+  max-width: 60rem;
+}
+
 .pied {
   padding: 0.6rem var(--espace);
   border-top: 1px solid var(--bordure);
@@ -230,7 +369,7 @@ main {
   text-align: center;
 }
 
-/* ----- Cartes --------------------------------------------------------------- */
+/* ----- 4. Cartes et définitions ------------------------------------------------ */
 
 .carte {
   background: var(--surface);
@@ -246,6 +385,21 @@ main {
 
 .carte-erreur {
   border-left: 4px solid var(--erreur);
+}
+
+.carte-attention {
+  border-left: 4px solid var(--attention);
+}
+
+/* Carte repliable : <details class="carte repliable"><summary>Titre</summary>... */
+.repliable > summary {
+  cursor: pointer;
+  font-weight: 600;
+  list-style-position: inside;
+}
+
+.repliable[open] > summary {
+  margin-bottom: 0.75rem;
 }
 
 .definitions {
@@ -264,7 +418,7 @@ main {
   min-width: 0;
 }
 
-/* ----- Messages ------------------------------------------------------------- */
+/* ----- 5. Messages et étiquettes ------------------------------------------------ */
 
 .messages:empty {
   display: none;
@@ -315,6 +469,7 @@ main {
   font-weight: 600;
   border: 1px solid;
   vertical-align: baseline;
+  white-space: nowrap;
 }
 
 .etiquette-succes {
@@ -337,7 +492,22 @@ main {
   color: var(--erreur);
 }
 
-/* ----- Compteurs ------------------------------------------------------------ */
+.etiquette-neutre {
+  background: var(--fond);
+  color: var(--texte-discret);
+}
+
+.pastille-couleur {
+  display: inline-block;
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  vertical-align: -0.1rem;
+  margin-right: 0.35rem;
+}
+
+/* ----- 6. Compteurs ------------------------------------------------------------- */
 
 .compteurs {
   list-style: none;
@@ -368,7 +538,7 @@ main {
   font-size: 0.875rem;
 }
 
-/* ----- Tableaux ------------------------------------------------------------- */
+/* ----- 7. Tableaux, tri et pagination ----------------------------------------- */
 
 .tableau-defilant {
   overflow-x: auto;
@@ -392,7 +562,7 @@ main {
 
 .tableau th,
 .tableau td {
-  padding: 0.5rem 0.8rem;
+  padding: 0.45rem 0.8rem;
   text-align: left;
   border-bottom: 1px solid var(--bordure);
   vertical-align: top;
@@ -412,9 +582,62 @@ main {
   background: var(--marque-pale);
 }
 
+.tableau .nombre {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tableau tr.ligne-modifiee {
+  animation: surbrillance 1.6s ease-out;
+}
+
+@keyframes surbrillance {
+  from {
+    background: var(--succes-pale);
+  }
+  to {
+    background: transparent;
+  }
+}
+
+.tableau tr.ligne-edition > td {
+  background: var(--marque-pale);
+}
+
+/* En-tête de colonne triable : lien avec indicateur de sens. */
+.tri {
+  color: inherit;
+  text-decoration: none;
+}
+
+.tri:hover {
+  text-decoration: underline;
+}
+
+.tri::after {
+  content: "\2195";
+  margin-left: 0.3rem;
+  color: var(--texte-discret);
+  font-size: 0.8em;
+}
+
+.tri-croissant::after {
+  content: "\25B2";
+  color: var(--marque);
+}
+
+.tri-decroissant::after {
+  content: "\25BC";
+  color: var(--marque);
+}
+
 .colonne-actions {
   text-align: right;
   white-space: nowrap;
+}
+
+.colonne-actions > * + * {
+  margin-left: 0.3rem;
 }
 
 .vide {
@@ -422,7 +645,50 @@ main {
   font-style: italic;
 }
 
-/* ----- Formulaires et boutons ----------------------------------------------- */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin: -0.4rem 0 var(--espace);
+  font-size: 0.9rem;
+}
+
+.pagination-pages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.pagination-pages a,
+.pagination-pages span {
+  display: inline-block;
+  min-width: 2rem;
+  padding: 0.2rem 0.5rem;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  text-align: center;
+  text-decoration: none;
+  background: var(--surface);
+}
+
+.pagination-pages [aria-current="page"] {
+  background: var(--marque);
+  border-color: var(--marque);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.pagination-pages .inactif {
+  color: var(--texte-discret);
+  background: var(--fond);
+}
+
+/* ----- 8. Formulaires et boutons ------------------------------------------------ */
 
 .formulaire {
   background: var(--surface);
@@ -430,14 +696,50 @@ main {
   border-radius: var(--rayon);
   padding: var(--espace) calc(var(--espace) * 1.25);
   margin-bottom: var(--espace);
-  max-width: 44rem;
+  max-width: 48rem;
+}
+
+.formulaire-large {
+  max-width: none;
+}
+
+.formulaire fieldset {
+  border: none;
+  border-top: 1px solid var(--bordure);
+  margin: 0 0 0.5rem;
+  padding: 0.75rem 0 0;
+}
+
+.formulaire fieldset:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.formulaire legend {
+  font-weight: 700;
+  color: var(--marque-fonce);
+  padding: 0;
+  margin-bottom: 0.5rem;
+}
+
+/* Champs côte à côte (deux colonnes et plus sur un écran large). */
+.grille-champs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0 1rem;
+}
+
+.grille-champs > .champ-large {
+  grid-column: 1 / -1;
 }
 
 .champ {
   margin-bottom: 0.9rem;
+  min-width: 0;
 }
 
-.champ label {
+.champ label,
+.champ .libelle {
   display: block;
   font-weight: 600;
   margin-bottom: 0.25rem;
@@ -450,22 +752,81 @@ main {
   gap: 0.5rem;
 }
 
-.champ input:not([type="checkbox"]):not([type="radio"]),
+.champ input:not([type="checkbox"]):not([type="radio"]):not([type="color"]),
 .champ select,
 .champ textarea {
   width: 100%;
   padding: 0.45rem 0.6rem;
-  border: 1px solid #aab3c0;
+  border: 1px solid var(--bordure-forte);
   border-radius: var(--rayon);
   font: inherit;
   color: inherit;
   background: var(--surface);
 }
 
+.champ input[type="color"] {
+  width: 4rem;
+  height: 2.3rem;
+  padding: 0.15rem;
+  border: 1px solid var(--bordure-forte);
+  border-radius: var(--rayon);
+  background: var(--surface);
+}
+
+.champ-avec-unite {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.champ-avec-unite .unite {
+  color: var(--texte-discret);
+  white-space: nowrap;
+}
+
 .champ-en-erreur input,
 .champ-en-erreur select,
-.champ-en-erreur textarea {
+.champ-en-erreur textarea,
+.champ-en-erreur .choix-multiple {
   border-color: var(--erreur);
+}
+
+/* Choix multiple : liste de cases à cocher défilante, filtrable au clavier. */
+.choix-multiple {
+  border: 1px solid var(--bordure-forte);
+  border-radius: var(--rayon);
+  background: var(--surface);
+}
+
+.choix-multiple-filtre {
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.6rem;
+  border: none;
+  border-bottom: 1px solid var(--bordure);
+  border-radius: var(--rayon) var(--rayon) 0 0;
+  font: inherit;
+}
+
+.choix-multiple-liste {
+  max-height: 12rem;
+  overflow-y: auto;
+  padding: 0.3rem 0.6rem;
+}
+
+.choix-multiple-liste label {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-weight: 400;
+  margin: 0;
+  padding: 0.1rem 0;
+}
+
+.choix-multiple-resume {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--texte-discret);
 }
 
 .requis {
@@ -488,8 +849,13 @@ main {
 .formulaire-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin-top: var(--espace);
+}
+
+.formulaire-actions .pousser-droite {
+  margin-left: auto;
 }
 
 .en-ligne {
@@ -499,18 +865,25 @@ main {
 .bouton {
   display: inline-block;
   padding: 0.4rem 0.9rem;
-  border: 1px solid #aab3c0;
+  border: 1px solid var(--bordure-forte);
   border-radius: var(--rayon);
   background: var(--surface);
   color: var(--texte);
   font: inherit;
+  line-height: 1.4;
   text-decoration: none;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .bouton:hover {
   background: var(--fond);
   color: var(--texte);
+}
+
+.bouton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .bouton-principal {
@@ -534,6 +907,39 @@ main {
   color: var(--erreur);
 }
 
+.bouton-danger-plein {
+  background: var(--erreur);
+  border-color: var(--erreur);
+  color: #ffffff;
+}
+
+.bouton-danger-plein:hover {
+  background: #8f1d17;
+  color: #ffffff;
+}
+
+.bouton-petit {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.85rem;
+}
+
+/* Formulaire compact sur une ligne (édition dans le tableau, ajout rapide). */
+.formulaire-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 0.75rem;
+}
+
+.formulaire-ligne .champ {
+  flex: 1 1 10rem;
+  margin-bottom: 0.5rem;
+}
+
+.formulaire-ligne .formulaire-actions {
+  margin: 0 0 0.5rem;
+}
+
 /* Indicateur HTMX : visible seulement pendant une requête. */
 .htmx-indicator {
   opacity: 0;
@@ -545,45 +951,298 @@ main {
   opacity: 1;
 }
 
-/* ----- Petits écrans et impression ------------------------------------------ */
+/* ----- 9. Listes : recherche et filtres ---------------------------------------- */
 
-@media (max-width: 50rem) {
+.barre-liste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: var(--espace);
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+}
+
+.barre-liste .champ {
+  margin: 0;
+  flex: 0 1 12rem;
+}
+
+.barre-liste .champ-recherche {
+  flex: 1 1 16rem;
+}
+
+.barre-liste .champ label {
+  font-size: 0.85rem;
+}
+
+.barre-liste-resume {
+  margin: 0 0 0.5rem;
+  color: var(--texte-discret);
+  font-size: 0.9rem;
+}
+
+/* Sans JavaScript, le bouton « Filtrer » envoie le formulaire ; avec, la liste suit la saisie. */
+.js .sans-js {
+  display: none;
+}
+
+/* Arbre (groupes) : listes imbriquées avec un filet à gauche. */
+.arbre,
+.arbre ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.arbre ul {
+  margin-left: 1.1rem;
+  padding-left: 0.9rem;
+  border-left: 2px solid var(--bordure);
+}
+
+.arbre-noeud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.6rem;
+  padding: 0.3rem 0;
+}
+
+.arbre-noeud .actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+
+/* Matrice (trajets) : cellules de saisie compactes. */
+.matrice input {
+  width: 5.5rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--bordure-forte);
+  border-radius: var(--rayon);
+  font: inherit;
+  text-align: right;
+}
+
+.matrice .diagonale {
+  color: var(--texte-discret);
+  text-align: center;
+}
+
+/* ----- 10. Panneau Assistant ------------------------------------------------------ */
+
+.bouton-assistant {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  border-radius: 999px;
+  background: var(--marque);
+  color: #ffffff;
+  font-weight: 600;
+  text-decoration: none;
+  box-shadow: var(--ombre);
+}
+
+.bouton-assistant:hover {
+  background: var(--marque-fonce);
+  color: #ffffff;
+}
+
+.bouton-assistant > span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--marque);
+  font-size: 0.85rem;
+}
+
+.assistant {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40;
+  width: min(var(--largeur-assistant), 100vw);
+  overflow-y: auto;
+  padding: var(--espace) calc(var(--espace) * 1.25);
+  background: var(--surface);
+  border-left: 1px solid var(--bordure);
+  box-shadow: var(--ombre);
+  transform: translateX(100%);
+  visibility: hidden;
+  transition: transform 180ms ease-out, visibility 0s linear 180ms;
+}
+
+.assistant.ouvert,
+.assistant:target {
+  transform: none;
+  visibility: visible;
+  transition: transform 180ms ease-out;
+}
+
+.sans-transition,
+.sans-transition * {
+  transition: none !important;
+}
+
+.assistant-entete {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.assistant-entete h2 {
+  margin: 0;
+}
+
+.assistant-fermer {
+  font-size: 1.6rem;
+  line-height: 1;
+  padding: 0 0.4rem;
+  color: var(--texte-discret);
+  text-decoration: none;
+  border-radius: var(--rayon);
+}
+
+.assistant-fermer:hover {
+  background: var(--fond);
+  color: var(--texte);
+}
+
+.assistant-exemples {
+  padding-left: 1.1rem;
+  color: var(--texte-discret);
+}
+
+.assistant-exemples li {
+  margin-bottom: 0.35rem;
+}
+
+.assistant-saisie label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.assistant-saisie textarea {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--bordure-forte);
+  border-radius: var(--rayon);
+  font: inherit;
+  background: var(--fond);
+  margin-bottom: 0.5rem;
+}
+
+/* ----- 11. Utilitaires ------------------------------------------------------------- */
+
+.liste-simple {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.ligne-boutons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.colonnes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: var(--espace);
+}
+
+/* ----- 12. Petits écrans et impression ------------------------------------------ */
+
+@media (max-width: 56rem) {
+  .barre {
+    flex-wrap: wrap;
+    gap: 0;
+    padding: 0 var(--espace);
+  }
+
+  .marque {
+    padding: 0.5rem 0;
+  }
+
+  .onglets {
+    flex-basis: 100%;
+    overflow-x: auto;
+  }
+
+  .onglet > a {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .menu-deroulant {
+    display: none;
+  }
+
   .cadre {
     flex-direction: column;
   }
 
-  .navigation {
+  .sous-navigation {
     flex-basis: auto;
-    padding-bottom: 0.5rem;
+    border-right: none;
+    border-bottom: 1px solid var(--bordure);
+    padding: 0.5rem var(--espace);
   }
 
-  .navigation ul {
+  .sous-navigation h2 {
+    margin: 0.4rem 0 0.15rem;
+  }
+
+  .sous-navigation ul {
     display: flex;
     flex-wrap: wrap;
+    gap: 0.2rem 0.3rem;
   }
 
-  .navigation li a {
+  .sous-navigation li a {
     border-left: none;
-    border-bottom: 3px solid transparent;
-    padding: 0.35rem 0.75rem;
-  }
-
-  .navigation li a.actif {
-    border-bottom-color: #ffffff;
+    border-radius: var(--rayon);
+    padding: 0.15rem 0.5rem;
   }
 
   main {
     padding: var(--espace);
   }
+
+  .bouton-assistant {
+    right: 0.75rem;
+    bottom: 0.75rem;
+  }
 }
 
 @media print {
-  .navigation,
+  .barre,
+  .sous-navigation,
   .bandeau-fictif,
   .pied,
   .entete-actions,
-  .lien-evitement {
-    display: none;
+  .lien-evitement,
+  .bouton-assistant,
+  .assistant,
+  .barre-liste,
+  .pagination,
+  .colonne-actions {
+    display: none !important;
   }
 
   body {

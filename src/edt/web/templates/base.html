@@ -1,14 +1,18 @@
 {#
-  Gabarit de base de tous les écrans.
+  Gabarit de base de tous les écrans (mise en page commune : voir docs/interface.md).
 
   Blocs à redéfinir :
   - titre       : titre de la page (onglet du navigateur et titre principal) ;
   - actions     : boutons placés à droite du titre (facultatif) ;
-  - contenu     : le corps de la page.
+  - contenu     : le corps de la page ;
+  - styles      : feuilles de style propres à l'écran, dans l'en-tête (facultatif) ;
+  - scripts     : scripts propres à l'écran, en fin de page (facultatif).
 
-  Variables fournies par `edt.web.gabarits.rendre` : menu, chemin, messages, id_requete.
+  Variables fournies par `edt.web.gabarits.rendre` : menu (onglets), chemin, messages, id_requete.
 #}
 {% import "macros.html" as ui %}
+{%- set nav = namespace(actif=None) %}
+{%- for onglet in menu %}{% if nav.actif is none and onglet.est_actif(chemin) %}{% set nav.actif = onglet %}{% endif %}{% endfor %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -17,8 +21,10 @@
   <title>{% block titre %}Accueil{% endblock %} - EDT</title>
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/app.css?v={{ version_application }}">
+  <script>document.documentElement.classList.add("js");</script>
   <script src="/static/js/htmx.min.js?v={{ version_application }}" defer></script>
   <script src="/static/js/app.js?v={{ version_application }}" defer></script>
+  {% block styles %}{% endblock %}
 </head>
 <body>
   <a class="lien-evitement" href="#contenu">Aller au contenu</a>
@@ -26,27 +32,49 @@
     <strong>Données fictives.</strong>
     Les personnes, groupes et emplois du temps affichés sont générés pour la démonstration.
   </div>
-  <div class="cadre">
-    <aside class="navigation">
-      <a class="marque" href="/">
-        <span class="marque-sigle">EDT</span>
-        <span class="marque-texte">Emplois du temps</span>
-      </a>
-      <nav aria-label="Navigation principale">
-        {%- for section in menu %}
-        {%- if section.titre %}
-        <h2>{{ section.titre }}</h2>
-        {%- endif %}
-        <ul>
-          {%- for entree in section.entrees %}
-          <li>
-            <a href="{{ entree.url }}"{% if entree.est_active(chemin) %} class="actif" aria-current="page"{% endif %}>{{ entree.libelle }}</a>
-          </li>
-          {%- endfor %}
-        </ul>
+  <header class="barre">
+    <a class="marque" href="/">
+      <span class="marque-sigle">EDT</span>
+      <span class="marque-texte">Emplois du temps</span>
+    </a>
+    <nav class="onglets" aria-label="Navigation principale">
+      <ul>
+        {%- for onglet in menu %}
+        {%- set est_actif = nav.actif is not none and onglet.titre == nav.actif.titre %}
+        <li class="onglet{% if onglet.a_menu_deroulant %} onglet-deroulant{% endif %}">
+          <a href="{{ onglet.url }}"{% if est_actif %} class="actif" aria-current="{{ 'page' if onglet.url == chemin else 'true' }}"{% endif %}>{{ onglet.titre }}</a>
+          {%- if onglet.a_menu_deroulant %}
+          <div class="menu-deroulant">
+            {%- for groupe in onglet.groupes %}
+            <div class="menu-groupe" data-section="{{ groupe.sections|join(' ') }}">
+              <p class="menu-groupe-titre">{{ groupe.titre }}</p>
+              <ul>
+                {%- for entree in groupe.entrees %}
+                <li><a href="{{ entree.url }}"{% if entree.est_active(chemin) %} class="actif"{% endif %}>{{ entree.libelle }}</a></li>
+                {%- endfor %}
+              </ul>
+            </div>
+            {%- endfor %}
+          </div>
+          {%- endif %}
+        </li>
         {%- endfor %}
-      </nav>
-    </aside>
+      </ul>
+    </nav>
+  </header>
+  <div class="cadre{% if nav.actif is not none and nav.actif.a_sous_navigation %} cadre-sous-navigation{% endif %}">
+    {%- if nav.actif is not none and nav.actif.a_sous_navigation %}
+    <nav class="sous-navigation" aria-label="{{ nav.actif.titre }}">
+      {%- for groupe in nav.actif.groupes %}
+      <h2>{{ groupe.titre }}</h2>
+      <ul>
+        {%- for entree in groupe.entrees %}
+        <li><a href="{{ entree.url }}"{% if entree.est_active(chemin) %} class="actif" aria-current="page"{% endif %}>{{ entree.libelle }}</a></li>
+        {%- endfor %}
+      </ul>
+      {%- endfor %}
+    </nav>
+    {%- endif %}
     <main id="contenu">
       <header class="entete-page">
         <h1>{{ self.titre() }}</h1>
@@ -62,5 +90,34 @@
     EDT {{ version_application }} - générateur d'emplois du temps
     {%- if id_requete %} - <span class="discret">requête {{ id_requete }}</span>{% endif %}
   </footer>
+
+  {#- Panneau « Assistant » : ouvrable depuis toutes les pages, ne décale pas la mise en page.
+      Sans JavaScript, le lien ouvre le panneau par l'ancre #assistant (:target). #}
+  <a class="bouton-assistant" id="bouton-assistant" href="#assistant" role="button"
+     aria-controls="assistant" aria-expanded="false">
+    <span aria-hidden="true">?</span> Assistant
+  </a>
+  <aside class="assistant" id="assistant" aria-labelledby="assistant-titre" tabindex="-1">
+    <div class="assistant-entete">
+      <h2 id="assistant-titre">Assistant</h2>
+      <a class="assistant-fermer" href="#" role="button" aria-label="Fermer l'assistant" data-fermer-assistant>&times;</a>
+    </div>
+    <p class="assistant-annonce">
+      {{ ui.etiquette("Bientôt", "info") }}
+      Posez vos questions et demandez des modifications en langage courant.
+    </p>
+    <p>Exemples de demandes :</p>
+    <ul class="assistant-exemples">
+      <li>« Quelles salles de plus de 40 places sont libres le jeudi après-midi ? »</li>
+      <li>« Mme Martin n'est pas disponible le mercredi matin. »</li>
+      <li>« Ajoute 2 h de TD de mathématiques par semaine à la classe A1-G1. »</li>
+    </ul>
+    <form class="assistant-saisie" action="#" onsubmit="return false;">
+      <label for="assistant-question">Votre demande</label>
+      <textarea id="assistant-question" rows="3" disabled placeholder="Disponible prochainement"></textarea>
+      <button type="submit" class="bouton bouton-principal" disabled>Envoyer</button>
+    </form>
+  </aside>
+  {% block scripts %}{% endblock %}
 </body>
 </html>
