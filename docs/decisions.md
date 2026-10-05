@@ -213,9 +213,18 @@ Préférences (objectif à minimiser, activable, activé pour la démonstration)
   disponibilité), non-chevauchement par ressource, bris de symétrie entre
   séances identiques. Mesurer dès le jeu moyen ; passer à deux phases
   (créneaux puis salles) seulement si le temps limite est dépassé.
-- Mode « faisable » par défaut, objectif de compacité activable.
-- Temps limite 60 s réglable ; bouton « relancer 5 min ». Deux messages
-  distincts : « impossible (prouvé) » et « pas trouvé dans le temps imparti ».
+  **Mise à jour du 05/10/2026** : le temps limite était dépassé sur
+  l'établissement complet ; le solveur résout donc en deux phases, horaires
+  puis salles (`docs/solveur.md`).
+- **Mise à jour du 05/10/2026** (mesures sur le serveur, `docs/solveur.md`) :
+  l'objectif de compacité est **actif par défaut**. Le calcul trouve d'abord
+  un emploi du temps valide, puis l'améliore dans le temps restant ; un arrêt
+  ou un temps dépassé conserve la meilleure solution trouvée. Le mode
+  « première solution valide » reste réglable dans les paramètres.
+- Temps limite de 5 minutes réglable (maximum 15) ; relance longue de
+  15 minutes (maximum 30) ; au plus 8 fils de calcul, jamais plus que de
+  cœurs. Deux messages distincts : « impossible (prouvé) » et « pas trouvé
+  dans le temps imparti ».
 - **Échec global** si aucune solution : jamais d'emploi du temps partiel en V1.
 - **Pré-vérifications obligatoires** avant de lancer, par famille (charge par
   groupe, par enseignant, par type de salle, salles accessibles, conflits entre

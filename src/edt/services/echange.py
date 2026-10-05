@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
-from edt.domaine.enumerations import EtatCalcul, Gravite
+from edt.domaine.enumerations import Gravite
 from edt.echange import donnees, export_edt
 from edt.echange.ecriture import archive_zip, classeur_xlsx
 from edt.echange.export_edt import Couche, Filtre
@@ -55,6 +55,7 @@ from edt.erreurs import (
     ErreurRegleMetier,
 )
 from edt.services.calendrier import semestre_par_defaut
+from edt.services.generation import calcul_en_cours
 
 journal = logging.getLogger(__name__)
 
@@ -331,12 +332,11 @@ def _importer(
             "« Tout remplacer » supprime d'abord toutes les données de l'établissement : "
             "le confirmer explicitement pour appliquer l'import."
         )
-    en_cours = session.scalar(
-        select(m.Calcul.id).where(m.Calcul.etat == EtatCalcul.EN_COURS).limit(1)
-    )
+    # Par le service de génération : un calcul abandonné par son processus est d'abord clos.
+    en_cours = calcul_en_cours()
     if en_cours is not None:
         raise ErreurCalculEnCours(
-            f"Un calcul d'emploi du temps est en cours (n° {en_cours}) : l'import est refusé "
+            f"Un calcul d'emploi du temps est en cours (n° {en_cours.id}) : l'import est refusé "
             "jusqu'à sa fin, car il modifierait les données que le calcul utilise."
         )
 

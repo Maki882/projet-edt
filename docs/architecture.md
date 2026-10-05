@@ -655,8 +655,12 @@ arret_demande, avertissements=())`, avec `en_cours` et `reussi`.
 - Ces fonctions ouvrent leurs propres sessions (un calcul dépasse la durée
   d'une requête). Le suivi des fils vit dans le processus : le serveur se
   lance avec **un seul processus** (pas d'option `--workers`). `demander_arret` n'atteint que les calculs du processus
-  courant ; au démarrage du serveur, `cloturer_calculs_interrompus` marque en
-  erreur les calculs qu'un arrêt a laissés « en cours ».
+  courant. Un calcul resté « en cours » alors que plus rien ne l'exécute
+  (processus tué, commande interrompue) est clos en erreur au démarrage du
+  serveur, au prochain lancement et à chaque lecture de `calcul_en_cours` ; le
+  calcul vivant d'un autre processus n'est jamais clos. L'import et le
+  chargement d'un jeu fictif passent par `calcul_en_cours` pour savoir si un
+  calcul tourne.
 
 ### Les séances datées (`edt.services.instanciation`)
 
