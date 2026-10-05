@@ -101,11 +101,14 @@ src/edt/
   domaine/            énumérations, heures, calendrier, catalogue des contraintes,
                       paramètres, instantané d'un semestre, dépliage des besoins
   services/           fonctions typées appelées par le web et la ligne de commande
-  verification/       vérificateur (contrat partagé, puis implémentation)
-  solveur/            solveur (contrat partagé, moteur provisoire puis CP-SAT)
+  verification/       vérificateur : liste les anomalies d'un emploi du temps
+  solveur/            solveur CP-SAT (contrat partagé, horaires puis salles,
+                      séances datées ; ancien moteur provisoire dans provisoire.py)
+  synthese/           générateur d'établissements fictifs (petit, moyen, grand)
+  echange/            import et export (XLSX, CSV, iCal)
   web/                application FastAPI (découvre web/routes/), gabarits, CSS, HTMX
 tests/                tests automatisés : conftest.py et un dossier par lot
-verifier_conflits.py  premier vérificateur de chevauchements de l'équipe
+deploy/               installation et déploiement sur le serveur (nginx, systemd)
 ```
 
 Règles à connaître avant d'écrire du code :
