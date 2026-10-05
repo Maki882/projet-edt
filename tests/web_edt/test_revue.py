@@ -139,7 +139,12 @@ def test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois(
         enseignant = session.scalar(
             select(m.besoin_enseignant.c.enseignant_id)
             .join(m.Occurrence, m.Occurrence.besoin_id == m.besoin_enseignant.c.besoin_id)
-            .where(m.Occurrence.version_id == version, m.Occurrence.date == jour)
+            .where(
+                m.Occurrence.version_id == version,
+                m.Occurrence.date == jour,
+                # pas la séance passée « à programmer » : elle n'a plus lieu ce jour-là
+                m.Occurrence.statut.in_([StatutOccurrence.PLANIFIEE, StatutOccurrence.DEPLACEE]),
+            )
             .limit(1)
         )
         session.add(
@@ -306,3 +311,34 @@ def test_besoin_impossible_a_deplier_affiche_une_seule_fois(jeu_minimal, client)
 
     assert page.count("01/03/2027") == 1
     assert "Le calcul ne peut pas être lancé" in page
+
+
+def test_refus_reel_de_l_instanciation_sans_erreur_500(
+    seances_datees, client, faux_verificateur, monkeypatch
+):
+    """L'instanciation livrée refuse une version importée : ni le recalcul ni un déplacement ne plantent."""
+    version = seances_datees.version_id
+    _importer_les_seances_datees(version)
+    # Sans le garde de l'écran, c'est `instancier_version` elle-même qui refuse.
+    monkeypatch.setattr(modifications, "seances_datees_importees", lambda session, v: False)
+    avant = _nb_occurrences(version)
+
+    adresse = f"/emploi-du-temps?version_id={version}&couche=date"
+    recalcul = client.post(
+        f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
+    )
+    assert recalcul.status_code == 200 and "les doublerait" in recalcul.text
+    assert "Traceback" not in recalcul.text
+
+    with session_base() as session:
+        seance = seance_du_besoin(session, version, "Mathématiques", "CM", "A1")
+        identifiant, jour, debut, salle = seance.id, seance.jour, seance.debut_min, seance.salle_id
+    autre_debut = 10 * 60 + 45 if debut != 10 * 60 + 45 else 8 * 60 + 30
+    deplacement = client.post(
+        f"/emploi-du-temps/seances/{identifiant}/modifier",
+        data={"jour": jour, "debut": autre_debut, "salle_id": str(salle), "retour": adresse},
+        headers=HX,
+    )
+    assert deplacement.status_code == 204  # enregistré malgré le refus
+    assert "n&#39;ont pas été recalculées" in client.get(adresse).text  # dit, pas avalé
+    assert _nb_occurrences(version) == avant

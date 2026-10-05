@@ -209,7 +209,7 @@ def test_les_retouches_survivent_au_recalcul_sans_doublon(
 
     with session_base() as session:
         bilan = modifications.recalculer_seances_datees(session, version)
-        assert bilan.nb_retouches == 2 and bilan.nb_doublons_retires == 2
+        assert bilan.nb_retouches == 2  # l'instanciation ne recrée pas leurs semaines
         deplacee = session.get(m.Occurrence, deplacee_id)
         annulee = session.get(m.Occurrence, annulee_id)
         assert (deplacee.date, deplacee.statut) == (cible, StatutOccurrence.DEPLACEE)

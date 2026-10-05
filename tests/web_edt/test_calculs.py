@@ -13,7 +13,8 @@ from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte
 from edt.domaine.enumerations import EtatCalcul, Gravite
 from edt.services import generation
-from edt.services.emploi_du_temps import calculs
+from edt.services.emploi_du_temps import calculs, presentation
+from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
@@ -41,6 +42,13 @@ def _lancer(client, semestre_id: int, **kwargs) -> int:
     return int(reponse.headers["location"].rsplit("/", 1)[1])
 
 
+def _durees() -> tuple[int, int]:
+    """Temps limites court et long réglés dans les paramètres (jamais en dur dans les tests)."""
+    with session_base() as session:
+        parametres = lire_parametres(session)
+    return parametres.temps_limite_s, parametres.temps_limite_long_s
+
+
 def _nb_calculs() -> int:
     with session_base() as session:
         return session.scalar(select(func.count()).select_from(m.Calcul))
@@ -54,7 +62,9 @@ def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client)
     assert page.count('name="contraintes"') == len(CATALOGUE)
     assert page.count(" checked>") >= len(CATALOGUE)  # toutes cochées par défaut
     assert all(entree.libelle in page for entree in CATALOGUE.values())
-    assert "Rechercher jusqu'à 1 minute" in page and "5 minutes" in page
+    court, long_ = _durees()
+    assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
+    assert f"Rechercher jusqu'à {presentation.duree_secondes(long_)}" in page
     # Les vraies pré-vérifications ont tourné : plus d'encart « pas encore disponible ».
     assert "pas encore disponible" not in page
     assert "Vérifications avant le calcul" in page
@@ -145,7 +155,6 @@ def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
                 "Pas trouvé dans le temps imparti",
                 "pas une preuve",
                 "Relancer en cherchant",
-                "5 minutes",
             ],
             ["Impossible avec ces contraintes"],
         ),
@@ -164,6 +173,8 @@ def test_deux_messages_d_echec_distincts(
 
     assert all(texte in page for texte in attendus)
     assert not any(texte in page for texte in absents)
+    if statut is StatutSolveur.TEMPS_DEPASSE:  # la relance propose la durée longue réglée
+        assert f"jusqu'à {presentation.duree_secondes(_durees()[1])}" in page
 
 
 def test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique(
@@ -273,10 +284,11 @@ def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
 
     with session_base() as session:
         par_id = {c.id: c for c in session.scalars(select(m.Calcul))}
-    assert par_id[premier].parametres["temps_limite_s"] == 60
-    assert par_id[second].parametres["temps_limite_s"] == 300
+    court, long_ = _durees()
+    assert par_id[premier].parametres["temps_limite_s"] == court
+    assert par_id[second].parametres["temps_limite_s"] == long_
     assert par_id[second].contraintes_desactivees == ["PAUSE"]  # mêmes règles qu'à l'origine
-    assert par_id[troisieme].parametres["temps_limite_s"] == 300  # garde la durée longue
+    assert par_id[troisieme].parametres["temps_limite_s"] == long_  # garde la durée longue
     assert par_id[troisieme].parametres["graine"] != par_id[second].parametres["graine"]
     assert par_id[second].parametres["utiliser_indices"]  # relance longue : mêmes indices
     assert not par_id[troisieme].parametres["utiliser_indices"]  # autre solution : sans indices
@@ -339,3 +351,55 @@ def test_historique_activation_et_suppression_des_versions(version_generee, clie
     with session_base() as session:
         restantes = session.execute(select(m.VersionEdt.id, m.VersionEdt.active)).all()
     assert restantes == [(premiere, True)]
+
+
+def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
+    """Arrêt demandé alors qu'une solution existe : réussite, et l'écran dit que c'est un arrêt."""
+    import dataclasses
+
+    from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
+
+    vrai = solveur.resoudre
+    demarre = threading.Event()
+
+    def moteur_arrete_avec_solution(instantane, options, arret=None):
+        demarre.set()
+        arret.wait(DELAI)
+        resultat = vrai(instantane, options, None)
+        return dataclasses.replace(
+            resultat,
+            message=f"{resultat.message} {MESSAGE_SOLUTION_CONSERVEE}",
+            statistiques={**resultat.statistiques, "arrete_par_utilisateur": True},
+        )
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_arrete_avec_solution)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    assert demarre.wait(DELAI)
+    en_cours = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
+    assert "le meilleur est conservé" in en_cours  # le bouton d'arrêt l'annonce
+    generation.demander_arret(calcul_id)
+    suivi = generation.attendre_calcul(calcul_id, DELAI)
+    assert suivi.reussi and suivi.arret_demande and suivi.version_id is not None
+
+    page = client.get(f"/calculs/{calcul_id}").text
+    assert "Calcul arrêté : meilleure solution conservée" in page
+    assert "la meilleure solution trouvée a été conservée" in page
+    assert "Voir l&#39;emploi du temps" in page or "Voir l'emploi du temps" in page
+
+
+def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
+    calcul_id = _lancer(client, jeu_minimal.semestre_id, optimiser="1")
+    suivi = generation.attendre_calcul(calcul_id, DELAI)
+    assert suivi.reussi and "Bilan sur l'ensemble du semestre" in suivi.message
+
+    page = client.get(f"/calculs/{calcul_id}").text
+    assert "<strong>Qualité :</strong> Bilan sur l&#39;ensemble du semestre" in page
+    assert "Emploi du temps trouvé :" not in page  # déjà dit par les compteurs
+    assert calculs.qualite_du_moteur(
+        "Emploi du temps trouvé : 3 séance(s) placée(s). Bilan sur l'ensemble du semestre : "
+        "2 créneau(x) libre(s) entre deux cours et 0 séance(s) le samedi. 12 séance(s) "
+        "datée(s) : 12 à la date prévue, 0 replacée(s), 0 à programmer."
+    ) == (
+        "Bilan sur l'ensemble du semestre : 2 créneau(x) libre(s) entre deux cours et "
+        "0 séance(s) le samedi."
+    )

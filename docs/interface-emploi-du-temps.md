@@ -53,7 +53,7 @@ Section de menu `"Générer"` (ordre 250 et 260).
 | `GET /calculs/{id}` | suivi puis résultat |
 | `GET /calculs/{id}/etat` | fragment interrogé **chaque seconde** par HTMX tant que le calcul tourne |
 | `POST /calculs/{id}/arreter` | demande l'arrêt |
-| `POST /calculs/{id}/relancer` | `longue=1` : relance « 5 minutes » ; `autre_solution=1` : nouvelle graine |
+| `POST /calculs/{id}/relancer` | `longue=1` : relance avec `temps_limite_long_s` ; `autre_solution=1` : nouvelle graine |
 | `GET /versions?semestre_id=` | historique des calculs et des versions |
 | `POST /versions/{id}/activer`, `POST /versions/{id}/supprimer` | version active ; suppression (refusée pour la version active, confirmation dans la page) |
 
@@ -71,9 +71,13 @@ Section de menu `"Générer"` (ordre 250 et 260).
 - **Contraintes** : le catalogue (`CATALOGUE`), libellé et description,
   tout coché par défaut ; ce qui est décoché est rappelé dans le suivi, le
   résultat et l'historique.
-- **Options** : « rechercher jusqu'à 1 minute » (`temps_limite_s`) ou
-  « 5 minutes » (`temps_limite_long_s`), « chercher un emploi du temps plus
-  confortable » (`OptionsSolveur.optimiser`, coché si `objectif_actif`),
+- **Options** : « rechercher jusqu'à 5 minutes » (`temps_limite_s`, 300 s
+  par défaut) ou « 15 minutes » (`temps_limite_long_s`, 900 s) : les durées
+  affichées sont lues dans les paramètres, jamais écrites dans l'écran ni
+  dans les tests ; « chercher un emploi du temps plus confortable »
+  (`OptionsSolveur.optimiser`, coché si `objectif_actif`, vrai par défaut ;
+  le jeu de test minimal l'éteint, un test qui veut l'amélioration la
+  demande avec `optimiser=1`),
   « proposer une autre solution » : graine tirée au hasard **et**
   `utiliser_indices=False`, sinon le moteur, guidé par les placements de la
   version active, peut redonner le même emploi du temps. Avec deux fils (le
@@ -88,14 +92,27 @@ Section de menu `"Générer"` (ordre 250 et 260).
   - **succès** : séances placées (`nb_seances`), bilan des séances datées
     (`statistiques["instanciation"]` : total, replacées, à programmer avec
     besoin, date, horaire et raison), lien vers l'emploi du temps et vers
-    « À traiter », quatre indicateurs, bouton « autre solution » ;
+    « À traiter », quatre indicateurs, bouton « autre solution ». La ligne
+    **« Qualité : »** reprend du message du moteur les seules phrases de
+    qualité (`calculs.qualite_du_moteur` : « Bilan sur l'ensemble du
+    semestre : x créneau(x) libre(s)… et y séance(s) le samedi », « on ne
+    peut pas faire mieux », amélioration arrêtée au temps limite) ; ce que
+    les compteurs disent déjà (séances placées, séances datées) n'est pas
+    répété. Le moteur ne fait ce bilan que si l'amélioration était demandée ;
+  - **arrêté avec une solution** (`statistiques["arrete_par_utilisateur"]`,
+    état réussi) : « Calcul arrêté : meilleure solution conservée », la
+    phrase « Calcul arrêté à votre demande : la meilleure solution trouvée a
+    été conservée » et la version enregistrée, comme un succès. Le bouton
+    d'arrêt l'annonce pendant le calcul (« si un emploi du temps a déjà été
+    trouvé, le meilleur est conservé ») ;
   - **refusé** (`etat` impossible et `statistiques["refuse"]`) : « Calcul
     non lancé : impossibilités relevées avant la recherche », avec la liste
     `statistiques["impossibilites"]` ;
   - **impossible avec ces contraintes** : prouvé par la recherche ; la
     phrase est celle du moteur ;
   - **pas trouvé dans le temps imparti**, avec le bouton « relancer en
-    cherchant jusqu'à 5 minutes » ; **arrêté** ;
+    cherchant jusqu'à 15 minutes » (`temps_limite_long_s`) ; **arrêté** avant
+    toute solution : aucune version enregistrée ;
   - **erreur** : numéro du calcul et nom du fichier journal à communiquer,
     jamais de trace ni de nom d'exception (un défaut du moteur relevé par le
     vérificateur arrive ici, avec ses raisons) ;
@@ -179,11 +196,12 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
   réussi. En semaine datée, « Recalculer les séances datées »
   (`modifications.recalculer_seances_datees`) réapplique la semaine type :
   `instancier_version` remplace les séances d'origine « semaine type » ou
-  « replacement » et **conserve** les saisies manuelles et les imports
-  (`nb_conservees`). Comme il produit de nouveau la séance de la semaine
-  type pour une semaine retouchée, le recalcul retire ce doublon (même
-  séance hebdomadaire, même semaine d'origine) : une retouche reste la
-  seule séance de sa semaine. L'utilisateur en est prévenu avant d'agir.
+  « replacement », **conserve** les saisies manuelles (`nb_conservees`,
+  annoncées dans le message « vos N retouche(s) à la main… sont
+  conservées ») et ne recrée pas la séance de la semaine type dans une
+  semaine qu'une retouche couvre déjà (`nb_couvertes`) : une retouche reste
+  la seule séance de sa semaine, sans dédoublonnage côté écran.
+  L'utilisateur en est prévenu avant d'agir.
   Une version sans séances datées (version importée ou de référence)
   propose « produire les séances datées ».
 - **Impression** : bouton « Imprimer » ; la feuille d'impression masque
@@ -224,7 +242,9 @@ elles ne se recalculent jamais depuis la semaine type, ce qui les
 doublerait. Le bouton « recalculer » est remplacé par une explication, le
 recalcul est refusé avant toute écriture (`ErreurRegleMetier`), et un
 déplacement dans la semaine type d'une telle version est enregistré avec la
-remarque que les séances datées n'ont pas été recalculées.
+remarque que les séances datées n'ont pas été recalculées. Si
+`instancier_version` refuse elle-même (même `ErreurRegleMetier`), l'écran
+le dit de la même façon : jamais d'erreur 500.
 
 ## Accueil
 
