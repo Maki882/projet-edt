@@ -37,7 +37,6 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
@@ -48,11 +47,10 @@ from sqlalchemy.orm import Session, selectinload
 from edt.db import modeles as m
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
 from edt.domaine.heures import MINUTES_PAR_JOUR
-from edt.echange.format import FEUILLES, Colonne, Feuille, TypeColonne, identifier_feuille
-from edt.echange.lecture import Tableau
+from edt.echange.format import FEUILLES, Feuille, identifier_feuille
+from edt.echange.lecture import LigneTypee, Tableau, comparable, preparer_tableau
 from edt.echange.rapport import Bilan, Signalement
-from edt.echange.valeurs import cle_code, texte_cellule
-from edt.erreurs import ErreurDonneesInvalides
+from edt.echange.valeurs import cle_code
 
 journal = logging.getLogger(__name__)
 
@@ -88,26 +86,6 @@ class Rejet(Exception):  # noqa: N818 - c'est un refus de ligne, pas une erreur 
         super().__init__(message)
         self.colonne = colonne
         self.message = message
-
-
-@dataclass
-class LigneTypee:
-    """Une ligne lue et convertie : valeurs typées par colonne, colonnes non reconnues."""
-
-    fichier: str
-    feuille: str
-    numero: int
-    valeurs: dict[str, Any]
-    presentes: frozenset[str]
-    extra: dict[str, str] = field(default_factory=dict)
-
-    def __getitem__(self, nom: str) -> Any:
-        return self.valeurs.get(nom)
-
-    @property
-    def position(self) -> str:
-        """« salles.csv, ligne 4 »."""
-        return f"{self.fichier}, ligne {self.numero}"
 
 
 # --------------------------------------------------------------------------- #
@@ -1022,119 +1000,6 @@ def _ecrire_chevauchements(
 # --------------------------------------------------------------------------- #
 
 
-def preparer_tableau(
-    tableau: Tableau, feuille: Feuille, bilan: Bilan, signalements: list[Signalement]
-) -> list[LigneTypee]:
-    """Lit les lignes d'un tableau selon la feuille ; les lignes illisibles sont rejetées."""
-    correspondance: list[Colonne | None] = []
-    vues: set[str] = set()
-    inconnues: list[str] = []
-    for entete in tableau.entetes:
-        colonne = feuille.reconnaitre_entete(entete)
-        if colonne is not None and colonne.nom in vues:
-            signalements.append(
-                Signalement(
-                    Gravite.AVERTISSEMENT,
-                    f"Colonne « {entete} » en double : seule la première est lue.",
-                    tableau.fichier,
-                    tableau.nom,
-                    tableau.ligne_entetes,
-                    entete,
-                )
-            )
-            colonne = None
-        if colonne is None:
-            inconnues.append(entete)
-        else:
-            vues.add(colonne.nom)
-        correspondance.append(colonne)
-
-    manquantes = [nom for nom in feuille.obligatoires if nom not in vues]
-    if manquantes:
-        signalements.append(
-            Signalement(
-                Gravite.ERREUR,
-                f"Colonne(s) obligatoire(s) absente(s) : {', '.join(manquantes)}. Aucune des "
-                f"{len(tableau.lignes)} ligne(s) de ce tableau n'est importée.",
-                tableau.fichier,
-                tableau.nom,
-                tableau.ligne_entetes,
-                ", ".join(manquantes),
-            )
-        )
-        bilan.ajouter("rejetes", len(tableau.lignes))
-        return []
-    if inconnues:
-        conservees = feuille.nom in FEUILLES_AVEC_PROVENANCE
-        suite = (
-            "leurs valeurs sont conservées avec chaque ligne (champ « extra »)."
-            if conservees
-            else "leurs valeurs ne sont pas conservées : la table ne prévoit pas de champ pour "
-            "des colonnes supplémentaires."
-        )
-        signalements.append(
-            Signalement(
-                Gravite.AVERTISSEMENT,
-                f"Colonne(s) non reconnue(s) : {', '.join(inconnues)} ; {suite}",
-                tableau.fichier,
-                tableau.nom,
-                tableau.ligne_entetes,
-            )
-        )
-
-    presentes = frozenset(vues)
-    lignes = []
-    for brute in tableau.lignes:
-        valeurs: dict[str, Any] = {}
-        extra: dict[str, str] = {}
-        erreurs: list[tuple[str, str]] = []
-        for colonne, entete, cellule in zip(
-            correspondance, tableau.entetes, brute.cellules, strict=True
-        ):
-            if colonne is None:
-                texte = texte_cellule(cellule)
-                if texte:
-                    extra[entete] = texte
-                continue
-            try:
-                valeur = colonne.lire(cellule)
-            except ErreurDonneesInvalides as erreur:
-                erreurs.append((colonne.nom, erreur.message))
-                continue
-            if valeur is None and colonne.obligatoire:
-                erreurs.append((colonne.nom, "Valeur obligatoire manquante."))
-                continue
-            valeurs[colonne.nom] = colonne.defaut if valeur is None else valeur
-        for colonne in feuille.colonnes:
-            valeurs.setdefault(colonne.nom, colonne.defaut)
-        if feuille.nom in ("jours_fermes", "indisponibilites") and valeurs.get("date_fin") is None:
-            valeurs["date_fin"] = valeurs.get("date_debut")
-        if erreurs:
-            bilan.ajouter("rejetes")
-            for nom, message in erreurs:
-                signalements.append(
-                    Signalement(
-                        Gravite.ERREUR, message, tableau.fichier, tableau.nom, brute.numero, nom
-                    )
-                )
-            continue
-        lignes.append(
-            LigneTypee(tableau.fichier, tableau.nom, brute.numero, valeurs, presentes, extra)
-        )
-    return lignes
-
-
-def comparable(colonne: Colonne, valeur: Any) -> Any:
-    """Forme d'une valeur pour comparer deux lignes (codes sans casse, listes sans ordre)."""
-    if valeur is None:
-        return None
-    if colonne.type is TypeColonne.CODE:
-        return cle_code(valeur)
-    if colonne.type is TypeColonne.LISTE:
-        return frozenset(cle_code(x) for x in valeur)
-    return valeur
-
-
 def cle_ligne(feuille: Feuille, ligne: LigneTypee) -> tuple:
     """Identifiant métier d'une ligne, pour repérer les doublons d'un import."""
     if feuille.nom == "trajets":
@@ -1255,7 +1120,13 @@ def importer_tableaux(
         lignes = [
             ligne
             for tableau in par_feuille[feuille.nom]
-            for ligne in preparer_tableau(tableau, feuille, bilan, signalements)
+            for ligne in preparer_tableau(
+                tableau,
+                feuille,
+                bilan,
+                signalements,
+                extra_conserve=feuille.nom in FEUILLES_AVEC_PROVENANCE,
+            )
         ]
         lignes = dedoublonner(feuille, lignes, bilan, signalements)
         if feuille.nom == "groupes":

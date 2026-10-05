@@ -23,13 +23,14 @@ import csv
 import io
 import logging
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from edt.domaine.enumerations import Gravite
-from edt.echange.format import est_lisez_moi
-from edt.echange.rapport import Apercu, Signalement
-from edt.echange.valeurs import texte_cellule
+from edt.echange.format import Colonne, Feuille, TypeColonne, est_lisez_moi
+from edt.echange.rapport import Apercu, Bilan, Signalement
+from edt.echange.valeurs import cle_code, texte_cellule
+from edt.erreurs import ErreurDonneesInvalides
 
 journal = logging.getLogger(__name__)
 
@@ -271,6 +272,154 @@ def lire_zip(fichier: FichierEnvoye, signalements: list[Signalement]) -> list[Ta
                     )
                 )
     return tableaux
+
+
+# --------------------------------------------------------------------------- #
+# Lignes typées selon une feuille du format
+# --------------------------------------------------------------------------- #
+
+
+@dataclass
+class LigneTypee:
+    """Une ligne lue et convertie : valeurs typées par colonne, colonnes non reconnues."""
+
+    fichier: str
+    feuille: str
+    numero: int
+    valeurs: dict[str, Any]
+    presentes: frozenset[str]
+    extra: dict[str, str] = field(default_factory=dict)
+
+    def __getitem__(self, nom: str) -> Any:
+        return self.valeurs.get(nom)
+
+    @property
+    def position(self) -> str:
+        """« salles.csv, ligne 4 »."""
+        return f"{self.fichier}, ligne {self.numero}"
+
+
+def preparer_tableau(
+    tableau: Tableau,
+    feuille: Feuille,
+    bilan: Bilan,
+    signalements: list[Signalement],
+    extra_conserve: bool = True,
+) -> list[LigneTypee]:
+    """Lit les lignes d'un tableau selon la feuille ; les lignes illisibles sont rejetées.
+
+    Toutes les valeurs illisibles d'une ligne sont signalées (pas seulement la
+    première). Une colonne obligatoire absente rejette tout le tableau.
+    `extra_conserve` dit si les colonnes non reconnues seront gardées (pour
+    le message du rapport).
+    """
+    correspondance: list[Colonne | None] = []
+    vues: set[str] = set()
+    inconnues: list[str] = []
+    for entete in tableau.entetes:
+        colonne = feuille.reconnaitre_entete(entete)
+        if colonne is not None and colonne.nom in vues:
+            signalements.append(
+                Signalement(
+                    Gravite.AVERTISSEMENT,
+                    f"Colonne « {entete} » en double : seule la première est lue.",
+                    tableau.fichier,
+                    tableau.nom,
+                    tableau.ligne_entetes,
+                    entete,
+                )
+            )
+            colonne = None
+        if colonne is None:
+            inconnues.append(entete)
+        else:
+            vues.add(colonne.nom)
+        correspondance.append(colonne)
+
+    manquantes = [nom for nom in feuille.obligatoires if nom not in vues]
+    if manquantes:
+        signalements.append(
+            Signalement(
+                Gravite.ERREUR,
+                f"Colonne(s) obligatoire(s) absente(s) : {', '.join(manquantes)}. Aucune des "
+                f"{len(tableau.lignes)} ligne(s) de ce tableau n'est importée.",
+                tableau.fichier,
+                tableau.nom,
+                tableau.ligne_entetes,
+                ", ".join(manquantes),
+            )
+        )
+        bilan.ajouter("rejetes", len(tableau.lignes))
+        return []
+    if inconnues:
+        suite = (
+            "leurs valeurs sont conservées avec chaque ligne (champ « extra »)."
+            if extra_conserve
+            else "leurs valeurs ne sont pas conservées : la table ne prévoit pas de champ pour "
+            "des colonnes supplémentaires."
+        )
+        signalements.append(
+            Signalement(
+                Gravite.AVERTISSEMENT,
+                f"Colonne(s) non reconnue(s) : {', '.join(inconnues)} ; {suite}",
+                tableau.fichier,
+                tableau.nom,
+                tableau.ligne_entetes,
+            )
+        )
+
+    presentes = frozenset(vues)
+    lignes = []
+    for brute in tableau.lignes:
+        valeurs: dict[str, Any] = {}
+        extra: dict[str, str] = {}
+        erreurs: list[tuple[str, str]] = []
+        for colonne, entete, cellule in zip(
+            correspondance, tableau.entetes, brute.cellules, strict=True
+        ):
+            if colonne is None:
+                texte = texte_cellule(cellule)
+                if texte:
+                    extra[entete] = texte
+                continue
+            try:
+                valeur = colonne.lire(cellule)
+            except ErreurDonneesInvalides as erreur:
+                erreurs.append((colonne.nom, erreur.message))
+                continue
+            if valeur is None and colonne.obligatoire:
+                erreurs.append((colonne.nom, "Valeur obligatoire manquante."))
+                continue
+            valeurs[colonne.nom] = colonne.defaut if valeur is None else valeur
+        for colonne in feuille.colonnes:
+            valeurs.setdefault(colonne.nom, colonne.defaut)
+        for colonne in feuille.colonnes:
+            if colonne.defaut_de is not None and valeurs[colonne.nom] is None:
+                valeurs[colonne.nom] = valeurs.get(colonne.defaut_de)
+        if erreurs:
+            bilan.ajouter("rejetes")
+            for nom, message in erreurs:
+                signalements.append(
+                    Signalement(
+                        Gravite.ERREUR, message, tableau.fichier, tableau.nom, brute.numero, nom
+                    )
+                )
+            continue
+        lignes.append(
+            LigneTypee(tableau.fichier, tableau.nom, brute.numero, valeurs, presentes, extra)
+        )
+    return lignes
+
+
+def comparable(colonne: Colonne, valeur: Any) -> Any:
+    """Forme d'une valeur pour comparer deux lignes (codes sans casse, listes sans ordre)."""
+    if valeur is None:
+        return None
+    if colonne.type is TypeColonne.CODE:
+        return cle_code(valeur)
+    if colonne.type is TypeColonne.LISTE:
+        return frozenset(cle_code(x) for x in valeur)
+    return valeur
 
 
 # --------------------------------------------------------------------------- #

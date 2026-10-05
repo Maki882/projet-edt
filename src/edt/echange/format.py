@@ -110,7 +110,9 @@ class Colonne:
     - `nom` : en-tête attendu (reconnu sans casse ni accents, comme le libellé) ;
     - `identifiant` : la colonne fait partie de l'identifiant métier de la ligne ;
     - `choix` : liste fermée des valeurs permises (type `CHOIX`) ;
-    - `defaut` : valeur retenue quand la cellule est vide (documentée dans l'aide).
+    - `defaut` : valeur retenue quand la cellule est vide (documentée dans l'aide) ;
+    - `defaut_de` : nom d'une autre colonne dont la valeur est reprise quand la
+      cellule est vide (dernier jour = premier jour).
     """
 
     nom: str
@@ -123,6 +125,7 @@ class Colonne:
     choix: type[StrEnum] | None = None
     defaut: Any = None
     minimum: int | None = None
+    defaut_de: str | None = None
 
     def __post_init__(self) -> None:
         if (self.type is TypeColonne.CHOIX) != (self.choix is not None):
@@ -161,6 +164,8 @@ class Colonne:
             morceaux.append("Valeurs : " + ", ".join(m.value for m in self.choix) + ".")
         if self.defaut is not None:
             morceaux.append(f"Vide : {self.ecrire(self.defaut)}.")
+        if self.defaut_de is not None:
+            morceaux.append(f"Vide : même valeur que {self.defaut_de}.")
         return " ".join(morceaux)
 
 
@@ -411,7 +416,8 @@ FEUILLES: tuple[Feuille, ...] = (
                 "Dernier jour",
                 T.DATE,
                 identifiant=True,
-                aide="Inclus ; vide = un seul jour.",
+                defaut_de="date_debut",
+                aide="Inclus.",
                 exemple="01/11/2026",
             ),
             _c("libelle", "Libellé", T.TEXTE, obligatoire=True, exemple="Vacances de la Toussaint"),
@@ -621,7 +627,8 @@ FEUILLES: tuple[Feuille, ...] = (
                 "Dernier jour",
                 T.DATE,
                 identifiant=True,
-                aide="Forme datée, inclus ; vide = un seul jour.",
+                defaut_de="date_debut",
+                aide="Forme datée, inclus.",
             ),
             _c("debut", "Début", T.HEURE, identifiant=True, defaut=0, exemple="13:45"),
             _c("fin", "Fin", T.HEURE, identifiant=True, defaut=24 * 60, exemple="18:00"),
