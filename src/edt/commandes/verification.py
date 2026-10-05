@@ -129,12 +129,14 @@ def lignes_du_rapport(rapport: RapportVerification) -> list[str]:
     periode = ""
     if debut or fin:
         periode = f", du {_date(debut) if debut else 'début'} au {_date(fin) if fin else 'terme'}"
-    elements = "séance(s) datée(s)" if rapport.objet == SEANCES_DATEES else "placement(s)"
+    if rapport.objet == SEANCES_DATEES:
+        elements = "séance(s) datée(s) examinée(s)"
+    else:
+        elements = "placement(s) examiné(s)"
     lignes = [
         f"Vérification {objet} : version « {rapport.version} » (n° {rapport.version_id}), "
         f"semestre « {rapport.semestre} »{periode}.",
-        f"{len(rapport.contraintes)} contrainte(s) vérifiée(s), {rapport.nb_examines} "
-        f"{elements} examiné(s).",
+        f"{len(rapport.contraintes)} contrainte(s) vérifiée(s), {rapport.nb_examines} {elements}.",
     ]
     for gravite, titre in _TITRES.items():
         anomalies = [a for a in rapport.anomalies if a.gravite is gravite]

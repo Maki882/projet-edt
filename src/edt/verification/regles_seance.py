@@ -32,7 +32,7 @@ from collections.abc import Iterator, Sequence
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import SAMEDI, Accessibilite, CibleIndisponibilite, Gravite
-from edt.domaine.heures import se_chevauchent
+from edt.domaine.heures import MINUTES_PAR_JOUR, se_chevauchent
 from edt.domaine.instantane import Indisponibilite, Placement
 from edt.verification.contexte import Contexte, Element
 from edt.verification.contrat import Anomalie
@@ -333,11 +333,14 @@ def _anomalie_dispo(
         sujet = f"Le groupe {ctx.code_groupe(ressource)}"
         champs = {"groupes": (ressource,)}
     motif = f" ({indisponibilite.motif})" if indisponibilite.motif.strip() else ""
+    if (indisponibilite.debut, indisponibilite.fin) == (0, MINUTES_PAR_JOUR):
+        horaire = "toute la journée"
+    else:
+        horaire = plage(indisponibilite.debut, indisponibilite.fin)
     return ctx.anomalie(
         code,
         Gravite.ERREUR,
-        f"{sujet} est indisponible {ctx.quand(element)} "
-        f"{plage(indisponibilite.debut, indisponibilite.fin)}{motif}, pendant la séance "
+        f"{sujet} est indisponible {ctx.quand(element)} {horaire}{motif}, pendant la séance "
         f"{ctx.libelle(element)} prévue {plage(element.debut, element.fin)}.",
         (element,),
         **champs,
