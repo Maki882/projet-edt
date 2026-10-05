@@ -32,7 +32,6 @@ from edt.domaine.enumerations import (
     Accessibilite,
     CibleIndisponibilite,
     DemiJournee,
-    ModeVolume,
     NatureGroupe,
     NatureJourFerme,
     StatutEnseignant,
