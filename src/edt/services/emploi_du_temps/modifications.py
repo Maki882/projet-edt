@@ -21,12 +21,10 @@ Retouches des séances datées
 Déplacer ou annuler une séance datée en fait une **retouche** : son origine
 devient « saisie manuelle ». Recalculer les séances datées
 (`instancier_version`) remplace les séances issues de la semaine type et des
-replacements, mais **conserve** les saisies manuelles et les évite. Comme
-l'instanciation produit de nouveau la séance de la semaine type pour la
-semaine retouchée, `recalculer_seances_datees` retire ensuite ce doublon :
-une retouche reste la seule séance de sa semaine pour sa séance
-hebdomadaire. Une annulation reste donc une annulation, un déplacement reste
-à sa nouvelle place.
+replacements, mais **conserve** les saisies manuelles, les évite, et ne
+recrée pas la séance de la semaine type dans une semaine qu'une retouche
+couvre déjà (`RapportInstanciation.nb_couvertes`). Une annulation reste donc
+une annulation, un déplacement reste à sa nouvelle place.
 
 Une version dont les séances datées ont été **importées** (origine
 « import », par exemple une version de référence) ne se recalcule pas : la
@@ -56,11 +54,10 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from edt.db import modeles as m
-from edt.domaine.calendrier import lundi_de
 from edt.domaine.enumerations import (
     JOURS,
     SAMEDI,
@@ -174,7 +171,6 @@ class BilanRecalcul:
     nb_replacees: int
     nb_a_programmer: int
     nb_retouches: int
-    nb_doublons_retires: int
 
     @property
     def message(self) -> str:
@@ -602,9 +598,9 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     if seances_datees_importees(session, version_id):
         raise ErreurRegleMetier(MESSAGE_SEANCES_IMPORTEES)
-    raccords.instancier_version(session, version_id)
+    rapport = raccords.instancier_version(session, version_id)
     session.flush()
-    retouches, doublons = _retirer_doublons_des_retouches(session, version_id)
+    retouches = rapport.nb_conservees  # saisies à la main laissées en place (pas d'import ici)
     comptes = dict(
         session.execute(
             select(m.Occurrence.statut, func.count())
@@ -627,55 +623,14 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
         nb_replacees=nb_replacees,
         nb_a_programmer=comptes.get(StatutOccurrence.A_PROGRAMMER, 0),
         nb_retouches=retouches,
-        nb_doublons_retires=doublons,
     )
     journal.info(
-        "Séances datées de la version %d recalculées : %d séance(s), %d retouche(s) "
-        "conservée(s), %d doublon(s) retiré(s)",
+        "Séances datées de la version %d recalculées : %d séance(s), %d retouche(s) conservée(s)",
         version_id,
         bilan.nb_occurrences,
         retouches,
-        doublons,
     )
     return bilan
-
-
-def _retirer_doublons_des_retouches(session: Session, version_id: int) -> tuple[int, int]:
-    """Retire la séance recalculée d'une semaine déjà couverte par une retouche à la main.
-
-    Une séance hebdomadaire a au plus une séance datée par semaine : la
-    semaine d'une séance datée est celle de sa date d'origine
-    (`date_initiale`, sinon sa date). Renvoie (retouches, doublons retirés).
-    """
-    lignes = session.execute(
-        select(
-            m.Occurrence.id,
-            m.Occurrence.seance_hebdo_id,
-            m.Occurrence.date,
-            m.Occurrence.date_initiale,
-            m.Occurrence.origine,
-        ).where(m.Occurrence.version_id == version_id, m.Occurrence.seance_hebdo_id.is_not(None))
-    ).all()
-    couvertes = {
-        (seance, lundi_de(initiale or date))
-        for _, seance, date, initiale, origine in lignes
-        if origine == OrigineOccurrence.MANUELLE
-    }
-    if not couvertes:
-        return 0, 0
-    doublons = [
-        identifiant
-        for identifiant, seance, date, initiale, origine in lignes
-        if origine != OrigineOccurrence.MANUELLE
-        and origine != OrigineOccurrence.IMPORT
-        and (seance, lundi_de(initiale or date)) in couvertes
-    ]
-    for debut in range(0, len(doublons), 500):
-        session.execute(
-            delete(m.Occurrence).where(m.Occurrence.id.in_(doublons[debut : debut + 500]))
-        )
-    session.flush()
-    return len(couvertes), len(doublons)
 
 
 # --------------------------------------------------------------------------- #
