@@ -1,0 +1,75 @@
+3. Import, identifiants et jeu de données synthétique
+3.1 🔴 Les enseignants ont-ils un identifiant stable (matricule, email) ou seulement « NOM Prénom », avec des variantes (« DUPONT J. », « Dupont Jean », accents) et des homonymes possibles ?
+
+Pourquoi : Un enseignant éclaté en deux entités fait disparaître des conflits réels ; deux homonymes fusionnés créent de faux conflits.
+Défaut proposé : Clé = nom + prénom normalisés (sans accents, majuscules), identifiant interne créé à l'import, rapport des quasi-doublons par distance de Levenshtein à valider à la main. R: identifiant stable
+3.2 🔴 Quelle est la nomenclature des salles (« N204 », « I-105 », « Amphi Issy ») et le campus est-il déductible du nom ?
+
+Pourquoi : La contrainte de changement de campus est impossible sans un campus fiable par salle.
+Défaut proposé : Table de correspondance salle → campus générée à l'import par préfixe puis corrigée manuellement dans l'interface. R : N pour ndc L pour Issy et éventuellement des salles dans des établissement voisines comme Stan301 etc
+3.3 🔴 L'import se fait-il depuis l'interface (téléversement ou glisser un fichier, prévisualisation, rapport d'erreurs ligne par ligne), en ligne de commande, ou les deux ? Quels formats : CSV, Excel (.xlsx), ICS ?
+
+Pourquoi : L'upload impose une gestion de fichier côté serveur, une page dédiée et la dépendance openpyxl ; la CLI sert à la CI et aux scripts.
+Défaut proposé : Les deux, la commande CLI appelant la même fonction que l'interface ; CSV obligatoire, XLSX via openpyxl classé utile ; prévisualisation des 20 premières lignes et rapport (numéro, colonne, message) ; rien n'est écrit tant qu'il reste une erreur. R: les deux 3.4 🔴 Si les données réelles n'arrivent pas, quelle taille et quel réalisme pour le jeu synthétique (promotions ISEP, matières plausibles, deux campus), qui le fabrique ?
+Pourquoi : Le générateur synthétique est un module à part entière avec ses propres tests et il sert de base aux tests d'intégration et à la démo.
+Défaut proposé : Générateur paramétrable (promotions, groupes, enseignants, salles, campus) et trois jeux à seed fixe versionnés dans tests/fixtures/ : petit (2 groupes, 10 séances) pour les tests unitaires, moyen (1 promotion) pour la démo, grand (école entière) pour la performance. R:on garde le défaut proposé
+3.5 🟠 Quel format officiel d'import l'application doit-elle supporter (classeur XLSX multi-onglets, un CSV par entité, JSON) et fournit-on un gabarit téléchargeable ? Faut-il un assistant de correspondance des colonnes ou un gabarit fixe à adapter à la main ?
+
+Pourquoi : Cela définit les schémas de validation, une partie de la documentation utilisateur du 23/11, et l'assistant de correspondance est un écran supplémentaire avec état intermédiaire.
+Défaut proposé : Gabarit fixe téléchargeable depuis l'écran d'import (un CSV par entité, XLSX multi-onglets accepté), JSON comme format pivot interne, message listant les colonnes manquantes ; l'assistant de correspondance est classé optionnel. R: on garde l'idée du défaut
+3.6 🟠 Lorsqu'une ligne est invalide (salle inconnue, heure mal formée), l'import est-il rejeté entièrement ou accepté partiellement avec rapport ?
+
+Pourquoi : Le « tout ou rien » exige une validation complète avant toute écriture en base.
+Défaut proposé : Validation complète, rejet total, rapport ligne par ligne téléchargeable. R: accepté partiellement avec rapport
+3.7 🟠 En cas de réimport d'un fichier déjà importé, que fait-on : refuser les doublons, mettre à jour par identifiant métier, tout remplacer après confirmation, ou créer un nouveau scénario ?
+
+Pourquoi : La stratégie de fusion conditionne les messages, la présence d'un identifiant métier dans les formulaires, et éventuellement une colonne scenario_id sur toutes les tables.
+Défaut proposé : Mise à jour par identifiant métier (code salle, nom+prénom enseignant, code groupe) avec récapitulatif « X créés, Y mis à jour, Z ignorés » avant validation ; bouton séparé « Tout remplacer » avec confirmation ; les scénarios nommés sont classés utile. R) on garde défaut proposé 3.8 🟠 Quelles conventions attendre du fichier : séparateur « ; » ou « , », BOM Excel, dates « JJ/MM/AAAA », heures « 8h30 » ou « 08:30 », accents en cp1252 ou UTF-8 ?
+Pourquoi : Un CSV en cp1252 avec accents et séparateur « ; » est la cause la plus fréquente d'un import qui échoue en démo et altère le rapprochement des noms.
+Défaut proposé : Détection automatique du séparateur, du BOM et de l'encodage (UTF-8 puis repli cp1252 avec avertissement), parsing tolérant des dates et heures, un test unitaire par variante rencontrée. R: on garde le défaut
+3.9 🟠 Les matières ont-elles un code module (ex. « II.2409 ») ou seulement un libellé, et un même enseignement peut-il apparaître sous plusieurs libellés (« Maths 1 » / « Mathématiques I ») ?
+
+Pourquoi : Le comptage des séances par matière et l'affichage exigent une clé fiable ; sans code, il faut une table de correspondance.
+Défaut proposé : Clé = code si présent, sinon libellé normalisé ; alias gérés par une table matiere_alias éditable. R: elles ont un code module
+3.10 🟠 Si l'export contient des doublons stricts (même date, heure, salle, enseignant, groupe) ou des chevauchements réels, faut-il fusionner, ignorer ou signaler ?
+
+Pourquoi : Cela définit ce que le rapport d'import doit afficher et si l'import est « tout ou rien ».
+Défaut proposé : Doublons stricts fusionnés silencieusement ; chevauchements conservés mais listés dans le rapport d'audit. R: on garde l'idée du défaut 3.11 🟠 Chaque occurrence hebdomadaire est-elle listée, ou l'export contient-il des règles de récurrence (iCal RRULE, « toutes les semaines du 15/09 au 20/12 ») ?
+Pourquoi : Il faut développer les récurrences en occurrences datées en tenant compte des vacances.
+Défaut proposé : Développement des récurrences avec dateutil.rrule, exclusion des semaines de vacances du calendrier. R: on accepte les deux formats, car les occurrences déjà listées sont importées telles quelles et les règles de récurrence sont transformées en séances datées avec dateutil.rrule, en retirant les semaines de vacances et les jours fériés indiqués dans un onglet « Calendrier » du gabarit. 3.12 🟠 Une séance à plusieurs enseignants, plusieurs salles ou plusieurs groupes apparaît-elle sur une seule ligne (valeurs séparées par virgule) ou sur plusieurs lignes ?
+Pourquoi : Cela détermine les tables de jointure séance-enseignant, séance-salle, séance-groupe et la logique de dédoublonnage.
+Défaut proposé : Modèle N-N pour les trois relations, parseur qui éclate les listes séparées par virgule ou point-virgule. : on garde l'réé du défaut
+3.13 🟠 Comment traiter une séance réelle sans enseignant nommé (« à recruter », « intervenant extérieur »), sans salle (« à définir ») ou avec un groupe inconnu ?
+
+Pourquoi : Le schéma actuel impose NOT NULL sur enseignant, salle et classe, et une séance sans enseignant ne doit ni créer de faux conflit ni faire échouer l'import.
+Défaut proposé : Colonnes rendues nullable ; enseignant inconnu = enseignant fictif propre à la matière sans contrainte de disponibilité ; séance importée avec avertissement et exclue de la référence de comparaison. R: un enseignant inconnu est remplacé par un enseignant fictif propre à la matière, sans contrainte de disponibilité, une salle « à définir » est laissée au solveur, et une séance au groupe inconnu est mise de côté et signalée dans le rapport d'import, sans jamais faire échouer l'import. 3.14 🟠 Les séances de l'export indiquent-elles leur type (CM, TD, TP, examen, projet, soutenance, autonomie) ?
+Pourquoi : La règle « TP possible le samedi » et le choix du type de salle en dépendent.
+Défaut proposé : Si absent, on infère par expression régulière sur le libellé (« TD », « TP », « Exam »), sinon « CM ». R: dans notre gabarit, le type est une colonne obligatoire. La question ne concerne donc que l'export réel de l'ISEP, s'il ne contient pas cette colonne.
+3.15 🟠 En attendant les données, chaque membre peut-il exporter son propre emploi du temps (.ics depuis le logiciel de l'école ou son agenda) pour servir d'échantillon réel ?
+
+Pourquoi : Cela donne dès maintenant un vrai format à parser et des cas limites réels sans attendre le directeur.
+Défaut proposé : Oui, on écrit d'abord un lecteur .ics qui devient le premier adaptateur d'import. R: oui 3.16 🟠 L'import d'un emploi du temps déjà placé doit-il pouvoir créer, en plus de la table de référence en lecture seule, des placements verrouillés que le solveur doit compléter (cas réel : la scolarité a déjà placé les vacataires et les amphis avant de lancer le reste) ? Faut-il un choix à l'import « importer comme référence / comme verrous / comme séances à replacer » ?
+Pourquoi : Compléter un EDT partiel est le cas d'usage réel d'un générateur en scolarité (on ne part jamais de zéro) et un scénario de démo fort ; il impose que l'import sache produire trois objets différents (référence, séance à placer, placement verrouillé) à partir d'une même ligne, ce que le schéma doit prévoir dès le départ.
+Défaut proposé : Trois modes dans l'écran d'import, « référence » par défaut ; en mode « verrous », chaque ligne crée une séance à placer plus un placement verrouillé ; en mode « à replacer », seule la séance ; un même fichier peut être réimporté dans un autre mode. R: défaut proposé 3.17 🟠 Les heures des exports (ICS, CSV issus d'Hyperplanning ou d'un agenda) sont-elles en heure locale ou en UTC avec fuseau, et que fait l'import des séances situées après le passage à l'heure d'hiver (fin octobre), qui apparaissent décalées d'une heure en UTC ? Même question pour l'export iCal produit par l'application.
+Pourquoi : Un semestre réel enjambe le changement d'heure : un parseur naïf place les cours de novembre à 7 h 30 ou 9 h 30, ce qui fait tomber la moitié des séances « hors grille » sans que personne comprenne pourquoi, et un iCal exporté sans fuseau se décale dans Google Agenda.
+Défaut proposé : Toutes les heures sont converties en heure locale Europe/Paris à l'import (zoneinfo), stockées sans fuseau, et l'export iCal déclare explicitement TZID=Europe/Paris ; un test unitaire couvre une séance avant et une après le 25/10. R: heure locale Europe/Paris
+3.18 🟠 Quelles sont les clés d'unicité réelles : une matière est-elle rattachée à une promotion (« Mathématiques » de A1 et de A2 sont deux matières distinctes) ou globale ; deux salles peuvent-elles porter le même nom sur deux campus (« 101 » à Issy et à NDC) ; un même nom de groupe peut-il désigner deux groupes différents d'une année à l'autre ?
+
+Pourquoi : Une clé trop large fusionne des entités distinctes (deux salles homonymes deviennent une seule salle, donc de faux conflits ; le CM de maths A1 et A2 une seule matière) ; une clé trop fine éclate une même entité ; c'est la source la plus fréquente d'un rapprochement d'import faux et cela fixe les contraintes UNIQUE du schéma.
+Défaut proposé : Matière = (code ou libellé normalisé, promotion) ; salle = (nom, campus) ; groupe = (nom, année scolaire) ; les contraintes UNIQUE correspondantes sont posées en base et le rapport d'import signale les homonymes. R: on garde l'idée du défaut
+3.19 ⚪ Les événements spéciaux du réel (examens, conférences, forums, soutenances, journées d'intégration) doivent-ils être importés comme séances figées, ignorés, ou marqués « autre » ?
+
+Pourquoi : Ils occupent salles et amphis mais ne sont pas des cours à replacer par le solveur.
+Défaut proposé : Importés avec type « autre » et drapeau figé, exclus des besoins. R: ces événements sont importés avec le type « autre » et le drapeau figé, et ils sont exclus des besoins.
+3.20 ⚪ Les noms utilisés dans insert_data.py (classe « SI2I-A », salles « B204 », « C105 ») suivent-ils la nomenclature réelle de l'ISEP ? Faut-il l'adopter dans les fixtures et l'interface ?
+
+Pourquoi : Des fixtures réalistes évitent de refaire les tests et les captures d'écran quand les données réelles arrivent.
+Défaut proposé : Libellés libres importés tels quels avec un code interne stable ; on adopte la nomenclature réelle dans les fixtures dès qu'elle est connue.
+3.21 ⚪ Conserve-t-on pour chaque séance importée sa provenance (fichier, numéro de ligne, texte brut de la ligne) et les colonnes non reconnues dans un champ JSON extra, afin de remonter à la source quand le modèle ne représente pas quelque chose que contient le fichier réel ?
+
+Pourquoi : Quand l'emploi du temps généré diffère du réel ou qu'une séance semble aberrante, la première question est « d'où vient cette ligne ? » ; sans provenance, le débogage de l'import sur 800 lignes consomme une séance entière, et les colonnes ignorées sont précisément celles qui révèlent qu'une notion manque au modèle.
+Défaut proposé : Colonnes source_fichier, source_ligne et extra (JSON) sur seance_reference et seance ; affichées dans le panneau latéral en vue planificateur ; jamais exportées. R: on garde l'idée du défaut proposées
+3.22 ⚪ Dans l'export réel, une séance longue (TP de 4 h) apparaît-elle comme une seule ligne ou comme deux lignes consécutives de 2 h avec même matière, groupe, enseignant et salle ? Faut-il fusionner automatiquement les lignes contiguës identiques, et la fusion peut-elle enjamber la pause déjeuner ?
+
+Pourquoi : Sans fusion, on reconstitue « deux TP de 2 h » au lieu d'un bloc de 4 h et on perd la contrainte de consécutivité ; avec une fusion trop large, on fabrique des blocs qui enjambent le déjeuner ou fusionnent deux TD distincts.
+Défaut proposé : Fusion automatique des lignes strictement identiques et contiguës (écart ≤ 15 min) dans la même demi-journée, jamais à travers le déjeuner, signalée dans le rapport d'import et désactivable par option. R: comme une seule ligne

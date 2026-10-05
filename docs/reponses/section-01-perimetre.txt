@@ -1,0 +1,96 @@
+
+1. Périmètre, utilisateurs et démonstration
+1.1 🔴 Quels niveaux l'application doit-elle couvrir (cycle ingénieur A1-A3, cycle intégré I1-I2, apprentissage, bachelors) et quelle promotion servira de cas de démonstration ? Importe-t-on toute l'école ou un périmètre réduit ?
+on va générer des données synthétiques, en attendant d'avoir les vrais données
+voici le message envoyé au directeur : 
+"Bonjour Monsieur, 
+
+Après avoir consulté mes camarades nous avons décidé de poursuivre notre projet dans le cadre du PTS, sans forcément chercher à le commercialiser pour le moment. Nous sommes très intéressés par votre proposition de nous fournir d’anciennes données de l’école afin de tester notre app à échelle réelle.
+J’ai préparé une liste de données qui pourraient nous servir, pensez-vous pouvoir nous en procurer quelques-unes ?
+
+Très utile : 
+1.	Les cours de l'année (jour, heures, matière, type de cours, enseignant, promotion ou groupe, salle, site, statut).
+2.	La liste des salles avec site, bâtiment, capacité, type, équipements, étage, accessibilité PMR, ect.
+3.	La liste des enseignants (nom (ou identifiant), matières, statut permanent ou vacataire)
+4.	Les promotions, groupes de TD et sous-groupes, avec leurs effectifs et leur emboîtement.
+5.	Les matières et les types de cours.
+6.	La grille horaire (créneaux, pauses, déjeuner, samedi) et le calendrier de l'année (semestres, vacances, jours fériés, semaines banalisées).
+Utile
+8. La maquette pédagogique (volumes CM, TD, TP par matière et promotion).
+9. Les indisponibilités des enseignants et les réservations de salles.
+10. Les modifications de l'année : cours annulés, déplacés, rattrapés, absences d'enseignants avec un motif générique.
+11. Les règles internes non écrites.
+12. Les groupes ayant nécessité des salles accessibles, sans aucune donnée nominative ni médicale.
+Bonus : un export iCal, les contraintes d'examens, les périodes de stage par groupe.
+
+"
+
+1.2 🔴 Le professeur a-t-il validé le sujet et la stack (Python 3.11, OR-Tools CP-SAT, SQLite, interface web locale et non desktop Tkinter/PyQt) ? A-t-il imposé ou refusé quelque chose (base serveur, langage, patron MVC strict) ?
+Pourquoi : Un changement de stack après le 05/10 invaliderait le squelette, la CI et les spécifications techniques.
+Défaut proposé : On considère la stack validée et on l'écrit telle quelle dans les spécifications techniques ; SQLite reste derrière une couche d'accès isolée pour pouvoir migrer si une base serveur est exigée.
+on utilise les outils qu'on veut
+1.3 🔴 Validez-vous ce classement des fonctionnalités ? Obligatoire : saisie des référentiels, import CSV, contraintes de la section 2 de la spec, génération, vues groupe/enseignant/salle, message d'infaisabilité, modification par formulaire, export CSV, jeu de démo. Utile : contraintes de la section 3, vérification d'un EDT importé, glisser-déposer, verrouillage, historique, PDF, iCal, tableau de bord, panneau de conflits. Optionnelle : authentification, mobile, thème sombre, préférences souples, multi-projets, occupation des salles, diagnostic fin.
+Pourquoi : Ce classement fixe le périmètre de la V1, l'ordre de développement entre le 05/10 et le 16/11, ce qui est annoncé au professeur dans le livret et ce qui doit être testé et démontrable le 14/12.
+Défaut proposé : On adopte cette répartition telle quelle ; les « obligatoires » sont développés avant la Toussaint, les « utiles » entre le 02/11 et le 16/11.
+oui, on peut commencer par ca
+
+1.4 🔴 Pour qui conçoit-on l'interface : un responsable scolarité de l'ISEP non informaticien, ou d'abord l'équipe et le professeur pour la démo ? La documentation utilisateur du 23/11 s'adresse-t-elle au même public ?
+Pourquoi : Le vocabulaire des écrans, le niveau de guidage et la tolérance aux erreurs de saisie ne sont pas les mêmes pour un non-informaticien que pour des développeurs.
+Défaut proposé : On conçoit pour un responsable scolarité non informaticien (vocabulaire métier, aucune notion de solveur visible), en sachant que l'équipe et le professeur la manipuleront réellement.
+défaut
+
+1.5 🔴 Si la démo ne porte que sur une promotion alors que salles et enseignants sont partagés avec toute l'école, comment représenter l'occupation des ressources par les promotions non importées : séances « occupation externe » figées (sans groupe géré, tirées de l'EDT réel des autres promotions), simples indisponibilités de salle et d'enseignant, ou rien du tout en acceptant une démo où toutes les salles sont libres ?
+Pourquoi : Sans occupation externe, le solveur trouve une solution triviale (toutes les salles et tous les enseignants libres) qui ne prouve rien devant le jury ; avec toute l'école importée, le modèle explose. L'occupation externe est aussi ce qui fait apparaître les vrais conflits de trajet pour un enseignant qui donne cours sur l'autre campus juste avant, et c'est la forme la plus courante de « séance déjà placée à respecter ».
+Défaut proposé : Type de séance « occupation externe » : figée, sans groupe géré, avec salle, enseignant et créneau, créée automatiquement à l'import pour tout ce qui est hors périmètre de génération ; elle consomme la salle et l'enseignant, entre dans la règle de trajet des enseignants, apparaît en grisé dans les vues et n'est jamais modifiable.
+la démo doit fonctionner avec une architecture d'établissement complet, démo = prod
+
+1.6 🟠 L'application est-elle strictement mono-utilisateur (un seul navigateur sur la machine locale), ou faut-il tolérer plusieurs onglets ou plusieurs personnes sur le réseau local en même 
+
+
+temps ?
+Pourquoi : Le multi-utilisateur impose sessions, verrous d'écriture SQLite, gestion des conflits d'édition et générations concurrentes, ce qui alourdit fortement la couche web.
+Défaut proposé : Mono-utilisateur : le serveur écoute sur 127.0.0.1, une seule génération à la fois avec un message si un calcul tourne déjà.
+
+on commence par du mono utilisateur, mais on pense comme si on allait avoir plusieurs utilisateurs en même temps
+
+1.8 🟠 Qui saisit les indisponibilités des enseignants : uniquement la scolarité depuis la fiche de chaque professeur, ou chaque enseignant en libre-service via une page dédiée ou un lien partageable ?
+l'utilisateurs de l'app saisit la disponibilité de tout le monde
+Pourquoi : Le libre-service impose une page publique par professeur avec un accès distinct, ce qui change le modèle de navigation et de droits.
+Défaut proposé : La scolarité saisit tout depuis la fiche de chaque professeur ; pas de libre-service.
+1.9 🟠 Faut-il placer les examens et partiels (semaines dédiées, surveillants, salles multiples, capacité réduite, tiers-temps), ou uniquement les cours, les périodes d'examens étant des plages bloquées ?
+oui, on prend en charge les périodes dédiées (par exemple les examens)
+Pourquoi : Les examens ont des règles propres (capacité divisée, surveillants au lieu d'enseignants, un examen par jour, tiers-temps en salle séparée) qui doublent le modèle.
+Défaut proposé : Hors V1 : le type « examen » existe dans l'énumération des séances mais n'est pas placé ; une période d'examens est une plage fermée pour les classes concernées.
+1.10 🟠 Lors de la soutenance du 14/12, le professeur manipulera-t-il lui-même l'application (clics libres, saisies imprévues) ou s'agit-il d'une démo entièrement pilotée par l'équipe ?
+Pourquoi : Une manipulation libre impose des validations partout, des messages d'erreur soignés et aucun écran sans issue ; une démo pilotée tolère un parcours plus étroit.
+Défaut proposé : Démo pilotée par l'équipe, mais chaque écran doit survivre à cinq minutes de manipulation libre sans plantage ni erreur brute.
+
+le prof sera libre d'utiliser l'app autant de temps qu'il le voudra
+
+1.11 🟠 Quel scénario de démo : base pré-remplie chargeable en un clic, import en direct d'un petit fichier, génération, cas infaisable (retrait des salles accessibles), export ? Faut-il un bouton de remise à zéro si quelque chose déraille ?
+Pourquoi : Cela définit le contenu de data/demo/, les commandes de chargement et de réinitialisation, et le test d'intégration qui rejoue la démo.
+Défaut proposé : Commande `edt demo` et bouton « Charger le jeu de démonstration » (2 promotions, 15 enseignants, 12 salles sur 2 campus, un groupe PMR, un TP le samedi), un bouton qui bascule une salle en inaccessible, et `edt reset --demo` avec confirmation.
+oui, on doit pouvoir ajouter ou supprimer les données qu'on veut
+
+
+1.12 🟠 Sur quelle machine, quel système et quel navigateur tournera la soutenance (portable Windows 11 d'un membre projeté, poste de l'école, Chrome, Edge, Firefox, Safari) ?
+Pourquoi : Il faut une répétition sur la machine exacte de démo et des tests de compatibilité CSS/JS sur le navigateur retenu.
+Défaut proposé : Votre portable Windows 11 projeté, Chrome ou Edge récent ; Firefox vérifié une fois, Safari non garanti ; répétition à blanc la semaine du 07/12.
+
+il va tourner sur le plus petit VPS dispo chez OVHn accessible via web
+
+1.13 🟠 Prévoit-on un filet de sécurité pour la démo si la génération en direct échoue ou dépasse le temps (bug, machine lente, infaisabilité imprévue) : un placement pré-calculé chargeable en un clic (« Charger la dernière génération réussie »), et un drapeau « mode démo » qui masque les fonctionnalités instables (XLSX, glisser-déposer, écrans non terminés) ?
+Pourquoi : Le test d'intégration garantit que le scénario passe en CI, pas qu'il passe sur le portable projeté à 14 h avec le jury qui attend ; un résultat pré-calculé stocké avec le jeu de démo permet d'enchaîner sur les vues, l'export et le cas infaisable sans dépendre du solveur, et la vidéo de secours ne remplace pas une interface qui répond.
+Défaut proposé : Le jeu de démo inclut un placement pré-calculé versionné (data/demo/placement.json) chargé par `edt demo` ; le bouton Générer est utilisé en direct, mais un raccourci discret recharge le placement de secours ; variable EDT_MODE_DEMO=1 qui retire du menu les écrans classés utile non terminés.
+non
+
+1.14 🟠 Le jour de la soutenance, la démonstration tourne-t-elle sur le jeu synthétique (2 promotions, 15 enseignants) ou sur les données réelles pseudonymisées du directeur, ou les deux à la suite (synthétique pour le parcours guidé, réel pour la comparaison) ? Si le réel arrive tard ou incomplet, la partie réelle de la démo est-elle abandonnée sans regret ?
+Pourquoi : Les défauts actuels se contredisent (scénario de démo synthétique d'un côté, « soutenance sur données pseudonymisées » de l'autre) ; le choix fixe le contenu de data/demo/, la taille du modèle résolu en direct, le temps de calcul à garantir, et si le scénario rejoué en CI porte sur un jeu ou sur deux.
+Défaut proposé : Deux temps : parcours complet sur le jeu synthétique verrouillé par la CI, puis un seul écran « comparaison avec l'année réelle » sur les données pseudonymisées, préchargé, que l'on coupe de la démo sans conséquence si le réel n'est pas prêt.
+
+il y a de grande chance pour que ce soit des données synthétiques, on verra si le directeur envoi quelque chose
+1.15 🟠 Le professeur installera-t-il et lancera-t-il lui-même l'application depuis le README sur sa propre machine (avant ou après la soutenance) pour noter la documentation et les tests, ou ne verra-t-il l'application que projetée par l'équipe ?
+Pourquoi : S'il installe lui-même, la robustesse de l'installation à froid (Python absent, OR-Tools qui ne s'installe pas, port occupé, dossier avec accents) pèse plus que le glisser-déposer, et il faut un test d'installation sur machine vierge avant le 23/11.
+Défaut proposé : On suppose qu'il peut le faire : README avec installation en trois commandes testée sur une machine vierge (Windows et macOS) par un membre qui n'a pas écrit le script, et commande `edt doctor` qui vérifie Python, OR-Tools et le port.
+tout sur le VPS
+
