@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import Engine, MetaData, inspect, select
 from sqlalchemy.orm import Session
 
+from edt.config import url_affichable
 from edt.db.base import Base
 from edt.db.modeles import (
     AnneeScolaire,
@@ -319,7 +320,7 @@ def initialiser_base(
     - `url` : base visée (défaut : `EDT_DB_URL`).
     """
     moteur = obtenir_moteur(url)
-    url_affichee = moteur.url.render_as_string(hide_password=True)
+    url_affichee = url_affichable(moteur.url)
     if reset:
         journal.warning(
             "Remise à zéro de la base %s : toutes les données sont supprimées", url_affichee

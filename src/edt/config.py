@@ -23,6 +23,7 @@ import os
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import unquote
 
 from edt.erreurs import ErreurConfiguration
 
@@ -58,9 +59,18 @@ class Configuration:
     @property
     def db_url_affichable(self) -> str:
         """URL de la base sans mot de passe éventuel, pour l'affichage et les journaux."""
-        from sqlalchemy.engine import make_url
+        return url_affichable(self.db_url)
 
-        return make_url(self.db_url).render_as_string(hide_password=True)
+
+def url_affichable(url: object) -> str:
+    """Rend une URL de base lisible et sans mot de passe (texte ou URL SQLAlchemy).
+
+    Les caractères encodés sont rétablis : `sqlite:///C:/donnees/edt.db` et non
+    `sqlite:///C%3A/donnees/edt.db`.
+    """
+    from sqlalchemy.engine import make_url
+
+    return unquote(make_url(url).render_as_string(hide_password=True))
 
 
 def charger_configuration(environ: Mapping[str, str] | None = None) -> Configuration:
