@@ -466,9 +466,10 @@ class ModeleHoraires:
 
         `separees` : une contrainte d'unicité active interdit déjà le
         chevauchement et impose la pause ; il ne reste que les trajets. Sinon
-        (unicité désactivée) les deux séances peuvent se chevaucher, mais pas
-        se suivre de trop près, ni être sur deux campus sans le temps de
-        trajet (chevauchement compris).
+        (unicité désactivée) les deux séances peuvent se chevaucher ; si elles
+        ne se chevauchent pas, elles respectent la pause et, sur deux campus,
+        le temps de trajet. Comme pour le vérificateur, pause et trajet ne
+        concernent que deux séances qui se suivent.
         """
         pas = self.preparation.pas
         par_jour: dict[int, list[tuple[int, Option]]] = defaultdict(list)
@@ -480,15 +481,18 @@ class ModeleHoraires:
             for rang_j, b in par_jour.get(a.debut // pas, ()):
                 # Minutes libres entre les deux séances ; négatif si elles se chevauchent.
                 ecart = max(a.debut, b.debut) - min(a.debut + duree_i, b.debut + duree_j)
+                if ecart < 0:
+                    continue  # chevauchement : affaire des contraintes d'unicité, pas d'ici
                 trop_pres = (
                     trajets
                     and a.campus != b.campus
                     and ecart < self.instantane.trajet(a.campus, b.campus)
                 )
                 if separees:
+                    # La pause est déjà garantie : seul un trajet plus long reste à poser.
                     interdit = ecart >= pause and trop_pres
                 else:
-                    interdit = 0 <= ecart < pause or trop_pres
+                    interdit = ecart < pause or trop_pres
                 if interdit:
                     incompatibles.append(rang_j)
             if incompatibles:

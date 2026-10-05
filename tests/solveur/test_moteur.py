@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import threading
 import time
 
@@ -70,6 +71,16 @@ def test_aucune_seance():
     resultat = resoudre(f.instantane(), OPTIONS)
     assert resultat.statut is StatutSolveur.SOLUTION
     assert resultat.placements == ()
+
+
+def test_jamais_plus_de_fils_que_de_coeurs():
+    """Un réglage démesuré (le formulaire des paramètres est public) est ramené aux cœurs."""
+    instantane, _ = generer(40, graine=3)
+    resultat = resoudre(instantane, options(nb_workers=64))
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["nb_workers"] == min(64, os.cpu_count())
+    defaut = resoudre(instantane, options(nb_workers=0))
+    assert defaut.statistiques["nb_workers"] == min(2, os.cpu_count())
 
 
 def test_statistiques_et_journal(caplog):

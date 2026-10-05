@@ -357,9 +357,9 @@ class Regles:
 
         Les appelants garantissent la coexistence (même jour et semaines
         communes, ou même date). Sans salle connue, les règles de salle et de
-        trajet ne sont pas évaluées. Deux séances d'une même personne sur
-        deux campus doivent être séparées du temps de trajet : si elles se
-        chevauchent, cette règle est violée elle aussi.
+        trajet ne sont pas évaluées. Comme dans le vérificateur, la pause et
+        le trajet ne concernent que deux séances qui ne se chevauchent pas :
+        un chevauchement relève des contraintes d'unicité.
         """
         violes: list[CodeContrainte] = []
         chevauchement = se_chevauchent(debut_a, fin_a, debut_b, fin_b)
@@ -378,12 +378,9 @@ class Regles:
                 violes.append(C.ENSEIGNANT_UNIQUE)
             if groupe and self.active(C.GROUPE_UNIQUE):
                 violes.append(C.GROUPE_UNIQUE)
+            return violes
         libre = ecart(debut_a, fin_a, debut_b, fin_b)
-        if (
-            not chevauchement
-            and self.active(C.PAUSE)
-            and libre < self.instantane.parametres.pause_min
-        ):
+        if self.active(C.PAUSE) and libre < self.instantane.parametres.pause_min:
             violes.append(C.PAUSE)
         if self.active(C.CAMPUS_TRAJET) and salle_a is not None and salle_b is not None:
             campus_a = self.instantane.salle(salle_a).campus_id

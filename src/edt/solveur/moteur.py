@@ -272,7 +272,9 @@ def resoudre(
         modele.nb_contraintes,
     )
 
-    nb_workers = options.nb_workers or min(NB_WORKERS_PAR_DEFAUT, os.cpu_count() or 1)
+    # Jamais plus de fils que de cœurs : chaque fil de CP-SAT a sa copie du modèle, et un
+    # réglage trop grand multiplierait la mémoire du calcul sans rien accélérer.
+    nb_workers = min(options.nb_workers or NB_WORKERS_PAR_DEFAUT, os.cpu_count() or 1)
     reserve = min(RESERVE_MAX_S, PART_RESERVEE_AUX_SALLES * options.temps_limite_s)
     stats.update(nb_workers=nb_workers, duree_resolution_s=0.0, duree_salles_s=0.0, nb_coupes=0)
     stats.update(nb_conflits=0, nb_branches=0, nb_solutions=0)
