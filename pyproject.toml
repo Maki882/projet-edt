@@ -11,11 +11,11 @@ requires-python = ">=3.11"
 dependencies = [
     "ortools>=9.15",
     "sqlalchemy>=2.0",
-    "fastapi",
+    "fastapi>=0.121",
     "uvicorn[standard]",
     "jinja2",
     "python-multipart",
-    "typer>=0.15",
+    "typer>=0.27",
     "openpyxl",
     "icalendar",
     "python-dateutil",

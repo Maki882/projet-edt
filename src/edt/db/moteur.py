@@ -25,7 +25,7 @@ from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from edt.config import charger_configuration
+from edt.config import charger_configuration, url_affichable
 from edt.erreurs import ErreurConfiguration
 
 journal = logging.getLogger(__name__)
@@ -84,7 +84,7 @@ def obtenir_moteur(url: str | None = None) -> Engine:
         if moteur is None:
             moteur = creer_moteur(url)
             _moteurs[url] = moteur
-            journal.debug("Moteur de base créé pour %s", make_url(url).render_as_string(True))
+            journal.debug("Moteur de base créé pour %s", url_affichable(url))
         return moteur
 
 

@@ -109,6 +109,15 @@ class Trajet:
 
 
 @dataclass(frozen=True)
+class Reference:
+    """Entrée d'une liste configurable (type de salle, équipement), pour nommer les choses."""
+
+    id: int
+    code: str
+    libelle: str
+
+
+@dataclass(frozen=True)
 class Salle:
     """Salle de cours."""
 
@@ -346,6 +355,10 @@ class Instantane:
     `conflits_groupes` contient les paires `(a, b)` avec `a < b` de groupes
     qui ne peuvent pas avoir cours en même temps (voir
     `edt.services.conflits_groupes`) ; utiliser `groupes_en_conflit`.
+
+    `types_salle` et `equipements` sont les listes configurables, utiles pour
+    nommer un type ou un équipement dans un message (`libelle_type_salle`,
+    `libelle_equipement`).
     """
 
     semestre_id: int
@@ -367,6 +380,8 @@ class Instantane:
     seances: tuple[SeanceAPlacer, ...]
     problemes_depliage: tuple[ProblemeDepliage, ...] = ()
     version_base_id: int | None = field(default=None)
+    types_salle: tuple[Reference, ...] = ()
+    equipements: tuple[Reference, ...] = ()
 
     # -- accès par identifiant ------------------------------------------------
 
@@ -489,6 +504,22 @@ class Instantane:
             return 0
         cle = (min(campus_a_id, campus_b_id), max(campus_a_id, campus_b_id))
         return self._trajets.get(cle, self.parametres.trajet_defaut_min)
+
+    @cached_property
+    def _types_salle(self) -> dict[int, Reference]:
+        return {reference.id: reference for reference in self.types_salle}
+
+    @cached_property
+    def _equipements(self) -> dict[int, Reference]:
+        return {reference.id: reference for reference in self.equipements}
+
+    def libelle_type_salle(self, type_salle_id: int) -> str:
+        """Libellé d'un type de salle (pour les messages), ex. « Amphithéâtre »."""
+        return _trouver(self._types_salle, type_salle_id, "Type de salle").libelle
+
+    def libelle_equipement(self, equipement_id: int) -> str:
+        """Libellé d'un équipement (pour les messages), ex. « Vidéoprojecteur »."""
+        return _trouver(self._equipements, equipement_id, "Équipement").libelle
 
     def salle_accessible(self, salle: Salle) -> bool:
         """Vrai si la salle convient à un groupe qui requiert l'accessibilité."""
