@@ -115,3 +115,15 @@ def test_jeu_moyen_instanciation_et_replacement(jeu_moyen: Jeu):
     assert len(replace.replacements) == len(instancie.a_replacer)
     assert len(replace.replacees) >= 0.9 * len(instancie.a_replacer)
     verifier_dates(instantane, [*instancie.occurrences, *(r.occurrence for r in replace.replacees)])
+
+
+def test_jeu_moyen_graines_avec_un_seul_fil(jeu_moyen: Jeu):
+    """« Proposer une autre solution » : une autre graine, une autre solution, même à un fil."""
+    instantane, _ = jeu_moyen["S1"]
+    solutions = []
+    for graine in (1, 2, 3, 1):
+        resultat = resoudre(instantane, options(graine=graine, nb_workers=1, temps_limite_s=60))
+        verifier_solution(instantane, resultat)
+        solutions.append(resultat.placements)
+    assert len(set(solutions[:3])) == 3
+    assert solutions[0] == solutions[3]  # même graine, même solution

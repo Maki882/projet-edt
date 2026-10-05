@@ -126,6 +126,7 @@ def _solveur(graine: int, temps_limite_s: float) -> cp_model.CpSolver:
     solveur.parameters.max_time_in_seconds = max(0.001, temps_limite_s)
     solveur.parameters.num_workers = 1
     solveur.parameters.random_seed = graine % (2**31 - 1)
+    solveur.parameters.permute_variable_randomly = True  # une autre graine, d'autres salles
     solveur.parameters.log_to_stdout = False
     return solveur
 
