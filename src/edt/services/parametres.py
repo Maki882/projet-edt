@@ -15,6 +15,7 @@ from edt.db.modeles import Parametre
 from edt.domaine.parametres import (
     Parametres,
     ValeurParametre,
+    borner,
     definition,
     definitions,
     valider,
@@ -28,8 +29,11 @@ def lire_parametres(session: Session) -> Parametres:
     """Tous les paramètres, typés.
 
     Un paramètre absent de la table (base créée avant son ajout) prend sa
-    valeur par défaut documentée, et le fait est journalisé. Une valeur
-    enregistrée invalide lève `ErreurDonneesInvalides`.
+    valeur par défaut documentée, et le fait est journalisé. Un nombre
+    enregistré hors des bornes actuelles (bornes resserrées depuis son
+    enregistrement) est ramené à la borne la plus proche, avec un
+    avertissement au journal : la valeur en base n'est pas modifiée. Toute
+    autre valeur enregistrée invalide lève `ErreurDonneesInvalides`.
     """
     enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
     valeurs: dict[str, ValeurParametre] = {}
@@ -42,8 +46,21 @@ def lire_parametres(session: Session) -> Parametres:
                 entree.defaut,
             )
             continue
+        enregistree = enregistres[entree.cle]
+        retenue = borner(entree.cle, enregistree)
+        if retenue != enregistree:
+            journal.warning(
+                "Paramètre « %s » : la valeur enregistrée %r sort des bornes actuelles "
+                "(%s à %s) ; %r est utilisée à sa place. L'enregistrer de nouveau dans "
+                "l'écran des paramètres fait disparaître cet avertissement.",
+                entree.cle,
+                enregistree,
+                entree.minimum,
+                entree.maximum,
+                retenue,
+            )
         try:
-            valeurs[entree.cle] = valider(entree.cle, enregistres[entree.cle])
+            valeurs[entree.cle] = valider(entree.cle, retenue)
         except ErreurDonneesInvalides as erreur:
             raise ErreurDonneesInvalides(
                 f"Le paramètre « {entree.cle} » enregistré en base est invalide : {erreur.message}"

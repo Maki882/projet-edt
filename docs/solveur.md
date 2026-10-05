@@ -28,11 +28,18 @@ flowchart TD
     H -->|impossible prouvé| X[INFAISABLE]
     H --> S[salles : une salle par séance, horaires fixés]
     S -->|conflit : ces horaires sont écartés| H
-    S --> T[Semaine type : SOLUTION]
-    T --> N[instanciation : une occurrence par semaine active]
-    N --> D[replacement : jours fermés, indisponibilités]
+    S --> T[Semaine type valide]
+    T -->|mode optimisé, s'il reste du temps| A[amélioration : objectif ajouté au même modèle, départ de la solution valide]
+    A --> U[Semaine type : SOLUTION]
+    T -->|sinon| U
+    U --> N[instanciation : une occurrence par semaine active]
+    N --> D[replacement : jours fermés, indisponibilités, places prises par une retouche]
     D --> O[Séances datées : planifiées, déplacées, à programmer]
 ```
+
+Une solution valide trouvée n'est **jamais perdue** : ni le temps limite ni
+un arrêt demandé pendant l'amélioration ne la font disparaître (voir
+« Déroulement d'un calcul »).
 
 | Fichier | Rôle |
 |---|---|
@@ -60,7 +67,7 @@ def resoudre(instantane, options: OptionsSolveur, arret: threading.Event | None 
 def pre_verifier(instantane, contraintes_desactivees=(), *, tolerer_violations_heritees=False) -> list[Anomalie]
 
 # edt.solveur.instanciation
-def instancier(instantane, placements, contraintes_desactivees=()) -> ResultatInstanciation
+def instancier(instantane, placements, contraintes_desactivees=(), en_place=()) -> ResultatInstanciation
 
 # edt.solveur.replacement
 def replacer(instantane, occurrences_fixes, occurrences_a_replacer,
@@ -153,7 +160,9 @@ une indisponibilité de Mme Martin, 8 par la pause déjeuner »).
   les mêmes séances dans des centaines de contraintes presque identiques.
 - *Trajets.* Pour chaque paire de séances qui partagent une personne et
   peuvent coexister, les couples de choix trop rapprochés sur deux campus
-  différents sont interdits.
+  différents sont interdits. Comme dans le vérificateur, la règle ne porte
+  que sur deux séances qui **ne se chevauchent pas** : le chevauchement est
+  l'affaire des contraintes d'unicité.
 - *Maxima journaliers* des enseignants : somme pondérée des choix de chaque jour.
 - *Capacité des salles.* La **famille** d'un choix est l'ensemble des salles
   admissibles de la séance sur le campus du choix. Une **classe** réunit les
@@ -213,7 +222,7 @@ semaine commune rend le problème impossible.
 | `ENSEIGNANT_UNIQUE` | phase 1 | unités d'enseignant : au plus une séance en cours par instant |
 | `GROUPE_UNIQUE` | phase 1 | unités de groupes et cliques d'unités en conflit |
 | `PAUSE` | phase 1 | chaque séance est allongée de `pause_min` dans les contraintes de personnes |
-| `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne |
+| `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
 | `DEJEUNER` | domaines | débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
 | `JOURS` | domaines | jours avec créneau ; samedi si `samedi_autorise` |
@@ -241,14 +250,20 @@ Règles de construction des débuts :
 Contraintes désactivées : chaque code retire sa traduction et elle seule.
 Cas particuliers :
 
-- `ENSEIGNANT_UNIQUE` ou `GROUPE_UNIQUE` désactivée, `PAUSE` active : deux
-  séances de la personne peuvent se chevaucher ; si elles ne se chevauchent
-  pas, la pause s'applique (couples de choix interdits) ;
+- `ENSEIGNANT_UNIQUE` ou `GROUPE_UNIQUE` désactivée : deux séances de la
+  personne peuvent se chevaucher, même sur deux campus ; si elles ne se
+  chevauchent pas, la pause et le trajet s'appliquent (couples de choix
+  interdits). C'est la lecture du vérificateur (`docs/verification.md`) :
+  avant cet alignement, le moteur déclarait « impossible » des problèmes que
+  le vérificateur acceptait ;
 - `HORAIRES` désactivée : les débuts ne sont plus limités à la grille. Le
   moteur propose alors un début toutes les 30 minutes, de 0 h à 24 h, en plus
   des débuts de la grille (`PAS_HORS_GRILLE`) ;
 - `VERROU` désactivée : les verrous sont ignorés, les séances redeviennent
-  libres et suivent la grille.
+  libres et suivent la grille. Dans la version enregistrée, seule une séance
+  **restée à la place de son verrou** garde sa marque « verrouillée » : le
+  verrou ne suit pas une séance que le moteur a déplacée, sinon les calculs
+  suivants figeraient une place que personne n'a choisie.
 
 Violations héritées (`tolerer_violations_heritees`) : aucune contrainte de
 paire ne s'applique entre deux séances verrouillées. En pratique les séances
@@ -258,7 +273,15 @@ option, des verrous contradictoires font refuser le calcul avec la liste.
 
 ## Objectif (mode optimisé)
 
-Avec `options.optimiser`, le moteur minimise
+Avec `options.optimiser`, le calcul se fait **en deux temps** :
+
+1. une **solution valide**, cherchée sur le modèle sans objectif, exactement
+   comme en mode faisable et dans le même délai ;
+2. l'**amélioration**, dans le temps qui reste : l'objectif est ajouté au
+   même modèle (`ModeleHoraires.poser_objectif`) et la recherche repart de la
+   solution valide.
+
+L'objectif minimisé est
 
 ```
 poids_trous × trous + poids_changement_campus × changements de campus
@@ -276,14 +299,54 @@ compte 15 fois.
 | samedi | nombre de semaines actives de chaque séance placée le samedi |
 | créneaux extrêmes | nombre de semaines actives de chaque séance qui recoupe le premier ou le dernier créneau de la grille de son jour |
 
-Écart avec le vérificateur : il compte les **changements de campus** comme
-le nombre de paires de séances consécutives sur deux campus différents ; le
+Deux groupes feuilles qui ont le même emploi du temps (deux demi-groupes
+sans séance propre) comptent chacun pour leurs trous, comme dans le
+vérificateur.
+
+### Repartir de la solution valide
+
+Donner à CP-SAT les seuls choix des séances ne suffit pas. L'objectif
+s'appuie sur des variables auxiliaires (« ce créneau est un trou pour ce
+groupe », « ce groupe a cours sur ces deux campus ce jour-là ») ; un indice
+qui ne les renseigne pas n'est pas repris. C'était le défaut du premier
+moteur : la première solution du mode optimisé arrivait à 38 s avec une
+pénalité de 122 967 alors que l'indice fourni valait 41 947.
+
+`poser_objectif` note donc la définition de chaque variable auxiliaire
+(« vraie si l'un de ces choix est fait », « vraie si aucun ne l'est »), et
+`partir_de` en déduit leur valeur dans la solution valide : CP-SAT reçoit un
+indice **complet**, une valeur pour chaque variable du modèle. Son journal le
+confirme (« The solution hint is complete and is feasible ») et la première
+solution de l'amélioration est la solution valide elle-même. Le test
+`test_l_amelioration_part_de_la_solution_valide` le vérifie.
+
+Le prétraitement de CP-SAT est **allégé pour l'amélioration seulement** (pas
+de sondage, pas de détection de symétries, une seule passe). Avec les
+réglages par défaut il occupait 17 à 28 s sur le jeu grand avant que la
+recherche reparte, si bien qu'un calcul de 60 s n'améliorait rien (voir
+« Mesures »).
+
+Il n'y a qu'**un modèle en mémoire** : l'objectif s'ajoute au modèle des
+horaires, et la première recherche est libérée avant que la seconde
+commence.
+
+### Bilan d'une solution et écart avec le vérificateur
+
+`ModeleHoraires.bilan(choix)` calcule l'objectif, les trous et les séances
+du samedi d'une solution à partir des seuls choix des séances. C'est ce que
+dit le message du calcul et ce que portent `statistiques["objectif"]`,
+`["trous"]` et `["samedis"]`. Les trous et les samedis sont **exactement**
+ceux du vérificateur (`trous_creneaux`, `seances_samedi`).
+
+Seuls les **changements de campus** peuvent s'en écarter : le vérificateur
+compte les paires de séances consécutives sur deux campus différents ; le
 modèle compte une fois chaque paire de campus fréquentés dans la journée.
 Les deux coïncident tant qu'une personne ne fait pas plus d'un aller entre
-deux campus dans la journée (c'est le cas dès que le trajet dépasse la
-pause). Les trois autres termes sont identiques. Sur les jeux moyen et grand,
-la pénalité annoncée par le moteur (`statistiques["objectif"]`) était égale à
-`valeur_objectif` du vérificateur.
+deux campus dans la journée. Sur les mesures ci-dessous, les deux objectifs sont
+égaux pour presque toutes les solutions améliorées (1 % d'écart au plus) et
+s'écartent de 0,2 % à 4 % sur les premières solutions valides, où les
+changements de campus sont nombreux (49 058 pour le moteur contre 48 968
+pour le vérificateur sur le grand S1, 3 050 contre 3 190 sur le moyen S2).
 
 Quand le temps limite arrive avant la preuve d'optimalité, la meilleure
 solution trouvée est rendue (statut `SOLUTION`, `statistiques["optimal"]`
@@ -295,16 +358,56 @@ faux, borne inférieure dans `borne_objectif`).
    refuser le calcul : statut `INFAISABLE`, `statistiques["refuse"]` vrai,
    message qui cite les trois premières raisons, liste complète dans
    `avertissements`.
-2. **Modèle des horaires**, puis recherche, puis **salles** ; reprise si les
-   salles ne suivent pas.
-3. **Résultat** : placements de toutes les séances, message, statistiques.
+2. **Modèle des horaires**, sans objectif.
+3. **Une solution valide** : recherche des horaires, puis **salles** ;
+   reprise si les salles ne suivent pas. À ce moment une solution
+   enregistrable existe : `statistiques["duree_premiere_solution_s"]` donne
+   le délai écoulé.
+4. **Amélioration**, en mode optimisé seulement et s'il reste au moins 1 s
+   (`TEMPS_MIN_AMELIORATION_S`) : l'objectif est ajouté au modèle et la
+   recherche repart de la solution valide, jusqu'au temps limite, à la
+   preuve d'optimalité ou à l'arrêt. Les horaires améliorés reçoivent des
+   salles ; si elles ne suivent pas pour les meilleurs horaires, les
+   précédents sont essayés (20 gardés), et à défaut la solution valide de
+   l'étape 3 est rendue.
+5. **Résultat** : placements de toutes les séances, message, statistiques.
+
+### Une solution trouvée n'est jamais perdue
+
+Dès que l'étape 3 a abouti, le calcul rend `SOLUTION`, quoi qu'il arrive
+ensuite.
+
+| Ce qui arrive | Statut | Fin du message |
+|---|---|---|
+| le temps limite tombe avant l'étape 3 | `TEMPS_DEPASSE` | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » |
+| le temps limite tombe juste après l'étape 3 | `SOLUTION` (la solution valide) | « Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un emploi du temps plus confortable. » |
+| le temps limite tombe pendant l'amélioration | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut encore l'affiner. » |
+| l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » |
+| arrêt demandé avant l'étape 3 | `ARRETE` | « Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a été enregistré. » |
+| arrêt demandé après l'étape 3 | `SOLUTION` (la meilleure trouvée) | « Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée. » |
+
+Arrêt avec solution : la phrase est aussi dans `avertissements`, et
+`statistiques["arrete_par_utilisateur"]` vaut vrai. Pour le service
+(`edt.services.generation`), c'est un calcul **réussi** : état `REUSSI`,
+version enregistrée et instanciée, `SuiviCalcul.arret_demande` vrai. L'état
+`ARRETE` ne désigne plus qu'un arrêt sans solution.
+
+### Statuts et messages
 
 | Statut | Sens | Message |
 |---|---|---|
-| `SOLUTION` | toutes les séances sont placées | « Emploi du temps trouvé : n séance(s) placée(s). » (+ pénalité, + contraintes ignorées) |
+| `SOLUTION` | toutes les séances sont placées | « Emploi du temps trouvé : n séance(s) placée(s). », puis en mode optimisé « Bilan sur l'ensemble du semestre : x créneau(x) libre(s) entre deux cours dans les journées des groupes et y séance(s) le samedi. », la fin du tableau précédent, et les contraintes ignorées |
 | `INFAISABLE` | impossibilité prouvée (pré-vérifications ou CP-SAT) | « Aucun emploi du temps ne peut respecter toutes les contraintes actives : c'est prouvé... » |
 | `TEMPS_DEPASSE` | rien trouvé, sans preuve | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » |
-| `ARRETE` | arrêt demandé | « Calcul arrêté à votre demande... » |
+| `ARRETE` | arrêt demandé avant toute solution | « Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a été enregistré. » |
+
+Le message d'un calcul réussi s'adresse au responsable de planning : il ne
+contient ni « pénalité » ni « objectif ». Un poids mis à zéro retire la
+mesure correspondante du bilan. En mode faisable le moteur ne calcule pas de
+bilan ; la commande `generer` l'affiche alors d'après les indicateurs du
+vérificateur, avec la même phrase.
+
+### Réglages et suivi
 
 - **Temps limite** : il couvre tout le calcul, construction comprise. Une
   petite part (5 %, au plus 3 s) est réservée à la phase des salles.
@@ -312,22 +415,34 @@ faux, borne inférieure dans `borne_objectif`).
   seconde et interrompt CP-SAT ; la construction du modèle le relit entre
   ses étapes. Le moteur rend la main en moins de deux secondes.
 - **Fils de calcul** : `nb_workers = 0` en utilise deux au plus (le serveur a
-  deux cœurs). Un seul fil et une graine fixe donnent un résultat strictement
-  reproductible, tant que le temps limite n'interrompt pas la recherche.
+  deux cœurs). Quel que soit le réglage, le moteur n'en prend **jamais plus
+  que la machine n'a de cœurs** : chaque fil de CP-SAT garde sa copie du
+  modèle, et la revue a mesuré 12,8 Go avec 64 fils contre 1,3 Go avec 2.
+- **Graine** : `options.graine` fixe le tirage de CP-SAT et l'ordre dans
+  lequel il examine les variables (`permute_variable_randomly`), pour les
+  horaires comme pour les salles. Même graine et un seul fil : même
+  solution, tant que le temps limite n'interrompt pas la recherche. Autre
+  graine : autre solution, même avec un seul fil et sur un petit problème
+  (jeu minimal, jeu moyen). C'est ce qui sert à « proposer une autre
+  solution ».
 - **Indices** : avec `utiliser_indices`, le placement précédent de chaque
   séance (`SeanceAPlacer.indice`) est proposé à CP-SAT comme point de départ
   (début, campus, puis salle en phase 2).
 - **Statistiques** : `moteur`, `nb_seances`, `nb_salles`, `nb_variables`,
-  `nb_contraintes` (modèle des horaires), `duree_preparation_s`,
-  `duree_construction_s`, `duree_resolution_s`, `duree_salles_s`, `duree_s`,
-  `statut_cp_sat`, `nb_workers`, `graine`, `nb_conflits`, `nb_branches`,
-  `nb_solutions`, `nb_coupes`, `refuse`, et en mode optimisé `objectif`,
+  `nb_contraintes` (modèle des horaires, objectif compris quand il a été
+  ajouté), `duree_preparation_s`, `duree_construction_s`,
+  `duree_premiere_solution_s`, `duree_resolution_s`, `duree_salles_s`,
+  `duree_s`, `statut_cp_sat`, `nb_workers` (fils réellement utilisés),
+  `graine`, `nb_conflits`, `nb_branches`, `nb_solutions`, `nb_coupes`,
+  `refuse`, `arrete_par_utilisateur` ; et quand l'amélioration a eu lieu
+  `objectif_premiere_solution`, `objectif`, `trous`, `samedis`,
   `borne_objectif`, `optimal`.
 - **Journal** (`logging`, jamais de `print`) : taille du problème, tailles
   des domaines (minimum, médiane), durée de construction, une ligne de
-  progression toutes les 5 s, chaque solution (au plus une toutes les 2 s en
-  optimisation), résultat. Au niveau `DEBUG` : durée et taille de chaque
-  étape du modèle, et le journal de CP-SAT.
+  progression toutes les 5 s, « Emploi du temps valide trouvé après ... s »,
+  « Amélioration : départ à l'objectif ... », chaque amélioration (au plus
+  une toutes les 2 s), résultat. Au niveau `DEBUG` : durée et taille de
+  chaque étape du modèle, et le journal de CP-SAT.
 
 ## Pré-vérifications
 
@@ -369,7 +484,13 @@ la date de son jour. Une occurrence est « à replacer » si, à sa date :
   indisponible, que l'indisponibilité soit récurrente ou **datée** (les
   indisponibilités datées ne restreignent pas la semaine type : c'est ici
   qu'elles comptent) ;
-- la date sort du semestre.
+- la date sort du semestre ;
+- sa place est déjà prise par une séance **en place** que l'appelant
+  transmet (`en_place` : séances saisies à la main ou importées) : même
+  salle, même groupe ou même enseignant au même moment, pause ou trajet non
+  tenus. La raison dit « place prise par une séance saisie à la main
+  (libellé, date, horaire) ». La semaine type, valide seule, ne crée ainsi
+  aucune double réservation avec une retouche.
 
 `ResultatInstanciation(occurrences, a_replacer)` : les occurrences
 maintenues, et les `OccurrenceARevoir(occurrence, code, raison)`.
@@ -407,13 +528,32 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
   d'une version dans la table `occurrence` : planifiée (origine « semaine
   type »), déplacée ou à programmer (origine « replacement », `date_initiale`
   et `commentaire` renseignés). Elle est idempotente et ne touche pas aux
-  occurrences saisies à la main ou importées, que les séances replacées
-  évitent. Les contraintes désactivées lors du calcul de la version le restent.
+  occurrences saisies à la main ou importées (les « retouches »). Les
+  contraintes désactivées lors du calcul de la version le restent. Trois
+  règles protègent les retouches :
+  - **pas de doublon** : une séance hebdomadaire n'est pas recréée dans une
+    semaine déjà couverte par une retouche liée à cette même séance
+    (origine « manuelle » ou « import », `seance_hebdo_id` renseigné). La
+    semaine couverte est celle de `date_initiale` si elle existe, sinon
+    celle de `date` : une séance déplacée à la main dans une autre semaine
+    couvre sa semaine d'origine. Une séance annulée à la main couvre aussi
+    sa semaine (elle ne revient pas). Le rapport les compte dans
+    `nb_couvertes` ;
+  - **pas de double réservation** : les retouches sont transmises à
+    `instancier` (`en_place`) ; une séance de la semaine type qui en heurte
+    une est replacée ailleurs, raison à l'appui ;
+  - **version importée** : si des séances datées de la version ont été
+    importées sans lien avec une séance hebdomadaire (import « référence »),
+    les recalculer depuis la semaine type doublerait tout le semestre.
+    `instancier_version` lève alors `ErreurRegleMetier` (« Les séances datées
+    de la version ... ont été importées ... Rien n'a été modifié. ») avant
+    toute suppression.
 - `replacer_occurrences(session, version_id, occurrence_ids, date_debut,
   date_fin)` replace des séances datées désignées.
 - Les deux renvoient un `RapportInstanciation` (`nb_occurrences`,
-  `nb_planifiees`, `nb_replacees`, `nb_a_programmer`, `a_programmer` avec
-  besoin, date d'origine et raison, `vers_dict()`).
+  `nb_planifiees`, `nb_replacees`, `nb_a_programmer`, `nb_conservees`,
+  `nb_couvertes`, `a_programmer` avec besoin, date d'origine et raison,
+  `vers_dict()`).
 - L'orchestration (`edt.services.generation`) enchaîne : pré-vérifications
   (un refus, besoin impossible à déplier compris, donne l'état « impossible »,
   `statistiques["refuse"]` et la liste dans
@@ -433,14 +573,90 @@ python -m edt instancier --version 4
 `generer` rend le code 1 si le calcul n'aboutit pas ; `pre-verifier` rend le
 code 1 si le calcul serait refusé.
 
+### Calcul abandonné par son processus
+
+Un calcul appartient au processus qui l'a lancé : le serveur web, ou une
+commande `python -m edt generer`. Si ce processus disparaît (commande
+interrompue, serveur arrêté ou tué), la ligne `calcul` resterait « en cours »
+et bloquerait tous les calculs suivants, puisqu'il n'y en a qu'un à la fois.
+
+Mécanisme retenu (`edt.services.generation`) :
+
+- au lancement, le **numéro du processus** est noté avec le calcul
+  (`statistiques["pid"]`, remplacé à la fin par les statistiques du moteur) ;
+- chaque fois que l'on s'intéresse aux calculs en cours (`lancer_calcul`,
+  `calcul_en_cours`, `demander_arret`, et `cloturer_calculs_interrompus` au
+  démarrage du serveur), un calcul resté « en cours » est **clos en erreur**
+  (« Calcul interrompu par l'arrêt de l'application. ») si plus rien ne
+  l'exécute : son fil a disparu de ce processus, ou le processus noté
+  n'existe plus, ou le calcul a dépassé son temps limite de plus de dix
+  minutes (`DELAI_DE_GRACE_S`, pour le cas rare d'un numéro de processus
+  réattribué à un autre programme) ;
+- un calcul **vivant d'un autre processus n'est jamais clos** : une commande
+  `generer` lancée sur le serveur pendant que le service calcule est refusée
+  (« Un calcul est déjà en cours ») et ne touche pas au calcul du service ;
+- `generer` interrompue au clavier (Ctrl+C) demande l'arrêt du calcul et
+  attend sa fin : un emploi du temps déjà trouvé est enregistré, sinon le
+  calcul finit « arrêté ». Un second Ctrl+C quitte tout de suite ; le calcul
+  est alors clos au lancement suivant.
+
+Limites :
+
+- le bouton « Arrêter » n'atteint que les calculs du processus qui reçoit la
+  demande. Un calcul lancé en ligne de commande ne s'arrête pas depuis
+  l'interface : la demande est notée et journalisée, et le calcul va à son
+  terme, borné par son temps limite ;
+- le mécanisme suppose que le service et les commandes voient les mêmes
+  numéros de processus (même machine, pas d'isolation des processus). C'est
+  le cas de l'unité systemd fournie et de la commande `sudo edt ...` du
+  serveur.
+
+### Réglages par défaut et bornes
+
+| Paramètre | Défaut | Bornes | Raison |
+|---|---|---|---|
+| `objectif_actif` | oui | - | un calcul optimisé rend au pire la solution du mode faisable, dans le même délai : il n'y a plus de raison de s'en priver |
+| `temps_limite_s` | 300 s | 1 à 900 s | sur le serveur, la première solution du jeu grand arrive vers 30 à 45 s ; il faut ensuite trois à quatre minutes pour que les trous disparaissent (voir « Mesures sur le serveur ») |
+| `temps_limite_long_s` | 900 s | 1 à 1 800 s | durée du bouton de relance longue |
+| `nb_workers` | 0 (deux fils au plus) | 0 à 8 | le moteur n'utilise de toute façon jamais plus de fils que de cœurs |
+
+Le site est public : ces bornes empêchent un visiteur d'enregistrer un
+réglage que la machine ne supporte pas (un calcul de plusieurs heures, ou
+64 fils qui multiplient la mémoire par dix). Une valeur enregistrée avant le
+resserrement des bornes ne fait pas planter la lecture des paramètres : elle
+est ramenée à la borne, avec un avertissement dans le journal
+(`edt.services.parametres.lire_parametres`).
+
+**Changer ces réglages sur une base existante.** `init-db` n'insère que les
+paramètres absents : il ne modifie jamais une valeur déjà enregistrée, et un
+nouveau défaut ne s'applique donc qu'à une base neuve. Il n'existe pas de
+commande pour régler un paramètre. Sur une base existante :
+
+- par l'interface : écran « Paramètres », rubriques « Calcul » et « Qualité de
+  l'emploi du temps », puis « Enregistrer les paramètres ». Le retour aux
+  valeurs par défaut (`POST /parametres/defaut`) remet **tous** les
+  paramètres aux défauts du code, horaires et poids compris ;
+- sans toucher aux autres réglages, avec les variables d'environnement du
+  service (`EDT_DB_URL`) :
+
+```sh
+python -c "
+from edt.db.moteur import session_base
+from edt.services.parametres import ecrire_parametres
+with session_base() as session:
+    ecrire_parametres(session, {'objectif_actif': True, 'temps_limite_s': 300, 'temps_limite_long_s': 900})
+"
+```
+
 ## Mesures
 
-Poste de développement (Windows, Python 3.11, OR-Tools 9.15, machine
-partagée avec d'autres travaux pendant les mesures), **2 fils de calcul**,
-graine 1, sans indices. Jeux `moyen` et `grand` de `edt.synthese` (graine 0) ;
-« généré n » : `tests/solveur/generateur.py` (deux campus). Chaque solution
-passe l'oracle sans erreur. Les durées varient d'une exécution à l'autre
-(de l'ordre de ± 30 %).
+Poste de développement (Windows, Python 3.11, OR-Tools 9.15), **2 fils de
+calcul**, graine 1, sans indices, **un calcul à la fois**. Jeux `moyen` et
+`grand` de `edt.synthese` (graine 0) ; « généré n » :
+`tests/solveur/generateur.py` (deux campus). Chaque solution passe l'oracle
+sans erreur. Les durées varient d'une exécution à l'autre (de l'ordre de
+± 30 %, davantage quand la machine est occupée par ailleurs). Les tableaux
+du moteur retenu ont été relevés le 05/10/2026 sur le code livré.
 
 ### Première formulation (abandonnée) : un seul modèle, intervalles optionnels par salle
 
@@ -463,14 +679,14 @@ l'équipe étant dépassé, on est passé aux deux phases.
 
 ### Formulation retenue : mode faisable
 
-| Jeu | Séances | Salles | Variables | Contraintes | Construction | Horaires | Salles | Total |
-|---|---|---|---|---|---|---|---|---|
-| généré 200 | 200 | 22 | 9 708 | 87 105 | 0,38 s | 1,0 s | 0,04 s | **1,5 s** |
-| généré 800 | 800 | 82 | 37 894 | 374 389 | 2,54 s | 8,6 s | 0,61 s | **11,8 s** |
-| moyen S1 | 111 | 32 | 5 383 | 43 365 | 0,36 s | 1,5 s | 0,02 s | **1,9 s** |
-| moyen S2 | 110 | 32 | 5 623 | 46 731 | 0,39 s | 1,5 s | 0,02 s | **1,9 s** |
-| grand S1 | 595 | 99 | 41 613 | 352 922 | 3,06 s | 15,1 s | 0,34 s | **18,6 s** |
-| grand S2 | 569 | 99 | 37 567 | 317 223 | 2,76 s | 10,6 s | 0,45 s | **13,9 s** |
+| Jeu | Séances | Salles | Variables | Contraintes | Construction | Horaires | Salles | Total | Objectif (trous ; samedi) |
+|---|---|---|---|---|---|---|---|---|---|
+| généré 200 | 200 | 22 | 9 708 | 87 105 | 0,37 s | 1,0 s | 0,03 s | **1,5 s** | 14 430 (732 ; 72) |
+| généré 800 | 800 | 82 | 37 894 | 374 389 | 1,55 s | 10,7 s | 0,62 s | **13,0 s** | 55 890 (2 934 ; 444) |
+| moyen S1 | 111 | 32 | 5 383 | 43 365 | 0,36 s | 1,5 s | 0,02 s | **1,9 s** | 9 105 (598 ; 128) |
+| moyen S2 | 110 | 32 | 5 623 | 46 731 | 0,37 s | 1,5 s | 0,01 s | **1,9 s** | 3 190 (152 ; 121) |
+| grand S1 | 595 | 99 | 41 613 | 352 922 | 2,73 s | 16,3 s | 0,33 s | **19,5 s** | 48 968 (2 874 ; 485) |
+| grand S2 | 569 | 99 | 37 567 | 317 223 | 2,55 s | 17,4 s | 0,36 s | **20,4 s** | 35 892 (1 663 ; 516) |
 
 Variables et contraintes sont celles du modèle des horaires. Sur le jeu
 grand, environ 270 000 contraintes sont des interdictions de trajet (trois
@@ -478,76 +694,119 @@ sites, la plupart des séances pouvant aller sur plusieurs), et l'essentiel
 du temps « horaires » est le prétraitement de CP-SAT : la recherche
 elle-même ne rencontre presque aucun conflit. Les pré-vérifications prennent
 0,1 s. Objectifs tenus : 200 séances en moins de 30 s, jeu moyen en moins de
-30 s, 800 séances et jeu grand en moins de 120 s.
+30 s, 800 séances et jeu grand en moins de 120 s. La colonne « Objectif » est
+celle du vérificateur (`calculer_indicateurs`) : la première solution valide
+est pleine de trous, c'est attendu, et c'est d'elle que part l'amélioration.
 
-Les paramètres de CP-SAT sont ceux par défaut. Un essai sans sondage, sans
-détection de symétries et sans relaxation linéaire ramenait le jeu grand de
-13-19 s à 5-8 s, mais faisait passer les 800 séances générées de 9 s à
-16-43 s : les réglages par défaut sont les plus réguliers, on les garde.
+Pour cette première recherche, les paramètres de CP-SAT sont ceux par
+défaut (seul l'ordre des variables dépend de la graine). Un essai sans
+sondage, sans détection de symétries et sans relaxation linéaire ramenait le
+jeu grand de 13-19 s à 5-8 s, mais faisait passer les 800 séances générées
+de 9 s à 16-43 s : les réglages par défaut sont les plus réguliers, on les
+garde.
 
-### Formulation retenue : mode optimisé
+### Formulation retenue : mode optimisé, jeu grand selon le temps accordé
 
-Même problème, même temps limite que l'objectif de durée (30 s ou 120 s),
-objectif activé. La colonne « Objectif » est `valeur_objectif` calculée par
-le vérificateur (`calculer_indicateurs`), avec le nombre de créneaux de trou ;
-elle est comparée à la solution du mode faisable et à l'emploi du temps
-témoin fourni avec les jeux fictifs (un plancher glouton).
+Calcul en deux temps. « Première solution » : délai entre le lancement et la
+première solution **enregistrable** (horaires et salles) ; c'est aussi ce
+que rend le calcul si le temps limite ou un arrêt tombe juste après.
+« Départ de l'amélioration » : moment où CP-SAT, objectif ajouté, a repris la
+solution valide comme point de départ. « Objectif final », trous et samedi
+sont ceux du vérificateur. « Mémoire » : maximum occupé par le processus
+Python du calcul (Windows), instantané et vérification compris.
 
-| Jeu | Séances | Variables | Contraintes | Construction | Temps limite | Total | Objectif (trous) | Mode faisable | Témoin |
-|---|---|---|---|---|---|---|---|---|---|
-| généré 200 | 200 | 12 192 | 147 125 | 0,56 s | 30 s | 28,6 s | **492** (0) | 14 514 (744) | - |
-| généré 800 | 800 | 47 581 | 625 738 | 3,17 s | 120 s | 117,7 s | **3 444** (0) | 58 746 (3 210) | - |
-| moyen S1 | 111 | 12 814 | 122 660 | 0,60 s | 30 s | 28,6 s | **405** (0) | 7 253 (450) | 2 832 (202) |
-| moyen S2 | 110 | 10 858 | 98 946 | 0,70 s | 30 s | 28,5 s | **287** (0) | 5 133 (324) | 2 248 (174) |
-| grand S1 | 595 | 76 537 | 756 888 | 4,24 s | 120 s | 117,6 s | **4 016** (14) | 41 947 (2 508) | 16 284 (668) |
-| grand S2 | 569 | 74 407 | 704 767 | 3,92 s | 120 s | 117,8 s | **3 121** (10) | 39 256 (2 211) | 15 922 (685) |
+| Jeu | Temps limite | Première solution | Départ de l'amélioration | Objectif final | Trous | Samedi | Mémoire |
+|---|---|---|---|---|---|---|---|
+| grand S1 | mode faisable | 22,2 s | - | 48 968 | 2 874 | 485 | 0,87 Go |
+| grand S1 | 60 s | 22,1 s | 27,7 s | **6 113** | 116 | 270 | 1,22 Go |
+| grand S1 | 120 s | 22,3 s | 27,9 s | **3 256** | 44 | 36 | 1,29 Go |
+| grand S1 | 180 s | 22,5 s | 27,9 s | **2 829** | 3 | 12 | 1,30 Go |
+| grand S2 | mode faisable | 20,2 s | - | 35 892 | 1 663 | 516 | 0,79 Go |
+| grand S2 | 60 s | 20,4 s | 25,7 s | **9 190** | 135 | 327 | 1,16 Go |
+| grand S2 | 120 s | 20,5 s | 25,7 s | **3 836** | 1 | 146 | 1,19 Go |
+| grand S2 | 180 s | 18,9 s | 24,2 s | **3 538** | 0 | 66 | 1,23 Go |
 
+Ce qu'il faut en retenir :
+
+- la première solution enregistrable arrive **au délai du mode faisable**,
+  quel que soit le temps limite. Un temps limite supérieur à ce délai donne
+  toujours un emploi du temps ;
+- l'amélioration reprend la solution valide 5 à 6 s plus tard (le temps de
+  charger le modèle avec son objectif), puis progresse vite : en 60 s les
+  trous sont divisés par 12 à 25, en 120 s ils ont presque disparu, en 180 s
+  le samedi se vide à son tour ;
+- la mémoire reste entre 1,2 et 1,3 Go : un seul modèle, la première
+  recherche étant libérée avant l'amélioration ;
+- une première série, relevée le même jour sur la machine plus occupée
+  (première solution vers 25 s), donnait pour le grand S1 7 012, 3 406 et
+  2 626 à 60, 120 et 180 s, et pour le grand S2 9 346, 3 582 et 3 521 : à
+  temps limite égal, le résultat peut varier d'une quinzaine de pour cent
+  d'une exécution à l'autre.
+
+### Formulation retenue : mode optimisé, autres jeux
+
+Même temps limite que l'objectif de durée (30 s ou 120 s). L'objectif final
+est comparé à celui de la première solution valide (colonne « Mode faisable »
+du tableau précédent) et à l'emploi du temps témoin fourni avec les jeux
+fictifs (un plancher glouton).
+
+| Jeu | Séances | Variables | Contraintes | Temps limite | Première solution | Total | Objectif final (trous ; samedi) | Témoin (trous) |
+|---|---|---|---|---|---|---|---|---|
+| généré 200 | 200 | 12 192 | 147 125 | 30 s | 1,5 s | 28,6 s | **552** (0 ; 0) | - |
+| généré 800 | 800 | 47 581 | 625 738 | 120 s | 13,5 s | 117,9 s | **4 134** (12 ; 12) | - |
+| moyen S1 | 111 | 12 814 | 122 660 | 30 s | 1,8 s | 28,6 s | **433** (0 ; 0) | 2 832 (202) |
+| moyen S2 | 110 | 10 858 | 98 946 | 30 s | 1,8 s | 28,7 s | **287** (0 ; 0) | 2 248 (174) |
+| grand S1 | 595 | 76 537 | 756 888 | 120 s | 22,3 s | 117,7 s | **3 256** (44 ; 36) | 16 284 (668) |
+| grand S2 | 569 | 74 407 | 704 767 | 120 s | 20,5 s | 117,7 s | **3 836** (1 ; 146) | 15 922 (685) |
+
+Variables et contraintes sont celles du modèle une fois l'objectif ajouté.
 Le mode optimisé utilise tout le temps accordé (il rend la main un peu avant
 la limite, le reste étant réservé aux salles) et ne prouve pas l'optimum à
-cette taille. Sur le jeu grand il divise l'objectif du témoin par quatre et
-ramène les trous de 668 créneaux à 14. Le mode faisable, lui, s'arrête à la
-première solution valide : elle est pleine de trous, c'est attendu.
+cette taille. Sur le jeu grand il divise l'objectif du témoin par quatre ou
+cinq.
 
-### Mode optimisé : première solution et qualité selon le temps accordé
+### Prétraitement de l'amélioration : réglage retenu
 
-Un calcul par processus, 2 fils, graine 1, sans indices (plusieurs mesures
-tournaient en même temps : les délais sont un peu majorés). « Première
-solution » : délai entre le lancement et la première solution d'horaires.
-« Mémoire » : maximum occupé par le processus Python du calcul (Windows),
-instantané et vérification compris.
+Essais sur le grand S1 (machine occupée, première solution vers 25 s) :
 
-| Jeu | Mode | Temps limite | Première solution | Objectif final | Trous | Samedi | Mémoire |
-|---|---|---|---|---|---|---|---|
-| grand S1 | faisable | 120 s | 15,3 s | 41 947 | 2 508 | 528 | 0,9 Go |
-| grand S1 | optimisé | 30 s | 23,1 s | 14 269 | 462 | 446 | 1,3 Go |
-| grand S1 | optimisé | 60 s | 24,5 s | 5 167 | 27 | 116 | 1,4 Go |
-| grand S1 | optimisé | 120 s | 25,1 s | 3 371 | 9 | 35 | 1,4 Go |
-| grand S1 | optimisé | 300 s | 27,5 s | 2 810 | 7 | 6 | 1,4 Go |
-| grand S2 | faisable | 120 s | 12,7 s | 39 256 | 2 211 | 558 | 0,8 Go |
-| grand S2 | optimisé | 60 s | 35,3 s | 4 505 | 59 | 192 | 1,3 Go |
-| grand S2 | optimisé | 120 s | 36,2 s | 3 195 | 18 | 55 | 1,4 Go |
-| moyen S1 | optimisé | 60 s | 3,7 s | 399 | 0 | 0 | 0,4 Go |
+| Prétraitement de CP-SAT pour l'amélioration | Reprise de la solution valide | Objectif à 60 s | Objectif à 120 s |
+|---|---|---|---|
+| réglages par défaut | 17,5 s après la première solution | aucune amélioration | 3 586 |
+| **allégé** (pas de sondage, pas de symétries, une passe) | 6 s après | 9 340 | 2 669 et 3 662 (deux exécutions) |
+| désactivé | - | - | 5 322 |
 
-Ce qu'il faut en retenir pour régler l'application :
+Le prétraitement complet coûte trop cher au début, là où le temps compte ;
+sans prétraitement du tout, la recherche est nettement moins bonne.
 
-- en mode optimisé, la première solution arrive **1,6 à 2,8 fois plus tard**
-  qu'en mode faisable sur le jeu grand : le modèle est deux fois plus gros
-  et son prétraitement plus long. Cette première solution est médiocre
-  (pénalité 123 263 sur le grand S1, pire que le mode faisable) ; la qualité
-  vient dans les secondes qui suivent ;
-- si le temps limite tombe **avant** cette première solution, le moteur rend
-  `TEMPS_DEPASSE` et rien n'est enregistré : il ne se replie pas sur une
-  solution du mode faisable. Dès qu'une solution existe, c'est la meilleure
-  trouvée qui est rendue ;
-- le temps limite du mode optimisé doit donc valoir plusieurs fois le délai
-  de première solution : à 2,5 fois ce délai (60 s ici) les trous ont presque
-  disparu, à 5 fois (120 s) le samedi aussi ;
-- donner la solution du mode faisable comme indice n'avance pas la première
-  solution du mode optimisé (essai sur le grand S1 : première solution à 38 s,
-  pénalité 122 967, alors que l'indice valait 41 947). L'indice ne couvre que
-  les choix des séances, pas les variables auxiliaires de l'objectif. Un
-  calcul « faisable d'abord, amélioration ensuite » demanderait une évolution
-  du moteur.
+### Ancien moteur (objectif posé dès le départ) : pour mémoire
+
+Jusqu'à la version précédente, le mode optimisé cherchait directement sur le
+modèle avec objectif. Mesures de l'époque, même poste :
+
+| Jeu | Temps limite | Première solution | Objectif final | Trous | Samedi | Mémoire |
+|---|---|---|---|---|---|---|
+| grand S1 | 30 s | 23,1 s | 14 269 | 462 | 446 | 1,3 Go |
+| grand S1 | 60 s | 24,5 s | 5 167 | 27 | 116 | 1,4 Go |
+| grand S1 | 120 s | 25,1 s | 3 371 | 9 | 35 | 1,4 Go |
+| grand S1 | 300 s | 27,5 s | 2 810 | 7 | 6 | 1,4 Go |
+| grand S2 | 60 s | 35,3 s | 4 505 | 59 | 192 | 1,3 Go |
+| grand S2 | 120 s | 36,2 s | 3 195 | 18 | 55 | 1,4 Go |
+
+Ses défauts, qui ont motivé le calcul en deux temps :
+
+- la première solution arrivait 1,6 à 2,8 fois plus tard qu'en mode
+  faisable, et elle était médiocre (pénalité 123 263 sur le grand S1) ;
+- si le temps limite tombait **avant** cette première solution, le calcul
+  rendait `TEMPS_DEPASSE` et rien n'était enregistré, alors que le mode
+  faisable aurait abouti.
+
+Ce que le calcul en deux temps coûte en échange : avec un temps limite
+court, la qualité finale est un peu en retrait (grand S1 à 60 s : 6 113
+contre 5 167 ; grand S2 à 60 s : 9 190 contre 4 505), parce que
+l'amélioration ne commence qu'après la solution valide et que son
+prétraitement est allégé. À 120 s l'écart se resserre (grand S1 : 3 256
+contre 3 371 ; grand S2 : 3 836 contre 3 195), et le nouveau moteur garantit
+un résultat dès que la première solution existe.
 
 ### Couche datée
 
@@ -556,10 +815,10 @@ dépendent de la semaine type obtenue) :
 
 | Jeu | Occurrences | À replacer | Replacées | À programmer | Instanciation | Replacement |
 |---|---|---|---|---|---|---|
-| moyen S1 | 1 196 | 8 | 8 | 0 | 0,02 s | 0,04 s |
-| moyen S2 | 996 | 67 | 62 | 5 | 0,02 s | 0,08 s |
-| grand S1 | 7 045 | 78 | 76 | 2 | 0,19 s | 0,14 s |
-| grand S2 | 6 920 | 344 | 293 | 51 | 0,35 s | 0,92 s |
+| moyen S1 | 1 196 | 8 | 8 | 0 | 0,02 s | 0,01 s |
+| moyen S2 | 996 | 62 | 61 | 1 | 0,02 s | 0,04 s |
+| grand S1 | 7 045 | 77 | 65 | 12 | 0,20 s | 0,31 s |
+| grand S2 | 6 920 | 368 | 319 | 49 | 0,22 s | 0,49 s |
 
 Les séances « à programmer » sont celles que leurs propres contraintes
 enferment : un devoir surveillé hebdomadaire au jour et à l'heure imposés
@@ -568,27 +827,45 @@ heure, où il a déjà lieu ; un vacataire présent un seul jour par semaine,
 déjà à son maximum horaire, n'a pas d'autre jour. La raison chiffrée est
 jointe à chacune.
 
-## Mesures à refaire sur le serveur
+## Mesures sur le serveur
 
-Toutes les mesures ci-dessus viennent d'un poste de développement. Le serveur
-de production a 2 cœurs et 3,7 Go de mémoire : les durées y seront plus
-longues, et c'est là que se règlent le temps limite par défaut et le choix du
-mode. À relever sur place, sur le jeu grand, pour chaque semestre :
+Le serveur de production a 2 cœurs et 3,7 Go de mémoire ; le service est
+limité à 3 Go (`MemoryMax=3G`) et le calcul tourne dans son processus.
+Mesures relevées sur place par le pilote le 05/10/2026, jeu grand (graine
+0), `generer --graine 1 --sans-indices --sans-activer`, **avec le moteur
+précédent** (objectif posé dès le départ, avant le calcul en deux temps) :
 
-| Mesure | Mode faisable | Mode optimisé, 120 s | Mode optimisé, 300 s |
-|---|---|---|---|
-| Durée totale du calcul | à mesurer | à mesurer | à mesurer |
-| Construction du modèle des horaires | à mesurer | à mesurer | à mesurer |
-| Délai avant la première solution | à mesurer | à mesurer | à mesurer |
-| Objectif final (trous, samedi) | à mesurer | à mesurer | à mesurer |
-| Mémoire maximale du processus | à mesurer | à mesurer | à mesurer |
-| Instanciation et replacement | à mesurer | - | - |
+| Mesure | S1 faisable | S1 optimisé, 120 s | S1 optimisé, 300 s | S2 faisable |
+|---|---|---|---|---|
+| Durée totale du calcul | 43 s | 120,7 s | 300,3 s | 26,8 s |
+| Construction du modèle des horaires | 4,7 s (41 613 variables, 352 922 contraintes) | 7,7 s (76 537 variables, 756 888 contraintes) | 6,4 s | 4,1 s |
+| Délai avant la première solution | 39,3 s | 58,8 s (pénalité 124 915) | 49,0 s | 23,5 s |
+| Objectif final (trous ; samedi) | 41 947 (2 508 ; 528) | 6 203 (142 ; 261) | 3 063 (33 ; 30) | 39 256 (2 211 ; 558) |
+| Mémoire maximale du processus | 1,04 Go | 1,71 Go | 1,75 Go | 0,95 Go |
+| Séances datées replacées ; à programmer | 76 ; 2 | 70 ; 4 | 55 ; 3 | 293 ; 51 |
 
-Repères du poste de développement, grand S1 : 16 s et 0,9 Go en mode
-faisable ; première solution à 25 s, objectif 3 371 en 120 s et 1,4 Go en
-mode optimisé.
+Ce qu'on en retient :
 
-Comment relever ces chiffres (base de mesure à part, pas celle de la
+- le serveur est **2,2 à 2,6 fois plus lent** que le poste de développement ;
+- à 120 s le résultat n'est pas présentable (142 créneaux de trou, 261
+  séances le samedi) ; à 300 s il l'est (33 ; 30) ;
+- d'où les réglages par défaut : calcul de 300 s, relance longue de 900 s
+  (voir « Réglages par défaut et bornes »).
+
+Ce que le calcul en deux temps doit changer à ces chiffres, d'après les
+mesures du poste de développement :
+
+- la première solution enregistrable du mode optimisé arrive au délai du mode
+  faisable (39 s pour le S1, au lieu de 49 à 59 s) et n'est plus jamais
+  perdue ;
+- l'amélioration part de la solution valide (objectif de l'ordre de 49 000
+  pour le S1) et non d'une première solution à 124 915 ;
+- la mémoire du mode optimisé baisse un peu (sur le poste : 1,2 à 1,3 Go au lieu de 1,3 à 1,4 Go).
+
+### À refaire sur le serveur avec le moteur en deux temps
+
+Mêmes mesures, pour chaque semestre, en mode faisable puis en mode optimisé
+à 120 s, 300 s et 900 s, sur une base de mesure à part (pas celle de la
 démonstration) :
 
 ```sh
@@ -600,15 +877,23 @@ python -m edt jeu --taille grand --graine 0
     --temps-limite 120 --graine 1 --sans-indices --sans-activer
 /usr/bin/time -v python -m edt generer --semestre 1 --optimiser \
     --temps-limite 300 --graine 1 --sans-indices --sans-activer
+/usr/bin/time -v python -m edt generer --semestre 1 --optimiser \
+    --temps-limite 900 --graine 1 --sans-indices --sans-activer
 ```
+
+Aucun calcul ne doit tourner dans le service pendant ces mesures : il n'y en
+a qu'un à la fois, et la commande serait refusée.
 
 - **durée totale** : ligne « Calcul n° ... : Réussi en ... s » ;
 - **construction** et **première solution** : dans le journal du calcul, dont
   la commande affiche le chemin, lignes « Modèle des horaires construit en
-  ... s » et « Horaires trouvés après ... s » (mode faisable) ou « Horaires
-  n° 1 après ... s » (mode optimisé) ;
-- **objectif final** : ligne « Qualité : objectif ..., ... créneau(x) de
-  trou, ... séance(s) le samedi » ;
+  ... s » et « Emploi du temps valide trouvé après ... s » (les deux modes) ;
+  en mode optimisé, « Amélioration : départ à l'objectif ... » marque le
+  début de l'amélioration ;
+- **qualité finale** : ligne « Bilan sur l'ensemble du semestre : ...
+  créneau(x) libre(s) entre deux cours ... et ... séance(s) le samedi », et
+  dans le journal « Solution contrôlée par le vérificateur : aucune erreur ;
+  objectif ..., ... créneau(x) de trou » ;
 - **mémoire** : ligne « Maximum resident set size » de `/usr/bin/time -v`
   (en kilo-octets). Par l'interface, le calcul tourne dans le processus du
   serveur web : sa mémoire s'ajoute à celle du serveur ;
@@ -618,11 +903,9 @@ python -m edt jeu --taille grand --graine 0
   calcul lancé depuis l'interface que les pages répondent encore (le moteur
   occupe les deux cœurs).
 
-À décider d'après ces chiffres : le temps limite par défaut (`temps_limite_s`)
-doit laisser au mode optimisé au moins trois fois son délai de première
-solution ; si la mémoire du mode optimisé approche la limite de la machine,
-garder le mode faisable par défaut et réserver l'optimisation à la relance
-longue.
+À vérifier d'après ces chiffres : que 300 s suffisent toujours à un résultat
+présentable (sinon relever `temps_limite_s`, borné à 900 s), et que la
+mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 
 ## Limites connues
 
@@ -633,21 +916,35 @@ longue.
   plus grand (plus de 1 500 séances par semestre, ou davantage de sites)
   demanderait une écriture plus compacte de cette règle, ou le découpage par
   promotion prévu en plan B par l'équipe.
-- **Serveur de production.** Les mesures viennent d'un poste de
-  développement. Sur le serveur (2 cœurs, plus lents), les durées seront plus
-  longues, d'un facteur qui reste à mesurer (voir « Mesures à refaire sur le
-  serveur »).
-- **Mode optimisé et temps limite court.** La première solution du mode
-  optimisé arrive plus tard que celle du mode faisable ; si le temps limite
-  tombe avant, le calcul rend « pas trouvé dans le temps imparti » alors que
-  le mode faisable aurait abouti.
+- **Serveur de production.** Le serveur (2 cœurs) est 2,2 à 2,6 fois plus
+  lent que le poste de développement (voir « Mesures sur le serveur »). Les
+  mesures du serveur datent du moteur précédent : celles du calcul en deux
+  temps restent à y relever.
+- **Temps limite plus court que la première solution.** Si le temps limite
+  tombe avant la première solution valide (une quarantaine de secondes sur
+  le serveur pour le jeu grand), le calcul rend « pas trouvé dans le temps
+  imparti », en mode optimisé comme en mode faisable. Au-delà, le mode
+  optimisé rend au moins la solution valide.
+- **Amélioration et salles.** Les horaires améliorés reçoivent leurs salles
+  après coup. Si elles ne suivent pas, le moteur essaie les horaires
+  précédents (20 gardés) mais ne relance pas l'amélioration : au pire, c'est
+  la solution valide du départ qui est rendue. Le journal le dit (« Horaires
+  améliorés ... écartés : les salles ne suivent pas »).
+- **Prétraitement allégé de l'amélioration.** Il fait gagner les premières
+  dizaines de secondes, celles qui comptent avec un temps limite de quelques
+  minutes. Sur un calcul très long, le prétraitement complet de CP-SAT
+  pourrait finir par donner mieux : ce n'est pas mesuré.
 - **Coupes de salles.** Une coupe n'interdit qu'une combinaison d'horaires.
   Un jeu où les salles manqueraient de façon répétée, sans que la condition
   de capacité le voie (séances longues à cheval sur plusieurs créneaux,
   salles imposées), demanderait plusieurs reprises.
 - **Preuve d'optimalité.** Sur un établissement complet, le mode optimisé
   rend la meilleure solution trouvée dans le temps imparti, sans preuve.
-- **Changements de campus.** L'objectif les approche (voir « Objectif »).
+- **Changements de campus.** L'objectif les approche (voir « Bilan d'une
+  solution et écart avec le vérificateur »).
+- **Arrêt d'un calcul d'un autre processus.** Le bouton « Arrêter » n'atteint
+  pas un calcul lancé en ligne de commande (voir « Calcul abandonné par son
+  processus »).
 - **Sans `HORAIRES`.** Les débuts proposés sont au pas de 30 minutes : une
   solution qui exigerait un début à 8 h 10 n'est pas vue, et « impossible »
   s'entend alors à ce pas près. Le modèle grossit beaucoup (48 débuts par
