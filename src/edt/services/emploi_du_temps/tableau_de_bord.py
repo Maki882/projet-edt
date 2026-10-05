@@ -42,8 +42,9 @@ journal = logging.getLogger(__name__)
 
 
 class Etape:
-    """Codes des prochaines étapes (l'écran choisit le lien de « saisir »)."""
+    """Codes des prochaines étapes."""
 
+    CHARGER = "charger"
     SAISIR = "saisir"
     SUIVRE = "suivre"
     GENERER = "generer"
@@ -54,12 +55,24 @@ class Etape:
 
 @dataclass(frozen=True)
 class ProchaineEtape:
-    """La prochaine étape conseillée : une phrase et, si possible, un lien."""
+    """La prochaine étape conseillée : une phrase, son écran et d'autres chemins possibles.
+
+    `autres_liens` : couples (adresse, libellé) des autres façons d'avancer
+    (importer des fichiers au lieu de saisir, par exemple).
+    """
 
     code: str
     phrase: str
     lien: str | None
     libelle_lien: str | None
+    autres_liens: tuple[tuple[str, str], ...] = ()
+
+
+ECRAN_JEUX = "/jeux"
+ECRAN_IMPORT = "/import"
+ECRAN_SALLES = "/salles"
+ECRAN_GROUPES = "/groupes"
+ECRAN_BESOINS = "/besoins"
 
 
 @dataclass(frozen=True)
@@ -123,6 +136,7 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
         semestre=semestre,
         nb_salles=nb_salles,
         nb_groupes=nb_groupes,
+        nb_enseignants=nb_enseignants,
         nb_besoins=nb_besoins,
         en_cours=en_cours,
         dernier=dernier,
@@ -150,19 +164,35 @@ def _prochaine_etape(
     semestre: ResumeSemestre | None,
     nb_salles: int,
     nb_groupes: int,
+    nb_enseignants: int,
     nb_besoins: int,
     en_cours: generation.SuiviCalcul | None,
     dernier: generation.SuiviCalcul | None,
     version: ResumeVersion | None,
     nb_a_traiter: int | None,
 ) -> ProchaineEtape:
+    if not (nb_salles or nb_groupes or nb_enseignants):
+        return ProchaineEtape(
+            Etape.CHARGER,
+            "La base ne contient encore aucun établissement : charger un établissement fictif "
+            "pour découvrir l'application, ou importer les fichiers de l'école.",
+            ECRAN_JEUX,
+            "Charger un établissement fictif",
+            ((ECRAN_IMPORT, "Importer des fichiers"), (ECRAN_SALLES, "Saisir à la main")),
+        )
     if semestre is None or not nb_salles or not nb_groupes:
+        manquants = [
+            nom
+            for nom, nombre in (("les salles", nb_salles), ("les groupes", nb_groupes))
+            if not nombre
+        ]
         return ProchaineEtape(
             Etape.SAISIR,
-            "Saisir les données de l'établissement : salles, enseignants et groupes, puis les "
-            "besoins d'enseignement (ou charger un jeu de données).",
-            None,
-            "Saisir les données",
+            "Compléter les données de l'établissement : " + " et ".join(manquants) + " manquent "
+            "encore, puis saisir les besoins d'enseignement.",
+            ECRAN_SALLES if not nb_salles else ECRAN_GROUPES,
+            "Saisir les salles" if not nb_salles else "Saisir les groupes",
+            ((ECRAN_IMPORT, "Importer des fichiers"),),
         )
     nom = semestre.libelle[:1].lower() + semestre.libelle[1:]
     if en_cours is not None:
@@ -177,8 +207,9 @@ def _prochaine_etape(
             Etape.SAISIR,
             f"Saisir les besoins d'enseignement du {nom} : c'est ce que le calcul place dans "
             "l'emploi du temps.",
-            None,
+            ECRAN_BESOINS,
             "Saisir les besoins",
+            ((ECRAN_IMPORT, "Importer des besoins"),),
         )
     if version is None:
         if dernier is not None and not dernier.reussi:

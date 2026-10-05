@@ -9,10 +9,15 @@
 <section class="carte edt-prochaine-etape">
   <h2>Prochaine étape</h2>
   <p>{{ etape.phrase }}</p>
-  {%- if etape.lien %}
-  <p><a class="bouton bouton-principal" href="{{ etape.lien }}">{{ etape.libelle_lien }}</a></p>
-  {%- elif etape.code == "saisir" %}
-  <p class="discret">Les écrans de saisie arrivent avec le lot « données » ; en attendant, un petit établissement fictif se charge avec « python -m edt jeu-minimal ».</p>
+  {%- if etape.lien or etape.autres_liens %}
+  <p class="edt-boutons">
+    {%- if etape.lien %}
+    <a class="bouton bouton-principal" href="{{ etape.lien }}">{{ etape.libelle_lien }}</a>
+    {%- endif %}
+    {%- for adresse, libelle in etape.autres_liens %}
+    <a class="bouton" href="{{ adresse }}">{{ libelle }}</a>
+    {%- endfor %}
+  </p>
   {%- endif %}
 </section>
 {%- endif %}

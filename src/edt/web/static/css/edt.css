@@ -137,6 +137,23 @@
   font: inherit;
 }
 
+.edt-perimetre {
+  background: var(--info-pale);
+  border: 1px solid var(--info);
+  border-left-width: 4px;
+  border-radius: var(--rayon);
+  padding: 0.5rem 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.edt-perimetre p {
+  margin: 0.15rem 0;
+}
+
+.edt-perimetre .bouton {
+  margin-top: 0.3rem;
+}
+
 /* ----- Mise en page grille + panneau ------------------------------------------ */
 
 .edt-mise-en-page {

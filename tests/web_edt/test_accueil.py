@@ -4,20 +4,51 @@ from __future__ import annotations
 
 import threading
 
+from sqlalchemy import delete, select
+
 from edt import solveur
+from edt.db import modeles as m
 from edt.domaine.enumerations import Gravite
 from edt.services import generation
+from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
 from .conftest import DELAI
 
 
-def test_base_vide_conseille_de_saisir_les_donnees(client):
+def test_base_vide_propose_un_etablissement_fictif(client):
     page = client.get("/").text
 
-    assert "Prochaine étape" in page and "Saisir les données" in page
+    assert "Prochaine étape" in page
+    assert (
+        '<a class="bouton bouton-principal" href="/jeux">Charger un établissement fictif</a>'
+        in page
+    )
+    assert 'href="/import"' in page and 'href="/salles"' in page
     assert "La base est initialisée" in page  # l'état de la base reste affiché
+
+
+def test_donnees_incompletes_l_etape_mene_a_l_ecran_qui_manque(session, aujourdhui):
+    type_salle = session.scalars(select(m.TypeSalle)).first()
+    campus = m.Campus(code="NDC", nom="Notre-Dame-des-Champs")
+    session.add(m.Salle(code="N001", campus=campus, capacite=30, type_salle=type_salle))
+    session.flush()
+
+    etape = tableau_de_bord(session, aujourdhui).prochaine_etape
+
+    assert (etape.lien, etape.libelle_lien) == ("/groupes", "Saisir les groupes")
+    assert "les groupes manquent" in etape.phrase
+
+
+def test_sans_besoin_l_etape_mene_aux_besoins(jeu_minimal, session, aujourdhui_fige):
+    session.execute(delete(m.Besoin))
+    session.flush()
+
+    etape = tableau_de_bord(session, aujourdhui_fige).prochaine_etape
+
+    assert etape.lien == "/besoins"
+    assert ("/import", "Importer des besoins") in etape.autres_liens
 
 
 def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, aujourdhui_fige):

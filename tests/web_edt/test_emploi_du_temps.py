@@ -68,6 +68,7 @@ def test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiant
             session,
             version_id=version_generee.version_id,
             cible=Cible(NatureCible.GROUPE, groupe),
+            etendu=True,
         )
 
     par_groupes = {(b.matiere, b.type_code, b.groupes): b for b in vue.blocs}
@@ -294,7 +295,7 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
 def test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut(version_generee, client):
     reponse = client.get(f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id=9999")
     assert reponse.status_code == 200
-    assert "Affichage du premier groupe à la place" in reponse.text
+    assert "Affichage de la première classe à la place" in reponse.text
 
 
 def test_le_vrai_verificateur_refuse_un_conflit_de_groupe(version_generee, client):
@@ -344,3 +345,87 @@ def test_le_panneau_revient_sur_la_page_d_ou_vient_htmx(version_generee, client)
         headers={**HX, "HX-Current-URL": "http://ailleurs.example/piege"},
     ).text
     assert "ailleurs.example" not in ailleurs
+
+
+def test_une_classe_s_ouvre_sur_ses_seances_et_celles_de_sa_promotion(version_generee):
+    with session_base() as session:
+        classe = identifiant_groupe(session, "A1-G1")
+        restreinte = vues.construire_vue(
+            session,
+            version_id=version_generee.version_id,
+            cible=Cible(NatureCible.GROUPE, classe),
+            verifier=False,
+        )
+        etendue = vues.construire_vue(
+            session,
+            version_id=version_generee.version_id,
+            cible=Cible(NatureCible.GROUPE, classe),
+            verifier=False,
+            etendu=True,
+        )
+
+    assert {b.groupes for b in restreinte.blocs} <= {("A1",), ("A1-G1",), ("A1-G1", "A1-G2")}
+    assert not any(b.partielle for b in restreinte.blocs)
+    perimetre = restreinte.perimetre
+    assert not perimetre.etendu and not perimetre.etendu_par_defaut
+    assert perimetre.ascendants == ("A1",)
+    assert perimetre.descendants == ("A1-G1a", "A1-G1b")
+    assert "A1-ANG-B2" in perimetre.autres
+    assert perimetre.nb_masquees == len(etendue.blocs) - len(restreinte.blocs) > 0
+
+
+def test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants(version_generee):
+    with session_base() as session:
+        demi = identifiant_groupe(session, "A1-G1a")
+        vue = vues.construire_vue(
+            session,
+            version_id=version_generee.version_id,
+            cible=Cible(NatureCible.GROUPE, demi),
+            verifier=False,
+        )
+
+    assert vue.perimetre.etendu and vue.perimetre.etendu_par_defaut
+    assert {"A1", "A1-G1", "A1-PMR"} <= set(vue.groupes_lies)
+    assert any(b.groupes == ("A1",) for b in vue.blocs)
+
+
+def test_bandeau_et_bascule_vers_la_vue_etendue(version_generee, client):
+    with session_base() as session:
+        classe = identifiant_groupe(session, "A1-G1")
+    adresse = f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id={classe}"
+
+    restreinte = client.get(adresse).text
+    assert "<strong>Affiché :</strong> les séances de A1-G1 et de A1" in restreinte
+    assert "<strong>Non affiché :</strong>" in restreinte and "A1-G1a, A1-G1b" in restreinte
+    assert "Afficher aussi les classes, demi-groupes et groupes de langues" in restreinte
+    assert "etendu=1" in restreinte
+
+    etendue = client.get(adresse + "&etendu=1").text
+    assert "tout ce que suivent ses étudiants" in etendue
+    assert "N&#39;afficher que les séances de tout le groupe" in etendue or (
+        "N'afficher que les séances de tout le groupe" in etendue
+    )
+    # La navigation garde le choix de l'utilisateur.
+    assert "etendu=1&amp;" in etendue or "&amp;etendu=1" in etendue
+
+
+def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
+    version_generee, client
+):
+    with session_base() as session:
+        martin = session.scalar(select(m.Enseignant.id).where(m.Enseignant.nom == "Martin"))
+    client.cookies.clear()
+
+    premiere = client.get("/emploi-du-temps")
+    assert "Groupe A1-G1 - 1re année, classe 1" in premiere.text  # une classe, pas la promotion
+    assert premiere.cookies.get("edt_derniere_cible") is not None
+
+    client.get(f"/emploi-du-temps?enseignant_id={martin}")
+    retour = client.get("/emploi-du-temps").text
+    assert "Claire Martin" in retour and "dernier emploi du temps consulté" in retour
+
+    # Une cible retenue qui n'existe plus ici : la page s'ouvre sur la classe, sans erreur.
+    client.cookies.set("edt_derniere_cible", "groupe:9999")
+    perdue = client.get("/emploi-du-temps")
+    assert perdue.status_code == 200 and "Groupe A1-G1" in perdue.text
+    assert "introuvable" not in perdue.text.lower()
