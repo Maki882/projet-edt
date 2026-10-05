@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Export{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h2>Gabarit vide</h2>
+  <p>Le format d'échange des données de l'établissement, sans données : un onglet d'explications,
+    puis une feuille par table avec ses en-têtes (les colonnes obligatoires sont en gras).</p>
+  <p>
+    <a class="bouton bouton-principal" href="/export/gabarit.xlsx">Classeur Excel (.xlsx)</a>
+    <a class="bouton" href="/export/gabarit.zip">Fichiers CSV (archive .zip)</a>
+  </p>
+</section>
+
+<section class="carte">
+  <h2>Données de l'établissement</h2>
+  <p>Toutes les données (campus, salles, enseignants, groupes, matières, besoins, calendrier...)
+    dans le même format : le fichier se réimporte tel quel.</p>
+  <p>
+    <a class="bouton bouton-principal" href="/export/donnees.xlsx">Classeur Excel (.xlsx)</a>
+    <a class="bouton" href="/export/donnees.zip">Fichiers CSV (archive .zip)</a>
+  </p>
+</section>
+
+<section class="carte">
+  <h2>Emploi du temps</h2>
+  {% if choix.versions %}
+  <form class="formulaire" method="get" action="/export/emploi-du-temps.csv">
+    {{ ui.champ("version_id", "Version", valeur=choix.versions[0][0], type="select", options=choix.versions, requis=true) }}
+    {{ ui.champ("couche", "Contenu", valeur="hebdo", type="select", options=couches,
+                aide="Semaine type : une ligne (ou un événement récurrent) par séance hebdomadaire. Séances datées : les séances enregistrées pour chaque date.") }}
+    <p class="discret">Pour exporter une seule ressource, choisir au plus un groupe, un enseignant ou une salle.</p>
+    {{ ui.champ("groupe_id", "Groupe", type="select", options=[("", "(tous)")] + choix.groupes|list,
+                aide="Avec les séances des groupes qui le contiennent et de ses sous-groupes.") }}
+    {{ ui.champ("enseignant_id", "Enseignant", type="select", options=[("", "(tous)")] + choix.enseignants|list) }}
+    {{ ui.champ("salle_id", "Salle", type="select", options=[("", "(toutes)")] + choix.salles|list) }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal" formaction="/export/emploi-du-temps.csv">Télécharger en CSV</button>
+      <button type="submit" class="bouton" formaction="/export/emploi-du-temps.ics">Télécharger en iCal (agenda)</button>
+    </div>
+  </form>
+  {% else %}
+  <p class="vide">Aucune version d'emploi du temps : en générer une, ou importer un emploi du temps existant.</p>
+  {% endif %}
+</section>
+{% endblock %}
