@@ -18,7 +18,7 @@ from edt.config import charger_configuration
 from edt.db.moteur import session_base
 from edt.erreurs import ErreurEDT
 from edt.services.emploi_du_temps import presentation
-from edt.services.emploi_du_temps.tableau_de_bord import Etape, ProchaineEtape, tableau_de_bord
+from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.services.etat import diagnostiquer_base
 from edt.services.generation import dernier_calcul
 from edt.web.gabarits import Message, rendre
@@ -28,25 +28,6 @@ journal = logging.getLogger(__name__)
 
 routeur = APIRouter()
 MENU = [EntreeMenu("Accueil", "/", ordre=0)]
-
-ECRANS_DE_SAISIE = ("/besoins", "/salles", "/groupes", "/enseignants", "/donnees", "/import")
-"""Écrans de saisie proposés pour l'étape « saisir », dans l'ordre de préférence (s'ils existent)."""
-
-
-def _lien_de_saisie(request: Request, etape: ProchaineEtape) -> ProchaineEtape:
-    """Complète l'étape « saisir » avec le premier écran de saisie présent dans le menu."""
-    if etape.code != Etape.SAISIR or etape.lien:
-        return etape
-    adresses = {
-        entree.url
-        for section in getattr(request.app.state, "menu", ())
-        for entree in section.entrees
-    }
-    preferes = ["/besoins"] if "besoins" in (etape.libelle_lien or "").lower() else []
-    for adresse in (*preferes, *ECRANS_DE_SAISIE):
-        if adresse in adresses:
-            return ProchaineEtape(etape.code, etape.phrase, adresse, etape.libelle_lien)
-    return etape
 
 
 @routeur.get("/", response_class=HTMLResponse, name="accueil")
@@ -75,7 +56,7 @@ def accueil(request: Request) -> HTMLResponse:
             "dernier_calcul": dernier_calcul() if etat.initialisee else None,
             "environnement": charger_configuration().env,
             "tableau": tableau,
-            "etape": _lien_de_saisie(request, tableau.prochaine_etape) if tableau else None,
+            "etape": tableau.prochaine_etape if tableau else None,
             "fmt": presentation,
         },
         messages=messages,
