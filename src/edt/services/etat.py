@@ -1,6 +1,7 @@
-"""État général de l'application : base initialisée ou non, compteurs des entités.
+"""État général de l'application : base initialisée ou non, schéma à jour, compteurs.
 
-Sert à la page d'accueil, à la route `/sante` et à la commande `doctor`.
+Sert à la page d'accueil, à la route `/sante` et aux commandes `doctor` et
+`verifier-schema`.
 """
 
 from __future__ import annotations
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from edt.config import url_affichable
 from edt.db import modeles as m
-from edt.db.initialisation import tables_manquantes
+from edt.db.initialisation import ecarts_schema, tables_manquantes
 from edt.db.moteur import obtenir_moteur
 
 journal = logging.getLogger(__name__)
@@ -41,10 +42,15 @@ class EtatBase:
     """Diagnostic de la base de données.
 
     - `accessible` : la connexion fonctionne ;
-    - `initialisee` : toutes les tables du modèle existent ;
-    - `tables_manquantes` : tables absentes (vide si la base est initialisée) ;
+    - `initialisee` : la base est prête à servir, c'est-à-dire que toutes les
+      tables du modèle existent **et** qu'aucune table existante ne diffère du
+      modèle. Une base au schéma périmé n'est donc pas initialisée ;
+    - `tables_manquantes` : tables du modèle absentes de la base ;
+    - `ecarts_schema` : écarts entre les tables existantes et le modèle, en
+      phrases lisibles (voir `edt.db.initialisation.ecarts_schema`) ;
     - `mode_journal` : mode de journalisation SQLite (attendu : `wal`) ;
-    - `erreur` : message si la base est inaccessible.
+    - `erreur` : message si la base est inaccessible ;
+    - `compteurs` : nombre de lignes par entité, seulement si la base est initialisée.
     """
 
     url: str
@@ -54,6 +60,12 @@ class EtatBase:
     mode_journal: str | None = None
     erreur: str | None = None
     compteurs: dict[str, int] = field(default_factory=dict)
+    ecarts_schema: tuple[str, ...] = ()
+
+    @property
+    def schema_perime(self) -> bool:
+        """Vrai si une table existante n'a plus les colonnes du modèle (base à recréer)."""
+        return bool(self.ecarts_schema)
 
     @property
     def vide(self) -> bool:
@@ -80,18 +92,31 @@ def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
             if moteur.dialect.name == "sqlite":
                 mode_journal = connexion.execute(text("PRAGMA journal_mode")).scalar()
         manquantes = tuple(tables_manquantes(moteur))
+        ecarts = tuple(ecarts_schema(moteur))
+        initialisee = not manquantes and not ecarts
         compteurs: dict[str, int] = {}
-        if not manquantes:
+        if initialisee:
             with Session(moteur) as session:
                 compteurs = compter_entites(session)
     except (SQLAlchemyError, OSError) as erreur:
         journal.exception("Base inaccessible (%s)", url)
-        return EtatBase(url=url, accessible=False, initialisee=False, erreur=str(erreur))
+        # Le message du pilote de base (« file is not a database ») suffit à l'utilisateur ;
+        # la trace complète est dans le journal.
+        cause = getattr(erreur, "orig", None) or erreur
+        return EtatBase(url=url, accessible=False, initialisee=False, erreur=str(cause))
+    if ecarts:
+        journal.warning(
+            "Schéma périmé (%s) : %d écart(s) avec le modèle : %s",
+            url,
+            len(ecarts),
+            " ; ".join(ecarts),
+        )
     return EtatBase(
         url=url,
         accessible=True,
-        initialisee=not manquantes,
+        initialisee=initialisee,
         tables_manquantes=manquantes,
         mode_journal=mode_journal,
         compteurs=compteurs,
+        ecarts_schema=ecarts,
     )
