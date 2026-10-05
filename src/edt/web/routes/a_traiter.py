@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
-from edt.services.emploi_du_temps import anomalies, presentation, versions
+from edt.services.emploi_du_temps import anomalies, compteur, presentation, versions
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import rendre
 from edt.web.menu import EntreeMenu
@@ -47,14 +47,15 @@ def page(request: Request, session: SessionRequete, semestre_id: int | None = No
 
 
 @routeur.get("/compteur", name="a_traiter_compteur")
-def compteur(request: Request, session: SessionRequete):
-    """Nombre d'éléments à traiter (fragment pour l'onglet du menu ; vide s'il n'y a rien)."""
-    liste = anomalies.a_traiter(session)
+def fragment_compteur(request: Request, session: SessionRequete):
+    """Nombre d'éléments à traiter (fragment pour l'onglet du menu ; vide s'il n'y a rien).
+
+    Mémorisé tant que la base ne change pas (`compteur.compteur_a_traiter`) :
+    l'appeler depuis chaque page ne coûte presque rien.
+    """
+    resultat = compteur.compteur_a_traiter(session)
     return rendre(
         request,
         "edt/_compteur.html",
-        {
-            "total": sum(element.total for element in liste),
-            "complet": all(element.complet for element in liste),
-        },
+        {"total": resultat.total, "complet": resultat.complet},
     )
