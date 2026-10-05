@@ -1,0 +1,62 @@
+{# Liste des besoins : ajout rapide, liste filtrable, charge hebdomadaire par groupe. #}
+{% extends "donnees/liste.html" %}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+
+{% block avant_liste %}
+<details class="carte repliable">
+  <summary>Ajout rapide d'un besoin hebdomadaire</summary>
+  <form method="post" action="{{ ecran.prefixe }}">
+    <input type="hidden" name="_retour" value="{{ url_liste }}">
+    <input type="hidden" name="mode_volume" value="{{ mode_par_semaine }}">
+    {{ d.rubriques(ajout_rapide) }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal">Ajouter le besoin</button>
+      <span class="discret">Pour un volume total, une séance datée ou des exigences de salle : « {{ entite.nouveau }} ».</span>
+    </div>
+  </form>
+</details>
+{% endblock %}
+
+{% block apres_liste %}
+{%- if semestre_choisi %}
+<details class="carte repliable"{% if charges %} open{% endif %}>
+  <summary>Charge hebdomadaire par groupe (semestre choisi)</summary>
+  {%- if charges %}
+  <p class="discret">
+    Séances par semaine de chaque groupe : les siennes et celles des groupes qui le contiennent
+    (une classe suit aussi les cours de sa promotion). Un volume total compte pour sa moyenne
+    sur sa période ; les séances ponctuelles sont comptées à part.
+  </p>
+  <div class="tableau-defilant">
+    <table class="tableau">
+      <thead>
+        <tr>
+          <th scope="col">Groupe</th>
+          <th scope="col" class="nombre">Propres</th>
+          <th scope="col" class="nombre">Héritées</th>
+          <th scope="col" class="nombre">Total / semaine</th>
+          <th scope="col" class="nombre">Heures / semaine</th>
+          <th scope="col" class="nombre">Ponctuelles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for charge in charges %}
+        <tr>
+          <td><strong>{{ charge.code }}</strong> <span class="discret">{{ charge.libelle }}</span></td>
+          <td class="nombre">{{ charge.propres }}</td>
+          <td class="nombre">{{ charge.heritees }}</td>
+          <td class="nombre"><strong>{{ charge.total }}</strong></td>
+          <td class="nombre">{{ (charge.minutes|int)|duree }}</td>
+          <td class="nombre">{{ charge.ponctuelles }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- else %}
+  <p class="vide">Aucun besoin pour ce semestre.</p>
+  {%- endif %}
+</details>
+{%- endif %}
+{% endblock %}

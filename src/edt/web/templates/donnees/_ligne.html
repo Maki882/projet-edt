@@ -1,0 +1,19 @@
+{# Une ligne de liste (aussi renvoyée seule à HTMX après une édition sur place). #}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+{%- set url_element = ecran.prefixe ~ "/" ~ ligne.id %}
+<tr id="ligne-{{ ecran.entite.code }}-{{ ligne.id }}"{% if modifiee %} class="ligne-modifiee"{% endif %}>
+  {%- for colonne in colonnes %}
+  <td{% if colonne.nombre %} class="nombre"{% endif %}>
+    {%- if loop.first %}<a href="{{ url_element }}{{ suffixe_retour }}">{{ d.cellule(colonne, ligne[colonne.cle]) }}</a>{% else %}{{ d.cellule(colonne, ligne[colonne.cle]) }}{% endif -%}
+  </td>
+  {%- endfor %}
+  <td class="colonne-actions">
+    <a class="bouton bouton-petit" href="{{ url_element }}{{ suffixe_retour }}"
+       {%- if ecran.edition_en_ligne %} hx-get="{{ url_element }}/ligne/edition" hx-target="closest tr" hx-swap="outerHTML"{% endif %}>Modifier</a>
+    {%- for action in ecran.actions_ligne %}
+    {{ ui.bouton_action(url_element ~ action.suffixe, action.libelle, classe="bouton bouton-petit") }}
+    {%- endfor %}
+    <a class="bouton bouton-petit bouton-danger" href="{{ url_element }}/supprimer">Supprimer</a>
+  </td>
+</tr>
