@@ -1221,6 +1221,7 @@ fieldset.champ {
     align-items: center;
     gap: 0.3rem;
     overflow-x: auto;
+    scrollbar-width: thin;
     white-space: nowrap;
     border-right: none;
     border-bottom: 1px solid var(--bordure);
