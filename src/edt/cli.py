@@ -60,6 +60,7 @@ class GroupeEDT(typer.core.TyperGroup):
     """Groupe racine : traduit les erreurs en message lisible et en code de sortie."""
 
     def invoke(self, ctx: typer.Context):
+        """Exécute la commande ; une erreur devient un message et un code de sortie."""
         try:
             return super().invoke(ctx)
         except ERREURS_DE_TYPER:
