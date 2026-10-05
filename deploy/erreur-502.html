@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+  deploy/erreur-502.html — page affichée par nginx quand l'application EDT ne
+  répond pas (arrêtée, en cours de redémarrage, ou plantée). Installée par
+  installer-serveur.sh dans /var/www/edt-erreurs/erreur-502.html.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="15">
+<title>Emplois du temps : application momentanément indisponible</title>
+<style>
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         background: #f4f5f7; color: #1f2933; line-height: 1.5; }
+  main { max-width: 38rem; margin: 12vh auto 2rem; padding: 2rem; background: #fff;
+         border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+  h1 { font-size: 1.4rem; margin-top: 0; }
+  .technique { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e4e7eb;
+               font-size: .85rem; color: #52606d; }
+  code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>L'application des emplois du temps est momentanément indisponible</h1>
+  <p>Le serveur fonctionne, mais l'application ne répond pas. C'est normal
+     pendant une mise à jour, qui dure en général moins d'une minute.</p>
+  <p>Cette page se recharge toute seule toutes les 15 secondes. Si le problème
+     dure, prévenez l'équipe du projet.</p>
+  <p class="technique">Pour l'équipe : nginx n'arrive pas à joindre l'application
+     sur 127.0.0.1:8000 (erreur 502). Lancez <code>deploy/etat.sh</code>, puis voir
+     <code>docs/deploiement.md</code>, section « Erreur 502 ».</p>
+</main>
+</body>
+</html>
