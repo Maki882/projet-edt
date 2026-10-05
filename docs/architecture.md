@@ -17,7 +17,7 @@ futur LLM / API         ─┘      │
 
 | Couche | Paquet | Rôle | Peut importer |
 |---|---|---|---|
-| Interfaces | `edt.web`, `edt.cli`, `edt.commandes` | routes, gabarits, commandes : aucune logique métier | `services`, `domaine` |
+| Interfaces | `edt.web`, `edt.cli`, `edt.commandes` | routes, gabarits, commandes : aucune logique métier | `services`, `domaine`, et `edt.db.moteur` pour ouvrir une session |
 | Services | `edt.services` | fonctions typées, une par fonctionnalité | `domaine`, `solveur`, `verification`, `db` |
 | Logique pure | `edt.domaine`, `edt.solveur`, `edt.verification` | calculs sans base ni réseau | `domaine` seulement |
 | Données | `edt.db` | moteur, sessions, modèles ORM, données par défaut | `domaine` |
@@ -30,7 +30,10 @@ Règles qui en découlent :
 - le solveur et le vérificateur **ne voient jamais l'ORM** : ils travaillent
   sur l'instantané (voir « Contrats partagés ») ;
 - aucun état global en mémoire, sauf le suivi des calculs en cours
-  (`edt.services.generation`) : tout le reste est en base.
+  (`edt.services.generation`) : tout le reste est en base ;
+- seule exception à l'ordre des couches : les commandes du socle `init-db` et
+  `jeu-minimal` appellent directement `edt.db.initialisation` et
+  `edt.db.jeux`, qui sont des outils d'administration de la base.
 
 ## Arborescence
 
@@ -505,7 +508,8 @@ arret_demande)`, avec `en_cours` et `reussi`.
 - Succès : une nouvelle `version_edt` (activée par défaut, l'ancienne est
   désactivée) et ses `seance_hebdo`. Tout autre cas : **aucune version**.
 - Ces fonctions ouvrent leurs propres sessions (un calcul dépasse la durée
-  d'une requête). `demander_arret` n'atteint que les calculs du processus
+  d'une requête). Le suivi des fils vit dans le processus : le serveur se
+  lance avec **un seul processus** (pas d'option `--workers`). `demander_arret` n'atteint que les calculs du processus
   courant ; au démarrage du serveur, `cloturer_calculs_interrompus` marque en
   erreur les calculs qu'un arrêt a laissés « en cours ».
 - L'orchestration n'instancie pas les séances datées et n'appelle pas le
@@ -607,7 +611,7 @@ fermée pour un besoin est retirée de ses semaines actives par le dépliage.
 | un **service** | un module de `edt/services/` : fonctions typées qui reçoivent la session |
 | un **écran** | un module de `edt/web/routes/` et ses gabarits (voir plus haut) |
 | une **commande** | un module de `edt/commandes/` (voir plus haut) |
-| un **test** | `tests/<lot>/test_*.py`, avec les fixtures de `tests/conftest.py` ; un test long porte `@pytest.mark.perf` |
+| un **test** | `tests/<lot>/test_*.py` (dossier avec un `__init__.py` vide, comme `tests/socle/`), avec les fixtures de `tests/conftest.py` ; un test long porte `@pytest.mark.perf` |
 
 ## Vérifier son travail
 
