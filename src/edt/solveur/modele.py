@@ -540,26 +540,35 @@ class Modele:
         `poids_trous` × trous des groupes + `poids_changement_campus` ×
         changements de campus + `poids_samedi` × séances du samedi +
         `poids_creneaux_extremes` × séances sur le premier ou le dernier
-        créneau du jour.
+        créneau du jour. Chaque situation compte autant de fois qu'elle dure
+        de semaines : une séance pèse son nombre de semaines actives, un trou
+        ou un changement de campus le nombre de semaines du semestre.
         """
         parametres = self.instantane.parametres
+        nb_semaines = max(1, len(self.instantane.semaines))
+        actives = [seance.semaines.bit_count() for seance in self.seances]
         termes: list = []
         if parametres.poids_samedi:
             termes.extend(
-                parametres.poids_samedi * self._le_jour(seance.index, SAMEDI)
+                parametres.poids_samedi
+                * actives[seance.index]
+                * self._le_jour(seance.index, SAMEDI)
                 for seance in self.seances
             )
         if parametres.poids_creneaux_extremes:
             termes.extend(
-                parametres.poids_creneaux_extremes * litteral for litteral in self._extremes()
+                parametres.poids_creneaux_extremes * actives[index] * litteral
+                for index, litteral in enumerate(self._extremes())
             )
         groupes = self._emplois_du_temps_des_groupes()
         if parametres.poids_trous:
-            termes.extend(parametres.poids_trous * trou for trou in self._trous(groupes))
+            termes.extend(
+                parametres.poids_trous * nb_semaines * trou for trou in self._trous(groupes)
+            )
         if parametres.poids_changement_campus:
             personnes = groupes + self._emplois_du_temps_des_enseignants()
             termes.extend(
-                parametres.poids_changement_campus * changement
+                parametres.poids_changement_campus * nb_semaines * changement
                 for changement in self._changements_de_campus(personnes)
             )
         variables = [terme for terme in termes if not isinstance(terme, int)]
@@ -607,25 +616,29 @@ class Modele:
         return litteraux
 
     def _emplois_du_temps_des_groupes(self) -> list[list[int]]:
-        """Séances vues par chaque groupe de base (sans sous-groupe, ni transverse ni tiers-temps).
+        """Séances vues par chaque groupe feuille de l'arbre des groupes.
 
-        L'emploi du temps d'un groupe de base réunit toutes les séances dont
-        un groupe est le sien ou en conflit avec lui (les groupes qui le
-        contiennent, les groupes transverses où vont ses étudiants).
+        Un groupe feuille n'a pas de sous-groupe (les groupes transverses et
+        tiers-temps, hors de l'arbre, sont écartés). Son emploi du temps
+        réunit ses séances et celles des groupes qui le contiennent.
         """
-        parents = {groupe.parent_id for groupe in self.instantane.groupes}
+        parents = {groupe.id: groupe.parent_id for groupe in self.instantane.groupes}
+        par_groupe: dict[int, list[int]] = defaultdict(list)
+        for seance in self.seances:
+            for groupe_id in seance.besoin.groupes:
+                par_groupe[groupe_id].append(seance.index)
         emplois: set[tuple[int, ...]] = set()
         for groupe in self.instantane.groupes:
-            if groupe.id in parents or groupe.nature in (
+            if groupe.id in parents.values() or groupe.nature in (
                 NatureGroupe.TRANSVERSE,
                 NatureGroupe.TIERS_TEMPS,
             ):
                 continue
-            emploi = tuple(
-                seance.index
-                for seance in self.seances
-                if groupe.id in self.regles.groupes_lies(seance.besoin)
-            )
+            lignee, courant = [groupe.id], groupe.parent_id
+            while courant is not None and courant not in lignee:
+                lignee.append(courant)
+                courant = parents.get(courant)
+            emploi = tuple(sorted({i for g in lignee for i in par_groupe.get(g, ())}))
             if len(emploi) >= 2:
                 emplois.add(emploi)
         return [list(emploi) for emploi in sorted(emplois)]

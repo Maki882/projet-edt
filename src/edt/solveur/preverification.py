@@ -2,7 +2,8 @@
 
 `pre_verifier` est une fonction pure et rapide (moins d'une seconde sur un
 établissement complet). Elle est appelée d'office par le moteur avant toute
-résolution et peut l'être seule par l'interface pour prévenir l'utilisateur.
+résolution et peut l'être seule par l'interface pour prévenir l'utilisateur
+(`edt.services.generation.pre_verifier_semestre`).
 
 Familles examinées
 ------------------
@@ -10,7 +11,8 @@ Familles examinées
 2. **Domaines vides** : séance sans aucun horaire ou sans aucune salle
    possible, en disant ce qui élimine les possibilités (voir
    `edt.solveur.preparation`).
-3. **Verrous** : verrou intenable seul, paires de verrous qui se contredisent.
+3. **Horaires fixes** : verrou intenable seul, verrous qui se contredisent,
+   besoin qui impose le même créneau à plusieurs de ses séances.
 4. **Charge des groupes** : heures à placer rapportées au temps ouvert par la
    grille, indisponibilités et séances à horaire fixe déduites.
 5. **Charge des enseignants** : idem, avec leurs maxima horaires.
@@ -36,9 +38,9 @@ from collections.abc import Iterable, Sequence
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite, Gravite
 from edt.domaine.heures import duree_vers_texte
-from edt.domaine.instantane import Instantane
+from edt.domaine.instantane import Indisponibilite, Instantane
 from edt.solveur.preparation import Preparation, SeancePreparee
-from edt.solveur.regles import PlageInterdite, blocs_de_la_grille, enumerer
+from edt.solveur.regles import blocs_de_la_grille, enumerer
 from edt.verification import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -48,8 +50,11 @@ C = CodeContrainte
 SEUIL_TENSION = 0.9
 """Part du temps disponible au-delà de laquelle une charge est signalée comme tendue."""
 
-Obstacle = tuple[int, int, int]
-"""Plage occupée d'avance : `(jour, début, fin)`."""
+Plage = tuple[int, int, int]
+"""Plage horaire d'un jour de la semaine : `(jour, début, fin)`."""
+
+Charge = tuple[int, int, int, bool]
+"""Pire semaine d'une ressource : `(numéro, minutes demandées, minutes disponibles, constante)`."""
 
 
 def pre_verifier(
@@ -117,7 +122,7 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
 # --------------------------------------------------------------------------- #
 
 
-def _minutes_libres(blocs: Sequence[Obstacle], obstacles: Sequence[Obstacle]) -> dict[int, int]:
+def _minutes_libres(blocs: Sequence[Plage], obstacles: Sequence[Plage]) -> dict[int, int]:
     """Par jour, minutes des demi-journées `blocs` qui ne sont couvertes par aucun obstacle."""
     par_jour: dict[int, int] = defaultdict(int)
     for jour, debut, fin in blocs:
@@ -135,43 +140,38 @@ def _minutes_libres(blocs: Sequence[Obstacle], obstacles: Sequence[Obstacle]) ->
     return par_jour
 
 
-def _fixe(preparation: Preparation, seance: SeancePreparee) -> Obstacle | None:
-    """Plage d'une séance dont l'horaire est déjà certain (un seul début possible)."""
-    if len(seance.debuts) != 1:
-        return None
-    jour, minute = preparation.decoder(seance.debuts[0])
-    return jour, minute, minute + seance.duree
-
-
 def _pire_semaine(
     preparation: Preparation,
     seances: Sequence[SeancePreparee],
-    plages: Sequence[PlageInterdite],
-    blocs: Sequence[Obstacle],
+    indisponibilites: Sequence[Indisponibilite],
+    blocs: Sequence[Plage],
     plafond_jour: int | None = None,
-) -> tuple[int, int, int, bool] | None:
-    """Semaine la plus chargée d'une ressource : `(semaine, demande, disponible, constante)`.
+) -> Charge | None:
+    """Semaine la plus chargée d'une ressource.
 
     La demande est la somme des durées des séances à horaire libre actives
     cette semaine-là ; le disponible est le temps des `blocs` de la grille,
-    moins les plages interdites et les séances à horaire fixe. `constante`
-    est vraie si toutes les semaines donnent les mêmes chiffres. Renvoie
-    `None` si aucune séance libre n'est à placer.
+    moins les indisponibilités récurrentes et les séances à horaire fixe, le
+    tout borné par le maximum journalier `plafond_jour`. Renvoie `None` si
+    aucune séance à horaire libre n'est à placer.
     """
-    resultats: list[tuple[int, int, int]] = []
+    interdits = [(i.jour, i.debut, i.fin) for i in indisponibilites]
+    resultats: dict[tuple[int, ...], tuple[int, int, int]] = {}
     for semaine in preparation.instantane.semaines:
         bit = 1 << semaine.numero
         actives = [seance for seance in seances if seance.semaines & bit]
-        fixes = [fixe for seance in actives if (fixe := _fixe(preparation, seance)) is not None]
-        demande = sum(seance.duree for seance in actives if len(seance.debuts) != 1)
+        signature = tuple(seance.index for seance in actives)
+        if signature in resultats or not actives:
+            continue  # mêmes séances actives qu'une semaine déjà examinée
+        demande = sum(seance.duree for seance in actives if not seance.horaire_fixe)
         if demande == 0:
             continue
-        obstacles = fixes + [
-            (plage.jour, plage.debut, plage.fin)
-            for plage in plages
-            if semaine.numero in plage.semaines
+        fixes = [
+            creneau[:3]
+            for seance in actives
+            if (creneau := preparation.creneau_fixe(seance)) is not None
         ]
-        libres = _minutes_libres(blocs, obstacles)
+        libres = _minutes_libres(blocs, interdits + fixes)
         if plafond_jour is not None:
             # Les séances à horaire fixe consomment elles aussi le maximum journalier.
             deja: dict[int, int] = defaultdict(int)
@@ -181,46 +181,66 @@ def _pire_semaine(
                 jour: min(minutes, max(0, plafond_jour - deja[jour]))
                 for jour, minutes in libres.items()
             }
-        resultats.append((semaine.numero, demande, sum(libres.values())))
+        resultats[signature] = (semaine.numero, demande, sum(libres.values()))
     if not resultats:
         return None
-    semaine, demande, disponible = max(resultats, key=lambda r: (r[1] - r[2], -r[0]))
-    constante = len({(d, c) for _, d, c in resultats}) == 1 and len(resultats) == len(
-        preparation.instantane.semaines
-    )
-    return semaine, demande, disponible, constante
+    numero, demande, disponible = max(resultats.values(), key=lambda r: (r[1] - r[2], -r[0]))
+    toutes = sum(1 << semaine.numero for semaine in preparation.instantane.semaines)
+    constante = len(resultats) == 1 and all(seance.semaines == toutes for seance in seances)
+    return numero, demande, disponible, constante
 
 
 def _quand(semaine: int, constante: bool) -> str:
     return "par semaine" if constante else f"la semaine {semaine} (la plus chargée)"
 
 
-def _jours_possibles(preparation: Preparation, seances: Sequence[SeancePreparee]) -> set[int]:
+def _jours_possibles(preparation: Preparation, seances: Iterable[SeancePreparee]) -> set[int]:
     return {preparation.decoder(code)[0] for seance in seances for code in seance.debuts}
+
+
+def _decoupes_par_jours(
+    preparation: Preparation, seances: Sequence[SeancePreparee], blocs: Sequence[Plage]
+) -> list[tuple[list[SeancePreparee], list[Plage]]]:
+    """Sous-ensembles de séances à comparer au temps des jours où elles peuvent aller.
+
+    D'abord toutes les séances face aux jours que l'une d'elles peut occuper,
+    puis celles qui ne peuvent pas aller le samedi face aux jours hors samedi.
+    """
+    libres = [seance for seance in seances if not seance.horaire_fixe]
+    jours = _jours_possibles(preparation, libres)
+    decoupes = [(list(seances), [bloc for bloc in blocs if bloc[0] in jours])]
+    if SAMEDI in jours:
+        sans_samedi = [
+            seance
+            for seance in seances
+            if seance.horaire_fixe or SAMEDI not in _jours_possibles(preparation, [seance])
+        ]
+        jours_sans_samedi = _jours_possibles(
+            preparation, (seance for seance in sans_samedi if not seance.horaire_fixe)
+        )
+        decoupes.append((sans_samedi, [bloc for bloc in blocs if bloc[0] in jours_sans_samedi]))
+    return decoupes
 
 
 def _anomalie_de_charge(
     code: CodeContrainte,
     sujet: str,
     verbe: str,
-    resultat: tuple[int, int, int, bool],
+    charge: Charge,
     complement: str = "",
     **cibles,
 ) -> Anomalie | None:
-    """Anomalie de charge si la demande dépasse (erreur) ou approche (avertissement) le disponible."""
-    semaine, demande, libres, constante = resultat
-    if demande <= SEUIL_TENSION * libres:
+    """Anomalie si la demande dépasse (erreur) ou approche (avertissement) le temps disponible."""
+    semaine, demande, disponible, constante = charge
+    if demande <= SEUIL_TENSION * disponible:
         return None
     chiffres = (
         f"{duree_vers_texte(demande)} de cours {_quand(semaine, constante)} pour "
-        f"{duree_vers_texte(libres)} disponibles{complement}"
+        f"{duree_vers_texte(disponible)} disponibles{complement}"
     )
-    if demande > libres:
+    if demande > disponible:
         return Anomalie(
-            code,
-            Gravite.ERREUR,
-            f"{sujet} {verbe} {chiffres} : c'est impossible.",
-            **cibles,
+            code, Gravite.ERREUR, f"{sujet} {verbe} {chiffres} : c'est impossible.", **cibles
         )
     return Anomalie(
         code,
@@ -235,14 +255,13 @@ def _anomalie_de_charge(
 # --------------------------------------------------------------------------- #
 
 
-def _charges_des_groupes(preparation: Preparation, blocs: Sequence[Obstacle]) -> list[Anomalie]:
+def _charges_des_groupes(preparation: Preparation, blocs: Sequence[Plage]) -> list[Anomalie]:
     """Charge de chaque groupe : ses séances et celles des groupes qui le contiennent."""
     instantane, regles = preparation.instantane, preparation.regles
     par_groupe: dict[int, list[SeancePreparee]] = defaultdict(list)
     for seance in preparation.seances:
         for groupe_id in seance.besoin.groupes:
             par_groupe[groupe_id].append(seance)
-
     parents = {groupe.id: groupe.parent_id for groupe in instantane.groupes}
 
     def lignee(groupe_id: int) -> list[int]:
@@ -257,35 +276,27 @@ def _charges_des_groupes(preparation: Preparation, blocs: Sequence[Obstacle]) ->
 
     anomalies: list[Anomalie] = []
     en_erreur: set[int] = set()
-    groupes = sorted(par_groupe, key=lambda g: (len(lignee(g)), g))
-    for groupe_id in groupes:
+    for groupe_id in sorted(par_groupe, key=lambda g: (len(lignee(g)), g)):
         chaine = lignee(groupe_id)
         if any(ancetre in en_erreur for ancetre in chaine[1:]):
             en_erreur.add(groupe_id)  # déjà expliqué par le groupe qui le contient
             continue
         seances = list({s.index: s for g in chaine for s in par_groupe.get(g, ())}.values())
-        plages = (
-            [
-                plage
-                for g in chaine
-                for plage in regles.plages_interdites(CibleIndisponibilite.GROUPE, g)
-            ]
+        indisponibilites = (
+            [i for g in chaine for i in regles.recurrentes(CibleIndisponibilite.GROUPE, g)]
             if regles.active(C.DISPO_GROUPE)
             else []
         )
-        code_groupe = instantane.groupe(groupe_id).code
         for sous_ensemble, blocs_utiles in _decoupes_par_jours(preparation, seances, blocs):
-            resultat = _pire_semaine(preparation, sous_ensemble, plages, blocs_utiles)
-            if resultat is None:
-                continue
-            anomalie = _anomalie_de_charge(
+            charge = _pire_semaine(preparation, sous_ensemble, indisponibilites, blocs_utiles)
+            anomalie = charge and _anomalie_de_charge(
                 C.GROUPE_UNIQUE,
-                f"Le groupe {code_groupe}",
+                f"Le groupe {instantane.groupe(groupe_id).code}",
                 "demande",
-                resultat,
+                charge,
                 groupes=(groupe_id,),
             )
-            if anomalie is not None:
+            if anomalie:
                 anomalies.append(anomalie)
                 if anomalie.bloquante:
                     en_erreur.add(groupe_id)
@@ -293,31 +304,7 @@ def _charges_des_groupes(preparation: Preparation, blocs: Sequence[Obstacle]) ->
     return anomalies
 
 
-def _decoupes_par_jours(
-    preparation: Preparation, seances: Sequence[SeancePreparee], blocs: Sequence[Obstacle]
-) -> list[tuple[list[SeancePreparee], list[Obstacle]]]:
-    """Sous-ensembles de séances à comparer au temps des jours où elles peuvent aller.
-
-    D'abord toutes les séances face aux jours que l'une d'elles peut occuper,
-    puis celles qui ne peuvent pas aller le samedi face aux jours hors samedi.
-    """
-    libres = [seance for seance in seances if len(seance.debuts) != 1]
-    jours = _jours_possibles(preparation, libres)
-    decoupes = [(list(seances), [bloc for bloc in blocs if bloc[0] in jours])]
-    if SAMEDI in jours:
-        sans_samedi = [
-            seance
-            for seance in seances
-            if len(seance.debuts) == 1 or SAMEDI not in _jours_possibles(preparation, [seance])
-        ]
-        jours_sans_samedi = _jours_possibles(
-            preparation, [seance for seance in sans_samedi if len(seance.debuts) != 1]
-        )
-        decoupes.append((sans_samedi, [bloc for bloc in blocs if bloc[0] in jours_sans_samedi]))
-    return decoupes
-
-
-def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Obstacle]) -> list[Anomalie]:
+def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -> list[Anomalie]:
     """Charge de chaque enseignant non fictif : temps disponible et maxima horaires."""
     instantane, regles = preparation.instantane, preparation.regles
     par_enseignant: dict[int, list[SeancePreparee]] = defaultdict(list)
@@ -326,26 +313,24 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Obstacle]
             par_enseignant[enseignant_id].append(seance)
 
     anomalies: list[Anomalie] = []
+    maxima = regles.active(C.MAX_ENSEIGNANT)
     for enseignant_id in sorted(par_enseignant):
         enseignant = instantane.enseignant(enseignant_id)
         seances = par_enseignant[enseignant_id]
-        maxima = regles.active(C.MAX_ENSEIGNANT)
         if maxima and enseignant.max_minutes_semaine is not None:
+            # Le total d'une semaine ne dépend pas du placement : dépassement certain.
             totaux = {
                 semaine.numero: sum(s.duree for s in seances if s.semaines & (1 << semaine.numero))
                 for semaine in instantane.semaines
             }
-            numero, total = max(
-                totaux.items(), key=lambda item: (item[1], -item[0]), default=(0, 0)
-            )
+            numero, total = max(totaux.items(), key=lambda item: (item[1], -item[0]))
             if total > enseignant.max_minutes_semaine:
-                constante = len(set(totaux.values())) == 1
                 anomalies.append(
                     Anomalie(
                         C.MAX_ENSEIGNANT,
                         Gravite.ERREUR,
                         f"{enseignant.nom} doit assurer {duree_vers_texte(total)} de cours "
-                        f"{_quand(numero, constante)} pour un maximum de "
+                        f"{_quand(numero, len(set(totaux.values())) == 1)} pour un maximum de "
                         f"{duree_vers_texte(enseignant.max_minutes_semaine)} par semaine : "
                         "c'est impossible.",
                         enseignants=(enseignant_id,),
@@ -354,37 +339,46 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Obstacle]
                 continue
         if not regles.active(C.ENSEIGNANT_UNIQUE):
             continue
-        plages = (
-            regles.plages_interdites(CibleIndisponibilite.ENSEIGNANT, enseignant_id)
+        indisponibilites = (
+            regles.recurrentes(CibleIndisponibilite.ENSEIGNANT, enseignant_id)
             if regles.active(C.DISPO_ENSEIGNANT)
             else ()
         )
         plafond = enseignant.max_minutes_jour if maxima else None
+        deductions = [
+            texte
+            for texte, present in (
+                ("indisponibilités", indisponibilites),
+                ("maximum journalier", plafond is not None),
+            )
+            if present
+        ]
+        complement = f" ({' et '.join(deductions)} déduits)" if deductions else ""
         for sous_ensemble, blocs_utiles in _decoupes_par_jours(preparation, seances, blocs):
-            resultat = _pire_semaine(preparation, sous_ensemble, plages, blocs_utiles, plafond)
-            if resultat is None:
-                continue
-            anomalie = _anomalie_de_charge(
+            charge = _pire_semaine(
+                preparation, sous_ensemble, indisponibilites, blocs_utiles, plafond
+            )
+            anomalie = charge and _anomalie_de_charge(
                 C.ENSEIGNANT_UNIQUE,
                 enseignant.nom,
                 "doit assurer",
-                resultat,
-                " (indisponibilités et maximum journalier déduits)" if plages or plafond else "",
+                charge,
+                complement,
                 enseignants=(enseignant_id,),
             )
-            if anomalie is not None:
+            if anomalie:
                 anomalies.append(anomalie)
                 break
     return anomalies
 
 
-def _charges_des_salles(preparation: Preparation, blocs: Sequence[Obstacle]) -> list[Anomalie]:
+def _charges_des_salles(preparation: Preparation, blocs: Sequence[Plage]) -> list[Anomalie]:
     """Demande rapportée à l'offre, par famille de salles.
 
     Une famille est l'ensemble des salles qui conviennent à un besoin (type,
     capacité, équipements, accessibilité). Toutes les séances qui ne peuvent
     aller que dans des salles de cette famille doivent tenir dans les heures
-    d'ouverture de ces salles.
+    d'ouverture de ces salles, indisponibilités récurrentes déduites.
     """
     instantane, regles = preparation.instantane, preparation.regles
     par_famille: dict[frozenset[int], list[SeancePreparee]] = defaultdict(list)
@@ -396,27 +390,24 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Obstacle]) -> 
             par_famille[salles].append(seance)
 
     ouverture = sum(fin - debut for _, debut, fin in blocs)
-    # Heures perdues par salle et par semaine à cause de ses indisponibilités.
-    pertes: dict[int, dict[int, int]] = {}
-    if regles.active(C.DISPO_SALLE):
-        for salle in instantane.salles:
-            plages = regles.plages_interdites(CibleIndisponibilite.SALLE, salle.id)
-            if plages:
-                pertes[salle.id] = {
-                    semaine.numero: ouverture
-                    - sum(
-                        _minutes_libres(
-                            blocs,
-                            [
-                                (plage.jour, plage.debut, plage.fin)
-                                for plage in plages
-                                if semaine.numero in plage.semaines
-                            ],
-                        ).values()
-                    )
-                    for semaine in instantane.semaines
-                }
+    offre_par_salle: dict[int, int] = {}
+    for salle in instantane.salles:
+        indisponibilites = (
+            regles.recurrentes(CibleIndisponibilite.SALLE, salle.id)
+            if regles.active(C.DISPO_SALLE)
+            else ()
+        )
+        offre_par_salle[salle.id] = (
+            sum(
+                _minutes_libres(
+                    blocs, [(i.jour, i.debut, i.fin) for i in indisponibilites]
+                ).values()
+            )
+            if indisponibilites
+            else ouverture
+        )
 
+    toutes = sum(1 << semaine.numero for semaine in instantane.semaines)
     anomalies: list[Anomalie] = []
     for famille in sorted(par_famille, key=lambda f: (len(f), sorted(f))):
         seances = [
@@ -425,22 +416,14 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Obstacle]) -> 
         par_masque: dict[int, int] = defaultdict(int)
         for seance in seances:
             par_masque[seance.semaines] += seance.duree
-        resultats = []
-        for semaine in instantane.semaines:
-            bit = 1 << semaine.numero
-            demande = sum(minutes for masque, minutes in par_masque.items() if masque & bit)
-            if demande == 0:
-                continue
-            offre = ouverture * len(famille) - sum(
-                pertes[salle_id][semaine.numero] for salle_id in famille if salle_id in pertes
+        demandes = {
+            semaine.numero: sum(
+                minutes for masque, minutes in par_masque.items() if masque >> semaine.numero & 1
             )
-            resultats.append((semaine.numero, demande, offre))
-        if not resultats:
-            continue
-        numero, demande, offre = max(resultats, key=lambda r: (r[1] - r[2], -r[0]))
-        constante = len({(d, o) for _, d, o in resultats}) == 1 and len(resultats) == len(
-            instantane.semaines
-        )
+            for semaine in instantane.semaines
+        }
+        numero, demande = max(demandes.items(), key=lambda item: (item[1], -item[0]))
+        offre = sum(offre_par_salle[salle_id] for salle_id in famille)
         codes = sorted(instantane.salle(salle_id).code for salle_id in famille)
         if len(codes) == 1:
             lieu = f"dans la salle {codes[0]}"
@@ -450,10 +433,10 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Obstacle]) -> 
             C.SALLE_UNIQUE,
             f"Les {len(seances)} séance(s) qui ne peuvent avoir lieu que {lieu}",
             "demandent",
-            (numero, demande, offre, constante),
+            (numero, demande, offre, set(par_masque) == {toutes}),
             " dans ces salles",
             salles=tuple(sorted(famille)),
         )
-        if anomalie is not None:
+        if anomalie:
             anomalies.append(anomalie)
     return anomalies

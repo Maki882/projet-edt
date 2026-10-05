@@ -4,8 +4,8 @@ Pour chaque séance de l'instantané, on calcule ici, en Python pur :
 
 - ses **débuts admissibles** : couples (jour, heure) permis par les verrous,
   les jours et heures imposés, la grille (`HORAIRES`, `JOURS`), le déjeuner
-  (`DEJEUNER`) et les indisponibilités de ses enseignants et de ses groupes
-  (`DISPO_ENSEIGNANT`, `DISPO_GROUPE`) ;
+  (`DEJEUNER`) et les indisponibilités récurrentes de ses enseignants et de
+  ses groupes (`DISPO_ENSEIGNANT`, `DISPO_GROUPE`) ;
 - ses **salles admissibles** : celles qui satisfont `TYPE_SALLE`, `CAPACITE`,
   `EQUIPEMENT` et `ACCESSIBILITE`, moins celles qui sont indisponibles à tous
   ses débuts (`DISPO_SALLE`) ; quand une salle n'est indisponible qu'à
@@ -14,7 +14,8 @@ Pour chaque séance de l'instantané, on calcule ici, en Python pur :
 Un domaine vide est une impossibilité certaine : elle est rapportée ici, en
 nommant la séance et ce qui élimine ses possibilités, au lieu d'être
 découverte plus tard comme une infaisabilité muette. Les contradictions
-entre séances verrouillées sont relevées au même endroit.
+entre séances à horaire fixe (verrous, jour et heure imposés) sont relevées
+au même endroit.
 
 Un début est codé par un entier `jour * pas + minute`. Le `pas` dépasse une
 journée augmentée de la plus longue séparation exigée (pause, trajet) : deux
@@ -44,14 +45,7 @@ from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite, Gravit
 from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Placement, SeanceAPlacer
 from edt.erreurs import ErreurIntrouvable
-from edt.solveur.regles import (
-    PlageInterdite,
-    Regles,
-    enumerer,
-    limites_demi_journee,
-    nom_creneau,
-    nom_seance,
-)
+from edt.solveur.regles import Regles, enumerer, limites_demi_journee, nom_creneau, nom_seance
 from edt.verification import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -88,10 +82,15 @@ class SeancePreparee:
         """Besoin de la séance."""
         return self.seance.besoin
 
+    @property
+    def horaire_fixe(self) -> bool:
+        """Vrai si la séance n'a qu'un début possible (verrou, ou jour et heure imposés)."""
+        return len(self.debuts) == 1
+
 
 @dataclass
 class _Domaine:
-    """Domaines communs aux séances d'un même besoin actives les mêmes semaines."""
+    """Domaines communs à toutes les séances sans verrou d'un même besoin."""
 
     debuts: tuple[int, ...] = ()
     salles: tuple[int, ...] = ()
@@ -104,8 +103,10 @@ class Preparation:
     """Domaines de toutes les séances d'un instantané, et impossibilités certaines.
 
     - `seances` : une `SeancePreparee` par séance, dans l'ordre de l'instantané ;
-    - `anomalies` : domaines vides et verrous impossibles (gravité `ERREUR`) ;
-    - `conflits_verrous` : paires de séances verrouillées qui se contredisent ;
+    - `anomalies` : domaines vides, verrous intenables, séances à horaire
+      imposé qui se contredisent (gravité `ERREUR`) ;
+    - `conflits_verrous` : paires de séances verrouillées qui se contredisent
+      (refus du calcul, sauf `tolerer_violations_heritees`) ;
     - `isolees` : avec `tolerer_violations_heritees`, les séances verrouillées
       dispensées des contraintes de paire face aux autres séances verrouillées.
     """
@@ -126,27 +127,28 @@ class Preparation:
         )
         self.pas = MINUTES_PAR_JOUR + marge + 1
         self.anomalies: list[Anomalie] = []
+        self.conflits_verrous: list[Anomalie] = []
         self._limites = limites_demi_journee(instantane)
-        self._domaines: dict[tuple[int, frozenset[int]], _Domaine] = {}
+        self._domaines: dict[int, _Domaine] = {}
         self.seances = [
             self._preparer(index, seance) for index, seance in enumerate(instantane.seances)
         ]
-        for (besoin_id, _), domaine in self._domaines.items():
+        for besoin_id, domaine in self._domaines.items():
             if domaine.probleme is not None:
                 code, message = domaine.probleme
                 besoin = instantane.besoin(besoin_id)
-                numeros = enumerer(domaine.seances)
                 pluriel = "s" if len(domaine.seances) > 1 else ""
                 self.anomalies.append(
                     Anomalie(
                         code,
                         Gravite.ERREUR,
-                        f"« {besoin.libelle} » (séance{pluriel} {numeros}) : {message}",
+                        f"« {besoin.libelle} » (séance{pluriel} {enumerer(domaine.seances)}) : "
+                        f"{message}",
                         seances=tuple(domaine.seances),
                         groupes=tuple(sorted(besoin.groupes)),
                     )
                 )
-        self.conflits_verrous = self._conflits_entre_verrous()
+        self._relever_les_contradictions()
         self.isolees = self._seances_isolees()
 
     # -- codage des débuts ------------------------------------------------------
@@ -165,11 +167,10 @@ class Preparation:
         semaines = sum(1 << numero for numero in seance.semaines)
         if seance.verrou is not None and self.regles.active(C.VERROU):
             return self._preparer_verrouillee(index, seance, seance.verrou, semaines)
-        cle = (seance.besoin.id, seance.semaines)
-        domaine = self._domaines.get(cle)
+        domaine = self._domaines.get(seance.besoin.id)
         if domaine is None:
             domaine = self._domaine_libre(seance)
-            self._domaines[cle] = domaine
+            self._domaines[seance.besoin.id] = domaine
         domaine.seances.append(seance.id)
         return SeancePreparee(
             index=index,
@@ -183,7 +184,11 @@ class Preparation:
         )
 
     def _domaine_libre(self, seance: SeanceAPlacer) -> _Domaine:
-        """Domaines d'une séance sans verrou (voir les règles en tête de module)."""
+        """Domaines d'une séance sans verrou (voir les règles en tête de module).
+
+        Ils ne dépendent que du besoin : les indisponibilités récurrentes
+        valent toutes les semaines, quelles que soient les semaines actives.
+        """
         besoin = seance.besoin
         debuts, elimines, examines = self._debuts_libres(seance)
         if not debuts:
@@ -193,7 +198,7 @@ class Preparation:
         if not compatibles.salles:
             return _Domaine(debuts=debuts, probleme=self._probleme_de_salles(besoin))
         salles, interdits = self._filtrer_salles_disponibles(
-            seance, besoin.duree, debuts, [salle.id for salle in compatibles.salles]
+            besoin.duree, debuts, [salle.id for salle in compatibles.salles]
         )
         if not salles:
             return _Domaine(
@@ -250,12 +255,9 @@ class Preparation:
                 if not regles.active(C.JOURS) or self._jour_permis(jour, besoin)
             ]
 
-        plages_par_jour: dict[int, list[tuple[CodeContrainte, str, PlageInterdite]]] = defaultdict(
-            list
-        )
-        for code, nom, plage in regles.plages_des_personnes(besoin):
-            if not plage.semaines.isdisjoint(seance.semaines):
-                plages_par_jour[plage.jour].append((code, nom, plage))
+        plages_par_jour = defaultdict(list)
+        for code, nom, plage in regles.recurrentes_des_personnes(besoin):
+            plages_par_jour[plage.jour].append((code, nom, plage))
 
         dejeuner = (
             regles.active(C.DEJEUNER)
@@ -280,20 +282,23 @@ class Preparation:
                 if fin > MINUTES_PAR_JOUR:
                     elimines[(C.HORAIRES, "la séance finirait après minuit")] += 1
                     continue
-                if not heure_imposee and regles.active(C.HORAIRES):
-                    if (
+                if (
+                    not heure_imposee
+                    and regles.active(C.HORAIRES)
+                    and (
                         minute < parametres.ouverture_min
                         or fin > parametres.fermeture_min
                         or fin > self._limites[(jour, minute)]
-                    ):
-                        elimines[
-                            (
-                                C.HORAIRES,
-                                f"la séance de {duree_vers_texte(duree)} ne tient pas dans la "
-                                "demi-journée ou dans les heures d'ouverture",
-                            )
-                        ] += 1
-                        continue
+                    )
+                ):
+                    elimines[
+                        (
+                            C.HORAIRES,
+                            f"la séance de {duree_vers_texte(duree)} ne tient pas dans la "
+                            "demi-journée ou dans les heures d'ouverture",
+                        )
+                    ] += 1
+                    continue
                 if dejeuner and se_chevauchent(
                     minute, fin, parametres.dejeuner_debut_min, parametres.dejeuner_fin_min
                 ):
@@ -351,19 +356,19 @@ class Preparation:
         details = enumerer(
             (f"{exigence.nb_salles} {exigence.libelle}" for exigence in exigences), maximum=6
         )
-        if pire.nb_salles == 0:
-            conclusion = f"aucune salle n'est {pire.libelle}"
-            if pire.code is C.ACCESSIBILITE:
-                conclusion = "la séance requiert une salle accessible et aucune salle ne l'est"
-        else:
+        if pire.nb_salles > 0:
             conclusion = "aucune ne réunit toutes ces exigences"
+        elif pire.code is C.ACCESSIBILITE:
+            conclusion = "la séance requiert une salle accessible et aucune salle ne l'est"
+        else:
+            conclusion = f"l'exigence « {CATALOGUE[pire.code].libelle} » élimine toutes les salles"
         return (
             pire.code,
             f"aucune salle ne convient. Sur {total} salle(s) : {details} ; {conclusion}.",
         )
 
     def _filtrer_salles_disponibles(
-        self, seance: SeanceAPlacer, duree: int, debuts: tuple[int, ...], salles: list[int]
+        self, duree: int, debuts: tuple[int, ...], salles: list[int]
     ) -> tuple[tuple[int, ...], dict[int, frozenset[int]]]:
         """Retire les salles indisponibles à tous les débuts ; garde les débuts interdits des autres.
 
@@ -374,11 +379,7 @@ class Preparation:
         gardees: list[int] = []
         interdits: dict[int, frozenset[int]] = {}
         for salle_id in salles:
-            plages = [
-                plage
-                for plage in self.regles.plages_interdites(CibleIndisponibilite.SALLE, salle_id)
-                if not plage.semaines.isdisjoint(seance.semaines)
-            ]
+            plages = self.regles.recurrentes(CibleIndisponibilite.SALLE, salle_id)
             if not plages:
                 gardees.append(salle_id)
                 continue
@@ -447,11 +448,9 @@ class Preparation:
                     "Corriger le verrou ou le besoin.",
                     jour=verrou.jour,
                 )
-        for code, nom, plage in regles.plages_des_personnes(besoin):
-            if (
-                plage.jour == verrou.jour
-                and not plage.semaines.isdisjoint(seance.semaines)
-                and se_chevauchent(verrou.debut, verrou.fin, plage.debut, plage.fin)
+        for code, nom, plage in regles.recurrentes_des_personnes(besoin):
+            if plage.jour == verrou.jour and se_chevauchent(
+                verrou.debut, verrou.fin, plage.debut, plage.fin
             ):
                 valide = False
                 refuser(
@@ -470,7 +469,7 @@ class Preparation:
                 refuser(code, f"{designation} n'a pas de salle : {message}")
                 return preparee
             salles, _ = self._filtrer_salles_disponibles(
-                seance, preparee.duree, preparee.debuts, compatibles
+                preparee.duree, preparee.debuts, compatibles
             )
             if not salles:
                 refuser(
@@ -499,15 +498,13 @@ class Preparation:
         for code, libelle in defauts:
             refuser(
                 code,
-                f"{designation} est verrouillée en salle {salle.code}, qui n'est pas {libelle}. "
-                f"Changer la salle du verrou ou désactiver la contrainte « "
-                f"{CATALOGUE[code].libelle} ».",
+                f"{designation} est verrouillée en salle {salle.code}, qui ne fait pas partie "
+                f"des salles {libelle}. Changer la salle du verrou ou désactiver la contrainte "
+                f"« {CATALOGUE[code].libelle} ».",
                 salles=(salle.id,),
                 jour=verrou.jour,
             )
-        salles, _ = self._filtrer_salles_disponibles(
-            seance, preparee.duree, preparee.debuts, [salle.id]
-        )
+        salles, _ = self._filtrer_salles_disponibles(preparee.duree, preparee.debuts, [salle.id])
         if not salles:
             refuser(
                 C.DISPO_SALLE,
@@ -519,48 +516,80 @@ class Preparation:
             preparee.salles = salles
         return preparee
 
-    def _conflits_entre_verrous(self) -> list[Anomalie]:
-        """Paires de séances verrouillées qui violent déjà entre elles une contrainte."""
-        par_jour: dict[int, list[SeancePreparee]] = defaultdict(list)
-        for preparee in self.seances:
-            if preparee.verrouillee and preparee.debuts:
-                par_jour[preparee.seance.verrou.jour].append(preparee)
-        conflits: list[Anomalie] = []
+    # -- contradictions entre séances à horaire fixe ----------------------------
+
+    def creneau_fixe(self, seance: SeancePreparee) -> tuple[int, int, int, int | None] | None:
+        """`(jour, début, fin, salle ou None)` d'une séance à horaire fixe, sinon `None`."""
+        if not seance.horaire_fixe:
+            return None
+        jour, minute = self.decoder(seance.debuts[0])
+        salle = seance.salles[0] if len(seance.salles) == 1 else None
+        return jour, minute, minute + seance.duree, salle
+
+    def _relever_les_contradictions(self) -> None:
+        """Paires de séances à horaire fixe qui violent déjà entre elles une contrainte.
+
+        Deux séances verrouillées : `conflits_verrous` (violation héritée, que
+        l'utilisateur peut tolérer). Sinon l'une au moins tient son horaire de
+        son besoin (jour et heure imposés) : l'impossibilité est certaine.
+        """
+        par_jour: dict[int, list[tuple[SeancePreparee, tuple[int, int, int, int | None]]]] = (
+            defaultdict(list)
+        )
+        for seance in self.seances:
+            creneau = self.creneau_fixe(seance)
+            if creneau is not None:
+                par_jour[creneau[0]].append((seance, creneau))
         for jour in sorted(par_jour):
             groupe = par_jour[jour]
-            for position, a in enumerate(groupe):
-                verrou_a = a.seance.verrou
-                for b in groupe[position + 1 :]:
+            for position, (a, (_, debut_a, fin_a, salle_a)) in enumerate(groupe):
+                for b, (_, debut_b, fin_b, salle_b) in groupe[position + 1 :]:
                     if not a.semaines & b.semaines:
                         continue
-                    verrou_b = b.seance.verrou
                     codes = self.regles.codes_violes(
-                        a.besoin,
-                        verrou_a.debut,
-                        verrou_a.fin,
-                        verrou_a.salle_id,
-                        b.besoin,
-                        verrou_b.debut,
-                        verrou_b.fin,
-                        verrou_b.salle_id,
+                        a.besoin, debut_a, fin_a, salle_a, b.besoin, debut_b, fin_b, salle_b
                     )
                     if not codes:
                         continue
-                    regles_violees = enumerer(f"« {CATALOGUE[code].libelle} »" for code in codes)
-                    conflits.append(
-                        Anomalie(
-                            codes[0],
-                            Gravite.ERREUR,
-                            f"Les séances verrouillées {nom_seance(a.seance)}, "
-                            f"{nom_creneau(jour, verrou_a.debut, verrou_a.fin)}, et "
-                            f"{nom_seance(b.seance)}, "
-                            f"{nom_creneau(jour, verrou_b.debut, verrou_b.fin)}, se "
-                            f"contredisent ({regles_violees}).",
-                            seances=(a.seance.id, b.seance.id),
-                            jour=jour,
+                    violees = enumerer(f"« {CATALOGUE[code].libelle} »" for code in codes)
+                    cibles = {"seances": (a.seance.id, b.seance.id), "jour": jour}
+                    if a.verrouillee and b.verrouillee:
+                        self.conflits_verrous.append(
+                            Anomalie(
+                                codes[0],
+                                Gravite.ERREUR,
+                                f"Les séances verrouillées {nom_seance(a.seance)}, "
+                                f"{nom_creneau(jour, debut_a, fin_a)}, et {nom_seance(b.seance)}, "
+                                f"{nom_creneau(jour, debut_b, fin_b)}, se contredisent "
+                                f"({violees}).",
+                                **cibles,
+                            )
                         )
-                    )
-        return conflits
+                    elif a.besoin.id == b.besoin.id:
+                        self.anomalies.append(
+                            Anomalie(
+                                codes[0],
+                                Gravite.ERREUR,
+                                f"« {a.besoin.libelle} » impose le même jour et la même heure "
+                                f"({nom_creneau(jour, debut_a, fin_a)}) à ses séances "
+                                f"{a.seance.id} et {b.seance.id}, qui ne peuvent pas avoir lieu "
+                                f"en même temps ({violees}). Réduire le nombre de séances par "
+                                "semaine ou retirer le jour ou l'heure imposés.",
+                                **cibles,
+                            )
+                        )
+                    else:
+                        self.anomalies.append(
+                            Anomalie(
+                                codes[0],
+                                Gravite.ERREUR,
+                                f"Les séances {nom_seance(a.seance)}, "
+                                f"{nom_creneau(jour, debut_a, fin_a)}, et {nom_seance(b.seance)}, "
+                                f"{nom_creneau(jour, debut_b, fin_b)}, ont des horaires fixes "
+                                f"(verrou ou créneau imposé) qui se contredisent ({violees}).",
+                                **cibles,
+                            )
+                        )
 
     def _seances_isolees(self) -> frozenset[int]:
         """Séances verrouillées à dispenser des contraintes de paire entre verrous.
@@ -574,14 +603,14 @@ class Preparation:
         """
         if not self.tolerer:
             return frozenset()
-        par_id = {preparee.seance.id: preparee.index for preparee in self.seances}
+        par_id = {seance.seance.id: seance.index for seance in self.seances}
         isolees = {
             par_id[seance_id] for conflit in self.conflits_verrous for seance_id in conflit.seances
         }
         isolees.update(
-            preparee.index
-            for preparee in self.seances
-            if preparee.verrouillee and preparee.seance.verrou.salle_id is None
+            seance.index
+            for seance in self.seances
+            if seance.verrouillee and seance.seance.verrou.salle_id is None
         )
         return frozenset(isolees)
 
@@ -596,11 +625,11 @@ class Preparation:
         """
         par_enseignant: dict[int, list[int]] = defaultdict(list)
         par_groupe: dict[int, list[int]] = defaultdict(list)
-        for preparee in self.seances:
-            for enseignant in self.regles.enseignants_reels(preparee.besoin):
-                par_enseignant[enseignant].append(preparee.index)
-            for groupe in preparee.besoin.groupes:
-                par_groupe[groupe].append(preparee.index)
+        for seance in self.seances:
+            for enseignant in self.regles.enseignants_reels(seance.besoin):
+                par_enseignant[enseignant].append(seance.index)
+            for groupe in seance.besoin.groupes:
+                par_groupe[groupe].append(seance.index)
         paires: list[tuple[int, int, bool, bool]] = []
         for a in self.seances:
             voisins: set[int] = set()
@@ -610,9 +639,7 @@ class Preparation:
                 voisins.update(par_groupe.get(groupe, ()))
             for j in sorted(voisins):
                 b = self.seances[j]
-                if j <= a.index or not a.semaines & b.semaines:
-                    continue
-                if self.dispensees(a.index, j):
+                if j <= a.index or not a.semaines & b.semaines or self.dispensees(a.index, j):
                     continue
                 enseignant, groupe = self.regles.partage(a.besoin, b.besoin)
                 paires.append((a.index, j, enseignant, groupe))

@@ -1,7 +1,8 @@
 """Règles partagées par le moteur, les pré-vérifications et la couche datée.
 
 Ce module ne connaît ni CP-SAT ni la base : il lit l'instantané et répond à
-des questions simples, avec les mêmes définitions que le vérificateur.
+des questions simples, avec les mêmes définitions que le vérificateur
+(`docs/architecture.md`, « Sémantique des contraintes »).
 
 Définitions
 -----------
@@ -12,15 +13,16 @@ Définitions
   recoupent ;
 - elles **partagent une personne** si elles ont un enseignant non fictif en
   commun ou si leurs besoins sont en conflit de groupes ;
-- une indisponibilité est **projetée** sur la semaine type sous la forme
-  d'une `PlageInterdite` : un jour, une plage horaire et les semaines du
-  semestre où elle s'applique ce jour-là (toutes pour une indisponibilité
-  récurrente, celles de la période pour une indisponibilité datée). Seules
-  les indisponibilités dures (`dure` vrai) comptent.
+- sur la **semaine type**, seules les indisponibilités **récurrentes** et
+  dures (`dure` vrai) comptent : chacune interdit, toutes les semaines, la
+  plage `[debut, fin[` de son jour, quelles que soient les semaines actives
+  de la séance (`Regles.recurrentes`). Les indisponibilités **datées**
+  relèvent de la couche datée, comme les jours fermés
+  (`Regles.indisponible_le`).
 
 `Regles` regroupe les contraintes actives d'un calcul et met en cache les
-recherches répétées (personnes partagées, salles compatibles, plages
-interdites).
+recherches répétées (personnes partagées, salles compatibles,
+indisponibilités).
 """
 
 from __future__ import annotations
@@ -33,22 +35,11 @@ from edt.domaine.contraintes import CodeContrainte, codes_actifs, normaliser_cod
 from edt.domaine.enumerations import JOURS, CibleIndisponibilite
 from edt.domaine.heures import MINUTES_PAR_JOUR, ecart, plage_vers_texte, se_chevauchent
 from edt.domaine.instantane import Besoin, Indisponibilite, Instantane, Salle, SeanceAPlacer
-from edt.erreurs import ErreurDonneesInvalides
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
 C = CodeContrainte
 
 TestSalle = Callable[[Salle], bool]
-
-
-@dataclass(frozen=True)
-class PlageInterdite:
-    """Indisponibilité projetée sur un jour de la semaine type."""
-
-    jour: int
-    debut: int
-    fin: int
-    semaines: frozenset[int]
-    indisponibilite: Indisponibilite
 
 
 @dataclass(frozen=True)
@@ -68,46 +59,6 @@ class SallesCompatibles:
     exigences: tuple[Exigence, ...]
 
 
-def projeter_indisponibilite(
-    instantane: Instantane, indisponibilite: Indisponibilite
-) -> tuple[PlageInterdite, ...]:
-    """Projette une indisponibilité sur la semaine type (voir l'en-tête du module).
-
-    Remplace, en attendant, la fonction du même nom prévue dans le domaine.
-    Une période datée hors du semestre ne donne aucune plage. Une
-    indisponibilité incohérente lève `ErreurDonneesInvalides` : mieux vaut
-    refuser le calcul que l'ignorer en silence.
-    """
-    i = indisponibilite
-    if not 0 <= i.debut < i.fin <= MINUTES_PAR_JOUR:
-        raise ErreurDonneesInvalides(
-            f"L'indisponibilité n° {i.id} a une plage horaire invalide ({i.debut} à {i.fin} "
-            "minutes) : corriger la saisie avant de lancer un calcul."
-        )
-    if i.jour is not None:
-        if not 0 <= i.jour <= 6:
-            raise ErreurDonneesInvalides(
-                f"L'indisponibilité n° {i.id} porte un jour invalide ({i.jour!r})."
-            )
-        toutes = frozenset(semaine.numero for semaine in instantane.semaines)
-        return (PlageInterdite(i.jour, i.debut, i.fin, toutes, i),)
-    if i.date_debut is None or i.date_fin is None or i.date_fin < i.date_debut:
-        raise ErreurDonneesInvalides(
-            f"L'indisponibilité n° {i.id} n'a ni jour de la semaine ni période datée valide."
-        )
-    semaines_par_jour: dict[int, set[int]] = {}
-    for semaine in instantane.semaines:
-        jour = max(semaine.lundi, i.date_debut)
-        dernier = min(semaine.dimanche, i.date_fin)
-        while jour <= dernier:
-            semaines_par_jour.setdefault(jour.weekday(), set()).add(semaine.numero)
-            jour += dt.timedelta(days=1)
-    return tuple(
-        PlageInterdite(jour, i.debut, i.fin, frozenset(numeros), i)
-        for jour, numeros in sorted(semaines_par_jour.items())
-    )
-
-
 class Regles:
     """Contraintes actives d'un calcul et recherches mises en cache sur l'instantané."""
 
@@ -116,7 +67,7 @@ class Regles:
         self.desactivees = normaliser_codes(contraintes_desactivees)
         self.actives = codes_actifs(self.desactivees)
         self._partages: dict[tuple[int, int], tuple[bool, bool]] = {}
-        self._plages: dict[tuple[CibleIndisponibilite, int], tuple[PlageInterdite, ...]] = {}
+        self._recurrentes: dict[tuple[CibleIndisponibilite, int], tuple[Indisponibilite, ...]] = {}
         self._salles: dict[int, SallesCompatibles] = {}
         self._reels: dict[int, frozenset[int]] = {}
         self._lies: dict[int, frozenset[int]] = {}
@@ -159,39 +110,52 @@ class Regles:
 
     # -- indisponibilités -------------------------------------------------------
 
-    def plages_interdites(
+    def recurrentes(
         self, cible: CibleIndisponibilite, ressource_id: int
-    ) -> tuple[PlageInterdite, ...]:
-        """Indisponibilités dures de la ressource, projetées sur la semaine type."""
+    ) -> tuple[Indisponibilite, ...]:
+        """Indisponibilités récurrentes et dures de la ressource : celles de la semaine type.
+
+        Une plage horaire ou un jour incohérent lève `ErreurDonneesInvalides` :
+        mieux vaut refuser le calcul qu'ignorer l'indisponibilité en silence.
+        """
         cle = (cible, ressource_id)
-        plages = self._plages.get(cle)
+        plages = self._recurrentes.get(cle)
         if plages is None:
             plages = tuple(
-                plage
-                for indisponibilite in self.instantane.indisponibilites_de(cible, ressource_id)
+                indisponibilite
+                for indisponibilite in self.instantane.indisponibilites_recurrentes(
+                    cible, ressource_id
+                )
                 if indisponibilite.dure
-                for plage in projeter_indisponibilite(self.instantane, indisponibilite)
             )
-            self._plages[cle] = plages
+            for plage in plages:
+                if not (0 <= plage.jour <= 6 and 0 <= plage.debut < plage.fin <= MINUTES_PAR_JOUR):
+                    raise ErreurDonneesInvalides(
+                        f"L'indisponibilité n° {plage.id} est incohérente (jour {plage.jour}, "
+                        f"de {plage.debut} à {plage.fin} minutes) : corriger la saisie avant "
+                        "de lancer un calcul."
+                    )
+            self._recurrentes[cle] = plages
         return plages
 
-    def plages_des_personnes(
+    def recurrentes_des_personnes(
         self, besoin: Besoin
-    ) -> list[tuple[CodeContrainte, str, PlageInterdite]]:
-        """Plages interdites à une séance du besoin par ses enseignants et ses groupes.
+    ) -> list[tuple[CodeContrainte, str, Indisponibilite]]:
+        """Indisponibilités récurrentes des enseignants et des groupes d'un besoin.
 
-        Chaque entrée est `(code de la contrainte, nom de la personne, plage)` ;
-        seules les contraintes de disponibilité actives sont prises en compte.
+        Chaque entrée est `(code de la contrainte, nom de la personne,
+        indisponibilité)` ; seules les contraintes de disponibilité actives
+        sont prises en compte. Groupes : ceux du besoin et tous les groupes liés.
         """
-        entrees: list[tuple[CodeContrainte, str, PlageInterdite]] = []
+        entrees: list[tuple[CodeContrainte, str, Indisponibilite]] = []
         if self.active(C.DISPO_ENSEIGNANT):
             for enseignant_id in sorted(self.enseignants_reels(besoin)):
                 nom = self.instantane.enseignant(enseignant_id).nom
-                for plage in self.plages_interdites(CibleIndisponibilite.ENSEIGNANT, enseignant_id):
+                for plage in self.recurrentes(CibleIndisponibilite.ENSEIGNANT, enseignant_id):
                     entrees.append((C.DISPO_ENSEIGNANT, nom, plage))
         if self.active(C.DISPO_GROUPE):
             for groupe_id in sorted(self.groupes_lies(besoin)):
-                plages = self.plages_interdites(CibleIndisponibilite.GROUPE, groupe_id)
+                plages = self.recurrentes(CibleIndisponibilite.GROUPE, groupe_id)
                 if plages:
                     nom = f"le groupe {self.instantane.groupe(groupe_id).code}"
                     entrees.extend((C.DISPO_GROUPE, nom, plage) for plage in plages)
@@ -200,7 +164,10 @@ class Regles:
     def indisponible_le(
         self, cible: CibleIndisponibilite, ressource_id: int, date: dt.date, debut: int, fin: int
     ) -> Indisponibilite | None:
-        """Première indisponibilité dure de la ressource qui recoupe `[debut, fin[` à cette date."""
+        """Première indisponibilité dure, récurrente ou datée, qui recoupe `[debut, fin[` ce jour-là.
+
+        C'est la règle de la couche datée.
+        """
         for indisponibilite in self.instantane.indisponibilites_de(cible, ressource_id):
             if (
                 indisponibilite.dure
@@ -212,12 +179,22 @@ class Regles:
 
     # -- salles -----------------------------------------------------------------
 
+    @staticmethod
+    def _libelle(chercher: Callable[[int], str], identifiant: int, prefixe: str) -> str:
+        """Libellé d'une référence pour un message, ou son numéro si la liste ne la connaît pas."""
+        try:
+            return chercher(identifiant)
+        except ErreurIntrouvable:
+            return f"{prefixe}{identifiant}"
+
     def exigences_de_salle(self, besoin: Besoin) -> list[tuple[CodeContrainte, str, TestSalle]]:
         """Exigences actives du besoin sur sa salle : `(code, libellé, test sur une salle)`.
 
         Salle ou campus imposé et types acceptés (`TYPE_SALLE`), capacité
         (`CAPACITE`), équipements (`EQUIPEMENT`), accessibilité (`ACCESSIBILITE`).
+        Le libellé complète la phrase « n salles sont ... ».
         """
+        instantane = self.instantane
         tests: list[tuple[CodeContrainte, str, TestSalle]] = []
         if self.active(C.TYPE_SALLE):
             if besoin.salle_imposee_id is not None:
@@ -233,10 +210,17 @@ class Regles:
                     )
                 )
             if besoin.types_salle_acceptes:
+                types = enumerer(
+                    sorted(
+                        self._libelle(instantane.libelle_type_salle, type_id, "type n° ")
+                        for type_id in besoin.types_salle_acceptes
+                    ),
+                    conjonction="ou",
+                )
                 tests.append(
                     (
                         C.TYPE_SALLE,
-                        "d'un type de salle accepté",
+                        f"du type demandé ({types})",
                         lambda s: s.type_salle_id in besoin.types_salle_acceptes,
                     )
                 )
@@ -249,15 +233,21 @@ class Regles:
                 )
             )
         if self.active(C.EQUIPEMENT) and besoin.equipements_requis:
+            equipements = enumerer(
+                sorted(
+                    self._libelle(instantane.libelle_equipement, equipement_id, "équipement n° ")
+                    for equipement_id in besoin.equipements_requis
+                )
+            )
             tests.append(
                 (
                     C.EQUIPEMENT,
-                    "avec tous les équipements requis",
+                    f"équipées de tout le matériel requis ({equipements})",
                     lambda s: besoin.equipements_requis <= s.equipements,
                 )
             )
         if self.active(C.ACCESSIBILITE) and besoin.accessibilite_requise:
-            tests.append((C.ACCESSIBILITE, "accessibles", self.instantane.salle_accessible))
+            tests.append((C.ACCESSIBILITE, "accessibles", instantane.salle_accessible))
         return tests
 
     def salles_compatibles(self, besoin: Besoin) -> SallesCompatibles:
@@ -380,7 +370,7 @@ def nom_creneau(jour: int, debut: int, fin: int) -> str:
     return f"le {JOURS[jour]} {plage_vers_texte(debut, fin)}"
 
 
-def enumerer(elements: Iterable[str], maximum: int = 5) -> str:
+def enumerer(elements: Iterable[str], maximum: int = 5, conjonction: str = "et") -> str:
     """« a, b et c », abrégée après `maximum` éléments (« a, b, c et 4 autres »)."""
     liste = list(elements)
     if len(liste) > maximum:
@@ -388,4 +378,4 @@ def enumerer(elements: Iterable[str], maximum: int = 5) -> str:
         liste = liste[:maximum] + [f"{reste} autre{'s' if reste > 1 else ''}"]
     if len(liste) <= 1:
         return "".join(liste)
-    return ", ".join(liste[:-1]) + " et " + liste[-1]
+    return ", ".join(liste[:-1]) + f" {conjonction} " + liste[-1]
