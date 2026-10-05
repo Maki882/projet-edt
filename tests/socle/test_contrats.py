@@ -17,11 +17,10 @@ from edt.domaine.contraintes import (
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import decomposer_id_seance, id_seance
 from edt.domaine.parametres import Parametres, convertir_texte, definitions
-from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurNonLivre
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import ecrire_parametre, ecrire_parametres, lire_parametres
 from edt.solveur import OptionsSolveur, StatutSolveur, resoudre
-from edt.verification import verifier, verifier_occurrences
 
 CODES_DES_DECISIONS = {
     "SALLE_UNIQUE",
@@ -77,14 +76,6 @@ def test_identifiant_de_seance():
     assert decomposer_id_seance("12-3") == (12, 3)
     with pytest.raises(ErreurDonneesInvalides):
         decomposer_id_seance("douze")
-
-
-def test_le_verificateur_provisoire_refuse_explicitement(jeu_minimal, session):
-    instantane = charger_instantane(session, jeu_minimal.semestre_id)
-    with pytest.raises(ErreurNonLivre, match="non livré"):
-        verifier(instantane, [])
-    with pytest.raises(ErreurNonLivre, match="non livré"):
-        verifier_occurrences(instantane, [])
 
 
 def test_le_moteur_provisoire_garantit_unicite_et_capacite(jeu_minimal, session):
