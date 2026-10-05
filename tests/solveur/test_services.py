@@ -384,6 +384,7 @@ def test_commande_generer_puis_instancier(lanceur, jeu_minimal):
     )
     assert resultat.exit_code == 0, resultat.output
     assert "Réussi" in resultat.output and "17 séance(s) placée(s)" in resultat.output
+    assert resultat.output.count("Bilan sur l'ensemble du semestre :") == 1
     assert "Version enregistrée : n° 1." in resultat.output
 
     resultat = lanceur.invoke(cli.app, ["instancier", "--semestre", semestre])
@@ -408,7 +409,8 @@ def test_commande_generer_avec_optimisation_et_contrainte_desactivee(lanceur, je
     assert resultat.exit_code == 0, resultat.output
     assert "avec optimisation" in resultat.output
     assert "Contraintes ignorées à votre demande : Pause entre deux séances" in resultat.output
-    assert "Qualité : objectif" in resultat.output
+    assert resultat.output.count("Bilan sur l'ensemble du semestre :") == 1
+    assert "séance(s) le samedi" in resultat.output
 
 
 def test_commande_generer_echec_code_1(lanceur, jeu_minimal):

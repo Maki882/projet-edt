@@ -164,10 +164,11 @@ def generer(
     for avertissement in suivi.avertissements:
         typer.echo(f"  Avertissement : {avertissement}")
     indicateurs = suivi.statistiques.get("indicateurs")
-    if indicateurs:
+    if indicateurs and "trous" not in suivi.statistiques:
+        # Sans amélioration, le message du calcul ne dit rien de la qualité : on la donne ici.
         typer.echo(
-            f"Qualité : objectif {indicateurs.get('valeur_objectif')}, "
-            f"{indicateurs.get('trous_creneaux')} créneau(x) de trou, "
+            f"Bilan sur l'ensemble du semestre : {indicateurs.get('trous_creneaux')} créneau(x) "
+            f"libre(s) entre deux cours dans les journées des groupes et "
             f"{indicateurs.get('seances_samedi')} séance(s) le samedi."
         )
     if suivi.fichier_journal:
