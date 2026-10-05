@@ -58,29 +58,47 @@ Section de menu `"Générer"` (ordre 250 et 260).
 - **Récapitulatif** (`calculs.recapitulatif`) : besoins, séances de la
   semaine type après dépliage, groupes et enseignants concernés (fictifs
   exclus), salles ; il lit l'instantané du semestre comme le calcul.
-- **Vérifications préalables** (`calculs.pre_verifier`) : les besoins
-  impossibles à déplier dont la contrainte est active (toujours connus) et
-  les anomalies de `pre_verifier_semestre`, groupées par gravité. Une
-  **erreur** empêche de lancer (`ErreurPreVerification`, la page est
-  réaffichée en 409 avec les choix de l'utilisateur), un avertissement non.
-  Les pré-vérifications sont relancées au lancement avec les contraintes
-  réellement cochées.
+- **Vérifications préalables** (`calculs.pre_verifier`) : les anomalies de
+  `pre_verifier_semestre` (charges des groupes et des enseignants, salles,
+  séances sans place possible, verrous contradictoires, besoins impossibles
+  à déplier), groupées par gravité et chiffrées. Une **erreur** empêche de
+  lancer (`ErreurPreVerification`, la page est réaffichée en 409 avec les
+  choix de l'utilisateur) ; les avertissements (situations tendues) sont
+  comptés et dépliables. Les pré-vérifications sont relancées au lancement
+  avec les contraintes réellement cochées.
 - **Contraintes** : le catalogue (`CATALOGUE`), libellé et description,
   tout coché par défaut ; ce qui est décoché est rappelé dans le suivi, le
   résultat et l'historique.
 - **Options** : « rechercher jusqu'à 1 minute » (`temps_limite_s`) ou
   « 5 minutes » (`temps_limite_long_s`), « chercher un emploi du temps plus
   confortable » (`OptionsSolveur.optimiser`, coché si `objectif_actif`),
-  « proposer une autre solution » (graine tirée au hasard).
+  « proposer une autre solution » : graine tirée au hasard **et**
+  `utiliser_indices=False`, sinon le moteur, guidé par les placements de la
+  version active, peut redonner le même emploi du temps. Avec deux fils (le
+  réglage par défaut), deux graines donnent deux emplois du temps
+  différents ; avec un seul fil (`nb_workers=1`), CP-SAT trouve la même
+  première solution quelle que soit la graine.
 - **Un seul calcul à la fois** : si un calcul tourne, `/calculs` montre son
   suivi et ne propose pas le formulaire ; un `POST /calculs` concurrent mène
   au suivi du calcul en cours.
-- **Résultat** (`calculs.resultat_calcul`) : succès (lien vers l'emploi du
-  temps, quatre indicateurs, séances à programmer, bouton « autre
-  solution ») ; **impossible avec ces contraintes** (prouvé) ; **pas trouvé
-  dans le temps imparti** avec le bouton « relancer en cherchant jusqu'à
-  5 minutes » ; arrêté ; erreur : numéro du calcul et nom du fichier journal
-  à communiquer, jamais de trace ni de nom d'exception.
+- **Résultat** (`calculs.resultat_calcul`), d'après `SuiviCalcul` et ses
+  statistiques :
+  - **succès** : séances placées (`nb_seances`), bilan des séances datées
+    (`statistiques["instanciation"]` : total, replacées, à programmer avec
+    besoin, date, horaire et raison), lien vers l'emploi du temps et vers
+    « À traiter », quatre indicateurs, bouton « autre solution » ;
+  - **refusé** (`etat` impossible et `statistiques["refuse"]`) : « Calcul
+    non lancé : impossibilités relevées avant la recherche », avec la liste
+    `statistiques["impossibilites"]` ;
+  - **impossible avec ces contraintes** : prouvé par la recherche ; la
+    phrase est celle du moteur ;
+  - **pas trouvé dans le temps imparti**, avec le bouton « relancer en
+    cherchant jusqu'à 5 minutes » ; **arrêté** ;
+  - **erreur** : numéro du calcul et nom du fichier journal à communiquer,
+    jamais de trace ni de nom d'exception (un défaut du moteur relevé par le
+    vérificateur arrive ici, avec ses raisons) ;
+  - dans tous les cas terminés, les **avertissements** du calcul
+    (`SuiviCalcul.avertissements`), comptés et dépliables.
 
 ## Onglet « Emploi du temps »
 
@@ -153,9 +171,19 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
   « déplacée », date initiale conservée) après vérification de son jour par
   `verifier_occurrences_version` (la modification est remise en l'état si
   elle est refusée) ; annuler avec un motif facultatif ; programmer une
-  séance « à programmer ».
-- **Séances datées absentes** : la page le dit et propose « produire les
-  séances datées » (`instancier_version`).
+  séance « à programmer ». Un déplacement ou une annulation est une
+  **retouche** : son origine devient « saisie manuelle ».
+- **Séances datées** : produites par l'orchestration à la fin d'un calcul
+  réussi. En semaine datée, « Recalculer les séances datées »
+  (`modifications.recalculer_seances_datees`) réapplique la semaine type :
+  `instancier_version` remplace les séances d'origine « semaine type » ou
+  « replacement » et **conserve** les saisies manuelles et les imports
+  (`nb_conservees`). Comme il produit de nouveau la séance de la semaine
+  type pour une semaine retouchée, le recalcul retire ce doublon (même
+  séance hebdomadaire, même semaine d'origine) : une retouche reste la
+  seule séance de sa semaine. L'utilisateur en est prévenu avant d'agir.
+  Une version sans séances datées (version importée ou de référence)
+  propose « produire les séances datées ».
 - **Impression** : bouton « Imprimer » ; la feuille d'impression masque
   menus, sélecteurs et panneau, imprime la grille en A4 paysage avec ses
   couleurs et un titre (cible, semestre, version, période).
@@ -261,20 +289,20 @@ CSS `--edt-gauche`/`--edt-largeur` ; la hauteur d'une colonne vaut
 `durée de l'axe × --edt-minute`. Le calcul est testé seul
 (`tests/web_edt/test_disposition.py`).
 
-## Raccords en attente
+## Raccords
 
-`raccords.py` importe chaque fonction **au moment de l'appel**. Le
-vérificateur (`edt.services.verification`) est livré et branché ; les
-pré-vérifications et l'instanciation arrivent avec le solveur : leurs encarts
-restent affichés jusque-là.
+`raccords.py` importe chaque fonction **au moment de l'appel**. Les trois
+lots sont livrés et branchés (vérificateur, pré-vérifications du solveur,
+instanciation) : aucun encart « pas encore disponible » n'apparaît. Le
+mécanisme reste comme garde-fou.
 
 | Raccord | Fonction attendue | Utilisée par |
 |---|---|---|
-| `pre_verifier_semestre` | `edt.services.generation.pre_verifier_semestre(session, semestre_id, contraintes_desactivees=()) -> list[Anomalie]` | Générer |
+| `pre_verifier_semestre` | `edt.services.generation.pre_verifier_semestre(session, semestre_id, contraintes_desactivees=(), *, version_base_id=None, tolerer_violations_heritees=False) -> list[Anomalie]` | Générer |
 | `verifier_version` | `edt.services.verification.verifier_version(session, version_id, contraintes_actives=None) -> RapportVerification` | grille, panneau, À traiter, résultat, accueil |
 | `verifier_occurrences_version` | `edt.services.verification.verifier_occurrences_version(session, version_id, date_debut=None, date_fin=None, contraintes_actives=None)` | semaine datée, déplacement d'une occurrence, À traiter |
 | `verifier_modification` | `edt.services.verification.verifier_modification(session, version_id, seance_id, jour, debut, fin, salle_id)` | déplacement dans la semaine type |
-| `instancier_version` | `edt.services.instanciation.instancier_version(session, version_id) -> RapportInstanciation` | « produire les séances datées », après un déplacement |
+| `instancier_version` | `edt.services.instanciation.instancier_version(session, version_id, contraintes_desactivees=None) -> RapportInstanciation` | « recalculer les séances datées », après un déplacement dans la semaine type |
 
 - Module ou fonction absent, ou `ErreurNonLivre` levée : le raccord lève
   `ErreurRaccordIndisponible` (sous-classe d'`ErreurNonLivre`), journalisée
@@ -297,17 +325,14 @@ restent affichés jusque-là.
 - Une anomalie sans séance (séance non placée, besoin impossible à
   déplier) est rattachée par `Anomalie.besoins` : lien vers le premier
   groupe du besoin dans « À traiter », liste des anomalies de la vue.
-- **Branchement** : rien à modifier ici. Dès qu'un module existe, ses
-  encarts disparaissent. À vérifier à l'arrivée du solveur : que
-  `instancier_version` remplace les occurrences issues de l'instanciation
-  (les déplacements et annulations manuels d'une version sont alors
-  recalculés après un déplacement dans la semaine type), et que
-  `pre_verifier_semestre` ne répète pas les besoins impossibles à déplier
-  (déjà affichés à partir de l'instantané).
-- **Tests** : `tests/web_edt/conftest.py` installe de faux modules aux mêmes
-  noms (`faux_verificateur`, `fausse_instanciation`) ou simule leur absence
-  (`sans_verificateur`) ; sans ces fixtures, c'est le vrai vérificateur qui
-  tourne. Chaque écran est testé avec, sans, et avec le vrai.
+- `pre_verifier_semestre` couvre les besoins impossibles à déplier : ceux
+  du récapitulatif ne s'affichent que si le raccord manquait.
+- **Tests** : le cas nominal passe par les vraies fonctions (le jeu minimal
+  est calculé par le vrai moteur). Un faux vérificateur
+  (`faux_verificateur`) sert à provoquer une anomalie précise ; l'absence
+  d'une fonction n'est testée que simulée (`sans_verificateur`, attribut ou
+  module retiré le temps du test). Aucun test ne suppose l'emploi du temps
+  particulier d'un moteur : jours et dates sont lus dans la version produite.
 
 ## Ajouter une vue
 
