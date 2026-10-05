@@ -1,0 +1,45 @@
+{# Paramètres globaux : formulaire construit depuis edt.domaine.parametres (libellé, aide, bornes, unité). #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Paramètres{% endblock %}
+
+{% block actions %}
+{{ ui.bouton_action("/parametres/defaut", "Revenir aux valeurs par défaut", classe="bouton bouton-danger", confirmation="Remettre TOUS les paramètres à leur valeur par défaut ?") }}
+{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  Réglages qui s'appliquent à tous les calculs. Chaque valeur est contrôlée : les bornes
+  permises sont indiquées sous le champ.
+</p>
+{%- if erreur %}
+{{ ui.message(erreur.message ~ (" Les messages sont sous les champs concernés." if erreurs else ""), "erreur", erreur.details if erreurs else ()) }}
+{%- endif %}
+<form class="formulaire formulaire-large" method="post" action="/parametres">
+  {%- for titre, liste in rubriques %}
+  <fieldset>
+    <legend>{{ titre }}</legend>
+    <div class="grille-champs">
+      {%- for p in liste %}
+      {%- set saisie = saisies[p.cle] if p.cle in saisies else p.en_texte(p.valeur) %}
+      {%- set bornes = [] %}
+      {%- if p.minimum is not none and not p.est_heure %}{% set bornes = bornes + ["minimum " ~ p.minimum] %}{% endif %}
+      {%- if p.maximum is not none and not p.est_heure %}{% set bornes = bornes + ["maximum " ~ p.maximum] %}{% endif %}
+      {%- set aide = p.description ~ " Par défaut : " ~ (("oui" if p.defaut else "non") if p.type == "bool" else p.en_texte(p.defaut)) ~ "." ~ ((" (" ~ bornes|join(", ") ~ ")") if bornes else "") %}
+      {%- if p.type == "bool" %}
+      {{ ui.champ(p.cle, p.libelle, valeur=(saisie in ("oui", "True", "1", true)), type="checkbox", aide=aide, erreur=erreurs.get(p.cle)) }}
+      {%- elif p.est_heure %}
+      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="time", requis=true, aide=aide, erreur=erreurs.get(p.cle)) }}
+      {%- else %}
+      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="number", requis=true, aide=aide, erreur=erreurs.get(p.cle), attributs={"min": p.minimum, "max": p.maximum, "step": 1}, unite=unites.get(p.unite, p.unite) or None) }}
+      {%- endif %}
+      {%- endfor %}
+    </div>
+  </fieldset>
+  {%- endfor %}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">Enregistrer les paramètres</button>
+  </div>
+</form>
+{% endblock %}

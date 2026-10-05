@@ -1,0 +1,27 @@
+{# Formulaire générique d'ajout ou de modification (edt.web.donnees.ecrans.rendre_formulaire). #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+
+{% block titre %}{{ titre }}{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="{{ retour }}">Retour à la liste</a>
+{%- if ident %}
+<a class="bouton bouton-danger" href="{{ ecran.prefixe }}/{{ ident }}/supprimer">Supprimer</a>
+{%- endif %}
+{% endblock %}
+
+{% block contenu %}
+{%- if erreur %}
+{{ ui.message(erreur.message ~ (" Les messages sont sous les champs concernés." if erreur.champs is defined else ""), "erreur", erreur.details) }}
+{%- endif %}
+<form class="formulaire formulaire-large" method="post" action="{{ action }}">
+  <input type="hidden" name="_retour" value="{{ retour }}">
+  {{ d.rubriques(rubriques) }}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">{{ libelle_bouton }}</button>
+    <a class="bouton" href="{{ retour }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}

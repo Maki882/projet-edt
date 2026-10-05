@@ -1,0 +1,60 @@
+{# Liste des campus et matrice des trajets entre campus. #}
+{% extends "donnees/liste.html" %}
+{% import "macros.html" as ui %}
+
+{% block apres_liste %}
+<section class="carte" id="trajets">
+  <h2>Temps de trajet entre campus</h2>
+  {%- if matrice.campus|length < 2 %}
+  <p class="vide">Il faut au moins deux campus pour saisir un temps de trajet.</p>
+  {%- else %}
+  <p class="discret">
+    En minutes, dans un seul sens (le trajet retour est identique). Une case vide applique
+    le trajet par défaut des paramètres ({{ matrice.defaut_min }} min).
+  </p>
+  {%- if erreurs_trajets %}
+  {{ ui.message("Certains temps de trajet sont à corriger : voir les cases signalées.", "erreur") }}
+  {%- endif %}
+  <form method="post" action="/campus/trajets">
+    <div class="tableau-defilant">
+      <table class="tableau matrice">
+        <thead>
+          <tr>
+            <th scope="col">De \ Vers</th>
+            {%- for _, code, nom in matrice.campus %}
+            <th scope="col" title="{{ nom }}">{{ code }}</th>
+            {%- endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {%- for id_a, code_a, nom_a in matrice.campus %}
+          {%- set ligne = loop.index0 %}
+          <tr>
+            <th scope="row" title="{{ nom_a }}">{{ code_a }}</th>
+            {%- for id_b, code_b, nom_b in matrice.campus %}
+            {%- if loop.index0 == ligne %}
+            <td class="diagonale">-</td>
+            {%- elif loop.index0 > ligne %}
+            {%- set cle = cle_trajet(id_a, id_b) %}
+            {%- set saisie = saisies_trajets[cle] if saisies_trajets is defined and cle in saisies_trajets else matrice.duree(id_a, id_b) %}
+            <td>
+              <input type="number" min="0" max="1440" step="1" name="{{ cle }}" value="{{ saisie if saisie is not none else '' }}"
+                     placeholder="{{ matrice.defaut_min }}" aria-label="Trajet de {{ code_a }} à {{ code_b }}, en minutes"
+                     {%- if cle in erreurs_trajets %} aria-invalid="true" aria-describedby="erreur-{{ cle }}"{% endif %}>
+              {%- if cle in erreurs_trajets %}<p class="erreur-champ" id="erreur-{{ cle }}">{{ erreurs_trajets[cle] }}</p>{% endif %}
+            </td>
+            {%- else %}
+            {%- set duree = matrice.duree(id_a, id_b) %}
+            <td class="discret nombre">{{ duree if duree is not none else matrice.defaut_min ~ " (défaut)" }}</td>
+            {%- endif %}
+            {%- endfor %}
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="bouton bouton-principal">Enregistrer les trajets</button>
+  </form>
+  {%- endif %}
+</section>
+{% endblock %}

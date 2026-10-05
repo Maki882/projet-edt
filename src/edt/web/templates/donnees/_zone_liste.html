@@ -1,0 +1,38 @@
+{# Zone remplacée par HTMX : résumé, tableau trié, pagination. #}
+{% import "macros.html" as ui %}
+<p class="barre-liste-resume">
+  {{ page.total }} {{ entite.nom if page.total == 1 else entite.pluriel }}
+  {%- if filtre_actif %} correspondant à la recherche et aux filtres{% endif %}.
+</p>
+{%- if page.lignes %}
+<div class="tableau-defilant">
+  <table class="tableau">
+    <thead>
+      <tr>
+        {%- for colonne in colonnes %}
+        {%- set active = colonne.cle == etat.tri %}
+        <th scope="col"{% if colonne.nombre %} class="nombre"{% endif %}{% if active %} aria-sort="{{ 'descending' if etat.descendant else 'ascending' }}"{% endif %}>
+          {%- if colonne.triable %}
+          {%- set url = etat.url_tri(colonne.cle) %}
+          <a class="tri{% if active %} {{ 'tri-decroissant' if etat.descendant else 'tri-croissant' }}{% endif %}" href="{{ url }}" hx-get="{{ url }}" hx-target="#zone-liste" hx-push-url="true" title="Trier par {{ colonne.libelle|lower }}">{{ colonne.libelle }}</a>
+          {%- else %}
+          {{ colonne.libelle }}
+          {%- endif %}
+        </th>
+        {%- endfor %}
+        <th scope="col" class="colonne-actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for ligne in page.lignes %}
+      {% include "donnees/_ligne.html" %}
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{{ ui.pagination(page.page, page.nb_pages, etat.url_page, "zone-liste") }}
+{%- elif filtre_actif %}
+<p class="vide">Aucun élément ne correspond à la recherche ou aux filtres.</p>
+{%- else %}
+<p class="vide">Aucun élément pour l'instant : « {{ entite.nouveau }} » pour commencer.</p>
+{%- endif %}

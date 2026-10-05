@@ -1,0 +1,64 @@
+{# Arbre des groupes d'une année : promotion > classe > demi-groupe, puis les groupes à part. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Groupes : arbre{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="/groupes{% if annee %}?annee={{ annee }}{% endif %}">Voir la liste</a>
+<a class="bouton bouton-principal" href="/groupes/nouveau{% if annee %}?annee_scolaire_id={{ annee }}&amp;nature=promotion{% endif %}">Nouvelle promotion</a>
+{% endblock %}
+
+{% macro noeud(n) -%}
+<li>
+  <div class="arbre-noeud">
+    <a href="/groupes/{{ n.id }}"><strong>{{ n.code }}</strong></a>
+    <span>{{ n.libelle }}</span>
+    {{ ui.etiquette(n.nature_libelle, "neutre") }}
+    <span class="discret">{{ n.effectif }} étudiant{{ "s" if n.effectif > 1 else "" }}
+      {%- if n.effectif_enfants is not none and n.effectif_enfants != n.effectif %} (sous-groupes : {{ n.effectif_enfants }}){% endif %}</span>
+    {%- if n.accessibilite_requise %} {{ ui.etiquette("Salle accessible", "info") }}{% endif %}
+    {%- if n.chevauchements %}<span class="discret">chevauche {{ n.chevauchements|join(", ") }}</span>{% endif %}
+    <span class="actions">
+      <a class="bouton bouton-petit" href="/groupes/nouveau?annee_scolaire_id={{ annee }}&amp;parent_id={{ n.id }}&amp;nature={{ 'demi_groupe' if n.nature == 'classe' else 'classe' }}">Ajouter un sous-groupe</a>
+      <a class="bouton bouton-petit" href="/groupes/{{ n.id }}">Modifier</a>
+    </span>
+  </div>
+  {%- if n.enfants %}
+  <ul>
+    {%- for enfant in n.enfants %}
+    {{ noeud(enfant) }}
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</li>
+{%- endmacro %}
+
+{% block contenu %}
+<p class="introduction">
+  Les promotions contiennent des classes, qui contiennent des demi-groupes. Un groupe n'a
+  jamais cours en même temps que les groupes qui le contiennent ou qu'il contient.
+</p>
+<form class="barre-liste" method="get" action="/groupes/arbre">
+  <div class="champ">
+    <label for="filtre-annee">Année</label>
+    <select id="filtre-annee" name="annee" onchange="this.form.submit()">
+      {%- for valeur, libelle in annees %}
+      <option value="{{ valeur }}"{% if valeur == annee %} selected{% endif %}>{{ libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <button type="submit" class="bouton sans-js">Afficher</button>
+</form>
+{%- if noeuds %}
+<section class="carte">
+  <ul class="arbre">
+    {%- for n in noeuds %}
+    {{ noeud(n) }}
+    {%- endfor %}
+  </ul>
+</section>
+{%- else %}
+<p class="vide">Aucun groupe pour cette année.</p>
+{%- endif %}
+{% endblock %}
