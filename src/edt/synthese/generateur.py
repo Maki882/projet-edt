@@ -1083,7 +1083,7 @@ class _Generateur:
                 )
         dates = tuple(
             semaines[n - 1].date_du(j)
-            for n in cat_semaines(SEMAINES_CONFERENCE, len(semaines))
+            for n in _semaines_bornees(SEMAINES_CONFERENCE, len(semaines))
             for j in range(5)
             if self._date_ouverte(semaines[n - 1].date_du(j), [promotion.groupe.id])
         )
@@ -1811,7 +1811,7 @@ class _Generateur:
         )
 
 
-def cat_semaines(numeros: Sequence[int], nb_semaines: int) -> list[int]:
+def _semaines_bornees(numeros: Sequence[int], nb_semaines: int) -> list[int]:
     """Numéros de semaine retenus parmi `numeros`, bornés au semestre."""
     return [n for n in numeros if 1 <= n <= nb_semaines]
 
