@@ -36,7 +36,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 
 from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite, Gravite
+from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite, Gravite
 from edt.domaine.heures import duree_vers_texte
 from edt.domaine.instantane import Indisponibilite, Instantane
 from edt.solveur.preparation import Preparation, SeancePreparee
@@ -337,6 +337,25 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
                     )
                 )
                 continue
+        if maxima and enseignant.max_minutes_jour is not None:
+            depassement = _fixes_au_dela_du_maximum(
+                preparation, seances, enseignant.max_minutes_jour
+            )
+            if depassement is not None:
+                jour, total = depassement
+                anomalies.append(
+                    Anomalie(
+                        C.MAX_ENSEIGNANT,
+                        Gravite.ERREUR,
+                        f"{enseignant.nom} a déjà {duree_vers_texte(total)} de séances à horaire "
+                        f"fixe (verrous, créneaux imposés) le {JOURS[jour]}, pour un maximum de "
+                        f"{duree_vers_texte(enseignant.max_minutes_jour)} par jour : c'est "
+                        "impossible.",
+                        enseignants=(enseignant_id,),
+                        jour=jour,
+                    )
+                )
+                continue
         if not regles.active(C.ENSEIGNANT_UNIQUE):
             continue
         indisponibilites = (
@@ -370,6 +389,22 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
                 anomalies.append(anomalie)
                 break
     return anomalies
+
+
+def _fixes_au_dela_du_maximum(
+    preparation: Preparation, seances: Sequence[SeancePreparee], maximum: int
+) -> tuple[int, int] | None:
+    """`(jour, minutes)` si les séances à horaire fixe d'un jour dépassent seules le maximum."""
+    for semaine in preparation.instantane.semaines:
+        par_jour: dict[int, int] = defaultdict(int)
+        for seance in seances:
+            creneau = preparation.creneau_fixe(seance)
+            if creneau is not None and seance.semaines >> semaine.numero & 1:
+                par_jour[creneau[0]] += creneau[2] - creneau[1]
+        for jour, total in sorted(par_jour.items()):
+            if total > maximum:
+                return jour, total
+    return None
 
 
 def _charges_des_salles(preparation: Preparation, blocs: Sequence[Plage]) -> list[Anomalie]:

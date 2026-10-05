@@ -55,6 +55,8 @@ NB_WORKERS_PAR_DEFAUT = 2
 """Fils de calcul quand `options.nb_workers` vaut 0 : le serveur cible a deux cœurs."""
 INTERVALLE_SUIVI_S = 5.0
 """Intervalle entre deux lignes de progression dans le journal."""
+INTERVALLE_SOLUTIONS_S = 2.0
+"""Intervalle minimal entre deux solutions journalisées pendant une optimisation."""
 PERIODE_SURVEILLANCE_S = 0.1
 """Fréquence à laquelle la demande d'arrêt est relue pendant la recherche."""
 NB_RAISONS_DANS_LE_MESSAGE = 3
@@ -81,15 +83,21 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
         self._modele = modele
         self._journal = journal_calcul
         self._debut = debut
+        self._dernier_message = float("-inf")
         self.nb_solutions = 0
         self.solutions: list[tuple[int | None, tuple[int, ...]]] = []
 
     def on_solution_callback(self) -> None:
         self.nb_solutions += 1
         ecoule = time.perf_counter() - self._debut
-        objectif = None
-        if self._modele.objectif_actif:
-            objectif = round(self.objective_value)
+        objectif = round(self.objective_value) if self._modele.objectif_actif else None
+        self.solutions.append((objectif, self._modele.choix(self.boolean_value)))
+        del self.solutions[:-NB_SOLUTIONS_GARDEES]
+        if objectif is None:
+            self._journal.info("Horaires trouvés après %.1f s", ecoule)
+        elif ecoule - self._dernier_message >= INTERVALLE_SOLUTIONS_S:
+            # En optimisation les améliorations se suivent de près : on n'en journalise qu'une partie.
+            self._dernier_message = ecoule
             self._journal.info(
                 "Horaires n° %d après %.1f s : pénalité %d (borne %d)",
                 self.nb_solutions,
@@ -97,10 +105,6 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
                 objectif,
                 round(self.best_objective_bound),
             )
-        else:
-            self._journal.info("Horaires trouvés après %.1f s", ecoule)
-        self.solutions.append((objectif, self._modele.choix(self.boolean_value)))
-        del self.solutions[:-NB_SOLUTIONS_GARDEES]
 
     @property
     def objectif(self) -> int | None:

@@ -112,6 +112,18 @@ def test_maximum_hebdomadaire_d_un_enseignant():
     assert pre_verifier(f.instantane(), [C.MAX_ENSEIGNANT]) == []
 
 
+def test_seances_a_horaire_fixe_au_dela_du_maximum_journalier():
+    f = Fabrique()
+    f.salle()
+    f.salle()
+    martin = f.enseignant("Mme Martin", max_jour=2 * H)
+    f.besoin([f.groupe("A1")], [martin], jour_impose=LUNDI, debut_impose=C1)
+    f.besoin([f.groupe("A2")], [martin], jour_impose=LUNDI, debut_impose=14 * H)
+    (erreur,) = erreurs(pre_verifier(f.instantane()), C.MAX_ENSEIGNANT)
+    assert "Mme Martin a déjà 4 h de séances à horaire fixe" in erreur.message
+    assert "le lundi, pour un maximum de 2 h par jour" in erreur.message
+
+
 def test_demande_de_salles_rapportee_a_l_offre():
     f = Fabrique(creneaux=LUNDI_SEUL)
     f.salle("Labo", type_salle=2)
