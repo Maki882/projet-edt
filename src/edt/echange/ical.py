@@ -18,9 +18,9 @@ C'est un **adaptateur isolé** : il produit le même tableau intermédiaire
   occurrences qui tombent un jour fermé du calendrier sont retirées par la
   reconstitution (`SeanceLue.recurrente`).
 - Champs : les propriétés `X-EDT-MATIERE`, `X-EDT-TYPE`, `X-EDT-GROUPES`,
-  `X-EDT-ENSEIGNANTS`, `X-EDT-SALLE` et `X-EDT-STATUT` (écrites par notre
-  export) priment ; à défaut, le type vient de `CATEGORIES`, la salle de
-  `LOCATION`, le libellé de `SUMMARY`. Ce qui manque (matière, groupes)
+  `X-EDT-ENSEIGNANTS`, `X-EDT-SALLE`, `X-EDT-STATUT` et `X-EDT-LIBELLE`
+  (écrites par notre export) priment ; à défaut, le type vient de
+  `CATEGORIES`, la salle de `LOCATION`, le libellé de `SUMMARY`. Ce qui manque (matière, groupes)
   fait mettre la séance de côté par la reconstitution, avec un message.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
   jours n'est pas une séance : il est signalé et non importé.
@@ -59,6 +59,7 @@ PROPRIETES_EDT = {
     "enseignants": "X-EDT-ENSEIGNANTS",
     "salle": "X-EDT-SALLE",
     "statut": "X-EDT-STATUT",
+    "libelle": "X-EDT-LIBELLE",
 }
 """Propriétés propres à EDT, écrites par l'export et lues en priorité."""
 
@@ -241,7 +242,11 @@ def _champs(ev: Any) -> dict[str, Any]:
         "enseignants": lire_liste(texte(PROPRIETES_EDT["enseignants"])) or (),
         "salle": texte(PROPRIETES_EDT["salle"]) or texte("LOCATION"),
         "statut": statut,
-        "libelle": texte("SUMMARY"),
+        "libelle": (
+            texte(PROPRIETES_EDT["libelle"])
+            if PROPRIETES_EDT["libelle"] in ev
+            else texte("SUMMARY")
+        ),
     }
 
 

@@ -390,6 +390,7 @@ def _evenement(export: Export, e: Element, horodatage: dt.datetime, instantane) 
         )
     if e.statut is not None:
         evenement.add(PROPRIETES_EDT["statut"].lower(), e.statut.value)
+    evenement.add(PROPRIETES_EDT["libelle"].lower(), b.libelle or "")
     return evenement
 
 
