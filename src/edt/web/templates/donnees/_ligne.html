@@ -4,8 +4,9 @@
 {%- set url_element = ecran.prefixe ~ "/" ~ ligne.id %}
 <tr id="ligne-{{ ecran.entite.code }}-{{ ligne.id }}"{% if modifiee %} class="ligne-modifiee"{% endif %}>
   {%- for colonne in colonnes %}
-  <td{% if colonne.nombre %} class="nombre"{% endif %}>
-    {%- if loop.first %}<a href="{{ url_element }}{{ suffixe_retour }}">{{ d.cellule(colonne, ligne[colonne.cle]) }}</a>{% else %}{{ d.cellule(colonne, ligne[colonne.cle]) }}{% endif -%}
+  {%- set contenu = d.cellule(colonne, ligne[colonne.cle], ligne.get("detail_" ~ colonne.cle)) %}
+  <td{% if colonne.nombre %} class="nombre"{% elif colonne.texte %} class="cellule-texte"{% endif %}>
+    {%- if loop.first %}<a href="{{ url_element }}{{ suffixe_retour }}">{{ contenu }}</a>{% else %}{{ contenu }}{% endif -%}
   </td>
   {%- endfor %}
   <td class="colonne-actions">

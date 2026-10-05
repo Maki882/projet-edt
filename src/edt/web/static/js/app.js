@@ -6,7 +6,9 @@
  *    confirmation avant l'envoi (macro `ui.bouton_suppression`).
  * 2. Erreurs HTMX : quand une requête HTMX échoue, le serveur renvoie un
  *    fragment de message ; il est affiché dans la zone `#messages` au lieu
- *    d'être ignoré. Une panne de réseau affiche un message générique.
+ *    d'être ignoré. Une panne de réseau affiche un message générique. Un
+ *    élément accessoire marqué `data-erreur-silencieuse` (compteur d'onglet)
+ *    note son échec dans la console sans bandeau.
  * 3. Panneau Assistant : ouverture et fermeture (bouton, Échap), focus,
  *    état conservé d'une page à l'autre (stockage local du navigateur).
  * 4. Champs conditionnels : un champ portant `data-visible-si="nom:v1,v2"`
@@ -15,6 +17,12 @@
  * 5. Choix multiples : filtre de la liste de cases à cocher (`.choix-multiple`).
  * 6. Attente : un formulaire portant `data-attente="..."` désactive ses boutons
  *    pendant l'envoi et affiche ce texte (opérations longues).
+ * 7. Blocs repliables : un `<details id="...">` ouvert le reste quand HTMX
+ *    remplace la zone qui le contient.
+ * 8. Arbres repliables : un conteneur `data-arbre="clé"` mémorise ses nœuds
+ *    ouverts (`<details data-noeud="...">`) d'une page à l'autre ; les boutons
+ *    `data-arbre-action="deplier|replier"` et `data-arbre-cible="id"` ouvrent
+ *    ou ferment tout (masqués sans JavaScript).
  *
  * Les points 4 et 5 s'appliquent aussi aux fragments chargés par HTMX.
  */
@@ -49,6 +57,30 @@
     }, 0);
   });
 
+  /* ---- 7. Blocs repliables conservés pendant un remplacement HTMX ------------ */
+
+  var blocsOuverts = [];
+
+  document.addEventListener("htmx:beforeSwap", function (evenement) {
+    var cible = evenement.detail.target;
+    blocsOuverts = [];
+    if (cible && cible.querySelectorAll) {
+      cible.querySelectorAll("details[id][open]").forEach(function (bloc) {
+        blocsOuverts.push(bloc.id);
+      });
+    }
+  });
+
+  document.addEventListener("htmx:afterSwap", function () {
+    blocsOuverts.forEach(function (ident) {
+      var bloc = document.getElementById(ident);
+      if (bloc) {
+        bloc.open = true;
+      }
+    });
+    blocsOuverts = [];
+  });
+
   /* ---- 2. Erreurs HTMX -------------------------------------------------- */
 
   function afficherMessage(html) {
@@ -72,6 +104,13 @@
 
   document.addEventListener("htmx:responseError", function (evenement) {
     var reponse = evenement.detail.xhr;
+    var source = evenement.detail.elt;
+    if (source && source.closest && source.closest("[data-erreur-silencieuse]")) {
+      // Élément accessoire (compteur d'onglet) : l'erreur, déjà journalisée par le
+      // serveur, est notée dans la console sans bandeau d'erreur sur la page.
+      console.warn("Élément accessoire non chargé (code " + reponse.status + ") : " + evenement.detail.pathInfo.requestPath);
+      return;
+    }
     var type = reponse.getResponseHeader("Content-Type") || "";
     if (type.indexOf("text/html") === 0 && reponse.responseText) {
       afficherMessage(reponse.responseText);
@@ -261,11 +300,72 @@
     });
   }
 
+  /* ---- 8. Arbres repliables ------------------------------------------------- */
+
+  function cleArbre(arbre) {
+    return "edt.arbre." + arbre.getAttribute("data-arbre");
+  }
+
+  function memoriserArbre(arbre) {
+    var ouverts = [];
+    arbre.querySelectorAll("details[data-noeud][open]").forEach(function (noeud) {
+      ouverts.push(noeud.getAttribute("data-noeud"));
+    });
+    try {
+      window.localStorage.setItem(cleArbre(arbre), JSON.stringify(ouverts));
+    } catch (erreur) {
+      console.info("Arbre : état non conservé (" + erreur.name + ").");
+    }
+  }
+
+  function initialiserArbres(racine) {
+    racine.querySelectorAll("[data-arbre]").forEach(function (arbre) {
+      if (arbre.dataset.arbreActif) {
+        return;
+      }
+      arbre.dataset.arbreActif = "1";
+      var ouverts = null;
+      try {
+        ouverts = JSON.parse(window.localStorage.getItem(cleArbre(arbre)) || "null");
+      } catch (erreur) {
+        console.info("Arbre : état non relu (" + erreur.name + ").");
+      }
+      if (Array.isArray(ouverts)) {
+        arbre.querySelectorAll("details[data-noeud]").forEach(function (noeud) {
+          noeud.open = ouverts.indexOf(noeud.getAttribute("data-noeud")) !== -1;
+        });
+      }
+      // « toggle » ne remonte pas : écouté en phase de capture.
+      arbre.addEventListener("toggle", function () {
+        memoriserArbre(arbre);
+      }, true);
+    });
+    racine.querySelectorAll("[data-arbre-action]").forEach(function (bouton) {
+      bouton.hidden = false;
+      if (bouton.dataset.arbreActif) {
+        return;
+      }
+      bouton.dataset.arbreActif = "1";
+      bouton.addEventListener("click", function () {
+        var arbre = document.getElementById(bouton.getAttribute("data-arbre-cible"));
+        if (!arbre) {
+          return;
+        }
+        var ouvrir = bouton.getAttribute("data-arbre-action") === "deplier";
+        arbre.querySelectorAll("details[data-noeud]").forEach(function (noeud) {
+          noeud.open = ouvrir;
+        });
+        memoriserArbre(arbre);
+      });
+    });
+  }
+
   /* ---- Démarrage ---------------------------------------------------------- */
 
   function initialiser(racine) {
     initialiserConditions(racine);
     initialiserChoixMultiples(racine);
+    initialiserArbres(racine);
   }
 
   document.addEventListener("htmx:load", function (evenement) {

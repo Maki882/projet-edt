@@ -1,4 +1,8 @@
-{# Arbre des groupes d'une année : promotion > classe > demi-groupe, puis les groupes à part. #}
+{#
+  Arbre des groupes d'une année : promotion > classe > demi-groupe, puis les groupes à part
+  regroupés par nature. Tout est replié par défaut ; l'état ouvert est conservé d'une page à
+  l'autre (static/js/app.js, « Arbres repliables »).
+#}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
@@ -9,30 +13,47 @@
 <a class="bouton bouton-principal" href="/groupes/nouveau{% if annee %}?annee_scolaire_id={{ annee }}&amp;nature=promotion{% endif %}">Nouvelle promotion</a>
 {% endblock %}
 
+{% macro contenu_noeud(n) -%}
+<a href="/groupes/{{ n.id }}"><strong>{{ n.code }}</strong></a>
+<span>{{ n.libelle }}</span>
+{{ ui.etiquette(n.nature_libelle, "neutre") }}
+<span class="discret">{{ n.effectif }} étudiant{{ "s" if n.effectif > 1 else "" }}
+  {%- if n.effectif_enfants is not none and n.effectif_enfants != n.effectif %} (sous-groupes : {{ n.effectif_enfants }}){% endif %}</span>
+{%- if n.enfants %} <span class="discret">· {{ n.enfants|length }} sous-groupe{{ "s" if n.enfants|length > 1 else "" }}</span>{% endif %}
+{%- if n.accessibilite_requise %} {{ ui.etiquette("Salle accessible", "info") }}{% endif %}
+{%- if n.chevauchements %} <span class="discret" title="{{ n.chevauchements|join(', ') }}">chevauche {{ n.chevauchements[:3]|join(", ") }}{% if n.chevauchements|length > 3 %} <span class="plus">+{{ n.chevauchements|length - 3 }}</span>{% endif %}</span>{% endif %}
+<span class="actions">
+  {%- if n.nature in ("promotion", "classe") %}
+  <a class="bouton bouton-petit" href="/groupes/nouveau?annee_scolaire_id={{ annee }}&amp;parent_id={{ n.id }}&amp;nature={{ 'demi_groupe' if n.nature == 'classe' else 'classe' }}" title="Ajouter un sous-groupe à {{ n.code }}" aria-label="Ajouter un sous-groupe à {{ n.code }}">+ Sous-groupe</a>
+  {%- endif %}
+  <a class="bouton bouton-petit" href="/groupes/{{ n.id }}" aria-label="Modifier {{ n.code }}">Modifier</a>
+</span>
+{%- endmacro %}
+
 {% macro noeud(n) -%}
 <li>
-  <div class="arbre-noeud">
-    <a href="/groupes/{{ n.id }}"><strong>{{ n.code }}</strong></a>
-    <span>{{ n.libelle }}</span>
-    {{ ui.etiquette(n.nature_libelle, "neutre") }}
-    <span class="discret">{{ n.effectif }} étudiant{{ "s" if n.effectif > 1 else "" }}
-      {%- if n.effectif_enfants is not none and n.effectif_enfants != n.effectif %} (sous-groupes : {{ n.effectif_enfants }}){% endif %}</span>
-    {%- if n.accessibilite_requise %} {{ ui.etiquette("Salle accessible", "info") }}{% endif %}
-    {%- if n.chevauchements %}<span class="discret">chevauche {{ n.chevauchements|join(", ") }}</span>{% endif %}
-    <span class="actions">
-      <a class="bouton bouton-petit" href="/groupes/nouveau?annee_scolaire_id={{ annee }}&amp;parent_id={{ n.id }}&amp;nature={{ 'demi_groupe' if n.nature == 'classe' else 'classe' }}">Ajouter un sous-groupe</a>
-      <a class="bouton bouton-petit" href="/groupes/{{ n.id }}">Modifier</a>
-    </span>
-  </div>
   {%- if n.enfants %}
-  <ul>
-    {%- for enfant in n.enfants %}
-    {{ noeud(enfant) }}
-    {%- endfor %}
-  </ul>
+  <details data-noeud="{{ n.id }}">
+    <summary class="arbre-noeud">{{ contenu_noeud(n) }}</summary>
+    <ul>
+      {%- for enfant in n.enfants %}
+      {{ noeud(enfant) }}
+      {%- endfor %}
+    </ul>
+  </details>
+  {%- else %}
+  <div class="arbre-noeud arbre-feuille">{{ contenu_noeud(n) }}</div>
   {%- endif %}
 </li>
 {%- endmacro %}
+
+{% set titres_a_part = {
+  "transverse": "Groupes transverses (langues, options, parcours)",
+  "tiers_temps": "Groupes tiers-temps",
+  "classe": "Classes hors promotion",
+  "demi_groupe": "Demi-groupes hors classe",
+  "promotion": "Promotions",
+} %}
 
 {% block contenu %}
 <p class="introduction">
@@ -49,15 +70,40 @@
     </select>
   </div>
   <button type="submit" class="bouton sans-js">Afficher</button>
+  {%- if noeuds %}
+  <div class="ligne-boutons pousser-droite">
+    <button type="button" class="bouton" data-arbre-action="deplier" data-arbre-cible="arbre-groupes" hidden>Tout déplier</button>
+    <button type="button" class="bouton" data-arbre-action="replier" data-arbre-cible="arbre-groupes" hidden>Tout replier</button>
+  </div>
+  {%- endif %}
 </form>
 {%- if noeuds %}
-<section class="carte">
-  <ul class="arbre">
-    {%- for n in noeuds %}
-    {{ noeud(n) }}
-    {%- endfor %}
-  </ul>
-</section>
+{%- set promotions = noeuds|selectattr("nature", "equalto", "promotion")|list %}
+{%- set a_part = noeuds|rejectattr("nature", "equalto", "promotion")|list %}
+<div id="arbre-groupes" data-arbre="groupes-{{ annee }}">
+  {%- if promotions %}
+  <section class="carte">
+    <h2>Promotions <span class="discret">({{ promotions|length }})</span></h2>
+    <ul class="arbre">
+      {%- for n in promotions %}
+      {{ noeud(n) }}
+      {%- endfor %}
+    </ul>
+  </section>
+  {%- endif %}
+  {%- for nature, liste in a_part|groupby("nature") %}
+  <section class="carte">
+    <details data-noeud="nature-{{ nature }}" class="arbre-section">
+      <summary><h2>{{ titres_a_part.get(nature, nature) }} <span class="discret">({{ liste|length }})</span></h2></summary>
+      <ul class="arbre">
+        {%- for n in liste %}
+        {{ noeud(n) }}
+        {%- endfor %}
+      </ul>
+    </details>
+  </section>
+  {%- endfor %}
+</div>
 {%- else %}
 <p class="vide">Aucun groupe pour cette année.</p>
 {%- endif %}

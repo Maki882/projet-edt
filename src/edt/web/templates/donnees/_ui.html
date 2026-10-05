@@ -6,7 +6,8 @@
   - d.champ(c)                 un champ décrit (edt.web.donnees.formulaires.ChampAffiche)
   - d.rubriques(liste)         les rubriques d'un formulaire, chacune dans un fieldset
   - d.barre_liste(...)         recherche et filtres d'une liste (HTMX, et sans JavaScript)
-  - d.cellule(colonne, valeur) une cellule de liste selon le format de la colonne
+  - d.cellule(colonne, valeur, detail)  contenu d'une cellule de liste (liste abrégée « +n »,
+                               texte libre sur deux lignes au plus, détail au survol)
   - d.retour(ecran)            lien vers la page parente d'un écran
 #}
 {% import "macros.html" as ui %}
@@ -58,9 +59,22 @@
 </form>
 {%- endmacro %}
 
-{% macro cellule(colonne, valeur) -%}
+{% macro cellule(colonne, valeur, detail=None) -%}
 {%- if colonne.format == "couleur" and valeur -%}
 {{ ui.couleur(valeur) }}<code>{{ valeur }}</code>
+{%- elif valeur is iterable and valeur is not string -%}
+{%- set elements = valeur|list -%}
+{%- if not elements -%}
+<span class="discret">-</span>
+{%- else -%}
+{%- set montres = elements[:colonne.apercu] -%}
+<span class="liste-abregee" title="{{ elements|join(', ') }}"><span class="elements">{{ montres|join(", ") }}</span>
+{%- if elements|length > montres|length %}<span class="plus">+{{ elements|length - montres|length }}</span>{% endif %}</span>
+{%- endif -%}
+{%- elif colonne.texte and valeur -%}
+<span class="deux-lignes" title="{{ detail or valeur }}">{{ valeur }}</span>
+{%- elif detail -%}
+<span class="abrege" title="{{ detail }}">{{ valeur }}</span>
 {%- else -%}
 {{ ui.cellule(valeur) }}
 {%- endif -%}

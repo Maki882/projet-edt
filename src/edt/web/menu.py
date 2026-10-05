@@ -87,6 +87,13 @@ GROUPE_PAR_SECTION: dict[str, str] = {
 }
 """Titre de groupe affiché par défaut pour une section (sinon : le nom de la section)."""
 
+COMPTEURS_ONGLETS: dict[str, str] = {ONGLET_A_TRAITER: "/a-traiter/compteur"}
+"""Adresse du fragment qui affiche un compteur dans l'onglet (chargé par HTMX).
+
+Le fragment renvoie `<span class="edt-compteur-onglet">N</span>`, ou rien
+quand il n'y a rien à compter ; sans JavaScript, l'onglet reste un lien simple.
+"""
+
 ORDRE_DES_GROUPES: tuple[str, ...] = (
     GROUPE_ETABLISSEMENT,
     GROUPE_BESOINS,
@@ -154,6 +161,11 @@ class Onglet:
     def entrees(self) -> tuple[EntreeMenu, ...]:
         """Toutes les entrées de l'onglet, dans l'ordre d'affichage."""
         return tuple(entree for groupe in self.groupes for entree in groupe.entrees)
+
+    @property
+    def url_compteur(self) -> str | None:
+        """Adresse du compteur affiché dans l'onglet, ou `None`."""
+        return COMPTEURS_ONGLETS.get(self.titre)
 
     @property
     def url(self) -> str:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 
@@ -159,3 +161,14 @@ def test_calendrier_et_jours_feries(site, ids):
 def test_creneau_refuse_une_fin_avant_le_debut(site):
     reponse = site.post("/grille", data={"jour": 5, "debut_min": "15:00", "fin_min": "14:00"})
     assert reponse.status_code == 422 and "La fin doit suivre le début." in reponse.text
+
+
+def test_arbre_repliable(site, ids):
+    page = site.get(f"/groupes/arbre?annee={ids.annee}").text
+    assert f'<div id="arbre-groupes" data-arbre="groupes-{ids.annee}">' in page
+    assert f'<details data-noeud="{ids.promo}">' in page  # replié par défaut (pas d'« open »)
+    assert not re.search(r"<details[^>]*open", page)
+    assert 'data-arbre-action="deplier" data-arbre-cible="arbre-groupes" hidden' in page
+    assert 'data-arbre-action="replier"' in page
+    assert '<details data-noeud="nature-transverse" class="arbre-section">' in page
+    assert "Groupes transverses" in page

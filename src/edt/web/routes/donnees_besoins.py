@@ -15,11 +15,13 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from edt.domaine.enumerations import ModeVolume
+from edt.services.referentiels import operations
 from edt.services.referentiels.enseignements import (
     BESOIN,
     INDISPONIBILITE,
     charges_hebdomadaires,
     dupliquer_besoin,
+    groupes_des_besoins,
 )
 from edt.services.referentiels.operations import PageListe, valeurs_par_defaut
 from edt.web.dependances import SessionRequete
@@ -29,6 +31,9 @@ from edt.web.gabarits import rediriger
 from edt.web.menu import SECTION_PLANIFICATION, EntreeMenu
 
 journal = logging.getLogger(__name__)
+
+CHARGES_AFFICHEES = 60
+"""Nombre maximal de groupes dans le tableau des charges (les plus chargés d'abord)."""
 
 CHAMPS_AJOUT_RAPIDE = (
     "semestre_id",
@@ -40,6 +45,29 @@ CHAMPS_AJOUT_RAPIDE = (
     "seances_par_semaine",
 )
 """Champs du formulaire d'ajout rapide (un besoin « chaque semaine »)."""
+
+
+def _charges(session: Session, page: PageListe) -> dict[str, Any]:
+    """Charge hebdomadaire des groupes concernés par la recherche et les filtres en cours."""
+    semestre = page.filtres.get("semestre", "")
+    if not semestre:
+        return {"charges": (), "nb_charges": 0, "charges_filtrees": False}
+    autres_filtres = {nom: v for nom, v in page.filtres.items() if nom != "semestre" and v}
+    retenus = None
+    if page.recherche or autres_filtres:
+        besoins = operations.identifiants(
+            session, BESOIN, recherche=page.recherche, filtres=page.filtres
+        )
+        retenus = groupes_des_besoins(session, besoins)
+    charges = sorted(
+        charges_hebdomadaires(session, int(semestre), retenus),
+        key=lambda charge: (-charge.total, -charge.minutes, charge.code),
+    )
+    return {
+        "charges": tuple(charges[:CHARGES_AFFICHEES]),
+        "nb_charges": len(charges),
+        "charges_filtrees": retenus is not None,
+    }
 
 
 def _contexte_besoins(session: Session, page: PageListe) -> dict[str, Any]:
@@ -54,8 +82,8 @@ def _contexte_besoins(session: Session, page: PageListe) -> dict[str, Any]:
     return {
         "ajout_rapide": champs_affiches(session, BESOIN, valeurs, noms=CHAMPS_AJOUT_RAPIDE),
         "mode_par_semaine": ModeVolume.PAR_SEMAINE.value,
-        "charges": charges_hebdomadaires(session, int(semestre)) if semestre else (),
         "semestre_choisi": semestre,
+        **_charges(session, page),
     }
 
 
@@ -68,6 +96,7 @@ ECRAN_BESOINS = Ecran(
         "le générateur place dans l'emploi du temps."
     ),
     gabarit_liste="donnees/besoins.html",
+    complement_zone="donnees/_charges.html",
     contexte_liste=_contexte_besoins,
     actions_ligne=(ActionLigne("Dupliquer", "/dupliquer"),),
 )

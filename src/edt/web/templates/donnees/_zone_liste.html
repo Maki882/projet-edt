@@ -6,12 +6,12 @@
 </p>
 {%- if page.lignes %}
 <div class="tableau-defilant">
-  <table class="tableau">
+  <table class="tableau tableau-compact">
     <thead>
       <tr>
         {%- for colonne in colonnes %}
         {%- set active = colonne.cle == etat.tri %}
-        <th scope="col"{% if colonne.nombre %} class="nombre"{% endif %}{% if active %} aria-sort="{{ 'descending' if etat.descendant else 'ascending' }}"{% endif %}>
+        <th scope="col"{% if colonne.nombre %} class="nombre"{% elif colonne.texte %} class="cellule-texte"{% endif %}{% if active %} aria-sort="{{ 'descending' if etat.descendant else 'ascending' }}"{% endif %}>
           {%- if colonne.triable %}
           {%- set url = etat.url_tri(colonne.cle) %}
           <a class="tri{% if active %} {{ 'tri-decroissant' if etat.descendant else 'tri-croissant' }}{% endif %}" href="{{ url }}" hx-get="{{ url }}" hx-target="#zone-liste" hx-push-url="true" title="Trier par {{ colonne.libelle|lower }}">{{ colonne.libelle }}</a>
@@ -35,4 +35,7 @@
 <p class="vide">Aucun élément ne correspond à la recherche ou aux filtres.</p>
 {%- else %}
 <p class="vide">Aucun élément pour l'instant : « {{ entite.nouveau }} » pour commencer.</p>
+{%- endif %}
+{%- if ecran.complement_zone %}
+{% include ecran.complement_zone %}
 {%- endif %}

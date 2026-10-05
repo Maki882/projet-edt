@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from sqlalchemy import func, or_, select
@@ -21,6 +22,7 @@ from edt.db.modeles import (
     Semestre,
     TypeSalle,
     TypeSeance,
+    besoin_groupe,
 )
 from edt.domaine.calendrier import semaines_entre
 from edt.domaine.enumerations import JOURS, CibleIndisponibilite, ModeVolume, NatureGroupe
@@ -46,7 +48,7 @@ from edt.services.referentiels.description import (
 )
 from edt.services.referentiels.lieux import REF_CAMPUS, REF_EQUIPEMENT, REF_SALLE, REF_TYPE_SALLE
 from edt.services.referentiels.operations import creer, lire
-from edt.services.referentiels.personnes import REF_ENSEIGNANT, REF_GROUPE
+from edt.services.referentiels.personnes import REF_ENSEIGNANT, REF_GROUPE, sous_arbres
 
 journal = logging.getLogger(__name__)
 
@@ -98,7 +100,7 @@ MATIERE = Entite(
     ),
     colonnes=(
         Colonne("code", "Code module", lambda m: m.code, tri=Matiere.code),
-        Colonne("libelle", "Libellé", lambda m: m.libelle, tri=Matiere.libelle),
+        Colonne("libelle", "Libellé", lambda m: m.libelle, tri=Matiere.libelle, texte=True),
         Colonne(
             "promotion",
             "Promotion",
@@ -224,11 +226,43 @@ CHOIX_MODE = (
 SEMAINE_OU_TOTAL = (ModeVolume.PAR_SEMAINE.value, ModeVolume.TOTAL.value)
 
 
-def texte_volume(besoin: Besoin) -> str:
-    """Volume lisible : « 2 / semaine », « 10 au total, 2 max. / semaine », « le 19/11/2026 »."""
+def _heure_courte(minutes: int) -> str:
+    """« 14 h » ou « 13 h 45 »."""
+    heures, reste = divmod(minutes, 60)
+    return f"{heures} h" if reste == 0 else f"{heures} h {reste:02d}"
+
+
+def _jour_mois(valeur: dt.date) -> str:
+    return valeur.strftime("%d/%m")
+
+
+def texte_volume_court(besoin: Besoin) -> str:
+    """Volume sur une ligne : « 2 / semaine », « 6 séances · 14/09 → 15/11 », « le 12/11 à 14 h »."""
     mode = ModeVolume(besoin.mode_volume)
     if mode is ModeVolume.PONCTUEL:
-        return f"le {_date(besoin.date_ponctuelle)}"
+        texte = f"le {_jour_mois(besoin.date_ponctuelle)}" if besoin.date_ponctuelle else "daté"
+        if besoin.debut_impose_min is not None:
+            texte += f" à {_heure_courte(besoin.debut_impose_min)}"
+        return texte
+    if mode is ModeVolume.PAR_SEMAINE:
+        texte = f"{besoin.nombre} / semaine"
+    else:
+        texte = f"{besoin.nombre} séance{'s' if besoin.nombre > 1 else ''}"
+    if besoin.date_debut or besoin.date_fin:
+        debut = _jour_mois(besoin.date_debut) if besoin.date_debut else "début"
+        fin = _jour_mois(besoin.date_fin) if besoin.date_fin else "fin"
+        texte += f" · {debut} → {fin}"
+    return texte
+
+
+def texte_volume(besoin: Besoin) -> str:
+    """Volume complet : « 2 / semaine », « 10 au total, 2 max. / semaine, du ... au ... »."""
+    mode = ModeVolume(besoin.mode_volume)
+    if mode is ModeVolume.PONCTUEL:
+        texte = f"Séance ponctuelle le {_date(besoin.date_ponctuelle)}"
+        if besoin.debut_impose_min is not None:
+            texte += f" à {minutes_vers_texte(besoin.debut_impose_min)}"
+        return texte
     if mode is ModeVolume.PAR_SEMAINE:
         texte = f"{besoin.nombre} / semaine"
     else:
@@ -240,9 +274,9 @@ def texte_volume(besoin: Besoin) -> str:
     return texte
 
 
-def texte_exigences(besoin: Besoin) -> str:
-    """Exigences lisibles : créneau, salle ou campus imposés, types de salle, équipements."""
-    morceaux = []
+def exigences(besoin: Besoin) -> list[str]:
+    """Exigences, une par élément : créneau, salle ou campus imposés, types de salle, équipements."""
+    morceaux: list[str] = []
     if besoin.jour_impose is not None or besoin.debut_impose_min is not None:
         jour = JOURS[besoin.jour_impose] if besoin.jour_impose is not None else ""
         heure = (
@@ -255,11 +289,14 @@ def texte_exigences(besoin: Besoin) -> str:
         morceaux.append(f"salle {besoin.salle_imposee.code}")
     if besoin.campus_impose is not None:
         morceaux.append(f"campus {besoin.campus_impose.code}")
-    if besoin.types_salle:
-        morceaux.append(libelles(besoin.types_salle, "libelle"))
-    if besoin.equipements:
-        morceaux.append(libelles(besoin.equipements, "libelle"))
-    return " ; ".join(morceaux)
+    morceaux += [type_salle.libelle for type_salle in besoin.types_salle]
+    morceaux += [equipement.libelle for equipement in besoin.equipements]
+    return morceaux
+
+
+def texte_exigences(besoin: Besoin) -> str:
+    """Exigences lisibles sur une ligne, séparées par des points-virgules."""
+    return " ; ".join(exigences(besoin))
 
 
 def libelle_besoin(besoin: Besoin) -> str:
@@ -563,13 +600,15 @@ BESOIN = Entite(
                 f"{b.matiere.code} {b.matiere.libelle}" + (f" - {b.libelle}" if b.libelle else "")
             ),
             tri=(Matiere.code, Besoin.id),
+            texte=True,
         ),
         Colonne("type", "Type", lambda b: b.type_seance.code, tri=TypeSeance.code),
-        Colonne("groupes", "Groupes", lambda b: libelles(b.groupes)),
+        Colonne("groupes", "Groupes", lambda b: [g.code for g in b.groupes]),
         Colonne(
             "enseignants",
             "Enseignants",
-            lambda b: ", ".join(e.nom_affiche for e in b.enseignants) or None,
+            lambda b: [e.nom_affiche for e in b.enseignants],
+            apercu=1,
         ),
         Colonne(
             "duree",
@@ -578,9 +617,22 @@ BESOIN = Entite(
             tri=Besoin.duree_min,
             nombre=True,
         ),
-        Colonne("volume", "Volume", texte_volume, tri=(Besoin.mode_volume, Besoin.nombre)),
-        Colonne("exigences", "Exigences", lambda b: texte_exigences(b) or None),
-        Colonne("semestre", "Semestre", lambda b: b.semestre.code, tri=Semestre.date_debut),
+        Colonne(
+            "volume",
+            "Volume",
+            texte_volume_court,
+            tri=(Besoin.mode_volume, Besoin.nombre),
+            detail=texte_volume,
+            texte=True,
+        ),
+        Colonne("exigences", "Exigences", exigences, apercu=1),
+        Colonne(
+            "semestre",
+            "Semestre",
+            lambda b: b.semestre.code,
+            tri=Semestre.date_debut,
+            filtre="semestre",
+        ),
     ),
     tri_defaut="matiere",
     recherche=(Matiere.code, Matiere.libelle, Besoin.libelle, TypeSeance.code),
@@ -662,6 +714,16 @@ BESOIN = Entite(
 )
 
 
+def groupes_des_besoins(session: Session, besoin_ids: Collection[int]) -> set[int]:
+    """Groupes suivant ces besoins, avec leurs sous-groupes (qui suivent aussi ces séances)."""
+    if not besoin_ids:
+        return set()
+    directs = session.scalars(
+        select(besoin_groupe.c.groupe_id).where(besoin_groupe.c.besoin_id.in_(besoin_ids))
+    )
+    return sous_arbres(session, set(directs))
+
+
 def dupliquer_besoin(session: Session, ident: int) -> dict:
     """Crée une copie du besoin `ident` (mêmes valeurs) et renvoie ses valeurs (comme `lire`)."""
     valeurs = lire(session, BESOIN, ident)
@@ -698,8 +760,15 @@ class ChargeGroupe:
         return round(self.propres + self.heritees, 1)
 
 
-def charges_hebdomadaires(session: Session, semestre_id: int) -> tuple[ChargeGroupe, ...]:
-    """Séances hebdomadaires par groupe sur un semestre (groupes concernés seulement)."""
+def charges_hebdomadaires(
+    session: Session, semestre_id: int, groupes_retenus: Collection[int] | None = None
+) -> tuple[ChargeGroupe, ...]:
+    """Séances hebdomadaires par groupe sur un semestre, par code de groupe.
+
+    Seuls les groupes qui ont au moins une séance figurent ; `groupes_retenus`
+    restreint encore la liste (la charge de chacun compte toujours tous les
+    besoins du semestre).
+    """
     semestre = session.get(Semestre, semestre_id)
     if semestre is None:
         return ()
@@ -743,6 +812,8 @@ def charges_hebdomadaires(session: Session, semestre_id: int) -> tuple[ChargeGro
 
     resultat = []
     for groupe in sorted(groupes, key=lambda g: g.code):
+        if groupes_retenus is not None and groupe.id not in groupes_retenus:
+            continue
         lignee = ascendants(groupe.id)
         heritees = sum(seances.get(a, 0.0) for a in lignee)
         propres = seances.get(groupe.id, 0.0)
@@ -972,7 +1043,7 @@ INDISPONIBILITE = Entite(
             tri=(Indisponibilite.jour, Indisponibilite.date_debut, Indisponibilite.debut_min),
         ),
         Colonne("plage", "Horaire", texte_plage, tri=Indisponibilite.debut_min),
-        Colonne("motif", "Motif", lambda i: i.motif, tri=Indisponibilite.motif),
+        Colonne("motif", "Motif", lambda i: i.motif, tri=Indisponibilite.motif, texte=True),
     ),
     tri_defaut="ressource",
     recherche=(Indisponibilite.motif, Enseignant.nom, Enseignant.prenom, Salle.code, Groupe.code),

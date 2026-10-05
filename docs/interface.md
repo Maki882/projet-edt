@@ -38,6 +38,14 @@ range dans un onglet par la `section` de son entrée de menu
 - Une entrée dont la section n'est rangée dans aucun onglet va dans l'onglet
   Données, sous un groupe portant le nom de sa section, et un avertissement
   est journalisé.
+- Sur un écran étroit, les cinq onglets passent sur deux rangées plutôt que
+  de défiler : aucun n'est caché.
+- Un onglet peut afficher un **compteur** (pastille rouge) chargé par HTMX :
+  `COMPTEURS_ONGLETS` de `menu.py` associe au titre de l'onglet l'adresse
+  d'un fragment qui renvoie `<span class="edt-compteur-onglet">N</span>`, ou
+  rien. Aujourd'hui : « À traiter » → `/a-traiter/compteur`. Sans JavaScript,
+  l'onglet reste un lien simple ; si le fragment échoue, l'échec est noté dans
+  la console sans bandeau d'erreur (`data-erreur-silencieuse`).
 - L'onglet actif est celui dont une entrée correspond à l'adresse affichée
   (l'entrée `/salles` couvre aussi `/salles/12`).
 
@@ -103,6 +111,7 @@ Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
 | `carte`, `carte-erreur`, `carte-attention`, `repliable` (sur `<details>`) | blocs de contenu |
 | `introduction` | phrase d'explication sous le titre |
 | `tableau-defilant` + `tableau`, `nombre`, `colonne-actions` | tableaux (défilement horizontal sur petit écran) |
+| `tableau-compact` (avec `cellule-texte`, `deux-lignes`, `liste-abregee`, `plus`, `abrege`) | listes longues : une ligne par cellule, deux au plus pour un texte libre, listes abrégées « +3 » avec le détail au survol, colonne d'actions toujours visible à droite pendant le défilement horizontal |
 | `tri`, `tri-croissant`, `tri-decroissant` | en-tête de colonne triable |
 | `pagination`, `pagination-pages` | pagination |
 | `formulaire`, `formulaire-large`, `grille-champs`, `champ-large`, `formulaire-actions`, `formulaire-ligne` | formulaires (grille de champs, formulaire compact sur une ligne) |
@@ -120,6 +129,9 @@ Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
 | `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 |
 | `data-attente="..."` sur un formulaire | boutons désactivés et texte d'attente pendant l'envoi (opérations longues) |
 | `.choix-multiple` | filtre au clavier d'une liste de cases à cocher |
+| `<details id="...">` dans une zone remplacée par HTMX | reste ouvert après le remplacement |
+| `data-arbre="clé"` + `<details data-noeud="...">` ; boutons `data-arbre-action="deplier\|replier"` `data-arbre-cible="id"` | arbre repliable, état conservé d'une page à l'autre (stockage local), « tout déplier » / « tout replier » (boutons masqués sans JavaScript) |
+| `data-erreur-silencieuse` sur un élément HTMX accessoire | son échec est noté dans la console, sans bandeau d'erreur |
 | erreurs HTMX | le fragment d'erreur renvoyé s'affiche dans `#messages` |
 
 Ces comportements s'appliquent aussi aux fragments chargés par HTMX.
@@ -188,6 +200,14 @@ Types de champ (`TypeChamp`) et contrôle affiché :
 
 Possibilités de la description :
 
+- colonnes de liste (`Colonne`) : une valeur peut être une **liste**
+  (groupes, équipements) affichée « A1-G1, A1-G2 +3 » (`apercu` éléments,
+  liste complète au survol) ; `texte=True` pour un texte libre qui peut tenir
+  sur deux lignes (les autres colonnes restent sur une ligne) ; `detail` pour
+  le texte complet d'une valeur abrégée (volume d'un besoin : « 6 séances ·
+  14/09 → 15/11 », détail au survol) ; `filtre="semestre"` pour omettre la
+  colonne quand ce filtre est appliqué (elle serait identique partout) ;
+
 - `groupe` d'un champ : rubrique du formulaire (`fieldset`) ;
 - `visible_si=("mode_volume", ("total",))` : champ utile à un seul mode ;
 - `virtuel=True` + `lire` : champ de formulaire sans colonne, traduit par le
@@ -221,7 +241,11 @@ seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
 - Options d'un écran : `introduction`, `gabarit_liste` (étendre
   `donnees/liste.html`, blocs `avant_liste` et `apres_liste`),
   `contexte_liste`, `edition_en_ligne`, `actions_ligne` (« Dupliquer »),
-  `liens`, `parent`, `titre_page`.
+  `liens`, `parent`, `titre_page`, `complement_zone` (gabarit ajouté au bas
+  de la zone de liste, donc rafraîchi avec elle : la charge hebdomadaire des
+  besoins).
+- Mesures de référence (jeu grand, 1 280 px de large) : une ligne de liste
+  fait 37 px (une ligne de texte) ou 58 px (deux lignes).
 
 ## 4. Les écrans de l'espace « Données »
 
@@ -231,10 +255,10 @@ seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
 | | `/salles` | salles : type, capacité, étage, équipements, accessibilité ; filtres campus, type, accessibilité |
 | | `/types-salle`, `/equipements`, `/types-seance` | listes configurables (édition sur place) |
 | | `/enseignants` | enseignants, statut, maxima (« 6 h »), enseignant fictif |
-| | `/groupes`, `/groupes/arbre` | groupes (liste filtrable et arbre promotion > classe > demi-groupe), chevauchements, salle accessible requise |
+| | `/groupes`, `/groupes/arbre` | groupes (liste filtrable et arbre repliable promotion > classe > demi-groupe, groupes à part regroupés par nature), chevauchements, salle accessible requise |
 | | `/etudiants` | étudiants (fictifs) et inscriptions |
 | | `/matieres` | matières, code module, promotion |
-| Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, matière, type, enseignant, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire par groupe ; formulaire par mode de volume |
+| Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, matière, type, enseignant, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
 | Règles et calendrier | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`) ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
 | | `/grille` | créneaux de la grille (édition sur place) |
@@ -264,6 +288,9 @@ supprimer(session, code, ident) -> str          # ErreurRegleMetier si encore ut
 options(session, code, nom_champ) -> list[tuple[str, str]]
 decrire(code) -> dict                           # champs, types, choix, filtres, tris
 ```
+
+`identifiants(session, code, *, recherche="", filtres=None) -> list[int]`
+donne tous les éléments retenus (toutes pages).
 
 `code` : `campus`, `type_salle`, `equipement`, `salle`, `enseignant`,
 `groupe`, `etudiant`, `matiere`, `type_seance`, `besoin`, `indisponibilite`,

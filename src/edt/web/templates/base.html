@@ -42,7 +42,9 @@
         {%- for onglet in menu %}
         {%- set est_actif = nav.actif is not none and onglet.titre == nav.actif.titre %}
         <li class="onglet{% if onglet.a_menu_deroulant %} onglet-deroulant{% endif %}">
-          <a href="{{ onglet.url }}"{% if est_actif %} class="actif" aria-current="{{ 'page' if onglet.url == chemin else 'true' }}"{% endif %}>{{ onglet.titre }}</a>
+          <a href="{{ onglet.url }}"{% if est_actif %} class="actif" aria-current="{{ 'page' if onglet.url == chemin else 'true' }}"{% endif %}>{{ onglet.titre }}
+            {%- if onglet.url_compteur %}<span hx-get="{{ onglet.url_compteur }}" hx-trigger="load" hx-swap="outerHTML" data-erreur-silencieuse></span>{% endif -%}
+          </a>
           {%- if onglet.a_menu_deroulant %}
           <div class="menu-deroulant">
             {%- for groupe in onglet.groupes %}

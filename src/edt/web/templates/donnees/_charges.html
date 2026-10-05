@@ -1,0 +1,53 @@
+{#
+  Charge hebdomadaire par groupe, au bas de la zone de liste des besoins :
+  rafraîchie avec la recherche et les filtres, repliée par défaut (app.js garde
+  le bloc ouvert d'un rafraîchissement à l'autre).
+#}
+{%- if semestre_choisi %}
+<details class="carte repliable" id="charges-groupes">
+  <summary>Charge hebdomadaire par groupe
+    <span class="discret">({{ nb_charges }} groupe{{ "s" if nb_charges > 1 else "" }}
+    {%- if charges_filtrees %} concernés par la recherche et les filtres{% endif %})</span></summary>
+  {%- if charges %}
+  <p class="discret">
+    Séances par semaine de chaque groupe, les plus chargés d'abord : les siennes et celles des
+    groupes qui le contiennent (une classe suit aussi les cours de sa promotion). Un volume total
+    compte pour sa moyenne sur sa période ; les séances ponctuelles sont comptées à part.
+  </p>
+  <div class="tableau-defilant">
+    <table class="tableau tableau-compact">
+      <thead>
+        <tr>
+          <th scope="col">Groupe</th>
+          <th scope="col" class="nombre">Propres</th>
+          <th scope="col" class="nombre">Héritées</th>
+          <th scope="col" class="nombre">Total / semaine</th>
+          <th scope="col" class="nombre">Heures / semaine</th>
+          <th scope="col" class="nombre">Ponctuelles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for charge in charges %}
+        <tr>
+          <td><strong>{{ charge.code }}</strong> <span class="discret">{{ charge.libelle }}</span></td>
+          <td class="nombre">{{ charge.propres }}</td>
+          <td class="nombre">{{ charge.heritees }}</td>
+          <td class="nombre"><strong>{{ charge.total }}</strong></td>
+          <td class="nombre">{{ (charge.minutes|int)|duree }}</td>
+          <td class="nombre">{{ charge.ponctuelles }}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- if nb_charges > charges|length %}
+  <p class="discret">
+    {{ charges|length }} groupes affichés sur {{ nb_charges }} : choisissez une promotion, une
+    matière ou un enseignant dans les filtres pour voir les autres.
+  </p>
+  {%- endif %}
+  {%- else %}
+  <p class="vide">Aucune séance hebdomadaire pour ces besoins.</p>
+  {%- endif %}
+</details>
+{%- endif %}

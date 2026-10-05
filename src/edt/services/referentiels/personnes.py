@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from sqlalchemy import delete, func, insert, or_, select
@@ -37,7 +38,6 @@ from edt.services.referentiels.description import (
     Valeurs,
     choix_enum,
     libelle_choix,
-    libelles,
     options_reference,
     par_colonne,
 )
@@ -201,12 +201,17 @@ def _duree(minutes: int | None) -> str | None:
 
 def sous_arbre(session: Session, groupe_id: int) -> set[int]:
     """Le groupe et tous ses descendants (identifiants)."""
+    return sous_arbres(session, (groupe_id,))
+
+
+def sous_arbres(session: Session, groupe_ids: Iterable[int]) -> set[int]:
+    """Les groupes donnés et tous leurs descendants (identifiants)."""
     enfants: dict[int, list[int]] = {}
     for ident, parent in session.execute(select(Groupe.id, Groupe.parent_id)):
         if parent is not None:
             enfants.setdefault(parent, []).append(ident)
-    resultat = {groupe_id}
-    a_visiter = [groupe_id]
+    resultat = set(groupe_ids)
+    a_visiter = list(resultat)
     while a_visiter:
         for enfant in enfants.get(a_visiter.pop(), []):
             if enfant not in resultat:
@@ -397,7 +402,7 @@ GROUPE = Entite(
     ),
     colonnes=(
         Colonne("code", "Code", lambda g: g.code, tri=Groupe.code),
-        Colonne("libelle", "Libellé", lambda g: g.libelle, tri=Groupe.libelle),
+        Colonne("libelle", "Libellé", lambda g: g.libelle, tri=Groupe.libelle, texte=True),
         Colonne(
             "nature", "Nature", lambda g: libelle_choix(CHOIX_NATURE, g.nature), tri=Groupe.nature
         ),
@@ -552,7 +557,7 @@ ETUDIANT = Entite(
         Colonne("identifiant", "Identifiant", lambda e: e.identifiant, tri=Etudiant.identifiant),
         Colonne("nom", "Nom", lambda e: e.nom, tri=(Etudiant.nom, Etudiant.prenom)),
         Colonne("prenom", "Prénom", lambda e: e.prenom, tri=Etudiant.prenom),
-        Colonne("groupes", "Groupes", lambda e: libelles(sorted(e.groupes, key=lambda g: g.code))),
+        Colonne("groupes", "Groupes", lambda e: sorted(g.code for g in e.groupes), apercu=3),
     ),
     tri_defaut="nom",
     recherche=(Etudiant.identifiant, Etudiant.nom, Etudiant.prenom),
