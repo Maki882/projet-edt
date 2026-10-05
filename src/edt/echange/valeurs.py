@@ -49,6 +49,10 @@ _DUREE_HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
 _ENTIER = re.compile(r"^[+-]?\d+$")
 _SEPARATEURS_LISTE = re.compile(r"[;,\n]")
 
+_NOMBRE = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
+DEBUTS_FORMULE = ("=", "+", "-", "@", chr(9), chr(13))
+"""Débuts de texte qu'un tableur interprète comme une formule."""
+
 VRAI = frozenset({"oui", "vrai", "1", "true"})
 FAUX = frozenset({"non", "faux", "0", "false"})
 
@@ -95,7 +99,7 @@ def texte_cellule(valeur: Any) -> str | None:
         texte = valeur.isoformat()
     else:
         texte = str(valeur)
-    texte = texte.replace(" ", " ").strip()
+    texte = texte.replace("\u00a0", " ").strip()
     return texte or None
 
 
@@ -280,6 +284,19 @@ def lire_liste(valeur: Any) -> tuple[str, ...] | None:
 # --------------------------------------------------------------------------- #
 # Écriture
 # --------------------------------------------------------------------------- #
+
+
+def neutraliser_formule(valeur: Any) -> Any:
+    """Un texte qui commence comme une formule de tableur n'en devient pas une.
+
+    Un texte qui commence par « = », « + », « - », « @ », une tabulation ou un
+    retour chariot reçoit une espace insécable en tête, que la relecture
+    retire (`texte_cellule`) : ouvrir un export dans un tableur n'exécute
+    rien. Un nombre (« -1 ») et toute autre valeur restent tels quels.
+    """
+    if isinstance(valeur, str) and valeur.startswith(DEBUTS_FORMULE) and not _NOMBRE.match(valeur):
+        return "\u00a0" + valeur
+    return valeur
 
 
 def ecrire_date(valeur: dt.date | None) -> str:

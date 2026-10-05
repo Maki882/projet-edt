@@ -16,6 +16,7 @@ import io
 from dataclasses import dataclass, field
 
 from edt.domaine.enumerations import Gravite
+from edt.echange.valeurs import neutraliser_formule
 
 LIBELLES_COMPTEURS: dict[str, str] = {
     "crees": "créé(s)",
@@ -34,6 +35,9 @@ LIBELLES_COMPTEURS: dict[str, str] = {
 
 COMPTEURS_DE_REJET = ("rejetes", "ecartees")
 """Compteurs qui désignent des lignes qui ne sont pas entrées."""
+
+MAX_SIGNALEMENTS = 20_000
+"""Signalements détaillés au plus par import ; au-delà, ils sont seulement comptés."""
 
 
 @dataclass(frozen=True)
@@ -78,6 +82,36 @@ class Signalement:
             "colonne": self.colonne,
             "message": self.message,
         }
+
+
+class ListeSignalements(list):
+    """Liste de signalements bornée : au-delà de `maximum`, les suivants sont comptés, pas gardés.
+
+    Un fichier hostile ne doit pas faire grossir le rapport sans fin : les
+    bilans comptent toujours toutes les lignes, seul le détail est borné.
+    """
+
+    def __init__(self, maximum: int = MAX_SIGNALEMENTS) -> None:
+        super().__init__()
+        self.maximum = maximum
+        self.omis = 0
+        self.erreurs_omises = 0
+
+    def append(self, signalement: Signalement) -> None:
+        if len(self) < self.maximum:
+            super().append(signalement)
+            return
+        self.omis += 1
+        if signalement.gravite is Gravite.ERREUR:
+            self.erreurs_omises += 1
+
+    def extend(self, signalements) -> None:  # noqa: D102 - même contrat que list.extend
+        for signalement in signalements:
+            self.append(signalement)
+
+    def __iadd__(self, signalements):
+        self.extend(signalements)
+        return self
 
 
 @dataclass
@@ -146,7 +180,9 @@ class RapportImport:
     - `version_id` : version d'emploi du temps créée (import d'emploi du temps) ;
     - `semaines_types` : semaine type retenue, par promotion (phrases) ;
     - `besoins` : besoins reconstitués (import d'emploi du temps), une ligne
-      lisible par besoin.
+      lisible par besoin ;
+    - `signalements_omis`, `erreurs_omises` : signalements comptés mais non
+      détaillés, au-delà de `MAX_SIGNALEMENTS`.
     """
 
     mode: str
@@ -158,11 +194,20 @@ class RapportImport:
     version_id: int | None = None
     semaines_types: tuple[str, ...] = ()
     besoins: tuple[dict, ...] = ()
+    signalements_omis: int = 0
+    erreurs_omises: int = 0
+
+    @property
+    def nb_signalements(self) -> int:
+        """Nombre total de signalements, détaillés ou non."""
+        return len(self.signalements) + self.signalements_omis
 
     @property
     def nb_erreurs(self) -> int:
-        """Nombre de signalements de gravité « erreur »."""
-        return sum(1 for s in self.signalements if s.gravite is Gravite.ERREUR)
+        """Nombre de signalements de gravité « erreur », détaillés ou non."""
+        return (
+            sum(1 for s in self.signalements if s.gravite is Gravite.ERREUR) + self.erreurs_omises
+        )
 
     @property
     def nb_rejets(self) -> int:
@@ -195,6 +240,7 @@ class RapportImport:
             "besoins": [dict(besoin) for besoin in self.besoins],
             "nb_erreurs": self.nb_erreurs,
             "nb_rejets": self.nb_rejets,
+            "signalements_omis": self.signalements_omis,
         }
 
 
@@ -210,7 +256,16 @@ def rapport_csv(rapport: RapportImport) -> bytes:
         ecrivain.writerow(["information", "", "", "", "", phrase])
     for s in rapport.signalements:
         ecrivain.writerow(
-            [s.gravite.value, s.fichier, s.feuille, "" if s.ligne is None else s.ligne]
-            + [s.colonne, s.message]
+            [neutraliser_formule(x) for x in (s.gravite.value, s.fichier, s.feuille)]
+            + ["" if s.ligne is None else s.ligne]
+            + [neutraliser_formule(s.colonne), neutraliser_formule(s.message)]
+        )
+    if rapport.signalements_omis:
+        ecrivain.writerow(
+            ["information", "", "", "", ""]
+            + [
+                f"{rapport.signalements_omis} autre(s) signalement(s) non détaillé(s), dont "
+                f"{rapport.erreurs_omises} erreur(s) : limite de {MAX_SIGNALEMENTS} atteinte."
+            ]
         )
     return tampon.getvalue().encode("utf-8-sig")

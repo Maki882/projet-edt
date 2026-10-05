@@ -148,17 +148,19 @@ class Contexte:
         )
 
     @property
-    def salles(self) -> list[m.Salle]:
-        return self._obtenir(
-            "salles",
-            lambda: list(
-                self.session.scalars(
-                    select(m.Salle).options(
-                        selectinload(m.Salle.equipements), selectinload(m.Salle.campus)
-                    )
-                )
-            ),
-        )
+    def salles(self) -> dict[str, list[m.Salle]]:
+        """Salles par code (sans casse) : un même code peut exister sur plusieurs campus."""
+
+        def fabrique() -> dict[str, list[m.Salle]]:
+            index: dict[str, list[m.Salle]] = defaultdict(list)
+            requete = select(m.Salle).options(
+                selectinload(m.Salle.equipements), selectinload(m.Salle.campus)
+            )
+            for salle in self.session.scalars(requete):
+                index[cle_code(salle.code)].append(salle)
+            return index
+
+        return self._obtenir("salles", fabrique)
 
     @property
     def enseignants(self) -> dict[str, m.Enseignant]:
@@ -192,8 +194,16 @@ class Contexte:
         )
 
     @property
-    def matieres(self) -> list[m.Matiere]:
-        return self._obtenir("matieres", lambda: list(self.session.scalars(select(m.Matiere))))
+    def matieres(self) -> dict[str, list[m.Matiere]]:
+        """Matières par code (sans casse) : un même code peut exister pour plusieurs promotions."""
+
+        def fabrique() -> dict[str, list[m.Matiere]]:
+            index: dict[str, list[m.Matiere]] = defaultdict(list)
+            for matiere in self.session.scalars(select(m.Matiere)):
+                index[cle_code(matiere.code)].append(matiere)
+            return index
+
+        return self._obtenir("matieres", fabrique)
 
     def _liste(self, modele: type) -> dict[str, Any]:
         return self._obtenir(
@@ -251,7 +261,7 @@ class Contexte:
     def salle(self, reference: str, colonne: str) -> m.Salle:
         """Salle désignée par son code, ou par « code@campus » si le code est ambigu."""
         code, _, campus = reference.partition("@")
-        candidates = [s for s in self.salles if cle_code(s.code) == cle_code(code)]
+        candidates = list(self.salles.get(cle_code(code), ()))
         if campus:
             candidates = [s for s in candidates if cle_code(s.campus.code) == cle_code(campus)]
         if not candidates:
@@ -297,7 +307,7 @@ class Contexte:
         Sans promotion : la matière sans promotion si elle existe, sinon la
         seule matière qui porte ce code.
         """
-        candidates = [x for x in self.matieres if cle_code(x.code) == cle_code(code)]
+        candidates = list(self.matieres.get(cle_code(code), ()))
         if promotion is not None:
             if annee is None:
                 raise Rejet("annee", "L'année est obligatoire quand la promotion est renseignée.")
@@ -523,12 +533,7 @@ def _importer_salle(ctx: Contexte, ligne: LigneTypee) -> Action:
         "accessibilite": ("accessible", ligne["accessible"]),
     }
     salle = next(
-        (
-            s
-            for s in ctx.salles
-            if s.campus_id == campus.id and cle_code(s.code) == cle_code(ligne["code"])
-        ),
-        None,
+        (s for s in ctx.salles.get(cle_code(ligne["code"]), ()) if s.campus_id == campus.id), None
     )
     if salle is None:
         salle = m.Salle(
@@ -538,7 +543,7 @@ def _importer_salle(ctx: Contexte, ligne: LigneTypee) -> Action:
             **{a: x for a, (_, x) in champs.items()},
         )
         action = _creer(ctx.session, salle, ligne)
-        ctx.salles.append(salle)
+        ctx.salles[cle_code(salle.code)].append(salle)
         return action
     change = _ecrire(salle, ligne, champs)
     change = _relation(salle, "equipements", "equipements", ligne, equipements) or change
@@ -627,9 +632,8 @@ def _importer_matiere(ctx: Contexte, ligne: LigneTypee) -> Action:
     matiere = next(
         (
             x
-            for x in ctx.matieres
-            if cle_code(x.code) == cle_code(ligne["code"])
-            and x.promotion_id == (promotion.id if promotion else None)
+            for x in ctx.matieres.get(cle_code(ligne["code"]), ())
+            if x.promotion_id == (promotion.id if promotion else None)
         ),
         None,
     )
@@ -637,7 +641,7 @@ def _importer_matiere(ctx: Contexte, ligne: LigneTypee) -> Action:
     if matiere is None:
         matiere = m.Matiere(code=ligne["code"], libelle=ligne["libelle"], promotion=promotion)
         action = _creer(ctx.session, matiere, ligne)
-        ctx.matieres.append(matiere)
+        ctx.matieres[cle_code(matiere.code)].append(matiere)
         return action
     return _resultat(matiere, ligne, _ecrire(matiere, ligne, champs))
 
@@ -857,45 +861,69 @@ def _importer_groupes(
             a_traiter.append(ligne)
     avec_colonne = {cle_ligne[id(ligne)] for ligne in a_traiter if "chevauche" in ligne.presentes}
     paires = _paires_existantes(ctx.session)
+    cle_existante = {
+        groupe.id: (cle_code(groupe.annee.libelle), code)
+        for (_, code), groupe in ctx.groupes.items()
+    }
+    partenaires: dict[int, set[tuple[str, str]]] = defaultdict(set)
+    for a, b in paires:
+        partenaires[a].add(cle_existante[b])
+        partenaires[b].add(cle_existante[a])
 
     def importer(ctx_: Contexte, ligne: LigneTypee) -> Action:
         cle = cle_ligne[id(ligne)]
         action = _importer_groupe(ctx_, ligne)
         if action is Action.INCHANGE and cle in avec_colonne:
             groupe = ctx_.groupe(ctx_.annee(ligne["annee"]), ligne["code"], "code")
-            if _partenaires(ctx_, groupe, paires) != voulus.get(cle, set()):
+            if partenaires.get(groupe.id, set()) != voulus.get(cle, set()):
                 action = Action.MAJ
         return action
 
-    restantes = a_traiter
+    ordre, circulaires = _parents_d_abord(a_traiter, cle_ligne)
     traites: list[LigneTypee] = []
-    while restantes:
-        pretes = [ligne for ligne in restantes if _parent_disponible(ctx, ligne)]
-        if not pretes:
-            break
-        for ligne in pretes:
-            if _appliquer_ligne(ctx, ligne, importer, bilan, signalements):
-                traites.append(ligne)
-        restantes = [ligne for ligne in restantes if ligne not in pretes]
-    for ligne in restantes:
-        _rejeter(
-            ligne,
-            "parent",
-            f"Groupe parent « {ligne['parent']} » inconnu : ni en base, ni dans une ligne valide "
-            "de la feuille (ou parenté circulaire).",
-            bilan,
-            signalements,
-        )
+    for ligne in ordre:
+        if id(ligne) in circulaires:
+            _rejeter(
+                ligne,
+                "parent",
+                "Parenté circulaire : ce groupe est, par ses parents, son propre ancêtre.",
+                bilan,
+                signalements,
+            )
+        elif _appliquer_ligne(ctx, ligne, importer, bilan, signalements):
+            traites.append(ligne)
     _ecrire_chevauchements(ctx, traites, cle_ligne, voulus, avec_colonne, paires, signalements)
 
 
-def _parent_disponible(ctx: Contexte, ligne: LigneTypee) -> bool:
-    if ligne["parent"] is None:
-        return True
-    annee = ctx.annees.get(cle_code(ligne["annee"]))
-    if annee is None:
-        return True  # la ligne sera rejetée pour son année, avec le bon message
-    return (annee.id, cle_code(ligne["parent"])) in ctx.groupes
+def _parents_d_abord(
+    lignes: list[LigneTypee], cle_ligne: dict[int, tuple[str, str]]
+) -> tuple[list[LigneTypee], set[int]]:
+    """Ordonne les lignes pour qu'un parent de la feuille passe avant ses enfants (en temps linéaire).
+
+    Renvoie l'ordre et les lignes prises dans une parenté circulaire. Un
+    parent absent de la feuille est cherché en base au moment de la ligne.
+    """
+    par_cle = {cle_ligne[id(ligne)]: ligne for ligne in lignes}
+    ordre: list[LigneTypee] = []
+    vues: set[int] = set()
+    circulaires: set[int] = set()
+    for ligne in lignes:
+        chaine: list[LigneTypee] = []
+        dans_chaine: set[int] = set()
+        courante: LigneTypee | None = ligne
+        while courante is not None and id(courante) not in vues:
+            vues.add(id(courante))
+            dans_chaine.add(id(courante))
+            chaine.append(courante)
+            parent = courante["parent"]
+            courante = (
+                par_cle.get((cle_ligne[id(courante)][0], cle_code(parent))) if parent else None
+            )
+        if courante is not None and id(courante) in dans_chaine:
+            debut = next(i for i, x in enumerate(chaine) if x is courante)
+            circulaires.update(id(x) for x in chaine[debut:])
+        ordre.extend(reversed(chaine))
+    return ordre, circulaires
 
 
 def _importer_groupe(ctx: Contexte, ligne: LigneTypee) -> Action:
@@ -933,16 +961,6 @@ def _paires_existantes(session: Session) -> set[tuple[int, int]]:
         for a, b in session.execute(
             select(m.groupe_chevauchement.c.groupe_a_id, m.groupe_chevauchement.c.groupe_b_id)
         )
-    }
-
-
-def _partenaires(
-    ctx: Contexte, groupe: m.Groupe, paires: set[tuple[int, int]]
-) -> set[tuple[str, str]]:
-    par_id = {g.id: g for g in ctx.groupes.values()}
-    autres = {b if a == groupe.id else a for a, b in paires if groupe.id in (a, b)}
-    return {
-        (cle_code(par_id[x].annee.libelle), cle_code(par_id[x].code)) for x in autres if x in par_id
     }
 
 
@@ -1086,14 +1104,17 @@ def _appliquer_ligne(
 
 
 def importer_tableaux(
-    session: Session, tableaux: Sequence[Tableau]
+    session: Session,
+    tableaux: Sequence[Tableau],
+    signalements: list[Signalement] | None = None,
 ) -> tuple[list[Bilan], list[Signalement]]:
     """Importe des tableaux de données de l'établissement (une transaction ouverte est requise).
 
     Ne valide rien : l'appelant (le service) choisit d'annuler (simulation)
-    ou de garder les écritures.
+    ou de garder les écritures. Les signalements s'ajoutent à `signalements`
+    (une liste bornée, de préférence), qui est renvoyée.
     """
-    signalements: list[Signalement] = []
+    signalements = signalements if signalements is not None else []
     par_feuille: dict[str, list[Tableau]] = defaultdict(list)
     for tableau in tableaux:
         feuille = identifier_feuille(tableau.nom, tableau.entetes)

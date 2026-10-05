@@ -86,6 +86,8 @@ ENSEIGNANT_ABSENT = frozenset(
 """Mentions qui désignent un enseignant non nommé (comparées sans casse ni accents)."""
 SALLE_A_DEFINIR = frozenset({"a_definir", "a_determiner", "aucune", "sans_salle"})
 """Mentions qui désignent une salle laissée au générateur."""
+MAX_SEANCES_DEVELOPPEES = 200_000
+"""Séances retenues au plus, une fois les lignes hebdomadaires développées sur le semestre."""
 
 
 class _Ecart(Exception):  # noqa: N818 - mise de côté d'une séance, convertie en signalement
@@ -319,7 +321,7 @@ class Resolveur:
         return any(f.concerne(jour, groupes) for f in self.instantane.jours_fermes)
 
     def _matiere(self, code: str, groupes: tuple[m.Groupe, ...]) -> m.Matiere:
-        candidates = [x for x in self.contexte.matieres if cle_code(x.code) == cle_code(code)]
+        candidates = list(self.contexte.matieres.get(cle_code(code), ()))
         if not candidates:
             raise _Ecart(
                 "matiere",
@@ -495,6 +497,11 @@ def reconstituer(
             )
             continue
         retenues.extend(resultat)
+        if len(retenues) > MAX_SEANCES_DEVELOPPEES:
+            raise ErreurDonneesInvalides(
+                f"Import refusé : plus de {MAX_SEANCES_DEVELOPPEES} séances une fois les lignes "
+                "hebdomadaires développées sur le semestre. Découper l'emploi du temps."
+            )
 
     prevus = _prevoir(retenues, instantane)
     _libelles_distincts(prevus)

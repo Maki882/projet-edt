@@ -28,22 +28,27 @@ from edt.echange.format import (
     TypeColonne,
     lignes_description,
 )
+from edt.echange.valeurs import neutraliser_formule
 
 TITRE_LISEZ_MOI = "Lisez-moi"
 NOM_LISEZ_MOI_TXT = "LISEZ-MOI.txt"
-_DEBUTS_FORMULE = ("=", "+", "-", "@")
-
 Contenu = Sequence[tuple[Feuille, Sequence[Mapping[str, Any]]]]
 """Feuilles à écrire, chacune avec ses enregistrements (valeurs typées par nom de colonne)."""
 
 
 def csv_octets(entetes: Sequence[str], lignes: Iterable[Sequence[Any]]) -> bytes:
-    """CSV en UTF-8 avec BOM, séparateur point-virgule, fins de ligne Windows."""
+    """CSV en UTF-8 avec BOM, séparateur point-virgule, fins de ligne Windows.
+
+    Un texte qui commence comme une formule de tableur est neutralisé
+    (`valeurs.neutraliser_formule`), comme dans le classeur XLSX.
+    """
     tampon = io.StringIO()
     ecrivain = csv.writer(tampon, delimiter=";", lineterminator="\r\n")
     ecrivain.writerow(entetes)
     for ligne in lignes:
-        ecrivain.writerow(["" if valeur is None else valeur for valeur in ligne])
+        ecrivain.writerow(
+            ["" if valeur is None else neutraliser_formule(valeur) for valeur in ligne]
+        )
     return tampon.getvalue().encode("utf-8-sig")
 
 
@@ -132,12 +137,9 @@ def classeur_xlsx(contenu: Contenu, lisez_moi: Sequence[str]) -> bytes:
 
 
 def _texte_sur(texte: str) -> str:
-    """Un texte qui commence comme une formule (« = », « + »...) n'en devient pas une.
+    """Texte écrit dans une cellule du classeur, sans risque d'être pris pour une formule.
 
-    openpyxl écrit en formule toute chaîne qui commence par « = », et un
-    tableur interprète de même « + », « - » et « @ ». On ajoute alors une
-    espace insécable en tête, que la lecture retire (`valeurs.texte_cellule`).
+    openpyxl écrit en formule toute chaîne qui commence par « = » ; voir
+    `valeurs.neutraliser_formule`.
     """
-    if texte and texte.startswith(_DEBUTS_FORMULE):
-        return " " + texte
-    return texte
+    return neutraliser_formule(texte)
