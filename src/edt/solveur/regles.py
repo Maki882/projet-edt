@@ -26,7 +26,7 @@ interdites).
 from __future__ import annotations
 
 import datetime as dt
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from edt.domaine.contraintes import CodeContrainte, codes_actifs, normaliser_codes
@@ -36,6 +36,8 @@ from edt.domaine.instantane import Besoin, Indisponibilite, Instantane, Salle, S
 from edt.erreurs import ErreurDonneesInvalides
 
 C = CodeContrainte
+
+TestSalle = Callable[[Salle], bool]
 
 
 @dataclass(frozen=True)
@@ -210,19 +212,13 @@ class Regles:
 
     # -- salles -----------------------------------------------------------------
 
-    def salles_compatibles(self, besoin: Besoin) -> SallesCompatibles:
-        """Salles qui satisfont les exigences actives du besoin, sans regarder les horaires.
+    def exigences_de_salle(self, besoin: Besoin) -> list[tuple[CodeContrainte, str, TestSalle]]:
+        """Exigences actives du besoin sur sa salle : `(code, libellé, test sur une salle)`.
 
-        Exigences : salle ou campus imposé et types acceptés (`TYPE_SALLE`),
-        capacité (`CAPACITE`), équipements (`EQUIPEMENT`), accessibilité
-        (`ACCESSIBILITE`). Les salles sortent triées par capacité puis par
-        identifiant, pour un modèle reproductible.
+        Salle ou campus imposé et types acceptés (`TYPE_SALLE`), capacité
+        (`CAPACITE`), équipements (`EQUIPEMENT`), accessibilité (`ACCESSIBILITE`).
         """
-        resultat = self._salles.get(besoin.id)
-        if resultat is not None:
-            return resultat
-        instantane = self.instantane
-        tests = []
+        tests: list[tuple[CodeContrainte, str, TestSalle]] = []
         if self.active(C.TYPE_SALLE):
             if besoin.salle_imposee_id is not None:
                 tests.append(
@@ -261,19 +257,30 @@ class Regles:
                 )
             )
         if self.active(C.ACCESSIBILITE) and besoin.accessibilite_requise:
-            tests.append((C.ACCESSIBILITE, "accessibles", instantane.salle_accessible))
-        salles = tuple(
-            sorted(
-                (s for s in instantane.salles if all(test(s) for _, _, test in tests)),
-                key=lambda s: (s.capacite, s.id),
+            tests.append((C.ACCESSIBILITE, "accessibles", self.instantane.salle_accessible))
+        return tests
+
+    def salles_compatibles(self, besoin: Besoin) -> SallesCompatibles:
+        """Salles qui satisfont les exigences actives du besoin, sans regarder les horaires.
+
+        Les salles sortent triées par capacité puis par identifiant, pour un
+        modèle reproductible.
+        """
+        resultat = self._salles.get(besoin.id)
+        if resultat is None:
+            tests = self.exigences_de_salle(besoin)
+            salles = tuple(
+                sorted(
+                    (s for s in self.instantane.salles if all(test(s) for _, _, test in tests)),
+                    key=lambda s: (s.capacite, s.id),
+                )
             )
-        )
-        exigences = tuple(
-            Exigence(code, libelle, sum(1 for s in instantane.salles if test(s)))
-            for code, libelle, test in tests
-        )
-        resultat = SallesCompatibles(salles, exigences)
-        self._salles[besoin.id] = resultat
+            exigences = tuple(
+                Exigence(code, libelle, sum(1 for s in self.instantane.salles if test(s)))
+                for code, libelle, test in tests
+            )
+            resultat = SallesCompatibles(salles, exigences)
+            self._salles[besoin.id] = resultat
         return resultat
 
     # -- paires -----------------------------------------------------------------
