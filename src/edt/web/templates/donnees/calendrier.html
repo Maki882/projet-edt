@@ -1,0 +1,77 @@
+{# Vue d'ensemble du calendrier : années scolaires, semestres, fermetures. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Calendrier{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="/calendrier/annees">Années scolaires</a>
+<a class="bouton" href="/calendrier/semestres">Semestres</a>
+<a class="bouton bouton-principal" href="/calendrier/jours-fermes">Jours fermés</a>
+{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  Les années scolaires, les dates de leurs semestres et les jours sans cours (fériés, vacances,
+  examens, semaines spéciales). Les fériés français, mobiles compris, se préremplissent.
+</p>
+
+{%- for annee in annees %}
+<section class="carte">
+  <h2>Année {{ annee.libelle }}
+    <span class="discret">du {{ annee.date_debut|date_fr }} au {{ annee.date_fin|date_fr }}</span></h2>
+  {%- if annee.semestres %}
+  <div class="tableau-defilant">
+    <table class="tableau">
+      <thead>
+        <tr><th scope="col">Semestre</th><th scope="col">Premier jour</th><th scope="col">Dernier jour</th><th scope="col" class="colonne-actions">Actions</th></tr>
+      </thead>
+      <tbody>
+        {%- for ident, code, libelle, debut, fin in annee.semestres %}
+        <tr>
+          <td><strong>{{ code }}</strong> <span class="discret">{{ libelle }}</span></td>
+          <td>{{ debut|date_fr }}</td>
+          <td>{{ fin|date_fr }}</td>
+          <td class="colonne-actions">
+            <a class="bouton bouton-petit" href="/calendrier/semestres/{{ ident }}?retour=/calendrier/semestres">Modifier les dates</a>
+            <a class="bouton bouton-petit" href="/besoins?semestre={{ ident }}">Besoins</a>
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- else %}
+  <p class="vide">Aucun semestre.</p>
+  {%- endif %}
+  <p>
+    {{ annee.nb_jours_fermes }} fermeture{{ "s" if annee.nb_jours_fermes > 1 else "" }}
+    dont {{ annee.nb_feries }} jour{{ "s" if annee.nb_feries > 1 else "" }} férié{{ "s" if annee.nb_feries > 1 else "" }}.
+  </p>
+  <div class="ligne-boutons">
+    <a class="bouton" href="/calendrier/jours-fermes?annee={{ annee.id }}">Voir les jours fermés</a>
+    <a class="bouton" href="/calendrier/jours-fermes/nouveau?annee_scolaire_id={{ annee.id }}">Ajouter une fermeture</a>
+    <a class="bouton" href="/calendrier/semestres/nouveau?annee_scolaire_id={{ annee.id }}">Ajouter un semestre</a>
+    {{ ui.bouton_action("/calendrier/annees/" ~ annee.id ~ "/feries", "Préremplir les jours fériés") }}
+    <a class="bouton" href="/calendrier/annees/{{ annee.id }}">Modifier l'année</a>
+  </div>
+</section>
+{%- else %}
+<p class="vide">Aucune année scolaire.</p>
+{%- endfor %}
+
+<section class="carte">
+  <h2>Ajouter une année scolaire</h2>
+  <p class="discret">
+    L'année va du 1er septembre au 31 août ; le semestre 1 du premier lundi de septembre au
+    dernier vendredi de janvier, le semestre 2 du premier lundi de février au dernier vendredi
+    de juin. Les dates se modifient ensuite.
+  </p>
+  <form method="post" action="/calendrier/annees/par-defaut" class="formulaire-ligne">
+    {{ ui.champ("annee_debut", "Année de début", valeur=annee_proposee, type="number", requis=true, attributs={"min": 2000, "max": 2100}, aide="Par exemple 2027 pour l'année 2027-2028.") }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal">Créer l'année et ses semestres</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

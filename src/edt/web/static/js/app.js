@@ -13,6 +13,8 @@
  *    n'est affiché (et envoyé) que si le champ `nom` du même formulaire vaut
  *    v1 ou v2.
  * 5. Choix multiples : filtre de la liste de cases à cocher (`.choix-multiple`).
+ * 6. Attente : un formulaire portant `data-attente="..."` désactive ses boutons
+ *    pendant l'envoi et affiche ce texte (opérations longues).
  *
  * Les points 4 et 5 s'appliquent aussi aux fragments chargés par HTMX.
  */
@@ -29,6 +31,23 @@
       evenement.stopImmediatePropagation();
     }
   }, true);
+
+  /* ---- 6. Attente pendant un envoi long ----------------------------------- */
+
+  document.addEventListener("submit", function (evenement) {
+    var formulaire = evenement.target;
+    var texte = formulaire.dataset ? formulaire.dataset.attente : null;
+    if (!texte || evenement.defaultPrevented) {
+      return;
+    }
+    // Désactivés après la construction des données envoyées : l'envoi n'est pas gêné.
+    window.setTimeout(function () {
+      formulaire.querySelectorAll("button[type=submit]").forEach(function (bouton) {
+        bouton.disabled = true;
+        bouton.textContent = texte;
+      });
+    }, 0);
+  });
 
   /* ---- 2. Erreurs HTMX -------------------------------------------------- */
 

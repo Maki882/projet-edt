@@ -1032,6 +1032,23 @@ main {
   text-align: center;
 }
 
+fieldset.champ {
+  border: none;
+  padding: 0;
+  margin: 0 0 0.9rem;
+  min-width: 0;
+}
+
+/* Texte préformaté long (résumé d'un chargement, rapport) : retour à la ligne, défilement. */
+.resume-jeu {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-x: auto;
+  font-family: var(--police-code);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
 /* ----- 10. Panneau Assistant ------------------------------------------------------ */
 
 .bouton-assistant {
