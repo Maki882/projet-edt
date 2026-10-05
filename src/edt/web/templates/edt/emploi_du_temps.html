@@ -70,10 +70,8 @@
 <div class="edt-entete-vue edt-ecran-seulement">
   <div>
     <h2>{{ vue.titre_cible }}</h2>
-    <p class="discret">{{ vue.version.libelle }}{% if not vue.version.active %} - <strong>version non active</strong>{% endif %}</p>
-    {%- if vue.groupes_lies %}
-    <p class="discret">Avec les séances des groupes qui partagent ses étudiants : {{ vue.groupes_lies|join(", ") }}.</p>
-    {%- endif %}
+    <p class="discret">{{ vue.version.libelle }}{% if not vue.version.active %} - <strong>version non active</strong>{% endif %}
+      {%- if origine_cible == "retenue" %} - dernier emploi du temps consulté{% endif %}</p>
   </div>
   <nav class="edt-onglets" aria-label="Affichage">
     <a href="{{ url_vue(couche='hebdo', affichage='semaine', date=none, jour=none) }}"{% if vue.couche.value == 'hebdo' and vue.affichage.value == 'semaine' %} class="actif" aria-current="page"{% endif %}>Semaine type</a>
@@ -117,6 +115,7 @@
 </div>
 {%- endif %}
 
+{{ edt.perimetre(vue, url_vue) }}
 {{ edt.encart_controle(vue.controle) }}
 {%- if vue.couche.value == "date" and not vue.occurrences_disponibles %}
 <div class="message message-info" role="status">
