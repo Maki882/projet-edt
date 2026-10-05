@@ -22,6 +22,6 @@ Modules :
 - `anomalies` : la liste « À traiter » ;
 - `tableau_de_bord` : l'état de l'établissement pour l'accueil.
 
-Le détail (disposition des blocs, raccords en attente, ajout d'une vue) est
+Le détail (disposition des blocs, raccords, ajout d'une vue) est
 dans `docs/interface-emploi-du-temps.md`.
 """
