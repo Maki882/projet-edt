@@ -61,7 +61,9 @@
   </details>
   {%- endif %}
   <div class="edt-boutons">
+    {%- if r.suivi.version_id %}
     <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {%- endif %}
     {%- if r.nb_a_programmer %}
     <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">Programmer les {{ fmt.pluriel(r.nb_a_programmer, "séance") }} restantes</a>
     {%- endif %}

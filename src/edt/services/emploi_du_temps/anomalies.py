@@ -29,7 +29,7 @@ from edt.db import modeles as m
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte
 from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import decomposer_id_seance
-from edt.services.emploi_du_temps import raccords
+from edt.services.emploi_du_temps import presentation, raccords
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
@@ -104,7 +104,12 @@ class SeanceAProgrammer:
 
 @dataclass(frozen=True)
 class ATraiter:
-    """Ce qui reste à traiter dans la version active d'un semestre."""
+    """Ce qui reste à traiter dans la version active d'un semestre.
+
+    `decochees` : écarts aux contraintes décochées lors du calcul de la
+    version (semaine type et séances datées), listés à part et non comptés :
+    l'utilisateur les a acceptés en lançant le calcul.
+    """
 
     semestre: ResumeSemestre
     version: ResumeVersion
@@ -113,15 +118,37 @@ class ATraiter:
     gravites_hebdo: tuple[GroupeGravite, ...]
     gravites_datees: tuple[GroupeGravite, ...]
     a_programmer: tuple[SeanceAProgrammer, ...]
+    decochees: tuple[GroupeContrainte, ...] = ()
+    contraintes_decochees: tuple[str, ...] = ()
 
     @property
     def total(self) -> int:
-        """Erreurs et avertissements (semaine type et datés) plus séances à programmer."""
-        return (
-            _nb_a_traiter(self.hebdo)
-            + (_nb_a_traiter(self.datees) if self.datees else 0)
-            + len(self.a_programmer)
-        )
+        """Nombre de points à traiter : LA définition, reprise par l'accueil et l'onglet.
+
+        Erreurs et avertissements des contraintes actives, sur la semaine type
+        et sur les séances datées, chaque séance « à programmer » comptant
+        une seule fois : l'avertissement « reste à programmer » que le
+        vérificateur émet pour elle n'est pas ajouté à la séance elle-même.
+        """
+        a_programmer = {s.occurrence_id for s in self.a_programmer}
+        datees = 0
+        if self.datees is not None and self.datees.verification is not None:
+            datees = sum(
+                1
+                for a in self.datees.verification.anomalies
+                if a.gravite in (Gravite.ERREUR, Gravite.AVERTISSEMENT)
+                and not (
+                    str(a.code) == CodeContrainte.VOLUME
+                    and a.occurrences
+                    and a_programmer.issuperset(a.occurrences)
+                )
+            )
+        return _nb_a_traiter(self.hebdo) + datees + len(a_programmer)
+
+    @property
+    def nb_ecarts_decoches(self) -> int:
+        """Écarts (toutes gravités) aux contraintes décochées lors du calcul."""
+        return sum(groupe.total for groupe in self.decochees)
 
     @property
     def complet(self) -> bool:
@@ -145,17 +172,20 @@ def a_traiter_version(session: Session, semestre: ResumeSemestre, version_id: in
     """Anomalies et séances à programmer d'une version."""
     version = lire_version(session, version_id)
     liens = _Liens.charger(session, version_id)
-    hebdo = raccords.controler(raccords.verifier_version, session, version_id)
+    hebdo = raccords.controler_version(session, version_id)
     datees = None
     if version.nb_occurrences:
-        datees = raccords.controler(raccords.verifier_occurrences_version, session, version_id)
+        datees = raccords.controler_occurrences(session, version_id)
     gravites_hebdo = _grouper(hebdo.verification.anomalies, liens) if hebdo.verification else ()
     gravites_datees: tuple[GroupeGravite, ...] = ()
+    decochees = list(hebdo.decochees)
     if datees is not None and datees.verification is not None:
         liens.charger_occurrences(
-            session, (o for a in datees.verification.anomalies for o in a.occurrences)
+            session,
+            (o for a in (*datees.verification.anomalies, *datees.decochees) for o in a.occurrences),
         )
         gravites_datees = _grouper(datees.verification.anomalies, liens)
+        decochees.extend(datees.decochees)
     return ATraiter(
         semestre=semestre,
         version=version,
@@ -164,6 +194,10 @@ def a_traiter_version(session: Session, semestre: ResumeSemestre, version_id: in
         gravites_hebdo=gravites_hebdo,
         gravites_datees=gravites_datees,
         a_programmer=_a_programmer(session, version_id, liens),
+        decochees=tuple(
+            contrainte for groupe in _grouper(decochees, liens) for contrainte in groupe.contraintes
+        ),
+        contraintes_decochees=presentation.libelles_contraintes(hebdo.contraintes_decochees),
     )
 
 

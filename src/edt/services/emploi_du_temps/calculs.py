@@ -37,7 +37,7 @@ from edt.domaine.contraintes import CATALOGUE, normaliser_codes
 from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
 from edt.erreurs import ErreurEDT, ErreurIntrouvable, ErreurRegleMetier
 from edt.services import generation
-from edt.services.emploi_du_temps import presentation, raccords
+from edt.services.emploi_du_temps import memoire, presentation, raccords
 from edt.services.emploi_du_temps.versions import ResumeSemestre, exiger_semestre
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
@@ -127,6 +127,12 @@ class PreVerification:
         return not (
             self.problemes or self.erreurs or self.avertissements or self.informations or self.motif
         )
+
+
+MESSAGE_AUCUN_BESOIN = (
+    "Ce semestre n'a encore aucun besoin d'enseignement : il n'y a rien à placer. Saisir ou "
+    "importer d'abord les besoins."
+)
 
 
 class ErreurPreVerification(ErreurRegleMetier):
@@ -257,7 +263,18 @@ class ResultatCalcul:
 
 
 def recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
-    """Nombre de besoins, séances, groupes, enseignants et salles qu'un calcul aurait à placer."""
+    """Nombre de besoins, séances, groupes, enseignants et salles qu'un calcul aurait à placer.
+
+    Mémorisé tant que la base ne change pas (`memoire`) : l'écran « Générer »
+    le redemande à chaque affichage.
+    """
+    exiger_semestre(session, semestre_id)
+    return memoire.memoriser(
+        session, "recapitulatif", (semestre_id,), lambda: _recapitulatif(session, semestre_id)
+    )
+
+
+def _recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
     semestre = exiger_semestre(session, semestre_id)
     try:
         instantane = charger_instantane(session, semestre_id)
@@ -316,8 +333,16 @@ def pre_verifier(
     desactivees = normaliser_codes(desactivees)
     recap = recap or recapitulatif(session, semestre_id)
     problemes = (recap.erreur,) if recap.erreur else ()
+    if not recap.erreur and not recap.nb_besoins:
+        problemes += (MESSAGE_AUCUN_BESOIN,)
+    codes = tuple(sorted(str(code) for code in desactivees))
     try:
-        anomalies = raccords.pre_verifier_semestre(session, semestre_id, sorted(desactivees))
+        anomalies = memoire.memoriser(
+            session,
+            "pre_verifier_semestre",
+            (semestre_id, codes),
+            lambda: raccords.pre_verifier_semestre(session, semestre_id, codes),
+        )
     except raccords.ErreurRaccordIndisponible as erreur:
         problemes += tuple(
             message
@@ -466,7 +491,7 @@ def resultat_calcul(
             or 0
         )
         if indicateurs and issue == Issue.REUSSI:
-            controle = raccords.controler(raccords.verifier_version, session, suivi.version_id)
+            controle = raccords.controler_version(session, suivi.version_id)
 
     titre, phrase, precision = _phrases(suivi, issue, semestre, temps, limite_texte, version_active)
     return ResultatCalcul(
@@ -514,11 +539,12 @@ def _phrases(
         return "Calcul en cours", phrase, None
     if issue == Issue.REUSSI:
         phrase = f"Un emploi du temps a été trouvé en {temps}."
-        phrase += (
-            " Il est maintenant la version active du semestre."
-            if version_active
-            else " Il est enregistré comme une nouvelle version du semestre."
-        )
+        if suivi.version_id is None:
+            phrase += " La version produite a depuis été supprimée."
+        elif version_active:
+            phrase += " Il est maintenant la version active du semestre."
+        else:
+            phrase += " Il est enregistré comme une version du semestre (pas la version active)."
         return "Emploi du temps généré", phrase, None
     if issue == Issue.REFUSE:
         return (

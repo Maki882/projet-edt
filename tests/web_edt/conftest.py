@@ -31,6 +31,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
+from edt.services.emploi_du_temps import memoire
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -90,6 +91,12 @@ class FauxVerificateur:
     indicateurs: dict | None = field(default_factory=lambda: dict(INDICATEURS))
     appels: list[tuple] = field(default_factory=list)
 
+    def __setattr__(self, nom, valeur) -> None:
+        # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
+        # mémoire des écrans pour que le prochain affichage le voie.
+        super().__setattr__(nom, valeur)
+        memoire.oublier()
+
     def module(self) -> types.ModuleType:
         module = types.ModuleType("edt.services.verification")
 
@@ -121,6 +128,7 @@ class FauxVerificateur:
 @pytest.fixture
 def faux_verificateur(monkeypatch) -> FauxVerificateur:
     """Installe un faux vérificateur et de fausses pré-vérifications, vides par défaut."""
+    memoire.oublier()
     faux = FauxVerificateur()
     monkeypatch.setitem(sys.modules, "edt.services.verification", faux.module())
     monkeypatch.setattr(
@@ -132,6 +140,7 @@ def faux_verificateur(monkeypatch) -> FauxVerificateur:
 @pytest.fixture
 def sans_verificateur(monkeypatch) -> None:
     """Fait comme si le vérificateur n'était pas livré (le raccord doit le dire, pas planter)."""
+    memoire.oublier()
     monkeypatch.setitem(sys.modules, "edt.services.verification", None)
 
 

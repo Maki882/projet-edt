@@ -42,10 +42,14 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from edt.db import modeles as m
+from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurEDT, ErreurNonLivre
+from edt.services.emploi_du_temps import memoire
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -162,11 +166,18 @@ class Controle:
     verification: Verification | None = None
     motif: str | None = None
     niveau: str = "attention"
+    decochees: tuple[Anomalie, ...] = ()
+    contraintes_decochees: tuple[str, ...] = ()
 
     @property
     def disponible(self) -> bool:
         """Vrai si la vérification a tourné."""
         return self.verification is not None
+
+    @property
+    def nb_ecarts_decoches(self) -> int:
+        """Erreurs sur des contraintes décochées lors du calcul de la version (tolérées)."""
+        return sum(1 for a in self.decochees if a.gravite is Gravite.ERREUR)
 
 
 # --------------------------------------------------------------------------- #
@@ -275,6 +286,82 @@ def controler(fonction: Callable[..., Verification], *args, **kwargs) -> Control
     except Exception:
         journal.exception("Erreur inattendue pendant une vérification (%s)", fonction.__name__)
         return Controle(motif=MESSAGE_ERREUR_INATTENDUE, niveau="erreur")
+
+
+# --------------------------------------------------------------------------- #
+# Contrôles d'une version pour les écrans de consultation
+# --------------------------------------------------------------------------- #
+
+
+def contraintes_desactivees_de(session: Session, version_id: int) -> frozenset[str]:
+    """Contraintes décochées lors du calcul qui a produit la version (aucune pour un import)."""
+    codes = session.scalar(
+        select(m.Calcul.contraintes_desactivees)
+        .join(m.VersionEdt, m.VersionEdt.calcul_id == m.Calcul.id)
+        .where(m.VersionEdt.id == version_id)
+    )
+    return frozenset(str(code) for code in codes or ())
+
+
+def contraintes_actives_de(session: Session, version_id: int) -> frozenset[str] | None:
+    """Contraintes que respecte la version : celles du calcul (`None` : toutes, par défaut).
+
+    C'est ce que reprend l'instanciation des séances datées ; une retouche à
+    la main applique les mêmes règles.
+    """
+    desactivees = contraintes_desactivees_de(session, version_id)
+    if not desactivees:
+        return None
+    return frozenset(str(code) for code in codes_actifs(desactivees))
+
+
+def controler_version(session: Session, version_id: int) -> Controle:
+    """Contrôle de la semaine type d'une version, mémorisé tant que la base ne change pas.
+
+    La vérification porte sur toutes les contraintes ; les anomalies sur une
+    contrainte décochée lors du calcul de la version sont mises à part
+    (`Controle.decochees`) : elles sont tolérées, mais dites.
+    """
+    controle = memoire.memoriser(
+        session,
+        "verifier_version",
+        (version_id,),
+        lambda: controler(verifier_version, session, version_id),
+    )
+    return _separer(controle, contraintes_desactivees_de(session, version_id))
+
+
+def controler_occurrences(
+    session: Session, version_id: int, date_debut=None, date_fin=None
+) -> Controle:
+    """Contrôle des séances datées d'une version (ou d'une période), mémorisé ; voir `controler_version`."""
+    controle = memoire.memoriser(
+        session,
+        "verifier_occurrences_version",
+        (version_id, date_debut, date_fin),
+        lambda: controler(
+            verifier_occurrences_version,
+            session,
+            version_id,
+            date_debut=date_debut,
+            date_fin=date_fin,
+        ),
+    )
+    return _separer(controle, contraintes_desactivees_de(session, version_id))
+
+
+def _separer(controle: Controle, desactivees: frozenset[str]) -> Controle:
+    """Met à part les anomalies sur des contraintes décochées lors du calcul de la version."""
+    if controle.verification is None or not desactivees:
+        return dataclasses.replace(controle, contraintes_decochees=tuple(sorted(desactivees)))
+    actives = tuple(a for a in controle.verification.anomalies if str(a.code) not in desactivees)
+    decochees = tuple(a for a in controle.verification.anomalies if str(a.code) in desactivees)
+    return dataclasses.replace(
+        controle,
+        verification=Verification(anomalies=actives, indicateurs=controle.verification.indicateurs),
+        decochees=decochees,
+        contraintes_decochees=tuple(sorted(desactivees)),
+    )
 
 
 # --------------------------------------------------------------------------- #

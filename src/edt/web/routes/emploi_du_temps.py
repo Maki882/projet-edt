@@ -30,7 +30,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from edt.domaine.enumerations import JOURS
-from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.emploi_du_temps import modifications, presentation, raccords, versions, vues
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche
 from edt.web.dependances import SessionRequete
@@ -212,6 +212,15 @@ def page(
         return rendre(request, "edt/emploi_du_temps.html", contexte)
 
     annee_id = versions.annee_du_semestre(session, semestre.id)
+    if date is not None and not vues.date_admissible(date, semestre):
+        messages.append(
+            Message(
+                f"La date du {date:%d/%m/%Y} est trop loin du {semestre.libelle.lower()} : "
+                "affichage de la semaine en cours du semestre à la place.",
+                "attention",
+            )
+        )
+        date = None
     choisie = Cible.depuis(
         groupe_id=groupe_id, enseignant_id=enseignant_id, salle_id=salle_id, texte=cible
     )
@@ -517,6 +526,7 @@ def recalculer_seances_datees(
     retour = _retour(retour, f"{ADRESSE}?version_id={version_id}&couche=date")
     try:
         bilan = modifications.recalculer_seances_datees(session, version_id)
-    except raccords.ErreurRaccordIndisponible as erreur:
+    except (raccords.ErreurRaccordIndisponible, ErreurRegleMetier) as erreur:
+        # Séances datées importées ou instanciation qui refuse : rien n'a été écrit.
         return rediriger(request, retour, erreur.message, "attention")
     return rediriger(request, retour, bilan.message)

@@ -35,7 +35,7 @@
     <label for="choix-version">Version</label>
     <select id="choix-version" name="version_id" data-envoi-auto>
       {%- for v in versions_semestre %}
-      <option value="{{ v.id }}"{% if v.id == vue.version.id %} selected{% endif %}>Version {{ v.numero }}{% if v.active %} (active){% endif %} du {{ v.cree_le|date_fr }}</option>
+      <option value="{{ v.id }}"{% if v.id == vue.version.id %} selected{% endif %}>{{ v.libelle }}{% if v.active %} (active){% endif %}</option>
       {%- endfor %}
     </select>
   </div>
@@ -125,6 +125,8 @@
     <button type="submit" class="bouton">Produire les séances datées</button>
   </form>
 </div>
+{%- elif vue.couche.value == "date" and vue.seances_datees_importees %}
+<p class="edt-recalcul edt-ecran-seulement discret">Les séances datées de cette version ont été importées : elles ne se recalculent pas depuis la semaine type (cela les doublerait). Pour en changer une, la déplacer ou l'annuler.</p>
 {%- elif vue.couche.value == "date" %}
 <details class="edt-recalcul edt-ecran-seulement">
   <summary>Recalculer les séances datées</summary>
@@ -168,6 +170,7 @@
     {%- elif vue.controle and vue.controle.disponible and vue.blocs %}
     <p class="edt-ecran-seulement">{{ ui.etiquette("Vérifié", "succes") }} Aucune anomalie sur les séances affichées.</p>
     {%- endif %}
+    <div class="edt-ecran-seulement">{{ edt.ecarts_decoches(vue.controle) }}</div>
   </div>
   <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite">
     {%- if panneau -%}

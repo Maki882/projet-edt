@@ -28,6 +28,20 @@ une retouche reste la seule séance de sa semaine pour sa séance
 hebdomadaire. Une annulation reste donc une annulation, un déplacement reste
 à sa nouvelle place.
 
+Une version dont les séances datées ont été **importées** (origine
+« import », par exemple une version de référence) ne se recalcule pas : la
+semaine type réappliquée s'ajouterait aux séances importées et doublerait
+tout le semestre. Le recalcul est refusé avant l'instanciation
+(`ErreurRegleMetier`), et un déplacement dans la semaine type d'une telle
+version est enregistré en le disant.
+
+Contraintes décochées
+---------------------
+Une retouche applique les mêmes règles que le calcul qui a produit la
+version (`raccords.contraintes_actives_de`), comme l'instanciation des
+séances datées : une anomalie sur une contrainte décochée lors de ce calcul
+ne bloque pas la retouche, elle est rappelée en remarque.
+
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
 imposés : mêmes règles que l'instantané), libres d'abord, les occupées
@@ -57,12 +71,18 @@ from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
-from edt.services.emploi_du_temps import raccords
+from edt.services.emploi_du_temps import presentation, raccords
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
+
+MESSAGE_SEANCES_IMPORTEES = (
+    "Les séances datées de cette version ont été importées : les recalculer depuis la semaine "
+    "type les doublerait. Elles restent telles quelles ; pour les changer, déplacer ou annuler "
+    "les séances datées une par une."
+)
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -183,7 +203,7 @@ class AnomaliesSeance:
 def anomalies_seance(session: Session, seance_hebdo_id: int) -> AnomaliesSeance:
     """Anomalies de la semaine type qui concernent cette séance (pour le panneau de détail)."""
     seance = _seance(session, seance_hebdo_id)
-    controle = raccords.controler(raccords.verifier_version, session, seance.version_id)
+    controle = raccords.controler_version(session, seance.version_id)
     if controle.verification is None:
         return AnomaliesSeance(controle, ())
     identifiant = id_seance(seance.besoin_id, seance.rang)
@@ -196,12 +216,8 @@ def anomalies_seance(session: Session, seance_hebdo_id: int) -> AnomaliesSeance:
 def anomalies_occurrence(session: Session, occurrence_id: int) -> AnomaliesSeance:
     """Anomalies datées qui concernent cette occurrence, vérifiées sur son jour."""
     occurrence = _occurrence(session, occurrence_id)
-    controle = raccords.controler(
-        raccords.verifier_occurrences_version,
-        session,
-        occurrence.version_id,
-        date_debut=occurrence.date,
-        date_fin=occurrence.date,
+    controle = raccords.controler_occurrences(
+        session, occurrence.version_id, date_debut=occurrence.date, date_fin=occurrence.date
     )
     if controle.verification is None:
         return AnomaliesSeance(controle, ())
@@ -322,7 +338,10 @@ def modifier_placement(
             message=REFUS_SANS_VERIFICATION.format(raison=_minuscule(erreur.message)),
             niveau="attention",
         )
-    erreurs = verification.erreurs()
+    desactivees = raccords.contraintes_desactivees_de(session, seance.version_id)
+    retenues = tuple(a for a in verification.anomalies if str(a.code) not in desactivees)
+    tolerees = [a for a in verification.anomalies if str(a.code) in desactivees]
+    erreurs = [a for a in retenues if a.gravite is Gravite.ERREUR]
     if erreurs:
         journal.info(
             "Déplacement de la séance %d refusé par le vérificateur : %d erreur(s)",
@@ -333,7 +352,8 @@ def modifier_placement(
             enregistree=False,
             message="La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes.",
             niveau="erreur",
-            anomalies=_triees(verification.anomalies),
+            anomalies=_triees(retenues),
+            remarques=_remarque_decochees(tolerees),
         )
 
     ancien = (seance.jour, seance.debut_min, seance.salle_id)
@@ -348,7 +368,10 @@ def modifier_placement(
         (jour, debut, salle_id),
         seance.version_id,
     )
-    remarques = list(_recalculer_seances_datees(session, seance.version_id))
+    remarques = [
+        *_remarque_decochees(tolerees),
+        *_recalculer_seances_datees(session, seance.version_id),
+    ]
     salle = session.get(m.Salle, salle_id) if salle_id is not None else None
     message = f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" + (
         f", salle {salle.code}." if salle else ", sans salle."
@@ -358,8 +381,8 @@ def modifier_placement(
     return ResultatModification(
         enregistree=True,
         message=message,
-        niveau="attention" if remarques or verification.anomalies else "succes",
-        anomalies=_triees(verification.anomalies),
+        niveau="attention" if remarques or retenues else "succes",
+        anomalies=_triees(retenues),
         remarques=tuple(remarques),
     )
 
@@ -498,7 +521,11 @@ def deplacer_occurrence(
 
     try:
         verification = raccords.verifier_occurrences_version(
-            session, occurrence.version_id, date_debut=date, date_fin=date
+            session,
+            occurrence.version_id,
+            date_debut=date,
+            date_fin=date,
+            contraintes_actives=raccords.contraintes_actives_de(session, occurrence.version_id),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         remettre()
@@ -569,12 +596,15 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
 
     Les séances datées issues de la semaine type ou d'un replacement sont
     recalculées (jours fermés et indisponibilités replacés, sinon « à
-    programmer ») ; les retouches à la main et les séances importées restent
-    telles quelles (voir l'en-tête du module). Lève
+    programmer ») ; les retouches à la main restent telles quelles (voir
+    l'en-tête du module). Lève `ErreurRegleMetier` pour une version dont les
+    séances datées ont été importées (avant toute écriture), et
     `raccords.ErreurRaccordIndisponible` si l'instanciation n'est pas livrée.
     """
     if session.get(m.VersionEdt, version_id) is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
+    if seances_datees_importees(session, version_id):
+        raise ErreurRegleMetier(MESSAGE_SEANCES_IMPORTEES)
     raccords.instancier_version(session, version_id)
     session.flush()
     retouches, doublons = _retirer_doublons_des_retouches(session, version_id)
@@ -958,9 +988,37 @@ def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
         return []
     try:
         bilan = recalculer_seances_datees(session, version_id)
-    except raccords.ErreurRaccordIndisponible as erreur:
+    except (raccords.ErreurRaccordIndisponible, ErreurRegleMetier) as erreur:
+        # Une version importée, ou l'instanciation qui refuse : la semaine type est
+        # enregistrée, ses séances datées restent telles quelles, et on le dit.
         return [
             "Les séances datées de cette version n'ont pas été recalculées : "
             + _minuscule(erreur.message)
         ]
     return [bilan.message]
+
+
+def seances_datees_importees(session: Session, version_id: int) -> bool:
+    """Vrai si la version a des séances datées importées (elles ne se recalculent pas)."""
+    return (
+        session.scalar(
+            select(m.Occurrence.id)
+            .where(
+                m.Occurrence.version_id == version_id,
+                m.Occurrence.origine == OrigineOccurrence.IMPORT,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
+def _remarque_decochees(anomalies) -> list[str]:
+    """Rappel des anomalies tolérées parce que leur contrainte était décochée au calcul."""
+    if not anomalies:
+        return []
+    libelles = ", ".join(presentation.libelles_contraintes(str(a.code) for a in anomalies))
+    return [
+        f"{len(anomalies)} écart(s) aux règles décochées lors du calcul de cette version "
+        f"({libelles}) : la retouche les tolère, comme le calcul."
+    ]

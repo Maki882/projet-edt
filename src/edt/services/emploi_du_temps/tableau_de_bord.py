@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
 from edt.services import generation
-from edt.services.emploi_du_temps import raccords
+from edt.services.emploi_du_temps import anomalies, raccords
 from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
@@ -125,12 +125,14 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
 
     controle = None
     nb_a_traiter = None
+    nb_a_programmer = 0
     if version is not None:
-        controle = raccords.controler(raccords.verifier_version, session, version.id)
-        if controle.verification is not None:
-            nb_a_traiter = (
-                controle.verification.nb_erreurs + controle.verification.nb_avertissements
-            )
+        # Même calcul que la page « À traiter » et la pastille de l'onglet (mémorisé).
+        element = anomalies.a_traiter_version(session, semestre, version.id)
+        controle = element.hebdo
+        nb_a_programmer = len(element.a_programmer)
+        if element.complet:
+            nb_a_traiter = element.total
 
     etape = _prochaine_etape(
         semestre=semestre,
@@ -154,7 +156,7 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
         dernier_calcul=dernier,
         controle=controle,
         nb_a_traiter=nb_a_traiter,
-        nb_a_programmer=version.nb_a_programmer if version else 0,
+        nb_a_programmer=nb_a_programmer,
         prochaine_etape=etape,
     )
 
@@ -227,7 +229,8 @@ def _prochaine_etape(
             f"/calculs?semestre_id={semestre.id}",
             "Générer l'emploi du temps",
         )
-    reste = (nb_a_traiter or 0) + version.nb_a_programmer
+    # `nb_a_traiter` compte déjà les séances à programmer (une fois chacune).
+    reste = nb_a_traiter if nb_a_traiter is not None else version.nb_a_programmer
     if reste:
         return ProchaineEtape(
             Etape.TRAITER,
