@@ -12,9 +12,9 @@ par d'autres lots ; tous sont livrés. Leurs noms et signatures :
   version_id, date_debut=None, date_fin=None, contraintes_actives=None)
   -> RapportVerification` ;
 - `edt.services.verification.verifier_modification(session, version_id,
-  seance_id, jour, debut, fin, salle_id) -> RapportVerification` (ce que
-  donnerait la semaine type si la séance était placée ainsi, sans rien
-  enregistrer ; seulement les anomalies qui concernent cette séance) ;
+  seance_id, jour, debut, fin, salle_id, *, contraintes_actives=None)
+  -> RapportVerification` (les anomalies que le déplacement de la séance
+  introduit ou aggrave, sans rien enregistrer) ;
 - `edt.services.instanciation.instancier_version(session, version_id,
   contraintes_desactivees=None) -> RapportInstanciation`.
 
@@ -244,8 +244,13 @@ def verifier_modification(
     debut: int,
     fin: int,
     salle_id: int | None,
+    contraintes_actives: Iterable[str] | None = None,
 ) -> Verification:
-    """Anomalies qu'aurait la séance `seance_id` placée ainsi (rien n'est enregistré)."""
+    """Anomalies qu'introduirait la séance `seance_id` placée ainsi (rien n'est enregistré).
+
+    `contraintes_actives` : règles à appliquer (`None` : toutes, par défaut) ;
+    une retouche passe celles du calcul de la version (`contraintes_actives_de`).
+    """
     rapport = _appeler(
         MODULE_VERIFICATION,
         "verifier_modification",
@@ -257,6 +262,7 @@ def verifier_modification(
         debut,
         fin,
         salle_id,
+        contraintes_actives=contraintes_actives,
     )
     return lire_rapport(rapport)
 

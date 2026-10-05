@@ -38,9 +38,11 @@ version est enregistré en le disant.
 Contraintes décochées
 ---------------------
 Une retouche applique les mêmes règles que le calcul qui a produit la
-version (`raccords.contraintes_actives_de`), comme l'instanciation des
-séances datées : une anomalie sur une contrainte décochée lors de ce calcul
-ne bloque pas la retouche, elle est rappelée en remarque.
+version (`raccords.contraintes_actives_de`, passées au vérificateur), comme
+l'instanciation des séances datées : une contrainte décochée lors de ce
+calcul ne bloque pas la retouche. Le vérificateur ne renvoie que les
+anomalies que le déplacement introduit ou aggrave : une violation déjà
+présente ne fige pas la séance.
 
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
@@ -71,7 +73,7 @@ from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
-from edt.services.emploi_du_temps import presentation, raccords
+from edt.services.emploi_du_temps import raccords
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
@@ -331,6 +333,7 @@ def modifier_placement(
             debut,
             fin,
             salle_id,
+            contraintes_actives=raccords.contraintes_actives_de(session, seance.version_id),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         return ResultatModification(
@@ -338,9 +341,7 @@ def modifier_placement(
             message=REFUS_SANS_VERIFICATION.format(raison=_minuscule(erreur.message)),
             niveau="attention",
         )
-    desactivees = raccords.contraintes_desactivees_de(session, seance.version_id)
-    retenues = tuple(a for a in verification.anomalies if str(a.code) not in desactivees)
-    tolerees = [a for a in verification.anomalies if str(a.code) in desactivees]
+    retenues = tuple(verification.anomalies)
     erreurs = [a for a in retenues if a.gravite is Gravite.ERREUR]
     if erreurs:
         journal.info(
@@ -353,7 +354,6 @@ def modifier_placement(
             message="La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes.",
             niveau="erreur",
             anomalies=_triees(retenues),
-            remarques=_remarque_decochees(tolerees),
         )
 
     ancien = (seance.jour, seance.debut_min, seance.salle_id)
@@ -368,10 +368,7 @@ def modifier_placement(
         (jour, debut, salle_id),
         seance.version_id,
     )
-    remarques = [
-        *_remarque_decochees(tolerees),
-        *_recalculer_seances_datees(session, seance.version_id),
-    ]
+    remarques = _recalculer_seances_datees(session, seance.version_id)
     salle = session.get(m.Salle, salle_id) if salle_id is not None else None
     message = f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" + (
         f", salle {salle.code}." if salle else ", sans salle."
@@ -1011,14 +1008,3 @@ def seances_datees_importees(session: Session, version_id: int) -> bool:
         )
         is not None
     )
-
-
-def _remarque_decochees(anomalies) -> list[str]:
-    """Rappel des anomalies tolérées parce que leur contrainte était décochée au calcul."""
-    if not anomalies:
-        return []
-    libelles = ", ".join(presentation.libelles_contraintes(str(a.code) for a in anomalies))
-    return [
-        f"{len(anomalies)} écart(s) aux règles décochées lors du calcul de cette version "
-        f"({libelles}) : la retouche les tolère, comme le calcul."
-    ]
