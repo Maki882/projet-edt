@@ -43,18 +43,27 @@ Code, commentaires, commits, issues et documentation en **français**. Les noms
 d'identifiants dans le code peuvent être en anglais si c'est plus lisible
 (`room`, `slot`), mais restez cohérents dans un même module.
 
-## Stack (proposition, à confirmer par l'équipe)
+## Stack
 
-- Moteur : Python 3.11+, solveur de contraintes (OR-Tools CP-SAT).
-- Interface : application web lancée en local (serveur local + navigateur).
-- Stockage : base de données SQLite (attendu « base de données » du module,
-  sans serveur à installer).
+Décidée dans `docs/decisions.md` (section 2), qui fait autorité.
+
+- Langage : Python, `requires-python >= 3.11` (3.11 en local, 3.14 sur le serveur).
+- Solveur : OR-Tools CP-SAT (9.15 ou plus).
+- Base : SQLite via SQLAlchemy 2 (clés étrangères actives, mode WAL). Pas de
+  migrations en V1 : `python -m edt init-db --reset` recrée la base.
+- Web : FastAPI, gabarits Jinja2, HTMX embarqué dans le dépôt. Aucun outil Node.
+- Ligne de commande : Typer, `python -m edt <commande>`. Toute fonctionnalité
+  est aussi une commande.
+- Tests : `pytest` ; format et lint : `ruff` ; intégration continue GitHub
+  Actions sur chaque PR (`.github/workflows/ci.yml`).
+- Déploiement : service systemd (uvicorn `edt.web.asgi:app`) derrière nginx.
+- Dépendances déclarées dans `pyproject.toml`. Ne pas en ajouter une lourde
+  sans l'écrire dans une issue ou une PR.
 - Conception orientée objet avec un diagramme de classes UML tenu à jour dans
-  `docs/` : le code doit refléter le diagramme, et inversement.
-- Tests : `pytest`, tests unitaires par classe/contrainte et tests
-  d'intégration (données → génération → résultat).
-- Le langage est libre (Python par défaut dans le module). Ne pas ajouter de
-  dépendance lourde sans l'écrire dans une issue ou une PR.
+  `docs/modele-donnees.md` : le code doit refléter le diagramme, et inversement.
+
+Installation : `python -m venv .venv`, puis
+`.venv/Scripts/python -m pip install -e ".[dev]"`, puis `python -m edt init-db`.
 
 ## Workflow git
 
@@ -67,23 +76,53 @@ d'identifiants dans le code peuvent être en anglais si c'est plus lisible
 
 ## Conventions de code
 
-- Formatage automatique : `ruff format` pour Python (config dans `pyproject.toml`
-  une fois créé). Ne pas reformater des fichiers qu'on ne modifie pas.
+- Formatage automatique : `ruff format` pour Python (config dans `pyproject.toml`).
+  Ne pas reformater des fichiers qu'on ne modifie pas.
 - Tests dans `tests/`, lancés avec `pytest`. Toute contrainte du solveur a au
   moins un test qui vérifie qu'elle est respectée et un qui vérifie que
   l'échec est signalé quand elle est impossible.
 - Pas de fonctionnalité sans test minimal.
 
-## Structure prévue
+## Structure
+
+Le détail est dans `docs/architecture.md`. Architecture en couches, sans
+exception : interfaces (web, ligne de commande) → services → logique pure
+(domaine, solveur, vérification) → base.
 
 ```
-docs/        spécification et documentation
-src/edt/     moteur de génération (modèle, contraintes, solveur)
-web/         interface web locale
-tests/       tests automatisés
+docs/                 décisions, architecture, modèle de données, spécification
+src/edt/
+  config.py           configuration par variables d'environnement EDT_*
+  journal.py          configuration unique des journaux
+  erreurs.py          hiérarchie des erreurs métier (ErreurEDT)
+  cli.py              ligne de commande (découvre edt/commandes/)
+  commandes/          un module de commandes par lot
+  db/                 moteur SQLite, modèles ORM, données par défaut, jeu minimal
+  domaine/            énumérations, heures, calendrier, catalogue des contraintes,
+                      paramètres, instantané d'un semestre, dépliage des besoins
+  services/           fonctions typées appelées par le web et la ligne de commande
+  verification/       vérificateur (contrat partagé, puis implémentation)
+  solveur/            solveur (contrat partagé, moteur provisoire puis CP-SAT)
+  web/                application FastAPI (découvre web/routes/), gabarits, CSS, HTMX
+tests/                tests automatisés : conftest.py et un dossier par lot
+verifier_conflits.py  premier vérificateur de chevauchements de l'équipe
 ```
 
-Cette structure sera ajustée quand la stack sera confirmée.
+Règles à connaître avant d'écrire du code :
+
+- une fonctionnalité existe d'abord comme **fonction de service typée**, puis
+  comme route web et comme commande ;
+- une commande s'ajoute dans **son** module de `src/edt/commandes/`, un écran
+  dans **son** module de `src/edt/web/routes/` : on ne modifie ni `cli.py` ni
+  `web/app.py` ;
+- le vérificateur et le solveur travaillent sur l'instantané
+  (`edt.domaine.instantane`), jamais sur l'ORM ; les codes des contraintes
+  viennent du catalogue (`edt.domaine.contraintes`) ;
+- rien n'échoue en silence : pas de `except: pass`, pas de valeur de repli
+  silencieuse ; les services lèvent des `ErreurEDT`, chaque module journalise
+  avec `logging.getLogger(__name__)` ;
+- aucun fichier généré dans le dépôt : `data/` et `logs/` sont ignorés, les
+  tests écrivent dans des dossiers temporaires.
 
 ## Ce qu'un assistant ne fait pas seul
 
