@@ -1104,14 +1104,17 @@ def _appliquer_ligne(
 
 
 def importer_tableaux(
-    session: Session, tableaux: Sequence[Tableau]
+    session: Session,
+    tableaux: Sequence[Tableau],
+    signalements: list[Signalement] | None = None,
 ) -> tuple[list[Bilan], list[Signalement]]:
     """Importe des tableaux de données de l'établissement (une transaction ouverte est requise).
 
     Ne valide rien : l'appelant (le service) choisit d'annuler (simulation)
-    ou de garder les écritures.
+    ou de garder les écritures. Les signalements s'ajoutent à `signalements`
+    (une liste bornée, de préférence), qui est renvoyée.
     """
-    signalements: list[Signalement] = []
+    signalements = signalements if signalements is not None else []
     par_feuille: dict[str, list[Tableau]] = defaultdict(list)
     for tableau in tableaux:
         feuille = identifier_feuille(tableau.nom, tableau.entetes)

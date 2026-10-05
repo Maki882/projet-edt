@@ -36,8 +36,14 @@ from edt.echange.ecriture import archive_zip, classeur_xlsx
 from edt.echange.export_edt import Couche, Filtre
 from edt.echange.format import FEUILLES, identifier_feuille, texte_lisez_moi
 from edt.echange.ical import lire_ical
-from edt.echange.lecture import FichierEnvoye, lire_fichier
-from edt.echange.rapport import Bilan, RapportImport, Signalement, rapport_csv
+from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
+from edt.echange.rapport import (
+    Bilan,
+    ListeSignalements,
+    RapportImport,
+    Signalement,
+    rapport_csv,
+)
 from edt.echange.reconstitution import reconstituer
 from edt.echange.seances import ModeImport, lire_tableau_seances
 from edt.echange.transaction import simulation_possible
@@ -335,11 +341,12 @@ def _importer(
         options.mode.value,
         ", ".join(f.nom for f in fichiers),
     )
-    signalements: list[Signalement] = []
+    signalements = ListeSignalements()
+    limites = Limites()
     tableaux = []
     calendriers: list[tuple[str, str]] = []
     for fichier in fichiers:
-        lu, lus = lire_fichier(fichier)
+        lu, lus = lire_fichier(fichier, limites)
         signalements.extend(lus)
         tableaux.extend(lu.tableaux)
         if lu.texte_ical is not None:
@@ -362,9 +369,8 @@ def _importer(
                 )
             if options.tout_remplacer:
                 bilans.append(_remplacer(session, signalements))
-            importes, signales = donnees.importer_tableaux(session, tableaux)
+            importes, _ = donnees.importer_tableaux(session, tableaux, signalements)
             bilans.extend(importes)
-            signalements.extend(signales)
             apercus = tuple(
                 t.apercu(f.nom if (f := identifier_feuille(t.nom, t.entetes)) else t.nom)
                 for t in tableaux
@@ -382,7 +388,13 @@ def _importer(
             for tableau in tableaux:
                 seances.extend(lire_tableau_seances(tableau, bilan_seances, signalements))
             for nom, texte in calendriers:
-                lues, signales = lire_ical(nom, texte, (semestre.date_debut, semestre.date_fin))
+                lues, signales = lire_ical(
+                    nom,
+                    texte,
+                    (semestre.date_debut, semestre.date_fin),
+                    max_seances=limites.lignes_restantes,
+                )
+                limites.lignes_restantes -= len(lues)
                 bilan_seances.ajouter(
                     "rejetes", sum(1 for s in signales if s.gravite is Gravite.ERREUR)
                 )
@@ -414,6 +426,8 @@ def _importer(
         version_id=version_id,
         semaines_types=semaines_types,
         besoins=besoins,
+        signalements_omis=signalements.omis,
+        erreurs_omises=signalements.erreurs_omises,
     )
     niveau = logging.WARNING if rapport.a_des_rejets else logging.INFO
     journal.log(
