@@ -34,6 +34,7 @@ from edt.domaine.instantane import (
     JourFerme,
     Occurrence,
     Placement,
+    Reference,
     Salle,
     SeanceAPlacer,
     Trajet,
@@ -139,6 +140,14 @@ def charger_instantane(
         seances=seances,
         problemes_depliage=depliage.problemes,
         version_base_id=version_base.id if version_base is not None else None,
+        types_salle=tuple(
+            Reference(t.id, t.code, t.libelle)
+            for t in session.scalars(select(m.TypeSalle).order_by(m.TypeSalle.code))
+        ),
+        equipements=tuple(
+            Reference(e.id, e.code, e.libelle)
+            for e in session.scalars(select(m.Equipement).order_by(m.Equipement.code))
+        ),
     )
     journal.info(
         "Instantané du semestre %s chargé : %d besoins, %d séances à placer, %d salles, "

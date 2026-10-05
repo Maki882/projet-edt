@@ -285,6 +285,8 @@ classDiagram
         +tuple seances
         +tuple problemes_depliage
         +int version_base_id
+        +tuple types_salle
+        +tuple equipements
         +salle(id) Salle
         +enseignant(id) Enseignant
         +groupe(id) Groupe
@@ -300,6 +302,8 @@ classDiagram
         +besoins_en_conflit_de_groupes(a, b) bool
         +trajet(campus_a, campus_b) int
         +salle_accessible(salle) bool
+        +libelle_type_salle(id) str
+        +libelle_equipement(id) str
         +indisponibilites_recurrentes(cible, id) tuple
         +indisponibilites_de(cible, id) tuple
     }
@@ -378,6 +382,9 @@ Ce qu'il faut savoir pour l'utiliser :
   contraintes d'enseignant.
 - **Trajets** : `Instantane.trajet(a, b)` vaut 0 pour le même campus, la
   valeur de la matrice sinon, et le paramètre `trajet_defaut_min` à défaut.
+- **Libellés pour les messages** : `Groupe.libelle`, `Enseignant.nom`,
+  `Salle.code`, `Besoin.libelle`, `Instantane.libelle_type_salle(id)` et
+  `Instantane.libelle_equipement(id)`.
 
 ### Le dépliage (`edt.domaine.depliage`)
 

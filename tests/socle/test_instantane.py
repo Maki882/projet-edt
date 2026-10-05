@@ -54,6 +54,13 @@ def test_exigences_resolues_des_besoins(instantane):
     # Sans type de salle demandé, c'est le type par défaut du type de séance (CM : amphi).
     cm = _besoin(instantane, "CM Mathématiques")
     assert cm.types_salle_acceptes == frozenset({codes_salles["N016"].type_salle_id})
+    (type_accepte,) = cm.types_salle_acceptes
+    assert instantane.libelle_type_salle(type_accepte) == "Amphithéâtre"
+
+    tp = _besoin(instantane, "TP Algorithmique - A1-G1a")
+    assert [instantane.libelle_equipement(e) for e in tp.equipements_requis] == [
+        "Postes informatiques"
+    ]
 
     # Le groupe PMR partage un étudiant avec A1-G1a : toute sa lignée requiert l'accessibilité.
     assert _besoin(instantane, "TD Mathématiques - A1-G1").accessibilite_requise
