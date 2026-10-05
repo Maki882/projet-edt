@@ -292,3 +292,17 @@ def test_prechauffage_remplit_la_memoire_des_ecrans(version_generee, client, fau
     for adresse in ("/", "/a-traiter", "/a-traiter/compteur"):
         assert client.get(adresse).status_code == 200
     assert len(faux_verificateur.appels) == verifications  # tout venait de la mémoire
+
+
+def test_besoin_impossible_a_deplier_affiche_une_seule_fois(jeu_minimal, client):
+    import datetime as dt
+
+    with session_base() as session:
+        besoin = session.scalar(
+            select(m.Besoin).where(m.Besoin.date_ponctuelle.is_not(None)).order_by(m.Besoin.id)
+        )
+        besoin.date_ponctuelle = dt.date(2027, 3, 1)  # hors du semestre 1
+    page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
+
+    assert page.count("01/03/2027") == 1
+    assert "Le calcul ne peut pas être lancé" in page

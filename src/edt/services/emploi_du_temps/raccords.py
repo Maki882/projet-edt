@@ -340,20 +340,58 @@ def controler_version(session: Session, version_id: int) -> Controle:
 def controler_occurrences(
     session: Session, version_id: int, date_debut=None, date_fin=None
 ) -> Controle:
-    """Contrôle des séances datées d'une version (ou d'une période), mémorisé ; voir `controler_version`."""
-    controle = memoire.memoriser(
+    """Contrôle des séances datées d'une version (ou d'une période), mémorisé ; voir `controler_version`.
+
+    Toutes les séances datées de la version sont vérifiées une fois (résultat
+    mémorisé, partagé par « À traiter », l'accueil et chaque semaine
+    affichée) ; une période ne garde que les anomalies qui la concernent :
+    date de l'anomalie ou date d'une séance qu'elle cite.
+    """
+    complet, dates = memoire.memoriser(
         session,
         "verifier_occurrences_version",
-        (version_id, date_debut, date_fin),
-        lambda: controler(
-            verifier_occurrences_version,
-            session,
-            version_id,
-            date_debut=date_debut,
-            date_fin=date_fin,
-        ),
+        (version_id,),
+        lambda: _controle_date_complet(session, version_id),
     )
+    controle = complet
+    if (date_debut is not None or date_fin is not None) and complet.verification is not None:
+        gardees = tuple(
+            anomalie
+            for anomalie in complet.verification.anomalies
+            if _dans_la_periode(anomalie, dates, date_debut, date_fin)
+        )
+        controle = dataclasses.replace(
+            complet,
+            verification=Verification(
+                anomalies=gardees, indicateurs=complet.verification.indicateurs
+            ),
+        )
     return _separer(controle, contraintes_desactivees_de(session, version_id))
+
+
+def _controle_date_complet(session: Session, version_id: int) -> tuple[Controle, dict]:
+    """Vérification de toutes les séances datées, et date de chaque séance citée."""
+    controle = controler(verifier_occurrences_version, session, version_id)
+    dates: dict[int, object] = {}
+    if controle.verification is not None:
+        citees = sorted({o for a in controle.verification.anomalies for o in a.occurrences})
+        for debut in range(0, len(citees), 500):
+            lot = citees[debut : debut + 500]
+            dates.update(
+                session.execute(
+                    select(m.Occurrence.id, m.Occurrence.date).where(m.Occurrence.id.in_(lot))
+                ).all()
+            )
+    return controle, dates
+
+
+def _dans_la_periode(anomalie: Anomalie, dates: dict, date_debut, date_fin) -> bool:
+    jours = [anomalie.date] if anomalie.date is not None else []
+    jours.extend(dates[o] for o in anomalie.occurrences if o in dates)
+    return any(
+        (date_debut is None or date_debut <= jour) and (date_fin is None or jour <= date_fin)
+        for jour in jours
+    )
 
 
 def _separer(controle: Controle, desactivees: frozenset[str]) -> Controle:
