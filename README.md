@@ -66,45 +66,27 @@ python -m ruff format --check .     # format
 Les tests créent leur base et leurs journaux dans des dossiers temporaires :
 ils ne touchent jamais `data/` ni `logs/`.
 
-## Vérifier les conflits d'un planning
+## Vérifier un emploi du temps
 
-Un premier contrôle est disponible sans dépendance supplémentaire :
-
-```sh
-python verifier_conflits.py emploi_du_temps.db
-```
-
-Il lit la table `cours` en lecture seule et signale les cours qui se chevauchent
-pour une même salle, un même professeur ou une même classe. Les horaires doivent
-être au format `HH:MM`, avec une fin strictement après le début. Utiliser une
-représentation cohérente des jours (noms de jours ou dates ISO) dans la base.
-
-Codes de sortie : `0` aucun chevauchement, `1` conflits détectés, `2` données
-invalides ou base illisible. Une base absente n'est jamais créée.
-
-Ce contrôle ne certifie pas le respect de toutes les contraintes : les pauses,
-déplacements, disponibilités, groupes communs et besoins d'accessibilité ne sont
-pas encore vérifiés. Deux cours contigus ne se chevauchent pas, mais peuvent
-enfreindre la règle de pause. Aucun cours n'est déplacé ni supprimé.
-
-Tests ciblés (compatibles avec pytest) :
+Le vérificateur liste les anomalies d'un emploi du temps enregistré : salles,
+enseignants ou groupes occupés deux fois, pause, trajet entre campus,
+déjeuner, grille horaire, jours de cours, salle adaptée, disponibilités,
+maxima horaires, volume, verrous et jours fermés. Il ne modifie rien.
 
 ```sh
-python -m pytest tests/test_conflits.py
+python -m edt verifier                     # semaine type de la version active du semestre en cours
+python -m edt verifier --version 4 --datees --du 2026-11-02 --au 2026-11-08
+python -m edt verifier --semestre 1 -c SALLE_UNIQUE --json
 ```
 
-Sans pytest installé, les mêmes tests se lancent avec la bibliothèque standard :
+Codes de sortie : `0` aucune erreur, `1` au moins une erreur, `2` vérification
+impossible (version introuvable, code inconnu, rien à vérifier...). Chaque
+anomalie a un code, une gravité (erreur, avertissement, information) et un
+message en clair.
 
-```sh
-python -m unittest discover -s tests -p "test_conflits.py" -v
-```
-
-Le modèle de ce module est décrit dans [le diagramme de classes](docs/verification-conflits.md).
-
-Ce script lit une base au format du premier essai (table `cours`), dont le
-fichier d'exemple `emploi_du_temps.db` n'est plus dans le dépôt. Il est conservé
-comme point de départ du vérificateur complet (`edt.verification`), qui
-travaille sur le modèle de données actuel.
+Ce module généralise le premier vérificateur de chevauchements écrit par
+l'équipe. Tests : `python -m pytest tests/verification` (charge : `-m perf`).
+Règles, indicateurs et diagramme de classes : [docs/verification.md](docs/verification.md).
 
 ## Contribuer au code
 
