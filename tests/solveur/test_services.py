@@ -372,6 +372,13 @@ def lanceur() -> CliRunner:
     return CliRunner()
 
 
+def _lignes_de_bilan(sortie: str) -> int:
+    """Nombre de lignes que la commande consacre elle-même au bilan de qualité."""
+    return sum(
+        1 for ligne in sortie.splitlines() if ligne.startswith("Bilan sur l'ensemble du semestre")
+    )
+
+
 def test_commande_generer_puis_instancier(lanceur, jeu_minimal):
     semestre = str(jeu_minimal.semestre_id)
     resultat = lanceur.invoke(cli.app, ["pre-verifier", "--semestre", semestre])
@@ -384,7 +391,11 @@ def test_commande_generer_puis_instancier(lanceur, jeu_minimal):
     )
     assert resultat.exit_code == 0, resultat.output
     assert "Réussi" in resultat.output and "17 séance(s) placée(s)" in resultat.output
-    assert resultat.output.count("Bilan sur l'ensemble du semestre :") == 1
+    message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
+    # Le bilan est dit une fois : dans le message s'il y a eu amélioration, sinon par la commande.
+    assert ("Bilan sur l'ensemble du semestre :" in message) + _lignes_de_bilan(
+        resultat.output
+    ) == 1
     assert "Version enregistrée : n° 1." in resultat.output
 
     resultat = lanceur.invoke(cli.app, ["instancier", "--semestre", semestre])
@@ -409,8 +420,10 @@ def test_commande_generer_avec_optimisation_et_contrainte_desactivee(lanceur, je
     assert resultat.exit_code == 0, resultat.output
     assert "avec optimisation" in resultat.output
     assert "Contraintes ignorées à votre demande : Pause entre deux séances" in resultat.output
-    assert resultat.output.count("Bilan sur l'ensemble du semestre :") == 1
-    assert "séance(s) le samedi" in resultat.output
+    # Le bilan est dans le message du calcul : la commande ne le répète pas sur sa propre ligne.
+    message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
+    assert "Bilan sur l'ensemble du semestre :" in message and "le samedi" in message
+    assert _lignes_de_bilan(resultat.output) == 0
 
 
 def test_commande_generer_echec_code_1(lanceur, jeu_minimal):
