@@ -21,11 +21,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Form, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Form, Query, Request
 
+from edt.config import charger_configuration
 from edt.erreurs import ErreurCalculEnCours
 from edt.services import generation
-from edt.services.emploi_du_temps import calculs, presentation, versions
+from edt.services.emploi_du_temps import calculs, prechauffage, presentation, versions
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rediriger, rendre
 from edt.web.menu import EntreeMenu
@@ -147,13 +148,21 @@ def lancer(
 def page_calcul(request: Request, session: SessionRequete, calcul_id: int):
     """Suivi puis résultat d'un calcul."""
     resultat = calculs.resultat_calcul(session, calcul_id)
+    _prechauffer_si_fini(resultat)
     return rendre(request, "edt/calcul.html", {"r": resultat, "fmt": presentation})
+
+
+def _prechauffer_si_fini(resultat: calculs.ResultatCalcul) -> None:
+    """Calcul réussi : prépare en arrière-plan les écrans que l'utilisateur va ouvrir."""
+    if resultat.issue == calculs.Issue.REUSSI:
+        prechauffage.lancer(charger_configuration().db_url)
 
 
 @routeur.get("/calculs/{calcul_id:int}/etat", name="calcul_etat")
 def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
     """État du calcul (fragment interrogé chaque seconde tant que le calcul tourne)."""
     resultat = calculs.resultat_calcul(session, calcul_id)
+    _prechauffer_si_fini(resultat)
     return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
 
 
@@ -209,9 +218,10 @@ def page_versions(request: Request, session: SessionRequete, semestre_id: int | 
 
 
 @routeur.post("/versions/{version_id:int}/activer", name="activer_version")
-def activer(request: Request, session: SessionRequete, version_id: int):
-    """Rend une version active pour son semestre."""
+def activer(request: Request, session: SessionRequete, version_id: int, taches: BackgroundTasks):
+    """Rend une version active pour son semestre (écrans préparés après l'enregistrement)."""
     version = versions.activer_version(session, version_id)
+    taches.add_task(prechauffage.lancer, charger_configuration().db_url)
     return rediriger(
         request,
         f"/versions?semestre_id={version.semestre_id}",

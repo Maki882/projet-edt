@@ -12,6 +12,9 @@ from edt.db.moteur import session_base
 from edt.domaine.enumerations import CibleIndisponibilite, ModeVolume, OrigineVersion
 from edt.erreurs import ErreurIntrouvable
 from edt.services.instantane import charger_instantane, charger_placements
+from edt.synthese.generateur import generer_jeu
+
+from .test_depliage import semaines_ouvertes_de_reference
 
 
 @pytest.fixture
@@ -157,3 +160,37 @@ def test_verrous_et_indices_viennent_de_la_version_active(jeu_minimal, instantan
 def test_semestre_inconnu(base, session):
     with pytest.raises(ErreurIntrouvable):
         charger_instantane(session, 9999)
+
+
+def test_semaines_actives_d_un_jeu_realiste_conformes_a_la_regle_de_reference(base):
+    """Non-régression du dépliage rapide sur un établissement fictif complet (jeu « moyen »)."""
+    with session_base() as session:
+        generer_jeu(session, "moyen", 0)
+    with session_base() as session:
+        instantanes = [
+            charger_instantane(session, semestre_id)
+            for semestre_id in session.scalars(select(m.Semestre.id).order_by(m.Semestre.id))
+        ]
+
+    comparees, jeux_de_semaines = 0, set()
+    for instantane in instantanes:
+        assert instantane.problemes_depliage == ()
+        assert len(instantane.seances) > 100
+        for seance in instantane.seances:
+            if seance.besoin.ponctuel:
+                continue
+            ouvertes = {
+                semaine.numero
+                for semaine in semaines_ouvertes_de_reference(
+                    seance.besoin, instantane.semaines, instantane.jours_fermes
+                )
+            }
+            if seance.besoin.mode_volume is ModeVolume.PAR_SEMAINE:
+                assert seance.semaines == ouvertes, seance.besoin.libelle
+            else:
+                assert seance.semaines <= ouvertes, seance.besoin.libelle
+            comparees += 1
+            jeux_de_semaines.add(frozenset(ouvertes))
+    assert comparees > 100
+    # Le jeu exerce la règle : selon les groupes et les fenêtres, les semaines ouvertes diffèrent.
+    assert len(jeux_de_semaines) > 3

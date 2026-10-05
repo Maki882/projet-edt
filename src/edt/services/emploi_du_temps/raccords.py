@@ -12,9 +12,9 @@ par d'autres lots ; tous sont livrés. Leurs noms et signatures :
   version_id, date_debut=None, date_fin=None, contraintes_actives=None)
   -> RapportVerification` ;
 - `edt.services.verification.verifier_modification(session, version_id,
-  seance_id, jour, debut, fin, salle_id) -> RapportVerification` (ce que
-  donnerait la semaine type si la séance était placée ainsi, sans rien
-  enregistrer ; seulement les anomalies qui concernent cette séance) ;
+  seance_id, jour, debut, fin, salle_id, *, contraintes_actives=None)
+  -> RapportVerification` (les anomalies que le déplacement de la séance
+  introduit ou aggrave, sans rien enregistrer) ;
 - `edt.services.instanciation.instancier_version(session, version_id,
   contraintes_desactivees=None) -> RapportInstanciation`.
 
@@ -42,10 +42,14 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from edt.db import modeles as m
+from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurEDT, ErreurNonLivre
+from edt.services.emploi_du_temps import memoire
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -162,11 +166,18 @@ class Controle:
     verification: Verification | None = None
     motif: str | None = None
     niveau: str = "attention"
+    decochees: tuple[Anomalie, ...] = ()
+    contraintes_decochees: tuple[str, ...] = ()
 
     @property
     def disponible(self) -> bool:
         """Vrai si la vérification a tourné."""
         return self.verification is not None
+
+    @property
+    def nb_ecarts_decoches(self) -> int:
+        """Erreurs sur des contraintes décochées lors du calcul de la version (tolérées)."""
+        return sum(1 for a in self.decochees if a.gravite is Gravite.ERREUR)
 
 
 # --------------------------------------------------------------------------- #
@@ -233,8 +244,13 @@ def verifier_modification(
     debut: int,
     fin: int,
     salle_id: int | None,
+    contraintes_actives: Iterable[str] | None = None,
 ) -> Verification:
-    """Anomalies qu'aurait la séance `seance_id` placée ainsi (rien n'est enregistré)."""
+    """Anomalies qu'introduirait la séance `seance_id` placée ainsi (rien n'est enregistré).
+
+    `contraintes_actives` : règles à appliquer (`None` : toutes, par défaut) ;
+    une retouche passe celles du calcul de la version (`contraintes_actives_de`).
+    """
     rapport = _appeler(
         MODULE_VERIFICATION,
         "verifier_modification",
@@ -246,6 +262,7 @@ def verifier_modification(
         debut,
         fin,
         salle_id,
+        contraintes_actives=contraintes_actives,
     )
     return lire_rapport(rapport)
 
@@ -275,6 +292,120 @@ def controler(fonction: Callable[..., Verification], *args, **kwargs) -> Control
     except Exception:
         journal.exception("Erreur inattendue pendant une vérification (%s)", fonction.__name__)
         return Controle(motif=MESSAGE_ERREUR_INATTENDUE, niveau="erreur")
+
+
+# --------------------------------------------------------------------------- #
+# Contrôles d'une version pour les écrans de consultation
+# --------------------------------------------------------------------------- #
+
+
+def contraintes_desactivees_de(session: Session, version_id: int) -> frozenset[str]:
+    """Contraintes décochées lors du calcul qui a produit la version (aucune pour un import)."""
+    codes = session.scalar(
+        select(m.Calcul.contraintes_desactivees)
+        .join(m.VersionEdt, m.VersionEdt.calcul_id == m.Calcul.id)
+        .where(m.VersionEdt.id == version_id)
+    )
+    return frozenset(str(code) for code in codes or ())
+
+
+def contraintes_actives_de(session: Session, version_id: int) -> frozenset[str] | None:
+    """Contraintes que respecte la version : celles du calcul (`None` : toutes, par défaut).
+
+    C'est ce que reprend l'instanciation des séances datées ; une retouche à
+    la main applique les mêmes règles.
+    """
+    desactivees = contraintes_desactivees_de(session, version_id)
+    if not desactivees:
+        return None
+    return frozenset(str(code) for code in codes_actifs(desactivees))
+
+
+def controler_version(session: Session, version_id: int) -> Controle:
+    """Contrôle de la semaine type d'une version, mémorisé tant que la base ne change pas.
+
+    La vérification porte sur toutes les contraintes ; les anomalies sur une
+    contrainte décochée lors du calcul de la version sont mises à part
+    (`Controle.decochees`) : elles sont tolérées, mais dites.
+    """
+    controle = memoire.memoriser(
+        session,
+        "verifier_version",
+        (version_id,),
+        lambda: controler(verifier_version, session, version_id),
+    )
+    return _separer(controle, contraintes_desactivees_de(session, version_id))
+
+
+def controler_occurrences(
+    session: Session, version_id: int, date_debut=None, date_fin=None
+) -> Controle:
+    """Contrôle des séances datées d'une version (ou d'une période), mémorisé ; voir `controler_version`.
+
+    Toutes les séances datées de la version sont vérifiées une fois (résultat
+    mémorisé, partagé par « À traiter », l'accueil et chaque semaine
+    affichée) ; une période ne garde que les anomalies qui la concernent :
+    date de l'anomalie ou date d'une séance qu'elle cite.
+    """
+    complet, dates = memoire.memoriser(
+        session,
+        "verifier_occurrences_version",
+        (version_id,),
+        lambda: _controle_date_complet(session, version_id),
+    )
+    controle = complet
+    if (date_debut is not None or date_fin is not None) and complet.verification is not None:
+        gardees = tuple(
+            anomalie
+            for anomalie in complet.verification.anomalies
+            if _dans_la_periode(anomalie, dates, date_debut, date_fin)
+        )
+        controle = dataclasses.replace(
+            complet,
+            verification=Verification(
+                anomalies=gardees, indicateurs=complet.verification.indicateurs
+            ),
+        )
+    return _separer(controle, contraintes_desactivees_de(session, version_id))
+
+
+def _controle_date_complet(session: Session, version_id: int) -> tuple[Controle, dict]:
+    """Vérification de toutes les séances datées, et date de chaque séance citée."""
+    controle = controler(verifier_occurrences_version, session, version_id)
+    dates: dict[int, object] = {}
+    if controle.verification is not None:
+        citees = sorted({o for a in controle.verification.anomalies for o in a.occurrences})
+        for debut in range(0, len(citees), 500):
+            lot = citees[debut : debut + 500]
+            dates.update(
+                session.execute(
+                    select(m.Occurrence.id, m.Occurrence.date).where(m.Occurrence.id.in_(lot))
+                ).all()
+            )
+    return controle, dates
+
+
+def _dans_la_periode(anomalie: Anomalie, dates: dict, date_debut, date_fin) -> bool:
+    jours = [anomalie.date] if anomalie.date is not None else []
+    jours.extend(dates[o] for o in anomalie.occurrences if o in dates)
+    return any(
+        (date_debut is None or date_debut <= jour) and (date_fin is None or jour <= date_fin)
+        for jour in jours
+    )
+
+
+def _separer(controle: Controle, desactivees: frozenset[str]) -> Controle:
+    """Met à part les anomalies sur des contraintes décochées lors du calcul de la version."""
+    if controle.verification is None or not desactivees:
+        return dataclasses.replace(controle, contraintes_decochees=tuple(sorted(desactivees)))
+    actives = tuple(a for a in controle.verification.anomalies if str(a.code) not in desactivees)
+    decochees = tuple(a for a in controle.verification.anomalies if str(a.code) in desactivees)
+    return dataclasses.replace(
+        controle,
+        verification=Verification(anomalies=actives, indicateurs=controle.verification.indicateurs),
+        decochees=decochees,
+        contraintes_decochees=tuple(sorted(desactivees)),
+    )
 
 
 # --------------------------------------------------------------------------- #

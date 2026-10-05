@@ -248,6 +248,17 @@ def test_campus_trajet():
     assert {places["1-1"].debut, places["2-1"].debut} == {C1, C2}
 
 
+def test_campus_trajet_ne_concerne_pas_deux_seances_qui_se_chevauchent():
+    """Unicité du groupe décochée : deux cours en même temps sur deux campus, comme l'oracle."""
+    instantane = deux_campus(UN_CRENEAU)
+    assert resoudre(instantane, OPTIONS).statut is StatutSolveur.INFAISABLE
+    places = verifier_solution(
+        instantane, resoudre_sans(instantane, C.GROUPE_UNIQUE), [C.GROUPE_UNIQUE]
+    )
+    assert chevauchent(places["1-1"], places["2-1"])
+    assert places["1-1"].salle_id != places["2-1"].salle_id
+
+
 def test_campus_trajet_respecte_quand_il_est_possible():
     instantane = deux_campus(grille(jours=[LUNDI], samedi=False))
     places = verifier_solution(instantane, resoudre(instantane, OPTIONS))

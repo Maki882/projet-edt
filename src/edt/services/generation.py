@@ -32,15 +32,29 @@ Déroulement d'un calcul :
 Les fonctions de ce module ouvrent leurs propres sessions : un calcul vit
 plus longtemps que la requête qui l'a lancé. Le seul état gardé en mémoire
 est le suivi des fils en cours ; tout le reste est en base.
+
+Calcul abandonné
+----------------
+Un calcul appartient au processus qui l'a lancé (serveur web ou commande
+`python -m edt generer`) : son numéro de processus est noté avec lui. Si ce
+processus meurt (interruption, arrêt du serveur), le calcul resterait « en
+cours » et bloquerait tout. Il est donc **clos en erreur** dès que quelqu'un
+s'y intéresse (`lancer_calcul`, `calcul_en_cours`, `demander_arret`,
+`cloturer_calculs_interrompus`), mais seulement si plus rien ne l'exécute :
+le fil du calcul a disparu de ce processus, ou le processus noté n'existe
+plus, ou le calcul a dépassé son temps limite de plus de `DELAI_DE_GRACE_S`.
+Un calcul vivant d'un autre processus n'est jamais clos par celui-ci.
 """
 
 from __future__ import annotations
 
+import ctypes
 import datetime as dt
 import logging
+import os
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select, update
@@ -52,7 +66,7 @@ from edt.db.modeles import Calcul, SeanceHebdo, Semestre, VersionEdt
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
-from edt.domaine.instantane import Instantane
+from edt.domaine.instantane import Instantane, Placement, SeanceAPlacer
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurEDT,
@@ -91,6 +105,12 @@ _MESSAGES_PAR_DEFAUT = {
 }
 
 MESSAGE_INTERROMPU = "Calcul interrompu par l'arrêt de l'application."
+CLE_PROCESSUS = "pid"
+"""Clé des statistiques d'un calcul en cours : numéro du processus qui l'exécute."""
+DELAI_DE_GRACE_S = 600.0
+"""Dépassement du temps limite au-delà duquel un calcul « en cours » est tenu pour mort."""
+PAS_ATTENTE_S = 0.5
+"""Tranche d'attente de `attendre_calcul` (laisse passer une interruption au clavier)."""
 NB_RAISONS_DANS_LE_MESSAGE = 3
 """Raisons citées dans le message d'un refus ; la liste complète est dans les statistiques."""
 
@@ -182,6 +202,7 @@ def lancer_calcul(
         with session_base(config.db_url) as session:
             if session.get(Semestre, semestre_id) is None:
                 raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
+            _cloturer_abandonnes(session)
             deja = session.scalar(
                 select(Calcul.id).where(Calcul.etat == EtatCalcul.EN_COURS).limit(1)
             )
@@ -198,6 +219,7 @@ def lancer_calcul(
                 demarre_le=dt.datetime.now(),
                 parametres=options.vers_dict(),
                 contraintes_desactivees=sorted(options.contraintes_desactivees),
+                statistiques={CLE_PROCESSUS: os.getpid()},
             )
             session.add(calcul)
             session.flush()
@@ -253,8 +275,12 @@ def etat_calcul(calcul_id: int) -> SuiviCalcul:
 
 
 def calcul_en_cours() -> SuiviCalcul | None:
-    """Le calcul en cours, s'il y en a un."""
-    with session_base() as session:
+    """Le calcul en cours, s'il y en a un.
+
+    Un calcul abandonné par son processus est d'abord clos : il ne compte pas.
+    """
+    with _verrou, session_base() as session:
+        _cloturer_abandonnes(session)
         calcul = session.scalar(
             select(Calcul).where(Calcul.etat == EtatCalcul.EN_COURS).order_by(Calcul.id.desc())
         )
@@ -275,23 +301,25 @@ def demander_arret(calcul_id: int) -> SuiviCalcul:
     """Demande l'arrêt du calcul et renvoie son état.
 
     L'arrêt n'est pas instantané : le moteur rend la main dès qu'il voit la
-    demande, puis l'état passe à « arrêté ». Sans effet sur un calcul terminé.
-    L'arrêt n'atteint que les calculs lancés par ce processus.
+    demande. Si un emploi du temps valide existe déjà, il est conservé et le
+    calcul réussit ; sinon l'état passe à « arrêté ». Sans effet sur un calcul
+    terminé. L'arrêt n'atteint que les calculs lancés par ce processus ; un
+    calcul que plus rien n'exécute est clos en erreur.
     """
-    with session_base() as session:
+    with _verrou, session_base() as session:
         calcul = session.get(Calcul, calcul_id)
         if calcul is None:
             raise ErreurIntrouvable(f"Le calcul {calcul_id} n'existe pas.")
         if calcul.etat == EtatCalcul.EN_COURS:
             calcul.arret_demande = True
-            with _verrou:
-                actif = _actifs.get(calcul_id)
+            actif = _actifs.get(calcul_id)
             if actif is not None:
                 actif.arret.set()
                 journal.info("Arrêt demandé pour le calcul %d", calcul_id)
-            else:
+            elif not _cloturer_abandonnes(session):
                 journal.warning(
-                    "Arrêt demandé pour le calcul %d, qui ne tourne pas dans ce processus",
+                    "Arrêt demandé pour le calcul %d, qu'un autre processus exécute encore : "
+                    "il ira à son terme",
                     calcul_id,
                 )
         session.flush()
@@ -301,12 +329,18 @@ def demander_arret(calcul_id: int) -> SuiviCalcul:
 def attendre_calcul(calcul_id: int, delai_s: float | None = None) -> SuiviCalcul:
     """Attend la fin du calcul (au plus `delai_s` secondes) et renvoie son état.
 
-    Si le délai expire, l'état renvoyé est encore « en cours ».
+    Si le délai expire, l'état renvoyé est encore « en cours ». L'attente
+    se fait par courtes tranches : une interruption au clavier la traverse.
     """
     with _verrou:
         actif = _actifs.get(calcul_id)
     if actif is not None:
-        actif.fil.join(delai_s)
+        echeance = None if delai_s is None else time.monotonic() + delai_s
+        while actif.fil.is_alive():
+            reste = None if echeance is None else echeance - time.monotonic()
+            if reste is not None and reste <= 0:
+                break
+            actif.fil.join(PAS_ATTENTE_S if reste is None else min(PAS_ATTENTE_S, reste))
     return etat_calcul(calcul_id)
 
 
@@ -326,26 +360,81 @@ def exiger_reussite(suivi: SuiviCalcul) -> SuiviCalcul:
 
 
 def cloturer_calculs_interrompus() -> int:
-    """Marque en erreur les calculs restés « en cours » alors qu'aucun fil ne les exécute.
+    """Marque en erreur les calculs restés « en cours » que plus rien n'exécute.
 
-    À appeler au démarrage du serveur : un calcul interrompu par un arrêt du
-    processus bloquerait sinon tous les suivants. Renvoie le nombre de
-    calculs clôturés.
+    Appelée au démarrage du serveur, et d'office avant tout lancement : un
+    calcul abandonné par son processus bloquerait sinon tous les suivants. Un
+    calcul qu'un autre processus exécute encore est laissé tranquille (voir
+    l'en-tête du module). Renvoie le nombre de calculs clôturés.
     """
-    with _verrou:
-        vivants = [calcul_id for calcul_id, actif in _actifs.items() if actif.fil.is_alive()]
-    with session_base() as session:
-        orphelins = [
-            calcul
-            for calcul in session.scalars(select(Calcul).where(Calcul.etat == EtatCalcul.EN_COURS))
-            if calcul.id not in vivants
-        ]
-        for calcul in orphelins:
-            calcul.etat = EtatCalcul.ERREUR
-            calcul.message = MESSAGE_INTERROMPU
-            calcul.termine_le = dt.datetime.now()
-            journal.warning("Calcul %d clôturé : %s", calcul.id, MESSAGE_INTERROMPU)
-        return len(orphelins)
+    with _verrou, session_base() as session:
+        return _cloturer_abandonnes(session)
+
+
+def _processus_vivant(pid: int) -> bool:
+    """Vrai si un processus de numéro `pid` existe sur cette machine."""
+    if pid <= 0:
+        return False
+    if os.name == "nt":
+        # Sous Windows, `os.kill(pid, 0)` tuerait le processus : on l'interroge sans y toucher.
+        noyau = ctypes.WinDLL("kernel32", use_last_error=True)
+        noyau.OpenProcess.restype = ctypes.c_void_p
+        noyau.OpenProcess.argtypes = (ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong)
+        noyau.GetExitCodeProcess.argtypes = (ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong))
+        noyau.CloseHandle.argtypes = (ctypes.c_void_p,)
+        poignee = noyau.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+        if not poignee:
+            # Accès refusé (5) : il existe, mais n'est pas à nous.
+            return ctypes.get_last_error() == 5
+        try:
+            code = ctypes.c_ulong()
+            if not noyau.GetExitCodeProcess(poignee, ctypes.byref(code)):
+                return True  # dans le doute, on ne clôt pas un calcul peut-être vivant
+            return code.value == 259  # STILL_ACTIVE
+        finally:
+            noyau.CloseHandle(poignee)
+    try:
+        os.kill(pid, 0)  # signal 0 : ne fait que vérifier l'existence
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # il existe, mais n'est pas à nous
+    return True
+
+
+def _abandonne(calcul: Calcul, vivants: Collection[int]) -> bool:
+    """Vrai si plus rien n'exécute ce calcul resté « en cours » (voir l'en-tête du module)."""
+    if calcul.id in vivants:
+        return False
+    pid = (calcul.statistiques or {}).get(CLE_PROCESSUS)
+    if not isinstance(pid, int) or pid == os.getpid() or not _processus_vivant(pid):
+        return True
+    # Le numéro de processus a pu être réattribué : passé le temps limite et le délai de
+    # grâce, le calcul ne peut plus être vivant.
+    limite = float((calcul.parametres or {}).get("temps_limite_s") or 0)
+    echeance = calcul.demarre_le + dt.timedelta(seconds=limite + DELAI_DE_GRACE_S)
+    return dt.datetime.now() > echeance
+
+
+def _cloturer_abandonnes(session: Session) -> int:
+    """Clôt en erreur les calculs « en cours » abandonnés ; à appeler en tenant `_verrou`.
+
+    Le verrou garantit qu'un calcul de ce processus est soit enregistré avec
+    son fil, soit pas encore créé : il ne peut pas être pris pour abandonné.
+    """
+    vivants = {calcul_id for calcul_id, actif in _actifs.items() if actif.fil.is_alive()}
+    abandonnes = [
+        calcul
+        for calcul in session.scalars(select(Calcul).where(Calcul.etat == EtatCalcul.EN_COURS))
+        if _abandonne(calcul, vivants)
+    ]
+    for calcul in abandonnes:
+        calcul.etat = EtatCalcul.ERREUR
+        calcul.message = MESSAGE_INTERROMPU
+        calcul.termine_le = dt.datetime.now()
+        journal.warning("Calcul %d clôturé : %s", calcul.id, MESSAGE_INTERROMPU)
+    session.flush()
+    return len(abandonnes)
 
 
 # --------------------------------------------------------------------------- #
@@ -628,13 +717,29 @@ def _enregistrer_version(
                 debut_min=placement.debut,
                 fin_min=placement.fin,
                 salle_id=placement.salle_id,
-                verrou=seance.verrou is not None,
+                verrou=_verrou_tenu(seance, placement),
                 semaines=sorted(seance.semaines),
             )
         )
     session.add(version)
     session.flush()
     return version
+
+
+def _verrou_tenu(seance: SeanceAPlacer, placement: Placement) -> bool:
+    """Vrai si la séance est verrouillée et que le placement retenu est bien celui du verrou.
+
+    Avec la contrainte « Séances verrouillées » décochée, le moteur déplace
+    librement ces séances : le verrou ne les suit pas à leur nouvelle place,
+    sinon les calculs suivants figeraient une place que personne n'a choisie.
+    """
+    verrou = seance.verrou
+    return (
+        verrou is not None
+        and (placement.jour, placement.debut, placement.fin)
+        == (verrou.jour, verrou.debut, verrou.fin)
+        and (verrou.salle_id is None or placement.salle_id == verrou.salle_id)
+    )
 
 
 def _clore(

@@ -16,7 +16,12 @@ from fastapi.responses import Response
 
 from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services.etat import EtatBase, diagnostiquer_base
-from edt.services.jeux import recharger_jeu_fictif, remettre_a_zero, tailles_disponibles
+from edt.services.jeux import (
+    ErreurChargementEnCours,
+    recharger_jeu_fictif,
+    remettre_a_zero,
+    tailles_disponibles,
+)
 from edt.web.donnees.ecrans import Formulaire
 from edt.web.gabarits import Message, rediriger, rendre
 from edt.web.menu import GROUPE_JEUX, SECTION_DONNEES, EntreeMenu
@@ -92,7 +97,8 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
     erreurs: dict[str, str] = {}
     if saisies["taille"] not in {t.nom for t in tailles_disponibles()}:
         erreurs["taille"] = "Choisir une taille."
-    if not saisies["graine"].isdigit() or int(saisies["graine"]) > GRAINE_MAX:
+    graine = saisies["graine"]
+    if not (graine.isascii() and graine.isdigit()) or int(graine) > GRAINE_MAX:
         erreurs["graine"] = "Nombre entier positif attendu (0 par défaut)."
     etat = diagnostiquer_base()
     effacer = donnees_presentes(etat)
@@ -111,7 +117,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
             reinitialiser=effacer or not etat.initialisee,
             enregistrer_reference=bool(saisies["reference"]),
         )
-    except ErreurCalculEnCours as refus:
+    except (ErreurCalculEnCours, ErreurChargementEnCours) as refus:
         journal.warning("Chargement d'un jeu fictif refusé : %s", refus.message)
         return _rendre(
             request, saisies=saisies, message=Message(refus.message, "attention"), statut=409
@@ -154,7 +160,8 @@ def remise_a_zero(request: Request, formulaire: Formulaire) -> Response:
         )
     try:
         remettre_a_zero()
-    except ErreurCalculEnCours as refus:
+    except ErreurRegleMetier as refus:
+        # Calcul en cours, ou chargement / remise à zéro déjà en cours.
         journal.warning("Remise à zéro refusée : %s", refus.message)
         return _rendre(request, message=Message(refus.message, "attention"), statut=409)
     return rediriger(

@@ -20,6 +20,7 @@
       <button type="submit" class="bouton bouton-danger"{% if r.suivi.arret_demande %} disabled{% endif %}>
         {{ "Arrêt demandé..." if r.suivi.arret_demande else "Arrêter le calcul" }}</button>
     </form>
+    <span class="discret">Si un emploi du temps a déjà été trouvé, le meilleur est conservé.</span>
   </div>
   {%- endif %}
 
@@ -46,6 +47,9 @@
     <li class="compteur"><span class="compteur-nombre">{{ r.datees.nb_a_programmer }}</span><span class="compteur-libelle">à programmer à la main</span></li>
     {%- endif %}
   </ul>
+  {%- if r.qualite %}
+  <p><strong>Qualité :</strong> {{ r.qualite }}</p>
+  {%- endif %}
   {%- if r.datees and r.datees.erreur %}
   {{ ui.message("La semaine type est enregistrée, mais ses séances datées n'ont pas pu être produites : les recalculer depuis l'emploi du temps (semaine datée).", "attention") }}
   {%- endif %}
@@ -61,7 +65,9 @@
   </details>
   {%- endif %}
   <div class="edt-boutons">
+    {%- if r.suivi.version_id %}
     <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {%- endif %}
     {%- if r.nb_a_programmer %}
     <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">Programmer les {{ fmt.pluriel(r.nb_a_programmer, "séance") }} restantes</a>
     {%- endif %}

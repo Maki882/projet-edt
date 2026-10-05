@@ -47,27 +47,29 @@ class Parametres:
     """Réglages globaux. Les heures sont en minutes depuis minuit."""
 
     temps_limite_s: int = _champ(
-        60,
+        300,
         "Temps limite d'un calcul",
-        "Durée maximale d'une génération avant abandon.",
+        "Durée maximale d'un calcul : passé ce délai, il s'arrête et garde le meilleur emploi "
+        "du temps trouvé.",
         minimum=1,
-        maximum=3600,
+        maximum=900,
         unite="s",
     )
     temps_limite_long_s: int = _champ(
-        300,
+        900,
         "Temps limite d'une relance longue",
-        "Durée maximale utilisée par le bouton « relancer 5 min ».",
+        "Durée maximale utilisée par le bouton de relance longue.",
         minimum=1,
-        maximum=7200,
+        maximum=1800,
         unite="s",
     )
     nb_workers: int = _champ(
         0,
         "Fils de calcul du solveur",
-        "Nombre de fils utilisés par le solveur ; 0 laisse le solveur choisir selon la machine.",
+        "Nombre de fils utilisés par le calcul ; 0 = deux au plus. Le calcul n'en utilise "
+        "jamais plus que la machine n'a de cœurs.",
         minimum=0,
-        maximum=64,
+        maximum=8,
     )
     ouverture_min: int = _champ(
         8 * 60 + 30,
@@ -124,10 +126,11 @@ class Parametres:
         "non accessible.",
     )
     objectif_actif: bool = _champ(
-        False,
+        True,
         "Optimiser la qualité de l'emploi du temps",
-        "Si oui, le calcul minimise les trous, les changements de campus, le samedi et "
-        "les créneaux extrêmes au lieu de s'arrêter à la première solution valide.",
+        "Si oui, une fois un emploi du temps valide trouvé, le calcul emploie le temps qui "
+        "reste à réduire les trous, les changements de campus, le samedi et les créneaux "
+        "extrêmes. Si non, il s'arrête à la première solution valide.",
     )
     poids_trous: int = _champ(
         10,
@@ -205,6 +208,23 @@ def definition(cle: str) -> DefinitionParametre:
 def valider(cle: str, valeur: object) -> ValeurParametre:
     """Vérifie le type et les bornes de `valeur` pour le paramètre `cle` et la renvoie."""
     return _valider_valeur(definition(cle), valeur)
+
+
+def borner(cle: str, valeur: object) -> object:
+    """Ramène un entier hors bornes à la borne la plus proche du paramètre `cle`.
+
+    Sert à la lecture d'une valeur enregistrée avant un resserrement des
+    bornes : elle ne doit pas rendre l'application inutilisable. Toute autre
+    valeur est rendue telle quelle (`valider` dira si elle est acceptable).
+    """
+    entree = definition(cle)
+    if entree.type is not int or not isinstance(valeur, int) or isinstance(valeur, bool):
+        return valeur
+    if entree.minimum is not None and valeur < entree.minimum:
+        return entree.minimum
+    if entree.maximum is not None and valeur > entree.maximum:
+        return entree.maximum
+    return valeur
 
 
 def convertir_texte(cle: str, texte: str) -> ValeurParametre:

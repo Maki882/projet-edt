@@ -25,7 +25,9 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/versions.py` | semestres, versions, historique, activation, suppression |
 | `src/edt/services/emploi_du_temps/calculs.py` | préparation, lancement et résultat d'un calcul |
 | `src/edt/services/emploi_du_temps/anomalies.py` | la liste « À traiter » |
-| `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter », mémorisé tant que la base ne change pas |
+| `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter » (somme des `ATraiter.total`) |
+| `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
+| `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | l'état de l'établissement pour l'accueil |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -51,7 +53,7 @@ Section de menu `"Générer"` (ordre 250 et 260).
 | `GET /calculs/{id}` | suivi puis résultat |
 | `GET /calculs/{id}/etat` | fragment interrogé **chaque seconde** par HTMX tant que le calcul tourne |
 | `POST /calculs/{id}/arreter` | demande l'arrêt |
-| `POST /calculs/{id}/relancer` | `longue=1` : relance « 5 minutes » ; `autre_solution=1` : nouvelle graine |
+| `POST /calculs/{id}/relancer` | `longue=1` : relance avec `temps_limite_long_s` ; `autre_solution=1` : nouvelle graine |
 | `GET /versions?semestre_id=` | historique des calculs et des versions |
 | `POST /versions/{id}/activer`, `POST /versions/{id}/supprimer` | version active ; suppression (refusée pour la version active, confirmation dans la page) |
 
@@ -69,9 +71,13 @@ Section de menu `"Générer"` (ordre 250 et 260).
 - **Contraintes** : le catalogue (`CATALOGUE`), libellé et description,
   tout coché par défaut ; ce qui est décoché est rappelé dans le suivi, le
   résultat et l'historique.
-- **Options** : « rechercher jusqu'à 1 minute » (`temps_limite_s`) ou
-  « 5 minutes » (`temps_limite_long_s`), « chercher un emploi du temps plus
-  confortable » (`OptionsSolveur.optimiser`, coché si `objectif_actif`),
+- **Options** : « rechercher jusqu'à 5 minutes » (`temps_limite_s`, 300 s
+  par défaut) ou « 15 minutes » (`temps_limite_long_s`, 900 s) : les durées
+  affichées sont lues dans les paramètres, jamais écrites dans l'écran ni
+  dans les tests ; « chercher un emploi du temps plus confortable »
+  (`OptionsSolveur.optimiser`, coché si `objectif_actif`, vrai par défaut ;
+  le jeu de test minimal l'éteint, un test qui veut l'amélioration la
+  demande avec `optimiser=1`),
   « proposer une autre solution » : graine tirée au hasard **et**
   `utiliser_indices=False`, sinon le moteur, guidé par les placements de la
   version active, peut redonner le même emploi du temps. Avec deux fils (le
@@ -86,14 +92,27 @@ Section de menu `"Générer"` (ordre 250 et 260).
   - **succès** : séances placées (`nb_seances`), bilan des séances datées
     (`statistiques["instanciation"]` : total, replacées, à programmer avec
     besoin, date, horaire et raison), lien vers l'emploi du temps et vers
-    « À traiter », quatre indicateurs, bouton « autre solution » ;
+    « À traiter », quatre indicateurs, bouton « autre solution ». La ligne
+    **« Qualité : »** reprend du message du moteur les seules phrases de
+    qualité (`calculs.qualite_du_moteur` : « Bilan sur l'ensemble du
+    semestre : x créneau(x) libre(s)… et y séance(s) le samedi », « on ne
+    peut pas faire mieux », amélioration arrêtée au temps limite) ; ce que
+    les compteurs disent déjà (séances placées, séances datées) n'est pas
+    répété. Le moteur ne fait ce bilan que si l'amélioration était demandée ;
+  - **arrêté avec une solution** (`statistiques["arrete_par_utilisateur"]`,
+    état réussi) : « Calcul arrêté : meilleure solution conservée », la
+    phrase « Calcul arrêté à votre demande : la meilleure solution trouvée a
+    été conservée » et la version enregistrée, comme un succès. Le bouton
+    d'arrêt l'annonce pendant le calcul (« si un emploi du temps a déjà été
+    trouvé, le meilleur est conservé ») ;
   - **refusé** (`etat` impossible et `statistiques["refuse"]`) : « Calcul
     non lancé : impossibilités relevées avant la recherche », avec la liste
     `statistiques["impossibilites"]` ;
   - **impossible avec ces contraintes** : prouvé par la recherche ; la
     phrase est celle du moteur ;
   - **pas trouvé dans le temps imparti**, avec le bouton « relancer en
-    cherchant jusqu'à 5 minutes » ; **arrêté** ;
+    cherchant jusqu'à 15 minutes » (`temps_limite_long_s`) ; **arrêté** avant
+    toute solution : aucune version enregistrée ;
   - **erreur** : numéro du calcul et nom du fichier journal à communiquer,
     jamais de trace ni de nom d'exception (un défaut du moteur relevé par le
     vérificateur arrive ici, avec ses raisons) ;
@@ -177,11 +196,12 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
   réussi. En semaine datée, « Recalculer les séances datées »
   (`modifications.recalculer_seances_datees`) réapplique la semaine type :
   `instancier_version` remplace les séances d'origine « semaine type » ou
-  « replacement » et **conserve** les saisies manuelles et les imports
-  (`nb_conservees`). Comme il produit de nouveau la séance de la semaine
-  type pour une semaine retouchée, le recalcul retire ce doublon (même
-  séance hebdomadaire, même semaine d'origine) : une retouche reste la
-  seule séance de sa semaine. L'utilisateur en est prévenu avant d'agir.
+  « replacement », **conserve** les saisies manuelles (`nb_conservees`,
+  annoncées dans le message « vos N retouche(s) à la main… sont
+  conservées ») et ne recrée pas la séance de la semaine type dans une
+  semaine qu'une retouche couvre déjà (`nb_couvertes`) : une retouche reste
+  la seule séance de sa semaine, sans dédoublonnage côté écran.
+  L'utilisateur en est prévenu avant d'agir.
   Une version sans séances datées (version importée ou de référence)
   propose « produire les séances datées ».
 - **Impression** : bouton « Imprimer » ; la feuille d'impression masque
@@ -202,15 +222,29 @@ l'anomalie (à défaut, le premier groupe de la séance), avec la séance mise
 en évidence. Puis les séances « à programmer » avec leur raison (le
 commentaire de l'occurrence, sinon une phrase par défaut).
 
-`GET /a-traiter/compteur` rend le nombre d'erreurs et d'avertissements
-plus les séances à programmer, pour un badge dans le menu (voir « Mise en
-page commune »). Ce nombre est **mémorisé** (`compteur.py`) avec une
-empreinte de la base : versions actives, agrégats SQL sur leurs séances et
-occurrences, taille et date du fichier SQLite et de son journal. Toute
-écriture validée l'invalide ; il est recalculé au plus une fois par
-changement (environ 0,6 s sur l'établissement complet), puis servi en
-quelques millisecondes. Cette mémoire n'est qu'une copie d'un résultat
-recalculable depuis la base, partagée par tous les utilisateurs.
+**Nombre de points à traiter** : une seule définition, `ATraiter.total`,
+reprise par la page, la pastille de l'onglet (`GET /a-traiter/compteur`,
+somme des versions actives) et l'accueil (version active du semestre du
+jour). Il compte les erreurs et avertissements des contraintes actives, sur
+la semaine type et sur les séances datées, et chaque séance « à programmer »
+**une fois** (l'avertissement « reste à programmer » que le vérificateur
+émet pour elle n'est pas ajouté).
+
+**Contraintes décochées lors du calcul** de la version : la vérification
+porte sur toutes les règles, mais les écarts aux règles décochées sont
+listés à part (« Écarts aux règles décochées lors du calcul ») et ne
+comptent ni comme conflits ni comme points à traiter. Une retouche applique
+les mêmes règles que le calcul (`raccords.contraintes_actives_de`, passées
+au vérificateur), comme l'instanciation des séances datées.
+
+**Séances datées importées** (origine « import », version de référence) :
+elles ne se recalculent jamais depuis la semaine type, ce qui les
+doublerait. Le bouton « recalculer » est remplacé par une explication, le
+recalcul est refusé avant toute écriture (`ErreurRegleMetier`), et un
+déplacement dans la semaine type d'une telle version est enregistré avec la
+remarque que les séances datées n'ont pas été recalculées. Si
+`instancier_version` refuse elle-même (même `ErreurRegleMetier`), l'écran
+le dit de la même façon : jamais d'erreur 500.
 
 ## Accueil
 
@@ -256,7 +290,42 @@ premier semestre), version de référence active, serveur local :
 
 L'essentiel est la vérification de la semaine type (environ 0,5 s, dont le
 chargement de l'instantané par le socle). Sans vérification, une grille se
-construit en 5 à 40 ms. La semaine datée ne vérifie que la semaine affichée.
+construit en 5 à 40 ms.
+
+### Mémoire et préchauffage
+
+Les écrans de consultation passent par `memoire.memoriser` : vérification de
+la semaine type et des séances datées d'une version, pré-vérifications et
+récapitulatif d'un semestre sont gardés avec une **empreinte** de la base
+(taille et date du fichier SQLite et de son journal, versions actives,
+agrégats SQL sur leurs séances et occurrences). Toute écriture validée
+l'invalide ; le résultat est recalculé une fois, puis servi depuis la
+mémoire. Une semaine datée prend ses anomalies dans la vérification de tout
+le semestre (une seule vérification datée par version). Les modifications
+vérifient toujours sans mémoire, dans leur transaction.
+
+Après un calcul réussi (dès que son écran l'affiche) ou l'activation d'une
+version, `prechauffage.lancer` refait ces calculs dans un fil d'arrière-plan
+unique : les écrans suivants sont servis tout de suite.
+
+Mesures sur le jeu grand après un calcul en ligne de commande (base de
+départ identique, serveur local) :
+
+| Page | Avant | Après, avec préchauffage | Après, 1er affichage sans préchauffage | Après, affichages suivants |
+|---|---|---|---|---|
+| accueil | 0,62 à 1,12 s | 0,06 s | 2,09 s | 0,04 s |
+| « Générer » | 1,60 à 2,18 s | 0,04 s | 1,60 s | 0,02 s |
+| « À traiter » | 2,55 à 2,62 s | 0,05 s | 0,05 s | 0,03 s |
+| pastille « À traiter » | 1,96 s puis 0,006 s | 0,009 s | 0,03 s | 0,008 s |
+| emploi du temps d'une classe | 0,74 à 1,02 s | 0,18 s | 0,16 s | 0,08 s |
+| emploi du temps d'un enseignant / d'une salle | 0,58 à 1,05 s | 0,04 à 0,08 s | 0,04 à 0,08 s | 0,02 à 0,04 s |
+| semaine datée d'une classe | 0,79 à 1,19 s | 0,06 s | 0,07 s | 0,06 s |
+
+Le premier affichage après une écriture faite hors de ces écrans (calcul en
+ligne de commande, import, écrans de données) paie encore le calcul : deux
+chargements de l'instantané, dont l'essentiel est le dépliage du socle
+(`domaine.depliage.semaines_ouvertes`, environ 1,5 million d'appels sur
+l'établissement complet), et la vérification datée du semestre.
 
 ## Disposition des blocs
 

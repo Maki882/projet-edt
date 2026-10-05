@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 
 import pytest
 from sqlalchemy import func, select
@@ -15,6 +16,7 @@ from edt.echange.transaction import simulation_possible
 from edt.erreurs import ErreurCalculEnCours, ErreurRegleMetier
 from edt.services import echange as service
 from edt.services.echange import FichierEnvoye
+from edt.services.generation import CLE_PROCESSUS
 
 
 def _csv(nom: str, texte: str) -> FichierEnvoye:
@@ -293,6 +295,10 @@ def test_import_refuse_pendant_un_calcul(jeu_minimal, importer):
                 semestre_id=jeu_minimal.semestre_id,
                 etat=EtatCalcul.EN_COURS,
                 demarre_le=dt.datetime.now(),
+                # Calcul d'un autre processus encore vivant (ici le parent des tests) :
+                # sans cela il serait pris pour abandonné et clos.
+                parametres={"temps_limite_s": 300},
+                statistiques={CLE_PROCESSUS: os.getppid()},
             )
         )
     with pytest.raises(ErreurCalculEnCours):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 
 from sqlalchemy import func, select
 
@@ -10,6 +11,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul
 from edt.services.echange import ModeImport
+from edt.services.generation import CLE_PROCESSUS
 
 HTMX = {"HX-Request": "true"}
 
@@ -48,7 +50,8 @@ def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fi
     assert "2 créé(s), 4 rejeté(s)" in page
     assert "Campus « LYON » inconnu" in page
     assert "N401" in page  # aperçu des premières lignes
-    assert "data:text/csv;charset=utf-8;base64," in page
+    assert "data:text/csv" not in page  # le rapport n'est pas encodé dans la page
+    assert 'formaction="/import/rapport.csv"' in page
     assert 'formaction="/import/appliquer"' in page
     assert _compter(m.Salle) == jeu_minimal.nb_salles
 
@@ -116,6 +119,10 @@ def test_import_refuse_pendant_un_calcul(jeu_minimal, client, fichier_exemple):
                 semestre_id=jeu_minimal.semestre_id,
                 etat=EtatCalcul.EN_COURS,
                 demarre_le=dt.datetime.now(),
+                # Calcul d'un autre processus encore vivant (ici le parent des tests) :
+                # sans cela il serait pris pour abandonné et clos.
+                parametres={"temps_limite_s": 300},
+                statistiques={CLE_PROCESSUS: os.getppid()},
             )
         )
     reponse = client.post("/import/appliquer", **_envoi(fichier_exemple("salles_avec_erreurs.csv")))

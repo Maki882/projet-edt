@@ -34,6 +34,9 @@ _DUREE_MINUTES = re.compile(r"^(?P<m>\d{1,5})(?:min|mn|m)$")
 _DUREE_DECIMALE = re.compile(r"^(?P<h>\d{1,3})(?:[.,](?P<f>\d{1,2}))?(?:h)?$")
 _COULEUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 
+ENTIER_MAX = 2**63 - 1
+"""Plus grand entier que la base (SQLite) sait enregistrer ; au-delà, refus clair."""
+
 
 class ErreurChamp(ErreurDonneesInvalides):
     """Valeur refusée pour un champ précis (message court, affiché sous le champ)."""
@@ -87,15 +90,22 @@ def lire_date(valeur: object) -> dt.date:
     raise ErreurChamp("Date invalide : format attendu jj/mm/aaaa.")
 
 
-def _entier(valeur: object) -> int:
+def _entier(valeur: object, *, borner: bool = True) -> int:
+    """Entier saisi ; `borner` refuse ce que la base ne sait pas enregistrer."""
     if isinstance(valeur, bool):
         raise ErreurChamp("Nombre entier attendu.")
     if isinstance(valeur, int):
-        return valeur
-    try:
-        return int(str(valeur).strip())
-    except ValueError:
-        raise ErreurChamp("Nombre entier attendu.") from None
+        nombre = valeur
+    else:
+        texte = str(valeur).strip()
+        chiffres = texte.removeprefix("-").removeprefix("+")
+        # « ² » ou « ٣ » sont des chiffres pour Python, pas pour une saisie : refusés.
+        if not (chiffres.isascii() and chiffres.isdigit()):
+            raise ErreurChamp("Nombre entier attendu.")
+        nombre = int(texte)
+    if borner and abs(nombre) > ENTIER_MAX:
+        raise ErreurChamp("Nombre beaucoup trop grand.")
+    return nombre
 
 
 def _bornes(champ: Champ, nombre: int) -> int:
@@ -159,7 +169,11 @@ def convertir(session: Session, champ: Champ, valeur: object, longueur_max: int 
         return texte
 
     if type_ is TypeChamp.ENTIER:
-        return _bornes(champ, _entier(valeur))
+        # Bornes du champ d'abord (« la valeur maximale est 100000 »), puis celle de la base.
+        nombre = _bornes(champ, _entier(valeur, borner=False))
+        if abs(nombre) > ENTIER_MAX:
+            raise ErreurChamp("Nombre beaucoup trop grand.")
+        return nombre
 
     if type_ is TypeChamp.CHOIX:
         valeur_texte = valeur.value if isinstance(valeur, Enum) else str(valeur).strip()

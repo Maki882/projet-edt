@@ -230,6 +230,11 @@ def test_besoin_ou_seance_inconnus():
     anomalies = verifier_occurrences(instantane, [perimee])
     assert codes(anomalies) == ["VOLUME"]
     assert anomalies[0].gravite is Gravite.AVERTISSEMENT
+    assert anomalies[0].message.startswith(
+        "La séance n° 4 de « Mathématiques TD (A1-G1) » du mardi 6 octobre 2026 vient d'une "
+        "séance de la semaine type que le besoin ne demande plus"
+    )
+    assert "1-4" not in anomalies[0].message
 
 
 @pytest.mark.parametrize(
@@ -266,3 +271,36 @@ def test_occurrence_candidate_sans_identifiant():
 
 def test_liste_vide():
     assert verifier_occurrences(Fabrique().construire(), []) == []
+
+
+def test_verrou_ne_couvre_pas_une_occurrence_deplacee_a_la_main():
+    # Constat n° 15 de la revue : le verrou fixe la place de la semaine type, pas une nouvelle
+    # date choisie à la main. Déplacée un samedi interdit, l'occurrence est une ERREUR JOURS,
+    # sans le faux « créneau imposé ».
+    f = Fabrique()
+    n204 = f.salle("N204")
+    besoin = f.besoin("Traitement du signal TD", [f.groupe("A3-G1")])
+    seance = f.seance(besoin, verrou=Placement("1-1", MARDI, h("8h30"), h("10h30"), n204))
+    instantane = f.construire()
+    samedi = dt.date(2026, 11, 28)
+    deplacee = occurrence(seance, samedi, "8h30", n204, statut=StatutOccurrence.DEPLACEE)
+    anomalies = verifier_occurrences(instantane, [deplacee], ["JOURS"])
+    assert codes(anomalies) == ["JOURS"]
+    assert anomalies[0].gravite is Gravite.ERREUR
+    assert "imposé" not in anomalies[0].message
+
+    # Même jour de la semaine que le verrou mais autre heure : plus imposée non plus.
+    autre_heure = occurrence(seance, MARDI_6_OCT, "12h00", n204, statut=StatutOccurrence.DEPLACEE)
+    anomalies = verifier_occurrences(instantane, [autre_heure], ["DEJEUNER"])
+    assert [a.gravite for a in anomalies] == [Gravite.ERREUR]
+
+
+def test_seance_verrouillee_hors_grille_restee_a_sa_place_reste_une_information():
+    f = Fabrique()
+    n204 = f.salle("N204")
+    besoin = f.besoin("Conférence", [f.groupe("A1")])
+    seance = f.seance(besoin, verrou=Placement("1-1", MARDI, h("12h00"), h("14h00"), n204))
+    a_sa_place = occurrence(seance, MARDI_6_OCT, "12h00", n204)
+    anomalies = verifier_occurrences(f.construire(), [a_sa_place], ["HORAIRES", "DEJEUNER"])
+    assert codes(anomalies) == ["HORAIRES", "DEJEUNER"]
+    assert {a.gravite for a in anomalies} == {Gravite.INFORMATION}

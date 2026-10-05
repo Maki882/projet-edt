@@ -159,7 +159,7 @@ def _parametres_de_liste(request: Request, ecran: Ecran) -> QueryParams:
 def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
     parametres = _parametres_de_liste(request, ecran)
     brute = parametres.get("page", "1").strip() or "1"
-    if not brute.isdigit() or int(brute) < 1:
+    if not (brute.isascii() and brute.isdigit()) or int(brute) < 1:
         raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute} ».")
     noms = {filtre.nom for filtre in ecran.entite.filtres}
     return EtatListe(
@@ -215,21 +215,35 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
         if filtre.champ and page.filtres.get(filtre.nom)
     }
     url_liste = etat.url(page=page.page)
+    filtres = [
+        (filtre, filtre.options(session), page.filtres.get(filtre.nom, ""))
+        for filtre in ecran.entite.filtres
+    ]
+    # Un filtre « posé » est un filtre que l'utilisateur a changé : sa valeur par
+    # défaut (l'année ou le semestre en cours) ne compte pas, elle est rappelée à part.
+    defauts = operations.valeurs_filtres(session, ecran.entite, {})
+    filtre_actif = bool(
+        page.recherche
+        or any(valeur and valeur != defauts[nom] for nom, valeur in page.filtres.items())
+    )
+    filtres_par_defaut = [
+        f"{filtre.libelle} : {dict(choix).get(valeur, valeur)}"
+        for filtre, choix, valeur in filtres
+        if valeur and valeur == defauts[filtre.nom]
+    ]
     contexte: dict[str, Any] = {
         "ecran": ecran,
         "entite": ecran.entite,
         "page": page,
         "etat": etat,
         "colonnes": colonnes_affichees(ecran.entite, page.filtres),
-        "filtres": [
-            (filtre, filtre.options(session), page.filtres.get(filtre.nom, ""))
-            for filtre in ecran.entite.filtres
-        ],
+        "filtres": filtres,
         "url_nouveau": f"{ecran.prefixe}/nouveau"
         + (f"?{urlencode(prerempli)}" if prerempli else ""),
         "url_liste": url_liste,
         "suffixe_retour": "?" + urlencode({"retour": url_liste}),
-        "filtre_actif": bool(page.recherche or any(page.filtres.values())),
+        "filtre_actif": filtre_actif,
+        "filtres_par_defaut": filtres_par_defaut,
     }
     if ecran.contexte_liste is not None:
         contexte.update(ecran.contexte_liste(session, page))

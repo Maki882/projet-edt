@@ -22,16 +22,19 @@ from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.enumerations import OrigineVersion
+from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.enumerations import Gravite, OrigineVersion
 from edt.domaine.heures import texte_vers_minutes
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.instantane import charger_instantane
 from edt.services.verification import (
+    anomalies_introduites,
     verifier_modification,
     verifier_occurrences_version,
     verifier_version,
     version_a_verifier,
 )
+from edt.verification import Anomalie
 
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI = range(5)
 
@@ -194,6 +197,73 @@ def test_modification_envisagee_sans_rien_enregistrer(version_id, jeu_minimal, s
         verifier_modification(session, version_id, "999-1", LUNDI, h("8h30"), h("10h30"), n204)
     with pytest.raises(ErreurDonneesInvalides):
         verifier_modification(session, version_id, seance, 9, h("8h30"), h("10h30"), n204)
+
+
+def test_modification_ignore_les_violations_deja_presentes(version_id, jeu_minimal, session):
+    # Constat n° 16 de la revue : une violation antérieure et indépendante du déplacement
+    # (ici le maximum hebdomadaire de M. Bernard, dépassé dans la version enregistrée) ne
+    # doit pas figer ses séances.
+    bernard = session.scalar(select(m.Enseignant).where(m.Enseignant.identifiant == "ENS002"))
+    bernard.max_minutes_semaine = 4 * 60
+    session.commit()
+    instantane = charger_instantane(session, jeu_minimal.semestre_id)
+    td_g2 = next(b for b in instantane.besoins if b.libelle == "TD Mathématiques - A1-G2")
+    n204 = next(s.id for s in instantane.salles if s.code == "N204")
+    seance, h = f"{td_g2.id}-1", texte_vers_minutes
+
+    audit = verifier_version(session, version_id)
+    assert audit.par_code == {"MAX_ENSEIGNANT": 1}  # toujours signalé par l'audit
+    assert seance in audit.anomalies[0].seances
+
+    libre = verifier_modification(
+        session, version_id, seance, VENDREDI, h("13h45"), h("15h45"), n204
+    )
+    assert libre.valide and libre.anomalies == ()
+
+    # Les erreurs nouvelles restent signalées, sans la violation ancienne.
+    conflit = verifier_modification(
+        session, version_id, seance, LUNDI, h("10h45"), h("12h45"), n204
+    )
+    assert conflit.par_code == {"ENSEIGNANT_UNIQUE": 1, "GROUPE_UNIQUE": 1}
+
+    # Paramètre facultatif : vérifier seulement les contraintes actives au calcul.
+    seule_salle = verifier_modification(
+        session,
+        version_id,
+        seance,
+        LUNDI,
+        h("10h45"),
+        h("12h45"),
+        n204,
+        contraintes_actives=["SALLE_UNIQUE"],
+    )
+    assert seule_salle.valide and seule_salle.contraintes == ("SALLE_UNIQUE",)
+
+
+def test_anomalies_introduites_nouvelles_ou_aggravees():
+    def anomalie(code, gravite, message, seances=("1-1",)):
+        return Anomalie(CodeContrainte(code), gravite, message, seances=seances)
+
+    deja = anomalie("MAX_ENSEIGNANT", Gravite.ERREUR, "maximum dépassé")
+    info = anomalie("HORAIRES", Gravite.INFORMATION, "hors grille, imposée")
+    dispo = anomalie("DISPO_SALLE", Gravite.ERREUR, "salle fermée le lundi")
+    autre = anomalie("SALLE_UNIQUE", Gravite.ERREUR, "conflit", seances=("2-1", "3-1"))
+    avant = [deja, info, dispo, autre]
+    apres = [
+        deja,  # inchangée : écartée
+        anomalie("HORAIRES", Gravite.ERREUR, "hors grille"),  # aggravée : gardée
+        anomalie("DISPO_SALLE", Gravite.ERREUR, "salle fermée le vendredi"),  # même nombre
+        anomalie("DISPO_SALLE", Gravite.ERREUR, "salle fermée le vendredi, bis"),  # une de plus
+        anomalie("PAUSE", Gravite.ERREUR, "pause", seances=("1-1", "4-1")),  # nouvelle
+        autre,  # ne cite pas la séance déplacée : écartée
+    ]
+    gardees = anomalies_introduites(avant, apres, "1-1")
+    assert [(str(a.code), a.message) for a in gardees] == [
+        ("HORAIRES", "hors grille"),
+        ("DISPO_SALLE", "salle fermée le vendredi"),
+        ("DISPO_SALLE", "salle fermée le vendredi, bis"),
+        ("PAUSE", "pause"),
+    ]
 
 
 def test_version_a_verifier(version_id, jeu_minimal, session):

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import threading
 import time
 
@@ -72,6 +73,16 @@ def test_aucune_seance():
     assert resultat.placements == ()
 
 
+def test_jamais_plus_de_fils_que_de_coeurs():
+    """Un réglage démesuré (le formulaire des paramètres est public) est ramené aux cœurs."""
+    instantane, _ = generer(40, graine=3)
+    resultat = resoudre(instantane, options(nb_workers=64))
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["nb_workers"] == min(64, os.cpu_count())
+    defaut = resoudre(instantane, options(nb_workers=0))
+    assert defaut.statistiques["nb_workers"] == min(2, os.cpu_count())
+
+
 def test_statistiques_et_journal(caplog):
     instantane, _ = generer(40, graine=3)
     with caplog.at_level(logging.INFO, logger="edt.solveur"):
@@ -118,8 +129,74 @@ def test_mode_optimise_fait_baisser_l_objectif_du_verificateur():
     assert apres.valeur_objectif < avant.valeur_objectif
     assert apres.trous_creneaux <= avant.trous_creneaux
     assert "objectif" not in faisable.statistiques
-    assert optimise.statistiques["objectif"] >= optimise.statistiques["borne_objectif"]
-    assert "Pénalité de qualité" in optimise.message
+    stats = optimise.statistiques
+    assert stats["objectif"] >= stats["borne_objectif"]
+    # L'amélioration part de la première solution valide et ne fait jamais moins bien.
+    assert stats["objectif"] <= stats["objectif_premiere_solution"]
+    assert stats["objectif"] == apres.valeur_objectif
+    assert (stats["trous"], stats["samedis"]) == (apres.trous_creneaux, apres.seances_samedi)
+    assert 0 < stats["duree_premiere_solution_s"] <= stats["duree_s"]
+    # Le message parle au responsable de planning : des trous et des samedis, pas de pénalité.
+    assert (
+        f"Bilan sur l'ensemble du semestre : {apres.trous_creneaux} créneau(x) libre(s) entre "
+        f"deux cours dans les journées des groupes et {apres.seances_samedi} séance(s) le samedi."
+    ) in optimise.message
+    assert "pénalité" not in optimise.message.lower()
+    assert "objectif" not in optimise.message.lower()
+
+
+def test_l_amelioration_part_de_la_solution_valide():
+    """La solution valide, donnée comme point de départ complet, est la première du second calcul."""
+    from ortools.sat.python import cp_model
+
+    from edt.solveur.modele import ModeleHoraires
+    from edt.solveur.preparation import Preparation
+
+    instantane, _ = generer(60, graine=4)
+    modele = ModeleHoraires(Preparation(instantane), OPTIONS)
+    solveur = cp_model.CpSolver()
+    solveur.parameters.num_workers = 1
+    assert solveur.solve(modele.cp) in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    choix = modele.choix(solveur.boolean_value)
+    assert modele.poser_objectif()
+    depart = modele.bilan(choix)
+    modele.partir_de(list(solveur.response_proto.solution))
+
+    class Premiere(cp_model.CpSolverSolutionCallback):
+        """Retient l'objectif de la première solution, puis arrête la recherche."""
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.objectif: int | None = None
+
+        def on_solution_callback(self) -> None:
+            if self.objectif is None:
+                self.objectif = round(self.objective_value)
+            self.stop_search()
+
+    suite = cp_model.CpSolver()
+    suite.parameters.num_workers = 1
+    suite.parameters.log_search_progress = True
+    suite.parameters.log_to_stdout = False
+    lignes: list[str] = []
+    suite.log_callback = lignes.append
+    premiere = Premiere()
+    suite.solve(modele.cp, premiere)
+    assert any("solution hint is complete and is feasible" in ligne for ligne in lignes)
+    assert premiere.objectif is not None and premiere.objectif <= depart.objectif
+    assert depart.objectif > 0 and depart.trous is not None and depart.samedis is not None
+
+
+def test_mode_optimise_rend_la_solution_valide_quand_le_temps_manque(monkeypatch):
+    """Temps limite atteint juste après la première solution : elle est rendue, pas perdue."""
+    from edt.solveur import moteur
+
+    instantane, _ = generer(60, graine=4)
+    monkeypatch.setattr(moteur, "TEMPS_MIN_AMELIORATION_S", 10_000.0)  # jamais assez de temps
+    resultat = resoudre(instantane, options(optimiser=True))
+    verifier_solution(instantane, resultat)
+    assert "objectif" not in resultat.statistiques
+    assert "Le temps a manqué pour l'améliorer" in resultat.message
 
 
 def test_objectif_prefere_eviter_le_trou_et_le_samedi():
@@ -157,7 +234,8 @@ def test_arret_demande_avant_le_calcul():
     assert "arrêté" in resultat.message
 
 
-def test_arret_pendant_la_recherche_rend_la_main_en_moins_de_deux_secondes():
+def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee():
+    """Arrêt demandé alors qu'une solution existe : rendue en moins de deux secondes, pas perdue."""
     instantane, _ = generer(300, graine=1)
     arret = threading.Event()
     resultats: list[ResultatSolveur] = []
@@ -167,15 +245,35 @@ def test_arret_pendant_la_recherche_rend_la_main_en_moins_de_deux_secondes():
         )
     )
     calcul.start()
-    time.sleep(4)  # la recherche est lancée (la construction prend moins d'une seconde)
-    assert calcul.is_alive(), "le calcul devait encore optimiser"
+    time.sleep(8)  # la première solution est trouvée en deux secondes ; l'amélioration tourne
+    assert calcul.is_alive(), "le calcul devait encore améliorer la solution"
     demande = time.perf_counter()
     arret.set()
     calcul.join(timeout=10)
     assert not calcul.is_alive()
     assert time.perf_counter() - demande < 2
-    assert resultats[0].statut is StatutSolveur.ARRETE
-    assert resultats[0].placements == ()
+    resultat = resultats[0]
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["arrete_par_utilisateur"] is True
+    conservee = "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
+    assert conservee in resultat.avertissements and conservee in resultat.message
+
+
+def test_graines_differentes_solutions_differentes_avec_un_seul_fil():
+    """Même graine : même solution. Autre graine : autre solution, même sur un petit problème."""
+    f = Fabrique()
+    for _ in range(3):
+        f.salle()
+    for numero in range(4):
+        f.besoin([f.groupe(f"A{numero}")], [f.enseignant()], nombre=3)
+    instantane = f.instantane()
+    solutions = {}
+    for graine in (1, 2, 3, 4, 5, 6):
+        resultat = resoudre(instantane, options(graine=graine, nb_workers=1))
+        verifier_solution(instantane, resultat)
+        solutions[graine] = resultat.placements
+    assert len(set(solutions.values())) >= 5
+    assert resoudre(instantane, options(graine=3, nb_workers=1)).placements == solutions[3]
 
 
 def _salles_en_quinconce(jours):

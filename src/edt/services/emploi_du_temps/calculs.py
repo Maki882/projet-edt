@@ -14,9 +14,11 @@ ce module ajoute ce que l'écran doit dire :
   sans partir des placements de la version active) ;
 - le **résultat** d'un calcul en phrases : succès (séances placées,
   séances datées, replacées et à programmer avec leur raison,
-  avertissements, indicateurs), **refusé** par les vérifications préalables
-  (avec la liste), impossible (prouvé par la recherche), pas trouvé dans le
-  temps imparti, arrêté, erreur (identifiant du calcul et nom du journal).
+  avertissements, indicateurs, bilan de qualité du moteur), **arrêté avec
+  la meilleure solution conservée** (un succès), **refusé** par les
+  vérifications préalables (avec la liste), impossible (prouvé par la
+  recherche), pas trouvé dans le temps imparti, arrêté sans solution,
+  erreur (identifiant du calcul et nom du journal).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ import dataclasses
 import datetime as dt
 import logging
 import random
+import re
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,7 +40,7 @@ from edt.domaine.contraintes import CATALOGUE, normaliser_codes
 from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
 from edt.erreurs import ErreurEDT, ErreurIntrouvable, ErreurRegleMetier
 from edt.services import generation
-from edt.services.emploi_du_temps import presentation, raccords
+from edt.services.emploi_du_temps import memoire, presentation, raccords
 from edt.services.emploi_du_temps.versions import ResumeSemestre, exiger_semestre
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
@@ -129,6 +132,12 @@ class PreVerification:
         )
 
 
+MESSAGE_AUCUN_BESOIN = (
+    "Ce semestre n'a encore aucun besoin d'enseignement : il n'y a rien à placer. Saisir ou "
+    "importer d'abord les besoins."
+)
+
+
 class ErreurPreVerification(ErreurRegleMetier):
     """Le calcul n'est pas lancé : une vérification préalable a relevé une erreur."""
 
@@ -152,12 +161,12 @@ class OptionsFormulaire:
 
     @property
     def temps_court_texte(self) -> str:
-        """« 1 minute »."""
+        """Temps limite court lisible (« 5 minutes » avec les réglages par défaut)."""
         return presentation.duree_secondes(self.temps_court_s)
 
     @property
     def temps_long_texte(self) -> str:
-        """« 5 minutes »."""
+        """Temps limite long lisible (« 15 minutes » avec les réglages par défaut)."""
         return presentation.duree_secondes(self.temps_long_s)
 
 
@@ -221,7 +230,11 @@ class ResultatCalcul:
       recherche (le calcul a pu réussir malgré elles) ;
     - `impossibilites` : raisons d'un refus par les vérifications préalables ;
     - `nb_seances` : séances de la semaine type placées (succès) ;
-    - `datees` : bilan des séances datées (succès).
+    - `datees` : bilan des séances datées (succès) ;
+    - `qualite` : bilan de qualité du moteur, en phrases (trous, samedis,
+      amélioration possible), sans ce que les compteurs disent déjà ;
+    - `arrete_avec_solution` : l'utilisateur a arrêté le calcul et la
+      meilleure solution trouvée a été conservée (état « réussi »).
     """
 
     suivi: generation.SuiviCalcul
@@ -244,6 +257,8 @@ class ResultatCalcul:
     impossibilites: tuple[str, ...] = ()
     nb_seances: int | None = None
     datees: BilanDatees | None = None
+    qualite: str | None = None
+    arrete_avec_solution: bool = False
 
     @property
     def en_cours(self) -> bool:
@@ -257,7 +272,18 @@ class ResultatCalcul:
 
 
 def recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
-    """Nombre de besoins, séances, groupes, enseignants et salles qu'un calcul aurait à placer."""
+    """Nombre de besoins, séances, groupes, enseignants et salles qu'un calcul aurait à placer.
+
+    Mémorisé tant que la base ne change pas (`memoire`) : l'écran « Générer »
+    le redemande à chaque affichage.
+    """
+    exiger_semestre(session, semestre_id)
+    return memoire.memoriser(
+        session, "recapitulatif", (semestre_id,), lambda: _recapitulatif(session, semestre_id)
+    )
+
+
+def _recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
     semestre = exiger_semestre(session, semestre_id)
     try:
         instantane = charger_instantane(session, semestre_id)
@@ -316,8 +342,16 @@ def pre_verifier(
     desactivees = normaliser_codes(desactivees)
     recap = recap or recapitulatif(session, semestre_id)
     problemes = (recap.erreur,) if recap.erreur else ()
+    if not recap.erreur and not recap.nb_besoins:
+        problemes += (MESSAGE_AUCUN_BESOIN,)
+    codes = tuple(sorted(str(code) for code in desactivees))
     try:
-        anomalies = raccords.pre_verifier_semestre(session, semestre_id, sorted(desactivees))
+        anomalies = memoire.memoriser(
+            session,
+            "pre_verifier_semestre",
+            (semestre_id, codes),
+            lambda: raccords.pre_verifier_semestre(session, semestre_id, codes),
+        )
     except raccords.ErreurRaccordIndisponible as erreur:
         problemes += tuple(
             message
@@ -466,9 +500,14 @@ def resultat_calcul(
             or 0
         )
         if indicateurs and issue == Issue.REUSSI:
-            controle = raccords.controler(raccords.verifier_version, session, suivi.version_id)
+            controle = raccords.controler_version(session, suivi.version_id)
 
-    titre, phrase, precision = _phrases(suivi, issue, semestre, temps, limite_texte, version_active)
+    arrete_avec_solution = issue == Issue.REUSSI and bool(
+        statistiques.get("arrete_par_utilisateur")
+    )
+    titre, phrase, precision = _phrases(
+        suivi, issue, semestre, temps, limite_texte, version_active, arrete_avec_solution
+    )
     return ResultatCalcul(
         suivi=suivi,
         semestre=semestre,
@@ -494,7 +533,33 @@ def resultat_calcul(
         datees=BilanDatees.lire(statistiques.get("instanciation"))
         if issue == Issue.REUSSI
         else None,
+        qualite=qualite_du_moteur(suivi.message) if issue == Issue.REUSSI else None,
+        arrete_avec_solution=arrete_avec_solution,
     )
+
+
+PHRASES_DE_QUALITE = (
+    "Bilan sur l'ensemble du semestre",
+    "On ne peut pas faire mieux",
+    "L'amélioration s'est arrêtée",
+    "Le temps a manqué pour l'améliorer",
+)
+"""Débuts des phrases du message du moteur qui parlent de la qualité de la solution.
+
+Les autres phrases (séances placées, séances datées, contraintes ignorées,
+arrêt demandé) sont déjà dites par les compteurs et les encarts de l'écran.
+"""
+
+
+def qualite_du_moteur(message: str | None) -> str | None:
+    """Les phrases de qualité du message de réussite du moteur, ou `None`."""
+    if not message:
+        return None
+    # Une phrase commence après un point, par une majuscule ou un nombre
+    # (« 202 séance(s) datée(s) : ... ») ; « 1.5 s » n'a pas d'espace après le point.
+    phrases = re.split(r"(?<=\.)\s+(?=[A-ZÀ-Þ0-9])", message.strip())
+    gardees = [p for p in phrases if p.startswith(PHRASES_DE_QUALITE)]
+    return " ".join(gardees) or None
 
 
 def _phrases(
@@ -504,6 +569,7 @@ def _phrases(
     temps: str,
     limite: str,
     version_active: bool,
+    arrete_avec_solution: bool = False,
 ) -> tuple[str, str, str | None]:
     message = (suivi.message or "").strip()
     if issue == Issue.EN_COURS:
@@ -514,12 +580,20 @@ def _phrases(
         return "Calcul en cours", phrase, None
     if issue == Issue.REUSSI:
         phrase = f"Un emploi du temps a été trouvé en {temps}."
-        phrase += (
-            " Il est maintenant la version active du semestre."
-            if version_active
-            else " Il est enregistré comme une nouvelle version du semestre."
-        )
-        return "Emploi du temps généré", phrase, None
+        titre = "Emploi du temps généré"
+        if arrete_avec_solution:
+            titre = "Calcul arrêté : meilleure solution conservée"
+            phrase = (
+                "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée "
+                f"(après {temps} de recherche)."
+            )
+        if suivi.version_id is None:
+            phrase += " La version produite a depuis été supprimée."
+        elif version_active:
+            phrase += " Il est maintenant la version active du semestre."
+        else:
+            phrase += " Il est enregistré comme une version du semestre (pas la version active)."
+        return titre, phrase, None
     if issue == Issue.REFUSE:
         return (
             "Calcul non lancé : impossibilités relevées avant la recherche",
@@ -600,7 +674,7 @@ def _options(
 
 
 def _etait_long(session: Session, parametres: dict) -> bool:
-    """Vrai si le calcul a utilisé le temps limite long (relance « 5 minutes »)."""
+    """Vrai si le calcul a utilisé le temps limite long (`temps_limite_long_s`)."""
     limite = parametres.get("temps_limite_s")
     reglages = lire_parametres(session)
     return (

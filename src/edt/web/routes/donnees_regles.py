@@ -126,8 +126,14 @@ def calendrier(request: Request, session: SessionRequete) -> Response:
 def ajouter_annee(request: Request, session: SessionRequete, formulaire: Formulaire) -> Response:
     """Crée une année scolaire avec ses deux semestres et ses jours fériés."""
     brute = str(formulaire.get("annee_debut", "")).strip()
-    if not brute.isdigit():
-        raise ErreurDonneesInvalides(f"Année de début invalide : « {brute} » (par exemple 2027).")
+    if not (brute.isascii() and brute.isdigit()):
+        journal.info("Ajout d'une année refusé : année de début « %s » invalide", brute)
+        return rediriger(
+            request,
+            "/calendrier",
+            f"Année de début invalide : « {brute} ». Saisir une année, par exemple 2027.",
+            "erreur",
+        )
     try:
         annee = creer_annee_par_defaut(session, int(brute))
     except ErreurRegleMetier as refus:

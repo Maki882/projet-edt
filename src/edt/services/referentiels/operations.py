@@ -33,7 +33,7 @@ from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
-from edt.services.referentiels.conversion import ErreurChamp, canonique, convertir
+from edt.services.referentiels.conversion import ENTIER_MAX, ErreurChamp, canonique, convertir
 from edt.services.referentiels.description import (
     Champ,
     Entite,
@@ -320,12 +320,12 @@ def _requete_filtree(
     for filtre in description.filtres:
         valeur = appliques[filtre.nom]
         if valeur:
-            try:
-                conditions.append(filtre.condition(valeur))
-            except ValueError as erreur:
+            # Valeur venue d'une adresse : elle doit être l'un des choix du filtre.
+            if valeur not in {cle for cle, _ in filtre.options(session)}:
                 raise ErreurDonneesInvalides(
-                    f"Filtre « {filtre.libelle} » : valeur invalide « {valeur} »."
-                ) from erreur
+                    f"Filtre « {filtre.libelle} » : valeur inconnue « {valeur} »."
+                )
+            conditions.append(filtre.condition(valeur))
     return requete.where(*conditions), texte, appliques
 
 
@@ -345,10 +345,19 @@ def _ligne(description: Entite, trouve: Any) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
+def identifiant_possible(ident: object) -> bool:
+    """Vrai si `ident` peut être un identifiant en base (entier positif représentable).
+
+    Une adresse comme « /salles/99999999999999999999 » donne alors « introuvable »
+    au lieu d'une erreur de la base.
+    """
+    return isinstance(ident, int) and not isinstance(ident, bool) and 0 < ident <= ENTIER_MAX
+
+
 def objet(session: Session, code: str | Entite, ident: int) -> Any:
     """L'objet ORM `ident` ; lève `ErreurIntrouvable` s'il n'existe pas."""
     description = entite(code)
-    trouve = session.get(description.modele, ident)
+    trouve = session.get(description.modele, ident) if identifiant_possible(ident) else None
     if trouve is None:
         raise ErreurIntrouvable(
             f"{description.nom_majuscule} n° {ident} introuvable : "

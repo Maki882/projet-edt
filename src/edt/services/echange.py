@@ -30,14 +30,20 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
-from edt.domaine.enumerations import EtatCalcul, Gravite
+from edt.domaine.enumerations import Gravite
 from edt.echange import donnees, export_edt
 from edt.echange.ecriture import archive_zip, classeur_xlsx
 from edt.echange.export_edt import Couche, Filtre
 from edt.echange.format import FEUILLES, identifier_feuille, texte_lisez_moi
 from edt.echange.ical import lire_ical
-from edt.echange.lecture import FichierEnvoye, lire_fichier
-from edt.echange.rapport import Bilan, RapportImport, Signalement, rapport_csv
+from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
+from edt.echange.rapport import (
+    Bilan,
+    ListeSignalements,
+    RapportImport,
+    Signalement,
+    rapport_csv,
+)
 from edt.echange.reconstitution import reconstituer
 from edt.echange.seances import ModeImport, lire_tableau_seances
 from edt.echange.transaction import simulation_possible
@@ -49,6 +55,7 @@ from edt.erreurs import (
     ErreurRegleMetier,
 )
 from edt.services.calendrier import semestre_par_defaut
+from edt.services.generation import calcul_en_cours
 
 journal = logging.getLogger(__name__)
 
@@ -155,19 +162,24 @@ class OptionsImport:
 
 @dataclass(frozen=True)
 class ChoixExport:
-    """Listes proposées par l'écran d'export : versions, groupes, enseignants, salles."""
+    """Listes proposées par l'écran d'export : versions, groupes, enseignants, salles.
+
+    `version_par_defaut` : la version à présélectionner (voir `choix_export`).
+    """
 
     versions: tuple[tuple[int, str], ...]
     groupes: tuple[tuple[int, str], ...]
     enseignants: tuple[tuple[int, str], ...]
     salles: tuple[tuple[int, str], ...]
+    version_par_defaut: int | None = None
 
     def vers_dict(self) -> dict:
         """Représentation JSON."""
-        return {
+        listes = {
             nom: [{"id": i, "libelle": libelle} for i, libelle in getattr(self, nom)]
             for nom in ("versions", "groupes", "enseignants", "salles")
         }
+        return listes | {"version_par_defaut": self.version_par_defaut}
 
 
 def lire_options(
@@ -320,12 +332,11 @@ def _importer(
             "« Tout remplacer » supprime d'abord toutes les données de l'établissement : "
             "le confirmer explicitement pour appliquer l'import."
         )
-    en_cours = session.scalar(
-        select(m.Calcul.id).where(m.Calcul.etat == EtatCalcul.EN_COURS).limit(1)
-    )
+    # Par le service de génération : un calcul abandonné par son processus est d'abord clos.
+    en_cours = calcul_en_cours()
     if en_cours is not None:
         raise ErreurCalculEnCours(
-            f"Un calcul d'emploi du temps est en cours (n° {en_cours}) : l'import est refusé "
+            f"Un calcul d'emploi du temps est en cours (n° {en_cours.id}) : l'import est refusé "
             "jusqu'à sa fin, car il modifierait les données que le calcul utilise."
         )
 
@@ -335,11 +346,12 @@ def _importer(
         options.mode.value,
         ", ".join(f.nom for f in fichiers),
     )
-    signalements: list[Signalement] = []
+    signalements = ListeSignalements()
+    limites = Limites()
     tableaux = []
     calendriers: list[tuple[str, str]] = []
     for fichier in fichiers:
-        lu, lus = lire_fichier(fichier)
+        lu, lus = lire_fichier(fichier, limites)
         signalements.extend(lus)
         tableaux.extend(lu.tableaux)
         if lu.texte_ical is not None:
@@ -362,9 +374,8 @@ def _importer(
                 )
             if options.tout_remplacer:
                 bilans.append(_remplacer(session, signalements))
-            importes, signales = donnees.importer_tableaux(session, tableaux)
+            importes, _ = donnees.importer_tableaux(session, tableaux, signalements)
             bilans.extend(importes)
-            signalements.extend(signales)
             apercus = tuple(
                 t.apercu(f.nom if (f := identifier_feuille(t.nom, t.entetes)) else t.nom)
                 for t in tableaux
@@ -382,7 +393,13 @@ def _importer(
             for tableau in tableaux:
                 seances.extend(lire_tableau_seances(tableau, bilan_seances, signalements))
             for nom, texte in calendriers:
-                lues, signales = lire_ical(nom, texte, (semestre.date_debut, semestre.date_fin))
+                lues, signales = lire_ical(
+                    nom,
+                    texte,
+                    (semestre.date_debut, semestre.date_fin),
+                    max_seances=limites.lignes_restantes,
+                )
+                limites.lignes_restantes -= len(lues)
                 bilan_seances.ajouter(
                     "rejetes", sum(1 for s in signales if s.gravite is Gravite.ERREUR)
                 )
@@ -414,6 +431,8 @@ def _importer(
         version_id=version_id,
         semaines_types=semaines_types,
         besoins=besoins,
+        signalements_omis=signalements.omis,
+        erreurs_omises=signalements.erreurs_omises,
     )
     niveau = logging.WARNING if rapport.a_des_rejets else logging.INFO
     journal.log(
@@ -523,12 +542,19 @@ def resoudre_filtre(
         raise ErreurIntrouvable(rejet.message) from None
 
 
-def choix_export(session: Session) -> ChoixExport:
-    """Versions et ressources proposées par l'écran d'export."""
-    versions = session.scalars(
-        select(m.VersionEdt)
-        .options(selectinload(m.VersionEdt.semestre))
-        .order_by(m.VersionEdt.semestre_id.desc(), m.VersionEdt.numero.desc())
+def choix_export(session: Session, aujourdhui: dt.date | None = None) -> ChoixExport:
+    """Versions et ressources proposées par l'écran d'export.
+
+    La version présélectionnée est la version active du semestre proposé par
+    défaut (celui du jour) ; à défaut, la version active la plus récente ; à
+    défaut, la première de la liste.
+    """
+    versions = list(
+        session.scalars(
+            select(m.VersionEdt)
+            .options(selectinload(m.VersionEdt.semestre))
+            .order_by(m.VersionEdt.semestre_id.desc(), m.VersionEdt.numero.desc())
+        )
     )
     groupes = session.scalars(
         select(m.Groupe).options(selectinload(m.Groupe.annee)).order_by(m.Groupe.code)
@@ -550,4 +576,22 @@ def choix_export(session: Session) -> ChoixExport:
             for e in session.scalars(select(m.Enseignant).order_by(m.Enseignant.nom))
         ),
         salles=tuple((s.id, f"{s.code} ({s.campus.code})") for s in salles),
+        version_par_defaut=_version_par_defaut(session, versions, aujourdhui),
     )
+
+
+def _version_par_defaut(
+    session: Session, versions: list[m.VersionEdt], aujourdhui: dt.date | None
+) -> int | None:
+    if not versions:
+        return None
+    actives = [v for v in versions if v.active]
+    try:
+        semestre_id = semestre_par_defaut(session, aujourdhui).id
+    except ErreurIntrouvable:
+        journal.info("Aucun semestre : la version active la plus récente est présélectionnée")
+        semestre_id = None
+    for version in actives:
+        if version.semestre_id == semestre_id:
+            return version.id
+    return actives[0].id if actives else versions[0].id

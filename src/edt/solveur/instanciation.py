@@ -14,7 +14,10 @@ Une occurrence est « à replacer » si, à sa date :
   `DISPO_GROUPE`), que l'indisponibilité soit récurrente ou datée. Les
   indisponibilités datées ne restreignent pas la semaine type : c'est ici
   qu'elles sont prises en compte ;
-- la date sort du semestre (première ou dernière semaine incomplète).
+- la date sort du semestre (première ou dernière semaine incomplète) ;
+- sa place est déjà prise par une séance **en place** (saisie à la main ou
+  importée, que l'appelant transmet) : même salle, même groupe ou même
+  enseignant au même moment, pause ou trajet non tenus.
 
 Seules les indisponibilités dures comptent. Une contrainte désactivée par
 l'utilisateur n'est pas examinée.
@@ -22,7 +25,9 @@ l'utilisateur n'est pas examinée.
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
+from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -123,18 +128,54 @@ def empechement(
     return None
 
 
+def _heurt(
+    regles: Regles, besoin: Besoin, occurrence: Occurrence, en_place: Sequence[Occurrence]
+) -> tuple[CodeContrainte, str] | None:
+    """Contrainte violée face à une séance en place le même jour (code, raison), ou `None`."""
+    for autre in en_place:
+        besoin_autre = regles.instantane.besoin(autre.besoin_id)
+        codes = regles.codes_violes(
+            besoin,
+            occurrence.debut,
+            occurrence.fin,
+            occurrence.salle_id,
+            besoin_autre,
+            autre.debut,
+            autre.fin,
+            autre.salle_id,
+        )
+        if codes:
+            horaire = plage_vers_texte(autre.debut, autre.fin)
+            return (
+                codes[0],
+                f"place prise par une séance saisie à la main ({besoin_autre.libelle}, le "
+                f"{autre.date:%d/%m/%Y} {horaire})",
+            )
+    return None
+
+
 def instancier(
     instantane: Instantane,
     placements: Sequence[Placement],
     contraintes_desactivees: Iterable[str] = (),
+    en_place: Sequence[Occurrence] = (),
 ) -> ResultatInstanciation:
     """Produit les séances datées de la semaine type `placements`.
 
     Chaque placement désigne une séance de l'instantané (`ErreurIntrouvable`
     sinon) et donne une occurrence par semaine active de cette séance. Les
     occurrences sortent triées par date, heure puis séance.
+
+    `en_place` : séances datées qui gardent leur place quoi qu'il arrive
+    (saisies à la main, importées). Une occurrence de la semaine type qui
+    heurte l'une d'elles est rendue « à replacer » : la semaine type, valide
+    seule, ne doit pas créer de double réservation avec une retouche.
     """
     regles = Regles(instantane, contraintes_desactivees)
+    occupees: dict[dt.date, list[Occurrence]] = defaultdict(list)
+    for autre in en_place:
+        if autre.statut.occupe_les_ressources:
+            occupees[autre.date].append(autre)
     occurrences: list[Occurrence] = []
     a_replacer: list[OccurrenceARevoir] = []
     for placement in placements:
@@ -149,7 +190,9 @@ def instancier(
                 fin=placement.fin,
                 salle_id=placement.salle_id,
             )
-            obstacle = empechement(regles, seance.besoin, occurrence)
+            obstacle = empechement(regles, seance.besoin, occurrence) or _heurt(
+                regles, seance.besoin, occurrence, occupees.get(occurrence.date, ())
+            )
             if obstacle is None:
                 occurrences.append(occurrence)
             else:

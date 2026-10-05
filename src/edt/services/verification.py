@@ -8,8 +8,8 @@ délèguent au vérificateur pur (`edt.verification`) ; elles n'écrivent rien.
 - `verifier_version` : semaine type d'une version, avec ses indicateurs ;
 - `verifier_occurrences_version` : séances datées d'une version,
   éventuellement bornées à une période ;
-- `verifier_modification` : ce que donnerait la semaine type si une séance
-  était placée autrement, sans rien enregistrer ;
+- `verifier_modification` : les anomalies qu'introduirait le déplacement
+  d'une séance dans la semaine type, sans rien enregistrer ;
 - `version_a_verifier` : la version désignée par l'utilisateur (une version,
   ou la version active d'un semestre, ou celle du semestre par défaut).
 
@@ -50,6 +50,9 @@ journal = logging.getLogger(__name__)
 SEMAINE_TYPE = "semaine_type"
 SEANCES_DATEES = "seances_datees"
 MODIFICATION = "modification"
+
+_RANG_GRAVITE = {Gravite.ERREUR: 0, Gravite.AVERTISSEMENT: 1, Gravite.INFORMATION: 2}
+"""Rang de gravité (0 = la plus grave), pour reconnaître une anomalie aggravée."""
 
 
 @dataclass(frozen=True)
@@ -218,31 +221,43 @@ def verifier_modification(
     debut: int,
     fin: int,
     salle_id: int | None,
+    *,
+    contraintes_actives: Iterable[str] | None = None,
 ) -> RapportVerification:
-    """Anomalies qu'aurait la séance `seance_id` si elle était placée ainsi dans la version.
+    """Anomalies que le déplacement de la séance `seance_id` **introduit** dans la version.
 
-    Rien n'est enregistré : les placements de la version sont relus, celui de
-    la séance est remplacé (ou ajouté), puis toute la semaine type est
-    vérifiée avec les contraintes par défaut. Seules les anomalies qui citent
-    cette séance sont renvoyées (conflits avec d'autres séances compris) ; un
-    rapport valide signifie que la modification n'introduit aucune erreur
-    autour de cette séance. Une séance verrouillée dans la version donne une
-    anomalie `VERROU` si on la déplace.
+    Rien n'est enregistré. La semaine type est vérifiée deux fois : telle
+    qu'elle est enregistrée (avant), puis avec la séance placée ainsi (après :
+    son placement est remplacé, ou ajouté si elle n'était pas placée). Seules
+    les anomalies d'après qui citent cette séance et qui sont **nouvelles ou
+    aggravées** sont renvoyées (voir `anomalies_introduites`) : une violation
+    déjà présente avant le déplacement (maximum hebdomadaire d'un enseignant,
+    contrainte décochée au calcul...) ne fige pas la séance, elle reste
+    signalée par `verifier_version`. Un rapport valide signifie donc que la
+    modification n'introduit aucune erreur. Une séance verrouillée dans la
+    version donne une anomalie `VERROU` si on la déplace.
+
+    `contraintes_actives` : codes à vérifier (par défaut, ceux actifs par
+    défaut du catalogue), par exemple ceux du calcul qui a produit la version.
 
     Lève `ErreurIntrouvable` si la version ou la séance n'existe pas,
-    `ErreurDonneesInvalides` si le placement proposé est mal formé.
+    `ErreurDonneesInvalides` si le placement proposé est mal formé ou si un
+    code de contrainte est inconnu.
     """
     version = _version(session, version_id)
+    codes = _codes(contraintes_actives)
     instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
     if seance_id not in {seance.id for seance in instantane.seances}:
         raise ErreurIntrouvable(
             f"La séance « {seance_id} » n'existe pas dans le semestre « {instantane.libelle} »."
         )
     propose = Placement(seance_id, jour, debut, fin, salle_id)
-    placements = [p for p in charger_placements(session, version.id) if p.seance_id != seance_id]
-    placements.append(propose)
-    codes = tuple(sorted(codes_par_defaut()))
-    anomalies = [a for a in verifier(instantane, placements, codes) if seance_id in a.seances]
+    enregistres = charger_placements(session, version.id)
+    apres = [p for p in enregistres if p.seance_id != seance_id]
+    apres.append(propose)
+    anomalies = anomalies_introduites(
+        verifier(instantane, enregistres, codes), verifier(instantane, apres, codes), seance_id
+    )
     journal.debug("Modification envisagée de la séance %s : %s", seance_id, propose)
     return _rapport(
         anomalies,
@@ -253,6 +268,44 @@ def verifier_modification(
         codes=codes,
         nb_examines=1,
     )
+
+
+def anomalies_introduites(
+    avant: Sequence[Anomalie], apres: Sequence[Anomalie], seance_id: str
+) -> list[Anomalie]:
+    """Anomalies d'après qui citent `seance_id` et que le déplacement a créées ou aggravées.
+
+    Deux anomalies se correspondent quand elles ont le même code et citent
+    exactement les mêmes séances. Pour chaque correspondance, les anomalies
+    d'après sont toutes gardées s'il y en a plus qu'avant, ou si la plus grave
+    d'entre elles est plus grave que la plus grave d'avant ; sinon elles sont
+    écartées comme déjà présentes. L'ordre d'après est conservé.
+    """
+
+    def regrouper(anomalies: Sequence[Anomalie]) -> dict[tuple, list[Anomalie]]:
+        groupes: dict[tuple, list[Anomalie]] = {}
+        for anomalie in anomalies:
+            if seance_id in anomalie.seances:
+                groupes.setdefault((anomalie.code, anomalie.seances), []).append(anomalie)
+        return groupes
+
+    avant_par_cle, apres_par_cle = regrouper(avant), regrouper(apres)
+    introduites: set[tuple] = set()
+    for cle, liste in apres_par_cle.items():
+        anciennes = avant_par_cle.get(cle, [])
+        pire = min(_RANG_GRAVITE[a.gravite] for a in liste)
+        pire_avant = min((_RANG_GRAVITE[a.gravite] for a in anciennes), default=len(_RANG_GRAVITE))
+        if len(liste) > len(anciennes) or pire < pire_avant:
+            introduites.add(cle)
+    ecartees = sum(len(liste) for cle, liste in apres_par_cle.items() if cle not in introduites)
+    if ecartees:
+        journal.info(
+            "Modification de la séance %s : %d anomalie(s) déjà présente(s) avant le déplacement "
+            "écartée(s)",
+            seance_id,
+            ecartees,
+        )
+    return [a for a in apres if (a.code, a.seances) in introduites]
 
 
 def version_a_verifier(
@@ -363,6 +416,7 @@ __all__ = [
     "SEMAINE_TYPE",
     "RapportVerification",
     "anomalie_vers_dict",
+    "anomalies_introduites",
     "verifier_modification",
     "verifier_occurrences_version",
     "verifier_version",
