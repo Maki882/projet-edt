@@ -7,25 +7,41 @@ Déroulement d'un calcul
 2. **Pré-vérifications** (`edt.solveur.preverification`) : toute
    impossibilité certaine fait **refuser** le calcul, avec la liste des
    raisons ; les situations tendues deviennent des avertissements.
-3. **Horaires** : modèle CP-SAT qui choisit le début et le campus de chaque
-   séance (`edt.solveur.modele`).
-4. **Salles** : affectation d'une salle à chaque séance, horaires fixés
-   (`edt.solveur.salles`). Si elle est impossible, les séances en cause sont
-   signalées au modèle des horaires, qui écarte cette combinaison, et l'on
-   reprend à l'étape 3.
+3. **Une solution valide** : le modèle des horaires (`edt.solveur.modele`)
+   choisit le début et le campus de chaque séance, puis chaque séance reçoit
+   une salle (`edt.solveur.salles`). Si les salles ne suivent pas, les
+   séances en cause sont signalées au modèle des horaires, qui écarte cette
+   combinaison et cherche d'autres horaires.
+4. **Amélioration** (seulement avec `options.optimiser`) : l'objectif de
+   qualité est ajouté au modèle et la recherche repart de la solution valide,
+   dans le temps qui reste. Si elle ne trouve pas mieux, ou n'a plus de
+   temps, c'est la solution valide qui est rendue.
 
 Le tout est borné par `options.temps_limite_s` (construction du modèle
 comprise) et interruptible par `arret`.
+
+Une solution trouvée n'est jamais perdue
+----------------------------------------
+Dès que l'étape 3 a abouti, le calcul rend une solution, quoi qu'il arrive
+ensuite : temps limite atteint pendant l'amélioration, ou arrêt demandé par
+l'utilisateur (la meilleure solution trouvée est alors conservée,
+`statistiques["arrete_par_utilisateur"]` vaut vrai et un avertissement le dit).
 
 Issues
 ------
 - `SOLUTION` : toutes les séances sont placées ;
 - `INFAISABLE` : impossibilité prouvée, par les pré-vérifications (calcul
   refusé, `statistiques["refuse"]` vaut vrai) ou par CP-SAT ;
-- `TEMPS_DEPASSE` : rien trouvé dans le temps imparti, sans preuve ;
-- `ARRETE` : arrêt demandé avant la fin.
+- `TEMPS_DEPASSE` : aucune solution dans le temps imparti, sans preuve ;
+- `ARRETE` : arrêt demandé avant qu'une solution existe.
 
 Jamais de solution partielle : `placements` est vide hors `SOLUTION`.
+
+Graine
+------
+`options.graine` fixe l'ordre dans lequel CP-SAT examine les variables : une
+même graine redonne la même solution (avec un seul fil de calcul), une autre
+graine en donne une autre, même sur un petit problème.
 """
 
 from __future__ import annotations
@@ -35,6 +51,7 @@ import os
 import statistics
 import threading
 import time
+from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
 
@@ -43,7 +60,7 @@ from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurEDT
 from edt.journal import journal_calcul_courant
 from edt.solveur.contrat import OptionsSolveur, ResultatSolveur, StatutSolveur
-from edt.solveur.modele import ModeleHoraires
+from edt.solveur.modele import Bilan, ModeleHoraires, Option
 from edt.solveur.preparation import Preparation
 from edt.solveur.preverification import diagnostiquer
 from edt.solveur.salles import affecter_salles
@@ -56,15 +73,21 @@ NB_WORKERS_PAR_DEFAUT = 2
 INTERVALLE_SUIVI_S = 5.0
 """Intervalle entre deux lignes de progression dans le journal."""
 INTERVALLE_SOLUTIONS_S = 2.0
-"""Intervalle minimal entre deux solutions journalisées pendant une optimisation."""
+"""Intervalle minimal entre deux solutions journalisées pendant une amélioration."""
 PERIODE_SURVEILLANCE_S = 0.1
 """Fréquence à laquelle la demande d'arrêt est relue pendant la recherche."""
 NB_RAISONS_DANS_LE_MESSAGE = 3
 PART_RESERVEE_AUX_SALLES = 0.05
 """Part du temps limite gardée pour la phase des salles (au plus `RESERVE_MAX_S`)."""
 RESERVE_MAX_S = 3.0
+TEMPS_MIN_AMELIORATION_S = 1.0
+"""En dessous de ce temps restant, l'amélioration n'est pas tentée."""
 NB_SOLUTIONS_GARDEES = 20
-"""Dernières solutions d'horaires gardées pour la phase des salles (mode optimisé)."""
+"""Dernières solutions d'horaires gardées pour la phase des salles (amélioration)."""
+
+MESSAGE_SOLUTION_CONSERVEE = (
+    "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
+)
 
 
 class _Interruption(Exception):
@@ -75,8 +98,17 @@ class _Interruption(Exception):
         self.statut = statut
 
 
+@dataclass(frozen=True)
+class _Solution:
+    """Une solution complète : le choix de chaque séance, ses horaires et sa salle."""
+
+    choix: tuple[int, ...]
+    horaires: list[Option]
+    salles: tuple[int, ...]
+
+
 class _Suivi(cp_model.CpSolverSolutionCallback):
-    """Garde les solutions d'horaires et journalise chaque amélioration de l'objectif."""
+    """Garde les solutions d'horaires et journalise la progression de l'amélioration."""
 
     def __init__(self, modele: ModeleHoraires, journal_calcul: logging.Logger, debut: float):
         super().__init__()
@@ -96,10 +128,10 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
         if objectif is None:
             self._journal.info("Horaires trouvés après %.1f s", ecoule)
         elif ecoule - self._dernier_message >= INTERVALLE_SOLUTIONS_S:
-            # En optimisation les améliorations se suivent de près : on n'en journalise qu'une partie.
+            # Les améliorations se suivent de près : on n'en journalise qu'une partie.
             self._dernier_message = ecoule
             self._journal.info(
-                "Horaires n° %d après %.1f s : pénalité %d (borne %d)",
+                "Amélioration n° %d après %.1f s : objectif %d (borne %d)",
                 self.nb_solutions,
                 ecoule,
                 objectif,
@@ -108,7 +140,7 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
 
     @property
     def objectif(self) -> int | None:
-        """Pénalité de la meilleure solution d'horaires connue."""
+        """Objectif de la meilleure solution d'horaires connue."""
         return self.solutions[-1][0] if self.solutions else None
 
 
@@ -201,7 +233,7 @@ def resoudre(
         return conclure(StatutSolveur.SOLUTION, "Aucune séance à placer pour ce semestre.")
     _journaliser_domaines(preparation)
 
-    # 3. Modèle des horaires.
+    # Modèle des horaires, sans objectif : il s'agit d'abord de trouver une solution valide.
     def point_de_controle() -> None:
         if arret_demande():
             raise _Interruption(StatutSolveur.ARRETE)
@@ -209,8 +241,8 @@ def resoudre(
             raise _Interruption(StatutSolveur.TEMPS_DEPASSE)
 
     message_arret = (
-        "Calcul arrêté à votre demande avant la fin de la recherche : aucun emploi du temps "
-        "n'a été enregistré."
+        "Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a "
+        "été enregistré."
     )
     message_temps = (
         f"Aucun emploi du temps n'a été trouvé en {options.temps_limite_s:g} s. Ce n'est pas "
@@ -234,28 +266,30 @@ def resoudre(
     stats["nb_contraintes"] = modele.nb_contraintes
     stats["duree_construction_s"] = round(time.perf_counter() - debut_modele, 3)
     journal.info(
-        "Modèle des horaires construit en %.3f s : %d variable(s), %d contrainte(s), objectif %s",
+        "Modèle des horaires construit en %.3f s : %d variable(s), %d contrainte(s)",
         stats["duree_construction_s"],
         modele.nb_variables,
         modele.nb_contraintes,
-        "actif" if modele.objectif_actif else "inactif",
     )
 
-    # 3 et 4. Horaires, puis salles ; on recommence si les salles ne suivent pas.
     nb_workers = options.nb_workers or min(NB_WORKERS_PAR_DEFAUT, os.cpu_count() or 1)
+    reserve = min(RESERVE_MAX_S, PART_RESERVEE_AUX_SALLES * options.temps_limite_s)
     stats.update(nb_workers=nb_workers, duree_resolution_s=0.0, duree_salles_s=0.0, nb_coupes=0)
     stats.update(nb_conflits=0, nb_branches=0, nb_solutions=0)
-    while True:
+
+    def chercher() -> tuple[int, cp_model.CpSolver, _Suivi]:
+        """Une recherche CP-SAT sur le modèle des horaires, dans le temps qui reste."""
         solveur = cp_model.CpSolver()
-        reserve = min(RESERVE_MAX_S, PART_RESERVEE_AUX_SALLES * options.temps_limite_s)
         solveur.parameters.max_time_in_seconds = max(0.001, reste() - reserve)
         solveur.parameters.num_workers = nb_workers
         solveur.parameters.random_seed = options.graine % (2**31 - 1)
+        # La graine décide de l'ordre des variables : sans cela, un petit problème
+        # résolu sans tirage aléatoire donnerait la même solution à toutes les graines.
+        solveur.parameters.permute_variable_randomly = True
         solveur.parameters.log_to_stdout = False
         if journal_calcul.isEnabledFor(logging.DEBUG):
             solveur.parameters.log_search_progress = True
             solveur.log_callback = lambda ligne: journal_calcul.debug("CP-SAT : %s", ligne)
-
         suivi = _Suivi(modele, journal_calcul, debut)
         fini = threading.Event()
         surveillant = threading.Thread(
@@ -271,19 +305,18 @@ def resoudre(
         finally:
             fini.set()
             surveillant.join()
-        statut_cp = solveur.status_name(code)
-        stats["statut_cp_sat"] = statut_cp
-        stats["duree_resolution_s"] = round(
-            stats["duree_resolution_s"] + time.perf_counter() - debut_recherche, 3
-        )
+        duree = time.perf_counter() - debut_recherche
+        stats["statut_cp_sat"] = solveur.status_name(code)
+        stats["duree_resolution_s"] = round(stats["duree_resolution_s"] + duree, 3)
         stats["nb_conflits"] += solveur.num_conflicts
         stats["nb_branches"] += solveur.num_branches
         stats["nb_solutions"] += suivi.nb_solutions
         journal.info(
-            "Recherche des horaires terminée en %.3f s : statut CP-SAT %s, %d conflit(s), "
-            "%d branche(s)",
-            time.perf_counter() - debut_recherche,
-            statut_cp,
+            "Recherche des horaires terminée en %.3f s : statut CP-SAT %s, %d solution(s), "
+            "%d conflit(s), %d branche(s)",
+            duree,
+            solveur.status_name(code),
+            suivi.nb_solutions,
             solveur.num_conflicts,
             solveur.num_branches,
         )
@@ -293,60 +326,132 @@ def resoudre(
                 "signaler avec le journal du calcul.",
                 [modele.cp.validate()],
             )
-        if arret_demande():
-            return conclure(StatutSolveur.ARRETE, message_arret)
-        if code == cp_model.INFEASIBLE:
-            return conclure(StatutSolveur.INFAISABLE, message_infaisable)
-        if not suivi.solutions:
-            return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
+        return code, solveur, suivi
 
-        # Salles : de la meilleure solution d'horaires à la moins bonne.
+    def donner_des_salles(choix: tuple[int, ...]) -> _Solution | bool:
+        """La solution complète pour ces horaires ; sinon vrai si l'échec est prouvé, faux sinon.
+
+        Un échec prouvé écarte ces horaires du modèle (coupe).
+        """
         debut_salles = time.perf_counter()
-        trouve = None
-        prouve = True
-        for objectif, choix in reversed(suivi.solutions):
-            horaires = modele.horaires(choix)
-            affectation = affecter_salles(preparation, horaires, options.graine, max(1.0, reste()))
-            if affectation.salles is not None:
-                trouve = (objectif, horaires, affectation.salles)
-                break
-            if affectation.conflit:
-                modele.interdire(choix, affectation.conflit)
-            else:
-                prouve = False
+        horaires = modele.horaires(choix)
+        affectation = affecter_salles(preparation, horaires, options.graine, max(1.0, reste()))
         stats["duree_salles_s"] = round(
             stats["duree_salles_s"] + time.perf_counter() - debut_salles, 3
         )
-        stats["nb_coupes"] = modele.nb_coupes
-        if trouve is not None:
+        if affectation.salles is not None:
+            return _Solution(choix, horaires, affectation.salles)
+        if affectation.conflit:
+            modele.interdire(choix, affectation.conflit)
+            stats["nb_coupes"] = modele.nb_coupes
+        return bool(affectation.conflit)
+
+    # 3. Une solution valide : horaires, puis salles ; d'autres horaires si les salles ne suivent pas.
+    while True:
+        code, solveur, suivi = chercher()
+        if not suivi.solutions:
+            if arret_demande():
+                return conclure(StatutSolveur.ARRETE, message_arret)
+            if code == cp_model.INFEASIBLE:
+                return conclure(StatutSolveur.INFAISABLE, message_infaisable)
+            return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
+        essai = donner_des_salles(suivi.solutions[-1][1])
+        if isinstance(essai, _Solution):
+            solution = essai
             break
         if arret_demande():
             return conclure(StatutSolveur.ARRETE, message_arret)
-        if reste() <= 0 or not prouve:
+        if reste() <= 0 or not essai:
             return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
         journal.info(
             "Les salles ne suivent pas : %d combinaison(s) d'horaires écartée(s), nouvelle "
             "recherche des horaires",
             modele.nb_coupes,
         )
+    valeurs = list(solveur.response_proto.solution)
+    stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
+    journal.info("Emploi du temps valide trouvé après %.1f s", stats["duree_premiere_solution_s"])
 
-    objectif, horaires, salles = trouve
+    # 4. Amélioration : on repart de la solution valide, dans le temps qui reste.
+    bilan: Bilan | None = None
+    optimal = amelioration_lancee = temps_manquant = False
+    if options.optimiser and not arret_demande():
+        if reste() - reserve < TEMPS_MIN_AMELIORATION_S:
+            temps_manquant = True
+            journal.warning(
+                "Plus de temps pour améliorer la solution : elle est rendue telle quelle."
+            )
+        elif modele.poser_objectif():
+            bilan = modele.bilan(solution.choix)
+            modele.partir_de(valeurs)
+            stats["nb_variables"] = modele.nb_variables
+            stats["nb_contraintes"] = modele.nb_contraintes
+            stats["objectif_premiere_solution"] = bilan.objectif
+            journal.info(
+                "Amélioration : départ à l'objectif %d (%d variable(s), %d contrainte(s))",
+                bilan.objectif,
+                modele.nb_variables,
+                modele.nb_contraintes,
+            )
+            amelioration_lancee = True
+            code, solveur, suivi = chercher()
+            for _, choix in reversed(suivi.solutions):
+                candidat = modele.bilan(choix)
+                if candidat.objectif >= bilan.objectif:
+                    break  # les solutions gardées vont de la moins bonne à la meilleure
+                essai = donner_des_salles(choix)
+                if isinstance(essai, _Solution):
+                    solution, bilan = essai, candidat
+                    break
+            if suivi.solutions:
+                stats["borne_objectif"] = round(solveur.best_objective_bound)
+                optimal = code == cp_model.OPTIMAL and bilan.objectif <= round(
+                    solveur.objective_value
+                )
+            else:
+                journal.info(
+                    "L'amélioration n'a pas eu le temps d'aboutir (statut %s) : la première "
+                    "solution valide est conservée.",
+                    solveur.status_name(code),
+                )
+
     placements = []
-    for seance, horaire, salle in zip(preparation.seances, horaires, salles, strict=True):
+    for seance, horaire, salle in zip(
+        preparation.seances, solution.horaires, solution.salles, strict=True
+    ):
         jour, minute = preparation.decoder(horaire.debut)
         placements.append(Placement(seance.seance.id, jour, minute, minute + seance.duree, salle))
+
     message = f"Emploi du temps trouvé : {nb_seances} séance(s) placée(s)."
-    if modele.objectif_actif:
-        optimal = code == cp_model.OPTIMAL and objectif == suivi.objectif
-        stats["objectif"] = objectif
-        stats["borne_objectif"] = round(solveur.best_objective_bound)
-        stats["optimal"] = optimal
-        qualite = (
-            "c'est le meilleur résultat possible"
-            if optimal
-            else "meilleure solution trouvée dans le temps imparti"
+    if bilan is not None:
+        stats.update(objectif=bilan.objectif, optimal=optimal)
+        mesures = []
+        if bilan.trous is not None:
+            stats["trous"] = bilan.trous
+            mesures.append(
+                f"{bilan.trous} créneau(x) libre(s) entre deux cours dans les journées des groupes"
+            )
+        if bilan.samedis is not None:
+            stats["samedis"] = bilan.samedis
+            mesures.append(f"{bilan.samedis} séance(s) le samedi")
+        if mesures:
+            message += f" Bilan sur l'ensemble du semestre : {' et '.join(mesures)}."
+    if arret_demande():
+        stats["arrete_par_utilisateur"] = True
+        avertissements.append(MESSAGE_SOLUTION_CONSERVEE)
+        message += f" {MESSAGE_SOLUTION_CONSERVEE}"
+    elif optimal:
+        message += " On ne peut pas faire mieux avec les préférences actuelles."
+    elif amelioration_lancee:
+        message += (
+            " L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut "
+            "encore l'affiner."
         )
-        message += f" Pénalité de qualité : {objectif} ({qualite})."
+    elif temps_manquant:
+        message += (
+            " Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un "
+            "emploi du temps plus confortable."
+        )
     if options.contraintes_desactivees:
         libelles = sorted(CATALOGUE[code_].libelle for code_ in options.contraintes_desactivees)
         message += " Contraintes ignorées à votre demande : " + ", ".join(libelles) + "."
@@ -392,7 +497,9 @@ def _surveiller(
         if ecoule >= prochain_point:
             prochain_point += INTERVALLE_SUIVI_S
             if suivi.objectif is not None:
-                etat = f"{suivi.nb_solutions} solution(s), meilleure pénalité {suivi.objectif}"
+                etat = f"{suivi.nb_solutions} amélioration(s), objectif {suivi.objectif}"
+            elif suivi.nb_solutions:
+                etat = "horaires trouvés"
             else:
                 etat = "aucune solution pour l'instant"
             journal_calcul.info("Recherche en cours depuis %.0f s : %s", ecoule, etat)

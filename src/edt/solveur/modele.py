@@ -35,6 +35,15 @@ Contraintes
 Semaines actives : une contrainte ne lie deux séances que si une semaine au
 moins les réunit. Deux séances aux semaines disjointes ne partagent aucune
 contrainte.
+
+Objectif
+--------
+Le modèle est d'abord résolu **sans objectif** : il s'agit d'obtenir vite un
+emploi du temps valide. `poser_objectif` ajoute ensuite l'objectif de qualité
+au même modèle, et `partir_de` donne la solution valide comme point de départ
+complet : l'amélioration commence là où la première recherche s'est arrêtée,
+et ne peut que faire mieux. `bilan` mesure une solution (trous, samedis,
+valeur de l'objectif) à partir des seuls choix des séances.
 """
 
 from __future__ import annotations
@@ -77,6 +86,21 @@ class Option:
     debut: int
     campus: int
     salles: tuple[int, ...]
+
+
+@dataclass(frozen=True)
+class Bilan:
+    """Qualité d'une solution d'horaires, comptée semaine par semaine sur le semestre.
+
+    - `objectif` : valeur de l'objectif (somme pondérée des quatre termes) ;
+    - `trous` : créneaux libres entre deux séances d'un groupe (`None` si le
+      poids des trous est nul : ils ne sont alors pas comptés) ;
+    - `samedis` : séances placées le samedi (`None` si leur poids est nul).
+    """
+
+    objectif: int
+    trous: int | None
+    samedis: int | None
 
 
 def au_plus(
@@ -188,6 +212,11 @@ class ModeleHoraires:
         self.objectif_actif = False
         self.nb_coupes = 0
         self._vus: Vus = set()
+        # Variables auxiliaires déduites des choix : (variable, "ou" ou "aucun", littéraux).
+        self._definitions: list[tuple[cp_model.IntVar, str, list[Litteral]]] = []
+        # Objectif : (coefficient, littéral) ; compteurs lisibles : (nombre de semaines, littéral).
+        self._termes: list[tuple[int, Litteral]] = []
+        self._compteurs: dict[str, list[tuple[int, Litteral]] | None] = {}
         self._campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
 
         etapes = [
@@ -198,8 +227,6 @@ class ModeleHoraires:
             self._capacite_des_salles,
             self._briser_les_symetries,
         ]
-        if options.optimiser:
-            etapes.append(self._poser_objectif)
         if options.utiliser_indices:
             etapes.append(self._donner_les_indices)
         for etape in etapes:
@@ -276,7 +303,16 @@ class ModeleHoraires:
         resultat = self.cp.new_bool_var("")
         for litteral in litteraux:
             self.cp.add_implication(litteral, resultat)
+        self._definitions.append((resultat, "ou", list(litteraux)))
         return resultat
+
+    def _sauf_si(self, exceptions: Sequence[Litteral]) -> cp_model.IntVar:
+        """Booléen de pénalité : vrai dès qu'aucune des `exceptions` n'est vraie."""
+        penalite = self.cp.new_bool_var("")
+        exceptions = [litteral for litteral in exceptions if litteral is not False]
+        self.cp.add_bool_or([penalite, *exceptions])
+        self._definitions.append((penalite, "aucun", exceptions))
+        return penalite
 
     def _par_personne(self) -> tuple[dict[int, list[int]], dict[int, list[int]]]:
         """Indices des séances par enseignant non fictif et par groupe."""
@@ -718,14 +754,15 @@ class ModeleHoraires:
 
     # -- objectif -----------------------------------------------------------------
 
-    def _poser_objectif(self) -> None:
-        """Objectif de qualité à minimiser (définitions et écarts dans `docs/solveur.md`).
+    def poser_objectif(self) -> bool:
+        """Ajoute au modèle l'objectif de qualité à minimiser ; renvoie faux s'il est sans effet.
 
         `poids_trous` × trous des groupes + `poids_changement_campus` ×
         changements de campus + `poids_samedi` × séances du samedi +
         `poids_creneaux_extremes` × séances sur le premier ou le dernier
         créneau du jour, le tout compté semaine par semaine comme le fait
-        `edt.verification.calculer_indicateurs`.
+        `edt.verification.calculer_indicateurs` (définitions et écarts dans
+        `docs/solveur.md`).
         """
         parametres = self.instantane.parametres
         pas = self.preparation.pas
@@ -734,8 +771,8 @@ class ModeleHoraires:
             jour: (min(liste), max(liste, key=lambda c: (c[1], c[0])))
             for jour, liste in creneaux.items()
         }
-        termes: list = []
-        constante = 0
+        samedis: list[tuple[int, Litteral]] = []
+        trous: list[tuple[int, Litteral]] = []
         for seance in self.seances:
             nb_semaines = seance.semaines.bit_count()
             for option, litteral in zip(
@@ -745,41 +782,104 @@ class ModeleHoraires:
                 poids = 0
                 if jour == SAMEDI:
                     poids += parametres.poids_samedi * nb_semaines
+                    samedis.append((nb_semaines, litteral))
                 if any(
                     se_chevauchent(minute, minute + seance.duree, *creneau)
                     for creneau in extremes.get(jour, ())
                 ):
                     poids += parametres.poids_creneaux_extremes * nb_semaines
-                if poids and litteral is True:
-                    constante += poids
-                elif poids:
-                    termes.append(poids * litteral)
+                if poids:
+                    self._termes.append((poids, litteral))
 
         par_enseignant, par_groupe = self._par_personne()
         emplois_groupes = self._emplois_du_temps_des_groupes(par_groupe)
         if parametres.poids_trous:
             for emploi in emplois_groupes:
                 for actives, nb_semaines in self._configurations(emploi):
-                    termes.extend(
-                        parametres.poids_trous * nb_semaines * trou
-                        for trou in self._trous(actives, creneaux)
-                    )
+                    for trou in self._trous(actives, creneaux):
+                        trous.append((nb_semaines, trou))
+                        self._termes.append((parametres.poids_trous * nb_semaines, trou))
         if parametres.poids_changement_campus:
             emplois = emplois_groupes + [
                 par_enseignant[e] for e in sorted(par_enseignant) if len(par_enseignant[e]) >= 2
             ]
             for emploi in emplois:
                 for actives, nb_semaines in self._configurations(emploi):
-                    termes.extend(
-                        parametres.poids_changement_campus * nb_semaines * changement
+                    self._termes.extend(
+                        (parametres.poids_changement_campus * nb_semaines, changement)
                         for changement in self._changements_de_campus(actives)
                     )
-        if not termes:
+        self._compteurs = {
+            "trous": trous if parametres.poids_trous else None,
+            "samedis": samedis if parametres.poids_samedi else None,
+        }
+        variables = [(poids, litteral) for poids, litteral in self._termes if litteral is not True]
+        if not variables:
             journal.info("Objectif demandé mais sans effet : aucun terme ne dépend du placement.")
-            return
-        self.cp.minimize(sum(termes) + constante)
+            return False
+        constante = sum(poids for poids, litteral in self._termes if litteral is True)
+        self.cp.minimize(sum(poids * litteral for poids, litteral in variables) + constante)
         self.objectif_actif = True
-        journal.debug("Objectif : %d terme(s) variables, constante %d", len(termes), constante)
+        journal.debug("Objectif : %d terme(s) variables, constante %d", len(variables), constante)
+        return True
+
+    # -- mesure d'une solution et point de départ ---------------------------------
+
+    def _completer(self, valeurs: list[int | None], depuis: int = 0) -> None:
+        """Calcule les variables auxiliaires d'indice au moins `depuis` à partir des autres.
+
+        Chaque variable auxiliaire reçoit sa plus petite valeur permise : « ou »
+        vaut vrai si l'un de ses littéraux est vrai, « aucun » si aucun ne
+        l'est. Les définitions sont dans l'ordre de création : leurs
+        littéraux sont toujours déjà connus.
+        """
+
+        def vrai(litteral: Litteral) -> bool:
+            if litteral is True or litteral is False:
+                return litteral
+            index = litteral.index
+            return bool(valeurs[index]) if index >= 0 else not valeurs[-index - 1]
+
+        for variable, nature, litteraux in self._definitions:
+            if variable.index >= depuis:
+                un_vrai = any(vrai(litteral) for litteral in litteraux)
+                valeurs[variable.index] = int(un_vrai if nature == "ou" else not un_vrai)
+
+    def bilan(self, choix: Sequence[int]) -> Bilan:
+        """Qualité de la solution `choix` (rang du choix de chaque séance), objectif posé."""
+        valeurs: list[int | None] = [None] * self.nb_variables
+        for litteraux, rang in zip(self.litteraux, choix, strict=True):
+            for position, litteral in enumerate(litteraux):
+                if litteral is not True:
+                    valeurs[litteral.index] = int(position == rang)
+        self._completer(valeurs)
+
+        def total(termes: list[tuple[int, Litteral]] | None) -> int | None:
+            if termes is None:
+                return None
+            return sum(
+                poids for poids, litteral in termes if litteral is True or valeurs[litteral.index]
+            )
+
+        return Bilan(
+            objectif=total(self._termes) or 0,
+            trous=total(self._compteurs.get("trous")),
+            samedis=total(self._compteurs.get("samedis")),
+        )
+
+    def partir_de(self, solution: Sequence[int]) -> None:
+        """Donne une solution du modèle sans objectif comme point de départ complet.
+
+        `solution` porte la valeur de chaque variable du modèle tel qu'il a
+        été résolu ; les variables ajoutées depuis (celles de l'objectif) sont
+        déduites. L'indice ainsi donné à CP-SAT est une solution complète et
+        valide du modèle avec objectif : l'amélioration part d'elle.
+        """
+        valeurs: list[int | None] = [*solution, *([None] * (self.nb_variables - len(solution)))]
+        self._completer(valeurs, depuis=len(solution))
+        self.cp.clear_hints()
+        for index, valeur in enumerate(valeurs):
+            self.cp.add_hint(self.cp.get_int_var_from_proto_index(index), valeur)
 
     def _creneaux_par_jour(self) -> dict[int, list[tuple[int, int]]]:
         par_jour: dict[int, list[tuple[int, int]]] = defaultdict(list)
@@ -846,15 +946,12 @@ class ModeleHoraires:
                 if not avant or not apres or any(lit is True for lit in dessus):
                     continue
                 # Une séance avant et une après, aucune dessus => trou.
-                trou = self.cp.new_bool_var("")
-                clause = [trou, *dessus]
-                clause.extend(
+                encadre = [
                     lit.negated()
                     for lit in (self._au_moins_un(avant), self._au_moins_un(apres))
                     if lit is not True
-                )
-                self.cp.add_bool_or(clause)
-                trous.append(trou)
+                ]
+                trous.append(self._sauf_si([*dessus, *encadre]))
         return trous
 
     def _changements_de_campus(self, emploi: Sequence[int]) -> list[cp_model.IntVar]:
@@ -871,9 +968,8 @@ class ModeleHoraires:
                 continue
             sur = {campus: self._au_moins_un(par_campus[campus]) for campus in sorted(par_campus)}
             for a, b in combinations(sorted(sur), 2):
-                changement = self.cp.new_bool_var("")
-                clause = [changement]
-                clause.extend(lit.negated() for lit in (sur[a], sur[b]) if lit is not True)
-                self.cp.add_bool_or(clause)
-                changements.append(changement)
+                # Des séances sur les deux campus => un changement.
+                changements.append(
+                    self._sauf_si([lit.negated() for lit in (sur[a], sur[b]) if lit is not True])
+                )
         return changements
