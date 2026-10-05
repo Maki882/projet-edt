@@ -65,11 +65,12 @@ def recreer_table(
             definition += "" if colonne.nullable else " NOT NULL"
         colonnes.append(f"{colonne.name} {definition}")
     cle = ", ".join(colonne.name for colonne in modele.primary_key.columns)
+    colonnes.append(f"PRIMARY KEY ({cle})")
     with moteur.begin() as connexion:
         connexion.exec_driver_sql(f"DROP TABLE {nom}")
-        connexion.exec_driver_sql(
-            f"CREATE TABLE {nom} ({', '.join(colonnes)}, PRIMARY KEY ({cle}))"
-        )
+        # Une définition par ligne, comme dans les tables créées par SQLAlchemy.
+        lignes = ",\n".join(colonnes)
+        connexion.exec_driver_sql(f"CREATE TABLE {nom} (\n{lignes}\n)")
 
 
 def _compter(modele) -> int:
@@ -118,6 +119,22 @@ def test_type_et_caractere_obligatoire_compares_mais_pas_la_longueur(base):
     assert ecarts_schema(obtenir_moteur()) == [
         "table creneau : colonne jour de type VARCHAR dans la base, INTEGER dans le modèle",
         "table creneau : colonne debut_min facultative dans la base, obligatoire dans le modèle",
+    ]
+
+
+def test_valeurs_d_une_enumeration_comparees(base):
+    # La base date d'avant l'ajout de « apres_midi » au modèle, et connaît encore « soir ».
+    recreer_table(
+        "creneau",
+        definitions={
+            "demi_journee": "VARCHAR(32) NOT NULL CHECK (demi_journee IN ('matin', 'soir'))"
+        },
+    )
+
+    assert ecarts_schema(obtenir_moteur()) == [
+        "table creneau : colonne demi_journee : valeur(s) du modèle refusée(s) par la base : "
+        "apres_midi",
+        "table creneau : colonne demi_journee : valeur(s) de la base inconnue(s) du modèle : soir",
     ]
 
 

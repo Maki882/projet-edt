@@ -32,9 +32,12 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass, field
 
 from sqlalchemy import Engine, MetaData, inspect, select
+from sqlalchemy import Enum as EnumSQL
+from sqlalchemy.engine import Inspector
 from sqlalchemy.exc import CompileError
 from sqlalchemy.orm import Session
 from sqlalchemy.types import TypeEngine
@@ -64,6 +67,11 @@ MARCHE_A_SUIVRE_SCHEMA_PERIME = (
     "(« python -m edt init-db --reset ») recrée la base et EFFACE toutes les données."
 )
 """Ce qu'il faut faire quand la base ne correspond plus au modèle."""
+
+_CONTRAINTE_ENUMERATION = re.compile(
+    r"""\s*"?(?P<colonne>\w+)"?\s+IN\s*\((?P<valeurs>.*)\)\s*""", re.IGNORECASE | re.DOTALL
+)
+_VALEUR_SQL = re.compile(r"'((?:[^']|'')*)'")
 
 
 class ErreurSchemaPerime(ErreurRegleMetier):
@@ -177,16 +185,19 @@ def ecarts_schema(moteur: Engine) -> list[str]:
       modèle), mais n'applique pas les longueurs : `VARCHAR(32)` et
       `VARCHAR(64)` s'y comportent à l'identique, signaler ce changement
       obligerait à effacer la base pour rien ;
-    - caractère obligatoire (`NOT NULL`).
+    - caractère obligatoire (`NOT NULL`) ;
+    - valeurs permises d'une énumération, quand la base en porte la
+      contrainte (`colonne IN ('a', 'b')`) : une valeur ajoutée au modèle
+      serait refusée par la base à l'enregistrement.
 
     Liste vide = aucune table existante ne diffère du modèle. Ne sont **pas**
     des écarts : une table du modèle absente de la base (`creer_schema` la
     crée, voir `tables_manquantes`) et une table de la base inconnue du
     modèle (elle est simplement ignorée).
 
-    Limite assumée : les contraintes (valeurs permises d'une énumération,
-    unicités, clés étrangères) et les index ne sont pas comparés. Après un
-    tel changement du modèle, recréer la base avec `reset=True`.
+    Limite assumée : les autres contraintes (unicités, clés étrangères,
+    contrôles entre colonnes) et les index ne sont pas comparés. Après un tel
+    changement du modèle, recréer la base avec `reset=True`.
     """
     inspecteur = inspect(moteur)
     presentes = set(inspecteur.get_table_names())
@@ -194,19 +205,23 @@ def ecarts_schema(moteur: Engine) -> list[str]:
     for nom in sorted(Base.metadata.tables):
         if nom not in presentes:
             continue
+        table = Base.metadata.tables[nom]
         reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
-        for colonne in Base.metadata.tables[nom].columns:
+        permises = (
+            _valeurs_permises(inspecteur, nom)
+            if any(isinstance(colonne.type, EnumSQL) for colonne in table.columns)
+            else {}
+        )
+        for colonne in table.columns:
             reelle = reelles.pop(colonne.name, None)
             if reelle is None:
                 ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
                 continue
+            prefixe = f"table {nom} : colonne {colonne.name}"
             attendu = _nom_de_type(colonne.type, moteur)
             lu = _nom_de_type(reelle["type"], moteur)
             if lu != attendu:
-                ecarts.append(
-                    f"table {nom} : colonne {colonne.name} de type {lu} dans la base, "
-                    f"{attendu} dans le modèle"
-                )
+                ecarts.append(f"{prefixe} de type {lu} dans la base, {attendu} dans le modèle")
             if bool(reelle["nullable"]) != bool(colonne.nullable):
                 dans_la_base, dans_le_modele = (
                     ("facultative", "obligatoire")
@@ -214,9 +229,20 @@ def ecarts_schema(moteur: Engine) -> list[str]:
                     else ("obligatoire", "facultative")
                 )
                 ecarts.append(
-                    f"table {nom} : colonne {colonne.name} {dans_la_base} dans la base, "
-                    f"{dans_le_modele} dans le modèle"
+                    f"{prefixe} {dans_la_base} dans la base, {dans_le_modele} dans le modèle"
                 )
+            if isinstance(colonne.type, EnumSQL) and colonne.name in permises:
+                du_modele, de_la_base = set(colonne.type.enums), permises[colonne.name]
+                if du_modele - de_la_base:
+                    ecarts.append(
+                        f"{prefixe} : valeur(s) du modèle refusée(s) par la base : "
+                        + ", ".join(sorted(du_modele - de_la_base))
+                    )
+                if de_la_base - du_modele:
+                    ecarts.append(
+                        f"{prefixe} : valeur(s) de la base inconnue(s) du modèle : "
+                        + ", ".join(sorted(de_la_base - du_modele))
+                    )
         ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
     return ecarts
 
@@ -230,6 +256,22 @@ def _nom_de_type(type_sql: TypeEngine, moteur: Engine) -> str:
         # main) : il ne peut pas correspondre au modèle, l'écart sera donc signalé.
         return "inconnu"
     return texte.split("(", 1)[0].strip().upper()
+
+
+def _valeurs_permises(inspecteur: Inspector, nom_table: str) -> dict[str, set[str]]:
+    """Valeurs permises par la base pour chaque colonne contrainte par `colonne IN (...)`.
+
+    C'est la forme de la contrainte que SQLAlchemy pose pour une énumération.
+    Une colonne sans contrainte de cette forme n'apparaît pas dans le résultat.
+    """
+    permises: dict[str, set[str]] = {}
+    for contrainte in inspecteur.get_check_constraints(nom_table):
+        reconnue = _CONTRAINTE_ENUMERATION.fullmatch(contrainte["sqltext"])
+        if reconnue:
+            permises[reconnue["colonne"]] = {
+                valeur.replace("''", "'") for valeur in _VALEUR_SQL.findall(reconnue["valeurs"])
+            }
+    return permises
 
 
 def exiger_schema_a_jour(moteur: Engine) -> None:
