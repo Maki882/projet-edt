@@ -277,9 +277,15 @@ def resoudre(
     stats.update(nb_workers=nb_workers, duree_resolution_s=0.0, duree_salles_s=0.0, nb_coupes=0)
     stats.update(nb_conflits=0, nb_branches=0, nb_solutions=0)
 
-    def chercher() -> tuple[int, cp_model.CpSolver, _Suivi]:
+    def chercher(amelioration: bool = False) -> tuple[int, cp_model.CpSolver, _Suivi]:
         """Une recherche CP-SAT sur le modèle des horaires, dans le temps qui reste."""
         solveur = cp_model.CpSolver()
+        if amelioration:
+            # Une solution valide existe déjà : le temps sert mieux à l'améliorer qu'à
+            # préparer longuement le modèle (prétraitement allégé, voir docs/solveur.md).
+            solveur.parameters.cp_model_probing_level = 0
+            solveur.parameters.symmetry_level = 0
+            solveur.parameters.max_presolve_iterations = 1
         solveur.parameters.max_time_in_seconds = max(0.001, reste() - reserve)
         solveur.parameters.num_workers = nb_workers
         solveur.parameters.random_seed = options.graine % (2**31 - 1)
@@ -397,15 +403,19 @@ def resoudre(
                 modele.nb_contraintes,
             )
             amelioration_lancee = True
-            code, solveur, suivi = chercher()
+            code, solveur, suivi = chercher(amelioration=True)
             for _, choix in reversed(suivi.solutions):
                 candidat = modele.bilan(choix)
-                if candidat.objectif >= bilan.objectif:
+                if candidat.objectif >= bilan.objectif or reste() <= 0:
                     break  # les solutions gardées vont de la moins bonne à la meilleure
                 essai = donner_des_salles(choix)
                 if isinstance(essai, _Solution):
                     solution, bilan = essai, candidat
                     break
+                journal.info(
+                    "Horaires améliorés (objectif %d) écartés : les salles ne suivent pas",
+                    candidat.objectif,
+                )
             if suivi.solutions:
                 stats["borne_objectif"] = round(solveur.best_objective_bound)
                 optimal = code == cp_model.OPTIMAL and bilan.objectif <= round(
