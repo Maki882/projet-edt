@@ -12,6 +12,7 @@ from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from edt.config import url_affichable
 from edt.db import modeles as m
 from edt.db.initialisation import tables_manquantes
 from edt.db.moteur import obtenir_moteur
@@ -71,7 +72,7 @@ def compter_entites(session: Session) -> dict[str, int]:
 def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
     """Examine la base configurée sans jamais lever : toute panne est décrite dans le résultat."""
     moteur = moteur or obtenir_moteur()
-    url = moteur.url.render_as_string(hide_password=True)
+    url = url_affichable(moteur.url)
     try:
         with moteur.connect() as connexion:
             connexion.execute(text("SELECT 1"))
