@@ -343,20 +343,26 @@ class Contexte:
         return self.libelle_seance(element.besoin, element.seance_id)
 
     def libelle_seance(self, besoin: Besoin, seance_id: str | None) -> str:
-        """Nom d'une séance pour un message : « Mathématiques TD (A1-G1) ».
+        """Nom d'une séance pour un message, qui cite toujours ses groupes.
 
-        Le rang (« Mathématiques TD n° 2 (A1-G1) ») est ajouté quand le besoin a
-        plusieurs séances dans le semestre.
+        Le libellé d'un besoin chargé depuis la base finit déjà par ses groupes
+        (« CM Mathématiques - A1 », convention de `edt.services.instantane`) :
+        il est repris tel quel. Sinon les codes des groupes sont ajoutés
+        (« Mathématiques TD (A1-G1) »). Le rang est précisé quand le besoin a
+        plusieurs séances dans le semestre : « CM Physique - A1 (n° 2) »,
+        « Mathématiques TD n° 2 (A1-G1) ».
         """
         cle = (besoin.id, seance_id)
         valeur = self._libelles.get(cle)
         if valeur is None:
             rang = ""
             if seance_id is not None and self._seances_par_besoin[besoin.id] > 1:
-                rang = f" n° {seance_id.partition('-')[2]}"
-            codes = sorted(self.code_groupe(groupe) for groupe in besoin.groupes)
-            groupes = f" ({', '.join(codes)})" if codes else ""
-            valeur = f"{besoin.libelle}{rang}{groupes}"
+                rang = seance_id.partition("-")[2]
+            codes = ", ".join(sorted(self.code_groupe(groupe) for groupe in besoin.groupes))
+            if not codes or besoin.libelle.endswith(f" - {codes}"):
+                valeur = besoin.libelle + (f" (n° {rang})" if rang else "")
+            else:
+                valeur = f"{besoin.libelle}{f' n° {rang}' if rang else ''} ({codes})"
             self._libelles[cle] = valeur
         return valeur
 

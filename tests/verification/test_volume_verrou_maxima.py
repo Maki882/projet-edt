@@ -229,3 +229,17 @@ def test_anomalies_triees_et_independantes_de_l_ordre_recu():
         rangs.index(a.gravite) for a in anomalies
     )
     assert len(set(codes(anomalies))) >= 5
+
+
+def test_libelle_du_socle_qui_cite_deja_ses_groupes():
+    # Convention de edt.services.instantane : « <type> <matière> - <codes des groupes> ».
+    f = Fabrique()
+    a1 = f.groupe("A1")
+    besoin = f.besoin("CM Physique - A1", [a1], nombre=2)
+    f.seance(besoin, 1)
+    f.seance(besoin, 2)
+    anomalies = verifier(f.construire(), [], ["VOLUME"])
+    assert [a.message for a in anomalies] == [
+        "La séance CM Physique - A1 (n° 1) n'est pas placée.",
+        "La séance CM Physique - A1 (n° 2) n'est pas placée.",
+    ]
