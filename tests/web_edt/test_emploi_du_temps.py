@@ -324,3 +324,23 @@ def test_le_vrai_verificateur_refuse_un_conflit_de_groupe(version_generee, clien
     with session_base() as session:
         td = session.get(m.SeanceHebdo, avant[0])
         assert (td.id, td.jour, td.debut_min, td.salle_id) == avant
+
+
+def test_le_panneau_revient_sur_la_page_d_ou_vient_htmx(version_generee, client):
+    with session_base() as session:
+        seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
+    page = f"/emploi-du-temps?version_id={version_generee.version_id}&couche=hebdo&affichage=jour&jour=0"
+
+    fragment = client.get(
+        f"/emploi-du-temps/seances/{seance.id}/panneau",
+        headers={**HX, "HX-Current-URL": f"http://testserver{page}"},
+    ).text
+
+    attendu = f"{page}&seance=h{seance.id}".replace("&", "&amp;")
+    assert f'name="retour" value="{attendu}"' in fragment
+    # Une adresse hors de l'onglet n'est jamais reprise (pas de redirection ouverte).
+    ailleurs = client.get(
+        f"/emploi-du-temps/seances/{seance.id}/panneau",
+        headers={**HX, "HX-Current-URL": "http://ailleurs.example/piege"},
+    ).text
+    assert "ailleurs.example" not in ailleurs

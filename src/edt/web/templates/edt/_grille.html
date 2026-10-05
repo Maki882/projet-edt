@@ -17,7 +17,7 @@
 {%- if b.verrou %} Séance verrouillée.{% endif %}
 {%- if b.partielle %} Concerne une partie du groupe.{% endif %}
 {%- if b.annulee %} Séance annulée.{% elif b.deplacee %} Séance déplacée{% if b.date_initiale %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}.{% endif %}
-{%- for a in b.anomalies %} {{ a.gravite.libelle }} : {{ a.message }}{% endfor %}
+{%- if b.anomalies %} {{ b.anomalies|length }} anomalie(s) : ouvrir la séance pour le détail.{% endif %}
 {%- endset %}
 <a class="edt-bloc edt-couleur-{{ b.couleur }}
   {%- if b.partielle %} edt-bloc-partielle{% endif %}
@@ -25,7 +25,7 @@
   {%- if b.deplacee %} edt-bloc-deplacee{% endif %}
   {%- if b.gravite %} edt-bloc-{{ b.gravite.value }}{% endif %}
   {%- if selection == b.cle %} edt-bloc-selection{% endif %}"
-  href="{{ lien }}" hx-get="{{ panneau }}?{{ {'retour': lien}|urlencode }}" hx-target="#edt-panneau" hx-swap="innerHTML"
+  href="{{ lien }}" hx-get="{{ panneau }}" hx-target="#edt-panneau" hx-swap="innerHTML"
   style="top: {{ p.haut }}%; height: {{ p.hauteur }}%; --edt-gauche: {{ p.gauche }}%; --edt-largeur: {{ p.largeur }}%;{% if b.couleur_type %} --edt-trait-type: {{ b.couleur_type }};{% endif %}"
   title="{{ infobulle|trim }}" data-cle="{{ b.cle }}">
   {%- if b.verrou or b.gravite %}

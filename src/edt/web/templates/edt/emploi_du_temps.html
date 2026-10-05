@@ -21,7 +21,7 @@
 {{ ui.message("Aucun emploi du temps n'a encore été généré pour ce semestre.", "info") }}
 <p><a class="bouton bouton-principal" href="/calculs?semestre_id={{ semestre.id }}">Générer l'emploi du temps</a></p>
 {%- else %}
-{%- set nature = vue.cible.nature.value if vue.cible else none %}
+{%- set limite_anomalies = 100 %}
 
 <form class="edt-barre-outils" method="get" action="/emploi-du-temps">
   <div class="champ">
@@ -144,7 +144,7 @@
         {%- for b in vue.a_programmer %}
         <li>{{ ui.etiquette("À programmer", "attention") }}
           <span>{{ b.titre }} ({{ b.type_code }}) - {{ b.groupes|join(", ") }} - prévue le {{ b.date|date_fr }} à {{ b.debut|heure }}</span>
-          <a href="{{ url_vue(seance=b.cle) }}" hx-get="/emploi-du-temps/occurrences/{{ b.occurrence_id }}/panneau?{{ {'retour': url_vue(seance=b.cle)}|urlencode }}" hx-target="#edt-panneau">Programmer</a></li>
+          <a href="{{ url_vue(seance=b.cle) }}" hx-get="/emploi-du-temps/occurrences/{{ b.occurrence_id }}/panneau" hx-target="#edt-panneau">Programmer</a></li>
         {%- endfor %}
       </ul>
     </section>
@@ -152,7 +152,10 @@
 
     {%- if vue.anomalies %}
     <section class="carte edt-ecran-seulement">
-      {{ edt.anomalies(vue.anomalies, "Anomalies des séances affichées") }}
+      {{ edt.anomalies(vue.anomalies[:limite_anomalies], "Anomalies des séances affichées (" ~ vue.anomalies|length ~ ")") }}
+      {%- if vue.anomalies|length > limite_anomalies %}
+      <p class="discret">... et {{ vue.anomalies|length - limite_anomalies }} autre(s) : la liste complète est dans l'onglet <a href="/a-traiter?semestre_id={{ semestre.id }}">À traiter</a>.</p>
+      {%- endif %}
     </section>
     {%- elif vue.controle and vue.controle.disponible and vue.blocs %}
     <p class="edt-ecran-seulement">{{ ui.etiquette("Vérifié", "succes") }} Aucune anomalie sur les séances affichées.</p>

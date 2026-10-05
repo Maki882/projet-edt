@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import datetime as dt
 from typing import Annotated
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
@@ -89,6 +89,26 @@ def _retour(retour: str | None, defaut: str = ADRESSE) -> str:
     ):
         return retour
     return defaut
+
+
+def _adresse_de_la_page(request: Request, retour: str | None, cle: str) -> str | None:
+    """Adresse de retour d'un panneau : `retour` s'il est donné, sinon la page d'où vient HTMX.
+
+    HTMX envoie l'adresse de la page dans l'en-tête `HX-Current-URL` : inutile
+    de la répéter dans chaque bloc de la grille. On y met la séance `cle` en
+    évidence, pour revenir sur elle après une action.
+    """
+    if retour:
+        return retour
+    courante = request.headers.get("HX-Current-URL")
+    if not courante:
+        return None
+    morceaux = urlsplit(courante)
+    if morceaux.path != ADRESSE:
+        return None
+    parametres = dict(parse_qsl(morceaux.query))
+    parametres["seance"] = cle
+    return f"{ADRESSE}?{urlencode(parametres)}"
 
 
 def _entier_ou_rien(texte: str | None, nom: str) -> int | None:
@@ -267,7 +287,10 @@ def panneau_seance(
 ):
     """Détail et formulaire d'une séance hebdomadaire (fragment)."""
     formulaire = modifications.formulaire_seance(session, seance_id)
-    retour = _retour(retour, f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}")
+    retour = _retour(
+        _adresse_de_la_page(request, retour, f"h{seance_id}"),
+        f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}",
+    )
     if not est_htmx(request):
         return RedirectResponse(retour, status_code=303)
     return _rendre_panneau_seance(request, session, formulaire, retour)
@@ -373,7 +396,7 @@ def panneau_occurrence(
     """Détail et formulaire d'une séance datée (fragment)."""
     formulaire = modifications.formulaire_occurrence(session, occurrence_id)
     retour = _retour(
-        retour,
+        _adresse_de_la_page(request, retour, f"o{occurrence_id}"),
         f"{ADRESSE}?version_id={formulaire.version_id}&couche=date"
         f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
     )
