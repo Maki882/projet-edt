@@ -1,21 +1,16 @@
 # =============================================================================
-# deploy/edt.service — unité systemd de l'application EDT.
-# Installée par deploy/installer-serveur.sh dans /etc/systemd/system/edt.service.
-# Après modification ici : relancer installer-serveur.sh (il recharge systemd et
-# redémarre le service si l'unité a changé).
-#
-# Commandes utiles (sur le serveur) :
-#   sudo systemctl status edt          état
-#   sudo systemctl restart edt         redémarrage
-#   sudo journalctl -u edt -n 100      100 dernières lignes de journal
+# deploy/edt.service — unité systemd de l'application EDT, installée par
+# installer-serveur.sh dans /etc/systemd/system/edt.service (à relancer après
+# toute modification ici). Sur le serveur : sudo systemctl status|restart edt,
+# sudo journalctl -u edt -n 100.
 # =============================================================================
 
 [Unit]
 Description=EDT - générateur d'emplois du temps (FastAPI, uvicorn)
 Documentation=file:/opt/edt/courant/code/docs/deploiement.md
 After=network.target
-# Au-delà de 5 échecs de démarrage en 2 minutes, systemd abandonne (état
-# « failed ») au lieu de boucler : nginx affiche alors la page 502.
+# Au-delà de 5 démarrages en 2 minutes, systemd abandonne (état « failed ») :
+# nginx affiche la page 502. deployer.sh remet ce compteur à zéro (reset-failed).
 StartLimitIntervalSec=120
 StartLimitBurst=5
 
@@ -24,16 +19,15 @@ StartLimitBurst=5
 Type=exec
 User=edt
 Group=edt
-# /opt/edt/courant est un lien vers la version en service (géré par deployer.sh).
+# /opt/edt/courant : lien vers la version en service (géré par deployer.sh).
 WorkingDirectory=/opt/edt/courant/code
 EnvironmentFile=/etc/edt/edt.env
-# Sortie Python non tamponnée : les messages arrivent tout de suite dans le journal.
 Environment=PYTHONUNBUFFERED=1
-# Un seul processus (le calcul tourne dans un thread de ce processus et son
-# état est gardé en mémoire), pas de rechargement automatique. Derrière nginx :
-# --proxy-headers fait confiance aux en-têtes X-Forwarded-* envoyés par
-# 127.0.0.1 seulement (bon schéma http/https et vraie adresse du client).
-# --no-access-log : l'application journalise déjà chaque requête (avec son identifiant).
+# Un seul processus (le calcul tourne dans un thread et son état est en
+# mémoire), sans rechargement automatique. --proxy-headers : les en-têtes
+# X-Forwarded-* de nginx (127.0.0.1 seulement) donnent le bon schéma et la
+# vraie adresse du client. --no-access-log : l'application journalise déjà
+# chaque requête, avec son identifiant.
 ExecStart=/opt/edt/courant/venv/bin/python -m uvicorn edt.web.asgi:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
 Restart=on-failure
 RestartSec=3
@@ -43,30 +37,25 @@ StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=edt
 UMask=0027
-
-# Mémoire : au-delà de 3 Go (sur 3,7 Go), le service est tué et redémarré
-# plutôt que de faire tomber tout le serveur. Visible dans le journal (« oom »).
+# Au-delà de 3 Go (sur 3,7 Go), le service est tué (« oom » dans le journal) et
+# redémarré, plutôt que de faire tomber tout le serveur.
 MemoryMax=3G
 
 # --- Durcissement ------------------------------------------------------------
-# Aucun gain de privilège possible (sudo, setuid...).
+# Système de fichiers en lecture seule sauf la base et les journaux ; /home,
+# /root, /tmp des autres, périphériques, noyau et cgroups hors d'atteinte ;
+# aucun gain de privilège ni capacité root (le port 8000 n'en demande pas).
 NoNewPrivileges=true
-# Tout le système de fichiers est en lecture seule pour le service, sauf :
 ProtectSystem=strict
 ReadWritePaths=/var/lib/edt /var/log/edt
-# Les dossiers personnels (/home, /root) sont invisibles.
 ProtectHome=true
-# /tmp privé au service.
 PrivateTmp=true
-# Pas d'accès aux périphériques matériels.
 PrivateDevices=true
-# Pas de modification du noyau, de ses modules ni des cgroups.
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
 LockPersonality=true
-# Aucune capacité root (le port 8000 n'en demande pas).
 CapabilityBoundingSet=
 
 [Install]

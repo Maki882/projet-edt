@@ -259,9 +259,7 @@ Depuis le poste :
 
 ```bash
 deploy/etat.sh                # photo complète (service, version, /sante, certificat, disque, edt doctor, journal)
-deploy/journaux.sh            # en direct : service + edt.log + erreurs nginx (Ctrl+C pour arrêter)
-deploy/journaux.sh service    # journal systemd du service (uvicorn, tracebacks)
-deploy/journaux.sh appli      # /var/log/edt/edt.log
+deploy/journaux.sh            # en direct : service et application (uvicorn + edt.log), Ctrl+C pour arrêter
 deploy/journaux.sh nginx      # accès et erreurs nginx
 deploy/journaux.sh calcul     # journal du dernier calcul d'emploi du temps
 ```

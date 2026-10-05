@@ -7,23 +7,16 @@
 #   sudo bash ~/edt-installation/deploy/activer-https.sh
 #   sudo env EDT_CERTBOT_EMAIL=prenom.nom@example.org bash ~/edt-installation/deploy/activer-https.sh
 #
-# Ce qu'il fait :
-#   1. vérifie, SANS RIEN MODIFIER, que EDT_DOMAINE se résout vers une adresse
-#      de ce serveur et que nginx y répond sur le port 80 (sinon : message et
-#      sortie non nulle) ;
-#   2. installe certbot (apt) ;
-#   3. obtient le certificat en mode non interactif (méthode « webroot » : le
-#      défi est servi par nginx depuis /var/www/certbot, emplacement
-#      /.well-known/acme-challenge/ prévu dans nginx-edt*.conf) ;
-#   4. installe un crochet qui recharge nginx après chaque renouvellement ;
-#   5. passe nginx en mode HTTPS (installer-serveur.sh --nginx-seulement), avec
-#      redirection de HTTP (nom de domaine et adresse IP) vers HTTPS ;
-#   6. vérifie HTTPS et la redirection, puis le renouvellement automatique
-#      (minuteur certbot.timer et « certbot renew --dry-run »).
-#
-# IDEMPOTENT : relancé alors que le certificat est valide, certbot ne demande
-# rien à Let's Encrypt (--keep-until-expiring) et la même configuration est
-# réinstallée ; seul le test « --dry-run » contacte le serveur de test.
+#   1. vérifie, SANS RIEN MODIFIER, que EDT_DOMAINE pointe sur ce serveur et
+#      que nginx y sert /.well-known/acme-challenge/ sur le port 80 ;
+#   2. installe certbot (apt) et obtient le certificat, non interactif, par la
+#      méthode « webroot » (défi servi par nginx depuis /var/www/certbot) ;
+#   3. installe un crochet qui recharge nginx après chaque renouvellement ;
+#   4. passe nginx en HTTPS (installer-serveur.sh --nginx-seulement : le port
+#      80 redirige alors vers https://EDT_DOMAINE, nom de domaine et adresse IP) ;
+#   5. vérifie HTTPS, le minuteur certbot.timer et « certbot renew --dry-run ».
+# IDEMPOTENT : certificat encore valide = rien de demandé à Let's Encrypt
+# (--keep-until-expiring) ; seul le « --dry-run » contacte le serveur de test.
 #
 # Paramètres (variables d'environnement) :
 #   EDT_DOMAINE        nom de domaine (défaut pts.jorund.xyz)
@@ -211,26 +204,8 @@ case "$code_https" in
   502) info "https://$EDT_DOMAINE/sante : 502 ; HTTPS fonctionne, l'application n'est simplement pas encore déployée ou démarrée." ;;
   *) avertir "https://$EDT_DOMAINE/sante : code $code_https inattendu ; HTTPS fonctionne mais vérifiez l'application (deploy/etat.sh)." ;;
 esac
-
-code_curl=0
-redirection="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$EDT_DOMAINE/sante")" || code_curl=$?
-if [ "$code_curl" -ne 0 ]; then
-  echouer "http://$EDT_DOMAINE ne répond plus sur le port 80 (code curl $code_curl)."
-fi
-if [ "$redirection" = "301 https://$EDT_DOMAINE/sante" ]; then
-  info "http://$EDT_DOMAINE redirige vers HTTPS (301)."
-else
-  echouer "la redirection HTTP → HTTPS ne fonctionne pas (réponse : « $redirection »)."
-fi
-premiere_adresse="${adresses_dns%%$'\n'*}"
-code_curl=0
-redirection_ip="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$premiere_adresse/")" || code_curl=$?
-if [ "$code_curl" -ne 0 ]; then redirection_ip="pas de réponse (code curl $code_curl)"; fi
-if [ "$redirection_ip" = "301 https://$EDT_DOMAINE/" ]; then
-  info "http://$premiere_adresse/ (adresse IP) redirige vers https://$EDT_DOMAINE/ (301)."
-else
-  avertir "l'adresse IP en HTTP ne redirige pas comme prévu (réponse : « $redirection_ip »)."
-fi
+# (La redirection du port 80 vers HTTPS, nom de domaine et adresse IP, vient
+# d'être contrôlée par installer-serveur.sh --nginx-seulement : code 301.)
 
 # -----------------------------------------------------------------------------
 etape "Renouvellement automatique"

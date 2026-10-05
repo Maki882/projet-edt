@@ -6,7 +6,8 @@
 # dossier :
 #   deploy/deployer.sh                  déploie le commit HEAD
 #   deploy/deployer.sh --ref v1.2       déploie une étiquette, une branche ou un commit
-#   deploy/deployer.sh --reset-base     recrée la base vide (sauvegarde + confirmation)
+#   deploy/deployer.sh --reset-base     recrée la base vide (sauvegarde + taper EFFACER)
+#                                       obligatoire après un changement de schéma
 #
 # Déroulement (détail dans docs/deploiement.md) :
 #   1. contrôles locaux : outils, clé, référence git, arbre de travail ;
@@ -32,18 +33,7 @@ DOSSIER_DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DOSSIER_DEPLOY/commun.sh"
 trap 'sur_erreur $? $LINENO "$BASH_COMMAND" "${BASH_SOURCE[0]}"' ERR
 
-usage() {
-  cat <<'EOF'
-Usage : deploy/deployer.sh [--ref <référence git>] [--reset-base]
-
-  --ref <réf>     commit, branche ou étiquette à déployer (défaut : HEAD)
-  --reset-base    recrée la base de données vide après l'avoir sauvegardée
-                  (demande de taper EFFACER pour confirmer)
-  -h, --help      affiche cette aide
-
-Variables : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
-EOF
-}
+usage() { sed -n '3,11p' "${BASH_SOURCE[0]}"; }
 
 REF="HEAD"
 RESET_BASE=0
