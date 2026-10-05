@@ -13,7 +13,9 @@ from edt.erreurs import ErreurNonLivre
 from edt.services.emploi_du_temps import raccords
 from edt.verification.contrat import Anomalie
 
-ERREUR = Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "La salle N204 est prise deux fois.", seances=("1-1",))
+ERREUR = Anomalie(
+    "SALLE_UNIQUE", Gravite.ERREUR, "La salle N204 est prise deux fois.", seances=("1-1",)
+)
 AVERTISSEMENT = Anomalie("PAUSE", Gravite.AVERTISSEMENT, "Pause courte.", seances=("2-1",))
 
 
@@ -92,7 +94,9 @@ def test_controler_ne_plante_jamais_mais_le_dit(session, caplog):
 
 def test_un_module_livre_mais_casse_n_est_pas_maquille(session, monkeypatch):
     def importer(nom):
-        raise ModuleNotFoundError("No module named 'bibliotheque_absente'", name="bibliotheque_absente")
+        raise ModuleNotFoundError(
+            "No module named 'bibliotheque_absente'", name="bibliotheque_absente"
+        )
 
     monkeypatch.setattr(raccords.importlib, "import_module", importer)
     with pytest.raises(ModuleNotFoundError):

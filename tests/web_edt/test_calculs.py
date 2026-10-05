@@ -33,7 +33,9 @@ def _formulaire(semestre_id: int, sauf: tuple[str, ...] = (), **options) -> dict
 
 
 def _lancer(client, semestre_id: int, **kwargs) -> int:
-    reponse = client.post("/calculs", data=_formulaire(semestre_id, **kwargs), follow_redirects=False)
+    reponse = client.post(
+        "/calculs", data=_formulaire(semestre_id, **kwargs), follow_redirects=False
+    )
     assert reponse.status_code == 303, reponse.text
     return int(reponse.headers["location"].rsplit("/", 1)[1])
 
@@ -73,13 +75,17 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_contraintes_decochees(jeu_
     assert "hx-trigger" not in fragment  # calcul fini : l'interrogation s'arrête
 
 
-def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(jeu_minimal, client, monkeypatch):
+def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
+    jeu_minimal, client, monkeypatch
+):
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
         demarre.set()
         arret.wait(DELAI)
-        return ResultatSolveur(StatutSolveur.ARRETE if arret.is_set() else StatutSolveur.TEMPS_DEPASSE)
+        return ResultatSolveur(
+            StatutSolveur.ARRETE if arret.is_set() else StatutSolveur.TEMPS_DEPASSE
+        )
 
     monkeypatch.setattr(solveur, "resoudre", moteur_lent)
     calcul_id = _lancer(client, jeu_minimal.semestre_id)
@@ -122,13 +128,22 @@ def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(jeu_minimal,
         ),
         (
             StatutSolveur.TEMPS_DEPASSE,
-            ["Pas trouvé dans le temps imparti", "pas une preuve", "Relancer en cherchant", "5 minutes"],
+            [
+                "Pas trouvé dans le temps imparti",
+                "pas une preuve",
+                "Relancer en cherchant",
+                "5 minutes",
+            ],
             ["Impossible avec ces contraintes"],
         ),
     ],
 )
-def test_deux_messages_d_echec_distincts(jeu_minimal, client, monkeypatch, statut, attendus, absents):
-    monkeypatch.setattr(solveur, "resoudre", lambda instantane, options, arret=None: ResultatSolveur(statut))
+def test_deux_messages_d_echec_distincts(
+    jeu_minimal, client, monkeypatch, statut, attendus, absents
+):
+    monkeypatch.setattr(
+        solveur, "resoudre", lambda instantane, options, arret=None: ResultatSolveur(statut)
+    )
     calcul_id = _lancer(client, jeu_minimal.semestre_id)
     generation.attendre_calcul(calcul_id, DELAI)
 
@@ -166,7 +181,9 @@ def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
     premier = _lancer(client, jeu_minimal.semestre_id, sauf=("PAUSE",))
     generation.attendre_calcul(premier, DELAI)
 
-    longue = client.post(f"/calculs/{premier}/relancer", data={"longue": "1"}, follow_redirects=False)
+    longue = client.post(
+        f"/calculs/{premier}/relancer", data={"longue": "1"}, follow_redirects=False
+    )
     second = int(longue.headers["location"].rsplit("/", 1)[1])
     generation.attendre_calcul(second, DELAI)
     autre = client.post(
@@ -188,8 +205,12 @@ def test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non(
     jeu_minimal, client, faux_verificateur
 ):
     faux_verificateur.pre_verifications = [
-        Anomalie("DISPO_ENSEIGNANT", Gravite.ERREUR, "M. Leroy a 10 h de cours pour 8 h disponibles."),
-        Anomalie("CAPACITE", Gravite.AVERTISSEMENT, "Une seule salle peut accueillir la promotion."),
+        Anomalie(
+            "DISPO_ENSEIGNANT", Gravite.ERREUR, "M. Leroy a 10 h de cours pour 8 h disponibles."
+        ),
+        Anomalie(
+            "CAPACITE", Gravite.AVERTISSEMENT, "Une seule salle peut accueillir la promotion."
+        ),
     ]
     semestre_id = jeu_minimal.semestre_id
 
