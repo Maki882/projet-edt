@@ -36,6 +36,7 @@ from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rruleset, rrulestr
 from icalendar import Calendar, Timezone, TimezoneDaylight, TimezoneStandard, vRecur
+from icalendar.error import InvalidCalendar
 
 from edt.domaine.enumerations import Gravite
 from edt.echange.format import StatutSeance
@@ -104,26 +105,35 @@ def lire_ical(
 
     seances: list[SeanceLue] = []
     for ev in maitres:
-        try:
-            seances.extend(
-                _lire_evenement(nom, lignes[id(ev)], ev, remplacements, periode, signalements)
-            )
-        except _Illisible as erreur:
-            signalements.append(
-                Signalement(Gravite.ERREUR, str(erreur), nom, "événements", lignes[id(ev)])
-            )
-    for ev in remplacements.values():
+        seances.extend(
+            _lire_ou_signaler(nom, lignes[id(ev)], ev, remplacements, periode, signalements)
+        )
+    for ev in list(remplacements.values()):
         # Remplacement sans événement d'origine dans le fichier : une séance comme une autre.
-        try:
-            seances.extend(_lire_evenement(nom, lignes[id(ev)], ev, {}, periode, signalements))
-        except _Illisible as erreur:
-            signalements.append(
-                Signalement(Gravite.ERREUR, str(erreur), nom, "événements", lignes[id(ev)])
-            )
+        seances.extend(_lire_ou_signaler(nom, lignes[id(ev)], ev, {}, periode, signalements))
     journal.info(
         "Fichier iCal %s : %d événement(s), %d séance(s)", nom, len(evenements), len(seances)
     )
     return seances, signalements
+
+
+def _lire_ou_signaler(
+    nom: str,
+    ligne: int | None,
+    ev: Any,
+    remplacements: dict[tuple[str, dt.datetime], Any],
+    periode: tuple[dt.date, dt.date] | None,
+    signalements: list[Signalement],
+) -> list[SeanceLue]:
+    """Séances d'un événement ; un événement illisible devient un signalement d'erreur."""
+    try:
+        return _lire_evenement(nom, ligne, ev, remplacements, periode, signalements)
+    except _Illisible as erreur:
+        message = str(erreur)
+    except InvalidCalendar as erreur:
+        message = f"Événement illisible ({erreur}) : non importé."
+    signalements.append(Signalement(Gravite.ERREUR, message, nom, "événements", ligne))
+    return []
 
 
 def _lire_evenement(
