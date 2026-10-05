@@ -794,19 +794,25 @@ class ModeleHoraires:
         par_enseignant, par_groupe = self._par_personne()
         emplois_groupes = self._emplois_du_temps_des_groupes(par_groupe)
         if parametres.poids_trous:
-            for emploi in emplois_groupes:
+            for emploi, nb_groupes in emplois_groupes:
                 for actives, nb_semaines in self._configurations(emploi):
+                    fois = nb_groupes * nb_semaines
                     for trou in self._trous(actives, creneaux):
-                        trous.append((nb_semaines, trou))
-                        self._termes.append((parametres.poids_trous * nb_semaines, trou))
+                        trous.append((fois, trou))
+                        self._termes.append((parametres.poids_trous * fois, trou))
         if parametres.poids_changement_campus:
             emplois = emplois_groupes + [
-                par_enseignant[e] for e in sorted(par_enseignant) if len(par_enseignant[e]) >= 2
+                (par_enseignant[e], 1)
+                for e in sorted(par_enseignant)
+                if len(par_enseignant[e]) >= 2
             ]
-            for emploi in emplois:
+            for emploi, nb_personnes in emplois:
                 for actives, nb_semaines in self._configurations(emploi):
                     self._termes.extend(
-                        (parametres.poids_changement_campus * nb_semaines, changement)
+                        (
+                            parametres.poids_changement_campus * nb_personnes * nb_semaines,
+                            changement,
+                        )
                         for changement in self._changements_de_campus(actives)
                     )
         self._compteurs = {
@@ -887,15 +893,20 @@ class ModeleHoraires:
             par_jour[creneau.jour].append((creneau.debut, creneau.fin))
         return {jour: sorted(creneaux) for jour, creneaux in par_jour.items()}
 
-    def _emplois_du_temps_des_groupes(self, par_groupe: dict[int, list[int]]) -> list[list[int]]:
-        """Séances vues par chaque groupe feuille : les siennes et celles de ses ascendants.
+    def _emplois_du_temps_des_groupes(
+        self, par_groupe: dict[int, list[int]]
+    ) -> list[tuple[list[int], int]]:
+        """Emplois du temps des groupes feuilles : `(séances, nombre de groupes qui les suivent)`.
 
         Un groupe feuille n'est le parent d'aucun autre groupe (même
-        définition que le vérificateur).
+        définition que le vérificateur) ; il suit ses séances et celles de
+        ses ascendants. Deux demi-groupes sans séance propre ont le même
+        emploi du temps, celui de leur classe : il est modélisé une fois et
+        compte pour deux, comme dans les indicateurs du vérificateur.
         """
         parents = {groupe.id: groupe.parent_id for groupe in self.instantane.groupes}
         avec_enfants = set(parents.values())
-        emplois: set[tuple[int, ...]] = set()
+        emplois: dict[tuple[int, ...], int] = defaultdict(int)
         for groupe_id in sorted(parents):
             if groupe_id in avec_enfants:
                 continue
@@ -905,8 +916,8 @@ class ModeleHoraires:
                 courant = parents.get(courant)
             emploi = tuple(sorted({i for g in lignee for i in par_groupe.get(g, ())}))
             if len(emploi) >= 2:
-                emplois.add(emploi)
-        return [list(emploi) for emploi in sorted(emplois)]
+                emplois[emploi] += 1
+        return [(list(emploi), nombre) for emploi, nombre in sorted(emplois.items())]
 
     def _configurations(self, emploi: Sequence[int]) -> list[tuple[list[int], int]]:
         """Regroupe les semaines du semestre par ensemble de séances actives.
