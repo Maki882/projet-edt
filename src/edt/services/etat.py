@@ -100,7 +100,10 @@ def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
                 compteurs = compter_entites(session)
     except (SQLAlchemyError, OSError) as erreur:
         journal.exception("Base inaccessible (%s)", url)
-        return EtatBase(url=url, accessible=False, initialisee=False, erreur=str(erreur))
+        # Le message du pilote de base (« file is not a database ») suffit à l'utilisateur ;
+        # la trace complète est dans le journal.
+        cause = getattr(erreur, "orig", None) or erreur
+        return EtatBase(url=url, accessible=False, initialisee=False, erreur=str(cause))
     if ecarts:
         journal.warning(
             "Schéma périmé (%s) : %d écart(s) avec le modèle : %s",
