@@ -27,6 +27,7 @@ LIBELLES_COMPTEURS: dict[str, str] = {
     "retenues": "retenue(s)",
     "annulees": "annulée(s), non comptée(s)",
     "ecartees": "mise(s) de côté",
+    "retirees": "retirée(s) (jour fermé)",
     "supprimes": "supprimé(s)",
 }
 """Libellé affiché de chaque compteur d'un bilan, dans l'ordre d'affichage."""

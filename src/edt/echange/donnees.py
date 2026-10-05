@@ -1210,7 +1210,7 @@ def exporter_donnees(session: Session) -> list[tuple[Feuille, list[dict[str, Any
             select(m.Salle).options(selectinload(m.Salle.equipements), selectinload(m.Salle.campus))
         )
     )
-    reference_salle = _references_salles(salles)
+    reference_salle = references_salles(salles)
     groupes = list(session.scalars(select(m.Groupe).options(selectinload(m.Groupe.annee))))
     groupes_par_id = {g.id: g for g in groupes}
     exportateurs: dict[str, Callable[[], Iterable[dict[str, Any]]]] = {
@@ -1233,7 +1233,7 @@ def exporter_donnees(session: Session) -> list[tuple[Feuille, list[dict[str, Any
     return [(feuille, list(exportateurs[feuille.nom]())) for feuille in FEUILLES]
 
 
-def _references_salles(salles: Sequence[m.Salle]) -> dict[int, str]:
+def references_salles(salles: Sequence[m.Salle]) -> dict[int, str]:
     """Référence de chaque salle : son code, ou « code@campus » si le code est ambigu."""
     nombre = defaultdict(int)
     for salle in salles:
