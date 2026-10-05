@@ -1,0 +1,73 @@
+{#
+  Suivi et résultat d'un calcul (fragment). Tant que le calcul tourne, le bloc s'interroge
+  lui-même chaque seconde (HTMX) et se remplace par la réponse ; à la fin, la réponse n'a
+  plus de déclencheur : l'interrogation s'arrête. Variable : r (calculs.ResultatCalcul).
+#}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+{%- set niveaux = {"en_cours": "info", "reussi": "succes", "impossible": "erreur", "temps_depasse": "attention", "arrete": "attention", "erreur": "erreur"} %}
+<div id="suivi-calcul" class="edt-suivi" aria-live="polite"
+  {%- if r.en_cours %} hx-get="/calculs/{{ r.suivi.id }}/etat" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <h2>{{ r.titre }} {{ ui.etiquette("Calcul n° " ~ r.suivi.id, niveaux[r.issue]) }}</h2>
+  <p>{{ r.phrase }}</p>
+  {%- if r.en_cours %}
+  <div class="edt-progression" role="progressbar" aria-label="Calcul en cours"></div>
+  <p class="discret">Temps écoulé : <strong>{{ r.temps_texte }}</strong>{% if r.limite_texte %} sur {{ r.limite_texte }} au plus{% endif %}. Cette page se met à jour toute seule.</p>
+  <noscript><p><a class="bouton" href="/calculs/{{ r.suivi.id }}">Actualiser</a></p></noscript>
+  <div class="edt-boutons">
+    <form method="post" action="/calculs/{{ r.suivi.id }}/arreter" hx-post="/calculs/{{ r.suivi.id }}/arreter" hx-target="#suivi-calcul" hx-swap="outerHTML">
+      <button type="submit" class="bouton bouton-danger"{% if r.suivi.arret_demande %} disabled{% endif %}>
+        {{ "Arrêt demandé..." if r.suivi.arret_demande else "Arrêter le calcul" }}</button>
+    </form>
+  </div>
+  {%- endif %}
+
+  {%- if r.contraintes_desactivees %}
+  {{ ui.message("Contraintes volontairement non respectées pour ce calcul (décochées au lancement) :", "attention", r.contraintes_desactivees) }}
+  {%- endif %}
+  {%- if r.precision %}
+  <p class="pre-ligne"><strong>Précision :</strong> {{ r.precision }}</p>
+  {%- endif %}
+
+  {%- if r.issue == "reussi" %}
+  <div class="edt-boutons">
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {%- if r.nb_a_programmer %}
+    <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">{{ fmt.pluriel(r.nb_a_programmer, "séance") }} à programmer</a>
+    {%- endif %}
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+      <input type="hidden" name="autre_solution" value="1">
+      <button type="submit" class="bouton">Proposer une autre solution</button>
+    </form>
+  </div>
+  <h3>Qualité de l'emploi du temps</h3>
+  {{ edt.indicateurs(r.controle, r.nb_a_programmer) }}
+  {%- elif r.issue == "temps_depasse" %}
+  <div class="edt-boutons">
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+      <input type="hidden" name="longue" value="1">
+      <button type="submit" class="bouton bouton-principal">Relancer en cherchant jusqu'à {{ r.relance_texte }}</button>
+    </form>
+    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les contraintes</a>
+  </div>
+  {%- elif r.issue == "impossible" %}
+  <div class="edt-boutons">
+    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les vérifications et les contraintes</a>
+  </div>
+  {%- elif r.issue == "arrete" %}
+  <div class="edt-boutons">
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+      <button type="submit" class="bouton bouton-principal">Relancer le même calcul</button>
+    </form>
+    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Changer les réglages</a>
+  </div>
+  {%- elif r.issue == "erreur" %}
+  <p class="edt-references">
+    À communiquer pour obtenir de l'aide : <strong>calcul n° {{ r.suivi.id }}</strong>
+    {%- if r.journal_nom %}, fichier journal <code>{{ r.journal_nom }}</code>{% endif %}.
+  </p>
+  <div class="edt-boutons">
+    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revenir à l'écran « Générer »</a>
+  </div>
+  {%- endif %}
+</div>

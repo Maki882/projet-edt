@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+
+{% block titre %}Emploi du temps{% endblock %}
+
+{% block actions %}
+{%- if vue and vue.cible %}
+<a class="bouton" href="/export/emploi-du-temps.csv?{{ export }}">Exporter pour un tableur</a>
+<a class="bouton" href="/export/emploi-du-temps.ics?{{ export }}">Exporter vers un agenda</a>
+<button type="button" class="bouton" data-imprimer>Imprimer</button>
+{%- endif %}
+{% endblock %}
+
+{% block contenu %}
+{%- if not semestre %}
+{{ ui.message("Aucun semestre n'existe encore : initialiser la base de données, puis saisir les données.", "attention") }}
+{%- elif not version %}
+{{ edt.choix_semestre(semestres, semestre, "/emploi-du-temps") }}
+{{ ui.message("Aucun emploi du temps n'a encore été généré pour ce semestre.", "info") }}
+<p><a class="bouton bouton-principal" href="/calculs?semestre_id={{ semestre.id }}">Générer l'emploi du temps</a></p>
+{%- else %}
+{%- set limite_anomalies = 100 %}
+
+<form class="edt-barre-outils" method="get" action="/emploi-du-temps">
+  <div class="champ">
+    <label for="choix-semestre">Semestre</label>
+    <select id="choix-semestre" name="semestre_id" data-envoi-auto data-desactiver="version_id cible">
+      {%- for s in semestres %}
+      <option value="{{ s.id }}"{% if s.id == semestre.id %} selected{% endif %}>{{ s.libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="champ">
+    <label for="choix-version">Version</label>
+    <select id="choix-version" name="version_id" data-envoi-auto>
+      {%- for v in versions_semestre %}
+      <option value="{{ v.id }}"{% if v.id == vue.version.id %} selected{% endif %}>Version {{ v.numero }}{% if v.active %} (active){% endif %} du {{ v.cree_le|date_fr }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <div class="champ edt-champ-large">
+    <label for="choix-cible">Pour qui</label>
+    <input type="search" class="edt-recherche" placeholder="Rechercher un groupe, un enseignant ou une salle" data-filtre="choix-cible" aria-label="Rechercher dans la liste « Pour qui »" autocomplete="off">
+    <select id="choix-cible" name="cible" data-envoi-auto>
+      {%- for o in options_cibles %}
+      {%- if loop.changed(o.rubrique) %}{% if not loop.first %}</optgroup>{% endif %}<optgroup label="{{ o.rubrique }}">{% endif %}
+      <option value="{{ o.valeur }}"{% if vue.cible and o.valeur == vue.cible.valeur %} selected{% endif %}>{{ o.libelle }}</option>
+      {%- if loop.last %}</optgroup>{% endif %}
+      {%- endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="couche" value="{{ vue.couche.value }}">
+  <input type="hidden" name="affichage" value="{{ vue.affichage.value }}">
+  {%- if vue.couche.value == "date" and vue.date %}
+  <input type="hidden" name="date" value="{{ vue.date.isoformat() }}">
+  {%- elif vue.jour is not none %}
+  <input type="hidden" name="jour" value="{{ vue.jour }}">
+  {%- endif %}
+  <button type="submit" class="bouton">Afficher</button>
+</form>
+
+{%- if vue.cible %}
+<div class="edt-impression-seulement">
+  <h1>{{ vue.titre_cible }}</h1>
+  <p>{{ semestre.libelle }} - {{ vue.version.libelle }} -
+    {% if vue.navigation %}{{ vue.navigation.titre }}, {{ vue.navigation.detail|lower }}{% else %}semaine type{% endif %}</p>
+</div>
+
+<div class="edt-entete-vue edt-ecran-seulement">
+  <div>
+    <h2>{{ vue.titre_cible }}</h2>
+    <p class="discret">{{ vue.version.libelle }}{% if not vue.version.active %} - <strong>version non active</strong>{% endif %}</p>
+    {%- if vue.groupes_lies %}
+    <p class="discret">Avec les séances des groupes qui partagent ses étudiants : {{ vue.groupes_lies|join(", ") }}.</p>
+    {%- endif %}
+  </div>
+  <nav class="edt-onglets" aria-label="Affichage">
+    <a href="{{ url_vue(couche='hebdo', affichage='semaine', date=none, jour=none) }}"{% if vue.couche.value == 'hebdo' and vue.affichage.value == 'semaine' %} class="actif" aria-current="page"{% endif %}>Semaine type</a>
+    <a href="{{ url_vue(couche='date', affichage='semaine', jour=none) }}"{% if vue.couche.value == 'date' and vue.affichage.value == 'semaine' %} class="actif" aria-current="page"{% endif %}>Semaine datée</a>
+    {%- if vue.couche.value == 'hebdo' %}
+    <a href="{{ url_vue(affichage='jour', jour=vue.jour if vue.jour is not none else 0) }}"{% if vue.affichage.value == 'jour' %} class="actif" aria-current="page"{% endif %}>Jour</a>
+    {%- else %}
+    <a href="{{ url_vue(affichage='jour') }}"{% if vue.affichage.value == 'jour' %} class="actif" aria-current="page"{% endif %}>Jour</a>
+    {%- endif %}
+  </nav>
+</div>
+
+{%- if vue.navigation %}
+{%- set nav = vue.navigation %}
+{%- set unite = "jour" if vue.affichage.value == "jour" else "semaine" %}
+<div class="edt-navigation">
+  {%- if nav.precedente %}
+  <a class="bouton" href="{{ url_vue(**nav.precedente) }}">&lsaquo; {{ "Jour précédent" if unite == "jour" else "Semaine précédente" }}</a>
+  {%- else %}
+  <span class="bouton" aria-disabled="true">&lsaquo; {{ "Jour précédent" if unite == "jour" else "Semaine précédente" }}</span>
+  {%- endif %}
+  <div class="edt-navigation-periode">
+    <strong>{{ nav.titre }}</strong>
+    <span class="discret">{{ nav.detail }}</span>
+  </div>
+  {%- if nav.suivante %}
+  <a class="bouton" href="{{ url_vue(**nav.suivante) }}">{{ "Jour suivant" if unite == "jour" else "Semaine suivante" }} &rsaquo;</a>
+  {%- else %}
+  <span class="bouton" aria-disabled="true">{{ "Jour suivant" if unite == "jour" else "Semaine suivante" }} &rsaquo;</span>
+  {%- endif %}
+  {%- if vue.couche.value == "date" %}
+  <form class="edt-saut-date" method="get" action="/emploi-du-temps">
+    {%- for cle, valeur in url_vue.parametres.items() if cle != "date" %}
+    <input type="hidden" name="{{ cle }}" value="{{ valeur }}">
+    {%- endfor %}
+    <label for="saut-date">Aller au</label>
+    <input type="date" id="saut-date" name="date" value="{{ vue.date.isoformat() }}" min="{{ semestre.date_debut.isoformat() }}" max="{{ semestre.date_fin.isoformat() }}" required>
+    <button type="submit" class="bouton">Afficher</button>
+  </form>
+  {%- endif %}
+</div>
+{%- endif %}
+
+{{ edt.encart_controle(vue.controle) }}
+{%- if vue.couche.value == "date" and not vue.occurrences_disponibles %}
+<div class="message message-info" role="status">
+  <p>Les séances datées de cette version n'ont pas encore été produites : la semaine type n'a pas encore été appliquée au calendrier du semestre.</p>
+  <form method="post" action="/emploi-du-temps/versions/{{ vue.version.id }}/seances-datees" class="edt-boutons">
+    <input type="hidden" name="retour" value="{{ retour }}">
+    <button type="submit" class="bouton">Produire les séances datées</button>
+  </form>
+</div>
+{%- endif %}
+
+<div class="edt-mise-en-page">
+  <div class="edt-zone-grille">
+    {%- if not vue.blocs and (vue.couche.value == "hebdo" or vue.occurrences_disponibles) %}
+    <p class="vide">Aucune séance {{ "ce jour-là" if vue.affichage.value == "jour" else "cette semaine" }}.</p>
+    {%- endif %}
+    {% include "edt/_grille.html" %}
+
+    {%- if vue.a_programmer %}
+    <section class="carte">
+      <h2>Séances à programmer cette semaine</h2>
+      <p class="aide">Ces séances n'ont pas pu être replacées automatiquement (jour fermé, indisponibilité) : les déplacer à la main.</p>
+      <ul class="edt-anomalies">
+        {%- for b in vue.a_programmer %}
+        <li>{{ ui.etiquette("À programmer", "attention") }}
+          <span>{{ b.titre }} ({{ b.type_code }}) - {{ b.groupes|join(", ") }} - prévue le {{ b.date|date_fr }} à {{ b.debut|heure }}</span>
+          <a href="{{ url_vue(seance=b.cle) }}" hx-get="/emploi-du-temps/occurrences/{{ b.occurrence_id }}/panneau" hx-target="#edt-panneau">Programmer</a></li>
+        {%- endfor %}
+      </ul>
+    </section>
+    {%- endif %}
+
+    {%- if vue.anomalies %}
+    <section class="carte edt-ecran-seulement">
+      {{ edt.anomalies(vue.anomalies[:limite_anomalies], "Anomalies des séances affichées (" ~ vue.anomalies|length ~ ")") }}
+      {%- if vue.anomalies|length > limite_anomalies %}
+      <p class="discret">... et {{ vue.anomalies|length - limite_anomalies }} autre(s) : la liste complète est dans l'onglet <a href="/a-traiter?semestre_id={{ semestre.id }}">À traiter</a>.</p>
+      {%- endif %}
+    </section>
+    {%- elif vue.controle and vue.controle.disponible and vue.blocs %}
+    <p class="edt-ecran-seulement">{{ ui.etiquette("Vérifié", "succes") }} Aucune anomalie sur les séances affichées.</p>
+    {%- endif %}
+  </div>
+  <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite">
+    {%- if panneau -%}
+    {%- with f = panneau.f, marques = panneau.marques or (), controle = panneau.controle, resultat = none -%}
+    {%- if panneau.type == "seance" %}{% include "edt/_panneau_seance.html" %}{% else %}{% include "edt/_panneau_occurrence.html" %}{% endif -%}
+    {%- endwith -%}
+    {%- endif -%}
+  </aside>
+</div>
+{%- else %}
+{{ ui.message("Choisir un groupe, un enseignant ou une salle dans la liste « Pour qui ».", "info") }}
+{%- endif %}
+{%- endif %}
+{% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

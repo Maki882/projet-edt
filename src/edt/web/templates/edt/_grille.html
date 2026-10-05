@@ -1,0 +1,90 @@
+{#
+  Grille d'un emploi du temps. Variables : vue (vues.VueEmploiDuTemps), url_vue, selection.
+  Les positions viennent du service (disposition.py) : top et height en % de l'axe horaire,
+  --edt-gauche et --edt-largeur en % de la colonne (séances simultanées côte à côte).
+#}
+{%- set axe = vue.disposition.axe %}
+{%- macro verrou() -%}
+<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path fill="currentColor" d="M4.5 7V5a3.5 3.5 0 0 1 7 0v2h.5A1 1 0 0 1 13 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h.5zm1.5 0h4V5a2 2 0 0 0-4 0v2z"/></svg>
+{%- endmacro %}
+{%- macro bloc(b) -%}
+{%- set p = vue.disposition.positions[b.cle] %}
+{%- set lien = url_vue(seance=b.cle) %}
+{%- if b.occurrence_id %}{% set panneau = "/emploi-du-temps/occurrences/" ~ b.occurrence_id ~ "/panneau" %}{% else %}{% set panneau = "/emploi-du-temps/seances/" ~ b.seance_hebdo_id ~ "/panneau" %}{% endif %}
+{%- set infobulle -%}
+{{ b.debut|heure }} - {{ b.fin|heure }} : {{ b.titre }} ({{ b.type_libelle }}). Groupes : {{ b.groupes|join(", ") or "aucun" }}. Enseignants : {{ b.enseignants|join(", ") or "aucun" }}. Salle : {{ b.salle or "à définir" }}.
+{%- if b.semaines_texte %} {{ b.semaines_texte }}.{% endif %}
+{%- if b.verrou %} Séance verrouillée.{% endif %}
+{%- if b.partielle %} Concerne une partie du groupe.{% endif %}
+{%- if b.annulee %} Séance annulée.{% elif b.deplacee %} Séance déplacée{% if b.date_initiale %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}.{% endif %}
+{%- if b.anomalies %} {{ b.anomalies|length }} anomalie(s) : ouvrir la séance pour le détail.{% endif %}
+{%- endset %}
+<a class="edt-bloc edt-couleur-{{ b.couleur }}
+  {%- if b.partielle %} edt-bloc-partielle{% endif %}
+  {%- if b.annulee %} edt-bloc-annulee{% endif %}
+  {%- if b.deplacee %} edt-bloc-deplacee{% endif %}
+  {%- if b.gravite %} edt-bloc-{{ b.gravite.value }}{% endif %}
+  {%- if selection == b.cle %} edt-bloc-selection{% endif %}"
+  href="{{ lien }}" hx-get="{{ panneau }}" hx-target="#edt-panneau" hx-swap="innerHTML"
+  style="top: {{ p.haut }}%; height: {{ p.hauteur }}%; --edt-gauche: {{ p.gauche }}%; --edt-largeur: {{ p.largeur }}%;{% if b.couleur_type %} --edt-trait-type: {{ b.couleur_type }};{% endif %}"
+  title="{{ infobulle|trim }}" data-cle="{{ b.cle }}">
+  {%- if b.verrou or b.gravite %}
+  <span class="edt-marques">
+    {%- if b.gravite %}<span class="edt-marque edt-marque-{{ b.gravite.value }}" aria-label="{{ b.anomalies|length }} anomalie(s)">!</span>{% endif %}
+    {%- if b.verrou %}<span class="edt-marque edt-marque-verrou" aria-label="Séance verrouillée">{{ verrou() }}</span>{% endif %}
+  </span>
+  {%- endif %}
+  <span class="edt-bloc-horaire edt-bloc-detail">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
+  <strong class="edt-bloc-titre edt-bloc-ligne">{{ b.titre }}</strong>
+  <span class="edt-bloc-ligne">{{ b.type_code }} - {{ b.groupes|join(", ") }}</span>
+  {%- if b.enseignants %}<span class="edt-bloc-ligne edt-bloc-detail">{{ b.enseignants|join(", ") }}</span>{% endif %}
+  <span class="edt-bloc-ligne">{{ b.salle or "Salle à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</span>
+  {%- if b.semaines_texte %}<span class="edt-bloc-semaines edt-bloc-ligne edt-bloc-detail">{{ b.semaines_texte }}</span>{% endif %}
+  {%- if b.partielle %}<span class="edt-bloc-partie edt-bloc-ligne edt-bloc-detail">Une partie du groupe</span>{% endif %}
+  {%- if b.annulee %}<span class="edt-bloc-statut">Annulée</span>{% elif b.deplacee %}<span class="edt-bloc-statut">Déplacée{% if b.date_initiale and b.date_initiale != b.date %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}</span>{% endif %}
+</a>
+{%- endmacro %}
+{#- Chaque jour est au moins assez large pour ses séances simultanées (--edt-largeur-voie chacune). #}
+<div class="edt-grille" style="--edt-nb-jours: {{ vue.jours|length }}; --edt-duree: {{ axe.duree }}; grid-template-columns: var(--edt-largeur-axe){% for j in vue.jours %} minmax(max(7.5rem, calc({{ vue.disposition.voies_de(j.jour) }} * var(--edt-largeur-voie))), 1fr){% endfor %};">
+  <div class="edt-coin"></div>
+  {%- for j in vue.jours %}
+  <div class="edt-entete-jour{% if j.fermeture %} edt-entete-ferme{% endif %}">
+    {%- if vue.couche.value == "date" %}
+    <a href="{{ url_vue(affichage='jour', date=j.date.isoformat(), seance=none) }}">{{ j.libelle|capitalize }}</a>
+    {%- else %}
+    <a href="{{ url_vue(affichage='jour', jour=j.jour, seance=none) }}">{{ j.libelle|capitalize }}</a>
+    {%- endif %}
+    {%- if j.fermeture %}<small>{{ j.fermeture }}</small>{% endif %}
+  </div>
+  {%- endfor %}
+  <div class="edt-axe" aria-hidden="true">
+    {%- for g in axe.graduations %}
+    <span class="edt-graduation" style="top: {{ axe.position(g) }}%">{{ g|heure }}</span>
+    {%- endfor %}
+  </div>
+  {%- for j in vue.jours %}
+  <div class="edt-colonne{% if j.fermeture %} edt-colonne-fermee{% endif %}" role="group" aria-label="{{ j.libelle|capitalize }}{% if j.fermeture %} (fermé : {{ j.fermeture }}){% endif %}">
+    {%- for g in axe.graduations %}
+    <div class="edt-ligne-heure" style="top: {{ axe.position(g) }}%"></div>
+    {%- endfor %}
+    {%- if vue.dejeuner %}
+    <div class="edt-dejeuner" style="top: {{ vue.dejeuner[0] }}%; height: {{ vue.dejeuner[1] }}%"><span>Déjeuner</span></div>
+    {%- endif %}
+    {%- if j.fermeture %}<div class="edt-fermeture">{{ j.fermeture }}</div>{% endif %}
+    {%- for b in vue.blocs if b.jour == j.jour %}
+    {{ bloc(b) }}
+    {%- endfor %}
+  </div>
+  {%- endfor %}
+</div>
+<div class="edt-legende">
+  <span><span class="edt-echantillon edt-couleur-0" style="background: var(--edt-fond)"></span> une couleur par matière</span>
+  <span><span class="edt-marque edt-marque-verrou">{{ verrou() }}</span> séance verrouillée</span>
+  <span><span class="edt-marque edt-marque-erreur">!</span> anomalie</span>
+  {%- if vue.cible and vue.cible.nature.value == "groupe" %}
+  <span><span class="edt-echantillon edt-bloc-partielle"></span> séance d'une partie du groupe</span>
+  {%- endif %}
+  {%- if vue.couche.value == "date" %}
+  <span><span class="edt-echantillon edt-bloc-annulee"></span> séance annulée</span>
+  {%- endif %}
+</div>

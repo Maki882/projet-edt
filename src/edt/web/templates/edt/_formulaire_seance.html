@@ -1,0 +1,49 @@
+{#
+  Formulaire de déplacement d'une séance de la semaine type (fragment). Changer le jour ou
+  l'heure recharge le formulaire (débuts de la grille ce jour-là, salles libres à ce moment).
+  Variables : f (modifications.FormulaireSeance), retour, resultat, verrouiller.
+#}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+{%- set adresse = "/emploi-du-temps/seances/" ~ f.bloc.seance_hebdo_id %}
+<form id="edt-formulaire" class="formulaire" method="post" action="{{ adresse }}/modifier"
+  hx-post="{{ adresse }}/modifier" hx-target="#edt-panneau" hx-swap="innerHTML">
+  <h3>Déplacer la séance</h3>
+  {%- if resultat %}
+  {{ ui.message(resultat.message, resultat.niveau, resultat.remarques) }}
+  {{ edt.anomalies(resultat.anomalies) }}
+  {%- endif %}
+  <input type="hidden" name="retour" value="{{ retour }}">
+  {%- set rechargement = {"hx-get": adresse ~ "/formulaire", "hx-trigger": "change", "hx-include": "closest form", "hx-target": "#edt-formulaire", "hx-swap": "outerHTML"} %}
+  {{ ui.champ("jour", "Jour", f.jour, type="select", requis=true, options=f.jours, attributs=rechargement) }}
+  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ " (la durée ne change pas).") }}
+  <div class="champ">
+    <label for="champ-salle_id">Salle</label>
+    <select id="champ-salle_id" name="salle_id">
+      {%- set libres = f.salles|selectattr("libre")|list %}
+      {%- set occupees = f.salles|rejectattr("libre")|list %}
+      {%- if libres %}
+      <optgroup label="Libres à ce moment">
+        {%- for s in libres %}
+        <option value="{{ s.id }}"{% if s.id == f.salle_id %} selected{% endif %}>{{ s.libelle }}</option>
+        {%- endfor %}
+      </optgroup>
+      {%- endif %}
+      {%- if occupees %}
+      <optgroup label="Occupées à ce moment">
+        {%- for s in occupees %}
+        <option value="{{ s.id }}"{% if s.id == f.salle_id %} selected{% endif %}>{{ s.libelle }}</option>
+        {%- endfor %}
+      </optgroup>
+      {%- endif %}
+      {%- if not f.salles %}
+      <option value="">Aucune salle compatible</option>
+      {%- endif %}
+    </select>
+    <p class="aide">Seules les salles qui conviennent à la séance sont proposées ; une salle occupée sera refusée à la vérification.</p>
+  </div>
+  {{ ui.champ("verrouiller", "Verrouiller la séance à sa nouvelle place", verrouiller, type="checkbox") }}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">Vérifier et enregistrer</button>
+  </div>
+</form>

@@ -83,7 +83,12 @@ def test_sante(client):
     assert reponse.status_code == 200
     corps = reponse.json()
     assert corps["statut"] == "ok"
-    assert corps["base"] == {"accessible": True, "initialisee": True, "mode_journal": "wal"}
+    assert corps["base"] == {
+        "accessible": True,
+        "initialisee": True,
+        "mode_journal": "wal",
+        "ecarts_schema": [],
+    }
 
 
 def test_fichiers_statiques_embarques(client):

@@ -1,0 +1,33 @@
+{#
+  Panneau latéral d'une séance de la semaine type (fragment, aussi inclus dans la page).
+  Variables : f (modifications.FormulaireSeance), retour, resultat, marques (anomalies), controle.
+#}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+{%- set b = f.bloc %}
+<div class="edt-panneau-entete">
+  <h2>{{ b.titre }}</h2>
+  <a class="edt-fermer" href="{{ retour|replace('&seance=' ~ b.cle, '')|replace('seance=' ~ b.cle, '') }}" data-fermer-panneau aria-label="Fermer le détail">&times;</a>
+</div>
+<dl class="definitions">
+  <dt>Type</dt><dd>{{ b.type_libelle }}</dd>
+  <dt>Horaire</dt><dd>{{ JOURS[b.jour]|capitalize }}, {{ fmt.plage_horaire(b.debut, b.fin) }}</dd>
+  <dt>Groupes</dt><dd>{{ b.groupes|join(", ") or "aucun" }}</dd>
+  <dt>Enseignants</dt><dd>{{ b.enseignants|join(", ") or "aucun" }}</dd>
+  <dt>Salle</dt><dd>{{ b.salle or "à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</dd>
+  <dt>Semaines</dt><dd>{{ b.semaines_texte or "Toutes les semaines de cours" }}</dd>
+  <dt>Verrou</dt><dd>{% if b.verrou %}Verrouillée : les calculs la laissent à sa place{% else %}Non verrouillée{% endif %}</dd>
+  <dt>Exigences</dt><dd>{{ f.exigences }}</dd>
+</dl>
+{{ edt.encart_controle(controle) }}
+{{ edt.anomalies(marques, "Anomalies de cette séance") }}
+
+<div class="edt-actions-panneau">
+  <form method="post" action="/emploi-du-temps/seances/{{ b.seance_hebdo_id }}/verrou">
+    <input type="hidden" name="retour" value="{{ retour }}">
+    <input type="hidden" name="verrou" value="{{ 'false' if b.verrou else 'true' }}">
+    <button type="submit" class="bouton">{{ "Déverrouiller" if b.verrou else "Verrouiller à cette place" }}</button>
+  </form>
+</div>
+
+{% with verrouiller = false %}{% include "edt/_formulaire_seance.html" %}{% endwith %}
