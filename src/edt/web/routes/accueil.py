@@ -100,6 +100,7 @@ def sante() -> JSONResponse:
                 "accessible": etat.accessible,
                 "initialisee": etat.initialisee,
                 "mode_journal": etat.mode_journal,
+                "ecarts_schema": list(etat.ecarts_schema),
             },
         },
         status_code=200 if pret else 503,

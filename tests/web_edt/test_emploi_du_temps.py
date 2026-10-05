@@ -135,7 +135,7 @@ def test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx(version_generee, 
     fragment = client.get(f"/emploi-du-temps/seances/{seance.id}/panneau", headers=HX).text
     assert "<html" not in fragment
     assert "Exigences" in fragment and "56 places au moins" in fragment
-    assert "pas encore disponibles" in fragment  # anomalies de la séance : vérificateur absent
+    assert "pas encore disponibles" not in fragment  # le vrai vérificateur a tourné
 
 
 def test_modification_acceptee_puis_verrou(version_generee, client, faux_verificateur):
@@ -196,7 +196,7 @@ def test_modification_refusee_par_une_erreur_du_verificateur(
         assert (seance.id, seance.jour, seance.debut_min, seance.salle_id) == avant
 
 
-def test_sans_verificateur_aucune_seance_n_est_deplacee(version_generee):
+def test_sans_verificateur_aucune_seance_n_est_deplacee(version_generee, sans_verificateur):
     with session_base() as session:
         seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
         resultat = modifications.modifier_placement(
@@ -295,3 +295,32 @@ def test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut(version_genere
     reponse = client.get(f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id=9999")
     assert reponse.status_code == 200
     assert "Affichage du premier groupe à la place" in reponse.text
+
+
+def test_le_vrai_verificateur_refuse_un_conflit_de_groupe(version_generee, client):
+    with session_base() as session:
+        version = version_generee.version_id
+        cm = seance_du_besoin(session, version, "Mathématiques", "CM", "A1")
+        td = seance_du_besoin(session, version, "Mathématiques", "TD", "A1-G1")
+        n105 = session.scalar(select(m.Salle.id).where(m.Salle.code == "N105"))
+        avant = (td.id, td.jour, td.debut_min, td.salle_id)
+        cible = (cm.jour, cm.debut_min)
+
+    # La classe 1 en TD pendant le cours magistral de sa promotion : conflit de groupes.
+    reponse = client.post(
+        f"/emploi-du-temps/seances/{avant[0]}/modifier",
+        data={
+            "jour": cible[0],
+            "debut": cible[1],
+            "salle_id": str(n105),
+            "retour": "/emploi-du-temps",
+        },
+        headers=HX,
+    )
+
+    assert reponse.status_code == 200
+    assert "n&#39;a pas été enregistrée" in reponse.text
+    assert "Une séance par groupe" in reponse.text
+    with session_base() as session:
+        td = session.get(m.SeanceHebdo, avant[0])
+        assert (td.id, td.jour, td.debut_min, td.salle_id) == avant

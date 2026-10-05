@@ -221,7 +221,8 @@ class _Liens:
     """Construit les paramètres de lien vers l'emploi du temps d'une anomalie.
 
     Cible : le premier groupe, enseignant ou salle nommé par l'anomalie,
-    sinon le premier groupe du besoin de la séance concernée.
+    sinon le premier groupe du besoin concerné (celui de la séance, ou le
+    premier de `Anomalie.besoins` pour un problème sans séance).
     """
 
     def __init__(
@@ -249,10 +250,12 @@ class _Liens:
         for besoin_id, groupe_id in session.execute(
             select(m.besoin_groupe.c.besoin_id, m.Groupe.id)
             .join(m.Groupe, m.Groupe.id == m.besoin_groupe.c.groupe_id)
+            .join(m.Besoin, m.Besoin.id == m.besoin_groupe.c.besoin_id)
             .where(
-                m.besoin_groupe.c.besoin_id.in_(
-                    select(m.SeanceHebdo.besoin_id).where(m.SeanceHebdo.version_id == version_id)
-                )
+                m.Besoin.semestre_id
+                == select(m.VersionEdt.semestre_id)
+                .where(m.VersionEdt.id == version_id)
+                .scalar_subquery()
             )
             .order_by(m.Groupe.code)
         ):
@@ -292,6 +295,9 @@ class _Liens:
             parametres.update(couche="date", date=anomalie.date.isoformat())
         else:
             parametres["couche"] = "hebdo"
+        if besoin_id is None and anomalie.besoins:
+            # Problème de dépliage ou séance sans placement : le besoin est le seul repère.
+            besoin_id = anomalie.besoins[0]
 
         if anomalie.groupes:
             parametres["groupe_id"] = str(anomalie.groupes[0])

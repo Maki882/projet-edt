@@ -7,6 +7,8 @@ exactement comme il trouvera les vrais.
 
 - `version_generee` : jeu minimal + un calcul réussi du moteur provisoire ;
 - `faux_verificateur` : faux `edt.services.verification`, réglable ;
+- `sans_verificateur` : comme si le vérificateur n'était pas livré (sans
+  ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
 - `fausse_instanciation` : faux `edt.services.instanciation` ;
 - `seances_datees` : séances datées de la version, produites à la main ;
 - `aujourdhui_fige` : le « semestre par défaut » calculé au 5 octobre 2026.
@@ -123,6 +125,12 @@ def faux_verificateur(monkeypatch) -> FauxVerificateur:
         generation, "pre_verifier_semestre", faux.pre_verifier_semestre, raising=False
     )
     return faux
+
+
+@pytest.fixture
+def sans_verificateur(monkeypatch) -> None:
+    """Fait comme si le vérificateur n'était pas livré (le raccord doit le dire, pas planter)."""
+    monkeypatch.setitem(sys.modules, "edt.services.verification", None)
 
 
 def instancier(session, version_id: int) -> int:

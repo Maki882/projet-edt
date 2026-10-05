@@ -19,7 +19,7 @@ ERREUR = Anomalie(
 AVERTISSEMENT = Anomalie("PAUSE", Gravite.AVERTISSEMENT, "Pause courte.", seances=("2-1",))
 
 
-def test_module_absent_donne_une_erreur_explicite_journalisee(session, caplog):
+def test_module_absent_donne_une_erreur_explicite_journalisee(session, sans_verificateur, caplog):
     caplog.set_level(logging.WARNING, logger="edt.services.emploi_du_temps.raccords")
 
     with pytest.raises(raccords.ErreurRaccordIndisponible) as erreur:
@@ -76,7 +76,7 @@ def test_indicateurs_incomplets_signales_sans_valeur_inventee(caplog):
     assert "incomplets" in caplog.text
 
 
-def test_controler_ne_plante_jamais_mais_le_dit(session, caplog):
+def test_controler_ne_plante_jamais_mais_le_dit(session, sans_verificateur, caplog):
     indisponible = raccords.controler(raccords.verifier_version, session, 1)
     assert not indisponible.disponible
     assert indisponible.motif == raccords.MESSAGE_VERIFICATION

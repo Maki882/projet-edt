@@ -892,6 +892,7 @@ def _attacher_anomalies(
     retenues: list[Anomalie] = []
     par_seance = defaultdict(list)
     par_occurrence = {}
+    besoins_affiches = {bloc.besoin_id for bloc in blocs}
     for bloc in blocs:
         if bloc.occurrence_id is not None:
             par_occurrence[bloc.occurrence_id] = bloc
@@ -920,7 +921,10 @@ def _attacher_anomalies(
                 NatureCible.SALLE: anomalie.salles,
             }[cible.nature]
         )
-        if not touches and not concerne_cible:
+        # Une anomalie sans séance (séance non placée, besoin impossible à déplier) ne marque
+        # aucun bloc, mais reste listée si elle concerne un besoin affiché.
+        concerne_besoin = not besoins_affiches.isdisjoint(anomalie.besoins)
+        if not touches and not concerne_cible and not concerne_besoin:
             continue
         retenues.append(anomalie)
         marque = MarqueAnomalie(anomalie.gravite, str(anomalie.code), anomalie.message)

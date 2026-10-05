@@ -28,7 +28,9 @@ def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, 
     assert '<span class="compteur-nombre">6</span>' in page  # compteurs de la base conservés
 
 
-def test_version_active_sans_verificateur(version_generee, client, aujourdhui_fige):
+def test_version_active_sans_verificateur(
+    version_generee, client, aujourdhui_fige, sans_verificateur
+):
     page = client.get("/").text
 
     assert "Consulter l&#39;emploi du temps" in page or "Consulter l'emploi du temps" in page
@@ -72,3 +74,27 @@ def test_calcul_en_cours_conseille_de_le_suivre(jeu_minimal, client, aujourdhui_
     finally:
         generation.demander_arret(calcul_id)
         generation.attendre_calcul(calcul_id, DELAI)
+
+
+def test_indicateurs_du_vrai_verificateur(version_generee, client, aujourdhui_fige):
+    page = client.get("/").text
+
+    assert "des séances placées" in page and "utilisation des salles" in page
+    assert "changements de campus" in page
+    assert "Les vérifications automatiques ne sont pas encore disponibles" not in page
+
+
+def test_base_au_schema_perime(client):
+    from edt.db.moteur import obtenir_moteur
+
+    with obtenir_moteur().begin() as connexion:
+        connexion.exec_driver_sql("ALTER TABLE besoin ADD COLUMN ancien_champ VARCHAR(10)")
+
+    page = client.get("/").text
+    assert "Le schéma de la base ne correspond plus à l&#39;application" in page
+    assert "colonne en trop" in page and "init-db --reset" in page
+    assert "pas encore initialisée" not in page
+
+    sante = client.get("/sante")
+    assert sante.status_code == 503
+    assert any("colonne en trop" in ecart for ecart in sante.json()["base"]["ecarts_schema"])

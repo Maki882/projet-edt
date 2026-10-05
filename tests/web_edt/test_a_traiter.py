@@ -18,7 +18,7 @@ def test_sans_emploi_du_temps_actif(jeu_minimal, client):
     assert "Aucun emploi du temps actif" in page
 
 
-def test_sans_verificateur_l_absence_est_dite(version_generee, client):
+def test_sans_verificateur_l_absence_est_dite(version_generee, client, sans_verificateur):
     page = client.get("/a-traiter").text
 
     assert "Les vérifications automatiques ne sont pas encore disponibles" in page
@@ -77,3 +77,18 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
     assert f"seance=o{a_programmer_id}" in page
     # Erreurs et avertissements (3) + séance à programmer (1) ; les informations ne comptent pas.
     assert ">4</span>" in client.get("/a-traiter/compteur").text
+
+
+def test_avec_le_vrai_verificateur(version_generee, client):
+    from edt.services.emploi_du_temps import raccords
+
+    with session_base() as session:
+        verification = raccords.verifier_version(session, version_generee.version_id)
+
+    page = client.get("/a-traiter").text
+
+    assert "pas encore disponibles" not in page
+    if verification.nb_erreurs:
+        assert f"Erreurs : règles non respectées ({verification.nb_erreurs})" in page
+    else:
+        assert "Aucune anomalie dans la semaine type" in page
