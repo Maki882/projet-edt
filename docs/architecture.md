@@ -49,12 +49,14 @@ src/edt/
   journal.py                   configuration unique des journaux
   erreurs.py                   hiérarchie ErreurEDT
   commandes/                   un module par lot (objet `commandes`)
-    base.py                    init-db, jeu-minimal, serve, version, doctor
+    base.py                    init-db, verifier-schema, jeu-minimal, serve,
+                               version, doctor
   db/
     base.py                    base déclarative, nommage des contraintes
     moteur.py                  moteur SQLite (clés étrangères, WAL), sessions
     modeles.py                 toutes les tables
-    initialisation.py          schéma, données par défaut, année scolaire
+    initialisation.py          schéma (création, détection d'un schéma périmé),
+                               données par défaut, année scolaire
     jeux.py                    jeu de données minimal
   domaine/
     enumerations.py            valeurs fermées et leurs libellés
@@ -111,6 +113,42 @@ utilisables telles quelles (`edt.config.charger_configuration()`).
 
 Une valeur invalide lève `ErreurConfiguration` : jamais de repli silencieux.
 Les chemins relatifs se résolvent depuis le répertoire de lancement.
+
+## Schéma de la base : pas de migrations
+
+Il n'y a pas de migrations en V1. `python -m edt init-db` crée les tables
+manquantes et pose les données par défaut absentes, sans toucher au reste ;
+on peut le relancer à chaque déploiement. Il **ne modifie jamais une table
+existante** : quand le modèle change (colonne ajoutée, retirée, renommée,
+changée de type), une base déjà créée devient **périmée** et l'application
+planterait à la première requête qui touche la colonne.
+
+Ce cas ne passe pas inaperçu. `edt.db.initialisation.ecarts_schema(moteur)`
+compare chaque table existante au modèle, colonne par colonne, et renvoie
+des phrases lisibles (« table salle : colonne etage absente de la base »,
+« table besoin : colonne en trop : ancien_champ »). Tant qu'il reste un
+écart :
+
+| Où | Ce qui se passe |
+|---|---|
+| `python -m edt init-db` | échoue (code 1) **sans rien modifier**, liste les écarts et indique la marche à suivre |
+| `python -m edt init-db --reset` | recrée la base au schéma du modèle et **efface les données** : c'est le seul remède |
+| `python -m edt verifier-schema` | code 0 et « schéma à jour » ; code 1 et la liste des écarts ; code 2 si la base est inaccessible. À appeler par le script de déploiement |
+| `python -m edt doctor` | une ligne « Schéma » : à jour, ou périmé avec le nombre d'écarts (contrôle en échec) |
+| `/sante` | répond 503 : `EtatBase.initialisee` est faux, `EtatBase.ecarts_schema` porte les écarts |
+| `python -m edt jeu-minimal` | refuse de charger des données |
+
+Ce qui est comparé : la présence de chaque colonne, le nom de son type SQL,
+son caractère obligatoire et, pour une énumération, la liste des valeurs
+que la base accepte (une valeur ajoutée au modèle serait refusée à
+l'enregistrement). La longueur d'un texte ne l'est pas (SQLite ne l'applique
+pas : `VARCHAR(32)` et `VARCHAR(64)` s'y comportent à l'identique). Une
+table du modèle pas encore créée n'est pas un écart : `init-db` la crée. Une
+table de la base inconnue du modèle est ignorée.
+
+Limite : les autres contraintes (unicités, clés étrangères, contrôles entre
+colonnes) et les index ne sont pas comparés. Après un tel changement du
+modèle, il faut penser soi-même à `init-db --reset`.
 
 ## Mécanismes d'extension
 
@@ -616,8 +654,8 @@ fermée pour un besoin est retirée de ses semaines actives par le dépliage.
 |---|---|
 | une **contrainte** | un membre de `CodeContrainte` et son entrée dans `CATALOGUE` (`edt/domaine/contraintes.py`), puis son implémentation dans le vérificateur **et** dans le solveur, avec un test de chaque côté |
 | un **paramètre** | un champ de `Parametres` (`edt/domaine/parametres.py`) : il apparaît à la prochaine `init-db` |
-| une **table** ou une colonne | `edt/db/modeles.py` (et `MODELES`), puis `docs/modele-donnees.md` (diagramme et tableau) ; recréer la base avec `init-db --reset` ; si le solveur ou le vérificateur en a besoin, l'exposer dans l'instantané |
-| une **valeur d'énumération** | `edt/domaine/enumerations.py`, avec son libellé |
+| une **table** ou une colonne | `edt/db/modeles.py` (et `MODELES`), puis `docs/modele-donnees.md` (diagramme et tableau) ; une base existante devient périmée dès qu'une table existante change : `init-db` le refuse, il faut `init-db --reset`, qui efface les données (voir « Schéma de la base ») ; si le solveur ou le vérificateur en a besoin, l'exposer dans l'instantané |
+| une **valeur d'énumération** | `edt/domaine/enumerations.py`, avec son libellé ; si une colonne la stocke, une base existante la refuserait : le schéma est signalé périmé, il faut `init-db --reset` |
 | une **donnée par défaut** | `edt/db/initialisation.py` |
 | un **service** | un module de `edt/services/` : fonctions typées qui reçoivent la session |
 | un **écran** | un module de `edt/web/routes/` et ses gabarits (voir plus haut) |
@@ -631,4 +669,5 @@ python -m ruff check .
 python -m ruff format --check .
 python -m pytest -m "not perf"
 python -m edt doctor
+python -m edt verifier-schema     # après un changement de edt/db/modeles.py
 ```
