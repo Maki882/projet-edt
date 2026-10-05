@@ -369,6 +369,9 @@ def resoudre(
             modele.nb_coupes,
         )
     valeurs = list(solveur.response_proto.solution)
+    # Il n'y a qu'un modèle : l'amélioration lui ajoute l'objectif. La première recherche,
+    # elle, est libérée avant que la seconde commence.
+    del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
     journal.info("Emploi du temps valide trouvé après %.1f s", stats["duree_premiere_solution_s"])
 
