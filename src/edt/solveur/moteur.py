@@ -101,7 +101,7 @@ NB_SOLUTIONS_GARDEES = 20
 """Dernières solutions d'horaires gardées pour la phase des salles (amélioration)."""
 STAGNATION_MIN_S = 10.0
 """Durée sans progrès au bout de laquelle l'amélioration s'arrête d'elle-même, au moins."""
-STAGNATION_PART = 0.25
+STAGNATION_PART = 1 / 3
 """... et au moins cette part du temps écoulé depuis le lancement du calcul."""
 
 MESSAGE_SOLUTION_CONSERVEE = (

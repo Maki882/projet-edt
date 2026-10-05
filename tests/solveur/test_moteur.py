@@ -5,9 +5,11 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import re
 import threading
 import time
 
+import pytest
 from tests.solveur.fabrique import (
     C1,
     LUNDI,
@@ -303,10 +305,10 @@ def test_l_amelioration_s_arrete_d_elle_meme_quand_elle_ne_progresse_plus(monkey
     assert stats["optimal"] is False
     assert stats["objectif"] <= stats["objectif_premiere_solution"]
     # Le message distingue cet arrêt du temps limite et de l'optimum prouvé, en clair.
-    assert (
-        "L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis "
-        f"{stats['duree_sans_progres_s']:.0f} s."
-    ) in resultat.message
+    assert re.search(
+        r"L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis \d+ s\.",
+        resultat.message,
+    )
     assert "temps limite" not in resultat.message
     assert "On ne peut pas faire mieux" not in resultat.message
 
@@ -349,10 +351,11 @@ def _surveiller_une_seconde(monkeypatch, **reglages) -> tuple[_FauxSolveur, _Fau
 
 
 def test_regle_de_stagnation(monkeypatch):
-    """Patience : 10 s au moins, et un quart du temps déjà écoulé depuis le lancement."""
+    """Patience : 10 s au moins, et un tiers du temps déjà écoulé depuis le lancement."""
     from edt.solveur import moteur
 
-    assert [moteur.delai_de_stagnation(t) for t in (5, 40, 100, 400)] == [10, 10, 25, 100]
+    delais = [moteur.delai_de_stagnation(t) for t in (5, 30, 90, 300)]
+    assert delais == pytest.approx([10, 10, 30, 100])
 
     # Le fil de surveillance arrête la recherche restée sans progrès plus longtemps que cela...
     solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=True)

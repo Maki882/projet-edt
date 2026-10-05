@@ -70,6 +70,7 @@ def test_generation_de_bout_en_bout(jeu_minimal):
     assert suivi.etat is EtatCalcul.REUSSI, suivi.message
     stats = suivi.statistiques
     assert stats["moteur"] == "cp_sat" and stats["nb_seances"] == 17
+    assert stats["raison_arret"] == "premiere_solution"  # la raison de l'arrêt suit le calcul
 
     # La semaine type est valide pour le vérificateur officiel, et ses indicateurs sont joints.
     with session_base() as session:
@@ -709,6 +710,12 @@ def test_commande_generer_ameliore_par_defaut(lanceur, jeu_minimal):
     message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
     assert "Bilan sur l'ensemble du semestre :" in message
     assert _lignes_de_bilan(resultat.output) == 0
+    # Un si petit problème va jusqu'à l'optimum : ni temps limite, ni arrêt sur stagnation.
+    assert "On ne peut pas faire mieux avec les préférences actuelles." in message
+    with session_base() as session:
+        (calcul,) = session.scalars(select(m.Calcul)).all()
+        assert calcul.statistiques["raison_arret"] == "optimum_prouve"
+        assert calcul.parametres["arret_sur_stagnation"] is True
 
 
 def test_commande_generer_echec_code_1(lanceur, jeu_minimal):
