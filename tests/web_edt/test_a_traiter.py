@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -10,7 +10,7 @@ from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import id_seance
 from edt.verification.contrat import Anomalie
 
-from .conftest import JOUR_TEST, identifiant_groupe, seance_du_besoin
+from .conftest import date_avec_seances, identifiant_groupe, seance_du_besoin
 
 
 def test_sans_emploi_du_temps_actif(jeu_minimal, client):
@@ -32,8 +32,23 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
     with session_base() as session:
         cm = seance_du_besoin(session, seances_datees.version_id, "Mathématiques", "CM", "A1")
         promotion = identifiant_groupe(session, "A1")
+        jour = date_avec_seances(session, seances_datees.version_id, minimum=2)
+        deja = session.scalar(
+            select(func.count())
+            .select_from(m.Occurrence)
+            .where(
+                m.Occurrence.version_id == seances_datees.version_id,
+                m.Occurrence.statut == StatutOccurrence.A_PROGRAMMER,
+            )
+        )
         occurrences = session.scalars(
-            select(m.Occurrence).where(m.Occurrence.date == JOUR_TEST).order_by(m.Occurrence.id)
+            select(m.Occurrence)
+            .where(
+                m.Occurrence.version_id == seances_datees.version_id,
+                m.Occurrence.date == jour,
+                m.Occurrence.statut != StatutOccurrence.A_PROGRAMMER,
+            )
+            .order_by(m.Occurrence.id)
         ).all()
         en_conflit, a_programmer = occurrences[0], occurrences[1]
         a_programmer.statut = StatutOccurrence.A_PROGRAMMER
@@ -60,7 +75,7 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
             Gravite.ERREUR,
             "Séance un jour férié.",
             occurrences=(conflit_id,),
-            date=JOUR_TEST,
+            date=jour,
         )
     ]
 
@@ -71,12 +86,12 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
     assert "Une séance par salle (1)" in page and "Jours fermés (1)" in page
     assert "La salle N016 est prise deux fois." in page
     assert f"seance=h{seance_hebdo_id}" in page and f"groupe_id={promotion}" in page
-    assert f"couche=date&amp;date={JOUR_TEST.isoformat()}&amp;seance=o{conflit_id}" in page
-    assert "Séances à programmer (1)" in page
+    assert f"couche=date&amp;date={jour.isoformat()}&amp;seance=o{conflit_id}" in page
+    assert f"Séances à programmer ({deja + 1})" in page
     assert "Jour fermé et aucun autre créneau libre" in page
     assert f"seance=o{a_programmer_id}" in page
-    # Erreurs et avertissements (3) + séance à programmer (1) ; les informations ne comptent pas.
-    assert ">4</span>" in client.get("/a-traiter/compteur").text
+    # Erreurs et avertissements (3) + séances à programmer ; les informations ne comptent pas.
+    assert f">{3 + deja + 1}</span>" in client.get("/a-traiter/compteur").text
 
 
 def test_avec_le_vrai_verificateur(version_generee, client):

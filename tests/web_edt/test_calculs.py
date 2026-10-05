@@ -10,9 +10,10 @@ from sqlalchemy import func, select
 from edt import solveur
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.contraintes import CATALOGUE
+from edt.domaine.contraintes import CATALOGUE, CodeContrainte
 from edt.domaine.enumerations import EtatCalcul, Gravite
 from edt.services import generation
+from edt.services.emploi_du_temps import calculs
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
@@ -54,9 +55,10 @@ def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client)
     assert page.count(" checked>") >= len(CATALOGUE)  # toutes cochées par défaut
     assert all(entree.libelle in page for entree in CATALOGUE.values())
     assert "Rechercher jusqu'à 1 minute" in page and "5 minutes" in page
-    # Pré-vérifications pas encore livrées : on le dit, sans prétendre que tout va bien.
-    assert "pas encore disponibles" in page
-    assert "Aucun problème relevé" not in page
+    # Les vraies pré-vérifications ont tourné : plus d'encart « pas encore disponible ».
+    assert "pas encore disponible" not in page
+    assert "Vérifications avant le calcul" in page
+    assert "Le calcul ne peut pas être lancé" not in page
 
 
 def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_contraintes_decochees(jeu_minimal, client):
@@ -69,6 +71,17 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_contraintes_decochees(jeu_
     assert f"/emploi-du-temps?version_id={suivi.version_id}" in page
     assert "Pause déjeuner" in page and "Pause entre deux séances" in page
     assert "Traceback" not in page
+    # Bilan du vrai moteur et de l'instanciation, lu dans les statistiques du calcul.
+    bilan = suivi.statistiques["instanciation"]
+    assert (
+        f'<span class="compteur-nombre">{suivi.statistiques["nb_seances"]}</span>'
+        '<span class="compteur-libelle">séances placées dans la semaine type' in page
+    )
+    assert (
+        f'<span class="compteur-nombre">{bilan["nb_occurrences"]}</span>'
+        '<span class="compteur-libelle">séances datées sur le semestre' in page
+    )
+    assert f'<span class="compteur-nombre">{bilan["nb_replacees"]}</span>' in page
 
     fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
     assert "<html" not in fragment
@@ -123,7 +136,7 @@ def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
     [
         (
             StatutSolveur.INFAISABLE,
-            ["Impossible avec ces contraintes", "Il est certain"],
+            ["Impossible avec ces contraintes", "aucun emploi du temps ne respecte"],
             ["Relancer en cherchant", "Pas trouvé"],
         ),
         (
@@ -172,6 +185,72 @@ def test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique(
         assert technique not in page
 
 
+def test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine(
+    jeu_minimal, client, monkeypatch
+):
+    # Le calcul est lancé directement (sans l'écran, qui refuserait avant) : c'est
+    # l'orchestration qui refuse, avec la liste de ses raisons.
+    raison = Anomalie(
+        CodeContrainte.DISPO_GROUPE, Gravite.ERREUR, "La classe A1-G1 n'a aucun créneau libre."
+    )
+    with pytest.MonkeyPatch.context() as temporaire:
+        temporaire.setattr(generation, "pre_verifier", lambda *a, **k: [raison])
+        refuse = generation.attendre_calcul(
+            generation.lancer_calcul(jeu_minimal.semestre_id), DELAI
+        )
+    assert refuse.etat is EtatCalcul.INFAISABLE and refuse.statistiques["refuse"]
+
+    page = client.get(f"/calculs/{refuse.id}").text
+    assert "Calcul non lancé : impossibilités relevées avant la recherche" in page
+    assert "La classe A1-G1 n&#39;a aucun créneau libre." in page
+    assert "Impossible avec ces contraintes" not in page
+
+    monkeypatch.setattr(
+        solveur,
+        "resoudre",
+        lambda instantane, options, arret=None: ResultatSolveur(
+            StatutSolveur.INFAISABLE, message="Aucun emploi du temps ne peut tout respecter."
+        ),
+    )
+    cherche = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
+    page = client.get(f"/calculs/{cherche.id}").text
+    assert "Impossible avec ces contraintes" in page
+    assert "Aucun emploi du temps ne peut tout respecter." in page
+    assert "Calcul non lancé" not in page
+
+
+def test_autre_solution_donne_un_autre_emploi_du_temps(jeu_minimal, monkeypatch):
+    """Nouvelle graine et pas d'indices : le moteur (2 fils par défaut) change de solution."""
+    graines = iter([11, 12])
+    monkeypatch.setattr(calculs, "_nouvelle_graine", lambda: next(graines))
+
+    def lancer_autre() -> tuple[dict, list[tuple]]:
+        with session_base() as session:
+            calcul_id = calculs.demarrer_calcul(
+                session, jeu_minimal.semestre_id, contraintes_cochees=TOUTES, autre_solution=True
+            )
+        suivi = generation.attendre_calcul(calcul_id, DELAI)
+        assert suivi.reussi, suivi.message
+        with session_base() as session:
+            parametres = session.get(m.Calcul, calcul_id).parametres
+            placements = sorted(
+                (s.besoin_id, s.rang, s.jour, s.debut_min, s.salle_id)
+                for s in session.scalars(
+                    select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == suivi.version_id)
+                )
+            )
+        return parametres, placements
+
+    premiers_parametres, premiers = lancer_autre()
+    seconds_parametres, seconds = lancer_autre()
+
+    assert (premiers_parametres["graine"], seconds_parametres["graine"]) == (11, 12)
+    assert (
+        not premiers_parametres["utiliser_indices"] and not seconds_parametres["utiliser_indices"]
+    )
+    assert premiers != seconds
+
+
 def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
     monkeypatch.setattr(
         solveur,
@@ -193,12 +272,14 @@ def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
     generation.attendre_calcul(troisieme, DELAI)
 
     with session_base() as session:
-        calculs = {c.id: c for c in session.scalars(select(m.Calcul))}
-    assert calculs[premier].parametres["temps_limite_s"] == 60
-    assert calculs[second].parametres["temps_limite_s"] == 300
-    assert calculs[second].contraintes_desactivees == ["PAUSE"]  # mêmes règles qu'à l'origine
-    assert calculs[troisieme].parametres["temps_limite_s"] == 300  # garde la durée longue
-    assert calculs[troisieme].parametres["graine"] != calculs[second].parametres["graine"]
+        par_id = {c.id: c for c in session.scalars(select(m.Calcul))}
+    assert par_id[premier].parametres["temps_limite_s"] == 60
+    assert par_id[second].parametres["temps_limite_s"] == 300
+    assert par_id[second].contraintes_desactivees == ["PAUSE"]  # mêmes règles qu'à l'origine
+    assert par_id[troisieme].parametres["temps_limite_s"] == 300  # garde la durée longue
+    assert par_id[troisieme].parametres["graine"] != par_id[second].parametres["graine"]
+    assert par_id[second].parametres["utiliser_indices"]  # relance longue : mêmes indices
+    assert not par_id[troisieme].parametres["utiliser_indices"]  # autre solution : sans indices
 
 
 def test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non(

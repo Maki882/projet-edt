@@ -312,6 +312,14 @@ class _Liens:
         return parametres
 
 
+def _raison(commentaire: str | None) -> str:
+    """Raison lisible d'une séance à programmer (commentaire écrit par l'instanciation)."""
+    texte = (commentaire or "").strip().removeprefix("À programmer :").strip()
+    if not texte:
+        return RAISON_PAR_DEFAUT
+    return texte[:1].upper() + texte[1:]
+
+
 def _a_programmer(
     session: Session, version_id: int, liens: _Liens
 ) -> tuple[SeanceAProgrammer, ...]:
@@ -355,7 +363,7 @@ def _a_programmer(
                 + (f" - {besoin.libelle}" if besoin.libelle else ""),
                 groupes=tuple(g.code for g in groupes),
                 enseignants=tuple(e.nom_affiche for e in besoin.enseignants),
-                raison=(occurrence.commentaire or "").strip() or RAISON_PAR_DEFAUT,
+                raison=_raison(occurrence.commentaire),
                 lien=lien,
             )
         )

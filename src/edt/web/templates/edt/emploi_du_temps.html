@@ -119,12 +119,22 @@
 {{ edt.encart_controle(vue.controle) }}
 {%- if vue.couche.value == "date" and not vue.occurrences_disponibles %}
 <div class="message message-info" role="status">
-  <p>Les séances datées de cette version n'ont pas encore été produites : la semaine type n'a pas encore été appliquée au calendrier du semestre.</p>
+  <p>Les séances datées de cette version n'ont pas encore été produites : la semaine type n'a pas encore été appliquée au calendrier du semestre (c'est le cas d'une version importée ou de référence).</p>
   <form method="post" action="/emploi-du-temps/versions/{{ vue.version.id }}/seances-datees" class="edt-boutons">
     <input type="hidden" name="retour" value="{{ retour }}">
     <button type="submit" class="bouton">Produire les séances datées</button>
   </form>
 </div>
+{%- elif vue.couche.value == "date" %}
+<details class="edt-recalcul edt-ecran-seulement">
+  <summary>Recalculer les séances datées</summary>
+  <p>La semaine type est réappliquée à tout le semestre : chaque séance revient à sa date, celles qui tombent un jour fermé ou pendant une indisponibilité sont replacées, ou passent « à programmer ». <strong>Vos retouches à la main (séances datées déplacées ou annulées) sont conservées.</strong> Utile après avoir modifié la semaine type, le calendrier ou des indisponibilités.</p>
+  <form method="post" action="/emploi-du-temps/versions/{{ vue.version.id }}/seances-datees"
+    data-confirmation="Recalculer toutes les séances datées de cette version ? Les retouches à la main sont conservées.">
+    <input type="hidden" name="retour" value="{{ retour }}">
+    <button type="submit" class="bouton">Recalculer les séances datées</button>
+  </form>
+</details>
 {%- endif %}
 
 <div class="edt-mise-en-page">

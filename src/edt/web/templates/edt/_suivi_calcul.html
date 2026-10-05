@@ -5,7 +5,8 @@
 #}
 {% import "macros.html" as ui %}
 {% import "edt/_ui.html" as edt with context %}
-{%- set niveaux = {"en_cours": "info", "reussi": "succes", "impossible": "erreur", "temps_depasse": "attention", "arrete": "attention", "erreur": "erreur"} %}
+{%- set niveaux = {"en_cours": "info", "reussi": "succes", "refuse": "erreur", "impossible": "erreur", "temps_depasse": "attention", "arrete": "attention", "erreur": "erreur"} %}
+{%- set limite_liste = 20 %}
 <div id="suivi-calcul" class="edt-suivi" aria-live="polite"
   {%- if r.en_cours %} hx-get="/calculs/{{ r.suivi.id }}/etat" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
   <h2>{{ r.titre }} {{ ui.etiquette("Calcul n° " ~ r.suivi.id, niveaux[r.issue]) }}</h2>
@@ -25,19 +26,48 @@
   {%- if r.contraintes_desactivees %}
   {{ ui.message("Contraintes volontairement non respectées pour ce calcul (décochées au lancement) :", "attention", r.contraintes_desactivees) }}
   {%- endif %}
+
+  {%- if r.issue == "refuse" %}
+  {{ ui.message(fmt.pluriel(r.impossibilites|length, "impossibilité certaine", "impossibilités certaines") ~ " :", "erreur", r.impossibilites) }}
+  {%- endif %}
+
   {%- if r.precision %}
   <p class="pre-ligne"><strong>Précision :</strong> {{ r.precision }}</p>
   {%- endif %}
 
   {%- if r.issue == "reussi" %}
+  <ul class="compteurs edt-indicateurs">
+    {%- if r.nb_seances is not none %}
+    <li class="compteur"><span class="compteur-nombre">{{ r.nb_seances }}</span><span class="compteur-libelle">séances placées dans la semaine type</span></li>
+    {%- endif %}
+    {%- if r.datees and not r.datees.erreur %}
+    <li class="compteur"><span class="compteur-nombre">{{ r.datees.nb_occurrences }}</span><span class="compteur-libelle">séances datées sur le semestre</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ r.datees.nb_replacees }}</span><span class="compteur-libelle">replacées (jour fermé, indisponibilité)</span></li>
+    <li class="compteur"><span class="compteur-nombre">{{ r.datees.nb_a_programmer }}</span><span class="compteur-libelle">à programmer à la main</span></li>
+    {%- endif %}
+  </ul>
+  {%- if r.datees and r.datees.erreur %}
+  {{ ui.message("La semaine type est enregistrée, mais ses séances datées n'ont pas pu être produites : les recalculer depuis l'emploi du temps (semaine datée).", "attention") }}
+  {%- endif %}
+  {%- if r.datees and r.datees.a_programmer %}
+  <details class="edt-groupe-contrainte" open>
+    <summary>{{ fmt.pluriel(r.datees.nb_a_programmer, "séance") }} à programmer, avec leur raison</summary>
+    <ul class="edt-anomalies">
+      {%- for s in r.datees.a_programmer[:limite_liste] %}
+      <li><span><strong>{{ s.besoin }}</strong>, prévue le {{ s.date|date_fr }} ({{ s.horaire }}) : {{ s.raison }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- if r.datees.a_programmer|length > limite_liste %}<p class="discret">... et {{ r.datees.a_programmer|length - limite_liste }} autre(s).</p>{% endif %}
+  </details>
+  {%- endif %}
   <div class="edt-boutons">
     <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
     {%- if r.nb_a_programmer %}
-    <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">{{ fmt.pluriel(r.nb_a_programmer, "séance") }} à programmer</a>
+    <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">Programmer les {{ fmt.pluriel(r.nb_a_programmer, "séance") }} restantes</a>
     {%- endif %}
     <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
       <input type="hidden" name="autre_solution" value="1">
-      <button type="submit" class="bouton">Proposer une autre solution</button>
+      <button type="submit" class="bouton" title="Nouvelle recherche, sans partir de l'emploi du temps actuel">Proposer une autre solution</button>
     </form>
   </div>
   <h3>Qualité de l'emploi du temps</h3>
@@ -50,7 +80,7 @@
     </form>
     <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les contraintes</a>
   </div>
-  {%- elif r.issue == "impossible" %}
+  {%- elif r.issue in ("impossible", "refuse") %}
   <div class="edt-boutons">
     <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les vérifications et les contraintes</a>
   </div>
@@ -69,5 +99,17 @@
   <div class="edt-boutons">
     <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revenir à l'écran « Générer »</a>
   </div>
+  {%- endif %}
+
+  {%- if r.avertissements and not r.en_cours %}
+  <details class="edt-groupe-contrainte">
+    <summary>{{ fmt.pluriel(r.avertissements|length, "avertissement") }} du calcul <small>- situations tendues, à surveiller</small></summary>
+    <ul class="edt-anomalies">
+      {%- for texte in r.avertissements[:limite_liste] %}
+      <li>{{ ui.etiquette("Avertissement", "attention") }} <span>{{ texte }}</span></li>
+      {%- endfor %}
+    </ul>
+    {%- if r.avertissements|length > limite_liste %}<p class="discret">... et {{ r.avertissements|length - limite_liste }} autre(s).</p>{% endif %}
+  </details>
   {%- endif %}
 </div>

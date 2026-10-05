@@ -4,22 +4,25 @@ Au-dessus de `edt.services.generation` (qui orchestre le fil de calcul),
 ce module ajoute ce que l'écran doit dire :
 
 - le **récapitulatif** de ce qui va être placé (besoins, séances, groupes,
-  enseignants, salles) et les besoins impossibles à planifier tels quels ;
-- les **vérifications préalables**, groupées par gravité : une erreur
-  empêche de lancer, un avertissement non. Elles réunissent les besoins
-  impossibles à déplier (toujours connus) et les pré-vérifications du lot
-  solveur (`raccords.pre_verifier_semestre`, signalées comme absentes tant
-  qu'elles ne sont pas livrées) ;
+  enseignants, salles) ;
+- les **vérifications préalables** du solveur
+  (`raccords.pre_verifier_semestre` : charges, salles, séances sans place
+  possible, verrous contradictoires, besoins impossibles à déplier),
+  groupées par gravité : une erreur empêche de lancer, un avertissement non ;
 - les **options** : temps limite court ou long, recherche d'un emploi du
-  temps plus confortable (objectif), autre solution (nouvelle graine) ;
-- le **résultat** d'un calcul en phrases : succès (indicateurs, séances à
-  programmer), impossible (prouvé), pas trouvé dans le temps imparti,
-  arrêté, erreur (identifiant du calcul et nom du journal à communiquer).
+  temps plus confortable (objectif), **autre solution** (nouvelle graine,
+  sans partir des placements de la version active) ;
+- le **résultat** d'un calcul en phrases : succès (séances placées,
+  séances datées, replacées et à programmer avec leur raison,
+  avertissements, indicateurs), **refusé** par les vérifications préalables
+  (avec la liste), impossible (prouvé par la recherche), pas trouvé dans le
+  temps imparti, arrêté, erreur (identifiant du calcul et nom du journal).
 """
 
 from __future__ import annotations
 
 import dataclasses
+import datetime as dt
 import logging
 import random
 from collections.abc import Iterable
@@ -52,6 +55,7 @@ class Issue:
 
     EN_COURS = "en_cours"
     REUSSI = "reussi"
+    REFUSE = "refuse"
     IMPOSSIBLE = "impossible"
     TEMPS_DEPASSE = "temps_depasse"
     ARRETE = "arrete"
@@ -158,8 +162,67 @@ class OptionsFormulaire:
 
 
 @dataclass(frozen=True)
+class SeanceNonPlacee:
+    """Une séance datée « à programmer » à la fin d'un calcul : quoi, quand, pourquoi."""
+
+    besoin: str
+    date: dt.date | None
+    horaire: str
+    raison: str
+
+
+@dataclass(frozen=True)
+class BilanDatees:
+    """Bilan des séances datées produites à la fin d'un calcul réussi.
+
+    `erreur` : l'instanciation a échoué (la semaine type est enregistrée, les
+    séances datées peuvent être recalculées depuis l'emploi du temps).
+    """
+
+    nb_occurrences: int = 0
+    nb_planifiees: int = 0
+    nb_replacees: int = 0
+    nb_a_programmer: int = 0
+    a_programmer: tuple[SeanceNonPlacee, ...] = ()
+    erreur: bool = False
+
+    @classmethod
+    def lire(cls, donnees: object) -> BilanDatees | None:
+        """Bilan lu dans `statistiques["instanciation"]` (`RapportInstanciation.vers_dict()`)."""
+        if not isinstance(donnees, dict):
+            return None
+        if donnees.get("erreur"):
+            return cls(erreur=True)
+        a_programmer = []
+        for entree in donnees.get("a_programmer") or ():
+            date = entree.get("date_origine")
+            a_programmer.append(
+                SeanceNonPlacee(
+                    besoin=str(entree.get("besoin", "")),
+                    date=dt.date.fromisoformat(date) if date else None,
+                    horaire=str(entree.get("horaire", "")),
+                    raison=str(entree.get("raison", "")),
+                )
+            )
+        return cls(
+            nb_occurrences=int(donnees.get("nb_occurrences", 0)),
+            nb_planifiees=int(donnees.get("nb_planifiees", 0)),
+            nb_replacees=int(donnees.get("nb_replacees", 0)),
+            nb_a_programmer=int(donnees.get("nb_a_programmer", 0)),
+            a_programmer=tuple(a_programmer),
+        )
+
+
+@dataclass(frozen=True)
 class ResultatCalcul:
-    """Un calcul, raconté pour l'écran."""
+    """Un calcul, raconté pour l'écran.
+
+    - `avertissements` : situations tendues relevées avant ou pendant la
+      recherche (le calcul a pu réussir malgré elles) ;
+    - `impossibilites` : raisons d'un refus par les vérifications préalables ;
+    - `nb_seances` : séances de la semaine type placées (succès) ;
+    - `datees` : bilan des séances datées (succès).
+    """
 
     suivi: generation.SuiviCalcul
     semestre: ResumeSemestre
@@ -177,6 +240,10 @@ class ResultatCalcul:
     controle: raccords.Controle | None
     nb_a_programmer: int
     journal_nom: str | None
+    avertissements: tuple[str, ...] = ()
+    impossibilites: tuple[str, ...] = ()
+    nb_seances: int | None = None
+    datees: BilanDatees | None = None
 
     @property
     def en_cours(self) -> bool:
@@ -241,17 +308,22 @@ def pre_verifier(
     desactivees: Iterable[str] = (),
     recap: Recapitulatif | None = None,
 ) -> PreVerification:
-    """Vérifications préalables pour un calcul avec ces contraintes décochées."""
+    """Vérifications préalables pour un calcul avec ces contraintes décochées.
+
+    Les pré-vérifications du solveur couvrent aussi les besoins impossibles à
+    déplier ; ceux du récapitulatif ne servent que si elles manquaient.
+    """
     desactivees = normaliser_codes(desactivees)
     recap = recap or recapitulatif(session, semestre_id)
-    problemes = tuple(
-        message for code, message in recap.problemes if code not in {str(c) for c in desactivees}
-    )
-    if recap.erreur:
-        problemes = (recap.erreur, *problemes)
+    problemes = (recap.erreur,) if recap.erreur else ()
     try:
         anomalies = raccords.pre_verifier_semestre(session, semestre_id, sorted(desactivees))
     except raccords.ErreurRaccordIndisponible as erreur:
+        problemes += tuple(
+            message
+            for code, message in recap.problemes
+            if code not in {str(c) for c in desactivees}
+        )
         return PreVerification(problemes=problemes, motif=erreur.message)
     except ErreurEDT as erreur:
         journal.warning("Pré-vérifications du semestre %d impossibles : %s", semestre_id, erreur)
@@ -311,6 +383,7 @@ def demarrer_calcul(
         longue=longue,
         optimiser=optimiser,
         graine=_nouvelle_graine() if autre_solution else 0,
+        utiliser_indices=not autre_solution,
     )
     return generation.lancer_calcul(semestre_id, options)
 
@@ -320,7 +393,10 @@ def relancer_calcul(
 ) -> int:
     """Relance un calcul avec les mêmes contraintes ; plus longtemps et/ou avec une autre graine.
 
-    `longue=None` garde la durée du calcul d'origine. Mêmes erreurs que `demarrer_calcul`.
+    `longue=None` garde la durée du calcul d'origine. `autre_solution` tire
+    une nouvelle graine **et** ne part pas des placements de la version
+    active (sinon le moteur, guidé par eux, peut redonner le même emploi du
+    temps). Mêmes erreurs que `demarrer_calcul`.
     """
     calcul = session.get(m.Calcul, calcul_id)
     if calcul is None:
@@ -339,6 +415,7 @@ def relancer_calcul(
         longue=longue,
         optimiser=bool(parametres.get("optimiser", False)),
         graine=graine,
+        utiliser_indices=not autre_solution and bool(parametres.get("utiliser_indices", True)),
     )
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
@@ -364,6 +441,9 @@ def resultat_calcul(
     limite = float(parametres.get("temps_limite_s") or 0) or None
     longue = _etait_long(session, parametres)
     issue = _ISSUE_PAR_ETAT[suivi.etat]
+    statistiques = suivi.statistiques or {}
+    if issue == Issue.IMPOSSIBLE and statistiques.get("refuse"):
+        issue = Issue.REFUSE
     temps = presentation.duree_secondes(suivi.temps_ecoule_s)
     limite_texte = presentation.duree_secondes(limite) if limite else ""
     relance = presentation.duree_secondes(lire_parametres(session).temps_limite_long_s)
@@ -406,6 +486,14 @@ def resultat_calcul(
         controle=controle,
         nb_a_programmer=nb_a_programmer,
         journal_nom=Path(suivi.fichier_journal).name if suivi.fichier_journal else None,
+        avertissements=tuple(suivi.avertissements),
+        impossibilites=tuple(statistiques.get("impossibilites") or ()),
+        nb_seances=int(statistiques["nb_seances"])
+        if issue == Issue.REUSSI and "nb_seances" in statistiques
+        else None,
+        datees=BilanDatees.lire(statistiques.get("instanciation"))
+        if issue == Issue.REUSSI
+        else None,
     )
 
 
@@ -418,9 +506,6 @@ def _phrases(
     version_active: bool,
 ) -> tuple[str, str, str | None]:
     message = (suivi.message or "").strip()
-    # Messages génériques de l'orchestration : déjà dits par la phrase, inutile de les répéter.
-    defauts = set(generation._MESSAGES_PAR_DEFAUT.values())
-    precision = message if message and message not in defauts else None
     if issue == Issue.EN_COURS:
         phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}. Temps écoulé : {temps}"
         phrase += f" (au plus {limite})." if limite else "."
@@ -435,14 +520,24 @@ def _phrases(
             else " Il est enregistré comme une nouvelle version du semestre."
         )
         return "Emploi du temps généré", phrase, None
+    if issue == Issue.REFUSE:
+        return (
+            "Calcul non lancé : impossibilités relevées avant la recherche",
+            "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
+            "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
+            "enregistré. Corriger les points ci-dessous (ou décocher la contrainte concernée), "
+            "puis relancer.",
+            None,
+        )
     if issue == Issue.IMPOSSIBLE:
+        # Le message du moteur explique déjà, en phrases, que c'est prouvé et quoi faire.
         return (
             "Impossible avec ces contraintes",
-            "Il est certain qu'aucun emploi du temps ne peut respecter toutes les contraintes "
-            "cochées avec les données actuelles. Aucun emploi du temps n'a été enregistré. Pour "
-            "avancer : relire les vérifications préalables, corriger les données (besoins, "
-            "indisponibilités, salles) ou décocher une contrainte pour voir laquelle bloque.",
-            precision,
+            message
+            or "Il est certain qu'aucun emploi du temps ne peut respecter toutes les "
+            "contraintes cochées avec les données actuelles. Aucun emploi du temps n'a été "
+            "enregistré.",
+            None,
         )
     if issue == Issue.TEMPS_DEPASSE:
         phrase = "Aucun emploi du temps n'a été trouvé"
@@ -451,7 +546,7 @@ def _phrases(
             " Ce n'est pas une preuve qu'il n'en existe pas : une recherche plus longue peut "
             "aboutir. Aucun emploi du temps n'a été enregistré."
         )
-        return "Pas trouvé dans le temps imparti", phrase, precision
+        return "Pas trouvé dans le temps imparti", phrase, None
     if issue == Issue.ARRETE:
         return (
             "Calcul arrêté",
@@ -489,6 +584,7 @@ def _options(
     longue: bool,
     optimiser: bool | None,
     graine: int,
+    utiliser_indices: bool = True,
 ) -> OptionsSolveur:
     options = OptionsSolveur.depuis_parametres(
         lire_parametres(session),
@@ -498,6 +594,8 @@ def _options(
     )
     if optimiser is not None and optimiser != options.optimiser:
         options = dataclasses.replace(options, optimiser=optimiser)
+    if utiliser_indices != options.utiliser_indices:
+        options = dataclasses.replace(options, utiliser_indices=utiliser_indices)
     return options
 
 

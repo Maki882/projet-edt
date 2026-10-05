@@ -4,61 +4,99 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
-import types
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.enumerations import Gravite, StatutOccurrence
+from edt.domaine.enumerations import JOURS, Gravite, OrigineOccurrence, StatutOccurrence
 from edt.domaine.instantane import id_seance
-from edt.services.emploi_du_temps import modifications, vues
+from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCible
 from edt.verification.contrat import Anomalie
 
-from .conftest import JOUR_TEST, identifiant_groupe, instancier, seance_du_besoin
+from .conftest import date_avec_seances, identifiant_groupe, jour_avec_seance, seance_du_besoin
 
 HX = {"HX-Request": "true"}
 
 
-def _cibles(session) -> dict[str, str]:
-    return {
-        "groupe": f"groupe_id={identifiant_groupe(session, 'A1-G1')}",
-        "enseignant": "enseignant_id="
-        + str(session.scalar(select(m.Enseignant.id).where(m.Enseignant.nom == "Martin"))),
-        "salle": "salle_id="
-        + str(session.scalar(select(m.Salle.id).where(m.Salle.code == "N016"))),
-    }
+def _cible(session, nature: str) -> tuple[str, object]:
+    """Paramètre d'adresse de la cible et clause SQL de ses séances (sur `Besoin`/`SeanceHebdo`)."""
+    if nature == "groupe":
+        groupe = identifiant_groupe(session, "A1-G1")
+        seances = m.Besoin.id.in_(
+            select(m.besoin_groupe.c.besoin_id).where(m.besoin_groupe.c.groupe_id == groupe)
+        )
+        return f"groupe_id={groupe}", seances
+    if nature == "enseignant":
+        enseignant = session.scalar(select(m.Enseignant.id).where(m.Enseignant.nom == "Martin"))
+        seances = m.Besoin.id.in_(
+            select(m.besoin_enseignant.c.besoin_id).where(
+                m.besoin_enseignant.c.enseignant_id == enseignant
+            )
+        )
+        return f"enseignant_id={enseignant}", seances
+    salle = session.scalar(
+        select(m.SeanceHebdo.salle_id)
+        .where(m.SeanceHebdo.salle_id.is_not(None))
+        .group_by(m.SeanceHebdo.salle_id)
+        .order_by(func.count().desc(), m.SeanceHebdo.salle_id)
+        .limit(1)
+    )
+    return f"salle_id={salle}", m.SeanceHebdo.salle_id == salle
+
+
+def _date_de_la_cible(session, version_id: int, filtre) -> dt.date:
+    """Une date où la cible a une séance datée qui a lieu (lue dans la version)."""
+    date = session.scalar(
+        select(m.Occurrence.date)
+        .join(m.SeanceHebdo, m.SeanceHebdo.id == m.Occurrence.seance_hebdo_id)
+        .join(m.Besoin, m.Besoin.id == m.Occurrence.besoin_id)
+        .where(
+            m.Occurrence.version_id == version_id,
+            m.Occurrence.statut.in_([StatutOccurrence.PLANIFIEE, StatutOccurrence.DEPLACEE]),
+            filtre,
+        )
+        .order_by(m.Occurrence.date)
+        .limit(1)
+    )
+    assert date is not None
+    return date
 
 
 @pytest.mark.parametrize("nature", ["groupe", "enseignant", "salle"])
 @pytest.mark.parametrize(
-    ("parametres", "attendu"),
-    [
-        ("couche=hebdo&affichage=semaine", "Semaine type"),
-        (f"couche=date&affichage=semaine&date={JOUR_TEST.isoformat()}", "Semaine 6 du semestre"),
-        ("couche=hebdo&affichage=jour&jour=0", "Semaine type : lundi"),
-        (f"couche=date&affichage=jour&date={JOUR_TEST.isoformat()}", "Lundi 12 octobre 2026"),
-    ],
+    ("couche", "affichage"),
+    [("hebdo", "semaine"), ("date", "semaine"), ("hebdo", "jour"), ("date", "jour")],
 )
 def test_trois_affichages_pour_un_groupe_un_enseignant_une_salle(
-    seances_datees, client, nature, parametres, attendu
+    seances_datees, client, nature, couche, affichage
 ):
+    version = seances_datees.version_id
     with session_base() as session:
-        cible = _cibles(session)[nature]
+        cible, filtre = _cible(session, nature)
+        date = _date_de_la_cible(session, version, filtre)
+        jour = jour_avec_seance(session, version, filtre)
+    parametres = f"couche={couche}&affichage={affichage}"
+    if couche == "date":
+        parametres += f"&date={date.isoformat()}"
+        attendu = (
+            presentation.date_longue(date).capitalize() if affichage == "jour" else "du semestre"
+        )
+    else:
+        parametres += f"&jour={jour}" if affichage == "jour" else ""
+        attendu = f"Semaine type : {JOURS[jour]}" if affichage == "jour" else "Semaine type"
 
-    reponse = client.get(
-        f"/emploi-du-temps?version_id={seances_datees.version_id}&{cible}&{parametres}"
-    )
+    reponse = client.get(f"/emploi-du-temps?version_id={version}&{cible}&{parametres}")
 
     assert reponse.status_code == 200
     page = reponse.text
     assert attendu in page
     assert 'class="edt-bloc edt-couleur-' in page  # au moins une séance dans la grille
-    assert "Mathématiques" in page
     assert "Traceback" not in page
-    assert f"/export/emploi-du-temps.csv?version_id={seances_datees.version_id}" in page
+    assert "pas encore disponible" not in page
+    assert f"/export/emploi-du-temps.csv?version_id={version}" in page
 
 
 def test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants(version_generee):
@@ -98,29 +136,107 @@ def test_semaine_datee_grise_les_vacances_et_navigue(seances_datees, client):
     assert "date=2026-10-19" in page and "date=2026-11-02" in page  # semaines voisines
 
 
-def test_seances_datees_absentes_puis_produites(version_generee, client, monkeypatch):
-    adresse = (
-        f"/emploi-du-temps?version_id={version_generee.version_id}&couche=date&date=2026-10-12"
+def test_seances_datees_produites_par_le_calcul_puis_recalculees(version_generee, client):
+    version = version_generee.version_id
+    with session_base() as session:
+        date = date_avec_seances(session, version)
+    adresse = f"/emploi-du-temps?version_id={version}&couche=date&date={date.isoformat()}"
+
+    page = client.get(adresse).text
+    assert "pas encore été produites" not in page  # le calcul les a produites
+    assert "Recalculer les séances datées" in page
+    assert "Vos retouches à la main" in page
+
+    recalcul = client.post(
+        f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
     )
+    assert "Séances datées recalculées" in recalcul.text
+
+
+def test_version_sans_seances_datees_puis_produites(version_generee, client):
+    version = version_generee.version_id
+    with session_base() as session:
+        session.execute(delete(m.Occurrence).where(m.Occurrence.version_id == version))
+    adresse = f"/emploi-du-temps?version_id={version}&couche=date"
     assert "pas encore été produites" in client.get(adresse).text
 
-    # Instanciation pas encore livrée : on le dit, rien n'est produit.
-    indisponible = client.post(
-        f"/emploi-du-temps/versions/{version_generee.version_id}/seances-datees",
-        data={"retour": adresse},
-    )
-    assert "pas encore disponible" in indisponible.text
+    # Instanciation simulée absente : on le dit, rien n'est produit.
+    with pytest.MonkeyPatch.context() as temporaire:
+        temporaire.setitem(sys.modules, "edt.services.instanciation", None)
+        absente = client.post(
+            f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
+        )
+    assert "pas encore disponible" in absente.text
 
-    module = types.ModuleType("edt.services.instanciation")
-    module.instancier_version = instancier
-    monkeypatch.setitem(sys.modules, "edt.services.instanciation", module)
     produite = client.post(
-        f"/emploi-du-temps/versions/{version_generee.version_id}/seances-datees",
-        data={"retour": adresse},
+        f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
     )
-    assert "séance(s) datée(s) produite(s)" in produite.text
+    assert "Séances datées recalculées" in produite.text
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Occurrence)) > 0
+
+
+def test_les_retouches_survivent_au_recalcul_sans_doublon(
+    seances_datees, client, faux_verificateur
+):
+    version = seances_datees.version_id
+    with session_base() as session:
+        date = date_avec_seances(session, version, minimum=2)
+        premiere, seconde = session.scalars(
+            select(m.Occurrence)
+            .where(
+                m.Occurrence.version_id == version,
+                m.Occurrence.date == date,
+                m.Occurrence.seance_hebdo_id.is_not(None),
+                m.Occurrence.debut_min.in_(DEBUTS_DE_LA_GRILLE),
+            )
+            .order_by(m.Occurrence.debut_min, m.Occurrence.id)
+            .limit(2)
+        ).all()
+        deplacee_id, annulee_id = premiere.id, seconde.id
+        cles = {
+            identifiant: (occurrence.seance_hebdo_id, date)
+            for identifiant, occurrence in ((premiere.id, premiere), (seconde.id, seconde))
+        }
+        cible = _jour_ouvre_suivant(date, session.get(m.VersionEdt, version).semestre)
+        salle, debut = premiere.salle_id, premiere.debut_min
+    client.post(
+        f"/emploi-du-temps/occurrences/{deplacee_id}/deplacer",
+        data={"date": cible.isoformat(), "debut": debut, "salle_id": str(salle)},
+        headers=HX,
+    )
+    client.post(f"/emploi-du-temps/occurrences/{annulee_id}/annuler", data={"motif": "Sortie"})
+
+    with session_base() as session:
+        bilan = modifications.recalculer_seances_datees(session, version)
+        assert bilan.nb_retouches == 2 and bilan.nb_doublons_retires == 2
+        deplacee = session.get(m.Occurrence, deplacee_id)
+        annulee = session.get(m.Occurrence, annulee_id)
+        assert (deplacee.date, deplacee.statut) == (cible, StatutOccurrence.DEPLACEE)
+        assert annulee.statut == StatutOccurrence.ANNULEE
+        for seance_hebdo_id, jour in cles.values():
+            lundi = jour - dt.timedelta(days=jour.weekday())
+            meme_semaine = [
+                o
+                for o in session.scalars(
+                    select(m.Occurrence).where(m.Occurrence.seance_hebdo_id == seance_hebdo_id)
+                )
+                if lundi <= (o.date_initiale or o.date) <= lundi + dt.timedelta(days=6)
+            ]
+            assert len(meme_semaine) == 1  # la retouche, et pas de séance recalculée en double
+    assert "retouche(s) à la main" in bilan.message
+
+
+DEBUTS_DE_LA_GRILLE = (8 * 60 + 30, 10 * 60 + 45, 13 * 60 + 45, 16 * 60)
+"""Débuts de créneau de la grille par défaut (une séance hors grille ne change pas de jour)."""
+
+
+def _jour_ouvre_suivant(date: dt.date, semestre) -> dt.date:
+    """Le jour ouvré qui suit `date` dans le semestre (sinon celui qui précède)."""
+    suivant = date + dt.timedelta(days=3 if date.weekday() == 4 else 1)
+    if suivant <= semestre.date_fin:
+        return suivant
+    return date - dt.timedelta(days=3 if date.weekday() == 0 else 1)
 
 
 def test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx(version_generee, client):
@@ -236,13 +352,20 @@ def test_salles_compatibles_libres_d_abord(version_generee):
 
 def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_verificateur):
     with session_base() as session:
+        jour_initial = date_avec_seances(session, seances_datees.version_id)
         occurrence = session.scalar(
             select(m.Occurrence)
-            .where(m.Occurrence.date == JOUR_TEST)
+            .where(
+                m.Occurrence.version_id == seances_datees.version_id,
+                m.Occurrence.date == jour_initial,
+            )
             .order_by(m.Occurrence.debut_min)
             .limit(1)
         )
         identifiant, salle = occurrence.id, occurrence.salle_id
+        mardi = _jour_ouvre_suivant(
+            jour_initial, session.get(m.VersionEdt, seances_datees.version_id).semestre
+        )
 
     # Refus : le vérificateur signale une erreur sur cette occurrence ; rien ne change.
     faux_verificateur.datees = [
@@ -250,7 +373,6 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
             "GROUPE_UNIQUE", Gravite.ERREUR, "Le groupe a déjà cours.", occurrences=(identifiant,)
         )
     ]
-    mardi = JOUR_TEST + dt.timedelta(days=1)
     donnees = {
         "date": mardi.isoformat(),
         "debut": 645,
@@ -262,7 +384,7 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
     )
     assert "Le groupe a déjà cours." in refus.text
     with session_base() as session:
-        assert session.get(m.Occurrence, identifiant).date == JOUR_TEST
+        assert session.get(m.Occurrence, identifiant).date == jour_initial
 
     faux_verificateur.datees = []
     client.post(f"/emploi-du-temps/occurrences/{identifiant}/deplacer", data=donnees, headers=HX)
@@ -273,7 +395,8 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
             645,
             StatutOccurrence.DEPLACEE,
         )
-        assert deplacee.date_initiale == JOUR_TEST
+        assert deplacee.date_initiale == jour_initial
+        assert deplacee.origine == OrigineOccurrence.MANUELLE  # retouche conservée au recalcul
 
     client.post(f"/emploi-du-temps/occurrences/{identifiant}/annuler", data={"motif": "Grève"})
     with session_base() as session:
