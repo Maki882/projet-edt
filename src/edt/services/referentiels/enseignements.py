@@ -954,16 +954,16 @@ INDISPONIBILITE = Entite(
     ),
     colonnes=(
         Colonne(
-            "cible",
-            "Type",
-            lambda i: libelle_choix(CHOIX_CIBLE, i.cible),
-            tri=Indisponibilite.cible,
-        ),
-        Colonne(
             "ressource",
             "Ressource",
             texte_ressource,
             tri=func.coalesce(Enseignant.nom, Salle.code, Groupe.code),
+        ),
+        Colonne(
+            "cible",
+            "Type",
+            lambda i: libelle_choix(CHOIX_CIBLE, i.cible),
+            tri=Indisponibilite.cible,
         ),
         Colonne(
             "quand",

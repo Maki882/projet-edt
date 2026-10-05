@@ -1214,27 +1214,32 @@ fieldset.champ {
     flex-direction: column;
   }
 
+  /* Sous-navigation : une seule bande qui défile horizontalement. */
   .sous-navigation {
     flex-basis: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    overflow-x: auto;
+    white-space: nowrap;
     border-right: none;
     border-bottom: 1px solid var(--bordure);
-    padding: 0.5rem var(--espace);
+    padding: 0.4rem var(--espace);
   }
 
   .sous-navigation h2 {
-    margin: 0.4rem 0 0.15rem;
+    display: none;
   }
 
   .sous-navigation ul {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.2rem 0.3rem;
+    gap: 0.3rem;
   }
 
   .sous-navigation li a {
     border-left: none;
     border-radius: var(--rayon);
-    padding: 0.15rem 0.5rem;
+    padding: 0.2rem 0.6rem;
   }
 
   main {

@@ -272,8 +272,18 @@
     initialiser(evenement.target);
   });
 
+  function montrerPageActive() {
+    // Sur un petit écran, la sous-navigation défile : la page affichée y est rendue visible.
+    var actif = document.querySelector(".sous-navigation a.actif");
+    var bande = actif ? actif.closest(".sous-navigation") : null;
+    if (bande && bande.scrollWidth > bande.clientWidth) {
+      bande.scrollLeft = actif.offsetLeft - bande.clientWidth / 2 + actif.offsetWidth / 2;
+    }
+  }
+
   function demarrer() {
     initialiserAssistant();
+    montrerPageActive();
     initialiser(document);
   }
 
