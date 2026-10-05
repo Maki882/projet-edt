@@ -38,7 +38,6 @@ from edt.services.referentiels.description import (
     Champ,
     Entite,
     TypeChamp,
-    libelle_choix,
     options_reference,
 )
 
@@ -348,18 +347,6 @@ def ligne(session: Session, code: str | Entite, ident: int) -> dict[str, Any]:
     description = entite(code)
     trouve = objet(session, description, ident)
     return {"id": trouve.id, **{c.cle: c.valeur(trouve) for c in description.colonnes}}
-
-
-def libelle_valeur(session: Session, code: str | Entite, nom_champ: str, valeur: Any) -> str:
-    """Texte lisible de la valeur canonique d'un champ (libellé d'un choix, d'une référence)."""
-    champ = entite(code).champ(nom_champ)
-    if champ.type is TypeChamp.CHOIX:
-        return libelle_choix(champ.choix, valeur)
-    if champ.reference is not None and valeur not in (None, []):
-        identifiants = valeur if isinstance(valeur, list) else [valeur]
-        libelles = dict(options_reference(session, champ.reference))
-        return ", ".join(libelles.get(str(i), str(i)) for i in identifiants)
-    return "" if valeur is None else str(valeur)
 
 
 # --------------------------------------------------------------------------- #
