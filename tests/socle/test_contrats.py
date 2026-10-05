@@ -17,7 +17,7 @@ from edt.domaine.contraintes import (
 )
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import decomposer_id_seance, id_seance
-from edt.domaine.parametres import Parametres, convertir_texte, definitions
+from edt.domaine.parametres import Parametres, convertir_texte, definition, definitions
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import ecrire_parametre, ecrire_parametres, lire_parametres
@@ -107,17 +107,25 @@ def test_le_moteur_provisoire_garantit_unicite_et_capacite(jeu_minimal, session)
 def test_parametres_par_defaut_puis_modification(session):
     parametres = lire_parametres(session)
     assert parametres == Parametres()
-    assert (parametres.temps_limite_s, parametres.pause_min) == (60, 15)
+    assert (parametres.temps_limite_s, parametres.pause_min) == (300, 15)
+    assert (parametres.temps_limite_long_s, parametres.objectif_actif) == (900, True)
+    assert "bouton de relance longue" in definition("temps_limite_long_s").description
     assert (parametres.dejeuner_debut_min, parametres.dejeuner_fin_min) == (765, 825)
     assert parametres.accessibilite_inconnue_acceptee is False
 
+    # Par défaut : un calcul de 5 minutes qui améliore, une relance longue de 15 minutes.
+    par_defaut = OptionsSolveur.depuis_parametres(parametres)
+    assert (par_defaut.temps_limite_s, par_defaut.optimiser) == (300.0, True)
+    assert OptionsSolveur.depuis_parametres(parametres, relance_longue=True).temps_limite_s == 900.0
+
     ecrire_parametre(session, "temps_limite_s", 120)
-    ecrire_parametre(session, "objectif_actif", True)
+    ecrire_parametre(session, "objectif_actif", False)
     session.commit()
     relu = lire_parametres(session)
-    assert relu.temps_limite_s == 120 and relu.objectif_actif is True
-    assert OptionsSolveur.depuis_parametres(relu).temps_limite_s == 120.0
-    assert OptionsSolveur.depuis_parametres(relu, relance_longue=True).temps_limite_s == 300.0
+    assert relu.temps_limite_s == 120 and relu.objectif_actif is False
+    options = OptionsSolveur.depuis_parametres(relu)
+    assert (options.temps_limite_s, options.optimiser) == (120.0, False)
+    assert OptionsSolveur.depuis_parametres(relu, relance_longue=True).temps_limite_s == 900.0
 
 
 def test_parametre_invalide_refuse_sans_rien_modifier(session):

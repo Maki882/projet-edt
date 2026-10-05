@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from edt.db.moteur import session_base
-from edt.domaine.parametres import definitions
+from edt.domaine.parametres import Parametres, definitions
 from edt.services.parametres import lire_parametres
 
 MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
@@ -36,7 +36,7 @@ def test_bornes_refusees_et_signalees_sous_le_champ(client):
     assert "La valeur minimale est 0 (lu : -1)." in reponse.text
     assert 'value="5000"' in reponse.text  # la saisie est conservée
     with session_base() as session:
-        assert lire_parametres(session).temps_limite_s == 60  # rien n'a été enregistré
+        assert lire_parametres(session) == Parametres()  # rien n'a été enregistré
 
 
 def test_incoherence_d_ensemble_refusee(client):
@@ -48,16 +48,17 @@ def test_incoherence_d_ensemble_refusee(client):
 def test_enregistrement_puis_retour_aux_valeurs_par_defaut(client):
     reponse = client.post(
         "/parametres",
-        data=_saisies(temps_limite_s="120", objectif_actif="1"),
+        data=_saisies(temps_limite_s="120"),  # case « objectif » décochée : absente de l'envoi
         follow_redirects=True,
     )
     assert "Paramètres enregistrés." in reponse.text
     with session_base() as session:
         parametres = lire_parametres(session)
-        assert parametres.temps_limite_s == 120 and parametres.objectif_actif is True
+        assert parametres.temps_limite_s == 120 and parametres.objectif_actif is False
 
     reponse = client.post("/parametres/defaut", follow_redirects=True)
     assert "valeur par défaut" in reponse.text
     with session_base() as session:
         parametres = lire_parametres(session)
-        assert parametres.temps_limite_s == 60 and parametres.objectif_actif is False
+        assert parametres == Parametres()
+        assert parametres.temps_limite_s != 120 and parametres.objectif_actif is True

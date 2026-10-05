@@ -47,17 +47,18 @@ class Parametres:
     """Réglages globaux. Les heures sont en minutes depuis minuit."""
 
     temps_limite_s: int = _champ(
-        60,
+        300,
         "Temps limite d'un calcul",
-        "Durée maximale d'une génération avant abandon.",
+        "Durée maximale d'un calcul : passé ce délai, il s'arrête et garde le meilleur emploi "
+        "du temps trouvé.",
         minimum=1,
         maximum=900,
         unite="s",
     )
     temps_limite_long_s: int = _champ(
-        300,
+        900,
         "Temps limite d'une relance longue",
-        "Durée maximale utilisée par le bouton « relancer 5 min ».",
+        "Durée maximale utilisée par le bouton de relance longue.",
         minimum=1,
         maximum=1800,
         unite="s",
@@ -125,10 +126,11 @@ class Parametres:
         "non accessible.",
     )
     objectif_actif: bool = _champ(
-        False,
+        True,
         "Optimiser la qualité de l'emploi du temps",
-        "Si oui, le calcul minimise les trous, les changements de campus, le samedi et "
-        "les créneaux extrêmes au lieu de s'arrêter à la première solution valide.",
+        "Si oui, une fois un emploi du temps valide trouvé, le calcul emploie le temps qui "
+        "reste à réduire les trous, les changements de campus, le samedi et les créneaux "
+        "extrêmes. Si non, il s'arrête à la première solution valide.",
     )
     poids_trous: int = _champ(
         10,

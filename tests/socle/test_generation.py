@@ -14,9 +14,19 @@ from edt.domaine.enumerations import EtatCalcul, ModeVolume
 from edt.erreurs import ErreurCalculEnCours, ErreurInfaisable, ErreurIntrouvable
 from edt.services import generation
 from edt.services.instantane import charger_instantane
+from edt.services.parametres import reinitialiser_parametres
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 
 DELAI = 20  # secondes : garde-fou pour qu'un test bloqué échoue au lieu d'attendre sans fin
+SANS_AMELIORATION = OptionsSolveur(temps_limite_s=30.0, optimiser=False)
+"""Réglages explicites des tests à qui il suffit d'un calcul réussi (les réglages par
+défaut de l'application, eux, améliorent l'emploi du temps trouvé)."""
+
+
+def _reglages_par_defaut_de_l_application() -> None:
+    """Rétablit les réglages par défaut, que le jeu minimal des tests modifie (conftest)."""
+    with session_base() as session:
+        reinitialiser_parametres(session)
 
 
 def _nb_versions() -> int:
@@ -49,9 +59,27 @@ def test_calcul_reussi_enregistre_une_version_active(jeu_minimal):
     assert "Fin du calcul" in contenu
 
 
+def test_reglages_par_defaut_le_calcul_ameliore_la_solution_valide(jeu_minimal):
+    """Sans option : 5 minutes au plus, et l'emploi du temps valide est amélioré."""
+    _reglages_par_defaut_de_l_application()
+    suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
+
+    assert suivi.reussi, suivi.message
+    with session_base() as session:
+        parametres = session.get(m.Calcul, suivi.id).parametres
+    assert (parametres["temps_limite_s"], parametres["optimiser"]) == (300.0, True)
+    stats = suivi.statistiques
+    assert stats["objectif"] <= stats["objectif_premiere_solution"]
+    # Le message dit le bilan sans terme technique.
+    assert "Bilan sur l'ensemble du semestre" in suivi.message
+    assert "énalité" not in suivi.message and "bjectif" not in suivi.message
+
+
 def test_une_nouvelle_version_remplace_la_version_active(jeu_minimal):
     for _ in range(2):
-        generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
+        generation.attendre_calcul(
+            generation.lancer_calcul(jeu_minimal.semestre_id, SANS_AMELIORATION), DELAI
+        )
 
     with session_base() as session:
         versions = session.scalars(select(m.VersionEdt).order_by(m.VersionEdt.numero)).all()
@@ -79,7 +107,7 @@ def test_un_seul_calcul_a_la_fois(jeu_minimal):
     assert generation.calcul_en_cours() is None
 
     # Une fois le premier terminé, un nouveau calcul peut partir.
-    second = generation.lancer_calcul(jeu_minimal.semestre_id)
+    second = generation.lancer_calcul(jeu_minimal.semestre_id, SANS_AMELIORATION)
     assert generation.attendre_calcul(second, DELAI).reussi
 
 
@@ -207,7 +235,7 @@ def test_calcul_interrompu_cloture_au_demarrage(jeu_minimal):
     assert suivi.etat is EtatCalcul.ERREUR and suivi.message == generation.MESSAGE_INTERROMPU
     assert generation.cloturer_calculs_interrompus() == 0
     assert generation.attendre_calcul(
-        generation.lancer_calcul(jeu_minimal.semestre_id), DELAI
+        generation.lancer_calcul(jeu_minimal.semestre_id, SANS_AMELIORATION), DELAI
     ).reussi
 
 
@@ -215,6 +243,8 @@ def test_calcul_interrompu_ne_bloque_pas_le_suivant(jeu_minimal):
     """Sans redémarrage du serveur : le calcul abandonné est clos par le lancement suivant."""
     abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
 
-    suivant = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
+    suivant = generation.attendre_calcul(
+        generation.lancer_calcul(jeu_minimal.semestre_id, SANS_AMELIORATION), DELAI
+    )
     assert suivant.reussi
     assert generation.etat_calcul(abandonne).etat is EtatCalcul.ERREUR

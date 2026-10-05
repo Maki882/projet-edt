@@ -8,7 +8,8 @@ appliquée d'office à tous les tests).
 - `aujourdhui` : date de référence des tests (5 octobre 2026) ;
 - `base` : base initialisée (schéma et données par défaut), sans référentiels ;
 - `session` : session SQLAlchemy sur cette base (non validée automatiquement) ;
-- `jeu_minimal` : base chargée du jeu minimal (`edt.db.jeux`) ;
+- `jeu_minimal` : base chargée du jeu minimal (`edt.db.jeux`), calculs sans
+  amélioration (« objectif_actif » coupé) ;
 - `client` : client de test de l'application web.
 """
 
@@ -25,6 +26,7 @@ from edt.db.initialisation import RapportInitialisation, initialiser_base
 from edt.db.jeux import JeuMinimal, creer_jeu_minimal
 from edt.db.moteur import fabrique_sessions, liberer_moteurs, session_base
 from edt.journal import reinitialiser_journalisation
+from edt.services.parametres import ecrire_parametre
 
 AUJOURDHUI = dt.date(2026, 10, 5)
 """Date de référence des tests : l'année scolaire créée par défaut est 2026-2027."""
@@ -64,8 +66,16 @@ def session(base: RapportInitialisation) -> Iterator[Session]:
 
 @pytest.fixture
 def jeu_minimal(base: RapportInitialisation) -> JeuMinimal:
-    """Base chargée du jeu minimal ; renvoie ses repères (identifiant du semestre...)."""
+    """Base chargée du jeu minimal ; renvoie ses repères (identifiant du semestre...).
+
+    Le réglage « objectif_actif » y est coupé : un test qui lance un calcul veut
+    un emploi du temps valide, pas le meilleur, et prouver l'optimum coûterait
+    plus d'une seconde à chaque calcul. Un test qui veut les réglages par
+    défaut de l'application les rétablit (`reinitialiser_parametres`) ou passe
+    ses propres options.
+    """
     with session_base() as session:
+        ecrire_parametre(session, "objectif_actif", False)
         return creer_jeu_minimal(session)
 
 

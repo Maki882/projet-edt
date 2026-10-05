@@ -34,6 +34,7 @@ from edt.erreurs import ErreurCalculEnCours, ErreurIntrouvable, ErreurRegleMetie
 from edt.services import generation
 from edt.services.instanciation import instancier_version, replacer_occurrences
 from edt.services.instantane import charger_instantane
+from edt.services.parametres import reinitialiser_parametres
 from edt.services.verification import verifier_occurrences_version, verifier_version
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
@@ -656,15 +657,16 @@ def test_commande_generer_puis_instancier(lanceur, jeu_minimal):
 
     resultat = lanceur.invoke(
         cli.app,
-        ["generer", "--semestre", semestre, "--temps-limite", "30", "--graine", "2", "--fils", "1"],
+        ["generer", "--semestre", semestre, "--sans-optimiser", "--temps-limite", "30"]
+        + ["--graine", "2", "--fils", "1"],
     )
     assert resultat.exit_code == 0, resultat.output
+    assert "sans optimisation" in resultat.output
     assert "Réussi" in resultat.output and "17 séance(s) placée(s)" in resultat.output
     message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
-    # Le bilan est dit une fois : dans le message s'il y a eu amélioration, sinon par la commande.
-    assert ("Bilan sur l'ensemble du semestre :" in message) + _lignes_de_bilan(
-        resultat.output
-    ) == 1
+    # Sans amélioration, le message du calcul ne porte pas de bilan : la commande le donne.
+    assert "Bilan sur l'ensemble du semestre :" not in message
+    assert _lignes_de_bilan(resultat.output) == 1
     assert "Version enregistrée : n° 1." in resultat.output
 
     resultat = lanceur.invoke(cli.app, ["instancier", "--semestre", semestre])
@@ -692,6 +694,20 @@ def test_commande_generer_avec_optimisation_et_contrainte_desactivee(lanceur, je
     # Le bilan est dans le message du calcul : la commande ne le répète pas sur sa propre ligne.
     message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
     assert "Bilan sur l'ensemble du semestre :" in message and "le samedi" in message
+    assert _lignes_de_bilan(resultat.output) == 0
+
+
+def test_commande_generer_ameliore_par_defaut(lanceur, jeu_minimal):
+    """Sans option, la commande suit le réglage « objectif_actif », actif par défaut."""
+    with session_base() as session:
+        reinitialiser_parametres(session)  # le jeu minimal des tests coupe l'amélioration
+    resultat = lanceur.invoke(
+        cli.app, ["generer", "--semestre", str(jeu_minimal.semestre_id), "--temps-limite", "20"]
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "avec optimisation" in resultat.output
+    message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
+    assert "Bilan sur l'ensemble du semestre :" in message
     assert _lignes_de_bilan(resultat.output) == 0
 
 
