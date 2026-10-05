@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from edt.db import modeles as m
 from edt.services import generation
 from edt.services.emploi_du_temps import raccords
+from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
@@ -199,8 +200,8 @@ def _prochaine_etape(
     if reste:
         return ProchaineEtape(
             Etape.TRAITER,
-            f"L'emploi du temps actif du {nom} a {reste} point(s) à traiter : anomalies ou "
-            "séances à programmer.",
+            f"L'emploi du temps actif du {nom} a {pluriel(reste, 'point')} à traiter : "
+            "anomalies ou séances à programmer.",
             f"/a-traiter?semestre_id={semestre.id}",
             "Voir ce qui reste à traiter",
         )
