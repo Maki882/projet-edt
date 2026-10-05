@@ -128,3 +128,21 @@ def test_module_de_commandes_sans_objet_commandes_refuse(monkeypatch):
 def test_point_d_entree_renvoie_le_code_de_sortie(base):
     assert cli.main(["version"]) == 0
     assert cli.main(["commande-inconnue"]) == 2
+
+
+def test_les_sorties_sont_forcees_en_utf8(monkeypatch):
+    """Sous Windows, une sortie redirigée doit rester lisible : les accents sortent en UTF-8."""
+    import io
+    import sys
+
+    from edt.cli import _forcer_sorties_utf8
+
+    tampon = io.BytesIO()
+    flux = io.TextIOWrapper(tampon, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", flux)
+
+    _forcer_sorties_utf8()
+    print("séances placées", file=flux, flush=True)
+
+    assert flux.encoding.lower().replace("-", "") == "utf8"
+    assert tampon.getvalue().decode("utf-8").strip() == "séances placées"

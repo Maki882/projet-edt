@@ -32,6 +32,7 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
+import sys
 from collections.abc import Sequence
 
 import typer
@@ -120,8 +121,22 @@ def construire_app() -> typer.Typer:
 app = construire_app()
 
 
+def _forcer_sorties_utf8() -> None:
+    """Écrit la sortie standard et la sortie d'erreur en UTF-8.
+
+    Sous Windows, une sortie redirigée (tube, fichier) prend sinon l'encodage
+    régional et les accents deviennent illisibles pour qui la relit en UTF-8.
+    Un flux qui ne sait pas changer d'encodage (flux de test) est laissé tel quel.
+    """
+    for flux in (sys.stdout, sys.stderr):
+        reconfigurer = getattr(flux, "reconfigure", None)
+        if callable(reconfigurer) and (flux.encoding or "").lower().replace("-", "") != "utf8":
+            reconfigurer(encoding="utf-8", errors="replace")
+
+
 def main(arguments: Sequence[str] | None = None) -> int:
     """Point d'entrée : exécute la commande et renvoie le code de sortie."""
+    _forcer_sorties_utf8()
     try:
         resultat = app(
             args=list(arguments) if arguments is not None else None, standalone_mode=False
