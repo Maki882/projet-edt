@@ -88,10 +88,11 @@ class Bilan:
     compteurs: dict[str, int] = field(default_factory=dict)
 
     def ajouter(self, compteur: str, nombre: int = 1) -> None:
-        """Ajoute `nombre` au compteur `compteur` (une clé de `LIBELLES_COMPTEURS`)."""
+        """Ajoute `nombre` au compteur `compteur` (une clé de `LIBELLES_COMPTEURS`) ; 0 ne crée rien."""
         if compteur not in LIBELLES_COMPTEURS:
             raise KeyError(f"Compteur de bilan inconnu : {compteur!r}")
-        self.compteurs[compteur] = self.compteurs.get(compteur, 0) + nombre
+        if nombre:
+            self.compteurs[compteur] = self.compteurs.get(compteur, 0) + nombre
 
     def nombre(self, compteur: str) -> int:
         """Valeur d'un compteur (0 s'il n'a jamais été incrémenté)."""
