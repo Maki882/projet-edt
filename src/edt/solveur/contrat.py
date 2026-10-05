@@ -11,7 +11,8 @@ Un moteur est une fonction pure du point de vue de l'application :
   partielle (`placements` est vide hors statut `SOLUTION`) ;
 - il surveille `arret` (un `threading.Event`) et rend la main rapidement
   avec le statut `ARRETE` quand il est levé ;
-- il ne dépasse pas `options.temps_limite_s` ;
+- il ne dépasse pas `options.temps_limite_s` (à l'affectation finale des
+  salles près, une seconde ou deux, quand il vient d'améliorer une solution) ;
 - il journalise avec `logging` : tout ce qui est émis dans le fil du calcul
   arrive dans le journal dédié (voir `edt.journal.journal_calcul_courant`
   pour les rappels exécutés dans un autre fil).
@@ -61,7 +62,11 @@ class OptionsSolveur:
     - `utiliser_indices` : partir des placements de la version précédente
       (`SeanceAPlacer.indice`) ;
     - `tolerer_violations_heritees` : accepter que des séances verrouillées
-      violent déjà entre elles une contrainte, au lieu de refuser le calcul.
+      violent déjà entre elles une contrainte, au lieu de refuser le calcul ;
+    - `arret_sur_stagnation` : avec `optimiser`, laisser l'amélioration
+      s'arrêter d'elle-même quand elle ne progresse plus, sans attendre le
+      temps limite. Ce critère lit l'horloge : le désactiver quand on veut un
+      résultat strictement reproductible d'une exécution à l'autre.
     """
 
     temps_limite_s: float = 60.0
@@ -71,6 +76,7 @@ class OptionsSolveur:
     nb_workers: int = 0
     utiliser_indices: bool = True
     tolerer_violations_heritees: bool = False
+    arret_sur_stagnation: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -113,6 +119,7 @@ class OptionsSolveur:
             "nb_workers": self.nb_workers,
             "utiliser_indices": self.utiliser_indices,
             "tolerer_violations_heritees": self.tolerer_violations_heritees,
+            "arret_sur_stagnation": self.arret_sur_stagnation,
         }
 
 

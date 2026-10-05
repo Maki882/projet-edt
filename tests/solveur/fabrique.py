@@ -342,8 +342,9 @@ class Fabrique:
 # Aides de test
 # --------------------------------------------------------------------------- #
 
-OPTIONS = OptionsSolveur(temps_limite_s=20, graine=1, nb_workers=1)
-"""Options des tests : mode reproductible (une graine, un fil de calcul)."""
+OPTIONS = OptionsSolveur(temps_limite_s=20, graine=1, nb_workers=1, arret_sur_stagnation=False)
+"""Options des tests : mode reproductible (une graine, un fil de calcul, et pas d'arrêt sur
+stagnation, qui lit l'horloge : un test qui le veut le demande)."""
 
 
 def options(**changements) -> OptionsSolveur:

@@ -101,6 +101,25 @@ def test_jeu_moyen_optimise_fait_mieux_que_le_temoin(jeu_moyen: Jeu):
     assert obtenu.trous_creneaux <= reference.trous_creneaux
 
 
+@pytest.mark.parametrize("semestre", ["S1", "S2"])
+def test_jeu_moyen_ameliore_puis_s_arrete_de_lui_meme(jeu_moyen: Jeu, semestre: str):
+    """Réglages par défaut (300 s, arrêt sur stagnation) : un petit établissement rend vite."""
+    instantane, temoin = jeu_moyen[semestre]
+    debut = time.perf_counter()
+    resultat = resoudre(
+        instantane,
+        options(nb_workers=2, temps_limite_s=300, optimiser=True, arret_sur_stagnation=True),
+    )
+    duree = time.perf_counter() - debut
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["raison_arret"] in ("stagnation", "optimum_prouve")
+    assert duree < 60, f"jeu moyen {semestre} en {duree:.1f} s"
+    obtenu = calculer_indicateurs(instantane, resultat.placements)
+    reference = calculer_indicateurs(instantane, temoin)
+    assert obtenu.valeur_objectif < reference.valeur_objectif
+    assert obtenu.trous_creneaux <= reference.trous_creneaux
+
+
 def test_jeu_moyen_instanciation_et_replacement(jeu_moyen: Jeu):
     """Les jours fériés tombent sur des séances : elles sont replacées, rien n'est perdu."""
     instantane, _ = jeu_moyen["S1"]

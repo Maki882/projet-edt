@@ -279,7 +279,8 @@ Avec `options.optimiser`, le calcul se fait **en deux temps** :
    comme en mode faisable et dans le même délai ;
 2. l'**amélioration**, dans le temps qui reste : l'objectif est ajouté au
    même modèle (`ModeleHoraires.poser_objectif`) et la recherche repart de la
-   solution valide.
+   solution valide. Elle s'arrête d'elle-même quand elle ne progresse plus,
+   sans attendre le temps limite.
 
 L'objectif minimisé est
 
@@ -365,11 +366,11 @@ faux, borne inférieure dans `borne_objectif`).
    le délai écoulé.
 4. **Amélioration**, en mode optimisé seulement et s'il reste au moins 1 s
    (`TEMPS_MIN_AMELIORATION_S`) : l'objectif est ajouté au modèle et la
-   recherche repart de la solution valide, jusqu'au temps limite, à la
-   preuve d'optimalité ou à l'arrêt. Les horaires améliorés reçoivent des
-   salles ; si elles ne suivent pas pour les meilleurs horaires, les
-   précédents sont essayés (20 gardés), et à défaut la solution valide de
-   l'étape 3 est rendue.
+   recherche repart de la solution valide, jusqu'à la preuve d'optimalité,
+   à la stagnation (plus de progrès), au temps limite ou à l'arrêt demandé.
+   Les horaires améliorés reçoivent des salles ; si elles ne suivent pas pour
+   les meilleurs horaires, les précédents sont essayés (20 gardés), et à
+   défaut la solution valide de l'étape 3 est rendue.
 5. **Résultat** : placements de toutes les séances, message, statistiques.
 
 ### Une solution trouvée n'est jamais perdue
@@ -383,6 +384,7 @@ ensuite.
 | le temps limite tombe juste après l'étape 3 | `SOLUTION` (la solution valide) | « Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un emploi du temps plus confortable. » |
 | le temps limite tombe pendant l'amélioration | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut encore l'affiner. » |
 | l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » |
+| l'amélioration ne progresse plus | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis N s. » |
 | arrêt demandé avant l'étape 3 | `ARRETE` | « Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a été enregistré. » |
 | arrêt demandé après l'étape 3 | `SOLUTION` (la meilleure trouvée) | « Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée. » |
 
@@ -391,6 +393,76 @@ Arrêt avec solution : la phrase est aussi dans `avertissements`, et
 (`edt.services.generation`), c'est un calcul **réussi** : état `REUSSI`,
 version enregistrée et instanciée, `SuiviCalcul.arret_demande` vrai. L'état
 `ARRETE` ne désigne plus qu'un arrêt sans solution.
+
+Pour toute solution, `statistiques["raison_arret"]` dit pourquoi la
+recherche s'est arrêtée là :
+
+| `raison_arret` | Sens |
+|---|---|
+| `premiere_solution` | pas d'amélioration demandée (mode faisable) |
+| `optimum_prouve` | on ne peut pas faire mieux |
+| `stagnation` | plus de progrès ; `duree_sans_progres_s` donne la durée du silence |
+| `temps_limite` | l'amélioration avançait encore au temps limite |
+| `temps_manquant` | le temps limite est tombé avant que l'amélioration commence |
+| `arret_utilisateur` | arrêt demandé, solution conservée |
+
+**Recherche rendue en retard.** Sur un gros modèle et une machine chargée,
+CP-SAT rend parfois la main quelques secondes après son temps imparti, donc
+après le temps limite du calcul. Les meilleurs horaires améliorés reçoivent
+quand même leurs salles (10 s au plus leur sont garanties, une seconde
+suffit en pratique) : le calcul dépasse alors son temps limite d'une seconde
+ou deux, au lieu de rendre la première solution valide et de perdre toute
+l'amélioration. Le journal le signale (« La recherche a rendu la main ... s
+après le temps limite »).
+
+### L'amélioration s'arrête d'elle-même
+
+Un petit établissement atteint vite son palier : sur le jeu moyen, trous et
+samedis sont à zéro en 6 s et plus rien ne bouge après une vingtaine de
+secondes. Attendre le temps limite (300 s par défaut) ne sert à rien.
+L'amélioration s'arrête donc quand **aucune solution meilleure n'est venue
+depuis**
+
+```
+max(10 s, un tiers du temps écoulé depuis le lancement du calcul)
+```
+
+(`delai_de_stagnation`, constantes `STAGNATION_MIN_S` et `STAGNATION_PART`
+de `moteur.py`). Le fil de surveillance le constate dix fois par seconde ;
+le compte part de la première solution de l'amélioration, pas du chargement
+du modèle. Le message dit « L'amélioration s'est arrêtée d'elle-même : plus
+de progrès depuis N s. » et `raison_arret` vaut `stagnation`.
+
+Pourquoi deux termes (mesures : « Arrêt sur stagnation » plus bas) :
+
+- **10 s** suffisent à constater le palier d'un petit problème, dont les
+  améliorations se suivent à moins de deux secondes tant qu'il progresse.
+  Avec 20 s le jeu moyen met de 32 à 60 s à rendre la main, avec 10 s de 17
+  à 36 s, pour le même bilan (aucun trou, aucun samedi) ;
+- **un tiers du temps écoulé** protège les gros problèmes, qui progressent
+  par à-coups de plus en plus espacés. Sur le jeu grand, le plus long
+  silence entre deux améliorations vaut d'ordinaire 7 à 12 % du temps
+  écoulé, et 19 % dans le pire cas relevé (28 s vers 147 s). Un délai fixe
+  ne tient pas : 10 ou 15 s coupent le jeu grand en pleine progression, 20 s
+  ne le laissent passer que de justesse. Ce terme suit de lui-même la
+  vitesse de la machine : sur un serveur deux fois plus lent, silences et
+  patience doublent ensemble.
+
+Ce que la règle ne garantit pas : un petit problème trouve parfois une
+dernière amélioration après un long silence (jeu moyen : 6 s de silence
+vers 15 s, puis 10 % de mieux sur l'objectif). Elle peut être coupée, plus
+souvent sur une machine lente. Les trous et les samedis, eux, étaient déjà
+à zéro : la perte porte sur les changements de campus et les créneaux
+extrêmes.
+
+**Reproductibilité.** Ce critère lit l'horloge, comme le temps limite. À un
+fil et à graine égale la recherche est la même, mais l'instant où elle est
+coupée dépend de la machine et de sa charge : deux exécutions peuvent rendre
+deux solutions. Rien ne change pour le mode faisable, ni pour un calcul qui
+va jusqu'à l'optimum prouvé. `OptionsSolveur.arret_sur_stagnation` (vrai par
+défaut, enregistré avec les options du calcul) désactive le critère : c'est
+le réglage des tests (`tests/solveur/fabrique.py`), et celui à prendre pour
+comparer deux exécutions à temps limite égal.
 
 ### Statuts et messages
 
@@ -410,7 +482,9 @@ vérificateur, avec la même phrase.
 ### Réglages et suivi
 
 - **Temps limite** : il couvre tout le calcul, construction comprise. Une
-  petite part (5 %, au plus 3 s) est réservée à la phase des salles.
+  petite part (5 %, au plus 3 s) est réservée à la phase des salles. C'est
+  un plafond : en mode optimisé le calcul s'arrête avant s'il prouve
+  l'optimum ou ne progresse plus.
 - **Arrêt** : un fil de surveillance relit l'événement `arret` dix fois par
   seconde et interrompt CP-SAT ; la construction du modèle le relit entre
   ses étapes. Le moteur rend la main en moins de deux secondes.
@@ -421,7 +495,8 @@ vérificateur, avec la même phrase.
 - **Graine** : `options.graine` fixe le tirage de CP-SAT et l'ordre dans
   lequel il examine les variables (`permute_variable_randomly`), pour les
   horaires comme pour les salles. Même graine et un seul fil : même
-  solution, tant que le temps limite n'interrompt pas la recherche. Autre
+  solution, tant que l'horloge n'interrompt pas la recherche (temps limite,
+  ou arrêt sur stagnation en mode optimisé). Autre
   graine : autre solution, même avec un seul fil et sur un petit problème
   (jeu minimal, jeu moyen). C'est ce qui sert à « proposer une autre
   solution ».
@@ -434,14 +509,16 @@ vérificateur, avec la même phrase.
   `duree_premiere_solution_s`, `duree_resolution_s`, `duree_salles_s`,
   `duree_s`, `statut_cp_sat`, `nb_workers` (fils réellement utilisés),
   `graine`, `nb_conflits`, `nb_branches`, `nb_solutions`, `nb_coupes`,
-  `refuse`, `arrete_par_utilisateur` ; et quand l'amélioration a eu lieu
-  `objectif_premiere_solution`, `objectif`, `trous`, `samedis`,
-  `borne_objectif`, `optimal`.
+  `refuse`, `arrete_par_utilisateur`, `raison_arret` (pour une solution) ;
+  et quand l'amélioration a eu lieu `objectif_premiere_solution`, `objectif`,
+  `trous`, `samedis`, `borne_objectif`, `optimal`, `duree_sans_progres_s`
+  (arrêt sur stagnation).
 - **Journal** (`logging`, jamais de `print`) : taille du problème, tailles
   des domaines (minimum, médiane), durée de construction, une ligne de
   progression toutes les 5 s, « Emploi du temps valide trouvé après ... s »,
   « Amélioration : départ à l'objectif ... », chaque amélioration (au plus
-  une toutes les 2 s), résultat. Au niveau `DEBUG` : durée et taille de
+  une toutes les 2 s), « Plus de progrès depuis ... s : l'amélioration
+  s'arrête d'elle-même », résultat. Au niveau `DEBUG` : durée et taille de
   chaque étape du modèle, et le journal de CP-SAT.
 
 ## Pré-vérifications
@@ -616,7 +693,7 @@ Limites :
 | Paramètre | Défaut | Bornes | Raison |
 |---|---|---|---|
 | `objectif_actif` | oui | - | un calcul optimisé rend au pire la solution du mode faisable, dans le même délai : il n'y a plus de raison de s'en priver |
-| `temps_limite_s` | 300 s | 1 à 900 s | sur le serveur, la première solution du jeu grand arrive vers 30 à 45 s ; il faut ensuite trois à quatre minutes pour que les trous disparaissent (voir « Mesures sur le serveur ») |
+| `temps_limite_s` | 300 s | 1 à 900 s | sur le serveur, la première solution du jeu grand arrive vers 30 à 45 s ; il faut ensuite trois à quatre minutes pour que les trous disparaissent (voir « Mesures sur le serveur »). C'est un plafond : un petit établissement rend la main en quelques dizaines de secondes (arrêt sur stagnation) |
 | `temps_limite_long_s` | 900 s | 1 à 1 800 s | durée du bouton de relance longue |
 | `nb_workers` | 0 (deux fils au plus) | 0 à 8 | le moteur n'utilise de toute façon jamais plus de fils que de cœurs |
 
@@ -764,6 +841,86 @@ Le mode optimisé utilise tout le temps accordé (il rend la main un peu avant
 la limite, le reste étant réservé aux salles) et ne prouve pas l'optimum à
 cette taille. Sur le jeu grand il divise l'objectif du témoin par quatre ou
 cinq.
+
+### Arrêt sur stagnation : règle retenue et mesures
+
+Relevé le 05/10/2026 sur le poste de développement, 2 fils, graine 1, sans
+indices, un calcul à la fois.
+
+**Trajectoires sans la règle.** Chaque amélioration a été relevée avec son
+instant, critère désactivé :
+
+| Jeu (temps limite) | Trous et samedis à zéro | Dernière amélioration | Plus long silence entre deux améliorations | Part du temps écoulé |
+|---|---|---|---|---|
+| moyen S1 (90 s) | 5,6 s | 16,2 s, puis plus rien | 6,0 s à 14 s | 43 % |
+| moyen S2 (90 s) | 6,2 s | 17,6 s, puis plus rien | 6,0 s à 16 s | 38 % |
+| généré 200 (60 s) | 18,5 s | 51,9 s, progresse encore | 11,9 s à 45 s | 26 % |
+| généré 800 (180 s) | 135,7 s | 176 s, progresse encore | 11,7 s à 162 s | 7 % |
+| grand S1 (300 s) | jamais (0 trou à 174 s, 23 samedis à la fin) | 284 s, progresse encore | 18,5 s à 258 s | 7 % |
+| grand S2 (300 s) | jamais (8 trous, 138 samedis à la fin) | 292 s, progresse encore | 15,0 s à 182 s ; 17,9 s à 254 s | 8 % ; 7 % |
+
+Deux régimes : un petit problème se tait vite et pour de bon ; un gros
+progresse jusqu'au bout, avec des silences qui s'allongent avec le temps.
+
+**Règles rejouées sur ces trajectoires.** Instant d'arrêt (et objectif
+rendu quand il diffère de celui du temps limite) :
+
+| Règle : aucune amélioration depuis... | moyen S1 | moyen S2 | généré 200 | généré 800 | grand S1 | grand S2 |
+|---|---|---|---|---|---|---|
+| 10 s | 26 s | 28 s | 43 s (600) | **148 s** (3 132) | **202 s** (2 686 ; 47 samedis) | **177 s** (3 786 ; 18 trous, 172 samedis) |
+| 15 s | 31 s | 33 s | limite | limite | **231 s** (2 638 ; 53 samedis) | **182 s** (3 786 ; 18 trous, 172 samedis) |
+| 20 s | 36 s | 38 s | limite | limite | limite, de justesse | limite, de justesse |
+| max(10 s, un quart du temps écoulé) | 26 s | 28 s | 45 s (600) | limite | limite | limite |
+| **max(10 s, un tiers du temps écoulé)** | 26 s | 28 s | limite | limite | limite | limite |
+| max(20 s, un tiers) | 36 s | 38 s | limite | limite | limite | limite |
+| sans règle (temps limite) | 90 s : 399 | 90 s : 287 | 60 s : 492 | 180 s : 2 844 | 300 s : 2 556 (0 trou, 23 samedis) | 300 s : 3 143 (8 trous, 138 samedis) |
+
+Un délai fixe court coupe le jeu grand en pleine progression ; la part du
+temps écoulé l'en protège. Un tiers plutôt qu'un quart : sur les dix
+exécutions du jeu grand relevées ce jour-là (dont trois pendant que la
+machine tournait 3,4 fois plus lentement), le plus long silence a atteint
+une fois 19 % du temps écoulé (28 s à 147 s), soit 77 % de la patience d'un
+quart, et 58 % de celle d'un tiers. Les neuf autres restent sous 40 %.
+
+**Palier de 10, 15 ou 20 s : exécutions réelles du jeu moyen**, temps limite
+de 300 s, durée totale et objectif rendu ; aucun trou ni samedi dans tous
+les cas. Série relevée avec une part d'un quart, qui ne joue qu'au-delà de
+40 s :
+
+| Palier | moyen S1 | moyen S2 |
+|---|---|---|
+| **10 s** | 17,5 à 24,3 s ; 433 à 450 (5 exécutions) | 15,6 à 35,1 s ; 287 à 322 (4 exécutions) |
+| 15 s | 24,3 s et 28,6 s ; 439 et 433 | 25,1 s et 39,8 s ; 294 et 287 |
+| 20 s | 32,2 s et 32,5 s ; 433 et 433 | 60,1 s et 46,9 s ; 287 et 287 |
+
+Le palier de 10 s rend la main à peu près deux fois plus tôt que celui de
+20 s. Il lui arrive de couper avant une dernière amélioration (322 au lieu
+de 287 sur le moyen S2) : c'est le prix accepté pour un petit établissement,
+dont le bilan visible ne change pas.
+
+**Avec la règle retenue** (10 s, un tiers), réglages par défaut du moteur :
+
+| Jeu | Temps limite | Durée totale | Raison de l'arrêt | Objectif | Trous | Samedi |
+|---|---|---|---|---|---|---|
+| moyen S1 | 300 s | 17,3 à 28,9 s (3 exécutions) | stagnation (10 s sans progrès) | 433 à 439 | 0 | 0 |
+| moyen S2 | 300 s | 23,5 à 36,3 s (3 exécutions) | stagnation (10 à 12 s) | 287 à 294 | 0 | 0 |
+| généré 200 | 300 s | 45,9 s et 58,4 s | stagnation (15 s et 20 s) | 480 et 420 | 0 | 0 |
+| généré 800 | 300 s | 297,9 s | temps limite | 2 592 | 0 | 0 |
+| grand S1 | 180 s | 177,7 s | temps limite | 2 371 | 0 | 12 |
+| grand S1 | 300 s | 297,8 s | temps limite | 2 487 | 2 | 6 |
+| grand S2 | 180 s | 177,8 s | temps limite | 3 343 | 0 | 98 |
+| grand S2 | 300 s | 297,7 s | temps limite | 3 093 | 0 | 138 |
+
+Les quatre lignes du jeu grand ont été relevées avec une part d'un quart,
+plus sévère : la règle ne s'y est pas déclenchée, elle ne l'aurait pas fait
+davantage avec un tiers. Sur le jeu grand la recherche avance encore au
+temps limite, comme avant, et la qualité est celle des mesures précédentes
+(grand S1 à 180 s : 2 371, aucun trou, 12 samedis, contre 2 829, 3 trous et
+12 samedis). À temps limite égal le résultat varie pourtant beaucoup d'une
+exécution à l'autre : le même soir, le grand S1 à 180 s a aussi donné 2 401
+(2 trous, 12 samedis) et 4 458 (45 trous, 117 samedis), sans que la règle
+intervienne. La recherche à deux fils n'est pas déterministe, et la machine
+est plus ou moins occupée.
 
 ### Prétraitement de l'amélioration : réglage retenu
 
@@ -925,6 +1082,19 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   le serveur pour le jeu grand), le calcul rend « pas trouvé dans le temps
   imparti », en mode optimisé comme en mode faisable. Au-delà, le mode
   optimisé rend au moins la solution valide.
+- **Arrêt sur stagnation.** La règle ne voit que le temps passé sans
+  progrès. Elle peut couper un petit problème avant une dernière
+  amélioration tardive (une dizaine de pour cent de l'objectif, sans effet
+  sur les trous ni les samedis dans les mesures), et son résultat dépend de
+  la vitesse de la machine. Une relance longue s'arrête sur le même
+  critère : après « plus de progrès », c'est « proposer une autre solution »
+  qui peut donner autre chose, pas un temps limite plus long.
+- **Temps limite et retard de CP-SAT.** Le calcul peut dépasser son temps
+  limite d'une seconde ou deux quand la recherche rend la main en retard
+  (voir « Une solution trouvée n'est jamais perdue »).
+- **Qualité variable à temps limite égal.** Sur le jeu grand, deux
+  exécutions identiques peuvent finir à 2 400 comme à 4 500 d'objectif en
+  180 s (voir « Arrêt sur stagnation : règle retenue et mesures »).
 - **Amélioration et salles.** Les horaires améliorés reçoivent leurs salles
   après coup. Si elles ne suivent pas, le moteur essaie les horaires
   précédents (20 gardés) mais ne relance pas l'amélioration : au pire, c'est
