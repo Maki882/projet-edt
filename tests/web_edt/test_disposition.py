@@ -117,3 +117,17 @@ def test_mises_en_forme_francaises():
     assert 0 <= presentation.indice_couleur("II.1101") < presentation.NB_COULEURS
     assert presentation.couleur_valide("#2f6fad") == "#2f6fad"
     assert presentation.couleur_valide("red;background:url(x)") is None
+
+
+def test_nombre_de_voies_par_jour_pour_elargir_les_colonnes():
+    lundi = [Plage(f"td-{i}", 0, 8 * H + 30, 10 * H + 30) for i in range(9)]  # 9 classes en TD
+    mardi = [Plage("cm", 1, 8 * H + 30, 10 * H + 30)]
+
+    disposition = disposer([*lundi, *mardi], OUVERTURE, FERMETURE)
+
+    assert disposition.voies_de(0) == 9
+    assert disposition.voies_de(1) == 1
+    assert disposition.voies_de(4) == 1  # jour sans séance
+    assert all(
+        disposition.positions[p.cle].largeur == pytest.approx(100 / 9, abs=1e-3) for p in lundi
+    )

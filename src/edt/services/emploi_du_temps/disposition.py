@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from edt.erreurs import ErreurDonneesInvalides
 
@@ -81,10 +81,20 @@ class Position:
 
 @dataclass(frozen=True)
 class Disposition:
-    """Axe de la grille et position de chaque bloc, par clé."""
+    """Axe de la grille, position de chaque bloc (par clé) et voies de chaque colonne.
+
+    `voies[colonne]` est le plus grand nombre de séances simultanées de la
+    colonne : l'écran élargit d'autant la colonne pour que les blocs restent
+    lisibles (la promotion entière, avec les TD de toutes ses classes).
+    """
 
     axe: Axe
     positions: dict[str, Position]
+    voies: dict[int, int] = field(default_factory=dict)
+
+    def voies_de(self, colonne: int) -> int:
+        """Plus grand nombre de séances côte à côte dans la colonne (1 si elle est vide)."""
+        return self.voies.get(colonne, 1)
 
 
 def calculer_axe(ouverture: int, fermeture: int, plages: Iterable[Plage] = ()) -> Axe:
@@ -119,9 +129,12 @@ def disposer(plages: Iterable[Plage], ouverture: int, fermeture: int) -> Disposi
     for plage in plages:
         par_colonne[plage.colonne].append(plage)
     positions: dict[str, Position] = {}
-    for colonne in par_colonne.values():
-        positions.update(disposer_colonne(colonne, axe))
-    return Disposition(axe=axe, positions=positions)
+    voies: dict[int, int] = {}
+    for colonne, contenu in par_colonne.items():
+        disposees = disposer_colonne(contenu, axe)
+        positions.update(disposees)
+        voies[colonne] = max(position.nb_voies for position in disposees.values())
+    return Disposition(axe=axe, positions=positions, voies=voies)
 
 
 def disposer_colonne(plages: Sequence[Plage], axe: Axe) -> dict[str, Position]:

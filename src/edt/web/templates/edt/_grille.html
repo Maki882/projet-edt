@@ -34,17 +34,18 @@
     {%- if b.verrou %}<span class="edt-marque edt-marque-verrou" aria-label="Séance verrouillée">{{ verrou() }}</span>{% endif %}
   </span>
   {%- endif %}
-  <span class="edt-bloc-horaire">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
+  <span class="edt-bloc-horaire edt-bloc-detail">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
   <strong class="edt-bloc-titre edt-bloc-ligne">{{ b.titre }}</strong>
   <span class="edt-bloc-ligne">{{ b.type_code }} - {{ b.groupes|join(", ") }}</span>
-  {%- if b.enseignants %}<span class="edt-bloc-ligne">{{ b.enseignants|join(", ") }}</span>{% endif %}
+  {%- if b.enseignants %}<span class="edt-bloc-ligne edt-bloc-detail">{{ b.enseignants|join(", ") }}</span>{% endif %}
   <span class="edt-bloc-ligne">{{ b.salle or "Salle à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</span>
-  {%- if b.semaines_texte %}<span class="edt-bloc-semaines edt-bloc-ligne">{{ b.semaines_texte }}</span>{% endif %}
-  {%- if b.partielle %}<span class="edt-bloc-partie edt-bloc-ligne">Une partie du groupe</span>{% endif %}
+  {%- if b.semaines_texte %}<span class="edt-bloc-semaines edt-bloc-ligne edt-bloc-detail">{{ b.semaines_texte }}</span>{% endif %}
+  {%- if b.partielle %}<span class="edt-bloc-partie edt-bloc-ligne edt-bloc-detail">Une partie du groupe</span>{% endif %}
   {%- if b.annulee %}<span class="edt-bloc-statut">Annulée</span>{% elif b.deplacee %}<span class="edt-bloc-statut">Déplacée{% if b.date_initiale and b.date_initiale != b.date %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}</span>{% endif %}
 </a>
 {%- endmacro %}
-<div class="edt-grille" style="--edt-nb-jours: {{ vue.jours|length }}; --edt-duree: {{ axe.duree }};">
+{#- Chaque jour est au moins assez large pour ses séances simultanées (--edt-largeur-voie chacune). #}
+<div class="edt-grille" style="--edt-nb-jours: {{ vue.jours|length }}; --edt-duree: {{ axe.duree }}; grid-template-columns: var(--edt-largeur-axe){% for j in vue.jours %} minmax(max(7.5rem, calc({{ vue.disposition.voies_de(j.jour) }} * var(--edt-largeur-voie))), 1fr){% endfor %};">
   <div class="edt-coin"></div>
   {%- for j in vue.jours %}
   <div class="edt-entete-jour{% if j.fermeture %} edt-entete-ferme{% endif %}">

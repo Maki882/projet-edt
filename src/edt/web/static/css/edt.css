@@ -14,6 +14,7 @@
   --edt-minute: 1.1px;
   --edt-largeur-axe: 3.6rem;
   --edt-largeur-panneau: 23rem;
+  --edt-largeur-voie: 4.2rem;
 }
 
 /* ----- Palette des matières : 12 teintes pâles, texte foncé (contraste AA) --- */
@@ -338,6 +339,18 @@
   font-size: 0.76rem;
   line-height: 1.22;
   text-decoration: none;
+}
+
+/* Un bloc étroit (beaucoup de séances simultanées) ne garde que l'essentiel :
+   matière, type et groupes, salle. Le détail reste dans l'infobulle et le panneau. */
+.edt-bloc {
+  container-type: inline-size;
+}
+
+@container (max-width: 6.5rem) {
+  .edt-bloc-detail {
+    display: none;
+  }
 }
 
 .edt-bloc:hover,
@@ -710,7 +723,7 @@
   .edt-grille {
     overflow: visible;
     border-color: #888888;
-    grid-template-columns: var(--edt-largeur-axe) repeat(var(--edt-nb-jours), 1fr);
+    grid-template-columns: var(--edt-largeur-axe) repeat(var(--edt-nb-jours), 1fr) !important;
     break-inside: avoid;
   }
 
