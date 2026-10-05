@@ -29,6 +29,13 @@ remplace les occurrences issues de la semaine type ou d'un replacement, et ne
 touche pas aux occurrences saisies à la main ou importées (qui restent en
 place et que les séances replacées évitent).
 
+Une séance hebdomadaire a **au plus une séance datée par semaine**. Une
+séance datée saisie à la main ou importée, rattachée à une séance
+hebdomadaire, **couvre** sa semaine : celle de sa date d'origine
+(`date_initiale`), sinon de sa date. La séance de la semaine type n'est pas
+recréée cette semaine-là, que la retouche soit un déplacement ou une
+annulation. C'est la règle qu'applique l'interface après une retouche.
+
 Les contraintes désactivées lors du calcul de la version le restent ici.
 """
 
@@ -44,6 +51,7 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.domaine.calendrier import lundi_de
 from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
 from edt.domaine.heures import plage_vers_texte
 from edt.domaine.instantane import Instantane, Occurrence, decomposer_id_seance
@@ -88,6 +96,8 @@ class RapportInstanciation:
     - `nb_a_programmer` et `a_programmer` : celles qui n'ont trouvé aucune place ;
     - `nb_conservees` : occurrences saisies à la main ou importées, laissées
       telles quelles ;
+    - `nb_couvertes` : séances de la semaine type non recréées parce qu'une
+      séance saisie à la main ou importée couvre déjà leur semaine ;
     - `nb_seances_ignorees` : séances hebdomadaires de la version qui ne
       correspondent plus à aucun besoin du semestre (non instanciées).
     """
@@ -101,6 +111,7 @@ class RapportInstanciation:
     nb_conservees: int = 0
     nb_seances_ignorees: int = 0
     duree_s: float = 0.0
+    nb_couvertes: int = 0
 
     def resume(self) -> str:
         """Phrase française pour l'utilisateur."""
@@ -108,6 +119,11 @@ class RapportInstanciation:
             f"{self.nb_occurrences} séance(s) datée(s) : {self.nb_planifiees} à la date prévue, "
             f"{self.nb_replacees} replacée(s), {self.nb_a_programmer} à programmer."
         )
+        if self.nb_couvertes:
+            phrase += (
+                f" {self.nb_couvertes} séance(s) de la semaine type n'ont pas été recréées : "
+                "une séance saisie à la main ou importée occupe déjà leur semaine."
+            )
         if self.nb_seances_ignorees:
             phrase += (
                 f" {self.nb_seances_ignorees} séance(s) de la semaine type ne correspondent "
@@ -149,11 +165,18 @@ def instancier_version(
         )
     placements = [p for p in placements if p.seance_id in connues]
 
-    conservees = [
-        occurrence
-        for occurrence, origine in _occurrences_et_origines(session, version_id)
+    retouches = [
+        (occurrence, date_initiale)
+        for occurrence, origine, date_initiale in _occurrences_enregistrees(session, version_id)
         if origine not in ORIGINES_RECALCULEES
     ]
+    conservees = [occurrence for occurrence, _ in retouches]
+    # Semaines déjà couvertes : (séance hebdomadaire, lundi de la semaine d'origine).
+    couvertes = {
+        (occurrence.seance_id, lundi_de(date_initiale or occurrence.date))
+        for occurrence, date_initiale in retouches
+        if occurrence.seance_id is not None
+    }
     supprimees = session.execute(
         delete(m.Occurrence).where(
             m.Occurrence.version_id == version_id, m.Occurrence.origine.in_(ORIGINES_RECALCULEES)
@@ -161,18 +184,25 @@ def instancier_version(
     ).rowcount
 
     instancie = instancier(instantane, placements, desactivees)
+
+    def a_creer(occurrence: Occurrence) -> bool:
+        return (occurrence.seance_id, lundi_de(occurrence.date)) not in couvertes
+
+    planifiees = [occurrence for occurrence in instancie.occurrences if a_creer(occurrence)]
+    a_replacer = [revoir for revoir in instancie.a_replacer if a_creer(revoir.occurrence)]
+    nb_couvertes = instancie.nb_occurrences - len(planifiees) - len(a_replacer)
     replace = replacer(
         instantane,
-        [*conservees, *instancie.occurrences],
-        [revoir.occurrence for revoir in instancie.a_replacer],
+        [*conservees, *planifiees],
+        [revoir.occurrence for revoir in a_replacer],
         OptionsReplacement(contraintes_desactivees=frozenset(desactivees)),
     )
-    motifs = {id(revoir.occurrence): revoir.raison for revoir in instancie.a_replacer}
+    motifs = {id(revoir.occurrence): revoir.raison for revoir in a_replacer}
 
     seances_hebdo = _seances_hebdo(session, version_id)
     lignes = [
         _ligne(version_id, seances_hebdo, occurrence, OrigineOccurrence.INSTANCIATION)
-        for occurrence in instancie.occurrences
+        for occurrence in planifiees
     ]
     for replacement in replace.replacements:
         motif = motifs[id(replacement.origine)]
@@ -198,7 +228,7 @@ def instancier_version(
     rapport = RapportInstanciation(
         version_id=version_id,
         nb_occurrences=len(lignes),
-        nb_planifiees=len(instancie.occurrences)
+        nb_planifiees=len(planifiees)
         + sum(1 for r in replace.replacees if r.occurrence.statut is StatutOccurrence.PLANIFIEE),
         nb_replacees=sum(
             1 for r in replace.replacees if r.occurrence.statut is StatutOccurrence.DEPLACEE
@@ -208,6 +238,7 @@ def instancier_version(
         nb_conservees=len(conservees),
         nb_seances_ignorees=len(ignores),
         duree_s=round(time.perf_counter() - debut, 3),
+        nb_couvertes=nb_couvertes,
     )
     journal.info(
         "Instanciation de la version %d (%s) : %s %d ancienne(s) occurrence(s) remplacée(s), "
@@ -320,19 +351,20 @@ def _contexte(
     return version, instantane, tuple(contraintes_desactivees)
 
 
-def _occurrences_et_origines(
+def _occurrences_enregistrees(
     session: Session, version_id: int
-) -> list[tuple[Occurrence, OrigineOccurrence]]:
-    """Occurrences enregistrées de la version, avec leur origine."""
-    origines = dict(
-        session.execute(
-            select(m.Occurrence.id, m.Occurrence.origine).where(
+) -> list[tuple[Occurrence, OrigineOccurrence, dt.date | None]]:
+    """Occurrences enregistrées de la version : `(occurrence, origine, date d'origine)`."""
+    complements = {
+        identifiant: (origine, date_initiale)
+        for identifiant, origine, date_initiale in session.execute(
+            select(m.Occurrence.id, m.Occurrence.origine, m.Occurrence.date_initiale).where(
                 m.Occurrence.version_id == version_id
             )
-        ).all()
-    )
+        )
+    }
     return [
-        (occurrence, origines[occurrence.id])
+        (occurrence, *complements[occurrence.id])
         for occurrence in charger_occurrences(session, version_id)
     ]
 

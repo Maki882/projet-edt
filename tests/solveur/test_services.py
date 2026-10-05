@@ -7,7 +7,9 @@ tombent dessus et doivent être replacées.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
+import threading
 
 import pytest
 from sqlalchemy import func, select
@@ -16,6 +18,7 @@ from typer.testing import CliRunner
 from edt import cli
 from edt.db import modeles as m
 from edt.db.moteur import session_base
+from edt.domaine.calendrier import lundi_de
 from edt.domaine.enumerations import (
     EtatCalcul,
     Gravite,
@@ -30,6 +33,7 @@ from edt.services.instanciation import instancier_version, replacer_occurrences
 from edt.services.instantane import charger_instantane
 from edt.services.verification import verifier_occurrences_version, verifier_version
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
+from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
 
 DELAI = 60
 OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1)
@@ -138,6 +142,56 @@ def test_instanciation_idempotente_et_saisies_manuelles_conservees(jeu_minimal):
 
     recalculees = [o for o in apres if o.origine is not OrigineOccurrence.MANUELLE]
     assert sorted(map(cle, recalculees)) == sorted(map(cle, avant))
+
+
+def _semaine(occurrence: m.Occurrence) -> dt.date:
+    """Lundi de la semaine d'origine d'une séance datée."""
+    return lundi_de(occurrence.date_initiale or occurrence.date)
+
+
+def test_une_retouche_reste_la_seule_seance_de_sa_semaine(lanceur, jeu_minimal):
+    """Séance déplacée ou annulée à la main : la semaine type n'est pas recréée à côté."""
+    suivi = generer(jeu_minimal.semestre_id)
+    avant = occurrences(suivi.version_id)
+    planifiees = [
+        o
+        for o in avant
+        if o.statut is StatutOccurrence.PLANIFIEE and o.origine is OrigineOccurrence.INSTANCIATION
+    ]
+    deplacee = next(o for o in planifiees if dt.date(2026, 10, 5) <= o.date <= dt.date(2026, 10, 9))
+    annulee = next(
+        o
+        for o in planifiees
+        if o.seance_hebdo_id != deplacee.seance_hebdo_id
+        and dt.date(2026, 10, 12) <= o.date <= dt.date(2026, 10, 16)
+    )
+    with session_base() as session:
+        # Comme le fait l'interface : la séance part à la semaine suivante, l'autre est annulée.
+        ligne = session.get(m.Occurrence, deplacee.id)
+        ligne.origine, ligne.statut = OrigineOccurrence.MANUELLE, StatutOccurrence.DEPLACEE
+        ligne.date_initiale, ligne.date = deplacee.date, deplacee.date + dt.timedelta(days=8)
+        ligne = session.get(m.Occurrence, annulee.id)
+        ligne.origine, ligne.statut = OrigineOccurrence.MANUELLE, StatutOccurrence.ANNULEE
+
+    resultat = lanceur.invoke(cli.app, ["instancier", "--version", str(suivi.version_id)])
+    assert resultat.exit_code == 0, resultat.output
+    assert "2 séance(s) de la semaine type n'ont pas été recréées" in resultat.output
+
+    apres = occurrences(suivi.version_id)
+    assert len(apres) == len(avant)  # ni doublon, ni perte
+    for retouche in (deplacee, annulee):
+        de_la_seance = [o for o in apres if o.seance_hebdo_id == retouche.seance_hebdo_id]
+        semaines = [_semaine(o) for o in de_la_seance]
+        assert len(semaines) == len(set(semaines)), "une seule séance datée par semaine"
+        (seule,) = [o for o in de_la_seance if _semaine(o) == lundi_de(retouche.date)]
+        assert seule.id == retouche.id and seule.origine is OrigineOccurrence.MANUELLE
+    assert {o.id: o.statut for o in apres}[annulee.id] is StatutOccurrence.ANNULEE
+
+    # Relancer ne change plus rien.
+    with session_base() as session:
+        rapport = instancier_version(session, suivi.version_id)
+    assert (rapport.nb_couvertes, rapport.nb_conservees) == (2, 2)
+    assert len(occurrences(suivi.version_id)) == len(avant)
 
 
 def test_replacer_des_occurrences_designees_dans_une_fenetre(jeu_minimal):
@@ -249,6 +303,54 @@ def test_defaut_du_moteur_releve_par_le_verificateur(jeu_minimal):
         assert session.scalar(select(func.count()).select_from(m.VersionEdt)) == 0
     journal = open(suivi.fichier_journal, encoding="utf-8").read()
     assert "Défaut du moteur, solution refusée [SALLE_UNIQUE]" in journal
+
+
+def test_arret_avec_une_solution_la_version_est_enregistree(jeu_minimal):
+    """Le moteur rend la solution trouvée malgré l'arrêt : le calcul réussit et l'enregistre."""
+    demarre = threading.Event()
+
+    def moteur_qui_conserve(instantane, options, arret=None):
+        demarre.set()
+        assert arret.wait(DELAI)  # l'utilisateur demande l'arrêt pendant l'amélioration
+        resultat = generation.solveur.resoudre(instantane, options, arret=None)
+        return dataclasses.replace(
+            resultat,
+            message=f"{resultat.message} {MESSAGE_SOLUTION_CONSERVEE}",
+            avertissements=(*resultat.avertissements, MESSAGE_SOLUTION_CONSERVEE),
+            statistiques={**resultat.statistiques, "arrete_par_utilisateur": True},
+        )
+
+    identifiant = generation.lancer_calcul(
+        jeu_minimal.semestre_id, OPTIONS, moteur=moteur_qui_conserve
+    )
+    assert demarre.wait(DELAI)
+    assert generation.demander_arret(identifiant).arret_demande
+    suivi = generation.attendre_calcul(identifiant, DELAI)
+
+    assert suivi.etat is EtatCalcul.REUSSI and suivi.arret_demande
+    assert suivi.version_id is not None
+    assert suivi.statistiques["arrete_par_utilisateur"] is True
+    assert MESSAGE_SOLUTION_CONSERVEE in suivi.avertissements
+    assert MESSAGE_SOLUTION_CONSERVEE in suivi.message
+    with session_base() as session:
+        version = session.get(m.VersionEdt, suivi.version_id)
+        assert version.active and len(version.seances) == 17
+    assert occurrences(suivi.version_id)  # les séances datées sont produites aussi
+
+
+def test_graines_differentes_solutions_differentes_sur_le_jeu_minimal(jeu_minimal):
+    """« Proposer une autre solution » : une autre graine suffit, même avec un seul fil."""
+    with session_base() as session:
+        instantane = charger_instantane(session, jeu_minimal.semestre_id)
+    solutions = [
+        generation.solveur.resoudre(
+            instantane, dataclasses.replace(OPTIONS, graine=graine, utiliser_indices=False)
+        ).placements
+        for graine in (1, 2, 3, 4, 5, 6, 1)
+    ]
+    assert all(solutions)
+    assert len(set(solutions[:6])) >= 5
+    assert solutions[0] == solutions[6]  # même graine, même solution
 
 
 def test_avertissements_joints_au_suivi(jeu_minimal):
