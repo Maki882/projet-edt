@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "edt/_ui.html" as edt with context %}
+
+{% block titre %}À traiter{% endblock %}
+
+{%- macro groupes_gravite(gravites) -%}
+{%- for g in gravites %}
+<h4 class="edt-titre-gravite">{{ edt.etiquette_gravite(g.gravite) }} {{ g.titre }} ({{ g.total }})</h4>
+{%- for c in g.contraintes %}
+<details class="edt-groupe-contrainte"{% if g.gravite.value == "erreur" %} open{% endif %}>
+  <summary>{{ c.libelle }} ({{ c.total }}) {% if c.description %}<small>- {{ c.description }}</small>{% endif %}</summary>
+  <ul class="edt-anomalies">
+    {%- for ligne in c.lignes %}
+    <li><span>{{ ligne.message }}</span>
+      {%- if ligne.lien %} <a href="/emploi-du-temps?{{ ligne.lien|urlencode }}">Voir dans l'emploi du temps</a>{% endif %}</li>
+    {%- endfor %}
+  </ul>
+  {%- if c.total > c.lignes|length %}
+  <p class="discret">... et {{ c.total - c.lignes|length }} autre(s) du même genre.</p>
+  {%- endif %}
+</details>
+{%- endfor %}
+{%- endfor %}
+{%- endmacro %}
+
+{% block contenu %}
+{{ edt.ressources() }}
+{%- if semestres|length > 1 %}
+<form class="edt-barre-outils" method="get" action="/a-traiter">
+  <div class="champ">
+    <label for="choix-semestre">Semestre</label>
+    <select id="choix-semestre" name="semestre_id" data-envoi-auto>
+      <option value=""{% if semestre_id is none %} selected{% endif %}>Tous les semestres</option>
+      {%- for s in semestres %}
+      <option value="{{ s.id }}"{% if s.id == semestre_id %} selected{% endif %}>{{ s.libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <button type="submit" class="bouton">Afficher</button>
+</form>
+{%- endif %}
+
+{%- if not liste %}
+{{ ui.message("Aucun emploi du temps actif : il n'y a encore rien à traiter.", "info", ["Générer d'abord un emploi du temps depuis l'onglet « Générer »."]) }}
+<p><a class="bouton bouton-principal" href="/calculs{% if semestre_id %}?semestre_id={{ semestre_id }}{% endif %}">Générer un emploi du temps</a></p>
+{%- endif %}
+
+{%- for element in liste %}
+<section class="carte">
+  <h2>{{ element.semestre.libelle }}
+    {%- if element.complet %}
+    {{ ui.etiquette(fmt.pluriel(element.total, "point") ~ " à traiter", "erreur" if element.total else "succes") }}
+    {%- endif %}
+  </h2>
+  <p class="discret">{{ element.version.libelle }} -
+    <a href="/emploi-du-temps?version_id={{ element.version.id }}">consulter l'emploi du temps</a></p>
+
+  <h3>Semaine type</h3>
+  {%- if not element.hebdo.disponible %}
+  {{ edt.encart_controle(element.hebdo) }}
+  {%- elif element.gravites_hebdo %}
+  {{ groupes_gravite(element.gravites_hebdo) }}
+  {%- else %}
+  <p>{{ ui.etiquette("Vérifiée", "succes") }} Aucune anomalie dans la semaine type.</p>
+  {%- endif %}
+
+  <h3>Séances datées</h3>
+  {%- if element.datees is none %}
+  <p class="discret">Les séances datées de cette version n'ont pas encore été produites.</p>
+  {%- elif not element.datees.disponible %}
+  {{ edt.encart_controle(element.datees) }}
+  {%- elif element.gravites_datees %}
+  {{ groupes_gravite(element.gravites_datees) }}
+  {%- else %}
+  <p>{{ ui.etiquette("Vérifiées", "succes") }} Aucune anomalie dans les séances datées.</p>
+  {%- endif %}
+
+  <h3>Séances à programmer ({{ element.a_programmer|length }})</h3>
+  {%- if element.a_programmer %}
+  <p class="aide">Ces séances tombaient un jour fermé ou pendant une indisponibilité, et aucun autre créneau valide n'a été trouvé : les placer à la main.</p>
+  <div class="tableau-defilant">
+    <table class="tableau">
+      <thead>
+        <tr>
+          <th scope="col">Prévue le</th>
+          <th scope="col">Séance</th>
+          <th scope="col">Groupes</th>
+          <th scope="col">Enseignants</th>
+          <th scope="col">Raison</th>
+          <th scope="col" class="colonne-actions">Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {%- for s in element.a_programmer %}
+        <tr>
+          <td>{{ s.date|date_fr }}, {{ s.debut|heure }}</td>
+          <td>{{ s.libelle }}</td>
+          <td>{{ s.groupes|join(", ") }}</td>
+          <td>{{ s.enseignants|join(", ") or "-" }}</td>
+          <td>{{ s.raison }}</td>
+          <td class="colonne-actions"><a class="bouton" href="/emploi-du-temps?{{ s.lien|urlencode }}">Programmer</a></td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- elif element.datees is not none %}
+  <p class="discret">Aucune séance à programmer.</p>
+  {%- else %}
+  <p class="discret">Sans séances datées, aucune séance n'est encore à programmer.</p>
+  {%- endif %}
+</section>
+{%- endfor %}
+{{ edt.script() }}
+{% endblock %}
