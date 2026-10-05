@@ -279,3 +279,16 @@ def test_verifications_memorisees_jusqu_a_la_prochaine_ecriture(
     client.get(f"/emploi-du-temps?version_id={version}")
     assert len([a for a in faux_verificateur.appels if a[0] == "version"]) == 2
     memoire.oublier()
+
+
+def test_prechauffage_remplit_la_memoire_des_ecrans(version_generee, client, faux_verificateur):
+    from edt.config import charger_configuration
+    from edt.services.emploi_du_temps import prechauffage
+
+    prechauffage._prechauffer(charger_configuration().db_url)  # le corps du fil, sans le fil
+    verifications = len(faux_verificateur.appels)
+    assert verifications >= 2  # semaine type et séances datées de la version active
+
+    for adresse in ("/", "/a-traiter", "/a-traiter/compteur"):
+        assert client.get(adresse).status_code == 200
+    assert len(faux_verificateur.appels) == verifications  # tout venait de la mémoire

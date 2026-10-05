@@ -31,7 +31,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire
+from edt.services.emploi_du_temps import memoire, prechauffage
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -46,6 +46,12 @@ class VersionGeneree:
     annee_scolaire_id: int
     calcul_id: int
     version_id: int
+
+
+@pytest.fixture(autouse=True)
+def sans_prechauffage(monkeypatch) -> None:
+    """Pas de fil de préchauffage dans les tests : il survivrait à la base temporaire."""
+    monkeypatch.setattr(prechauffage, "ACTIF", False)
 
 
 @pytest.fixture
