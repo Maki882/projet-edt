@@ -6,6 +6,8 @@ from edt.db.moteur import session_base
 from edt.domaine.parametres import definitions
 from edt.services.parametres import lire_parametres
 
+MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
+
 
 def _saisies(**changements):
     valeurs = {
@@ -24,13 +26,13 @@ def test_formulaire_construit_depuis_les_metadonnees(client):
     for definition in definitions():
         assert definition.libelle.replace("'", "&#39;") in page
     assert 'name="ouverture_min" value="08:30"' in page  # une heure se saisit « 08:30 »
-    assert "maximum 3600" in page and "secondes" in page
+    assert f"maximum {MAXIMUM_TEMPS_LIMITE}" in page and "secondes" in page
 
 
 def test_bornes_refusees_et_signalees_sous_le_champ(client):
     reponse = client.post("/parametres", data=_saisies(temps_limite_s="5000", pause_min="-1"))
     assert reponse.status_code == 422
-    assert "La valeur maximale est 3600 (lu : 5000)." in reponse.text
+    assert f"La valeur maximale est {MAXIMUM_TEMPS_LIMITE} (lu : 5000)." in reponse.text
     assert "La valeur minimale est 0 (lu : -1)." in reponse.text
     assert 'value="5000"' in reponse.text  # la saisie est conservée
     with session_base() as session:

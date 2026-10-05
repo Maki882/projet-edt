@@ -6,6 +6,7 @@ from itertools import combinations
 
 import pytest
 
+from edt.db.modeles import Parametre
 from edt.domaine.contraintes import (
     CATALOGUE,
     PREFERENCES,
@@ -129,6 +130,50 @@ def test_parametre_invalide_refuse_sans_rien_modifier(session):
     with pytest.raises(ErreurDonneesInvalides):  # incohérence d'ensemble
         ecrire_parametres(session, {"ouverture_min": 1100, "pause_min": 20})
     assert lire_parametres(session) == Parametres()
+
+
+def test_reglages_du_calcul_bornes_pour_un_site_public(session):
+    """Fils et temps limites : personne ne peut demander plus que la machine ne supporte."""
+    maxima = {d.cle: d.maximum for d in definitions()}
+    assert (maxima["nb_workers"], maxima["temps_limite_s"], maxima["temps_limite_long_s"]) == (
+        8,
+        900,
+        1800,
+    )
+    for cle, trop in (("nb_workers", 9), ("temps_limite_s", 901), ("temps_limite_long_s", 1801)):
+        with pytest.raises(ErreurDonneesInvalides):
+            ecrire_parametre(session, cle, trop)
+    assert lire_parametres(session) == Parametres()
+
+
+def test_valeur_enregistree_au_dela_des_bornes_ramenee_a_la_borne(session, caplog):
+    """Une base réglée avant le resserrement des bornes reste lisible, sans plantage."""
+    anciennes = {"nb_workers": 64, "temps_limite_s": 3600, "temps_limite_long_s": 7200}
+    for cle, valeur in anciennes.items():
+        session.get(Parametre, cle).valeur = valeur  # écrit sans validation, comme autrefois
+    session.commit()
+
+    with caplog.at_level("WARNING", logger="edt.services.parametres"):
+        relu = lire_parametres(session)
+    assert (relu.nb_workers, relu.temps_limite_s, relu.temps_limite_long_s) == (8, 900, 1800)
+    assert OptionsSolveur.depuis_parametres(relu).nb_workers == 8
+    for cle in anciennes:
+        assert any(cle in message and "bornes" in message for message in caplog.messages)
+    assert session.get(Parametre, "nb_workers").valeur == 64  # la lecture ne modifie rien
+
+    # Enregistrer de nouveau l'écran des paramètres remet la base d'aplomb.
+    ecrire_parametres(session, {cle: getattr(relu, cle) for cle in anciennes})
+    session.commit()
+    caplog.clear()
+    with caplog.at_level("WARNING", logger="edt.services.parametres"):
+        assert lire_parametres(session) == relu
+    assert not caplog.messages
+
+    # Une valeur d'un autre type reste une erreur dite clairement.
+    session.get(Parametre, "pause_min").valeur = "quinze"
+    session.commit()
+    with pytest.raises(ErreurDonneesInvalides, match="pause_min"):
+        lire_parametres(session)
 
 
 def test_saisie_de_formulaire_convertie_selon_le_type():
