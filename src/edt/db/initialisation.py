@@ -5,6 +5,17 @@ recrée. Sans `reset`, l'initialisation est **idempotente** : elle crée les
 tables manquantes et ajoute les données par défaut absentes, sans jamais
 modifier une ligne existante (on peut donc la relancer à chaque déploiement).
 
+Schéma périmé
+-------------
+Créer les tables manquantes ne suffit pas : après une mise à jour du code,
+une table **déjà là** peut ne plus avoir les colonnes du modèle, et
+l'application planterait à la première requête qui les touche.
+`ecarts_schema()` compare donc chaque table existante au modèle, colonne par
+colonne. Tant qu'il reste un écart, `initialiser_base()` sans `reset` refuse
+de continuer (`ErreurSchemaPerime`) sans rien modifier, et la base n'est pas
+considérée comme initialisée (`base_initialisee`). Le seul remède est
+`reset=True`, qui efface les données.
+
 Données par défaut :
 
 - la grille horaire (lundi-vendredi quatre créneaux, samedi matin deux) ;
@@ -24,7 +35,9 @@ import logging
 from dataclasses import dataclass, field
 
 from sqlalchemy import Engine, MetaData, inspect, select
+from sqlalchemy.exc import CompileError
 from sqlalchemy.orm import Session
+from sqlalchemy.types import TypeEngine
 
 from edt.config import url_affichable
 from edt.db.base import Base
@@ -42,8 +55,35 @@ from edt.db.moteur import obtenir_moteur, session_base
 from edt.domaine.calendrier import annee_scolaire_de, decoupage_par_defaut, jours_feries_entre
 from edt.domaine.enumerations import DemiJournee, NatureJourFerme
 from edt.domaine.parametres import definitions
+from edt.erreurs import ErreurRegleMetier
 
 journal = logging.getLogger(__name__)
+
+MARCHE_A_SUIVRE_SCHEMA_PERIME = (
+    "Le schéma a changé et il n'y a pas de migrations : relancer avec --reset "
+    "(« python -m edt init-db --reset ») recrée la base et EFFACE toutes les données."
+)
+"""Ce qu'il faut faire quand la base ne correspond plus au modèle."""
+
+
+class ErreurSchemaPerime(ErreurRegleMetier):
+    """Des tables existantes de la base n'ont plus les colonnes du modèle.
+
+    `ecarts` (repris dans `details`) liste les différences ; le texte complet
+    de l'erreur se termine par la marche à suivre.
+    """
+
+    def __init__(self, ecarts: list[str]) -> None:
+        super().__init__(
+            f"Le schéma de la base ne correspond plus au modèle ({len(ecarts)} écart(s)). "
+            "Rien n'a été modifié.",
+            ecarts,
+        )
+        self.ecarts: tuple[str, ...] = tuple(ecarts)
+
+    def __str__(self) -> str:
+        return f"{super().__str__()}\n{MARCHE_A_SUIVRE_SCHEMA_PERIME}"
+
 
 H = 60
 
@@ -125,9 +165,83 @@ def tables_manquantes(moteur: Engine) -> list[str]:
     return sorted(set(Base.metadata.tables) - presentes)
 
 
+def ecarts_schema(moteur: Engine) -> list[str]:
+    """Écarts entre les tables existantes de la base et le modèle, en phrases lisibles.
+
+    Pour chaque table du modèle **déjà présente** dans la base, les colonnes
+    sont comparées une à une :
+
+    - colonne du modèle absente de la base, colonne de la base en trop ;
+    - type : le nom du type SQL, sans sa longueur. SQLite restitue fidèlement
+      le type déclaré à la création (vérifié sur toutes les colonnes du
+      modèle), mais n'applique pas les longueurs : `VARCHAR(32)` et
+      `VARCHAR(64)` s'y comportent à l'identique, signaler ce changement
+      obligerait à effacer la base pour rien ;
+    - caractère obligatoire (`NOT NULL`).
+
+    Liste vide = aucune table existante ne diffère du modèle. Ne sont **pas**
+    des écarts : une table du modèle absente de la base (`creer_schema` la
+    crée, voir `tables_manquantes`) et une table de la base inconnue du
+    modèle (elle est simplement ignorée).
+
+    Limite assumée : les contraintes (valeurs permises d'une énumération,
+    unicités, clés étrangères) et les index ne sont pas comparés. Après un
+    tel changement du modèle, recréer la base avec `reset=True`.
+    """
+    inspecteur = inspect(moteur)
+    presentes = set(inspecteur.get_table_names())
+    ecarts: list[str] = []
+    for nom in sorted(Base.metadata.tables):
+        if nom not in presentes:
+            continue
+        reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
+        for colonne in Base.metadata.tables[nom].columns:
+            reelle = reelles.pop(colonne.name, None)
+            if reelle is None:
+                ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
+                continue
+            attendu = _nom_de_type(colonne.type, moteur)
+            lu = _nom_de_type(reelle["type"], moteur)
+            if lu != attendu:
+                ecarts.append(
+                    f"table {nom} : colonne {colonne.name} de type {lu} dans la base, "
+                    f"{attendu} dans le modèle"
+                )
+            if bool(reelle["nullable"]) != bool(colonne.nullable):
+                dans_la_base, dans_le_modele = (
+                    ("facultative", "obligatoire")
+                    if reelle["nullable"]
+                    else ("obligatoire", "facultative")
+                )
+                ecarts.append(
+                    f"table {nom} : colonne {colonne.name} {dans_la_base} dans la base, "
+                    f"{dans_le_modele} dans le modèle"
+                )
+        ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
+    return ecarts
+
+
+def _nom_de_type(type_sql: TypeEngine, moteur: Engine) -> str:
+    """Nom du type SQL pour la base visée, sans sa longueur : `VARCHAR(32)` donne `VARCHAR`."""
+    try:
+        texte = type_sql.compile(dialect=moteur.dialect)
+    except CompileError:
+        # Type déclaré dans la base que SQLAlchemy ne sait pas nommer (table modifiée à la
+        # main) : il ne peut pas correspondre au modèle, l'écart sera donc signalé.
+        return "inconnu"
+    return texte.split("(", 1)[0].strip().upper()
+
+
+def exiger_schema_a_jour(moteur: Engine) -> None:
+    """Lève `ErreurSchemaPerime` si une table existante ne correspond plus au modèle."""
+    ecarts = ecarts_schema(moteur)
+    if ecarts:
+        raise ErreurSchemaPerime(ecarts)
+
+
 def base_initialisee(moteur: Engine) -> bool:
-    """Vrai si toutes les tables du modèle existent."""
-    return not tables_manquantes(moteur)
+    """Vrai si toutes les tables du modèle existent et ont les colonnes du modèle."""
+    return not tables_manquantes(moteur) and not ecarts_schema(moteur)
 
 
 # --------------------------------------------------------------------------- #
@@ -318,6 +432,9 @@ def initialiser_base(
     - `reset=True` : supprime d'abord toutes les tables (toutes les données sont perdues) ;
     - `aujourdhui` : date de référence pour l'année scolaire créée par défaut ;
     - `url` : base visée (défaut : `EDT_DB_URL`).
+
+    Sans `reset`, lève `ErreurSchemaPerime` si une table existante n'a plus les
+    colonnes du modèle : rien n'est alors créé ni modifié.
     """
     moteur = obtenir_moteur(url)
     url_affichee = url_affichable(moteur.url)
@@ -326,6 +443,8 @@ def initialiser_base(
             "Remise à zéro de la base %s : toutes les données sont supprimées", url_affichee
         )
         supprimer_schema(moteur)
+    else:
+        exiger_schema_a_jour(moteur)
     creer_schema(moteur)
     with session_base(url) as session:
         ajouts = inserer_donnees_par_defaut(session, aujourdhui)
