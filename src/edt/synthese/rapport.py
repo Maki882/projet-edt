@@ -175,7 +175,9 @@ class RapportJeu:
         if self.versions_reference:
             lignes.append(
                 "  Versions de référence (témoin) : "
-                + ", ".join(f"{code} n°{vid}" for code, vid in sorted(self.versions_reference.items()))
+                + ", ".join(
+                    f"{code} n°{vid}" for code, vid in sorted(self.versions_reference.items())
+                )
             )
         lignes.append(f"  Besoins écartés faute de place : {len(self.besoins_ecartes)}")
         for ecarte in self.besoins_ecartes[:10]:

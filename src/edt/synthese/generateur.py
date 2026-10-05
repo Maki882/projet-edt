@@ -122,9 +122,7 @@ def generer_jeu(
     """
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     debut = time.perf_counter()
-    journal.info(
-        "Génération du jeu fictif « %s » (graine %d) : début", configuration.nom, graine
-    )
+    journal.info("Génération du jeu fictif « %s » (graine %d) : début", configuration.nom, graine)
     generateur = _Generateur(session, configuration, graine)
     rapport = generateur.executer(annee_debut, enregistrer_reference, debut)
     journal.info(
@@ -248,7 +246,6 @@ class _Generateur:
         self.specs: list[_Spec] = []
         self.ecartes: list[BesoinEcarte] = []
         self.resultats: dict[int, Resultat] = {}
-        self._salles_posees: list[m.Indisponibilite] = []
 
     # -- orchestration ---------------------------------------------------------
 
@@ -452,14 +449,18 @@ class _Generateur:
             cycle = "cycle intégré" if a <= 2 else "cycle ingénieur"
             ordinal = "1re" if a == 1 else f"{a}e"
             promotion = _Promotion(
-                a, self._site_de(a), groupe(f"A{a}", f"{ordinal} année ({cycle})", NatureGroupe.PROMOTION)
+                a,
+                self._site_de(a),
+                groupe(f"A{a}", f"{ordinal} année ({cycle})", NatureGroupe.PROMOTION),
             )
             debut_eleves = len(self.eleves)
             specs_classes = [(False, i + 1) for i in range(config_promotion.nb_classes)]
             specs_classes += [(True, i + 1) for i in range(config_promotion.nb_classes_apprentis)]
             for index, (apprentis, numero) in enumerate(specs_classes):
                 bornes = (
-                    self.config.effectif_classe_apprentis if apprentis else self.config.effectif_classe
+                    self.config.effectif_classe_apprentis
+                    if apprentis
+                    else self.config.effectif_classe
                 )
                 taille = self.rng.randint(*bornes)
                 code = f"A{a}-APP{numero}" if apprentis else f"A{a}-G{numero}"
@@ -470,8 +471,12 @@ class _Generateur:
                 )
                 classe = groupe(code, libelle, NatureGroupe.CLASSE, promotion.groupe)
                 demi = [
-                    groupe(f"{code}{lettre}", f"{libelle}, demi-groupe {lettre.upper()}",
-                           NatureGroupe.DEMI_GROUPE, classe)
+                    groupe(
+                        f"{code}{lettre}",
+                        f"{libelle}, demi-groupe {lettre.upper()}",
+                        NatureGroupe.DEMI_GROUPE,
+                        classe,
+                    )
                     for lettre in "ab"
                 ]
                 promotion.classes.append(_Classe(classe, apprentis, demi))
@@ -489,8 +494,11 @@ class _Generateur:
 
             nb_niveaux = max(1, round(nb_classiques / cat.TAILLE_GROUPE_TRANSVERSE))
             for niveau, membres in enumerate(repartir(classiques, nb_niveaux), start=1):
-                g = groupe(f"A{a}-ANG{niveau}", f"Anglais niveau {niveau} ({ordinal} année)",
-                           NatureGroupe.TRANSVERSE)
+                g = groupe(
+                    f"A{a}-ANG{niveau}",
+                    f"Anglais niveau {niveau} ({ordinal} année)",
+                    NatureGroupe.TRANSVERSE,
+                )
                 promotion.anglais.append(g)
                 for e in membres:
                     e.groupes.append(len(tous) - 1)
@@ -508,9 +516,11 @@ class _Generateur:
                         continue
                     nb = math.ceil(len(part) / cat.TAILLE_GROUPE_TRANSVERSE)
                     for numero in range(1, nb + 1):
-                        g = groupe(f"A{a}-{langue.code}{numero}",
-                                   f"{langue.libelle} LV2 groupe {numero} ({ordinal} année)",
-                                   NatureGroupe.TRANSVERSE)
+                        g = groupe(
+                            f"A{a}-{langue.code}{numero}",
+                            f"{langue.libelle} LV2 groupe {numero} ({ordinal} année)",
+                            NatureGroupe.TRANSVERSE,
+                        )
                         promotion.lv2.append((langue, g))
                         for e in part[numero - 1 :: nb]:
                             e.groupes.append(len(tous) - 1)
@@ -521,8 +531,11 @@ class _Generateur:
                 for parcours, membres in zip(
                     cat.PARCOURS, repartir(classiques, nb_parcours), strict=False
                 ):
-                    g = groupe(f"A{a}-P-{parcours.code}", f"Parcours {parcours.libelle} (A{a})",
-                               NatureGroupe.TRANSVERSE)
+                    g = groupe(
+                        f"A{a}-P-{parcours.code}",
+                        f"Parcours {parcours.libelle} (A{a})",
+                        NatureGroupe.TRANSVERSE,
+                    )
                     promotion.parcours.append((parcours, g))
                     for e in membres:
                         e.groupes.append(len(tous) - 1)
@@ -536,7 +549,9 @@ class _Generateur:
             promotion.tiers_temps = groupe(
                 f"A{a}-TT", f"Tiers-temps aux épreuves ({ordinal} année)", NatureGroupe.TIERS_TEMPS
             )
-            promotion.tiers_temps.effectif = max(2, round(self.config.part_tiers_temps * len(eleves)))
+            promotion.tiers_temps.effectif = max(
+                2, round(self.config.part_tiers_temps * len(eleves))
+            )
             # Effectifs : un demi-groupe compte ses étudiants, une classe ses demi-groupes...
             for e in eleves:
                 classe = promotion.classes[e.classe]
@@ -661,10 +676,19 @@ class _Generateur:
             ("Vacances de la Toussaint", lundi_de(dt.date(y, 11, 1)), lundi_de(dt.date(y, 11, 1))),
             ("Vacances de Noël", lundi_de(dt.date(y, 12, 25)), lundi_de(dt.date(y + 1, 1, 1))),
             ("Vacances d'hiver", lundi_de(dt.date(y + 1, 2, 22)), lundi_de(dt.date(y + 1, 2, 22))),
-            ("Vacances de printemps", lundi_de(dt.date(y + 1, 4, 22)), lundi_de(dt.date(y + 1, 4, 22))),
+            (
+                "Vacances de printemps",
+                lundi_de(dt.date(y + 1, 4, 22)),
+                lundi_de(dt.date(y + 1, 4, 22)),
+            ),
         )
         for libelle, premier_lundi, dernier_lundi in vacances:
-            fermer(premier_lundi, dernier_lundi + dt.timedelta(days=6), libelle, NatureJourFerme.VACANCES)
+            fermer(
+                premier_lundi,
+                dernier_lundi + dt.timedelta(days=6),
+                libelle,
+                NatureJourFerme.VACANCES,
+            )
         s.add_all(lignes)
         s.flush()
         self._charger_fermetures()
@@ -674,13 +698,23 @@ class _Generateur:
             groupes = [promotion.groupe, *promotion.rattaches]
             if promotion.annee == 1 and "S1" in self.config.semestres:
                 premiere = self.semaines["S1"][0]
-                fermer(premiere.lundi, premiere.date_du(4), "Semaine d'intégration",
-                       NatureJourFerme.SEMAINE_SPECIALE, groupes)
+                fermer(
+                    premiere.lundi,
+                    premiere.date_du(4),
+                    "Semaine d'intégration",
+                    NatureJourFerme.SEMAINE_SPECIALE,
+                    groupes,
+                )
             stage = promotion.annee in self.config.annees_stage and "S2" in self.config.semestres
             if stage:
                 semaines = self.semaines["S2"]
-                fermer(semaines[-4].lundi, self.semestres["S2"].date_fin,
-                       "Stage en entreprise", NatureJourFerme.AUTRE, groupes)
+                fermer(
+                    semaines[-4].lundi,
+                    self.semestres["S2"].date_fin,
+                    "Stage en entreprise",
+                    NatureJourFerme.AUTRE,
+                    groupes,
+                )
             if not self.config.partiels or promotion.annee < 3:
                 continue
             for code in self.config.semestres:
@@ -690,13 +724,19 @@ class _Generateur:
                     indice -= 1
                 semaine = semaines[indice]
                 self.semaine_partiels[(promotion.annee, code)] = semaine
-                fermer(semaine.lundi, semaine.date_du(4), f"Partiels du semestre {code[1]}",
-                       NatureJourFerme.EXAMENS, groupes)
+                fermer(
+                    semaine.lundi,
+                    semaine.date_du(4),
+                    f"Partiels du semestre {code[1]}",
+                    NatureJourFerme.EXAMENS,
+                    groupes,
+                )
         s.add_all(lignes)
         s.flush()
         self._charger_fermetures()
-        journal.info("Calendrier créé : %d fermetures (vacances, intégration, partiels, stage)",
-                     len(lignes))
+        journal.info(
+            "Calendrier créé : %d fermetures (vacances, intégration, partiels, stage)", len(lignes)
+        )
 
     def _charger_fermetures(self) -> None:
         """Fermetures de l'année au format du domaine (portée de groupe étendue aux descendants)."""
@@ -790,12 +830,20 @@ class _Generateur:
             if "parcours" in cibles:
                 for rang, (parcours, groupe) in enumerate(promotion.parcours, start=1):
                     matiere = self._matiere(
-                        promotion, parcours.departement, s, cat.NUMERO_PARCOURS + rang,
+                        promotion,
+                        parcours.departement,
+                        s,
+                        cat.NUMERO_PARCOURS + rang,
                         f"Parcours {parcours.libelle}",
                     )
                     for indice, enseignement in enumerate(module.enseignements):
                         self._specs_enseignement(
-                            promotion, code, module, matiere, enseignement, [(groupe,)],
+                            promotion,
+                            code,
+                            module,
+                            matiere,
+                            enseignement,
+                            [(groupe,)],
                             discipline=cat.DISCIPLINES[parcours.departement],
                             barrette=f"{promotion.code}-{code}-parcours-{indice}",
                         )
@@ -892,7 +940,9 @@ class _Generateur:
                 barrette=cle_barrette,
             )
             if spec.mode is ModeVolume.TOTAL:
-                ouvertes = semaines_ouvertes(self._domaine(spec, spec.cle), semaines, self.fermetures)
+                ouvertes = semaines_ouvertes(
+                    self._domaine(spec, spec.cle), semaines, self.fermetures
+                )
                 spec.nombre = min(spec.nombre, len(ouvertes) * spec.max_par_semaine)
                 if spec.nombre == 0:
                     self.specs.pop()
@@ -932,9 +982,18 @@ class _Generateur:
         cibles.append((promotion.tiers_temps, cat.DUREE_DST_TIERS_TEMPS, "DST (tiers-temps)"))
         for groupe, duree, libelle in cibles:
             self._ajouter(
-                semestre=code, promotion=promotion, matiere=matiere, type_seance="DST",
-                groupes=(groupe,), duree=duree, profil="epreuve", priorite=0,
-                jour_impose=jour, debut_impose=debut, libelle=libelle, commentaire=commentaire,
+                semestre=code,
+                promotion=promotion,
+                matiere=matiere,
+                type_seance="DST",
+                groupes=(groupe,),
+                duree=duree,
+                profil="epreuve",
+                priorite=0,
+                jour_impose=jour,
+                debut_impose=debut,
+                libelle=libelle,
+                commentaire=commentaire,
             )
 
     def _preparer_partiels(
@@ -960,34 +1019,63 @@ class _Generateur:
                     cibles.append((promotion.tiers_temps, duree * 4 // 3, "Partiel (tiers-temps)"))
                 for groupe, duree_cible, libelle in cibles:
                     self._ajouter(
-                        semestre=code, promotion=promotion, matiere=matiere, type_seance="EXAMEN",
-                        groupes=(groupe,), duree=duree_cible, profil="epreuve", priorite=8,
-                        mode=ModeVolume.PONCTUEL, date_ponctuelle=jour, debut_impose=debut,
+                        semestre=code,
+                        promotion=promotion,
+                        matiere=matiere,
+                        type_seance="EXAMEN",
+                        groupes=(groupe,),
+                        duree=duree_cible,
+                        profil="epreuve",
+                        priorite=8,
+                        mode=ModeVolume.PONCTUEL,
+                        date_ponctuelle=jour,
+                        debut_impose=debut,
                         libelle=libelle,
                     )
 
     def _preparer_evenements(self, promotion: _Promotion, code: str, s: int) -> None:
         semaines = self.semaines[code]
-        matiere = self._matiere(promotion, "IG", s, cat.NUMERO_VIE_ECOLE, "Vie de l'école et insertion professionnelle")
+        matiere = self._matiere(
+            promotion, "IG", s, cat.NUMERO_VIE_ECOLE, "Vie de l'école et insertion professionnelle"
+        )
         if promotion.annee == 1 and code == "S1":
             premiere = semaines[0]
             amphis = sorted(
-                (x for x in self.salles if x.type_salle.code == "AMPHI"
-                 and x.campus is self.campus[promotion.site]),
+                (
+                    x
+                    for x in self.salles
+                    if x.type_salle.code == "AMPHI" and x.campus is self.campus[promotion.site]
+                ),
                 key=lambda x: (-x.capacite, x.code),
             )
             self._ajouter(
-                semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=0,
-                mode=ModeVolume.PONCTUEL, date_ponctuelle=premiere.lundi, debut_impose=10 * H,
-                salle_imposee=amphis[0] if amphis else None, libelle="Amphi de rentrée",
+                semestre=code,
+                promotion=promotion,
+                matiere=matiere,
+                type_seance="AUTRE",
+                groupes=(promotion.groupe,),
+                duree=2 * H,
+                profil="amphi",
+                priorite=0,
+                mode=ModeVolume.PONCTUEL,
+                date_ponctuelle=premiere.lundi,
+                debut_impose=10 * H,
+                salle_imposee=amphis[0] if amphis else None,
+                libelle="Amphi de rentrée",
             )
             jours = tuple(premiere.date_du(j) for j in range(1, 5))
             for classe in promotion.classes_de("classique"):
                 self._ajouter(
-                    semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                    groupes=(classe.groupe,), duree=2 * H, profil="cours", priorite=9,
-                    mode=ModeVolume.PONCTUEL, dates_possibles=jours,
+                    semestre=code,
+                    promotion=promotion,
+                    matiere=matiere,
+                    type_seance="AUTRE",
+                    groupes=(classe.groupe,),
+                    duree=2 * H,
+                    profil="cours",
+                    priorite=9,
+                    mode=ModeVolume.PONCTUEL,
+                    dates_possibles=jours,
                     libelle="Rencontre avec le tuteur de classe",
                 )
         dates = tuple(
@@ -998,9 +1086,17 @@ class _Generateur:
         )
         if dates:
             self._ajouter(
-                semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                groupes=(promotion.groupe,), duree=2 * H, profil="amphi", priorite=2,
-                mode=ModeVolume.PONCTUEL, dates_possibles=dates, libelle="Conférence métiers",
+                semestre=code,
+                promotion=promotion,
+                matiere=matiere,
+                type_seance="AUTRE",
+                groupes=(promotion.groupe,),
+                duree=2 * H,
+                profil="amphi",
+                priorite=2,
+                mode=ModeVolume.PONCTUEL,
+                dates_possibles=dates,
+                libelle="Conférence métiers",
             )
 
     def _confier_aux_fictifs(self) -> None:
@@ -1029,8 +1125,10 @@ class _Generateur:
         demande: dict[str, Counter[str]] = {}
         for spec in self.specs:
             if spec.discipline and spec.enseignants_fixes is None and spec.nb_enseignants:
-                hebdo = spec.duree * spec.nb_enseignants * (
-                    spec.nombre if spec.mode is ModeVolume.PAR_SEMAINE else spec.max_par_semaine
+                hebdo = (
+                    spec.duree
+                    * spec.nb_enseignants
+                    * (spec.nombre if spec.mode is ModeVolume.PAR_SEMAINE else spec.max_par_semaine)
                 )
                 demande.setdefault(spec.discipline, Counter())[spec.semestre] += hebdo
         for discipline in sorted(demande):
@@ -1045,7 +1143,10 @@ class _Generateur:
                 else:
                     statut = StatutEnseignant.EXTERIEUR
                 self.vivier.ajouter(discipline, statut)
-        if not any(e.statut is StatutEnseignant.VACATAIRE for e in self.vivier.enseignants) and demande:
+        if (
+            not any(e.statut is StatutEnseignant.VACATAIRE for e in self.vivier.enseignants)
+            and demande
+        ):
             discipline = max(sorted(demande), key=lambda d: max(demande[d].values()))
             self.vivier.ajouter(discipline, StatutEnseignant.VACATAIRE)
         for fictif in self.fictifs:
@@ -1169,9 +1270,7 @@ class _Generateur:
             depliage = deplier([self._domaine(spec, spec.cle)], semaines, self.fermetures)
             if depliage.problemes:
                 return "; ".join(p.message for p in depliage.problemes)
-            seances = tuple(
-                (s.rang, sum(1 << n for n in s.semaines)) for s in depliage.seances
-            )
+            seances = tuple((s.rang, sum(1 << n for n in s.semaines)) for s in depliage.seances)
         jour_impose = spec.jour_impose
         if spec.date_ponctuelle is not None:
             jour_impose = spec.date_ponctuelle.weekday()
@@ -1386,8 +1485,13 @@ class _Generateur:
                     temoin[seance] = PlaceTemoin(place.jour, place.debut, place.fin, place.salle.id)
                     placees.append(
                         SeancePlacee(
-                            seance, place.jour, place.debut, place.fin, place.masque,
-                            place.salle.id, tuple(g.id for g in spec.groupes),
+                            seance,
+                            place.jour,
+                            place.debut,
+                            place.fin,
+                            place.masque,
+                            place.salle.id,
+                            tuple(g.id for g in spec.groupes),
                             tuple(identifiants[e.cle] for e in resultat.enseignants),
                         )
                     )
@@ -1438,39 +1542,49 @@ class _Generateur:
         )
 
     def _indispos_datees_enseignants(self, occupations) -> int:
+        """Absences datées de quelques permanents (trois jours ouvrés de suite si possible).
+
+        Les jours retenus sont des jours où l'enseignant n'a aucune séance du
+        témoin cette semaine-là : l'absence ne provoque aucun replacement.
+        """
         permanents = sorted(
-            c for c, e in self.enseignants_orm.items()
+            c
+            for c, e in self.enseignants_orm.items()
             if e.statut is StatutEnseignant.PERMANENT and not e.fictif
         )
-        nombre = max(1, round(self.config.part_indispo_datee * len(permanents))) if permanents else 0
+        nombre = min(self.config.nb_absences_enseignants, len(permanents))
         poses = 0
         for cle in sorted(self.rng.sample(permanents, nombre)):
             code = self.rng.choice(self.config.semestres)
             semaines = list(self.semaines[code])
             self.rng.shuffle(semaines)
-            jours = list(range(5))
-            self.rng.shuffle(jours)
-            choix = next(
-                (
-                    (semaine, jour)
-                    for semaine in semaines
-                    for jour in jours
-                    if self._libre_le(occupations.get(cle, []), code, semaine, jour)
-                    and self._date_ouverte(semaine.date_du(jour), [])
-                ),
-                None,
-            )
+            choix = None
+            for longueur in (3, 2, 1):
+                choix = next(
+                    (
+                        (semaine, premier, longueur)
+                        for semaine in semaines
+                        for premier in range(5 - longueur + 1)
+                        if all(
+                            self._libre_le(occupations.get(cle, []), code, semaine, j)
+                            and self._date_ouverte(semaine.date_du(j), [])
+                            for j in range(premier, premier + longueur)
+                        )
+                    ),
+                    None,
+                )
+                if choix is not None:
+                    break
             if choix is None:
-                journal.info("Aucune journée libre pour une indisponibilité datée (enseignant %d)", cle)
+                journal.info("Aucune journée libre pour une absence datée (enseignant %d)", cle)
                 continue
-            semaine, jour = choix
-            date = semaine.date_du(jour)
+            semaine, premier, longueur = choix
             self.session.add(
                 m.Indisponibilite(
                     cible=CibleIndisponibilite.ENSEIGNANT,
                     enseignant=self.enseignants_orm[cle],
-                    date_debut=date,
-                    date_fin=date,
+                    date_debut=semaine.date_du(premier),
+                    date_fin=semaine.date_du(premier + longueur - 1),
                     motif=self.rng.choice(cat.MOTIFS_INDISPO_ENSEIGNANT),
                 )
             )
@@ -1478,49 +1592,67 @@ class _Generateur:
         return poses
 
     def _salles_reservees_partiels(self, occupations) -> int:
+        """Deux salles de cours réservées par le service des examens pendant chaque session.
+
+        Une réservation par site et par semaine de partiels, sur des salles que
+        le témoin n'utilise pas cette semaine-là.
+        """
+        sessions: dict[tuple[str, str, int], list[int]] = {}
+        for (annee, code), semaine in sorted(self.semaine_partiels.items()):
+            sessions.setdefault((code, self._site_de(annee), semaine.numero), []).append(annee)
         poses = 0
-        for (annee, code), semaine in sorted(self.semaine_partiels.items(), key=lambda x: (x[0][1], x[0][0])):
-            site = self._site_de(annee)
+        for (code, site, numero), annees in sorted(sessions.items()):
+            semaine = self.semaines[code][numero - 1]
             libres = [
-                x for x in self.salles
-                if x.campus is self.campus[site] and x.type_salle.code == "COURS"
-                and all(self._libre_le(occupations.get(x.id, []), code, semaine, j) for j in range(5))
-                and not any(
-                    i.salle is x and i.date_debut == semaine.lundi for i in self._salles_posees
+                x
+                for x in self.salles
+                if x.campus is self.campus[site]
+                and x.type_salle.code == "COURS"
+                and all(
+                    self._libre_le(occupations.get(x.id, []), code, semaine, j) for j in range(5)
                 )
             ]
+            promotions = ", ".join(f"A{a}" for a in annees)
             for salle in libres[:2]:
                 self._poser_indispo_salle(
-                    salle, semaine.lundi, semaine.date_du(4), f"{cat.MOTIF_PARTIELS_SALLE} A{annee}"
+                    salle,
+                    semaine.lundi,
+                    semaine.date_du(4),
+                    f"{cat.MOTIF_PARTIELS_SALLE} {promotions}",
                 )
                 poses += 1
         return poses
 
-    def _poser_indispo_salle(self, salle: m.Salle, debut: dt.date, fin: dt.date, motif: str) -> None:
-        indispo = m.Indisponibilite(
-            cible=CibleIndisponibilite.SALLE, salle=salle, date_debut=debut, date_fin=fin, motif=motif
+    def _poser_indispo_salle(
+        self, salle: m.Salle, debut: dt.date, fin: dt.date, motif: str
+    ) -> None:
+        self.session.add(
+            m.Indisponibilite(
+                cible=CibleIndisponibilite.SALLE,
+                salle=salle,
+                date_debut=debut,
+                date_fin=fin,
+                motif=motif,
+            )
         )
-        self.session.add(indispo)
-        self._salles_posees.append(indispo)
 
     def _salles_en_travaux(self, occupations) -> int:
+        """Une salle en travaux pendant une semaine où le témoin ne l'utilise pas."""
         code = self.config.semestres[-1]
         semaines = self.semaines[code]
         salles = list(self.salles)
         self.rng.shuffle(salles)
         for salle in salles:
-            for debut in range(2, len(semaines) - 2):
-                paire = semaines[debut : debut + 2]
+            for semaine in semaines[2:-2]:
                 if all(
-                    self._libre_le(occupations.get(salle.id, []), code, s, j)
-                    for s in paire
+                    self._libre_le(occupations.get(salle.id, []), code, semaine, j)
                     for j in range(6)
                 ):
                     self._poser_indispo_salle(
-                        salle, paire[0].lundi, paire[1].date_du(5), cat.MOTIF_TRAVAUX
+                        salle, semaine.lundi, semaine.date_du(5), cat.MOTIF_TRAVAUX
                     )
                     return 1
-        journal.info("Aucune salle libre deux semaines de suite : pas de salle en travaux")
+        journal.info("Aucune salle libre une semaine entière : pas de salle en travaux")
         return 0
 
     def _salle_reunion(self, occupations) -> int:
@@ -1555,7 +1687,9 @@ class _Generateur:
             semestre = self.semestres[code]
             numero = (
                 self.session.scalar(
-                    select(func.max(m.VersionEdt.numero)).where(m.VersionEdt.semestre_id == semestre.id)
+                    select(func.max(m.VersionEdt.numero)).where(
+                        m.VersionEdt.semestre_id == semestre.id
+                    )
                 )
                 or 0
             ) + 1
@@ -1604,9 +1738,7 @@ class _Generateur:
         for table in (m.inscription, m.groupe_chevauchement):
             compteurs[table.name] = s.scalar(select(func.count()).select_from(table))
         crees = [spec for spec in self.specs if spec.cle in self.besoins_orm]
-        suivis = {
-            d.id: d.code for p in self.promotions for c in p.classes for d in c.demi_groupes
-        }
+        suivis = {d.id: d.code for p in self.promotions for c in p.classes for d in c.demi_groupes}
         salles = {x.id: (x.code, x.type_salle.code) for x in self.salles}
         charges = tuple(
             calculer_charge(

@@ -38,7 +38,9 @@ class Site:
 
 
 SITES: dict[str, Site] = {
-    "NDC": Site("NDC", "Notre-Dame-des-Champs (Paris)", "N", ("Bâtiment principal", "Bâtiment cour")),
+    "NDC": Site(
+        "NDC", "Notre-Dame-des-Champs (Paris)", "N", ("Bâtiment principal", "Bâtiment cour")
+    ),
     "ISSY": Site("ISSY", "Issy-les-Moulineaux", "L", ("Bâtiment L",)),
     "STAN": Site(
         "STAN",
@@ -288,9 +290,7 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         ),
         Module("IL", "Langue vivante 2", (langue("lv2"),)),
         Module("IH", "Expression écrite et orale", (td(total=6, fenetre=PREMIERE_MOITIE),)),
-        Module(
-            "IH", "Culture scientifique et numérique", (td(total=6, fenetre=SECONDE_MOITIE),)
-        ),
+        Module("IH", "Culture scientifique et numérique", (td(total=6, fenetre=SECONDE_MOITIE),)),
     ),
     (1, 2): (
         Module("IM", "Analyse 2", (cm(), td())),

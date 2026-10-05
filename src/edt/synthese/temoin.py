@@ -196,7 +196,9 @@ class Vivier:
         """Recrute un enseignant permanent de la discipline (journalisé)."""
         self.nb_recrutes += 1
         enseignant = self.ajouter(discipline, StatutEnseignant.PERMANENT)
-        journal.debug("Témoin : recrutement d'un enseignant de %s (clé %d)", discipline, enseignant.cle)
+        journal.debug(
+            "Témoin : recrutement d'un enseignant de %s (clé %d)", discipline, enseignant.cle
+        )
         return enseignant
 
 
@@ -560,7 +562,9 @@ class Temoin:
     def _trajet(self, campus_a: int, campus_b: int) -> int:
         if campus_a == campus_b:
             return 0
-        return self._trajets.get((min(campus_a, campus_b), max(campus_a, campus_b)), self._trajet_defaut)
+        return self._trajets.get(
+            (min(campus_a, campus_b), max(campus_a, campus_b)), self._trajet_defaut
+        )
 
     def _libre(
         self, occupations: list[Occupation], debut: int, fin: int, masque: int, campus: int
@@ -575,7 +579,9 @@ class Temoin:
                 return False
         return True
 
-    def _salle_libre(self, salle: SalleTemoin, jour: int, debut: int, fin: int, masque: int) -> bool:
+    def _salle_libre(
+        self, salle: SalleTemoin, jour: int, debut: int, fin: int, masque: int
+    ) -> bool:
         if _bloque(self._indispo_salle, salle.id, jour, debut, fin):
             return False
         jours = self._occ_salle.get(salle.id)
@@ -593,7 +599,13 @@ class Temoin:
         return True
 
     def _enseignant_libre(
-        self, enseignant: EnseignantTemoin, jour: int, debut: int, fin: int, masque: int, campus: int
+        self,
+        enseignant: EnseignantTemoin,
+        jour: int,
+        debut: int,
+        fin: int,
+        masque: int,
+        campus: int,
     ) -> bool:
         if enseignant.fictif:
             return True
@@ -614,9 +626,7 @@ class Temoin:
         pool: list[EnseignantTemoin] | None,
     ) -> tuple[EnseignantTemoin, ...] | None:
         if fixes is not None:
-            libres = all(
-                self._enseignant_libre(e, jour, debut, fin, masque, campus) for e in fixes
-            )
+            libres = all(self._enseignant_libre(e, jour, debut, fin, masque, campus) for e in fixes)
             return fixes if libres else None
         if pool is None:
             return ()

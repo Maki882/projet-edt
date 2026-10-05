@@ -79,8 +79,9 @@ class ConfigurationJeu:
       accessible ;
     - `part_vacataires`, `part_exterieurs` : statuts tirés pour le vivier
       initial d'enseignants (les recrutements en cours de témoin sont permanents) ;
-    - `part_maxima`, `part_indispo_datee` : part des enseignants qui reçoivent
-      des maxima horaires, une indisponibilité datée ;
+    - `part_maxima` : part des enseignants qui reçoivent des maxima horaires ;
+    - `nb_absences_enseignants` : absences datées d'enseignants permanents
+      (trois jours au plus, posées là où le témoin les laisse libres) ;
     - `nb_enseignants_fictifs` : besoins confiés à un enseignant « à recruter » ;
     - `annees_stage` : promotions dont le semestre 2 se termine par un stage ;
     - `epreuves_par_partiel` : épreuves écrites par session de partiels ;
@@ -100,7 +101,7 @@ class ConfigurationJeu:
     part_vacataires: float = 0.25
     part_exterieurs: float = 0.1
     part_maxima: float = 0.2
-    part_indispo_datee: float = 0.1
+    nb_absences_enseignants: int = 2
     nb_enseignants_fictifs: int = 0
     annees_stage: tuple[int, ...] = ()
     epreuves_par_partiel: int = 3
@@ -145,7 +146,6 @@ class ConfigurationJeu:
             "part_vacataires",
             "part_exterieurs",
             "part_maxima",
-            "part_indispo_datee",
         ):
             if not 0.0 <= getattr(self, nom) <= 1.0:
                 erreurs.append(f"{nom} doit être compris entre 0 et 1")
@@ -153,8 +153,10 @@ class ConfigurationJeu:
             erreurs.append("la part des vacataires et des extérieurs dépasse 1")
         if self.modules_max is not None and self.modules_max < 1:
             erreurs.append("modules_max doit valoir au moins 1 (ou None)")
-        if self.nb_groupes_pmr < 0 or self.nb_enseignants_fictifs < 0:
-            erreurs.append("les nombres de groupes PMR et d'enseignants fictifs sont positifs")
+        if min(self.nb_groupes_pmr, self.nb_enseignants_fictifs, self.nb_absences_enseignants) < 0:
+            erreurs.append(
+                "les nombres de groupes PMR, d'enseignants fictifs et d'absences sont positifs"
+            )
         if self.epreuves_par_partiel < 1:
             erreurs.append("epreuves_par_partiel doit valoir au moins 1")
         if set(self.annees_stage) - set(annees):
@@ -193,6 +195,7 @@ PETIT = ConfigurationJeu(
     part_vacataires=0.3,
     part_exterieurs=0.0,
     epreuves_par_partiel=1,
+    nb_absences_enseignants=1,
 )
 """Une promotion de 1re année, deux classes, le semestre 1 : pour les tests unitaires."""
 
@@ -258,6 +261,7 @@ GRAND = ConfigurationJeu(
     ),
     nb_groupes_pmr=2,
     nb_enseignants_fictifs=2,
+    nb_absences_enseignants=3,
     annees_stage=(4,),
 )
 """L'établissement complet : cinq années, trois sites, deux semestres."""
@@ -274,6 +278,5 @@ def configuration_nommee(nom: str) -> ConfigurationJeu:
         return CONFIGURATIONS[nom]
     except KeyError:
         raise ErreurDonneesInvalides(
-            f"Taille de jeu inconnue : {nom!r} (tailles disponibles : "
-            f"{', '.join(CONFIGURATIONS)})."
+            f"Taille de jeu inconnue : {nom!r} (tailles disponibles : {', '.join(CONFIGURATIONS)})."
         ) from None
