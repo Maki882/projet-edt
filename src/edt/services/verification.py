@@ -1,0 +1,370 @@
+"""Service de vérification : vérifie une version enregistrée ou une modification envisagée.
+
+Fonctions typées appelées par la ligne de commande (`python -m edt verifier`)
+et par l'interface (panneau des anomalies, modification manuelle). Elles
+lisent la base, construisent l'instantané (`charger_instantane`) et
+délèguent au vérificateur pur (`edt.verification`) ; elles n'écrivent rien.
+
+- `verifier_version` : semaine type d'une version, avec ses indicateurs ;
+- `verifier_occurrences_version` : séances datées d'une version,
+  éventuellement bornées à une période ;
+- `verifier_modification` : ce que donnerait la semaine type si une séance
+  était placée autrement, sans rien enregistrer ;
+- `version_a_verifier` : la version désignée par l'utilisateur (une version,
+  ou la version active d'un semestre, ou celle du semestre par défaut).
+
+L'instantané d'une version est chargé avec cette version comme version de
+base : les verrous sont ceux de la version vérifiée. Le résultat est un
+`RapportVerification` figé, sérialisable en JSON par `vers_dict()`.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import logging
+from collections import Counter
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from edt.db.modeles import Semestre, VersionEdt
+from edt.domaine.calendrier import lundi_de
+from edt.domaine.contraintes import CodeContrainte, codes_par_defaut, normaliser_codes
+from edt.domaine.enumerations import Gravite
+from edt.domaine.instantane import Instantane, Placement
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
+from edt.services.calendrier import semestre_par_defaut
+from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
+from edt.verification import (
+    Anomalie,
+    Indicateurs,
+    calculer_indicateurs,
+    verifier,
+    verifier_occurrences,
+)
+
+journal = logging.getLogger(__name__)
+
+SEMAINE_TYPE = "semaine_type"
+SEANCES_DATEES = "seances_datees"
+MODIFICATION = "modification"
+
+
+@dataclass(frozen=True)
+class RapportVerification:
+    """Résultat d'une vérification, prêt à afficher ou à sérialiser.
+
+    - `anomalies` : liste triée renvoyée par le vérificateur ;
+    - `indicateurs` : indicateurs de la semaine type (`None` pour les séances
+      datées et pour une modification) ;
+    - `nb_erreurs`, `nb_avertissements`, `nb_informations` : compteurs par gravité ;
+    - `par_code` : nombre d'anomalies (toutes gravités) par code, dans l'ordre
+      du catalogue, codes absents omis ;
+    - contexte : `version_id`, `version` (libellé), `semestre_id`, `semestre`
+      (libellé), `objet` (`"semaine_type"`, `"seances_datees"` ou
+      `"modification"`), `contraintes` (codes vérifiés), `nb_examines`
+      (placements ou séances datées examinés), `periode` (bornes des séances
+      datées vérifiées, si elles ont été bornées).
+    """
+
+    anomalies: tuple[Anomalie, ...]
+    indicateurs: Indicateurs | None
+    nb_erreurs: int
+    nb_avertissements: int
+    nb_informations: int
+    par_code: dict[str, int] = field(default_factory=dict)
+    version_id: int | None = None
+    version: str = ""
+    semestre_id: int | None = None
+    semestre: str = ""
+    objet: str = SEMAINE_TYPE
+    contraintes: tuple[str, ...] = ()
+    nb_examines: int = 0
+    periode: tuple[dt.date | None, dt.date | None] = (None, None)
+
+    @property
+    def valide(self) -> bool:
+        """Vrai si aucune anomalie n'est de gravité « erreur »."""
+        return self.nb_erreurs == 0
+
+    def vers_dict(self) -> dict[str, object]:
+        """Représentation JSON (dates ISO, codes et gravités en texte)."""
+        debut, fin = self.periode
+        return {
+            "valide": self.valide,
+            "objet": self.objet,
+            "version_id": self.version_id,
+            "version": self.version,
+            "semestre_id": self.semestre_id,
+            "semestre": self.semestre,
+            "contraintes": list(self.contraintes),
+            "nb_examines": self.nb_examines,
+            "periode": [
+                None if debut is None else debut.isoformat(),
+                None if fin is None else fin.isoformat(),
+            ],
+            "nb_erreurs": self.nb_erreurs,
+            "nb_avertissements": self.nb_avertissements,
+            "nb_informations": self.nb_informations,
+            "par_code": dict(self.par_code),
+            "anomalies": [anomalie_vers_dict(anomalie) for anomalie in self.anomalies],
+            "indicateurs": None if self.indicateurs is None else self.indicateurs.vers_dict(),
+        }
+
+
+def anomalie_vers_dict(anomalie: Anomalie) -> dict[str, object]:
+    """Représentation JSON d'une anomalie."""
+    return {
+        "code": str(anomalie.code),
+        "gravite": str(anomalie.gravite),
+        "bloquante": anomalie.bloquante,
+        "message": anomalie.message,
+        "seances": list(anomalie.seances),
+        "occurrences": list(anomalie.occurrences),
+        "besoins": list(anomalie.besoins),
+        "salles": list(anomalie.salles),
+        "enseignants": list(anomalie.enseignants),
+        "groupes": list(anomalie.groupes),
+        "jour": anomalie.jour,
+        "date": None if anomalie.date is None else anomalie.date.isoformat(),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Vérifications
+# --------------------------------------------------------------------------- #
+
+
+def verifier_version(
+    session: Session, version_id: int, contraintes_actives: Iterable[str] | None = None
+) -> RapportVerification:
+    """Vérifie la semaine type de la version `version_id` et calcule ses indicateurs.
+
+    Lève `ErreurIntrouvable` si la version n'existe pas, `ErreurDonneesInvalides`
+    si un code de contrainte est inconnu ou si un placement enregistré est mal formé.
+    """
+    version = _version(session, version_id)
+    codes = _codes(contraintes_actives)
+    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    placements = charger_placements(session, version.id)
+    anomalies = verifier(instantane, placements, codes)
+    indicateurs = calculer_indicateurs(instantane, placements, anomalies)
+    return _rapport(
+        anomalies,
+        indicateurs,
+        version,
+        instantane,
+        objet=SEMAINE_TYPE,
+        codes=codes,
+        nb_examines=len(placements),
+    )
+
+
+def verifier_occurrences_version(
+    session: Session,
+    version_id: int,
+    date_debut: dt.date | None = None,
+    date_fin: dt.date | None = None,
+    contraintes_actives: Iterable[str] | None = None,
+) -> RapportVerification:
+    """Vérifie les séances datées de la version `version_id`, éventuellement sur une période.
+
+    Avec une période `[date_debut, date_fin]` (bornes incluses, chacune
+    facultative), la vérification porte sur les semaines entières qui la
+    recoupent, pour que les maxima hebdomadaires soient complets ; seules les
+    anomalies qui concernent une séance de la période sont gardées.
+    `nb_examines` compte les séances datées de la période.
+    """
+    if date_debut is not None and date_fin is not None and date_fin < date_debut:
+        raise ErreurDonneesInvalides(
+            f"Période invalide : le {date_fin:%d/%m/%Y} précède le {date_debut:%d/%m/%Y}."
+        )
+    version = _version(session, version_id)
+    codes = _codes(contraintes_actives)
+    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    toutes = charger_occurrences(session, version.id)
+
+    def dans(date: dt.date, debut: dt.date | None, fin: dt.date | None) -> bool:
+        return (debut is None or debut <= date) and (fin is None or date <= fin)
+
+    elargi_debut = None if date_debut is None else lundi_de(date_debut)
+    elargi_fin = None if date_fin is None else lundi_de(date_fin) + dt.timedelta(days=6)
+    examinees = [o for o in toutes if dans(o.date, elargi_debut, elargi_fin)]
+    periode = {o.id for o in examinees if dans(o.date, date_debut, date_fin)}
+    anomalies = [
+        anomalie
+        for anomalie in verifier_occurrences(instantane, examinees, codes)
+        if not anomalie.occurrences or not periode.isdisjoint(anomalie.occurrences)
+    ]
+    return _rapport(
+        anomalies,
+        None,
+        version,
+        instantane,
+        objet=SEANCES_DATEES,
+        codes=codes,
+        nb_examines=len(periode),
+        periode=(date_debut, date_fin),
+    )
+
+
+def verifier_modification(
+    session: Session,
+    version_id: int,
+    seance_id: str,
+    jour: int,
+    debut: int,
+    fin: int,
+    salle_id: int | None,
+) -> RapportVerification:
+    """Anomalies qu'aurait la séance `seance_id` si elle était placée ainsi dans la version.
+
+    Rien n'est enregistré : les placements de la version sont relus, celui de
+    la séance est remplacé (ou ajouté), puis toute la semaine type est
+    vérifiée avec les contraintes par défaut. Seules les anomalies qui citent
+    cette séance sont renvoyées (conflits avec d'autres séances compris) ; un
+    rapport valide signifie que la modification n'introduit aucune erreur
+    autour de cette séance. Une séance verrouillée dans la version donne une
+    anomalie `VERROU` si on la déplace.
+
+    Lève `ErreurIntrouvable` si la version ou la séance n'existe pas,
+    `ErreurDonneesInvalides` si le placement proposé est mal formé.
+    """
+    version = _version(session, version_id)
+    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    if seance_id not in {seance.id for seance in instantane.seances}:
+        raise ErreurIntrouvable(
+            f"La séance « {seance_id} » n'existe pas dans le semestre « {instantane.libelle} »."
+        )
+    propose = Placement(seance_id, jour, debut, fin, salle_id)
+    placements = [p for p in charger_placements(session, version.id) if p.seance_id != seance_id]
+    placements.append(propose)
+    codes = tuple(sorted(codes_par_defaut()))
+    anomalies = [a for a in verifier(instantane, placements, codes) if seance_id in a.seances]
+    journal.debug("Modification envisagée de la séance %s : %s", seance_id, propose)
+    return _rapport(
+        anomalies,
+        None,
+        version,
+        instantane,
+        objet=MODIFICATION,
+        codes=codes,
+        nb_examines=1,
+    )
+
+
+def version_a_verifier(
+    session: Session, version_id: int | None = None, semestre_id: int | None = None
+) -> int:
+    """Identifiant de la version à vérifier.
+
+    La version `version_id` si elle est donnée ; sinon la version active du
+    semestre `semestre_id`, ou à défaut du semestre proposé par défaut
+    (`semestre_par_defaut`). Lève `ErreurIntrouvable` si la version ou le
+    semestre n'existe pas ou si le semestre n'a pas de version active,
+    `ErreurRegleMetier` si la version n'appartient pas au semestre donné.
+    """
+    if version_id is not None:
+        version = _version(session, version_id)
+        if semestre_id is not None and version.semestre_id != semestre_id:
+            raise ErreurRegleMetier(
+                f"La version {version_id} n'appartient pas au semestre {semestre_id}."
+            )
+        return version.id
+    if semestre_id is None:
+        semestre = semestre_par_defaut(session)
+    else:
+        semestre = session.get(Semestre, semestre_id)
+        if semestre is None:
+            raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
+    version_active = session.scalar(
+        select(VersionEdt).where(VersionEdt.semestre_id == semestre.id, VersionEdt.active.is_(True))
+    )
+    if version_active is None:
+        raise ErreurIntrouvable(
+            f"Le semestre « {semestre.libelle} » n'a pas de version active : générer ou importer "
+            "un emploi du temps, ou désigner une version précise."
+        )
+    return version_active.id
+
+
+# --------------------------------------------------------------------------- #
+# Outils
+# --------------------------------------------------------------------------- #
+
+
+def _version(session: Session, version_id: int) -> VersionEdt:
+    version = session.get(VersionEdt, version_id)
+    if version is None:
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
+    return version
+
+
+def _codes(contraintes_actives: Iterable[str] | None) -> tuple[str, ...]:
+    """Codes à vérifier, validés et triés (ceux actifs par défaut si `None`)."""
+    if contraintes_actives is None:
+        return tuple(sorted(codes_par_defaut()))
+    if isinstance(contraintes_actives, str):
+        raise ErreurDonneesInvalides(
+            "Les contraintes à vérifier se donnent sous forme de liste de codes, pas d'un "
+            f"texte seul (lu : {contraintes_actives!r})."
+        )
+    return tuple(sorted(normaliser_codes(contraintes_actives)))
+
+
+def _rapport(
+    anomalies: Sequence[Anomalie],
+    indicateurs: Indicateurs | None,
+    version: VersionEdt,
+    instantane: Instantane,
+    *,
+    objet: str,
+    codes: tuple[str, ...],
+    nb_examines: int,
+    periode: tuple[dt.date | None, dt.date | None] = (None, None),
+) -> RapportVerification:
+    gravites = Counter(anomalie.gravite for anomalie in anomalies)
+    par_code = Counter(anomalie.code for anomalie in anomalies)
+    rapport = RapportVerification(
+        anomalies=tuple(anomalies),
+        indicateurs=indicateurs,
+        nb_erreurs=gravites[Gravite.ERREUR],
+        nb_avertissements=gravites[Gravite.AVERTISSEMENT],
+        nb_informations=gravites[Gravite.INFORMATION],
+        par_code={str(code): par_code[code] for code in CodeContrainte if par_code[code]},
+        version_id=version.id,
+        version=version.libelle,
+        semestre_id=instantane.semestre_id,
+        semestre=instantane.libelle,
+        objet=objet,
+        contraintes=codes,
+        nb_examines=nb_examines,
+        periode=periode,
+    )
+    journal.info(
+        "Vérification (%s) de la version %d « %s » : %d élément(s) examiné(s), %d erreur(s), "
+        "%d avertissement(s), %d information(s).",
+        objet,
+        version.id,
+        version.libelle,
+        nb_examines,
+        rapport.nb_erreurs,
+        rapport.nb_avertissements,
+        rapport.nb_informations,
+    )
+    return rapport
+
+
+__all__ = [
+    "MODIFICATION",
+    "SEANCES_DATEES",
+    "SEMAINE_TYPE",
+    "RapportVerification",
+    "anomalie_vers_dict",
+    "verifier_modification",
+    "verifier_occurrences_version",
+    "verifier_version",
+    "version_a_verifier",
+]

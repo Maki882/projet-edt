@@ -72,7 +72,9 @@ src/edt/
     calendrier.py              années scolaires, semestre par défaut
     etat.py                    diagnostic de la base, compteurs
   verification/
-    contrat.py                 CONTRAT : Anomalie, verifier (provisoire)
+    contrat.py                 CONTRAT : type Anomalie
+    semaine_type.py, datee.py  verifier, verifier_occurrences
+    regles_*.py, indicateurs.py  une règle par code du catalogue, indicateurs
   solveur/
     contrat.py                 CONTRAT : OptionsSolveur, ResultatSolveur
     provisoire.py              moteur glouton PROVISOIRE
@@ -91,7 +93,6 @@ src/edt/
 tests/
   conftest.py                  fixtures communes (base temporaire, jeu minimal)
   socle/                       tests du socle ; un dossier par lot ensuite
-verifier_conflits.py           premier vérificateur de l'équipe (conservé)
 ```
 
 ## Configuration
@@ -451,11 +452,14 @@ def verifier_occurrences(
 ```
 
 `Anomalie(code, gravite, message, seances=(), occurrences=(), salles=(),
-enseignants=(), groupes=(), jour=None, date=None)`. Liste sans anomalie de
+enseignants=(), groupes=(), jour=None, date=None, besoins=())`. Liste sans anomalie de
 gravité « erreur » = emploi du temps valide. `contraintes_actives=None`
-vérifie toutes les contraintes du catalogue. Tant que le lot n'est pas
-livré, les deux fonctions lèvent `ErreurNonLivre` (surtout pas une liste
-vide). Point d'entrée à importer : `from edt.verification import verifier`.
+vérifie toutes les contraintes du catalogue. Point d'entrée à importer : `from edt.verification import verifier`. Les
+règles, les gravités et les indicateurs sont détaillés dans
+`docs/verification.md` ; le service base de données est
+`edt.services.verification` (`verifier_version`,
+`verifier_occurrences_version`, `verifier_modification`) et la commande
+`python -m edt verifier`.
 
 ### Le solveur (`edt.solveur`)
 
@@ -546,9 +550,9 @@ le vérificateur **et** le solveur.
 |---|---|
 | `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE` | Deux séances se gênent si elles ont lieu le même jour, que leurs plages se recoupent et que leurs semaines actives se croisent. Groupes : relation de conflit de l'instantané. Enseignants fictifs exclus. |
 | `PAUSE`, `CAMPUS_TRAJET` | Concernent les **personnes** (groupes en conflit, enseignants non fictifs), pas les salles. |
-| `DEJEUNER` | Plage `dejeuner_debut_min`..`dejeuner_fin_min` libre pour chaque groupe et chaque enseignant non fictif. |
-| `HORAIRES` | Début sur un début de créneau de la grille et séance dans la plage `ouverture_min`..`fermeture_min`. Un **jour imposé ou un début imposé non respecté** relève aussi de ce code. Un créneau imposé hors grille est une anomalie de gravité « information », pas une erreur. |
-| `JOURS` | Lundi à vendredi ; samedi seulement si `Besoin.samedi_autorise` et sur un créneau de la grille. |
+| `DEJEUNER` | Aucune séance ne recoupe la plage `dejeuner_debut_min`..`dejeuner_fin_min`. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), l'écart est une information. |
+| `HORAIRES` | Début sur un début de créneau de la grille, séance dans la plage `ouverture_min`..`fermeture_min`, et séance qui ne déborde pas de sa demi-journée (sa fin ne dépasse pas la fin du dernier créneau de la même demi-journée). La durée placée égale la durée du besoin. Un **jour imposé ou un début imposé non respecté** relève aussi de ce code. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), un écart à la grille est une anomalie de gravité « information », pas une erreur. |
+| `JOURS` | Jours qui ont des créneaux dans la grille (lundi à vendredi) ; samedi seulement si `Besoin.samedi_autorise`. Un samedi hors des créneaux de la grille relève de `HORAIRES`. Information au lieu d'erreur pour une séance imposée. |
 | `CAPACITE` | Capacité de la salle ≥ `Besoin.effectif`. |
 | `TYPE_SALLE` | Type de la salle dans `types_salle_acceptes` (vide = tous). Une **salle imposée ou un campus imposé non respecté** relève aussi de ce code (famille « exigences de salle du besoin »). |
 | `EQUIPEMENT` | `equipements_requis` inclus dans les équipements de la salle. |
