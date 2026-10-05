@@ -38,7 +38,7 @@
   {{ edt.indicateurs(tableau.controle, tableau.nb_a_programmer) }}
   <p>
     {%- if tableau.nb_a_traiter is not none %}
-    {%- set reste = tableau.nb_a_traiter + tableau.nb_a_programmer %}
+    {%- set reste = tableau.nb_a_traiter %}
     {{ ui.etiquette(fmt.pluriel(reste, "point") ~ " à traiter", "erreur" if reste else "succes") }}
     {%- else %}
     {{ ui.etiquette(fmt.pluriel(tableau.nb_a_programmer, "séance") ~ " à programmer", "attention" if tableau.nb_a_programmer else "info") }}
@@ -85,23 +85,27 @@
 <section class="carte">
   <h2>État de la base de données</h2>
   {% if not etat.accessible %}
-    {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "Vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
+    {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "À faire par l'administrateur du serveur : vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
   {% elif etat.ecarts_schema %}
-    {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
+    {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre, par l'administrateur du serveur : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
   {% elif not etat.initialisee %}
-    {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["Lancer « python -m edt init-db », puis recharger cette page."]) }}
+    {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["À faire par l'administrateur du serveur : lancer « python -m edt init-db », puis recharger cette page."]) }}
   {% else %}
     <p>
       {{ ui.etiquette("Prête", "succes") }}
-      La base est initialisée{% if etat.mode_journal %} (mode {{ etat.mode_journal }}){% endif %}.
+      La base est initialisée{% if etat.mode_journal and environnement != "prod" %} (mode {{ etat.mode_journal }}){% endif %}.
     </p>
     {% if etat.vide %}
-      {{ ui.message("La base ne contient encore aucune donnée.", "info", ["Pour découvrir l'application : « python -m edt jeu-minimal » charge un petit établissement fictif."]) }}
+    <div class="message message-info" role="status">
+      <p>La base ne contient encore aucune donnée. Pour découvrir l'application : <a href="/jeux">charger un établissement fictif</a>.</p>
+    </div>
     {% endif %}
   {% endif %}
   <dl class="definitions">
+    {%- if environnement != "prod" %}
     <dt>Emplacement</dt>
     <dd><code>{{ etat.url }}</code></dd>
+    {%- endif %}
     <dt>Environnement</dt>
     <dd>{{ "production" if environnement == "prod" else "développement" }}</dd>
   </dl>

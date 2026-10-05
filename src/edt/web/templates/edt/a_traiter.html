@@ -75,6 +75,23 @@
   <p>{{ ui.etiquette("Vérifiées", "succes") }} Aucune anomalie dans les séances datées.</p>
   {%- endif %}
 
+  {%- if element.decochees %}
+  <h3>Écarts aux règles décochées lors du calcul ({{ element.nb_ecarts_decoches }})</h3>
+  <p class="aide">Le calcul de cette version a été lancé sans ces règles : {{ element.contraintes_decochees|join(", ") }}. Ces écarts sont donc voulus ; ils restent listés ici, mais ne comptent pas dans les points à traiter.</p>
+  {%- for c in element.decochees %}
+  <details class="edt-groupe-contrainte">
+    <summary>{{ c.libelle }} ({{ c.total }})</summary>
+    <ul class="edt-anomalies">
+      {%- for ligne in c.lignes %}
+      <li><span>{{ ligne.message }}</span>
+        {%- if ligne.lien %} <a href="/emploi-du-temps?{{ ligne.lien|urlencode }}">Voir dans l'emploi du temps</a>{% endif %}</li>
+      {%- endfor %}
+    </ul>
+    {%- if c.total > c.lignes|length %}<p class="discret">... et {{ c.total - c.lignes|length }} autre(s).</p>{% endif %}
+  </details>
+  {%- endfor %}
+  {%- endif %}
+
   <h3>Séances à programmer ({{ element.a_programmer|length }})</h3>
   {%- if element.a_programmer %}
   <p class="aide">Ces séances tombaient un jour fermé ou pendant une indisponibilité, et aucun autre créneau valide n'a été trouvé : les placer à la main.</p>

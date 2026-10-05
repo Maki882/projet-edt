@@ -37,9 +37,6 @@
     <li class="compteur"><span class="compteur-nombre">{{ recap.nb_enseignants }}</span><span class="compteur-libelle">enseignants concernés</span></li>
     <li class="compteur"><span class="compteur-nombre">{{ recap.nb_salles }}</span><span class="compteur-libelle">salles disponibles</span></li>
   </ul>
-  {%- if not recap.nb_besoins %}
-  {{ ui.message("Ce semestre n'a encore aucun besoin d'enseignement : il n'y a rien à placer.", "attention") }}
-  {%- endif %}
   {%- endif %}
 </section>
 
@@ -77,7 +74,7 @@
     {{ ui.champ("autre_solution", "Proposer une autre solution que la précédente", choix.autre_solution, type="checkbox") }}
   </fieldset>
   <div class="formulaire-actions">
-    <button type="submit" class="bouton bouton-principal">Lancer le calcul</button>
+    <button type="submit" class="bouton bouton-principal"{% if not recap.nb_besoins %} disabled title="Aucun besoin d'enseignement à placer"{% endif %}>Lancer le calcul</button>
     <span class="discret">Le calcul tourne en arrière-plan ; on peut suivre son avancement et l'arrêter.</span>
   </div>
 </form>

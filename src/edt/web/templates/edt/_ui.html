@@ -82,7 +82,15 @@
 {%- if i is none %}
 <p class="discret">Le vérificateur n'a pas fourni d'indicateurs de qualité pour cette version.</p>
 {%- endif %}
+{{ ecarts_decoches(controle) }}
 {%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+{#- Rappel des écarts aux contraintes décochées lors du calcul : voulus, donc comptés à part. #}
+{% macro ecarts_decoches(controle) -%}
+{%- if controle is not none and controle.nb_ecarts_decoches %}
+<p class="discret">En plus, {{ fmt.pluriel(controle.nb_ecarts_decoches, "écart") }} aux règles décochées lors du calcul de cette version ({{ fmt.libelles_contraintes(controle.contraintes_decochees)|join(", ") }}) : voulus au lancement, ils ne sont pas comptés comme conflits.</p>
 {%- endif %}
 {%- endmacro %}
 

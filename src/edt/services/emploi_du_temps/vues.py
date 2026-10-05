@@ -44,6 +44,7 @@ from edt.domaine.enumerations import (
     Gravite,
     ModeVolume,
     NatureGroupe,
+    OrigineOccurrence,
     StatutOccurrence,
 )
 from edt.domaine.instantane import id_seance
@@ -307,6 +308,7 @@ class VueEmploiDuTemps:
     occurrences_disponibles: bool
     nb_semaines: int
     perimetre: Perimetre | None = None
+    seances_datees_importees: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -471,14 +473,10 @@ def construire_vue(
     anomalies: tuple[Anomalie, ...] = ()
     if verifier and cible is not None:
         if couche is Couche.HEBDO:
-            controle = raccords.controler(raccords.verifier_version, session, version.id)
+            controle = raccords.controler_version(session, version.id)
         elif occurrences_disponibles and periode is not None:
-            controle = raccords.controler(
-                raccords.verifier_occurrences_version,
-                session,
-                version.id,
-                date_debut=periode[0],
-                date_fin=periode[1],
+            controle = raccords.controler_occurrences(
+                session, version.id, date_debut=periode[0], date_fin=periode[1]
             )
         if controle is not None and controle.verification is not None:
             blocs, anomalies = _attacher_anomalies(
@@ -531,6 +529,8 @@ def construire_vue(
         anomalies=anomalies,
         groupes_lies=contexte_groupes.codes_lies if contexte_groupes else (),
         occurrences_disponibles=occurrences_disponibles,
+        seances_datees_importees=occurrences_disponibles
+        and _a_des_occurrences_importees(session, version.id),
         nb_semaines=len(semaines),
         perimetre=perimetre,
     )
@@ -907,6 +907,20 @@ def _bloc_date(occurrence: m.Occurrence, *, partielle: bool, nb_semaines: int) -
     )
 
 
+def _a_des_occurrences_importees(session: Session, version_id: int) -> bool:
+    return (
+        session.scalar(
+            select(m.Occurrence.id)
+            .where(
+                m.Occurrence.version_id == version_id,
+                m.Occurrence.origine == OrigineOccurrence.IMPORT,
+            )
+            .limit(1)
+        )
+        is not None
+    )
+
+
 def _a_des_occurrences(session: Session, version_id: int) -> bool:
     return (
         session.scalar(
@@ -929,10 +943,25 @@ def _jours_de_semaine(blocs: Iterable[Bloc]) -> tuple[int, ...]:
     return tuple(jours)
 
 
+ECART_MAX_JOURS = 366
+"""Écart admis entre une date demandée et le semestre (au-delà, la date est refusée)."""
+
+
+def date_admissible(date: dt.date, semestre: ResumeSemestre) -> bool:
+    """Vrai si la date est à moins d'un an du semestre (une semaine autour se calcule sans risque)."""
+    marge = dt.timedelta(days=ECART_MAX_JOURS)
+    return semestre.date_debut - marge <= date <= semestre.date_fin + marge
+
+
 def _date_par_defaut(
     date: dt.date | None, semestre: ResumeSemestre, aujourdhui: dt.date | None
 ) -> dt.date:
     if date is not None:
+        if not date_admissible(date, semestre):
+            raise ErreurDonneesInvalides(
+                f"La date du {date:%d/%m/%Y} est trop loin du {semestre.libelle.lower()} "
+                f"({semestre.date_debut:%d/%m/%Y} au {semestre.date_fin:%d/%m/%Y})."
+            )
         return date
     aujourdhui = aujourdhui or dt.date.today()
     if semestre.date_debut <= aujourdhui <= semestre.date_fin:

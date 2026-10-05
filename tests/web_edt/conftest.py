@@ -31,6 +31,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
+from edt.services.emploi_du_temps import memoire, prechauffage
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -45,6 +46,12 @@ class VersionGeneree:
     annee_scolaire_id: int
     calcul_id: int
     version_id: int
+
+
+@pytest.fixture(autouse=True)
+def sans_prechauffage(monkeypatch) -> None:
+    """Pas de fil de préchauffage dans les tests : il survivrait à la base temporaire."""
+    monkeypatch.setattr(prechauffage, "ACTIF", False)
 
 
 @pytest.fixture
@@ -89,6 +96,13 @@ class FauxVerificateur:
     pre_verifications: list[Anomalie] = field(default_factory=list)
     indicateurs: dict | None = field(default_factory=lambda: dict(INDICATEURS))
     appels: list[tuple] = field(default_factory=list)
+    contraintes_modification: object = None
+
+    def __setattr__(self, nom, valeur) -> None:
+        # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
+        # mémoire des écrans pour que le prochain affichage le voie.
+        super().__setattr__(nom, valeur)
+        memoire.oublier()
 
     def module(self) -> types.ModuleType:
         module = types.ModuleType("edt.services.verification")
@@ -103,9 +117,16 @@ class FauxVerificateur:
             self.appels.append(("occurrences", version_id, date_debut, date_fin))
             return FauxRapport(tuple(self.datees))
 
-        def verifier_modification(session, version_id, seance_id, jour, debut, fin, salle_id):
+        def verifier_modification(
+            session, version_id, seance_id, jour, debut, fin, salle_id, *, contraintes_actives=None
+        ):
             self.appels.append(("modification", seance_id, jour, debut, fin, salle_id))
-            return FauxRapport(tuple(self.modification))
+            self.contraintes_modification = contraintes_actives
+            # Comme le vrai : seules les contraintes actives sont vérifiées.
+            actives = None if contraintes_actives is None else set(contraintes_actives)
+            return FauxRapport(
+                tuple(a for a in self.modification if actives is None or str(a.code) in actives)
+            )
 
         module.verifier_version = verifier_version
         module.verifier_occurrences_version = verifier_occurrences_version
@@ -121,6 +142,7 @@ class FauxVerificateur:
 @pytest.fixture
 def faux_verificateur(monkeypatch) -> FauxVerificateur:
     """Installe un faux vérificateur et de fausses pré-vérifications, vides par défaut."""
+    memoire.oublier()
     faux = FauxVerificateur()
     monkeypatch.setitem(sys.modules, "edt.services.verification", faux.module())
     monkeypatch.setattr(
@@ -132,6 +154,7 @@ def faux_verificateur(monkeypatch) -> FauxVerificateur:
 @pytest.fixture
 def sans_verificateur(monkeypatch) -> None:
     """Fait comme si le vérificateur n'était pas livré (le raccord doit le dire, pas planter)."""
+    memoire.oublier()
     monkeypatch.setitem(sys.modules, "edt.services.verification", None)
 
 

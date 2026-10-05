@@ -25,7 +25,9 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/versions.py` | semestres, versions, historique, activation, suppression |
 | `src/edt/services/emploi_du_temps/calculs.py` | préparation, lancement et résultat d'un calcul |
 | `src/edt/services/emploi_du_temps/anomalies.py` | la liste « À traiter » |
-| `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter », mémorisé tant que la base ne change pas |
+| `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter » (somme des `ATraiter.total`) |
+| `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
+| `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | l'état de l'établissement pour l'accueil |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -202,15 +204,27 @@ l'anomalie (à défaut, le premier groupe de la séance), avec la séance mise
 en évidence. Puis les séances « à programmer » avec leur raison (le
 commentaire de l'occurrence, sinon une phrase par défaut).
 
-`GET /a-traiter/compteur` rend le nombre d'erreurs et d'avertissements
-plus les séances à programmer, pour un badge dans le menu (voir « Mise en
-page commune »). Ce nombre est **mémorisé** (`compteur.py`) avec une
-empreinte de la base : versions actives, agrégats SQL sur leurs séances et
-occurrences, taille et date du fichier SQLite et de son journal. Toute
-écriture validée l'invalide ; il est recalculé au plus une fois par
-changement (environ 0,6 s sur l'établissement complet), puis servi en
-quelques millisecondes. Cette mémoire n'est qu'une copie d'un résultat
-recalculable depuis la base, partagée par tous les utilisateurs.
+**Nombre de points à traiter** : une seule définition, `ATraiter.total`,
+reprise par la page, la pastille de l'onglet (`GET /a-traiter/compteur`,
+somme des versions actives) et l'accueil (version active du semestre du
+jour). Il compte les erreurs et avertissements des contraintes actives, sur
+la semaine type et sur les séances datées, et chaque séance « à programmer »
+**une fois** (l'avertissement « reste à programmer » que le vérificateur
+émet pour elle n'est pas ajouté).
+
+**Contraintes décochées lors du calcul** de la version : la vérification
+porte sur toutes les règles, mais les écarts aux règles décochées sont
+listés à part (« Écarts aux règles décochées lors du calcul ») et ne
+comptent ni comme conflits ni comme points à traiter. Une retouche applique
+les mêmes règles que le calcul (`raccords.contraintes_actives_de`, passées
+au vérificateur), comme l'instanciation des séances datées.
+
+**Séances datées importées** (origine « import », version de référence) :
+elles ne se recalculent jamais depuis la semaine type, ce qui les
+doublerait. Le bouton « recalculer » est remplacé par une explication, le
+recalcul est refusé avant toute écriture (`ErreurRegleMetier`), et un
+déplacement dans la semaine type d'une telle version est enregistré avec la
+remarque que les séances datées n'ont pas été recalculées.
 
 ## Accueil
 
@@ -256,7 +270,42 @@ premier semestre), version de référence active, serveur local :
 
 L'essentiel est la vérification de la semaine type (environ 0,5 s, dont le
 chargement de l'instantané par le socle). Sans vérification, une grille se
-construit en 5 à 40 ms. La semaine datée ne vérifie que la semaine affichée.
+construit en 5 à 40 ms.
+
+### Mémoire et préchauffage
+
+Les écrans de consultation passent par `memoire.memoriser` : vérification de
+la semaine type et des séances datées d'une version, pré-vérifications et
+récapitulatif d'un semestre sont gardés avec une **empreinte** de la base
+(taille et date du fichier SQLite et de son journal, versions actives,
+agrégats SQL sur leurs séances et occurrences). Toute écriture validée
+l'invalide ; le résultat est recalculé une fois, puis servi depuis la
+mémoire. Une semaine datée prend ses anomalies dans la vérification de tout
+le semestre (une seule vérification datée par version). Les modifications
+vérifient toujours sans mémoire, dans leur transaction.
+
+Après un calcul réussi (dès que son écran l'affiche) ou l'activation d'une
+version, `prechauffage.lancer` refait ces calculs dans un fil d'arrière-plan
+unique : les écrans suivants sont servis tout de suite.
+
+Mesures sur le jeu grand après un calcul en ligne de commande (base de
+départ identique, serveur local) :
+
+| Page | Avant | Après, avec préchauffage | Après, 1er affichage sans préchauffage | Après, affichages suivants |
+|---|---|---|---|---|
+| accueil | 0,62 à 1,12 s | 0,06 s | 2,09 s | 0,04 s |
+| « Générer » | 1,60 à 2,18 s | 0,04 s | 1,60 s | 0,02 s |
+| « À traiter » | 2,55 à 2,62 s | 0,05 s | 0,05 s | 0,03 s |
+| pastille « À traiter » | 1,96 s puis 0,006 s | 0,009 s | 0,03 s | 0,008 s |
+| emploi du temps d'une classe | 0,74 à 1,02 s | 0,18 s | 0,16 s | 0,08 s |
+| emploi du temps d'un enseignant / d'une salle | 0,58 à 1,05 s | 0,04 à 0,08 s | 0,04 à 0,08 s | 0,02 à 0,04 s |
+| semaine datée d'une classe | 0,79 à 1,19 s | 0,06 s | 0,07 s | 0,06 s |
+
+Le premier affichage après une écriture faite hors de ces écrans (calcul en
+ligne de commande, import, écrans de données) paie encore le calcul : deux
+chargements de l'instantané, dont l'essentiel est le dépliage du socle
+(`domaine.depliage.semaines_ouvertes`, environ 1,5 million d'appels sur
+l'établissement complet), et la vérification datée du semestre.
 
 ## Disposition des blocs
 
