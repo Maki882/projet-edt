@@ -90,9 +90,9 @@ GENRES_SALLE: dict[str, GenreSalle] = {
     "cours": GenreSalle("COURS", ("VIDEOPROJ",), (24, 36, 40, 40, 44, 48), (1, 2, 3, 4)),
     "informatique": GenreSalle("INFO", ("ORDINATEURS", "VIDEOPROJ"), (20, 24, 24, 36), (2, 3)),
     "electronique": GenreSalle(
-        "TP", ("ELECTRONIQUE", "ORDINATEURS", "VIDEOPROJ"), (20, 24), (1, -1)
+        "TP", ("ELECTRONIQUE", "ORDINATEURS", "VIDEOPROJ"), (20, 24), (0, 1)
     ),
-    "physique": GenreSalle("LABO", ("LABORATOIRE", "VIDEOPROJ"), (20, 24), (1, -1)),
+    "physique": GenreSalle("LABO", ("LABORATOIRE", "VIDEOPROJ"), (20, 24), (0, 1)),
     "langues": GenreSalle("LANGUES", ("VIDEOPROJ",), (36, 40), (2, 3), option="VISIO"),
     "projet": GenreSalle("PROJET", ("VIDEOPROJ", "VISIO"), (36, 40, 48), (3, 4)),
 }
