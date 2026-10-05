@@ -92,3 +92,37 @@ def test_avec_le_vrai_verificateur(version_generee, client):
         assert f"Erreurs : règles non respectées ({verification.nb_erreurs})" in page
     else:
         assert "Aucune anomalie dans la semaine type" in page
+
+
+def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
+    seances_datees, client, faux_verificateur, monkeypatch
+):
+    from edt.services.emploi_du_temps import anomalies as service_anomalies
+    from edt.services.emploi_du_temps import compteur
+
+    compteur.oublier()
+    appels = []
+    original = service_anomalies.a_traiter
+
+    def a_traiter_compte(session, semestre_id=None):
+        appels.append(semestre_id)
+        return original(session, semestre_id)
+
+    monkeypatch.setattr(service_anomalies, "a_traiter", a_traiter_compte)
+    faux_verificateur.hebdo = [Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "Salle prise deux fois.")]
+
+    for _ in range(3):
+        assert ">1</span>" in client.get("/a-traiter/compteur").text
+    assert len(appels) == 1  # calculé une seule fois tant que rien ne change
+
+    with session_base() as session:
+        occurrence = session.scalar(select(m.Occurrence).limit(1))
+        occurrence.statut = StatutOccurrence.A_PROGRAMMER  # une occurrence change
+    assert ">2</span>" in client.get("/a-traiter/compteur").text
+    assert len(appels) == 2
+
+    with session_base() as session:
+        seance = session.scalar(select(m.SeanceHebdo).limit(1))
+        seance.verrou = not seance.verrou  # une séance change
+    client.get("/a-traiter/compteur")
+    assert len(appels) == 3

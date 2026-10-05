@@ -25,11 +25,12 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/versions.py` | semestres, versions, historique, activation, suppression |
 | `src/edt/services/emploi_du_temps/calculs.py` | préparation, lancement et résultat d'un calcul |
 | `src/edt/services/emploi_du_temps/anomalies.py` | la liste « À traiter » |
+| `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter », mémorisé tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | l'état de l'établissement pour l'accueil |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
 | `src/edt/web/routes/a_traiter.py` | onglet « À traiter » (`/a-traiter`) |
-| `src/edt/web/routes/accueil.py` | accueil enrichi (`/`) ; `/sante` inchangée |
+| `src/edt/web/routes/accueil.py` | accueil enrichi (`/`) ; `/sante` (seule la clé `base.ecarts_schema` ajoutée) |
 | `src/edt/web/templates/edt/` | gabarits des trois onglets ; `_ui.html` : macros partagées |
 | `src/edt/web/static/css/edt.css`, `static/js/edt.js` | grille, panneau, impression ; recherche rapide, envoi automatique |
 | `tests/web_edt/` | tests de ces écrans et services |
@@ -91,8 +92,15 @@ version active par défaut), au plus un de `groupe_id`, `enseignant_id`,
 ou `date`), `affichage` (`semaine` ou `jour`), `date` (couche datée), `jour`
 (semaine type, affichage jour), `seance` (`h<id>` séance hebdomadaire,
 `o<id>` occurrence) pour mettre une séance en évidence et ouvrir son
-panneau. Un lien vers un groupe d'une autre année affiche le groupe par
-défaut avec un message, pas une erreur.
+panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
+
+- **Ouverture** : sans cible dans l'adresse, la page s'ouvre sur le
+  dernier groupe, enseignant ou salle consulté (cookie du navigateur
+  `edt_derniere_cible`, rappelé sous le titre), sinon sur la **première
+  classe** de l'année (`vues.cible_par_defaut` : classe, puis demi-groupe,
+  puis promotion). Une cible retenue qui n'existe plus ici est oubliée sans
+  bruit ; un lien explicite vers un groupe d'une autre année affiche la
+  première classe avec un message, pas une erreur.
 
 - **Sélecteurs** : semestre, version, « pour qui » (groupes par nature,
   enseignants, salles par campus) avec une **recherche rapide** qui filtre
@@ -102,10 +110,21 @@ défaut avec un message, pas une erreur.
   vacances grisés avec leur libellé, séances annulées barrées, déplacées en
   pointillés, séances « à programmer » listées sous la grille) ; jour
   (semaine type ou date).
-- **Groupes liés** : l'emploi du temps d'un groupe montre les séances des
-  groupes en conflit avec lui (`conflits_groupes`). Celles de ses
-  ascendants le concernent en entier ; celles de ses descendants et des
-  groupes chevauchants sont marquées « une partie du groupe ».
+- **Vue d'un groupe** (`vues.Perimetre`) :
+  - **restreinte** : les séances du groupe et de ses ascendants, que suivent
+    tous ses étudiants. C'est la vue par défaut d'une promotion, d'une
+    classe, d'un groupe transverse ou tiers-temps : sur l'établissement
+    complet, la vue étendue d'une promotion empile plus de mille blocs ;
+  - **étendue** (`etendu=1`) : en plus, les séances de ses descendants
+    (classes, demi-groupes) et des groupes qui partagent une partie de ses
+    étudiants (`conflits_groupes` : langues, options, tiers-temps),
+    hachurées « une partie du groupe ». C'est la vue par défaut d'un
+    demi-groupe : tout ce que suivent ses étudiants ;
+  - un **bandeau** au-dessus de la grille dit ce qui est affiché, ce qui ne
+    l'est pas (groupes laissés de côté et nombre de séances, par deux
+    comptages SQL) et propose la bascule ; la navigation garde le choix.
+  - Pour un enseignant ou une salle, le bandeau rappelle que toutes leurs
+    séances sont affichées.
 - **Bloc** : horaire, matière (et précision), type, groupes, enseignants,
   salle ; couleur stable par matière (CRC32 du code, 12 teintes) et liseré
   de la couleur du type de séance ; cadenas si verrouillée ; marque « ! »
@@ -157,18 +176,33 @@ commentaire de l'occurrence, sinon une phrase par défaut).
 
 `GET /a-traiter/compteur` rend le nombre d'erreurs et d'avertissements
 plus les séances à programmer, pour un badge dans le menu (voir « Mise en
-page commune »).
+page commune »). Ce nombre est **mémorisé** (`compteur.py`) avec une
+empreinte de la base : versions actives, agrégats SQL sur leurs séances et
+occurrences, taille et date du fichier SQLite et de son journal. Toute
+écriture validée l'invalide ; il est recalculé au plus une fois par
+changement (environ 0,6 s sur l'établissement complet), puis servi en
+quelques millisecondes. Cette mémoire n'est qu'une copie d'un résultat
+recalculable depuis la base, partagée par tous les utilisateurs.
 
 ## Accueil
 
 `GET /` garde l'état de la base et les compteurs, et ajoute pour le
-semestre du jour : la **prochaine étape** en une phrase avec son lien
-(saisir les données, suivre le calcul en cours, vérifier puis générer,
-relire un calcul qui a échoué, traiter les anomalies, consulter), la
-version active, les quatre indicateurs (pourcentage de séances placées,
+semestre du jour : la **prochaine étape** en une phrase avec son écran,
+la version active, les quatre indicateurs (pourcentage de séances placées,
 nombre de conflits, taux d'utilisation des salles, changements de campus)
-et le nombre de points à traiter. Pour l'étape « saisir », le lien est le
-premier écran de saisie présent dans le menu (`/besoins`, `/salles`...).
+et le nombre de points à traiter. Étapes et écrans :
+
+| Situation | Écran principal | Autres chemins |
+|---|---|---|
+| base vide | `/jeux` « Charger un établissement fictif » | `/import`, `/salles` |
+| salles ou groupes manquants | `/salles` ou `/groupes` | `/import` |
+| calcul en cours | `/calculs/{id}` | |
+| aucun besoin pour le semestre | `/besoins` | `/import` |
+| pas de version, dernier calcul en échec | `/calculs/{id}` | |
+| pas de version | `/calculs?semestre_id=` | |
+| anomalies ou séances à programmer | `/a-traiter?semestre_id=` | |
+| sinon | `/emploi-du-temps?version_id=` | |
+
 Une base au schéma périmé affiche « Le schéma de la base ne correspond
 plus à l'application », la liste des écarts et la marche à suivre
 (`python -m edt init-db --reset`). La route `/sante` n'a reçu qu'une clé :
@@ -178,11 +212,23 @@ plus à l'application », la liste des écarts et la marche à suivre
 
 Mesurés sur le jeu « grand » (`python -m edt jeu --taille grand --graine 0
 --reference` : 99 salles, 136 enseignants, 229 groupes, 595 séances au
-premier semestre) : chaque page de grille, « À traiter » et l'accueil
-répondent en moins d'une seconde ; l'essentiel est la vérification de la
-semaine type (environ 0,5 s, dont le chargement de l'instantané). Sans
-vérification, une grille se construit en 5 à 40 ms. La semaine datée ne
-vérifie que la semaine affichée.
+premier semestre), version de référence active, serveur local :
+
+| Page | Temps |
+|---|---|
+| `/emploi-du-temps` (ouverture : classe A1-G1, 12 blocs) | 0,9 à 1,0 s |
+| classe en semaine type / en jour / vue étendue (36 blocs) | 0,91 / 0,97 / 0,92 s |
+| demi-groupe en semaine type / en jour | 0,59 / 1,0 s |
+| enseignant en semaine type / en jour | 1,0 / 0,91 s |
+| salle en semaine type / en jour | 0,81 / 0,74 s |
+| `/a-traiter` | 0,90 s |
+| `/versions` | 0,02 s |
+| accueil | 0,68 à 0,97 s |
+| `/a-traiter/compteur` (mémorisé / recalcul après une modification) | 0,005 / 0,59 s |
+
+L'essentiel est la vérification de la semaine type (environ 0,5 s, dont le
+chargement de l'instantané par le socle). Sans vérification, une grille se
+construit en 5 à 40 ms. La semaine datée ne vérifie que la semaine affichée.
 
 ## Disposition des blocs
 
@@ -284,8 +330,10 @@ réutiliser `disposer` : il ne connaît que des colonnes et des minutes.
 
 ## Mise en page commune
 
-En attendant la nouvelle mise en page (blocs `styles` et `scripts`), chaque
-gabarit de ces écrans charge `edt.css` en tête de son bloc `contenu` et
-`edt.js` (en `defer`) à la fin, par les macros `edt.ressources()` et
-`edt.script()` de `templates/edt/_ui.html` : il suffira de déplacer ces deux
-appels dans les blocs dédiés.
+Chaque gabarit de ces écrans charge `edt.css` dans le bloc `styles` et
+`edt.js` (en `defer`) dans le bloc `scripts` de `base.html`, par les macros
+`edt.ressources()` et `edt.script()` de `templates/edt/_ui.html`. Le badge
+de l'onglet « À traiter » s'obtient en ajoutant dans `base.html`, après le
+titre de l'onglet :
+`{% if onglet.titre == "À traiter" %}<span hx-get="/a-traiter/compteur"
+hx-trigger="load" hx-swap="outerHTML"></span>{% endif %}`.

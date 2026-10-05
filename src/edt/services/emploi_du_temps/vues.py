@@ -32,7 +32,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from edt.db import modeles as m
@@ -256,6 +256,34 @@ class OptionCible:
 
 
 @dataclass(frozen=True)
+class Perimetre:
+    """Ce que montre (et ne montre pas) l'emploi du temps d'un groupe.
+
+    - vue **restreinte** : les séances du groupe et de ses ascendants, que
+      tous ses étudiants suivent ;
+    - vue **étendue** : en plus, celles de ses descendants (classes,
+      demi-groupes) et des groupes qui partagent une partie de ses étudiants
+      (langues, options, tiers-temps), marquées « une partie du groupe ».
+
+    `nb_masquees` : séances de la période laissées de côté par la vue restreinte.
+    """
+
+    groupe: str
+    nature: NatureGroupe
+    etendu: bool
+    etendu_par_defaut: bool
+    ascendants: tuple[str, ...]
+    descendants: tuple[str, ...]
+    autres: tuple[str, ...]
+    nb_masquees: int = 0
+
+    @property
+    def extensible(self) -> bool:
+        """Vrai si la vue étendue montrerait d'autres groupes que la vue restreinte."""
+        return bool(self.descendants or self.autres)
+
+
+@dataclass(frozen=True)
 class VueEmploiDuTemps:
     """Tout ce qu'il faut pour afficher une grille."""
 
@@ -278,6 +306,7 @@ class VueEmploiDuTemps:
     groupes_lies: tuple[str, ...]
     occurrences_disponibles: bool
     nb_semaines: int
+    perimetre: Perimetre | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -330,8 +359,18 @@ def options_cibles(session: Session, annee_scolaire_id: int) -> tuple[OptionCibl
     return tuple(options)
 
 
+PREFERENCE_PAR_DEFAUT = (
+    NatureGroupe.CLASSE,
+    NatureGroupe.DEMI_GROUPE,
+    NatureGroupe.PROMOTION,
+    NatureGroupe.TRANSVERSE,
+    NatureGroupe.TIERS_TEMPS,
+)
+"""Ordre de préférence pour ouvrir la page : une classe a un emploi du temps lisible."""
+
+
 def cible_par_defaut(session: Session, annee_scolaire_id: int) -> Cible | None:
-    """Première promotion de l'année (sinon premier groupe), pour ouvrir la page sur quelque chose."""
+    """Première classe de l'année (sinon un demi-groupe, une promotion...), ou `None`."""
     groupes = session.execute(
         select(m.Groupe.id, m.Groupe.nature, m.Groupe.code).where(
             m.Groupe.annee_scolaire_id == annee_scolaire_id
@@ -339,10 +378,11 @@ def cible_par_defaut(session: Session, annee_scolaire_id: int) -> Cible | None:
     ).all()
     if not groupes:
         return None
-    promotions = sorted(
-        (code, i) for i, nature, code in groupes if nature == NatureGroupe.PROMOTION
+    rang = {nature: indice for indice, nature in enumerate(PREFERENCE_PAR_DEFAUT)}
+    _, _, choix = min(
+        (rang.get(NatureGroupe(nature), len(rang)), code, identifiant)
+        for identifiant, nature, code in groupes
     )
-    choix = promotions[0][1] if promotions else sorted((code, i) for i, _, code in groupes)[0][1]
     return Cible(NatureCible.GROUPE, choix)
 
 
@@ -362,6 +402,7 @@ def construire_vue(
     jour: int | None = None,
     aujourdhui: dt.date | None = None,
     verifier: bool = True,
+    etendu: bool | None = None,
 ) -> VueEmploiDuTemps:
     """Séances, colonnes, disposition et anomalies d'une vue (voir l'en-tête du module).
 
@@ -369,7 +410,10 @@ def construire_vue(
       affichage jour) ; par défaut aujourd'hui s'il tombe dans le semestre,
       sinon le premier jour du semestre ;
     - `jour` : en semaine type et affichage jour, le jour voulu (0 = lundi) ;
-    - `verifier` : demander les anomalies au vérificateur (marques sur les blocs).
+    - `verifier` : demander les anomalies au vérificateur (marques sur les blocs) ;
+    - `etendu` : pour un groupe, montrer aussi les séances des groupes qui ne
+      concernent qu'une partie de ses étudiants (`None` : selon sa nature,
+      étendu seulement pour un demi-groupe ; voir `Perimetre`).
     """
     version = lire_version(session, version_id)
     semestre = exiger_semestre(session, version.semestre_id)
@@ -378,7 +422,7 @@ def construire_vue(
     annee_id = session.scalar(
         select(m.Semestre.annee_scolaire_id).where(m.Semestre.id == semestre.id)
     )
-    contexte_groupes = _ContexteGroupes.charger(session, annee_id, cible)
+    contexte_groupes = _ContexteGroupes.charger(session, annee_id, cible, etendu)
     titre = _titre_cible(session, cible, annee_id)
 
     occurrences_disponibles = _a_des_occurrences(session, version.id)
@@ -441,6 +485,20 @@ def construire_vue(
                 blocs, controle.verification.anomalies, cible, couche
             )
 
+    perimetre = None
+    if contexte_groupes is not None:
+        masquees = 0
+        if not contexte_groupes.etendu and contexte_groupes.extensible:
+            masquees = _compter_masquees(
+                session,
+                version.id,
+                contexte_groupes,
+                couche=couche,
+                jour=jour if couche is Couche.HEBDO and affichage is Affichage.JOUR else None,
+                periode=periode,
+            )
+        perimetre = contexte_groupes.perimetre(masquees)
+
     disposition = disposer(
         (Plage(b.cle, b.jour, b.debut, b.fin) for b in blocs),
         parametres.ouverture_min,
@@ -474,6 +532,7 @@ def construire_vue(
         groupes_lies=contexte_groupes.codes_lies if contexte_groupes else (),
         occurrences_disponibles=occurrences_disponibles,
         nb_semaines=len(semaines),
+        perimetre=perimetre,
     )
 
 
@@ -506,28 +565,50 @@ def bloc_occurrence(session: Session, occurrence_id: int) -> Bloc:
 # --------------------------------------------------------------------------- #
 
 
+ETENDU_PAR_DEFAUT = frozenset({NatureGroupe.DEMI_GROUPE})
+"""Natures dont l'emploi du temps montre par défaut tout ce que suivent leurs étudiants.
+
+Pour un demi-groupe, c'est lisible (ses séances, celles de sa classe, de sa
+promotion, de ses langues). Pour une promotion ou une classe, la vue étendue
+empile les séances de toutes ses classes et demi-groupes : elle est proposée
+en option.
+"""
+
+
 @dataclass(frozen=True)
 class _ContexteGroupes:
-    """Pour une cible « groupe » : groupes affichés et groupes qui concernent tout le groupe."""
+    """Pour une cible « groupe » : groupes affichés, groupes qui concernent tout le groupe.
+
+    - `entiers` : le groupe et ses ascendants (tous ses étudiants y sont) ;
+    - `lies` : le groupe et tous les groupes en conflit avec lui (`conflits_groupes`) ;
+    - `vus` : `lies` en vue étendue, `entiers` sinon.
+    """
 
     groupe_id: int
+    nature: NatureGroupe
+    etendu: bool
+    etendu_par_defaut: bool
     vus: frozenset[int]
     entiers: frozenset[int]
+    lies: frozenset[int]
+    descendants: frozenset[int]
+    codes: dict[int, str]
     codes_lies: tuple[str, ...]
 
     @classmethod
     def charger(
-        cls, session: Session, annee_id: int, cible: Cible | None
+        cls, session: Session, annee_id: int, cible: Cible | None, etendu: bool | None = None
     ) -> _ContexteGroupes | None:
         if cible is None or cible.nature is not NatureCible.GROUPE:
             return None
         lignes = session.execute(
-            select(m.Groupe.id, m.Groupe.parent_id, m.Groupe.code).where(
+            select(m.Groupe.id, m.Groupe.parent_id, m.Groupe.code, m.Groupe.nature).where(
                 m.Groupe.annee_scolaire_id == annee_id
             )
         ).all()
-        parents = {identifiant: parent for identifiant, parent, _ in lignes}
-        codes = {identifiant: code for identifiant, _, code in lignes}
+        parents = {identifiant: parent for identifiant, parent, _, _ in lignes}
+        codes = {identifiant: code for identifiant, _, code, _ in lignes}
+        natures = {identifiant: NatureGroupe(nature) for identifiant, _, _, nature in lignes}
         if cible.id not in parents:
             raise ErreurIntrouvable(
                 f"Le groupe n° {cible.id} n'existe pas pour l'année de ce semestre."
@@ -537,17 +618,60 @@ class _ContexteGroupes:
         while courant is not None and courant not in ascendants:
             ascendants.add(courant)
             courant = parents.get(courant)
+        enfants: dict[int, list[int]] = {}
+        for groupe, parent in parents.items():
+            if parent is not None:
+                enfants.setdefault(parent, []).append(groupe)
+        descendants: set[int] = set()
+        pile = [cible.id]
+        while pile:
+            for enfant in enfants.get(pile.pop(), ()):
+                if enfant not in descendants:
+                    descendants.add(enfant)
+                    pile.append(enfant)
         lies = {cible.id}
         for a, b in conflits_groupes(session, annee_id):
             if a == cible.id:
                 lies.add(b)
             elif b == cible.id:
                 lies.add(a)
+        nature = natures[cible.id]
+        par_defaut = nature in ETENDU_PAR_DEFAUT
+        choisi = par_defaut if etendu is None else etendu
+        entiers = frozenset({cible.id} | ascendants)
         return cls(
             groupe_id=cible.id,
-            vus=frozenset(lies),
-            entiers=frozenset({cible.id} | ascendants),
+            nature=nature,
+            etendu=choisi,
+            etendu_par_defaut=par_defaut,
+            vus=frozenset(lies) if choisi else entiers,
+            entiers=entiers,
+            lies=frozenset(lies),
+            descendants=frozenset(descendants) & frozenset(lies),
+            codes=codes,
             codes_lies=tuple(sorted(codes[g] for g in lies if g != cible.id)),
+        )
+
+    @property
+    def extensible(self) -> bool:
+        """Vrai si des groupes liés ne concernent qu'une partie du groupe."""
+        return bool(self.lies - self.entiers)
+
+    def perimetre(self, nb_masquees: int) -> Perimetre:
+        """Description lisible de ce que la vue montre et laisse de côté."""
+
+        def tries(groupes) -> tuple[str, ...]:
+            return tuple(sorted(self.codes[g] for g in groupes))
+
+        return Perimetre(
+            groupe=self.codes[self.groupe_id],
+            nature=self.nature,
+            etendu=self.etendu,
+            etendu_par_defaut=self.etendu_par_defaut,
+            ascendants=tries(self.entiers - {self.groupe_id}),
+            descendants=tries(self.descendants),
+            autres=tries(self.lies - self.entiers - self.descendants),
+            nb_masquees=nb_masquees,
         )
 
     def partielle(self, groupe_ids: Iterable[int]) -> bool:
@@ -603,6 +727,40 @@ def _filtre_cible(colonne_besoin, colonne_salle, cible: Cible, groupes: _Context
     return colonne_besoin.in_(
         select(m.besoin_groupe.c.besoin_id).where(m.besoin_groupe.c.groupe_id.in_(groupes.vus))
     )
+
+
+def _compter_masquees(
+    session: Session,
+    version_id: int,
+    groupes: _ContexteGroupes,
+    *,
+    couche: Couche,
+    jour: int | None,
+    periode: tuple[dt.date, dt.date] | None,
+) -> int:
+    """Séances de la période qu'ajouterait la vue étendue (deux comptages SQL, sans chargement)."""
+
+    def compter(ensemble: frozenset[int]) -> int:
+        besoins = select(m.besoin_groupe.c.besoin_id).where(
+            m.besoin_groupe.c.groupe_id.in_(ensemble)
+        )
+        if couche is Couche.HEBDO:
+            requete = select(func.count(m.SeanceHebdo.id)).where(
+                m.SeanceHebdo.version_id == version_id, m.SeanceHebdo.besoin_id.in_(besoins)
+            )
+            if jour is not None:
+                requete = requete.where(m.SeanceHebdo.jour == jour)
+        else:
+            requete = select(func.count(m.Occurrence.id)).where(
+                m.Occurrence.version_id == version_id, m.Occurrence.besoin_id.in_(besoins)
+            )
+            if periode is not None:
+                requete = requete.where(
+                    m.Occurrence.date >= periode[0], m.Occurrence.date <= periode[1]
+                )
+        return session.scalar(requete) or 0
+
+    return compter(groupes.lies) - compter(groupes.entiers)
 
 
 def _blocs_hebdo(

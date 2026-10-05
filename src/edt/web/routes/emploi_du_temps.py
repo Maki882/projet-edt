@@ -22,6 +22,7 @@ lot, aux adresses `/export/emploi-du-temps.csv` et `.ics`.
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from typing import Annotated
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -36,12 +37,17 @@ from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rediriger, rendre
 from edt.web.menu import SECTION_EMPLOI_DU_TEMPS, EntreeMenu
 
+journal = logging.getLogger(__name__)
+
 routeur = APIRouter(prefix="/emploi-du-temps")
 MENU = [
     EntreeMenu("Emploi du temps", "/emploi-du-temps", section=SECTION_EMPLOI_DU_TEMPS, ordre=300)
 ]
 
 ADRESSE = "/emploi-du-temps"
+COOKIE_CIBLE = "edt_derniere_cible"
+"""Cookie du navigateur qui retient le dernier groupe, enseignant ou salle consulté."""
+DUREE_COOKIE_S = 365 * 24 * 3600
 NB_ANOMALIES_DANS_MESSAGE = 4
 
 
@@ -75,7 +81,22 @@ def _parametres(vue: vues.VueEmploiDuTemps) -> dict[str, str]:
         parametres["date"] = vue.date.isoformat()
     if vue.couche is Couche.HEBDO and vue.affichage is Affichage.JOUR and vue.jour is not None:
         parametres["jour"] = str(vue.jour)
+    perimetre = vue.perimetre
+    if perimetre is not None and perimetre.etendu != perimetre.etendu_par_defaut:
+        parametres["etendu"] = "1" if perimetre.etendu else "0"
     return parametres
+
+
+def _cible_retenue(request: Request) -> Cible | None:
+    """Dernière cible consultée, lue dans le cookie (ignorée, et journalisée, si illisible)."""
+    texte = request.cookies.get(COOKIE_CIBLE)
+    if not texte:
+        return None
+    try:
+        return Cible.lire(texte)
+    except ErreurDonneesInvalides:
+        journal.info("Cookie de dernière cible illisible, ignoré : %r", texte[:50])
+        return None
 
 
 def _retour(retour: str | None, defaut: str = ADRESSE) -> str:
@@ -171,8 +192,13 @@ def page(
     date: dt.date | None = None,
     jour: int | None = None,
     seance: str | None = None,
+    etendu: bool | None = None,
 ):
-    """L'emploi du temps choisi, et le panneau d'une séance si `seance` est donné."""
+    """L'emploi du temps choisi, et le panneau d'une séance si `seance` est donné.
+
+    Sans cible dans l'adresse, la page s'ouvre sur la dernière cible consultée
+    (cookie du navigateur), sinon sur la première classe de l'année.
+    """
     semestre, version = _resolution(session, semestre_id, version_id)
     contexte: dict = {
         "fmt": presentation,
@@ -189,10 +215,14 @@ def page(
     choisie = Cible.depuis(
         groupe_id=groupe_id, enseignant_id=enseignant_id, salle_id=salle_id, texte=cible
     )
+    origine = "demandee"
+    if choisie is None:
+        choisie = _cible_retenue(request)
+        origine = "retenue" if choisie is not None else "defaut"
     if choisie is None:
         choisie = vues.cible_par_defaut(session, annee_id)
 
-    def construire(cible_vue):
+    def construire(cible_vue, etendu_vue):
         return vues.construire_vue(
             session,
             version_id=version.id,
@@ -201,19 +231,27 @@ def page(
             affichage=affichage,
             date=date,
             jour=jour,
+            etendu=etendu_vue,
         )
 
     try:
-        vue = construire(choisie)
+        vue = construire(choisie, etendu)
     except ErreurIntrouvable as erreur:
-        # Lien ancien ou changement de semestre sans JavaScript : on montre le groupe par défaut.
+        # Lien ancien, cible retenue d'une autre année, ou changement de semestre sans
+        # JavaScript : on montre la cible par défaut.
         defaut = vues.cible_par_defaut(session, annee_id)
         if choisie == defaut:
             raise
-        messages.append(
-            Message(f"{erreur.message} Affichage du premier groupe à la place.", "attention")
-        )
-        vue = construire(defaut)
+        if origine == "demandee":
+            messages.append(
+                Message(
+                    f"{erreur.message} Affichage de la première classe à la place.", "attention"
+                )
+            )
+        else:
+            journal.info("Dernière cible consultée introuvable ici (%s) : cible par défaut", erreur)
+        origine = "defaut"
+        vue = construire(defaut, None)
         seance = None
     url_vue = UrlVue(_parametres(vue))
     panneau = None
@@ -237,8 +275,14 @@ def page(
         versions_semestre=versions.lister_versions(session, semestre.id),
         export=urlencode(export),
         JOURS=JOURS,
+        origine_cible=origine,
     )
-    return rendre(request, "edt/emploi_du_temps.html", contexte, messages=messages)
+    reponse = rendre(request, "edt/emploi_du_temps.html", contexte, messages=messages)
+    if vue.cible is not None:
+        reponse.set_cookie(
+            COOKIE_CIBLE, vue.cible.valeur, max_age=DUREE_COOKIE_S, httponly=True, samesite="lax"
+        )
+    return reponse
 
 
 def _panneau(session, seance: str, vue: vues.VueEmploiDuTemps) -> dict:
