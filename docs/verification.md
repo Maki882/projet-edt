@@ -9,7 +9,9 @@ entrées invalides, identifiant dupliqué, planning vide) sont repris ici,
 transposés au modèle du semestre (`Instantane`), et étendus à tout le
 catalogue des contraintes.
 
-Code : `src/edt/verification/`. Tests : `tests/verification/`.
+Code : `src/edt/verification/` (vérificateur pur), `src/edt/services/verification.py`
+(service sur la base), `src/edt/commandes/verification.py` (commande
+`python -m edt verifier`). Tests : `tests/verification/`.
 
 ## Rôle
 
@@ -88,9 +90,9 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 | `JOURS` | Le jour a au moins un créneau dans la grille ; le samedi est réservé aux besoins `samedi_autorise`. | Erreur ; Information si imposée |
 | `ACCESSIBILITE` | Si le besoin requiert l'accessibilité, `Instantane.salle_accessible(salle)` est vrai. | Erreur |
 | `CAPACITE` | Capacité de la salle ≥ effectif du besoin. | Erreur |
-| `TYPE_SALLE` | Type de la salle parmi les types acceptés (liste vide : tous) ; salle imposée respectée ; campus imposé respecté. | Erreur |
-| `EQUIPEMENT` | La salle a tous les équipements requis. | Erreur |
-| `DISPO_ENSEIGNANT` | Aucune indisponibilité **dure** d'un enseignant non fictif de la séance ne recoupe la séance (même jour, plages qui se recoupent, semaines qui se croisent). | Erreur |
+| `TYPE_SALLE` | Type de la salle parmi les types acceptés (liste vide : tous) ; salle imposée respectée ; campus imposé respecté. Le message nomme les types (`Instantane.libelle_type_salle`). | Erreur |
+| `EQUIPEMENT` | La salle a tous les équipements requis. Le message nomme ceux qui manquent (`Instantane.libelle_equipement`). | Erreur |
+| `DISPO_ENSEIGNANT` | Aucune indisponibilité **dure** et **récurrente** d'un enseignant non fictif de la séance ne recoupe la séance (même jour, plages qui se recoupent), quelles que soient ses semaines actives. Les indisponibilités datées relèvent de la couche datée. | Erreur |
 | `DISPO_SALLE` | Idem pour la salle de la séance. | Erreur |
 | `DISPO_GROUPE` | Idem pour chaque groupe du besoin et chaque groupe lié (`groupes_lies`) : l'indisponibilité d'une promotion vaut pour ses demi-groupes et inversement. | Erreur |
 | `MAX_ENSEIGNANT` | Pour chaque enseignant non fictif, somme des durées placées par semaine ≤ `max_minutes_semaine` et par (semaine, jour) ≤ `max_minutes_jour`. Une anomalie par enseignant pour l'hebdomadaire, une par enseignant et par jour de la semaine type pour le journalier, qui détaillent les semaines en cause. Égalité permise. | Erreur |
@@ -101,16 +103,18 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 
 ### Indisponibilités sur la semaine type
 
-Une indisponibilité est ramenée à la semaine type par
-`edt.verification.indisponibilites.projeter` :
+Conformément à l'en-tête de `edt/domaine/instantane.py` et à
+`docs/architecture.md` (« Sémantique des contraintes »), seules les
+indisponibilités **récurrentes** (`Instantane.indisponibilites_recurrentes`)
+comptent sur la semaine type : chacune interdit, toutes les semaines, la plage
+`[debut, fin[` de son jour. Une séance placée ce jour-là sur une plage qui la
+recoupe est en violation, quelles que soient ses semaines actives.
 
-- récurrente (`jour`) : ce jour, toutes les semaines du semestre ;
-- datée (`date_debut`..`date_fin`) : pour chaque jour de la semaine couvert,
-  les seules semaines du semestre où ce jour tombe dans la période.
-
-Une séance active les semaines 5 à 15 n'est donc pas gênée par une absence
-datée de la semaine 3. Les indisponibilités dont `dure` est faux (préférences
-des versions suivantes) sont ignorées.
+Les indisponibilités **datées** ne sont pas vérifiées sur la semaine type :
+sinon une salle fermée une semaine interdirait son créneau tout le semestre.
+L'occurrence qui tombe dessus est signalée par la couche datée, puis replacée
+ou mise « à programmer ». Les indisponibilités dont `dure` est faux
+(préférences des versions suivantes) sont ignorées dans les deux couches.
 
 ## Couche datée (`verifier_occurrences`)
 
@@ -121,7 +125,9 @@ Mêmes règles, avec ces différences :
   (`statut.occupe_les_ressources`) sont vérifiées et occupent salle,
   enseignants et groupes ; une occurrence **annulée** est ignorée ; une
   occurrence **à programmer** donne un avertissement `VOLUME` ;
-- indisponibilités évaluées à la date (`Indisponibilite.concerne(date)`) ;
+- toutes les indisponibilités dures, récurrentes et datées
+  (`Instantane.indisponibilites_de`), évaluées à la date
+  (`Indisponibilite.concerne(date)`) ;
 - maxima par date réelle et par semaine réelle (lundi à dimanche), une
   anomalie par dépassement ;
 - `JOUR_FERME` : une occurrence qui a lieu à une date où
@@ -152,6 +158,14 @@ ressources de la séance pour les règles qui portent sur une séance
 (`HORAIRES`, `JOURS`, `DEJEUNER`, `VERROU`...). `bloquante` est vrai pour la
 gravité « erreur ».
 
+Une séance est nommée par le libellé de son besoin. Le socle termine ce
+libellé par les groupes (« CM Mathématiques - A1 ») : il est repris tel quel,
+avec le rang si le besoin a plusieurs séances (« CM Physique - A1 (n° 2) »).
+Un libellé qui ne cite pas ses groupes (instantané construit à la main) est
+complété : « Mathématiques TD (A1-G1) ». Les types de salle et les
+équipements sont nommés par les listes de l'instantané ; s'il ne les porte
+pas (instantané construit à la main), leur numéro est affiché.
+
 Exemples de messages :
 
 - « La salle N204 accueille deux séances en même temps le mardi de 10 h 45 à
@@ -168,6 +182,9 @@ Exemples de messages :
   est imposé : l'écart est signalé pour information. »
 - « Mme Martin dépasse son maximum de 16 h de cours par semaine : 18 h de
   cours les semaines 1 à 10 ; 20 h de cours la semaine 11. »
+- « La salle L115 est indisponible le vendredi 6 novembre 2026 toute la
+  journée (Travaux), pendant la séance TP Électronique - A1-G1 prévue de
+  8 h 30 à 10 h 30. »
 
 ## Organisation et algorithme
 
@@ -209,11 +226,6 @@ classDiagram
         +libelle(element) str
         +anomalie(...) Anomalie
     }
-    class PlageInterdite {
-        +Indisponibilite indisponibilite
-        +int jour
-        +frozenset semaines
-    }
     class Indicateurs {
         +float pourcentage_seances_placees
         +int trous_creneaux
@@ -221,10 +233,21 @@ classDiagram
         +int valeur_objectif
         +vers_dict() dict
     }
+    class RapportVerification {
+        +tuple anomalies
+        +Indicateurs indicateurs
+        +int nb_erreurs
+        +int nb_avertissements
+        +int nb_informations
+        +dict par_code
+        +valide() bool
+        +vers_dict() dict
+    }
     Contexte ..> Element : examine
     Contexte ..> Anomalie : construit
-    Contexte ..> PlageInterdite : projette
     Indicateurs ..> Element : mesure
+    RapportVerification o-- Anomalie
+    RapportVerification o-- Indicateurs
 ```
 
 - `semaine_type.verifier` et `datee.verifier_occurrences` valident l'entrée,
@@ -282,11 +305,75 @@ demi-groupes.
 | `seances_creneaux_extremes` | Somme, sur les placements qui recoupent le premier créneau (début le plus tôt) ou le dernier créneau (fin la plus tardive) de la grille de leur jour, du nombre de semaines actives. Une séance qui couvre les deux compte une fois. |
 | `valeur_objectif` | `poids_trous × trous_creneaux + poids_changement_campus × (changements_campus_groupes + changements_campus_enseignants) + poids_samedi × seances_samedi + poids_creneaux_extremes × seances_creneaux_extremes`, avec les poids des paramètres (10, 5, 2, 1 par défaut). |
 
-Le terme « trous » de l'objectif se compte en **créneaux libres**, comme le
-décrit le catalogue des préférences (`PREFERENCES` : « créneaux libres entre
-deux séances d'un groupe ») : en minutes, avec un poids de 10, il écraserait
-les trois autres termes. Les trous en minutes restent disponibles pour le
-tableau de bord.
+Le terme « trous » de l'objectif se compte en **créneaux libres**, semaine par
+semaine, comme le décrit le catalogue des préférences (`PREFERENCES` :
+« créneaux libres entre deux séances d'un groupe ») ; décision validée par
+l'équipe. En minutes, avec un poids de 10, il écraserait les trois autres
+termes. Les trous en minutes restent un indicateur d'affichage.
+
+## Service (`edt.services.verification`)
+
+Fonctions typées, appelées par la commande et par l'interface. Elles lisent
+la base (`charger_instantane`, `charger_placements`, `charger_occurrences`),
+délèguent au vérificateur pur et **n'écrivent rien**. L'instantané d'une
+version est chargé avec cette version comme version de base : les verrous
+vérifiés sont ceux de la version.
+
+```python
+def verifier_version(session, version_id, contraintes_actives=None) -> RapportVerification
+def verifier_occurrences_version(
+    session, version_id, date_debut=None, date_fin=None, contraintes_actives=None
+) -> RapportVerification
+def verifier_modification(
+    session, version_id, seance_id, jour, debut, fin, salle_id
+) -> RapportVerification
+def version_a_verifier(session, version_id=None, semestre_id=None) -> int
+```
+
+- `verifier_version` : semaine type de la version et ses indicateurs.
+- `verifier_occurrences_version` : séances datées de la version. Avec une
+  période (bornes incluses, chacune facultative), la vérification porte sur
+  les semaines entières qui la recoupent, pour que les maxima hebdomadaires
+  soient complets, et seules les anomalies qui citent une séance de la
+  période sont gardées. Pas d'indicateurs.
+- `verifier_modification` : ce que donnerait la semaine type si la séance
+  `seance_id` était placée ainsi. Les placements de la version sont relus,
+  celui de la séance est remplacé (ou ajouté si elle n'était pas placée),
+  toute la semaine type est vérifiée avec les contraintes par défaut, et
+  seules les anomalies qui citent cette séance sont renvoyées (conflits avec
+  les autres séances compris ; `VERROU` si la séance est verrouillée). Rien
+  n'est enregistré. Pas d'indicateurs.
+- `version_a_verifier` : la version donnée ; sinon la version active du
+  semestre donné ; sinon celle du semestre proposé par défaut
+  (`semestre_par_defaut`). `ErreurIntrouvable` si rien ne correspond.
+
+`RapportVerification` est une dataclass figée : `anomalies`, `indicateurs`
+(ou `None`), `nb_erreurs`, `nb_avertissements`, `nb_informations`,
+`par_code` (nombre d'anomalies de toutes gravités par code, dans l'ordre du
+catalogue), la propriété `valide` (aucune erreur), le contexte (`version_id`,
+`version`, `semestre_id`, `semestre`, `objet`, `contraintes`, `nb_examines`,
+`periode`) et `vers_dict()` pour le JSON. Chaque vérification écrit une ligne
+de journal (niveau INFO).
+
+## Commande `python -m edt verifier`
+
+```sh
+python -m edt verifier                          # semaine type, version active du semestre en cours
+python -m edt verifier --semestre 1             # version active du semestre 1
+python -m edt verifier --version 4 -c SALLE_UNIQUE -c PAUSE
+python -m edt verifier --version 4 --datees --du 2026-11-02 --au 2026-11-08
+python -m edt verifier --version 4 --json       # rapport complet en JSON
+```
+
+La sortie donne l'en-tête (version, semestre, nombre de contraintes et
+d'éléments examinés), les anomalies groupées par gravité avec leur code, les
+indicateurs (semaine type) et le verdict. Codes de sortie :
+
+| Code | Sens |
+|---|---|
+| 0 | aucune anomalie de gravité « erreur » : emploi du temps valide |
+| 1 | au moins une erreur |
+| 2 | vérification impossible : version ou semestre introuvable, pas de version active, code de contrainte inconnu, donnée enregistrée mal formée, `--du`/`--au` sans `--datees`, ou aucune séance datée à vérifier (une liste vide ne vaut pas « valide ») |
 
 ## Ajouter une règle
 
