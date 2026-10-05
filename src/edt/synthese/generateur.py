@@ -902,23 +902,24 @@ class _Generateur:
     def _priorite(ens: cat.Enseignement, groupes: tuple, barrette: str | None) -> int:
         """Ordre de placement : les besoins les plus contraints d'abord.
 
-        Imposés (0), barrettes (1), séances de promotion (2), séances de
-        classe (3), séances longues de demi-groupe (4), TP (5), séances des
-        matières courtes (6). Les TP passent après les classes : deux
-        demi-groupes peuvent être en TP en même temps, et le samedi matin
-        leur reste ouvert.
+        Imposés (0), barrettes (1), séances de promotion (2), séances longues
+        de classe (3), autres séances de classe (4), séances longues de
+        demi-groupe (5), TP (6), séances des matières courtes (7) ; les
+        épreuves ponctuelles (8) et les événements à date libre (9) viennent
+        en dernier. Les TP passent après les classes : deux demi-groupes
+        peuvent être en TP en même temps, et le samedi matin leur reste ouvert.
         """
         if barrette:
             return 1
         if ens.cible in ("promotion", "option") or len(groupes) > 1:
             return 2
         if ens.cible == "classe" and not ens.total:
-            return 3
+            return 3 if ens.duree >= 4 * H else 4
         if ens.duree >= 4 * H:
-            return 4
-        if ens.type_seance == "TP" and not ens.total:
             return 5
-        return 6
+        if ens.type_seance == "TP" and not ens.total:
+            return 6
+        return 7
 
     def _preparer_dst(self, promotion: _Promotion, code: str, s: int) -> None:
         jour, debut = cat.ANNEES_DST[promotion.annee]
@@ -960,7 +961,7 @@ class _Generateur:
                 for groupe, duree_cible, libelle in cibles:
                     self._ajouter(
                         semestre=code, promotion=promotion, matiere=matiere, type_seance="EXAMEN",
-                        groupes=(groupe,), duree=duree_cible, profil="epreuve", priorite=7,
+                        groupes=(groupe,), duree=duree_cible, profil="epreuve", priorite=8,
                         mode=ModeVolume.PONCTUEL, date_ponctuelle=jour, debut_impose=debut,
                         libelle=libelle,
                     )
@@ -985,7 +986,7 @@ class _Generateur:
             for classe in promotion.classes_de("classique"):
                 self._ajouter(
                     semestre=code, promotion=promotion, matiere=matiere, type_seance="AUTRE",
-                    groupes=(classe.groupe,), duree=2 * H, profil="cours", priorite=8,
+                    groupes=(classe.groupe,), duree=2 * H, profil="cours", priorite=9,
                     mode=ModeVolume.PONCTUEL, dates_possibles=jours,
                     libelle="Rencontre avec le tuteur de classe",
                 )
@@ -1192,7 +1193,18 @@ class _Generateur:
             if spec.enseignants_fixes is not None
             else (None if spec.nb_enseignants and spec.discipline else ()),
             freres=self._freres(groupes),
+            proches=self._proches(groupes),
         )
+
+    def _proches(self, groupes: tuple[int, ...]) -> tuple[int, ...]:
+        """Les groupes et tous leurs ascendants."""
+        proches = set(groupes)
+        for g in groupes:
+            parent = self.parents.get(g)
+            while parent is not None:
+                proches.add(parent)
+                parent = self.parents.get(parent)
+        return tuple(sorted(proches))
 
     def _freres(self, groupes: tuple[int, ...]) -> tuple[int, ...]:
         """Groupes qui ont le même parent qu'un groupe de la liste (eux exclus)."""

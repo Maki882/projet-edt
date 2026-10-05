@@ -226,8 +226,8 @@ GRAND = ConfigurationJeu(
         ConfigPromotion(annee=1, nb_classes=9),
         ConfigPromotion(annee=2, nb_classes=9),
         ConfigPromotion(annee=3, nb_classes=7, nb_classes_apprentis=2),
-        ConfigPromotion(annee=4, nb_classes=7, nb_classes_apprentis=2),
-        ConfigPromotion(annee=5, nb_classes=6, nb_classes_apprentis=2),
+        ConfigPromotion(annee=4, nb_classes=8, nb_classes_apprentis=2),
+        ConfigPromotion(annee=5, nb_classes=7, nb_classes_apprentis=2),
     ),
     salles=(
         (

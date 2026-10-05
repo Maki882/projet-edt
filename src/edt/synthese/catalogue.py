@@ -332,11 +332,6 @@ MODULES: dict[tuple[int, int], tuple[Module, ...]] = {
         Module(
             "IH", "Histoire des sciences et des techniques", (td(total=6, fenetre=PREMIERE_MOITIE),)
         ),
-        Module(
-            "II",
-            "Méthodes numériques",
-            (tp("informatique", total=5, fenetre=SECONDE_MOITIE),),
-        ),
     ),
     (2, 2): (
         Module("IM", "Mathématiques pour l'ingénieur", (cm(), td())),

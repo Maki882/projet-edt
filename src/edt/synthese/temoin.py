@@ -214,7 +214,10 @@ class Demande:
       `nb_enseignants` enseignants sont choisis dans le vivier `discipline` ;
     - `freres` : groupes frères (même parent) ; les créneaux où l'un d'eux a
       déjà cours sont préférés, ce qui regroupe par exemple les TP des deux
-      demi-groupes d'une classe et laisse la classe libre le reste du temps.
+      demi-groupes d'une classe et laisse la classe libre le reste du temps ;
+    - `proches` : groupes de la demande et leurs ascendants ; les créneaux
+      qu'ils occupent déjà sur d'autres semaines (semaines disjointes) sont
+      préférés, ce qui enchaîne les matières courtes sur un même créneau.
     """
 
     cle: int
@@ -232,6 +235,7 @@ class Demande:
     nb_enseignants: int = 0
     enseignants_fixes: tuple[EnseignantTemoin, ...] | None = None
     freres: tuple[int, ...] = ()
+    proches: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -459,9 +463,9 @@ class Temoin:
         """Créneaux possibles `(jour, début, fin, masque, option)`, les plus prometteurs d'abord.
 
         Ordre : jours de semaine avant le samedi, jours sans autre séance du
-        même besoin d'abord, créneaux où un groupe frère a déjà cours, jours où
-        les groupes sont le moins chargés, puis un tirage (déterministe) pour
-        départager.
+        même besoin d'abord, créneaux déjà utilisés par un groupe frère ou par
+        les mêmes groupes sur d'autres semaines, jours où les groupes sont le
+        moins chargés, puis un tirage (déterministe) pour départager.
         """
         bruts: list[tuple[int, int, int, int]] = []
         if demande.options:
@@ -481,18 +485,27 @@ class Temoin:
             charge = max(
                 (self._charge_jour[g][jour] for g in groupes if g in self._charge_jour), default=0
             )
-            seul = not self._frere_occupe(demande, jour, debut, debut + demande.duree, masque_candidat)
+            seul = not self._creneau_partage(
+                demande, jour, debut, debut + demande.duree, masque_candidat
+            )
             cle = (jour == SAMEDI, jour in jours_pris, seul, charge, self._rng.random())
             tries.append((cle, (jour, debut, debut + demande.duree, masque_candidat, option)))
         tries.sort(key=lambda element: element[0])
         return [candidat for _, candidat in tries]
 
-    def _frere_occupe(self, demande: Demande, jour: int, debut: int, fin: int, masque: int) -> bool:
-        """Vrai si un groupe frère a déjà une séance qui recouvre ce créneau."""
+    def _creneau_partage(
+        self, demande: Demande, jour: int, debut: int, fin: int, masque: int
+    ) -> bool:
+        """Vrai si le créneau est déjà utilisé par un groupe frère (quelles que soient les
+        semaines) ou par un groupe proche sur des semaines disjointes."""
         for frere in demande.freres:
             jours = self._occ_groupe.get(frere)
+            if jours and any(d < fin and debut < f for d, f, _, _, _ in jours[jour]):
+                return True
+        for groupe in demande.proches:
+            jours = self._occ_groupe.get(groupe)
             if jours and any(
-                m & masque and d < fin and debut < f for d, f, m, _, _ in jours[jour]
+                not m & masque and d < fin and debut < f for d, f, m, _, _ in jours[jour]
             ):
                 return True
         return False
