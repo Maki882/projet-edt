@@ -9,13 +9,16 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import subprocess
+import sys
 import threading
+import time
 
 import pytest
 from sqlalchemy import delete, func, select
 from typer.testing import CliRunner
 
-from edt import cli
+from edt import cli, solveur
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.calendrier import lundi_de
@@ -27,7 +30,7 @@ from edt.domaine.enumerations import (
     StatutOccurrence,
 )
 from edt.domaine.instantane import Placement
-from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
+from edt.erreurs import ErreurCalculEnCours, ErreurIntrouvable, ErreurRegleMetier
 from edt.services import generation
 from edt.services.instanciation import instancier_version, replacer_occurrences
 from edt.services.instantane import charger_instantane
@@ -497,6 +500,135 @@ def test_avertissements_joints_au_suivi(jeu_minimal):
     suivi = generer(jeu_minimal.semestre_id, moteur=moteur_bavard)
     assert suivi.etat is EtatCalcul.TEMPS_DEPASSE
     assert "Remarque du moteur." in suivi.avertissements
+
+
+# --------------------------------------------------------------------------- #
+# Calcul abandonné par son processus
+# --------------------------------------------------------------------------- #
+
+
+def _calcul_en_cours_d_un_autre_processus(semestre_id: int, pid: int, **champs) -> int:
+    """Inscrit en base un calcul « en cours » que le processus `pid` est censé exécuter."""
+    with session_base() as session:
+        calcul = m.Calcul(
+            semestre_id=semestre_id,
+            etat=EtatCalcul.EN_COURS,
+            demarre_le=champs.get("demarre_le", dt.datetime.now()),
+            parametres=OPTIONS.vers_dict(),
+            contraintes_desactivees=[],
+            statistiques={generation.CLE_PROCESSUS: pid},
+        )
+        session.add(calcul)
+        session.flush()
+        return calcul.id
+
+
+def _etat(calcul_id: int) -> EtatCalcul:
+    with session_base() as session:
+        return EtatCalcul(session.get(m.Calcul, calcul_id).etat)
+
+
+def test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus(jeu_minimal):
+    """Commande interrompue ou processus tué : le calcul est clos au prochain lancement."""
+    mort = subprocess.Popen([sys.executable, "-c", "pass"])
+    mort.wait()
+    abandonne = _calcul_en_cours_d_un_autre_processus(jeu_minimal.semestre_id, mort.pid)
+
+    suivi = generer(jeu_minimal.semestre_id)  # n'est pas refusé
+    assert suivi.etat is EtatCalcul.REUSSI, suivi.message
+    with session_base() as session:
+        ancien = session.get(m.Calcul, abandonne)
+        assert EtatCalcul(ancien.etat) is EtatCalcul.ERREUR
+        assert ancien.message == generation.MESSAGE_INTERROMPU and ancien.termine_le is not None
+
+    # Même chose par les autres portes : l'état lu et le bouton « Arrêter ».
+    autre = _calcul_en_cours_d_un_autre_processus(jeu_minimal.semestre_id, mort.pid)
+    assert generation.calcul_en_cours() is None and _etat(autre) is EtatCalcul.ERREUR
+    dernier = _calcul_en_cours_d_un_autre_processus(jeu_minimal.semestre_id, mort.pid)
+    assert generation.demander_arret(dernier).etat is EtatCalcul.ERREUR
+
+
+def test_calcul_vivant_d_un_autre_processus_n_est_pas_clos(jeu_minimal):
+    """Une commande lancée pendant que le service calcule ne clôt pas le calcul du service."""
+    vivant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        calcul_id = _calcul_en_cours_d_un_autre_processus(jeu_minimal.semestre_id, vivant.pid)
+        assert generation.cloturer_calculs_interrompus() == 0
+        assert generation.calcul_en_cours().id == calcul_id
+        with pytest.raises(ErreurCalculEnCours):
+            generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+        assert generation.demander_arret(calcul_id).etat is EtatCalcul.EN_COURS
+    finally:
+        vivant.kill()
+        vivant.wait()
+    # Le processus a disparu : le calcul est clos, plus rien ne bloque.
+    assert generation.cloturer_calculs_interrompus() == 1
+    assert _etat(calcul_id) is EtatCalcul.ERREUR
+
+
+def test_calcul_en_cours_bien_au_dela_de_son_temps_limite_est_clos(jeu_minimal):
+    """Numéro de processus réattribué : passé le délai de grâce, le calcul ne peut plus vivre."""
+    il_y_a_longtemps = dt.datetime.now() - dt.timedelta(
+        seconds=OPTIONS.temps_limite_s + generation.DELAI_DE_GRACE_S + 60
+    )
+    vivant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
+    try:
+        calcul_id = _calcul_en_cours_d_un_autre_processus(
+            jeu_minimal.semestre_id, vivant.pid, demarre_le=il_y_a_longtemps
+        )
+        assert generation.cloturer_calculs_interrompus() == 1
+        assert _etat(calcul_id) is EtatCalcul.ERREUR
+    finally:
+        vivant.kill()
+        vivant.wait()
+
+
+def test_commande_generer_interrompue_au_clavier(lanceur, jeu_minimal, monkeypatch):
+    """Ctrl+C pendant l'attente : l'arrêt est demandé, le calcul se termine, rien ne reste en cours."""
+
+    def moteur_qui_attend_l_arret(instantane, options, arret=None):
+        arret.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    attendre = generation.attendre_calcul
+    appels = []
+
+    def attendre_puis_ctrl_c(calcul_id, delai_s=None):
+        appels.append(calcul_id)
+        if len(appels) == 1:
+            raise KeyboardInterrupt
+        return attendre(calcul_id, delai_s)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_qui_attend_l_arret)
+    monkeypatch.setattr(generation, "attendre_calcul", attendre_puis_ctrl_c)
+    debut = time.perf_counter()
+    resultat = lanceur.invoke(cli.app, ["generer", "--semestre", str(jeu_minimal.semestre_id)])
+    assert time.perf_counter() - debut < DELAI / 2, "l'arrêt n'a pas atteint le moteur"
+    assert resultat.exit_code == 1, resultat.output
+    assert "Interruption demandée" in resultat.output
+    assert len(appels) == 2
+    assert generation.calcul_en_cours() is None
+    with session_base() as session:
+        (calcul,) = session.scalars(select(m.Calcul)).all()
+        assert calcul.arret_demande and EtatCalcul(calcul.etat) is EtatCalcul.ARRETE
+
+
+def test_attente_d_un_calcul_bornee_par_son_delai(jeu_minimal):
+    """L'attente par tranches rend la main au délai demandé, le calcul encore en cours."""
+    liberer = threading.Event()
+
+    def moteur_lent(instantane, options, arret=None):
+        liberer.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.TEMPS_DEPASSE)
+
+    calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS, moteur=moteur_lent)
+    try:
+        debut = time.perf_counter()
+        assert generation.attendre_calcul(calcul_id, 0.7).en_cours
+        assert 0.6 < time.perf_counter() - debut < 5
+    finally:
+        liberer.set()
+    assert generation.attendre_calcul(calcul_id, DELAI).etat is EtatCalcul.TEMPS_DEPASSE
 
 
 # --------------------------------------------------------------------------- #

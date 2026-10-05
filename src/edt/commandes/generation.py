@@ -11,6 +11,11 @@ succès, une nouvelle version d'emploi du temps est enregistrée, contrôlée pa
 le vérificateur, et ses séances datées sont produites. `instancier` refait
 seulement les séances datées d'une version existante.
 
+Une interruption au clavier (Ctrl+C) pendant `generer` arrête le calcul
+proprement : s'il a déjà trouvé un emploi du temps valide, celui-ci est
+enregistré. Un calcul dont le processus a été tué ne bloque pas les suivants :
+il est clos au prochain lancement.
+
 Codes de sortie : `0` si tout a réussi ; `1` si le calcul n'aboutit pas
 (impossible, temps dépassé, arrêté, refusé) ou, pour `pre-verifier`, si une
 impossibilité certaine est relevée ; `2` pour une erreur inattendue.
@@ -157,7 +162,16 @@ def generer(
         f"{'avec' if options.optimiser else 'sans'} optimisation)..."
     )
     identifiant = generation.lancer_calcul(semestre_id, options, activer=not sans_activer)
-    suivi = generation.attendre_calcul(identifiant)
+    try:
+        suivi = generation.attendre_calcul(identifiant)
+    except KeyboardInterrupt:
+        # Ctrl+C : le calcul s'arrête proprement au lieu de rester « en cours » en base.
+        typer.echo(
+            "Interruption demandée : le calcul s'arrête (un emploi du temps déjà trouvé est "
+            "conservé)..."
+        )
+        generation.demander_arret(identifiant)
+        suivi = generation.attendre_calcul(identifiant)
 
     typer.echo(f"Calcul n° {suivi.id} : {suivi.etat.libelle} en {suivi.temps_ecoule_s:g} s.")
     typer.echo(suivi.message)
