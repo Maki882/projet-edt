@@ -814,7 +814,7 @@ def documentation_markdown() -> str:
         facultative = " (facultative)" if feuille_.facultative else ""
         identifiant = ", ".join(f"`{nom}`" for nom in feuille_.identifiant) or "aucun"
         blocs.append(
-            f"### {numero}. `{feuille_.nom}` : {feuille_.titre}{facultative}\n\n"
+            f"#### {numero}. `{feuille_.nom}` : {feuille_.titre}{facultative}\n\n"
             f"{feuille_.description}\n\n"
             f"Identifiant métier : {identifiant}.\n\n"
             f"{tableau_markdown(feuille_)}"
