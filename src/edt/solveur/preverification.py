@@ -108,11 +108,13 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
                 jour=conflit.jour,
             )
         anomalies.append(conflit)
-    blocs = blocs_de_la_grille(instantane)
-    if regles.active(C.GROUPE_UNIQUE):
+    # Les charges se mesurent au temps ouvert par la grille : sans `HORAIRES`, les séances
+    # peuvent en sortir et seuls les maxima des enseignants restent certains.
+    blocs = blocs_de_la_grille(instantane) if regles.active(C.HORAIRES) else []
+    if blocs and regles.active(C.GROUPE_UNIQUE):
         anomalies.extend(_charges_des_groupes(preparation, blocs))
     anomalies.extend(_charges_des_enseignants(preparation, blocs))
-    if regles.active(C.SALLE_UNIQUE):
+    if blocs and regles.active(C.SALLE_UNIQUE):
         anomalies.extend(_charges_des_salles(preparation, blocs))
     return anomalies
 
@@ -140,6 +142,16 @@ def _minutes_libres(blocs: Sequence[Plage], obstacles: Sequence[Plage]) -> dict[
     return par_jour
 
 
+def _dans_la_grille(seance: SeancePreparee) -> bool:
+    """Vrai si la séance est à placer et tiendra dans une demi-journée de la grille.
+
+    Une séance à horaire fixe est comptée à part (elle occupe sa plage) ; une
+    séance à heure imposée peut sortir de la grille : pour que la borne reste
+    certaine, elle n'entre pas dans la demande.
+    """
+    return not seance.horaire_fixe and seance.besoin.debut_impose is None
+
+
 def _pire_semaine(
     preparation: Preparation,
     seances: Sequence[SeancePreparee],
@@ -163,7 +175,7 @@ def _pire_semaine(
         signature = tuple(seance.index for seance in actives)
         if signature in resultats or not actives:
             continue  # mêmes séances actives qu'une semaine déjà examinée
-        demande = sum(seance.duree for seance in actives if not seance.horaire_fixe)
+        demande = sum(seance.duree for seance in actives if _dans_la_grille(seance))
         if demande == 0:
             continue
         fixes = [
@@ -206,7 +218,7 @@ def _decoupes_par_jours(
     D'abord toutes les séances face aux jours que l'une d'elles peut occuper,
     puis celles qui ne peuvent pas aller le samedi face aux jours hors samedi.
     """
-    libres = [seance for seance in seances if not seance.horaire_fixe]
+    libres = [seance for seance in seances if _dans_la_grille(seance)]
     jours = _jours_possibles(preparation, libres)
     decoupes = [(list(seances), [bloc for bloc in blocs if bloc[0] in jours])]
     if SAMEDI in jours:
@@ -216,7 +228,7 @@ def _decoupes_par_jours(
             if seance.horaire_fixe or SAMEDI not in _jours_possibles(preparation, [seance])
         ]
         jours_sans_samedi = _jours_possibles(
-            preparation, (seance for seance in sans_samedi if not seance.horaire_fixe)
+            preparation, (seance for seance in sans_samedi if _dans_la_grille(seance))
         )
         decoupes.append((sans_samedi, [bloc for bloc in blocs if bloc[0] in jours_sans_samedi]))
     return decoupes
@@ -356,7 +368,7 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
                     )
                 )
                 continue
-        if not regles.active(C.ENSEIGNANT_UNIQUE):
+        if not blocs or not regles.active(C.ENSEIGNANT_UNIQUE):
             continue
         indisponibilites = (
             regles.recurrentes(CibleIndisponibilite.ENSEIGNANT, enseignant_id)
@@ -418,8 +430,8 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Plage]) -> lis
     instantane, regles = preparation.instantane, preparation.regles
     par_famille: dict[frozenset[int], list[SeancePreparee]] = defaultdict(list)
     for seance in preparation.seances:
-        if seance.verrouillee and seance.seance.verrou.salle_id is not None:
-            continue  # sa salle est déjà fixée : elle ne concourt pas pour une famille
+        if seance.verrouillee or seance.besoin.debut_impose is not None:
+            continue  # créneau fixé ou imposé, peut-être hors grille : hors de cette borne
         salles = frozenset(s.id for s in regles.salles_compatibles(seance.besoin).salles)
         if salles:
             par_famille[salles].append(seance)
