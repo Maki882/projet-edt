@@ -17,38 +17,40 @@ contraintes qui portent sur une seule séance sont donc déjà respectées.
 
 Contraintes
 -----------
-- **personnes** (`ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `PAUSE`) : dans tout
-  ensemble de séances qui se gênent deux à deux, au plus une séance en cours
-  à chaque instant, chaque séance étant allongée de la pause ;
+- **personnes** (`ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `PAUSE`) : deux séances
+  qui partagent une personne et coexistent ne sont jamais en cours au même
+  instant, chaque séance étant allongée de la pause ;
 - **trajets** (`CAMPUS_TRAJET`) et pause sans unicité : les couples de choix
   trop rapprochés de deux séances d'une même personne sont interdits ;
 - **maxima journaliers** (`MAX_ENSEIGNANT`) ;
 - **capacité des salles** (`SALLE_UNIQUE`, condition nécessaire) : à chaque
-  instant, les séances qui ne peuvent aller que dans une famille de salles ne
-  sont pas plus nombreuses que ces salles. C'est ce qui rend la seconde phase
-  presque toujours possible ; quand elle ne l'est pas, elle renvoie les
-  séances en cause et `interdire` écarte cette combinaison d'horaires ;
+  instant, les séances en cours se répartissent entre des classes de salles
+  interchangeables sans dépasser le nombre de salles libres de chaque classe.
+  C'est ce qui rend la seconde phase presque toujours possible ; quand elle
+  ne l'est pas, elle renvoie les séances en cause et `interdire` écarte cette
+  combinaison d'horaires ;
 - **symétries** : les séances interchangeables d'un même besoin sont
   ordonnées par début.
 
-Semaines actives : chaque contrainte entre séances est posée par ensemble de
-séances actives une même semaine (`Preparation.ensembles_par_semaines`) ;
-deux séances aux semaines disjointes ne partagent aucune contrainte.
+Semaines actives : une contrainte ne lie deux séances que si une semaine au
+moins les réunit. Deux séances aux semaines disjointes ne partagent aucune
+contrainte.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from bisect import bisect_left
 from collections import defaultdict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Hashable, Iterable, Sequence
 from dataclasses import dataclass
 from itertools import combinations
 
 from ortools.sat.python import cp_model
 
 from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.enumerations import SAMEDI
+from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite
 from edt.domaine.heures import se_chevauchent
 from edt.erreurs import ErreurEDT
 from edt.solveur.contrat import OptionsSolveur
@@ -64,8 +66,8 @@ Litteral = cp_model.IntVar | bool
 Plage = tuple[int, int, Litteral]
 """Plage `[début, fin[` sur l'axe codé de la semaine, et le littéral qui dit si elle a lieu."""
 
-NB_FAMILLES_MAX = 400
-"""Plafond du nombre de familles de salles examinées (simple garde-fou)."""
+Vus = set[tuple[int, tuple[int, ...]]]
+"""Contraintes « au plus n parmi » déjà posées, pour ne pas les répéter."""
 
 
 @dataclass(frozen=True)
@@ -77,48 +79,87 @@ class Option:
     salles: tuple[int, ...]
 
 
+def au_plus(
+    cp: cp_model.CpModel, litteraux: Sequence[Litteral], capacite: int = 1, vus: Vus | None = None
+) -> bool:
+    """Impose qu'au plus `capacite` des `litteraux` soient vrais.
+
+    Les constantes sont décomptées ; rien n'est posé si la limite ne peut pas
+    être dépassée ou si la même contrainte figure déjà dans `vus`. Renvoie
+    vrai si une contrainte a été ajoutée.
+    """
+    acquis = sum(1 for litteral in litteraux if litteral is True)
+    variables = [
+        litteral for litteral in litteraux if litteral is not True and litteral is not False
+    ]
+    reste = capacite - acquis
+    if len(variables) <= reste:
+        return False
+    if vus is not None:
+        cle = (reste, tuple(sorted({variable.index for variable in variables})))
+        if cle in vus:
+            return False
+        vus.add(cle)
+    if reste < 0:
+        cp.add_bool_or([])  # déjà trop de séances certaines : aucun emploi du temps possible
+    elif reste == 0:
+        cp.add_bool_and([variable.negated() for variable in variables])
+    elif reste == 1:
+        cp.add_at_most_one(variables)
+    else:
+        cp.add(sum(variables) <= reste)
+    return True
+
+
 def limiter_par_instant(
     cp: cp_model.CpModel,
     plages: Sequence[Plage],
-    capacite: int = 1,
-    vus: set[tuple[int, tuple[int, ...]]] | None = None,
+    capacite: int | Callable[[int], int] = 1,
+    vus: Vus | None = None,
 ) -> int:
     """Impose qu'au plus `capacite` des `plages` soient en cours à chaque instant.
 
     Deux plages se recoupent si et seulement si l'une contient le début de
     l'autre : il suffit d'examiner les instants où une plage peut commencer.
-    `vus` évite de poser deux fois la même contrainte. Renvoie le nombre de
-    contraintes ajoutées.
+    `capacite` peut dépendre de l'instant. Renvoie le nombre de contraintes
+    ajoutées.
     """
     instants = sorted({debut for debut, _, _ in plages})
     en_cours: list[list[Litteral]] = [[] for _ in instants]
     for debut, fin, litteral in plages:
-        if litteral is False:
-            continue
         for rang in range(bisect_left(instants, debut), bisect_left(instants, fin)):
             en_cours[rang].append(litteral)
     ajoutees = 0
-    for litteraux in en_cours:
-        acquis = sum(1 for litteral in litteraux if litteral is True)
-        variables = [litteral for litteral in litteraux if litteral is not True]
-        reste = capacite - acquis
-        if len(variables) <= reste:
-            continue
-        if vus is not None:
-            cle = (reste, tuple(sorted(variable.index for variable in variables)))
-            if cle in vus:
-                continue
-            vus.add(cle)
-        if reste < 0:
-            cp.add_bool_or([])  # déjà trop de séances certaines : aucun emploi du temps possible
-        elif reste == 0:
-            cp.add_bool_and([variable.negated() for variable in variables])
-        elif reste == 1:
-            cp.add_at_most_one(variables)
-        else:
-            cp.add(sum(variables) <= reste)
-        ajoutees += 1
+    for instant, litteraux in zip(instants, en_cours, strict=True):
+        limite = capacite(instant) if callable(capacite) else capacite
+        ajoutees += au_plus(cp, litteraux, limite, vus)
     return ajoutees
+
+
+def couvrir_par_cliques(voisins: dict[Hashable, set]) -> list[list]:
+    """Couvre les arêtes d'un graphe par des cliques (et chaque sommet isolé par lui-même).
+
+    `voisins` donne les voisins de chaque sommet (relation symétrique). Chaque
+    arête est dans une clique au moins, et les sommets d'une clique sont deux
+    à deux voisins : poser « au plus un » sur chaque clique équivaut
+    exactement à l'interdire sur chaque arête.
+    """
+    rang = {sommet: position for position, sommet in enumerate(voisins)}
+    couvertes: set[tuple[int, int]] = set()
+    cliques: list[list] = []
+    for sommet in voisins:
+        if not voisins[sommet]:
+            cliques.append([sommet])
+        for autre in sorted(voisins[sommet], key=rang.__getitem__):
+            if rang[autre] < rang[sommet] or (rang[sommet], rang[autre]) in couvertes:
+                continue
+            clique = [sommet, autre]
+            for candidat in sorted(voisins[sommet] & voisins[autre], key=rang.__getitem__):
+                if all(candidat in voisins[membre] for membre in clique[2:]):
+                    clique.append(candidat)
+            couvertes.update(combinations(sorted(rang[membre] for membre in clique), 2))
+            cliques.append(clique)
+    return cliques
 
 
 class ModeleHoraires:
@@ -146,7 +187,8 @@ class ModeleHoraires:
         self.litteraux: list[list[Litteral]] = []
         self.objectif_actif = False
         self.nb_coupes = 0
-        self._vus: set[tuple[int, tuple[int, ...]]] = set()
+        self._vus: Vus = set()
+        self._campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
 
         etapes = [
             self._creer_variables,
@@ -161,7 +203,15 @@ class ModeleHoraires:
         if options.utiliser_indices:
             etapes.append(self._donner_les_indices)
         for etape in etapes:
+            debut = time.perf_counter()
+            avant = len(self.cp.proto.constraints)
             etape()
+            journal.debug(
+                "Étape %s : %.3f s, %d contrainte(s)",
+                etape.__name__.strip("_"),
+                time.perf_counter() - debut,
+                len(self.cp.proto.constraints) - avant,
+            )
             point_de_controle()
 
     # -- lecture et coupes ------------------------------------------------------
@@ -179,11 +229,7 @@ class ModeleHoraires:
     def choix(self, valeur: Callable[[cp_model.IntVar], bool]) -> tuple[int, ...]:
         """Rang du choix retenu pour chaque séance ; `valeur` lit un booléen de la solution."""
         return tuple(
-            next(
-                rang
-                for rang, litteral in enumerate(litteraux)
-                if litteral is True or valeur(litteral)
-            )
+            next(r for r, litteral in enumerate(litteraux) if litteral is True or valeur(litteral))
             for litteraux in self.litteraux
         )
 
@@ -217,10 +263,20 @@ class ModeleHoraires:
             rangs = range(len(options))
         return [(options[r].debut, options[r].debut + duree, litteraux[r]) for r in rangs]
 
-    def _interdire_ensemble(self, a: Litteral, b: Litteral) -> None:
-        """Les deux littéraux ne peuvent pas être vrais ensemble."""
-        clause = [litteral.negated() for litteral in (a, b) if litteral is not True]
-        self.cp.add_bool_or(clause)
+    def _au_moins_un(self, litteraux: Sequence[Litteral]) -> Litteral:
+        """Littéral impliqué par chacun des `litteraux` (vrai dès que l'un d'eux l'est).
+
+        Un seul sens suffit : ce littéral ne sert qu'à interdire ou à
+        pénaliser, jamais à exiger.
+        """
+        if any(litteral is True for litteral in litteraux):
+            return True
+        if len(litteraux) == 1:
+            return litteraux[0]
+        resultat = self.cp.new_bool_var("")
+        for litteral in litteraux:
+            self.cp.add_implication(litteral, resultat)
+        return resultat
 
     def _par_personne(self) -> tuple[dict[int, list[int]], dict[int, list[int]]]:
         """Indices des séances par enseignant non fictif et par groupe."""
@@ -236,7 +292,6 @@ class ModeleHoraires:
     # -- variables --------------------------------------------------------------
 
     def _creer_variables(self) -> None:
-        campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
         cache: dict[tuple[int, int, int], tuple[Option, ...]] = {}
         for seance in self.seances:
             # Les séances d'un même besoin partagent leurs domaines (mêmes objets).
@@ -248,7 +303,7 @@ class ModeleHoraires:
                     par_campus: dict[int, list[int]] = defaultdict(list)
                     for salle in seance.salles:
                         if debut not in seance.debuts_interdits.get(salle, ()):
-                            par_campus[campus_de[salle]].append(salle)
+                            par_campus[self._campus_de[salle]].append(salle)
                     liste.extend(
                         Option(debut, campus, tuple(par_campus[campus]))
                         for campus in sorted(par_campus)
@@ -263,76 +318,96 @@ class ModeleHoraires:
             if len(options) == 1:
                 litteraux: list[Litteral] = [True]
             else:
-                litteraux = [
-                    self.cp.new_bool_var(f"s{seance.index}_{rang}") for rang in range(len(options))
-                ]
+                litteraux = [self.cp.new_bool_var("") for _ in options]
                 self.cp.add_exactly_one(litteraux)
             self.options.append(options)
             self.litteraux.append(litteraux)
 
     # -- personnes --------------------------------------------------------------
 
-    def _ensembles_de_groupes(self, par_groupe: dict[int, list[int]]) -> list[list[int]]:
-        """Ensembles de séances dont les besoins sont deux à deux en conflit de groupes.
-
-        Le conflit entre groupes n'est pas transitif (deux classes d'une même
-        promotion ne se gênent pas, mais gênent toutes deux la promotion). On
-        couvre donc le graphe des conflits par des cliques de groupes : chaque
-        paire de groupes en conflit est dans une clique au moins, et toutes
-        les séances d'une clique se gênent deux à deux.
-        """
-        utiles = set(par_groupe)
-        voisins = {g: (self.instantane.groupes_lies(g) & utiles) - {g} for g in utiles}
-        couvertes: set[tuple[int, int]] = set()
-        cliques: list[list[int]] = []
-        for groupe in sorted(utiles):
-            if not voisins[groupe]:
-                cliques.append([groupe])
-            for autre in sorted(voisins[groupe]):
-                if autre < groupe or (groupe, autre) in couvertes:
-                    continue
-                clique = [groupe, autre]
-                for candidat in sorted(voisins[groupe] & voisins[autre]):
-                    if all(candidat in voisins[membre] for membre in clique[2:]):
-                        clique.append(candidat)
-                couvertes.update(combinations(sorted(clique), 2))
-                cliques.append(clique)
-        return [sorted({i for g in clique for i in par_groupe[g]}) for clique in cliques]
-
     def _separer_les_personnes(self) -> None:
-        """`ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE` et, par l'allongement des plages, `PAUSE`."""
-        regles = self.regles
-        par_enseignant, par_groupe = self._par_personne()
-        unites: list[list[int]] = []
-        if regles.active(C.ENSEIGNANT_UNIQUE):
-            unites.extend(par_enseignant[e] for e in sorted(par_enseignant))
-        if regles.active(C.GROUPE_UNIQUE):
-            unites.extend(self._ensembles_de_groupes(par_groupe))
+        """`ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE` et, par l'allongement des plages, `PAUSE`.
 
-        ensembles = {
-            frozenset(ensemble)
-            for unite in unites
-            for ensemble in self.preparation.ensembles_par_semaines(unite)
-            if len(ensemble) >= 2
-        }
-        # Un ensemble inclus dans un autre n'apporte rien : on ne garde que les plus grands.
-        gardes: list[frozenset[int]] = []
-        par_membre: dict[int, list[frozenset[int]]] = defaultdict(list)
-        for ensemble in sorted(ensembles, key=lambda e: (-len(e), sorted(e))):
-            if any(ensemble <= autre for autre in par_membre[min(ensemble)]):
-                continue
-            gardes.append(ensemble)
-            for index in ensemble:
-                par_membre[index].append(ensemble)
-
+        Les séances sont réunies en **unités** : même ensemble de groupes (ou
+        même enseignant) et mêmes semaines actives. Deux séances d'une même
+        unité se gênent toujours. Deux unités se gênent si leurs semaines se
+        croisent et si elles partagent l'enseignant ou ont des groupes en
+        conflit. Pour chaque unité et chaque instant, un booléen « occupée »
+        est impliqué par les choix de ses séances en cours ; « au plus une
+        unité occupée » est posé sur chaque clique d'unités qui se gênent.
+        Passer par les unités évite de répéter les mêmes séances dans des
+        centaines de contraintes presque identiques (groupes transverses).
+        """
+        regles, preparation = self.regles, self.preparation
+        avec_enseignants = regles.active(C.ENSEIGNANT_UNIQUE)
+        avec_groupes = regles.active(C.GROUPE_UNIQUE)
         pause = self.instantane.parametres.pause_min if regles.active(C.PAUSE) else 0
+
+        # Unités : ("g", groupes, semaines) et ("e", enseignant, semaines). Avec les
+        # violations héritées tolérées, chaque séance verrouillée forme sa propre unité.
+        unites: dict[tuple, list[int]] = defaultdict(list)
+        for seance in self.seances:
+            seule = (seance.index,) if seance.verrouillee and preparation.isolees else ()
+            if avec_groupes:
+                groupes = tuple(sorted(seance.besoin.groupes))
+                unites[("g", groupes, seance.semaines, *seule)].append(seance.index)
+            if avec_enseignants:
+                for enseignant in sorted(regles.enseignants_reels(seance.besoin)):
+                    unites[("e", enseignant, seance.semaines, *seule)].append(seance.index)
+
+        # Graphe des unités qui se gênent.
+        par_groupe: dict[int, list[tuple]] = defaultdict(list)
+        par_enseignant: dict[int, list[tuple]] = defaultdict(list)
+        for cle in unites:
+            if cle[0] == "g":
+                for groupe in cle[1]:
+                    par_groupe[groupe].append(cle)
+            else:
+                par_enseignant[cle[1]].append(cle)
+        voisins: dict[tuple, set] = {cle: set() for cle in unites}
+        for cle in unites:
+            if cle[0] == "g":
+                lies = frozenset().union(*(self.instantane.groupes_lies(g) for g in cle[1]))
+                candidats = {autre for groupe in lies for autre in par_groupe.get(groupe, ())}
+            else:
+                candidats = set(par_enseignant[cle[1]])
+            for autre in candidats:
+                if autre == cle or not cle[2] & autre[2]:
+                    continue
+                if len(cle) > 3 and len(autre) > 3 and preparation.dispensees(cle[3], autre[3]):
+                    continue  # deux séances verrouillées dont la contradiction est tolérée
+                voisins[cle].add(autre)
+                voisins[autre].add(cle)
+
+        # Occupation de chaque unité à chaque instant.
+        instants = sorted({option.debut for options in self.options for option in options})
+        occupation: dict[tuple, dict[int, Litteral]] = {}
         nb_contraintes = 0
-        for ensemble in gardes:
-            plages = [plage for index in sorted(ensemble) for plage in self._plages(index, pause)]
-            nb_contraintes += limiter_par_instant(self.cp, plages, 1, self._vus)
+        for cle, indices in unites.items():
+            plages = [plage for index in indices for plage in self._plages(index, pause)]
+            en_cours: dict[int, list[Litteral]] = defaultdict(list)
+            for debut, fin, litteral in plages:
+                for rang in range(bisect_left(instants, debut), bisect_left(instants, fin)):
+                    en_cours[rang].append(litteral)
+            if len(indices) >= 2:
+                # Les séances d'une même unité se gênent entre elles.
+                for litteraux in en_cours.values():
+                    nb_contraintes += au_plus(self.cp, litteraux, 1, self._vus)
+            if voisins[cle]:
+                occupation[cle] = {
+                    rang: self._au_moins_un(litteraux) for rang, litteraux in en_cours.items()
+                }
+
+        cliques = [clique for clique in couvrir_par_cliques(voisins) if len(clique) >= 2]
+        for clique in cliques:
+            rangs = sorted({rang for cle in clique for rang in occupation[cle]})
+            for rang in rangs:
+                occupees = [occupation[cle][rang] for cle in clique if rang in occupation[cle]]
+                nb_contraintes += au_plus(self.cp, occupees, 1, self._vus)
         journal.debug(
-            "Personnes : %d ensemble(s) de séances qui se gênent, %d contrainte(s)",
-            len(gardes),
+            "Personnes : %d unité(s), %d clique(s) d'unités qui se gênent, %d contrainte(s)",
+            len(unites),
+            len(cliques),
             nb_contraintes,
         )
 
@@ -347,8 +422,11 @@ class ModeleHoraires:
         separees: bool,
         pause: int,
         trajets: bool,
-    ) -> list[tuple[int, int]]:
-        """Couples de rangs de choix que deux séances d'une même personne ne peuvent pas cumuler.
+    ) -> list[tuple[tuple[int, ...], tuple[int, ...]]]:
+        """Choix que deux séances d'une même personne ne peuvent pas cumuler.
+
+        Renvoie des couples `(rangs de la première, rangs de la seconde)` :
+        aucun choix du premier groupe n'est compatible avec un choix du second.
 
         `separees` : une contrainte d'unicité active interdit déjà le
         chevauchement et impose la pause ; il ne reste que les trajets. Sinon
@@ -360,8 +438,9 @@ class ModeleHoraires:
         par_jour: dict[int, list[tuple[int, Option]]] = defaultdict(list)
         for rang, option in enumerate(options_j):
             par_jour[option.debut // pas].append((rang, option))
-        interdits: list[tuple[int, int]] = []
+        interdits: dict[tuple[int, ...], list[int]] = defaultdict(list)
         for rang_i, a in enumerate(options_i):
+            incompatibles = []
             for rang_j, b in par_jour.get(a.debut // pas, ()):
                 # Minutes libres entre les deux séances ; négatif si elles se chevauchent.
                 ecart = max(a.debut, b.debut) - min(a.debut + duree_i, b.debut + duree_j)
@@ -375,8 +454,10 @@ class ModeleHoraires:
                 else:
                     interdit = 0 <= ecart < pause or trop_pres
                 if interdit:
-                    interdits.append((rang_i, rang_j))
-        return interdits
+                    incompatibles.append(rang_j)
+            if incompatibles:
+                interdits[tuple(incompatibles)].append(rang_i)
+        return [(tuple(rangs_i), rangs_j) for rangs_j, rangs_i in interdits.items()]
 
     def _pauses_et_trajets(self) -> None:
         """`CAMPUS_TRAJET`, et `PAUSE` pour les paires que l'unicité ne sépare pas."""
@@ -387,14 +468,20 @@ class ModeleHoraires:
         unicite_groupe = regles.active(C.GROUPE_UNIQUE)
         tout_separe = unicite_enseignant and unicite_groupe
         campus = [frozenset(option.campus for option in options) for options in self.options]
-        plusieurs_campus = len(frozenset().union(*campus)) > 1 if campus else False
-        if not (trajets and plusieurs_campus) and (tout_separe or pause == 0):
+        tous = sorted(frozenset().union(*campus)) if campus else []
+        # Trajets qui dépassent la pause déjà garantie entre deux séances séparées.
+        eloignes = trajets and any(
+            self.instantane.trajet(a, b) > pause for a, b in combinations(tous, 2)
+        )
+        if not eloignes and (tout_separe or pause == 0):
             return
-        cache: dict[tuple[int, int, int, int, bool], list[tuple[int, int]]] = {}
-        nb_clauses = 0
+        cache: dict[
+            tuple[int, int, int, int, bool], list[tuple[tuple[int, ...], tuple[int, ...]]]
+        ] = {}
+        nb_contraintes = 0
         for i, j, enseignant, groupe in self.preparation.paires_de_personnes():
             separees = (enseignant and unicite_enseignant) or (groupe and unicite_groupe)
-            if separees and (not trajets or (len(campus[i]) == 1 and campus[i] == campus[j])):
+            if separees and (not eloignes or (len(campus[i]) == 1 and campus[i] == campus[j])):
                 continue
             duree_i, duree_j = self.seances[i].duree, self.seances[j].duree
             cle = (id(self.options[i]), id(self.options[j]), duree_i, duree_j, separees)
@@ -404,10 +491,13 @@ class ModeleHoraires:
                     self.options[i], duree_i, self.options[j], duree_j, separees, pause, trajets
                 )
                 cache[cle] = interdits
-            for rang_i, rang_j in interdits:
-                self._interdire_ensemble(self.litteraux[i][rang_i], self.litteraux[j][rang_j])
-            nb_clauses += len(interdits)
-        journal.debug("Trajets et pauses : %d couple(s) de choix interdit(s)", nb_clauses)
+            # Les choix d'une séance s'excluent déjà entre eux : « ni l'un de ceux-ci, ni
+            # l'un de ceux-là » s'écrit donc « au plus un » sur leur réunion.
+            litteraux_i, litteraux_j = self.litteraux[i], self.litteraux[j]
+            for rangs_i, rangs_j in interdits:
+                ensemble = [litteraux_i[r] for r in rangs_i] + [litteraux_j[r] for r in rangs_j]
+                nb_contraintes += au_plus(self.cp, ensemble, 1)
+        journal.debug("Trajets et pauses : %d contrainte(s)", nb_contraintes)
 
     # -- maxima -----------------------------------------------------------------
 
@@ -447,65 +537,126 @@ class ModeleHoraires:
     # -- salles (condition nécessaire) --------------------------------------------
 
     def _capacite_des_salles(self) -> None:
-        """Pas plus de séances en cours que de salles capables de les accueillir.
+        """Pas plus de séances en cours que de salles libres capables de les accueillir.
 
-        Une **famille** est un ensemble de salles : celles d'un choix, ou la
-        réunion de familles qui ont une salle en commun. Pour chaque famille
-        et à chaque instant, les séances dont le choix ne permet que des
-        salles de la famille ne sont pas plus nombreuses que ces salles
-        (condition de Hall). Cette condition est nécessaire : elle n'écarte
-        aucune solution. Elle garantit qu'à chaque instant pris isolément les
-        salles suffisent ; la seconde phase fait l'affectation réelle.
+        - la **famille** d'un choix est l'ensemble des salles admissibles de la
+          séance sur le campus du choix ;
+        - une **classe** réunit les salles qui appartiennent exactement aux
+          mêmes familles : elles sont interchangeables pour ce calcul.
+
+        À chaque instant, les séances en cours d'une famille (et de mêmes
+        semaines actives) se répartissent entre les classes de la famille, et
+        aucune classe ne reçoit, une semaine donnée, plus de séances qu'elle
+        n'a de salles disponibles à cet instant. Toute affectation réelle de
+        salles donne une telle répartition : la condition est nécessaire, elle
+        n'écarte aucune solution. La seconde phase fait l'affectation réelle.
         """
-        if not self.regles.active(C.SALLE_UNIQUE):
+        regles = self.regles
+        if not regles.active(C.SALLE_UNIQUE):
             return
-        ensembles: dict[tuple[int, ...], frozenset[int]] = {}
-        par_domaine: dict[frozenset[int], dict[int, list[int]]] = defaultdict(
+        pas = self.preparation.pas
+        instants = sorted({option.debut for options in self.options for option in options})
+
+        # Séances en cours par (famille, semaines actives) et par instant.
+        familles: dict[tuple[int, tuple[int, ...]], frozenset[int]] = {}
+        en_cours: dict[tuple[frozenset[int], int], dict[int, list[Litteral]]] = defaultdict(
             lambda: defaultdict(list)
         )
         for seance in self.seances:
             if seance.index in self.preparation.isolees:
                 continue  # verrou toléré : peut partager sa salle avec un autre verrou
-            for rang, option in enumerate(self.options[seance.index]):
-                domaine = ensembles.get(option.salles)
-                if domaine is None:
-                    domaine = ensembles[option.salles] = frozenset(option.salles)
-                par_domaine[domaine][seance.index].append(rang)
+            for option, litteral in zip(
+                self.options[seance.index], self.litteraux[seance.index], strict=True
+            ):
+                cle = (option.campus, seance.salles)
+                famille = familles.get(cle)
+                if famille is None:
+                    famille = familles[cle] = frozenset(
+                        salle for salle in seance.salles if self._campus_de[salle] == option.campus
+                    )
+                premier = bisect_left(instants, option.debut)
+                dernier = bisect_left(instants, option.debut + seance.duree)
+                for rang in range(premier, dernier):
+                    en_cours[(famille, seance.semaines)][rang].append(litteral)
 
-        familles = set(par_domaine)
-        a_traiter = sorted(familles, key=sorted)
-        while a_traiter and len(familles) < NB_FAMILLES_MAX:
-            famille = a_traiter.pop()
-            for autre in sorted(familles, key=sorted):
-                reunion = famille | autre
-                if reunion not in familles and not famille.isdisjoint(autre):
-                    familles.add(reunion)
-                    a_traiter.append(reunion)
-        if a_traiter:
-            journal.warning(
-                "Capacité des salles : plus de %d familles de salles, les réunions restantes "
-                "ne sont pas examinées (la seconde phase reste exacte).",
-                NB_FAMILLES_MAX,
-            )
+        # Classes de salles : mêmes familles.
+        toutes = sorted(set(familles.values()), key=sorted)
+        signatures: dict[frozenset[int], list[int]] = defaultdict(list)
+        for salle in sorted({salle for famille in toutes for salle in famille}):
+            signature = frozenset(n for n, famille in enumerate(toutes) if salle in famille)
+            signatures[signature].append(salle)
+        classes = list(signatures.values())
+        classes_de = {
+            famille: [n for n, classe in enumerate(classes) if classe[0] in famille]
+            for famille in toutes
+        }
+        fermees: dict[int, list[tuple[int, int]]] = defaultdict(list)
+        if regles.active(C.DISPO_SALLE):
+            for salle in self.instantane.salles:
+                for plage in regles.recurrentes(CibleIndisponibilite.SALLE, salle.id):
+                    base = plage.jour * pas
+                    fermees[salle.id].append((base + plage.debut, base + plage.fin))
 
-        nb_contraintes = 0
-        for famille in sorted(familles, key=lambda f: (len(f), sorted(f))):
-            rangs: dict[int, list[int]] = defaultdict(list)
-            for domaine, par_seance in par_domaine.items():
-                if domaine <= famille:
-                    for index, liste in par_seance.items():
-                        rangs[index].extend(liste)
-            if len(rangs) <= len(famille):
-                continue
-            for ensemble in self.preparation.ensembles_par_semaines(rangs, isoler=False):
-                if len(ensemble) <= len(famille):
+        # Répartition des séances en cours entre les classes de leur famille.
+        # `parts[(classe, instant)]` : (semaines, expression, majorant) par famille.
+        parts: dict[tuple[int, int], list[tuple[int, object, int]]] = defaultdict(list)
+        nb_variables = 0
+        for (famille, semaines), par_instant in en_cours.items():
+            for rang, litteraux in par_instant.items():
+                total = sum(litteraux)
+                if len(classes_de[famille]) == 1:
+                    parts[(classes_de[famille][0], rang)].append((semaines, total, len(litteraux)))
                     continue
-                plages = [
-                    plage for index in ensemble for plage in self._plages(index, rangs=rangs[index])
-                ]
-                nb_contraintes += limiter_par_instant(self.cp, plages, len(famille), self._vus)
+                repartition = []
+                for classe in classes_de[famille]:
+                    majorant = min(len(litteraux), len(classes[classe]))
+                    part = self.cp.new_int_var(0, majorant, "")
+                    repartition.append(part)
+                    parts[(classe, rang)].append((semaines, part, majorant))
+                self.cp.add(sum(repartition) == total)
+                nb_variables += len(repartition)
+
+        # Capacité de chaque classe, pour chaque ensemble de semaines qui se croisent.
+        nb_contraintes = 0
+        for (classe, rang), entrees in parts.items():
+            instant = instants[rang]
+            libres = sum(
+                1
+                for salle in classes[classe]
+                if not any(debut <= instant < fin for debut, fin in fermees.get(salle, ()))
+            )
+            if sum(majorant for _, _, majorant in entrees) <= libres:
+                continue
+            for ensemble in self._semaines_qui_se_croisent(
+                {semaines for semaines, _, _ in entrees}
+            ):
+                retenues = [entree for entree in entrees if entree[0] in ensemble]
+                if sum(majorant for _, _, majorant in retenues) > libres:
+                    self.cp.add(sum(expression for _, expression, _ in retenues) <= libres)
+                    nb_contraintes += 1
         journal.debug(
-            "Capacité des salles : %d famille(s), %d contrainte(s)", len(familles), nb_contraintes
+            "Capacité des salles : %d famille(s), %d classe(s) de salles, %d variable(s) de "
+            "répartition, %d contrainte(s) de capacité",
+            len(toutes),
+            len(classes),
+            nb_variables,
+            nb_contraintes,
+        )
+
+    @staticmethod
+    def _semaines_qui_se_croisent(masques: set[int]) -> list[frozenset[int]]:
+        """Ensembles maximaux de masques de semaines qui ont une semaine en commun."""
+        tous = 0
+        for masque in masques:
+            tous |= masque
+        ensembles: set[frozenset[int]] = set()
+        bit = 0
+        while tous >> bit:
+            if tous >> bit & 1:
+                ensembles.add(frozenset(m for m in masques if m >> bit & 1))
+            bit += 1
+        return sorted(
+            (e for e in ensembles if not any(e < autre for autre in ensembles)), key=sorted
         )
 
     # -- symétries ----------------------------------------------------------------
@@ -542,19 +693,15 @@ class ModeleHoraires:
         redistribués par début croissant pour rester compatibles avec le
         bris de symétrie.
         """
-        campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
-        indices: dict[int, tuple[int, int | None]] = {}
+        indices: dict[int, tuple[int, int]] = {}
         for seance in self.seances:
             indice = seance.seance.indice
             if indice is not None:
                 debut = self.preparation.coder(indice.jour, indice.debut)
-                indices[seance.index] = (debut, campus_de.get(indice.salle_id))
+                indices[seance.index] = (debut, self._campus_de.get(indice.salle_id, -1))
         for classe in self._classes_de_symetrie():
             if all(index in indices for index in classe):
-                tries = sorted(
-                    (indices[index] for index in classe), key=lambda c: (c[0], c[1] or 0)
-                )
-                indices.update(zip(classe, tries, strict=True))
+                indices.update(zip(classe, sorted(indices[index] for index in classe), strict=True))
         nb_indices = 0
         for index, (debut, campus) in indices.items():
             options, litteraux = self.options[index], self.litteraux[index]
@@ -583,6 +730,10 @@ class ModeleHoraires:
         parametres = self.instantane.parametres
         pas = self.preparation.pas
         creneaux = self._creneaux_par_jour()
+        extremes = {
+            jour: (min(liste), max(liste, key=lambda c: (c[1], c[0])))
+            for jour, liste in creneaux.items()
+        }
         termes: list = []
         constante = 0
         for seance in self.seances:
@@ -594,12 +745,9 @@ class ModeleHoraires:
                 poids = 0
                 if jour == SAMEDI:
                     poids += parametres.poids_samedi * nb_semaines
-                if jour in creneaux and any(
+                if any(
                     se_chevauchent(minute, minute + seance.duree, *creneau)
-                    for creneau in (
-                        min(creneaux[jour]),
-                        max(creneaux[jour], key=lambda c: (c[1], c[0])),
-                    )
+                    for creneau in extremes.get(jour, ())
                 ):
                     poids += parametres.poids_creneaux_extremes * nb_semaines
                 if poids and litteral is True:
@@ -682,7 +830,7 @@ class ModeleHoraires:
         commence après lui et aucune ne le recoupe, le même jour.
         """
         pas = self.preparation.pas
-        par_jour: dict[int, list[tuple[int, int, Litteral]]] = defaultdict(list)
+        par_jour: dict[int, list[Plage]] = defaultdict(list)
         for index in emploi:
             duree = self.seances[index].duree
             for option, litteral in zip(self.options[index], self.litteraux[index], strict=True):
@@ -697,30 +845,17 @@ class ModeleHoraires:
                 dessus = [lit for d, f, lit in plages if se_chevauchent(d, f, debut, fin)]
                 if not avant or not apres or any(lit is True for lit in dessus):
                     continue
-                trou = self.cp.new_bool_var("")
                 # Une séance avant et une après, aucune dessus => trou.
-                un_avant = self._au_moins_un(avant)
-                un_apres = self._au_moins_un(apres)
+                trou = self.cp.new_bool_var("")
                 clause = [trou, *dessus]
-                clause.extend(lit.negated() for lit in (un_avant, un_apres) if lit is not True)
+                clause.extend(
+                    lit.negated()
+                    for lit in (self._au_moins_un(avant), self._au_moins_un(apres))
+                    if lit is not True
+                )
                 self.cp.add_bool_or(clause)
                 trous.append(trou)
         return trous
-
-    def _au_moins_un(self, litteraux: Sequence[Litteral]) -> Litteral:
-        """Littéral impliqué par chacun des `litteraux` (vrai dès que l'un d'eux l'est).
-
-        Un seul sens suffit : ces littéraux n'apparaissent que dans des
-        pénalités, que la minimisation pousse déjà vers « faux ».
-        """
-        if any(litteral is True for litteral in litteraux):
-            return True
-        if len(litteraux) == 1:
-            return litteraux[0]
-        resultat = self.cp.new_bool_var("")
-        for litteral in litteraux:
-            self.cp.add_implication(litteral, resultat)
-        return resultat
 
     def _changements_de_campus(self, emploi: Sequence[int]) -> list[cp_model.IntVar]:
         """Un booléen par (jour, paire de campus) « des séances sur ces deux campus ce jour-là »."""
