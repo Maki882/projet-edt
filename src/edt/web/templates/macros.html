@@ -9,7 +9,11 @@
   - ui.formulaire(action, ...)                un formulaire ; les champs vont dans le bloc {% call %}
   - ui.champ(nom, libelle, valeur, type, ...) un champ de formulaire avec libellé, aide et erreur
   - ui.bouton_suppression(action, ...)        un bouton de suppression avec confirmation
-  - ui.etiquette(texte, niveau)               une pastille d'état
+  - ui.bouton_action(action, libelle, ...)    un bouton qui envoie un POST (confirmation facultative)
+  - ui.etiquette(texte, niveau)               une pastille d'état (succes, info, attention, erreur, neutre)
+  - ui.pagination(page, nb_pages, url_page)   liens de pagination (url_page : fonction numéro -> adresse)
+  - ui.couleur(code)                          un petit carré de couleur
+  - ui.cellule(valeur)                        contenu d'une cellule (tiret si vide, Oui / Non)
 #}
 
 {% macro message(texte, niveau="info", details=()) -%}
@@ -35,6 +39,10 @@
 <span class="etiquette etiquette-{{ niveau }}">{{ texte }}</span>
 {%- endmacro %}
 
+{% macro couleur(code) -%}
+{%- if code %}<span class="pastille-couleur" style="background: {{ code }}" aria-hidden="true"></span>{% endif -%}
+{%- endmacro %}
+
 {% macro _cellule(valeur) -%}
 {%- if valeur is none or valeur == "" -%}
 <span class="discret">-</span>
@@ -45,6 +53,11 @@ Non
 {%- else -%}
 {{ valeur }}
 {%- endif -%}
+{%- endmacro %}
+
+{# Cellule de tableau : tiret pour une valeur vide, Oui / Non pour un booléen. #}
+{% macro cellule(valeur) -%}
+{{ _cellule(valeur) }}
 {%- endmacro %}
 
 {#
@@ -111,36 +124,60 @@ Non
 {%- endmacro %}
 
 {#
-  type : text, number, date, time, email, select, textarea, checkbox...
-  options (type select) : liste de couples (valeur, libellé).
-  attributs : dictionnaire d'attributs HTML supplémentaires (min, max, step, hx-get...).
+  type : text, number, date, time, email, color, select, textarea, checkbox, multiple...
+  options (types select et multiple) : liste de couples (valeur, libellé).
+  valeur (type multiple) : liste des valeurs cochées.
+  attributs : attributs HTML supplémentaires du contrôle (min, max, step, hx-get...).
+  unite : texte affiché après le contrôle (« min », « places »).
+  conteneur : attributs HTML du bloc du champ (par exemple data-visible-si).
+  large : le champ occupe toute la largeur d'une grille de champs (.grille-champs).
 #}
-{% macro champ(nom, libelle, valeur="", type="text", requis=false, aide=None, erreur=None, options=(), attributs={}) -%}
-<div class="champ{% if erreur %} champ-en-erreur{% endif %}">
+{% macro champ(nom, libelle, valeur="", type="text", requis=false, aide=None, erreur=None, options=(), attributs={}, unite=None, conteneur={}, large=false) -%}
+{%- set decrit = namespace(ids=[]) %}
+{%- if aide %}{% set decrit.ids = decrit.ids + ["aide-" ~ nom] %}{% endif %}
+{%- if erreur %}{% set decrit.ids = decrit.ids + ["erreur-" ~ nom] %}{% endif %}
+{%- set aria = {"aria-describedby": decrit.ids|join(" ") or none, "aria-invalid": "true" if erreur else none} %}
+<div class="champ{% if erreur %} champ-en-erreur{% endif %}{% if large %} champ-large{% endif %}"{{ conteneur|xmlattr }}>
   {%- if type == "checkbox" %}
   <label class="case">
-    <input type="checkbox" id="champ-{{ nom }}" name="{{ nom }}" value="1"{% if valeur %} checked{% endif %}{{ attributs|xmlattr }}>
+    <input type="checkbox" id="champ-{{ nom }}" name="{{ nom }}" value="1"{% if valeur %} checked{% endif %}{{ attributs|xmlattr }}{{ aria|xmlattr }}>
     {{ libelle }}
   </label>
+  {%- elif type == "multiple" %}
+  {%- set choisis = (valeur or [])|map("string")|list %}
+  <span class="libelle" id="libelle-{{ nom }}">{{ libelle }}{% if requis %} <span class="requis" title="Obligatoire">*</span>{% endif %}</span>
+  <div class="choix-multiple" role="group" aria-labelledby="libelle-{{ nom }}"{{ aria|xmlattr }}>
+    <input type="search" class="choix-multiple-filtre" placeholder="Filtrer la liste..." aria-label="Filtrer : {{ libelle }}" hidden>
+    <div class="choix-multiple-liste">
+      {%- for valeur_option, libelle_option in options %}
+      <label><input type="checkbox" name="{{ nom }}" value="{{ valeur_option }}"{% if valeur_option|string in choisis %} checked{% endif %}> {{ libelle_option }}</label>
+      {%- else %}
+      <span class="vide">Aucun choix possible.</span>
+      {%- endfor %}
+    </div>
+  </div>
+  <p class="choix-multiple-resume" aria-live="polite"></p>
   {%- else %}
   <label for="champ-{{ nom }}">{{ libelle }}{% if requis %} <span class="requis" title="Obligatoire">*</span>{% endif %}</label>
+  {%- if unite %}<div class="champ-avec-unite">{% endif %}
   {%- if type == "select" %}
-  <select id="champ-{{ nom }}" name="{{ nom }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>
+  <select id="champ-{{ nom }}" name="{{ nom }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}{{ aria|xmlattr }}>
     {%- for valeur_option, libelle_option in options %}
     <option value="{{ valeur_option }}"{% if valeur_option|string == valeur|string %} selected{% endif %}>{{ libelle_option }}</option>
     {%- endfor %}
   </select>
   {%- elif type == "textarea" %}
-  <textarea id="champ-{{ nom }}" name="{{ nom }}" rows="3"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>{{ valeur if valeur is not none else "" }}</textarea>
+  <textarea id="champ-{{ nom }}" name="{{ nom }}" rows="3"{% if requis %} required{% endif %}{{ attributs|xmlattr }}{{ aria|xmlattr }}>{{ valeur if valeur is not none else "" }}</textarea>
   {%- else %}
-  <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur if valeur is not none else '' }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>
+  <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur if valeur is not none else '' }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}{{ aria|xmlattr }}>
   {%- endif %}
+  {%- if unite %}<span class="unite">{{ unite }}</span></div>{% endif %}
   {%- endif %}
   {%- if aide %}
-  <p class="aide">{{ aide }}</p>
+  <p class="aide" id="aide-{{ nom }}">{{ aide }}</p>
   {%- endif %}
   {%- if erreur %}
-  <p class="erreur-champ">{{ erreur }}</p>
+  <p class="erreur-champ" id="erreur-{{ nom }}">{{ erreur }}</p>
   {%- endif %}
 </div>
 {%- endmacro %}
@@ -150,4 +187,46 @@ Non
 <form class="en-ligne" method="post" action="{{ action }}" data-confirmation="{{ confirmation }}">
   <button type="submit" class="bouton bouton-danger">{{ libelle }}</button>
 </form>
+{%- endmacro %}
+
+{# Bouton qui envoie un POST (dupliquer, préremplir...) ; confirmation facultative. #}
+{% macro bouton_action(action, libelle, classe="bouton", confirmation=None, champs={}) -%}
+<form class="en-ligne" method="post" action="{{ action }}"{% if confirmation %} data-confirmation="{{ confirmation }}"{% endif %}>
+  {%- for nom, valeur in champs.items() %}
+  <input type="hidden" name="{{ nom }}" value="{{ valeur }}">
+  {%- endfor %}
+  <button type="submit" class="{{ classe }}">{{ libelle }}</button>
+</form>
+{%- endmacro %}
+
+{#
+  Pagination : url_page(n) donne l'adresse de la page n. cible : identifiant de
+  la zone remplacée par HTMX (facultatif ; sans JavaScript, ce sont des liens simples).
+#}
+{% macro pagination(page, nb_pages, url_page, cible=None) -%}
+{%- if nb_pages > 1 %}
+{%- set hx = {"hx-target": "#" ~ cible, "hx-push-url": "true"} if cible else {} %}
+<nav class="pagination" aria-label="Pagination">
+  <span class="discret">Page {{ page }} sur {{ nb_pages }}</span>
+  <ul class="pagination-pages">
+    {%- if page > 1 %}
+    <li><a href="{{ url_page(page - 1) }}"{% if cible %} hx-get="{{ url_page(page - 1) }}"{% endif %}{{ hx|xmlattr }} rel="prev">Précédente</a></li>
+    {%- else %}
+    <li><span class="inactif">Précédente</span></li>
+    {%- endif %}
+    {%- for numero in range(1, nb_pages + 1) %}
+    {%- if numero == 1 or numero == nb_pages or (numero - page)|abs <= 2 %}
+    <li>{% if numero == page %}<span aria-current="page">{{ numero }}</span>{% else %}<a href="{{ url_page(numero) }}"{% if cible %} hx-get="{{ url_page(numero) }}"{% endif %}{{ hx|xmlattr }}>{{ numero }}</a>{% endif %}</li>
+    {%- elif (numero - page)|abs == 3 %}
+    <li><span class="inactif" aria-hidden="true">…</span></li>
+    {%- endif %}
+    {%- endfor %}
+    {%- if page < nb_pages %}
+    <li><a href="{{ url_page(page + 1) }}"{% if cible %} hx-get="{{ url_page(page + 1) }}"{% endif %}{{ hx|xmlattr }} rel="next">Suivante</a></li>
+    {%- else %}
+    <li><span class="inactif">Suivante</span></li>
+    {%- endif %}
+  </ul>
+</nav>
+{%- endif %}
 {%- endmacro %}

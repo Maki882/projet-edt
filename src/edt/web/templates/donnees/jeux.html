@@ -1,0 +1,80 @@
+{# Jeux de données : charger un établissement fictif, remettre la base à zéro. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Jeux de données{% endblock %}
+
+{% macro effacement(contenu) -%}
+<ul class="liste-simple">
+  {%- for nom, nombre in contenu %}
+  <li>{{ nom }} : {{ nombre }}</li>
+  {%- endfor %}
+</ul>
+{%- endmacro %}
+
+{% block contenu %}
+<p class="introduction">
+  Pour découvrir l'application ou préparer une démonstration : un établissement fictif complet
+  et réaliste se charge en une fois. Toutes les personnes sont inventées.
+</p>
+
+{%- if not etat.accessible %}
+{{ ui.message("La base de données est inaccessible : aucune action n'est possible.", "erreur", [etat.erreur or ""]) }}
+{%- else %}
+
+<section class="carte">
+  <h2>Charger un établissement fictif</h2>
+  <form method="post" action="/jeux/charger" data-attente="Chargement en cours... (une dizaine de secondes pour le jeu grand)">
+    <fieldset class="champ{% if erreurs.taille %} champ-en-erreur{% endif %}">
+      <legend class="libelle">Taille</legend>
+      {%- for taille in tailles %}
+      <label class="case">
+        <input type="radio" name="taille" value="{{ taille.nom }}"{% if saisies.taille == taille.nom %} checked{% endif %} required>
+        <span><strong>{{ taille.nom|capitalize }}</strong> : {{ taille.description }}
+          <span class="discret">({{ taille.nb_promotions }} promotion{{ "s" if taille.nb_promotions > 1 else "" }},
+          {{ taille.nb_classes }} classes, {{ taille.nb_salles }} salles,
+          semestre{{ "s" if taille.semestres|length > 1 else "" }} {{ taille.semestres|join(" et ") }})</span></span>
+      </label>
+      {%- endfor %}
+      {%- if erreurs.taille %}<p class="erreur-champ">{{ erreurs.taille }}</p>{% endif %}
+    </fieldset>
+    <div class="grille-champs">
+      {{ ui.champ("graine", "Graine", valeur=saisies.graine, type="number", attributs={"min": 0, "step": 1}, erreur=erreurs.graine, aide="Même graine, mêmes données ; une autre graine donne un autre établissement.") }}
+    </div>
+    {{ ui.champ("reference", "Enregistrer aussi un emploi du temps de référence", valeur=saisies.reference, type="checkbox", aide="Le générateur fournit une solution qu'il sait valide ; elle est enregistrée comme version « référence » (non active) de chaque semestre, pour comparer.") }}
+    {%- if donnees_presentes %}
+    <div class="message message-attention">
+      <p><strong>La base contient déjà des données : le chargement les efface toutes</strong>, puis recrée les données par défaut avant de charger l'établissement fictif. Seront effacés :</p>
+      {{ effacement(contenu) }}
+    </div>
+    {{ ui.champ("confirmation", "Je confirme l'effacement de toutes les données actuelles", type="checkbox", erreur=erreurs.confirmation) }}
+    {%- endif %}
+    <p class="discret">Le chargement du jeu grand prend une dizaine de secondes : ne quittez pas la page.</p>
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-principal">Charger l'établissement fictif</button>
+    </div>
+  </form>
+</section>
+
+<section class="carte carte-attention">
+  <h2>Remettre la base à zéro</h2>
+  <p>
+    Supprime <strong>toutes</strong> les données, puis recrée les données par défaut : grille
+    horaire, types de salle, équipements, types de séance, paramètres, année scolaire en cours
+    avec ses semestres et ses jours fériés.
+  </p>
+  {%- if contenu %}
+  <p>Seront effacés :</p>
+  {{ effacement(contenu) }}
+  {%- else %}
+  <p class="discret">La base ne contient que ses données par défaut.</p>
+  {%- endif %}
+  <form method="post" action="/jeux/remise-a-zero">
+    {{ ui.champ("confirmation_zero", "Je confirme : effacer définitivement toutes les données", type="checkbox", erreur=erreurs.confirmation_zero) }}
+    <div class="formulaire-actions">
+      <button type="submit" class="bouton bouton-danger-plein">Remettre la base à zéro</button>
+    </div>
+  </form>
+</section>
+{%- endif %}
+{% endblock %}

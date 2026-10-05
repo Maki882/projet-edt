@@ -1,0 +1,73 @@
+{#
+  Résultat d'un import (simulation ou application) : bilan, semaine type, besoins
+  reconstitués, rapport ligne par ligne, aperçu des tableaux lus, bouton d'application.
+  Fragment rendu seul (HTMX) ou inclus dans echange/import.html.
+#}
+{% import "macros.html" as ui %}
+<section class="carte" id="resultat">
+  {% if rapport.simulation %}
+  <h2>Simulation ({{ mode_libelle }}) : rien n'a été écrit</h2>
+  {% else %}
+  <h2>Import appliqué ({{ mode_libelle }})</h2>
+  {% endif %}
+
+  {% if rapport.a_des_rejets %}
+    {{ ui.message(rapport.nb_rejets ~ " ligne(s) ou séance(s) non importée(s), " ~ rapport.nb_erreurs ~ " erreur(s) : voir le rapport ci-dessous.", "attention") }}
+  {% else %}
+    {{ ui.message("Aucune ligne rejetée.", "succes") }}
+  {% endif %}
+
+  <p class="discret">Fichiers : {{ rapport.fichiers|join(", ") }}</p>
+
+  <h3>Bilan</h3>
+  {{ ui.tableau([("objet", "Feuille ou objet"), ("texte", "Bilan")], rapport.bilans, vide="Rien à importer.") }}
+
+  {% if rapport.version_id %}
+  <p>Version d'emploi du temps créée : n° {{ rapport.version_id }}.</p>
+  {% endif %}
+  {% for phrase in rapport.semaines_types %}
+  <p>{{ phrase }}</p>
+  {% endfor %}
+
+  {% if rapport.besoins %}
+  <h3>Besoins reconstitués et semaine type proposée</h3>
+  {{ ui.tableau([("etat", "État"), ("matiere", "Matière"), ("type", "Type"), ("libelle", "Libellé"), ("groupes", "Groupes"),
+                 ("enseignants", "Enseignants"), ("duree", "Durée"), ("volume", "Volume"), ("creneaux", "Créneaux de la semaine type"),
+                 ("seances", "Séances")], rapport.besoins) }}
+  <p class="discret">Les besoins et la semaine type restent modifiables après l'import dans les écrans de planification ;
+    pour retenir une autre semaine type, indiquer une date de cette semaine et simuler de nouveau.</p>
+  {% endif %}
+
+  <h3>Rapport ({{ signalements|length }} ligne(s))</h3>
+  <p><a class="bouton" download="{{ rapport_nom }}" href="{{ rapport_url }}">Télécharger le rapport (CSV)</a></p>
+  {{ ui.tableau([("gravite", "Gravité"), ("fichier", "Fichier"), ("feuille", "Feuille"), ("ligne", "Ligne"),
+                 ("colonne", "Colonne"), ("message", "Message")], signalements, vide="Rien à signaler.") }}
+
+  {% if apercus %}
+  <h3>Aperçu des fichiers lus</h3>
+  {% for apercu in apercus %}
+  <details>
+    <summary>{{ apercu.titre }} : {{ apercu.nb_lignes }} ligne(s){% if apercu.nb_lignes > apercu.lignes|length %}, les {{ apercu.lignes|length }} premières affichées{% endif %}</summary>
+    {{ ui.tableau(apercu.colonnes, apercu.lignes, vide="Aucune ligne.") }}
+  </details>
+  {% endfor %}
+  {% endif %}
+
+  {% if rapport.simulation %}
+  <h3>Appliquer</h3>
+  {% if tout_remplacer %}
+    {{ ui.message("« Tout remplacer » supprimera d'abord ces données de l'établissement : "
+                  ~ remplacement_texte ~ ".", "attention",
+                  ["Les années, semestres, la grille horaire, les listes configurables et les paramètres sont conservés."]) }}
+    <div class="champ">
+      <label class="case">
+        <input type="checkbox" name="confirmer_remplacement" value="1" form="formulaire-import" required>
+        Je confirme la suppression de ces données avant l'import.
+      </label>
+    </div>
+  {% endif %}
+  <p class="discret">L'application renvoie les fichiers choisis dans le formulaire ci-dessus (ne pas les changer entre-temps).</p>
+  <button type="submit" class="bouton bouton-principal" form="formulaire-import"
+          formaction="/import/appliquer" formmethod="post" formenctype="multipart/form-data">Appliquer l'import</button>
+  {% endif %}
+</section>

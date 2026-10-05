@@ -1,0 +1,31 @@
+{#
+  Page de liste générique d'une entité (edt.web.donnees.ecrans).
+  Un écran sur mesure étend ce gabarit et remplit les blocs :
+  - avant_liste : contenu entre l'introduction et la recherche ;
+  - apres_liste : contenu sous le tableau.
+#}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+
+{% block titre %}{{ ecran.titre }}{% endblock %}
+
+{% block actions %}
+{{ d.retour(ecran) }}
+{%- for libelle, url in ecran.liens %}
+<a class="bouton" href="{{ url }}">{{ libelle }}</a>
+{%- endfor %}
+<a class="bouton bouton-principal" href="{{ url_nouveau }}">{{ entite.nouveau }}</a>
+{% endblock %}
+
+{% block contenu %}
+{%- if ecran.introduction %}
+<p class="introduction">{{ ecran.introduction }}</p>
+{%- endif %}
+{% block avant_liste %}{% endblock %}
+{{ d.barre_liste(ecran, etat, filtres) }}
+<div id="zone-liste" aria-live="polite">
+  {% include "donnees/_zone_liste.html" %}
+</div>
+{% block apres_liste %}{% endblock %}
+{% endblock %}
