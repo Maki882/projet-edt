@@ -11,7 +11,6 @@
 {% endblock %}
 
 {% block contenu %}
-{{ edt.ressources() }}
 {%- if not semestre %}
 {{ ui.message("Aucun semestre n'existe encore : initialiser la base de données, puis saisir les données.", "attention") }}
 {%- else %}
@@ -97,5 +96,8 @@
 </section>
 {%- endif %}
 {%- endif %}
-{{ edt.script() }}
 {% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

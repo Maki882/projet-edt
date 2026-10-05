@@ -10,11 +10,13 @@
 {% endblock %}
 
 {% block contenu %}
-{{ edt.ressources() }}
 <section class="carte">
   <p class="discret">{{ r.semestre.libelle }} - lancé le {{ r.suivi.demarre_le|dateheure_fr }}
     {%- if r.optimiser %} - recherche d'un emploi du temps plus confortable{% endif %}</p>
   {% include "edt/_suivi_calcul.html" %}
 </section>
-{{ edt.script() }}
 {% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

@@ -13,7 +13,6 @@
 {% endblock %}
 
 {% block contenu %}
-{{ edt.ressources() }}
 {%- if not semestre %}
 {{ ui.message("Aucun semestre n'existe encore : initialiser la base de données, puis saisir les données.", "attention") }}
 {%- elif not version %}
@@ -173,5 +172,8 @@
 {{ ui.message("Choisir un groupe, un enseignant ou une salle dans la liste « Pour qui ».", "info") }}
 {%- endif %}
 {%- endif %}
-{{ edt.script() }}
 {% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}

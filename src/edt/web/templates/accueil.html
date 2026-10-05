@@ -5,7 +5,6 @@
 {% block titre %}Accueil{% endblock %}
 
 {% block contenu %}
-{{ edt.ressources() }}
 {%- if etape %}
 <section class="carte edt-prochaine-etape">
   <h2>Prochaine étape</h2>
@@ -102,5 +101,8 @@
     <dd>{{ "production" if environnement == "prod" else "développement" }}</dd>
   </dl>
 </section>
-{{ edt.script() }}
 {% endblock %}
+
+{% block styles %}{{ edt.ressources() }}{% endblock %}
+
+{% block scripts %}{{ edt.script() }}{% endblock %}
