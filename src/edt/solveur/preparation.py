@@ -534,8 +534,8 @@ class Preparation:
                                 Gravite.ERREUR,
                                 f"Les séances {nom_seance(a.seance)}, "
                                 f"{nom_creneau(jour, debut_a, fin_a)}, et {nom_seance(b.seance)}, "
-                                f"{nom_creneau(jour, debut_b, fin_b)}, ont des horaires fixes "
-                                f"(verrou ou créneau imposé) qui se contredisent ({violees}).",
+                                f"{nom_creneau(jour, debut_b, fin_b)}, n'ont chacune qu'un horaire "
+                                f"possible, et ces horaires se contredisent ({violees}).",
                                 **cibles,
                             )
                         )

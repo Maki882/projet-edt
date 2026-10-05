@@ -371,8 +371,7 @@ def verifier_solution(
     assert all(placement.salle_id is not None for placement in resultat.placements)
     anomalies = verifier(instantane, resultat.placements, codes_actifs(contraintes_desactivees))
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
-    assert not erreurs, "
-".join(f"[{a.code}] {a.message}" for a in erreurs)
+    assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)
     return par_seance(resultat)
 
 
@@ -382,9 +381,6 @@ def verifier_dates(
     contraintes_desactivees: Iterable[str] = (),
 ) -> None:
     """ORACLE de la couche datée : aucune erreur du vérificateur sur ces occurrences."""
-    anomalies = verifier_occurrences(
-        instantane, occurrences, codes_actifs(contraintes_desactivees)
-    )
+    anomalies = verifier_occurrences(instantane, occurrences, codes_actifs(contraintes_desactivees))
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
-    assert not erreurs, "
-".join(f"[{a.code}] {a.message}" for a in erreurs)
+    assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)
