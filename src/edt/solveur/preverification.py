@@ -93,6 +93,7 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
             probleme.code,
             Gravite.ERREUR,
             f"{probleme.message} Corriger le besoin avant de lancer le calcul.",
+            besoins=(probleme.besoin_id,),
         )
         for probleme in instantane.problemes_depliage
         if regles.active(probleme.code)
@@ -106,6 +107,7 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
                 f"{conflit.message} Cette violation héritée est tolérée à votre demande.",
                 seances=conflit.seances,
                 jour=conflit.jour,
+                besoins=conflit.besoins,
             )
         anomalies.append(conflit)
     # Les charges se mesurent au temps ouvert par la grille : sans `HORAIRES`, les séances

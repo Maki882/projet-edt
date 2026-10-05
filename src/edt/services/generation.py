@@ -11,11 +11,12 @@ Déroulement d'un calcul :
 
 1. une ligne `calcul` est créée à l'état « en cours » ; **un seul calcul à la
    fois** (`ErreurCalculEnCours` sinon) ;
-2. un fil d'exécution d'arrière-plan charge l'instantané du semestre, refuse
-   de continuer si des besoins ne peuvent pas être dépliés, puis lance les
-   **pré-vérifications** (`pre_verifier_semestre` les expose aussi seules à
-   l'interface) : une impossibilité certaine arrête le calcul avec la liste
-   des raisons, une situation tendue devient un avertissement joint au suivi ;
+2. un fil d'exécution d'arrière-plan charge l'instantané du semestre et lance
+   les **pré-vérifications** (`pre_verifier_semestre` les expose aussi seules
+   à l'interface) : une impossibilité certaine (besoin impossible à déplier,
+   séance sans salle, charge trop forte, verrous contradictoires...) **refuse**
+   le calcul, qui passe à l'état « impossible » avec la liste des raisons ;
+   une situation tendue devient un avertissement joint au suivi ;
 3. le moteur (`edt.solveur.resoudre` par défaut) est appelé ; tout ce qui est
    journalisé pendant le calcul va aussi dans un fichier dédié de
    `<EDT_LOG_DIR>/generations/` ;
@@ -54,7 +55,6 @@ from edt.domaine.enumerations import EtatCalcul, OrigineVersion
 from edt.domaine.instantane import Instantane
 from edt.erreurs import (
     ErreurCalculEnCours,
-    ErreurDonneesInvalides,
     ErreurEDT,
     ErreurInfaisable,
     ErreurIntrouvable,
@@ -386,8 +386,6 @@ def _executer(
                         .values(fichier_journal=chemin_journal)
                     )
                     instantane = charger_instantane(session, semestre_id, version_base_id)
-                _refuser_si_non_depliable(instantane, options)
-
                 etat, message, statistiques = _calculer(
                     calcul_id, instantane, options, moteur, arret, activer, config
                 )
@@ -407,20 +405,6 @@ def _executer(
             _actifs.pop(calcul_id, None)
 
 
-def _refuser_si_non_depliable(instantane: Instantane, options: OptionsSolveur) -> None:
-    bloquants = [
-        probleme
-        for probleme in instantane.problemes_depliage
-        if probleme.code not in options.contraintes_desactivees
-    ]
-    if bloquants:
-        raise ErreurDonneesInvalides(
-            "Le calcul n'a pas été lancé : certains besoins ne peuvent pas être planifiés "
-            "tels qu'ils sont saisis.",
-            [probleme.message for probleme in bloquants],
-        )
-
-
 def _calculer(
     calcul_id: int,
     instantane: Instantane,
@@ -432,7 +416,10 @@ def _calculer(
 ) -> tuple[EtatCalcul, str, dict]:
     """Pré-vérifications, moteur, contrôle, enregistrement, séances datées.
 
-    Renvoie l'état final, le message et les statistiques du calcul.
+    Renvoie l'état final, le message et les statistiques du calcul. Un calcul
+    refusé par les pré-vérifications a toujours le même visage : état
+    « impossible », `statistiques["refuse"]` vrai, message qui cite les
+    premières raisons et liste complète dans `statistiques["impossibilites"]`.
     """
     # Pré-vérifications : une impossibilité certaine arrête tout de suite.
     anomalies = pre_verifier(

@@ -12,6 +12,7 @@ Projet scolaire 2026-2027, réalisé en équipe. Toutes les données sont fictiv
 - [Décisions de cadrage de la V1](docs/decisions.md) : fait autorité pour le code
 - [Architecture](docs/architecture.md) : couches, extension, contrats partagés
 - [Modèle de données](docs/modele-donnees.md) : diagramme de classes et tables
+- [Solveur](docs/solveur.md) : formulation, objectif, séances datées, mesures, limites
 - [Consignes de travail et conventions](AGENTS.md)
 
 ## Installer
@@ -47,6 +48,9 @@ Toute fonctionnalité est aussi une commande :
 | `python -m edt init-db [--reset]` | crée la base ; `--reset` efface tout d'abord |
 | `python -m edt verifier-schema` | compare la base au modèle : code 0 à jour, 1 périmée (écarts listés), 2 inaccessible |
 | `python -m edt jeu-minimal` | charge un tout petit jeu de données cohérent |
+| `python -m edt pre-verifier [--semestre 1]` | dit, avant tout calcul, ce qui rend un emploi du temps impossible ou difficile (code 1 si le calcul serait refusé) |
+| `python -m edt generer [--semestre 1] [--temps-limite 120] [--optimiser] [-d PAUSE]` | génère l'emploi du temps d'un semestre, le contrôle, l'enregistre et produit ses séances datées (code 1 si le calcul n'aboutit pas) |
+| `python -m edt instancier [--version 4]` | refait les séances datées d'une version et replace celles qui tombent un jour fermé |
 | `python -m edt serve [--port 8000] [--reload]` | lance le serveur web |
 | `python -m edt doctor` | vérifie l'installation (Python, OR-Tools, base, schéma, journaux, port) |
 | `python -m edt version` | affiche la version |
