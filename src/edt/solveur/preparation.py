@@ -52,7 +52,7 @@ journal = logging.getLogger(__name__)
 
 C = CodeContrainte
 
-PAS_HORS_GRILLE = 15
+PAS_HORS_GRILLE = 30
 """Pas des débuts proposés (minutes) quand la contrainte `HORAIRES` est désactivée."""
 
 
@@ -644,6 +644,46 @@ class Preparation:
                 enseignant, groupe = self.regles.partage(a.besoin, b.besoin)
                 paires.append((a.index, j, enseignant, groupe))
         return paires
+
+    def ensembles_par_semaines(
+        self, indices: Iterable[int], isoler: bool = True
+    ) -> list[list[int]]:
+        """Découpe des séances en ensembles maximaux actifs une même semaine.
+
+        C'est ici que les semaines actives sont traitées exactement : deux
+        séances sont dans un même ensemble si et seulement si une semaine au
+        moins les réunit. Une contrainte posée sur chaque ensemble ne lie donc
+        jamais deux séances aux semaines disjointes, et n'oublie aucune paire
+        de séances qui coexistent.
+
+        Avec `isoler`, une séance verrouillée « isolée » (violations héritées
+        tolérées) n'est réunie qu'aux séances non verrouillées.
+        """
+        par_masque: dict[int, list[int]] = defaultdict(list)
+        for index in indices:
+            par_masque[self.seances[index].semaines].append(index)
+        if len(par_masque) <= 1:
+            ensembles = [sorted(membres) for membres in par_masque.values()]
+        else:
+            tous = 0
+            for masque in par_masque:
+                tous |= masque
+            signatures: set[frozenset[int]] = set()
+            bit = 0
+            while tous >> bit:
+                if tous >> bit & 1:
+                    signatures.add(frozenset(m for m in par_masque if m >> bit & 1))
+                bit += 1
+            maximales = [s for s in signatures if not any(s < autre for autre in signatures)]
+            ensembles = sorted(sorted(i for m in s for i in par_masque[m]) for s in maximales)
+        if not isoler or not self.isolees:
+            return ensembles
+        resultat = []
+        for ensemble in ensembles:
+            resultat.append([i for i in ensemble if i not in self.isolees])
+            libres = [i for i in ensemble if not self.seances[i].verrouillee]
+            resultat.extend(libres + [i] for i in ensemble if i in self.isolees)
+        return resultat
 
     def dispensees(self, i: int, j: int) -> bool:
         """Vrai si la paire est dispensée des contraintes de paire (verrous tolérés)."""
