@@ -142,6 +142,7 @@ class Preparation:
                         f"{message}",
                         seances=tuple(domaine.seances),
                         groupes=tuple(sorted(besoin.groupes)),
+                        besoins=(besoin_id,),
                     )
                 )
         self._relever_les_contradictions()
@@ -364,7 +365,14 @@ class Preparation:
 
         def refuser(code: CodeContrainte, message: str, **cibles) -> None:
             self.anomalies.append(
-                Anomalie(code, Gravite.ERREUR, message, seances=(seance.id,), **cibles)
+                Anomalie(
+                    code,
+                    Gravite.ERREUR,
+                    message,
+                    seances=(seance.id,),
+                    besoins=(besoin.id,),
+                    **cibles,
+                )
             )
 
         if not (0 <= verrou.jour <= 6 and 0 <= verrou.debut < verrou.fin <= MINUTES_PAR_JOUR):
@@ -501,7 +509,11 @@ class Preparation:
                     if not codes:
                         continue
                     violees = enumerer(f"« {CATALOGUE[code].libelle} »" for code in codes)
-                    cibles = {"seances": (a.seance.id, b.seance.id), "jour": jour}
+                    cibles = {
+                        "seances": (a.seance.id, b.seance.id),
+                        "jour": jour,
+                        "besoins": tuple(sorted({a.besoin.id, b.besoin.id})),
+                    }
                     if a.verrouillee and b.verrouillee:
                         self.conflits_verrous.append(
                             Anomalie(

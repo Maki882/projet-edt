@@ -13,6 +13,7 @@ from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul, ModeVolume
 from edt.erreurs import ErreurCalculEnCours, ErreurInfaisable, ErreurIntrouvable
 from edt.services import generation
+from edt.services.instantane import charger_instantane
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 
 DELAI = 20  # secondes : garde-fou pour qu'un test bloqué échoue au lieu d'attendre sans fin
@@ -148,6 +149,9 @@ def test_besoin_impossible_a_deplier_refuse_le_calcul(jeu_minimal):
     with session_base() as session:
         besoin = session.scalar(select(m.Besoin).where(m.Besoin.mode_volume == ModeVolume.TOTAL))
         besoin.nombre = 500
+        besoin_id = besoin.id
+    with session_base() as session:
+        libelle = charger_instantane(session, jeu_minimal.semestre_id).besoin(besoin_id).libelle
     appels = []
 
     def moteur_espion(instantane, options, arret=None):
@@ -157,8 +161,13 @@ def test_besoin_impossible_a_deplier_refuse_le_calcul(jeu_minimal):
     suivi = generation.attendre_calcul(
         generation.lancer_calcul(jeu_minimal.semestre_id, moteur=moteur_espion), DELAI
     )
-    assert suivi.etat is EtatCalcul.ERREUR
-    assert "500 séances demandées" in suivi.message
+    # Refus par les pré-vérifications : état « impossible », message qui nomme le besoin.
+    assert suivi.etat is EtatCalcul.INFAISABLE
+    assert suivi.statistiques["refuse"] is True
+    assert "Le calcul n'a pas été lancé" in suivi.message
+    assert f"{libelle} : 500 séances demandées" in suivi.message
+    assert any("500 séances demandées" in raison for raison in suivi.statistiques["impossibilites"])
+    assert suivi.version_id is None
     assert appels == []  # le moteur n'a même pas été appelé
 
     # En désactivant explicitement la contrainte de volume, le calcul est accepté.
