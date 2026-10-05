@@ -75,7 +75,10 @@ async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
     if base_initialisee(obtenir_moteur()):
         cloturer_calculs_interrompus()
     else:
-        journal.warning("La base n'est pas initialisée : lancer « python -m edt init-db ».")
+        journal.warning(
+            "La base n'est pas prête (non initialisée, ou schéma périmé) : "
+            "lancer « python -m edt verifier-schema » puis « python -m edt init-db »."
+        )
     yield
     journal.info("Application EDT arrêtée")
 
