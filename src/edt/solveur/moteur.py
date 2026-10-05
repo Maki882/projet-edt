@@ -20,7 +20,10 @@ Déroulement d'un calcul
    `delai_de_stagnation`), sans attendre le temps limite.
 
 Le tout est borné par `options.temps_limite_s` (construction du modèle
-comprise) et interruptible par `arret`.
+comprise) et interruptible par `arret`. Seule exception : si CP-SAT rend la
+main en retard à la fin de l'amélioration, les meilleurs horaires trouvés
+reçoivent quand même leurs salles (une seconde ou deux), plutôt que de
+perdre l'amélioration.
 
 Une solution trouvée n'est jamais perdue
 ----------------------------------------
@@ -90,6 +93,8 @@ NB_RAISONS_DANS_LE_MESSAGE = 3
 PART_RESERVEE_AUX_SALLES = 0.05
 """Part du temps limite gardée pour la phase des salles (au plus `RESERVE_MAX_S`)."""
 RESERVE_MAX_S = 3.0
+TEMPS_SALLES_GARANTI_S = 10.0
+"""Temps laissé aux salles des meilleurs horaires améliorés, même temps limite atteint."""
 TEMPS_MIN_AMELIORATION_S = 1.0
 """En dessous de ce temps restant, l'amélioration n'est pas tentée."""
 NB_SOLUTIONS_GARDEES = 20
@@ -367,14 +372,17 @@ def resoudre(
             )
         return code, solveur, suivi
 
-    def donner_des_salles(choix: tuple[int, ...]) -> _Solution | bool:
+    def donner_des_salles(choix: tuple[int, ...], temps_min_s: float = 1.0) -> _Solution | bool:
         """La solution complète pour ces horaires ; sinon vrai si l'échec est prouvé, faux sinon.
 
-        Un échec prouvé écarte ces horaires du modèle (coupe).
+        Un échec prouvé écarte ces horaires du modèle (coupe). La recherche des
+        salles dispose du temps qui reste, et d'au moins `temps_min_s`.
         """
         debut_salles = time.perf_counter()
         horaires = modele.horaires(choix)
-        affectation = affecter_salles(preparation, horaires, options.graine, max(1.0, reste()))
+        affectation = affecter_salles(
+            preparation, horaires, options.graine, max(temps_min_s, reste())
+        )
         stats["duree_salles_s"] = round(
             stats["duree_salles_s"] + time.perf_counter() - debut_salles, 3
         )
@@ -438,11 +446,24 @@ def resoudre(
             )
             amelioration_lancee = True
             code, solveur, suivi = chercher(amelioration=True)
-            for _, choix in reversed(suivi.solutions):
+            if reste() <= 0:
+                journal.warning(
+                    "La recherche a rendu la main %.1f s après le temps limite.", -reste()
+                )
+            for rang, (_, choix) in enumerate(reversed(suivi.solutions)):
                 candidat = modele.bilan(choix)
-                if candidat.objectif >= bilan.objectif or reste() <= 0:
+                if candidat.objectif >= bilan.objectif:
                     break  # les solutions gardées vont de la moins bonne à la meilleure
-                essai = donner_des_salles(choix)
+                if rang and reste() <= 0:
+                    journal.warning(
+                        "Temps limite atteint : les horaires améliorés précédents ne sont pas "
+                        "essayés."
+                    )
+                    break
+                # Les meilleurs horaires reçoivent toujours leurs salles, même si la recherche
+                # a rendu la main en retard : une seconde de dépassement vaut mieux que des
+                # minutes d'amélioration perdues.
+                essai = donner_des_salles(choix, TEMPS_SALLES_GARANTI_S if rang == 0 else 1.0)
                 if isinstance(essai, _Solution):
                     solution, bilan = essai, candidat
                     break

@@ -11,7 +11,8 @@ Un moteur est une fonction pure du point de vue de l'application :
   partielle (`placements` est vide hors statut `SOLUTION`) ;
 - il surveille `arret` (un `threading.Event`) et rend la main rapidement
   avec le statut `ARRETE` quand il est levé ;
-- il ne dépasse pas `options.temps_limite_s` ;
+- il ne dépasse pas `options.temps_limite_s` (à l'affectation finale des
+  salles près, une seconde ou deux, quand il vient d'améliorer une solution) ;
 - il journalise avec `logging` : tout ce qui est émis dans le fil du calcul
   arrive dans le journal dédié (voir `edt.journal.journal_calcul_courant`
   pour les rappels exécutés dans un autre fil).

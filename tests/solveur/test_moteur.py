@@ -203,6 +203,24 @@ def test_mode_optimise_rend_la_solution_valide_quand_le_temps_manque(monkeypatch
     assert "Le temps a manqué pour l'améliorer" in resultat.message
 
 
+def test_recherche_rendue_en_retard_l_amelioration_n_est_pas_perdue(monkeypatch):
+    """CP-SAT rend la main après le temps limite : les horaires améliorés gardent leurs salles."""
+    from edt.solveur import moteur
+
+    # Réserve négative : la recherche se termine une seconde et demie APRÈS le temps limite,
+    # comme il arrive sur une machine chargée avec un gros modèle.
+    monkeypatch.setattr(moteur, "RESERVE_MAX_S", -1.5)
+    instantane, _ = generer(60, graine=4)
+    resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=2, nb_workers=2))
+    verifier_solution(instantane, resultat)
+    stats = resultat.statistiques
+    assert stats["duree_s"] > 2  # le temps limite était bien dépassé au retour de la recherche
+    assert stats["raison_arret"] == "temps_limite"
+    assert stats["objectif"] < stats["objectif_premiere_solution"]
+    indicateurs = calculer_indicateurs(instantane, resultat.placements)
+    assert stats["objectif"] == indicateurs.valeur_objectif
+
+
 def test_objectif_prefere_eviter_le_trou_et_le_samedi():
     """Deux séances d'un groupe sur une journée : l'optimum les met côte à côte, hors créneaux extrêmes."""
     f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=True))
