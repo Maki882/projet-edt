@@ -415,7 +415,8 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
   `nb_planifiees`, `nb_replacees`, `nb_a_programmer`, `a_programmer` avec
   besoin, date d'origine et raison, `vers_dict()`).
 - L'orchestration (`edt.services.generation`) enchaîne : pré-vérifications
-  (un refus donne l'état « impossible » et la liste dans
+  (un refus, besoin impossible à déplier compris, donne l'état « impossible »,
+  `statistiques["refuse"]` et la liste dans
   `statistiques["impossibilites"]`), moteur, contrôle de la solution par le
   vérificateur (une erreur est un défaut du moteur : calcul en échec, rien
   n'est enregistré), enregistrement de la version, séances datées. Les
@@ -507,6 +508,47 @@ cette taille. Sur le jeu grand il divise l'objectif du témoin par quatre et
 ramène les trous de 668 créneaux à 14. Le mode faisable, lui, s'arrête à la
 première solution valide : elle est pleine de trous, c'est attendu.
 
+### Mode optimisé : première solution et qualité selon le temps accordé
+
+Un calcul par processus, 2 fils, graine 1, sans indices (plusieurs mesures
+tournaient en même temps : les délais sont un peu majorés). « Première
+solution » : délai entre le lancement et la première solution d'horaires.
+« Mémoire » : maximum occupé par le processus Python du calcul (Windows),
+instantané et vérification compris.
+
+| Jeu | Mode | Temps limite | Première solution | Objectif final | Trous | Samedi | Mémoire |
+|---|---|---|---|---|---|---|---|
+| grand S1 | faisable | 120 s | 15,3 s | 41 947 | 2 508 | 528 | 0,9 Go |
+| grand S1 | optimisé | 30 s | 23,1 s | 14 269 | 462 | 446 | 1,3 Go |
+| grand S1 | optimisé | 60 s | 24,5 s | 5 167 | 27 | 116 | 1,4 Go |
+| grand S1 | optimisé | 120 s | 25,1 s | 3 371 | 9 | 35 | 1,4 Go |
+| grand S1 | optimisé | 300 s | 27,5 s | 2 810 | 7 | 6 | 1,4 Go |
+| grand S2 | faisable | 120 s | 12,7 s | 39 256 | 2 211 | 558 | 0,8 Go |
+| grand S2 | optimisé | 60 s | 35,3 s | 4 505 | 59 | 192 | 1,3 Go |
+| grand S2 | optimisé | 120 s | 36,2 s | 3 195 | 18 | 55 | 1,4 Go |
+| moyen S1 | optimisé | 60 s | 3,7 s | 399 | 0 | 0 | 0,4 Go |
+
+Ce qu'il faut en retenir pour régler l'application :
+
+- en mode optimisé, la première solution arrive **1,6 à 2,8 fois plus tard**
+  qu'en mode faisable sur le jeu grand : le modèle est deux fois plus gros
+  et son prétraitement plus long. Cette première solution est médiocre
+  (pénalité 123 263 sur le grand S1, pire que le mode faisable) ; la qualité
+  vient dans les secondes qui suivent ;
+- si le temps limite tombe **avant** cette première solution, le moteur rend
+  `TEMPS_DEPASSE` et rien n'est enregistré : il ne se replie pas sur une
+  solution du mode faisable. Dès qu'une solution existe, c'est la meilleure
+  trouvée qui est rendue ;
+- le temps limite du mode optimisé doit donc valoir plusieurs fois le délai
+  de première solution : à 2,5 fois ce délai (60 s ici) les trous ont presque
+  disparu, à 5 fois (120 s) le samedi aussi ;
+- donner la solution du mode faisable comme indice n'avance pas la première
+  solution du mode optimisé (essai sur le grand S1 : première solution à 38 s,
+  pénalité 122 967, alors que l'indice valait 41 947). L'indice ne couvre que
+  les choix des séances, pas les variables auxiliaires de l'objectif. Un
+  calcul « faisable d'abord, amélioration ensuite » demanderait une évolution
+  du moteur.
+
 ### Couche datée
 
 Instanciation puis replacement de la solution du mode faisable (les nombres
@@ -526,6 +568,62 @@ heure, où il a déjà lieu ; un vacataire présent un seul jour par semaine,
 déjà à son maximum horaire, n'a pas d'autre jour. La raison chiffrée est
 jointe à chacune.
 
+## Mesures à refaire sur le serveur
+
+Toutes les mesures ci-dessus viennent d'un poste de développement. Le serveur
+de production a 2 cœurs et 3,7 Go de mémoire : les durées y seront plus
+longues, et c'est là que se règlent le temps limite par défaut et le choix du
+mode. À relever sur place, sur le jeu grand, pour chaque semestre :
+
+| Mesure | Mode faisable | Mode optimisé, 120 s | Mode optimisé, 300 s |
+|---|---|---|---|
+| Durée totale du calcul | à mesurer | à mesurer | à mesurer |
+| Construction du modèle des horaires | à mesurer | à mesurer | à mesurer |
+| Délai avant la première solution | à mesurer | à mesurer | à mesurer |
+| Objectif final (trous, samedi) | à mesurer | à mesurer | à mesurer |
+| Mémoire maximale du processus | à mesurer | à mesurer | à mesurer |
+| Instanciation et replacement | à mesurer | - | - |
+
+Repères du poste de développement, grand S1 : 16 s et 0,9 Go en mode
+faisable ; première solution à 25 s, objectif 3 371 en 120 s et 1,4 Go en
+mode optimisé.
+
+Comment relever ces chiffres (base de mesure à part, pas celle de la
+démonstration) :
+
+```sh
+python -m edt init-db --reset
+python -m edt jeu --taille grand --graine 0
+/usr/bin/time -v python -m edt generer --semestre 1 --sans-optimiser \
+    --temps-limite 120 --graine 1 --sans-indices --sans-activer
+/usr/bin/time -v python -m edt generer --semestre 1 --optimiser \
+    --temps-limite 120 --graine 1 --sans-indices --sans-activer
+/usr/bin/time -v python -m edt generer --semestre 1 --optimiser \
+    --temps-limite 300 --graine 1 --sans-indices --sans-activer
+```
+
+- **durée totale** : ligne « Calcul n° ... : Réussi en ... s » ;
+- **construction** et **première solution** : dans le journal du calcul, dont
+  la commande affiche le chemin, lignes « Modèle des horaires construit en
+  ... s » et « Horaires trouvés après ... s » (mode faisable) ou « Horaires
+  n° 1 après ... s » (mode optimisé) ;
+- **objectif final** : ligne « Qualité : objectif ..., ... créneau(x) de
+  trou, ... séance(s) le samedi » ;
+- **mémoire** : ligne « Maximum resident set size » de `/usr/bin/time -v`
+  (en kilo-octets). Par l'interface, le calcul tourne dans le processus du
+  serveur web : sa mémoire s'ajoute à celle du serveur ;
+- **instanciation** : fin du message du calcul (« n séance(s) datée(s) : ... »)
+  et ligne « Instanciation de la version ... » du journal, qui donne la durée ;
+- refaire les mêmes commandes avec `--semestre 2`, et vérifier pendant un
+  calcul lancé depuis l'interface que les pages répondent encore (le moteur
+  occupe les deux cœurs).
+
+À décider d'après ces chiffres : le temps limite par défaut (`temps_limite_s`)
+doit laisser au mode optimisé au moins trois fois son délai de première
+solution ; si la mémoire du mode optimisé approche la limite de la machine,
+garder le mode faisable par défaut et réserver l'optimisation à la relance
+longue.
+
 ## Limites connues
 
 - **Taille du modèle des horaires.** Les interdictions de trajet sont
@@ -536,9 +634,13 @@ jointe à chacune.
   demanderait une écriture plus compacte de cette règle, ou le découpage par
   promotion prévu en plan B par l'équipe.
 - **Serveur de production.** Les mesures viennent d'un poste de
-  développement. Sur le serveur (2 cœurs, plus lents), il faut s'attendre à
-  des durées deux à trois fois plus longues : le jeu grand doit être mesuré
-  sur place avant la démonstration.
+  développement. Sur le serveur (2 cœurs, plus lents), les durées seront plus
+  longues, d'un facteur qui reste à mesurer (voir « Mesures à refaire sur le
+  serveur »).
+- **Mode optimisé et temps limite court.** La première solution du mode
+  optimisé arrive plus tard que celle du mode faisable ; si le temps limite
+  tombe avant, le calcul rend « pas trouvé dans le temps imparti » alors que
+  le mode faisable aurait abouti.
 - **Coupes de salles.** Une coupe n'interdit qu'une combinaison d'horaires.
   Un jeu où les salles manqueraient de façon répétée, sans que la condition
   de capacité le voie (séances longues à cheval sur plusieurs créneaux,

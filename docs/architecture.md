@@ -51,6 +51,7 @@ src/edt/
   commandes/                   un module par lot (objet `commandes`)
     base.py                    init-db, verifier-schema, jeu-minimal, serve,
                                version, doctor
+    generation.py              generer, pre-verifier, instancier
   db/
     base.py                    base déclarative, nommage des contraintes
     moteur.py                  moteur SQLite (clés étrangères, WAL), sessions
@@ -69,7 +70,10 @@ src/edt/
   services/
     instantane.py              base -> instantané
     conflits_groupes.py        relation de conflit entre groupes
-    generation.py              orchestration d'un calcul
+    generation.py              orchestration d'un calcul : pré-vérifications,
+                               moteur, contrôle, version, séances datées
+    instanciation.py           séances datées d'une version : instanciation,
+                               replacement, enregistrement
     parametres.py              lecture et écriture des paramètres
     calendrier.py              années scolaires, semestre par défaut
     etat.py                    diagnostic de la base, compteurs
@@ -79,7 +83,15 @@ src/edt/
     regles_*.py, indicateurs.py  une règle par code du catalogue, indicateurs
   solveur/
     contrat.py                 CONTRAT : OptionsSolveur, ResultatSolveur
-    provisoire.py              moteur glouton PROVISOIRE
+    regles.py                  règles communes : personnes, salles, horaires, paires
+    preparation.py             domaines de débuts et de salles de chaque séance
+    preverification.py         pre_verifier : impossibilités certaines, charges
+    modele.py                  modèle CP-SAT des horaires (début et campus)
+    salles.py                  modèle CP-SAT des salles, horaires fixés
+    moteur.py                  resoudre : enchaînement, temps limite, arrêt
+    instanciation.py           instancier : séances datées de la semaine type
+    replacement.py             replacer : replacement de séances datées
+    provisoire.py              ancien moteur glouton du socle, gardé pour ses tests
   web/
     app.py                     creer_app(), découverte des routes
     asgi.py                    app = creer_app()  (uvicorn edt.web.asgi:app)
@@ -95,6 +107,8 @@ src/edt/
 tests/
   conftest.py                  fixtures communes (base temporaire, jeu minimal)
   socle/                       tests du socle ; un dossier par lot ensuite
+  solveur/                     tests du solveur : fabrique d'instantanés, une
+                               contrainte par test, couche datée, services, charge
 ```
 
 ## Configuration
@@ -520,10 +534,59 @@ def resoudre(
   trouvé, sans preuve), `ARRETE`.
 - Tout ou rien : `placements` contient un placement par séance de
   l'instantané, ou rien. L'orchestration refuse une solution incomplète.
-- Le moteur exporté aujourd'hui (`edt.solveur.provisoire`) est **provisoire** :
-  glouton, il ne garantit que l'unicité des ressources et la capacité. Le
-  lot solveur écrit le vrai moteur dans ce paquet et change l'import de
-  `edt/solveur/__init__.py`.
+- Le moteur exporté est le moteur CP-SAT (`edt.solveur.moteur`). Il calcule
+  en deux phases, horaires puis salles, respecte toutes les contraintes
+  actives du catalogue et ne déclare `INFAISABLE` que sur preuve. Il lance
+  lui-même les pré-vérifications : une impossibilité certaine donne
+  `INFAISABLE` avec `statistiques["refuse"]` vrai et la liste des raisons
+  dans `avertissements`. L'ancien moteur glouton reste dans
+  `edt.solveur.provisoire` pour ses tests.
+- Avec `optimiser`, il minimise l'objectif de qualité et rend la meilleure
+  solution trouvée dans le temps imparti (`statistiques["objectif"]`,
+  `["borne_objectif"]`, `["optimal"]`).
+
+Autres fonctions pures du paquet :
+
+```python
+# edt.solveur.preverification
+def pre_verifier(
+    instantane: Instantane,
+    contraintes_desactivees: Iterable[str] = (),
+    *,
+    tolerer_violations_heritees: bool = False,
+) -> list[Anomalie]:
+
+# edt.solveur.instanciation
+def instancier(
+    instantane: Instantane,
+    placements: Sequence[Placement],
+    contraintes_desactivees: Iterable[str] = (),
+) -> ResultatInstanciation:           # occurrences, a_replacer
+
+# edt.solveur.replacement
+def replacer(
+    instantane: Instantane,
+    occurrences_fixes: Sequence[Occurrence],
+    occurrences_a_replacer: Sequence[Occurrence],
+    options: OptionsReplacement | None = None,
+    arret: threading.Event | None = None,
+) -> ResultatReplacement:             # replacements, replacees, a_programmer
+```
+
+- `pre_verifier` liste, en moins d'une seconde, les impossibilités certaines
+  (gravité « erreur ») et les situations tendues (« avertissement ») : besoins
+  impossibles à déplier, séances sans horaire ou sans salle possible, verrous
+  contradictoires, charge des groupes, des enseignants et des salles.
+- `instancier` donne une occurrence par séance et par semaine active, et met à
+  part celles qui tombent un jour fermé ou pendant une indisponibilité.
+- `replacer` cherche pour chaque occurrence à replacer la place valide la plus
+  proche de sa date d'origine ; ce qui n'en trouve pas sort « à programmer »,
+  avec la raison.
+
+Du vérificateur, le paquet n'importe que le type `Anomalie` : le moteur et
+son oracle restent deux écritures indépendantes des mêmes règles.
+Formulation, traitement des semaines actives, objectif, mesures et limites :
+`docs/solveur.md`.
 
 ### L'orchestration d'un calcul (`edt.services.generation`)
 
@@ -543,26 +606,110 @@ def demander_arret(calcul_id: int) -> SuiviCalcul:
 def attendre_calcul(calcul_id: int, delai_s: float | None = None) -> SuiviCalcul:
 def exiger_reussite(suivi: SuiviCalcul) -> SuiviCalcul:
 def cloturer_calculs_interrompus() -> int:
+def pre_verifier_semestre(
+    session: Session,
+    semestre_id: int,
+    contraintes_desactivees: Iterable[str] = (),
+    *,
+    version_base_id: int | None = None,
+    tolerer_violations_heritees: bool = False,
+) -> list[Anomalie]:
 ```
 
 `SuiviCalcul(id, semestre_id, etat, demarre_le, termine_le, temps_ecoule_s,
 message, version_id, contraintes_desactivees, statistiques, fichier_journal,
-arret_demande)`, avec `en_cours` et `reussi`.
+arret_demande, avertissements=())`, avec `en_cours` et `reussi`.
 
 - Le calcul tourne dans un fil d'arrière-plan ; **un seul à la fois**
   (`ErreurCalculEnCours` sinon). L'interface interroge `etat_calcul` chaque
   seconde.
 - États (`EtatCalcul`) : `en_cours`, `reussi`, `infaisable`, `temps_depasse`,
   `arrete`, `erreur`.
-- Succès : une nouvelle `version_edt` (activée par défaut, l'ancienne est
-  désactivée) et ses `seance_hebdo`. Tout autre cas : **aucune version**.
+- Étapes d'un calcul, dans le fil d'arrière-plan :
+  1. **pré-vérifications** (`edt.solveur.preverification`). Une
+     impossibilité certaine **refuse** le calcul sans appeler le moteur :
+     état `infaisable`, `statistiques["refuse"]` vrai, message qui cite les
+     premières raisons, liste complète dans `statistiques["impossibilites"]`.
+     Un besoin impossible à déplier est refusé de cette façon, comme une
+     charge trop forte ou des verrous contradictoires ;
+  2. **moteur** ;
+  3. **contrôle** de la solution par `edt.verification.verifier`. Une erreur
+     relevée sur une solution du moteur est un défaut du moteur : état
+     `erreur`, détail dans le journal du calcul, rien n'est enregistré. Avec
+     `tolerer_violations_heritees`, les erreurs entre séances toutes
+     verrouillées sont attendues et ne comptent pas ;
+  4. **enregistrement** de la version (activée par défaut, l'ancienne est
+     désactivée) et de ses `seance_hebdo` ;
+  5. **séances datées** : `instancier_version` (voir plus bas). Un échec à
+     cette étape n'annule pas la version : il est journalisé et dit dans le
+     message, et l'instanciation peut être relancée.
+- Succès : une nouvelle `version_edt`, ses `seance_hebdo` et ses
+  `occurrence`. Tout autre cas : **aucune version**.
+- `SuiviCalcul.avertissements` : situations tendues relevées par les
+  pré-vérifications et remarques du moteur, à montrer à l'utilisateur.
+  `statistiques` porte en plus `indicateurs` (ceux du vérificateur sur la
+  solution) et `instanciation` (bilan des séances datées).
+- `pre_verifier_semestre` donne les pré-vérifications seules, sans lancer de
+  calcul, pour l'écran de lancement. Elle rapporte aussi les besoins
+  impossibles à déplier (`Anomalie.besoins` porte le besoin concerné).
 - Ces fonctions ouvrent leurs propres sessions (un calcul dépasse la durée
   d'une requête). Le suivi des fils vit dans le processus : le serveur se
   lance avec **un seul processus** (pas d'option `--workers`). `demander_arret` n'atteint que les calculs du processus
   courant ; au démarrage du serveur, `cloturer_calculs_interrompus` marque en
   erreur les calculs qu'un arrêt a laissés « en cours ».
-- L'orchestration n'instancie pas les séances datées et n'appelle pas le
-  vérificateur : ces étapes appartiennent aux lots suivants.
+
+### Les séances datées (`edt.services.instanciation`)
+
+```python
+def instancier_version(
+    session: Session, version_id: int, contraintes_desactivees: Iterable[str] | None = None
+) -> RapportInstanciation:
+def replacer_occurrences(
+    session: Session,
+    version_id: int,
+    occurrence_ids: Sequence[int],
+    date_debut: dt.date | None = None,
+    date_fin: dt.date | None = None,
+    contraintes_desactivees: Iterable[str] | None = None,
+) -> RapportInstanciation:
+```
+
+`RapportInstanciation(version_id, nb_occurrences, nb_planifiees, nb_replacees,
+nb_a_programmer, a_programmer, nb_conservees, nb_seances_ignorees, duree_s)`,
+avec `resume()` et `vers_dict()`. Chaque entrée de `a_programmer` est une
+`OccurrenceAProgrammer(occurrence_id, besoin_id, besoin, seance_id,
+date_origine, horaire, raison)`.
+
+- `instancier_version` produit les séances datées de la semaine type d'une
+  version, replace celles qui tombent un jour fermé ou pendant une
+  indisponibilité (récurrente ou datée), et écrit le tout dans `occurrence` :
+  planifiée (origine « semaine type »), déplacée ou à programmer (origine
+  « replacement », avec `date_initiale` et `commentaire`).
+- Elle est **idempotente** : relancée, elle remplace les occurrences issues
+  de la semaine type ou d'un replacement et ne touche pas aux occurrences
+  saisies à la main ou importées, que les séances replacées évitent.
+- `replacer_occurrences` replace des séances datées désignées, dans une
+  fenêtre de dates ; les autres restent en place. C'est le point d'entrée
+  du futur réaménagement sur imprévu.
+- Les contraintes désactivées lors du calcul de la version le restent ici.
+  Aucune des deux fonctions ne valide la transaction.
+
+### Les commandes du calcul (`edt.commandes.generation`)
+
+```sh
+python -m edt pre-verifier --semestre 1
+python -m edt generer --semestre 1 --temps-limite 120 --optimiser --graine 3 -d PAUSE
+python -m edt instancier --version 4
+```
+
+| Commande | Service appelé | Code de sortie |
+|---|---|---|
+| `pre-verifier` | `pre_verifier_semestre` | 1 si le calcul serait refusé |
+| `generer` | `lancer_calcul`, `attendre_calcul`, `exiger_reussite` | 1 si le calcul n'aboutit pas |
+| `instancier` | `instancier_version` | 1 si la version est introuvable |
+
+Sans `--semestre`, c'est le semestre en cours ; `instancier` prend la version
+donnée, ou la version active du semestre.
 
 ### Les paramètres (`edt.services.parametres`)
 
