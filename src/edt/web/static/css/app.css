@@ -34,7 +34,7 @@
   --info-pale: #e8f0fa;
   --rayon: 6px;
   --espace: 1rem;
-  --largeur-navigation: 15rem;
+  --largeur-navigation: 13.5rem;
   --largeur-assistant: 24rem;
   --ombre: 0 6px 24px rgba(20, 35, 60, 0.18);
   --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
@@ -207,6 +207,21 @@ h3 {
   color: #ffffff;
 }
 
+/* Compteur d'un onglet (« À traiter ») : pastille chargée par HTMX, sans effet sur la hauteur. */
+.onglet .edt-compteur-onglet {
+  display: inline-block;
+  min-width: 1.3rem;
+  margin-left: 0.4rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: var(--erreur);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .onglet > a.actif {
   color: #ffffff;
   font-weight: 600;
@@ -215,29 +230,40 @@ h3 {
 }
 
 /* Menu déroulant d'un onglet : toutes ses pages, ouvert au survol ou au clavier. */
+/*
+ * Menu déroulant d'un onglet : ses groupes sur trois colonnes au plus. Masqué par
+ * `display: none` (et non `visibility`) pour ne jamais élargir la page.
+ */
 .menu-deroulant {
   position: absolute;
   top: 100%;
   left: 0;
-  display: flex;
-  gap: 1.5rem;
+  display: none;
+  grid-template-columns: repeat(3, max-content);
+  gap: 0.25rem 1.5rem;
   min-width: 14rem;
+  max-width: calc(100vw - 2rem);
   padding: 0.75rem 1rem;
   background: var(--surface);
   color: var(--texte);
   border: 1px solid var(--bordure);
   border-radius: 0 0 var(--rayon) var(--rayon);
   box-shadow: var(--ombre);
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 120ms ease-in, visibility 0s linear 120ms;
+}
+
+.menu-deroulant:has(> .menu-groupe:only-child) {
+  grid-template-columns: max-content;
+}
+
+/* Les derniers onglets ouvrent leur menu vers la gauche pour rester dans l'écran. */
+.onglet:nth-last-child(-n + 2) .menu-deroulant {
+  left: auto;
+  right: 0;
 }
 
 .onglet-deroulant:hover .menu-deroulant,
 .onglet-deroulant:focus-within .menu-deroulant {
-  visibility: visible;
-  opacity: 1;
-  transition-delay: 150ms, 0s;
+  display: grid;
 }
 
 .menu-groupe {
@@ -636,6 +662,84 @@ main {
   white-space: nowrap;
 }
 
+/*
+ * Tableau compact (listes longues) : une ligne de texte par cellule, deux au
+ * plus pour une colonne de texte libre (.cellule-texte), listes abrégées
+ * (« +3 », détail au survol). Le tableau défile dans son cadre plutôt que
+ * d'écraser ses colonnes ; la colonne d'actions reste visible à droite.
+ */
+.tableau-compact th,
+.tableau-compact td {
+  white-space: nowrap;
+  padding: 0.4rem 0.5rem;
+}
+
+.tableau-compact .cellule-texte {
+  white-space: normal;
+  min-width: 8.5rem;
+  max-width: 18rem;
+}
+
+/* Liste abrégée (« A1-G1, A1-G2 +3 ») : un élément trop long finit par « ... ». */
+.tableau-compact .liste-abregee {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  max-width: 10.5rem;
+}
+
+.tableau-compact .liste-abregee > .elements {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tableau-compact .colonne-actions .bouton-petit {
+  padding: 0.1rem 0.45rem;
+}
+
+.tableau-compact .colonne-actions > * + * {
+  margin-left: 0.2rem;
+}
+
+.deux-lignes {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+}
+
+.tableau-compact .colonne-actions {
+  position: sticky;
+  right: 0;
+  background: var(--surface);
+  box-shadow: -6px 0 6px -6px rgba(20, 35, 60, 0.25);
+}
+
+.tableau-compact thead .colonne-actions {
+  background: var(--fond);
+}
+
+.tableau-compact tbody tr:hover .colonne-actions {
+  background: var(--marque-pale);
+}
+
+.plus,
+.abrege {
+  cursor: help;
+}
+
+.plus {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: var(--fond);
+  border: 1px solid var(--bordure);
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
 .colonne-actions > * + * {
   margin-left: 0.3rem;
 }
@@ -1017,6 +1121,44 @@ main {
   gap: 0.3rem;
 }
 
+/* Nœuds repliables : un triangle devant le groupe, la ligne entière ouvre ou ferme. */
+.arbre summary,
+.arbre-section > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.arbre summary::-webkit-details-marker,
+.arbre-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.arbre summary::before,
+.arbre-section > summary::before {
+  content: "\25B8";
+  display: inline-block;
+  width: 1rem;
+  color: var(--texte-discret);
+}
+
+.arbre details[open] > summary::before,
+.arbre-section[open] > summary::before {
+  content: "\25BE";
+}
+
+.arbre-feuille {
+  padding-left: 1rem;
+}
+
+.arbre-section > summary h2 {
+  display: inline;
+  margin: 0;
+}
+
+.arbre-section[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
 /* Matrice (trajets) : cellules de saisie compactes. */
 .matrice input {
   width: 5.5rem;
@@ -1171,6 +1313,10 @@ fieldset.champ {
   padding-left: 1.2rem;
 }
 
+.pousser-droite {
+  margin-left: auto;
+}
+
 .ligne-boutons {
   display: flex;
   flex-wrap: wrap;
@@ -1197,13 +1343,17 @@ fieldset.champ {
     padding: 0.5rem 0;
   }
 
+  /* Les cinq onglets restent tous visibles : ils passent sur deux rangées s'il le faut. */
   .onglets {
     flex-basis: 100%;
-    overflow-x: auto;
+  }
+
+  .onglets > ul {
+    flex-wrap: wrap;
   }
 
   .onglet > a {
-    padding: 0.5rem 0.75rem;
+    padding: 0.45rem 0.65rem;
   }
 
   .menu-deroulant {

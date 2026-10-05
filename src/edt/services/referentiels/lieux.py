@@ -39,7 +39,6 @@ from edt.services.referentiels.description import (
     choix_enum,
     compter_ou,
     libelle_choix,
-    libelles,
     options_reference,
     par_colonne,
 )
@@ -263,7 +262,7 @@ SALLE = Entite(
     colonnes=(
         Colonne("code", "Code", lambda s: s.code, tri=Salle.code),
         Colonne("campus", "Campus", lambda s: s.campus.code, tri=Campus.code),
-        Colonne("type", "Type", lambda s: s.type_salle.libelle, tri=TypeSalle.libelle),
+        Colonne("type", "Type", lambda s: s.type_salle.libelle, tri=TypeSalle.libelle, texte=True),
         Colonne("capacite", "Places", lambda s: s.capacite, tri=Salle.capacite, nombre=True),
         Colonne("batiment", "Bâtiment", lambda s: s.batiment, tri=Salle.batiment),
         Colonne("etage", "Étage", lambda s: s.etage, tri=Salle.etage, nombre=True),
@@ -273,7 +272,9 @@ SALLE = Entite(
             lambda s: libelle_choix(choix_enum(Accessibilite), s.accessibilite),
             tri=Salle.accessibilite,
         ),
-        Colonne("equipements", "Équipements", lambda s: libelles(s.equipements, "libelle")),
+        Colonne(
+            "equipements", "Équipements", lambda s: [e.libelle for e in s.equipements], apercu=1
+        ),
     ),
     tri_defaut="code",
     recherche=(Salle.code, Salle.batiment, Campus.code, Campus.nom, TypeSalle.libelle),

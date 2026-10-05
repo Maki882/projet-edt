@@ -150,7 +150,7 @@ ANNEE_SCOLAIRE = Entite(
         Colonne("libelle", "Année", lambda a: a.libelle, tri=AnneeScolaire.libelle),
         Colonne("debut", "Début", lambda a: _date(a.date_debut), tri=AnneeScolaire.date_debut),
         Colonne("fin", "Fin", lambda a: _date(a.date_fin), tri=AnneeScolaire.date_fin),
-        Colonne("semestres", "Semestres", lambda a: ", ".join(s.code for s in a.semestres)),
+        Colonne("semestres", "Semestres", lambda a: [s.code for s in a.semestres], apercu=4),
     ),
     tri_defaut="debut",
     recherche=(AnneeScolaire.libelle,),
@@ -328,7 +328,7 @@ JOUR_FERME = Entite(
             lambda j: texte_periode(j.date_debut, j.date_fin),
             tri=(JourFerme.date_debut, JourFerme.date_fin),
         ),
-        Colonne("libelle", "Libellé", lambda j: j.libelle, tri=JourFerme.libelle),
+        Colonne("libelle", "Libellé", lambda j: j.libelle, tri=JourFerme.libelle, texte=True),
         Colonne(
             "nature",
             "Nature",

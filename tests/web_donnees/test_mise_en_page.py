@@ -111,3 +111,33 @@ def test_blocs_styles_et_scripts_du_gabarit_de_base():
     page = enfant.render(menu=(), chemin="/", messages=[], id_requete=None)
     assert page.index("/static/ecran.css") < page.index("</head>")
     assert page.index("/static/ecran.js") > page.index('id="assistant"')
+
+
+def test_cinq_onglets_de_l_application_et_import_export_dans_donnees(site):
+    page = site.get("/besoins").text
+
+    onglets = re.search(r'<nav class="onglets".*?</nav>', page, re.S).group(0)
+    titres = re.findall(r'<li class="onglet[^"]*">\s*<a href="[^"]*"[^>]*>([^<]+)', onglets)
+    assert [t.strip() for t in titres] == [
+        "Accueil",
+        "Données",
+        "Générer",
+        "Emploi du temps",
+        "À traiter",
+    ]
+    sous_navigation = re.search(r'<nav class="sous-navigation".*?</nav>', page, re.S).group(0)
+    assert "<h2>Import et export</h2>" in sous_navigation
+    assert '<a href="/import">Import</a>' in sous_navigation
+    assert '<a href="/export">Export</a>' in sous_navigation
+
+
+def test_compteur_charge_dans_l_onglet_a_traiter(site):
+    page = site.get("/salles").text
+    onglet = re.search(r'<a href="/a-traiter"[^>]*>À traiter(.*?)</a>', page, re.S)
+    assert onglet is not None
+    compteur = onglet.group(1)
+    assert 'hx-get="/a-traiter/compteur"' in compteur and 'hx-trigger="load"' in compteur
+    assert 'hx-swap="outerHTML"' in compteur and "data-erreur-silencieuse" in compteur
+    # Sans JavaScript, la balise reste vide : l'onglet est un lien ordinaire.
+    assert re.search(r"<span [^>]*hx-get=\"/a-traiter/compteur\"[^>]*></span>", compteur)
+    assert page.count('hx-get="/a-traiter/compteur"') == 1  # seulement dans cet onglet

@@ -31,12 +31,12 @@ import logging
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from typing import Annotated, Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
-from starlette.datastructures import FormData
+from starlette.datastructures import FormData, QueryParams
 
 from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services.referentiels import operations
@@ -76,6 +76,8 @@ class Ecran:
     - `gabarit_liste` : gabarit de la page de liste (il peut étendre
       `donnees/liste.html` et remplir ses blocs `avant_liste`, `apres_liste`) ;
     - `contexte_liste` : variables supplémentaires de ce gabarit ;
+    - `complement_zone` : gabarit ajouté au bas de la zone de liste, donc
+      rafraîchi avec elle quand la recherche ou les filtres changent ;
     - `edition_en_ligne` : le bouton « Modifier » d'une ligne l'édite sur place ;
     - `actions_ligne` : boutons supplémentaires de chaque ligne ;
     - `liens` : liens en tête de page (libellé, adresse) ;
@@ -87,6 +89,7 @@ class Ecran:
     introduction: str = ""
     gabarit_liste: str = "donnees/liste.html"
     contexte_liste: Callable[[Session, PageListe], Mapping[str, Any]] | None = None
+    complement_zone: str = ""
     edition_en_ligne: bool = False
     actions_ligne: tuple[ActionLigne, ...] = ()
     liens: tuple[tuple[str, str], ...] = ()
@@ -144,8 +147,17 @@ class EtatListe:
         return self.url(tri=cle, descendant=(self.tri == cle and not self.descendant))
 
 
+def _parametres_de_liste(request: Request, ecran: Ecran) -> QueryParams:
+    """Paramètres de la liste affichée : ceux de la requête, ou pour un fragment de
+    ligne (HTMX), ceux de la liste d'où il est demandé (en-tête `HX-Current-URL`)."""
+    courante = urlsplit(request.headers.get("HX-Current-URL", ""))
+    if not request.query_params and courante.path == ecran.prefixe:
+        return QueryParams(courante.query)
+    return request.query_params
+
+
 def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
-    parametres = request.query_params
+    parametres = _parametres_de_liste(request, ecran)
     brute = parametres.get("page", "1").strip() or "1"
     if not brute.isdigit() or int(brute) < 1:
         raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute} ».")
@@ -158,6 +170,30 @@ def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
         page=int(brute),
         filtres={nom: valeur for nom, valeur in parametres.items() if nom in noms},
     )
+
+
+def colonnes_affichees(
+    entite: Entite, filtres: Mapping[str, str] | None = None
+) -> list[dict[str, Any]]:
+    """Description des colonnes pour les gabarits de liste.
+
+    Une colonne liée à un filtre (`Colonne.filtre`) est omise quand ce filtre a
+    une valeur : elle serait la même sur toutes les lignes.
+    """
+    filtres = filtres or {}
+    return [
+        {
+            "cle": c.cle,
+            "libelle": c.libelle,
+            "triable": c.tri is not None,
+            "nombre": c.nombre,
+            "format": c.format,
+            "texte": c.texte,
+            "apercu": c.apercu,
+        }
+        for c in entite.colonnes
+        if not (c.filtre and filtres.get(c.filtre))
+    ]
 
 
 def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str, Any]:
@@ -184,16 +220,7 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
         "entite": ecran.entite,
         "page": page,
         "etat": etat,
-        "colonnes": [
-            {
-                "cle": c.cle,
-                "libelle": c.libelle,
-                "triable": c.tri is not None,
-                "nombre": c.nombre,
-                "format": c.format,
-            }
-            for c in ecran.entite.colonnes
-        ],
+        "colonnes": colonnes_affichees(ecran.entite, page.filtres),
         "filtres": [
             (filtre, filtre.options(session), page.filtres.get(filtre.nom, ""))
             for filtre in ecran.entite.filtres
@@ -258,6 +285,10 @@ def _prerempli(request: Request, ecran: Ecran) -> dict[str, Any]:
     return valeurs
 
 
+def _filtres_appliques(request: Request, session: Session, ecran: Ecran) -> dict[str, str]:
+    return operations.valeurs_filtres(session, ecran.entite, _etat_demande(request, ecran).filtres)
+
+
 def _rendre_ligne(
     request: Request, session: Session, ecran: Ecran, ident: int, *, modifiee: bool = False
 ) -> Response:
@@ -267,10 +298,9 @@ def _rendre_ligne(
         {
             "ecran": ecran,
             "ligne": operations.ligne(session, ecran.entite, ident),
-            "colonnes": [
-                {"cle": c.cle, "nombre": c.nombre, "format": c.format}
-                for c in ecran.entite.colonnes
-            ],
+            "colonnes": colonnes_affichees(
+                ecran.entite, _filtres_appliques(request, session, ecran)
+            ),
             "suffixe_retour": "",
             "modifiee": modifiee,
         },
@@ -293,7 +323,10 @@ def _rendre_ligne_edition(
             "ecran": ecran,
             "ident": ident,
             "rubriques": champs_affiches(session, ecran.entite, valeurs, erreurs),
-            "nb_colonnes": len(ecran.entite.colonnes) + 1,
+            "nb_colonnes": len(
+                colonnes_affichees(ecran.entite, _filtres_appliques(request, session, ecran))
+            )
+            + 1,
             "erreur": erreur if erreur is not None and not erreurs else None,
         },
     )

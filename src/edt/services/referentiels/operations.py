@@ -65,7 +65,8 @@ class PageListe:
     """Une page de liste, prête à afficher ou à sérialiser.
 
     `lignes` : un dictionnaire par élément, avec `id` et une clé par colonne
-    de l'entité ; `filtres` : valeur appliquée pour chaque filtre (vide = tous).
+    de l'entité (une liste pour une colonne à plusieurs valeurs), plus
+    `detail_<colonne>` pour une colonne abrégée ; `filtres` : valeur appliquée pour chaque filtre (vide = tous).
     """
 
     entite: str
@@ -250,8 +251,57 @@ def lister(
             f"Tri impossible sur « {cle_tri} » (colonnes triables : {', '.join(triables)})."
         )
 
+    requete, texte, appliques = _requete_filtree(session, description, recherche, filtres)
     modele = description.modele
-    requete = select(modele)
+
+    total = session.scalar(select(func.count()).select_from(requete.order_by(None).subquery()))
+    total = total or 0
+    nb_pages = max(1, math.ceil(total / taille))
+    page = min(page, nb_pages)
+
+    expressions = colonne.tri if isinstance(colonne.tri, tuple) else (colonne.tri,)
+    ordre = [e.desc() if descendant else e.asc() for e in expressions] + [modele.id.asc()]
+    objets = session.scalars(
+        requete.options(*description.chargements)
+        .order_by(*ordre)
+        .limit(taille)
+        .offset((page - 1) * taille)
+    ).all()
+    return PageListe(
+        entite=description.code,
+        lignes=tuple(_ligne(description, objet) for objet in objets),
+        total=total,
+        page=page,
+        taille=taille,
+        nb_pages=nb_pages,
+        tri=cle_tri,
+        descendant=descendant,
+        recherche=texte,
+        filtres=appliques,
+    )
+
+
+def identifiants(
+    session: Session,
+    code: str | Entite,
+    *,
+    recherche: str = "",
+    filtres: Mapping[str, str] | None = None,
+) -> list[int]:
+    """Identifiants de tous les éléments retenus par la recherche et les filtres (toutes pages)."""
+    description = entite(code)
+    requete, _, _ = _requete_filtree(session, description, recherche, filtres)
+    return list(session.scalars(requete.with_only_columns(description.modele.id).order_by(None)))
+
+
+def _requete_filtree(
+    session: Session,
+    description: Entite,
+    recherche: str,
+    filtres: Mapping[str, str] | None,
+) -> tuple[Any, str, dict[str, str]]:
+    """Requête des éléments retenus, texte cherché nettoyé, valeur appliquée de chaque filtre."""
+    requete = select(description.modele)
     for cible, condition in description.jointures:
         requete = requete.outerjoin(cible, condition)
 
@@ -276,37 +326,18 @@ def lister(
                 raise ErreurDonneesInvalides(
                     f"Filtre « {filtre.libelle} » : valeur invalide « {valeur} »."
                 ) from erreur
-    requete = requete.where(*conditions)
+    return requete.where(*conditions), texte, appliques
 
-    total = session.scalar(select(func.count()).select_from(requete.order_by(None).subquery()))
-    total = total or 0
-    nb_pages = max(1, math.ceil(total / taille))
-    page = min(page, nb_pages)
 
-    expressions = colonne.tri if isinstance(colonne.tri, tuple) else (colonne.tri,)
-    ordre = [e.desc() if descendant else e.asc() for e in expressions] + [modele.id.asc()]
-    objets = session.scalars(
-        requete.options(*description.chargements)
-        .order_by(*ordre)
-        .limit(taille)
-        .offset((page - 1) * taille)
-    ).all()
-    lignes = tuple(
-        {"id": objet.id, **{c.cle: c.valeur(objet) for c in description.colonnes}}
-        for objet in objets
-    )
-    return PageListe(
-        entite=description.code,
-        lignes=lignes,
-        total=total,
-        page=page,
-        taille=taille,
-        nb_pages=nb_pages,
-        tri=cle_tri,
-        descendant=descendant,
-        recherche=texte,
-        filtres=appliques,
-    )
+def _ligne(description: Entite, trouve: Any) -> dict[str, Any]:
+    """Ligne de liste : `id`, une clé par colonne et, pour une colonne qui a un
+    `detail`, la clé `detail_<colonne>` (texte complet affiché au survol)."""
+    ligne: dict[str, Any] = {"id": trouve.id}
+    for colonne in description.colonnes:
+        ligne[colonne.cle] = colonne.valeur(trouve)
+        if colonne.detail is not None:
+            ligne[f"detail_{colonne.cle}"] = colonne.detail(trouve)
+    return ligne
 
 
 # --------------------------------------------------------------------------- #
@@ -349,8 +380,7 @@ def lire(session: Session, code: str | Entite, ident: int) -> dict[str, Any]:
 def ligne(session: Session, code: str | Entite, ident: int) -> dict[str, Any]:
     """Une ligne de liste (même format que `PageListe.lignes`) pour un seul élément."""
     description = entite(code)
-    trouve = objet(session, description, ident)
-    return {"id": trouve.id, **{c.cle: c.valeur(trouve) for c in description.colonnes}}
+    return _ligne(description, objet(session, description, ident))
 
 
 # --------------------------------------------------------------------------- #

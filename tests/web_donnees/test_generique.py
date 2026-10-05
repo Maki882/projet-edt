@@ -140,3 +140,11 @@ def test_edition_dans_la_ligne(site):
 
     ok = site.post("/types-salle/1/ligne", data={"code": "AMPHI", "libelle": "Grand amphi"})
     assert "ligne-modifiee" in ok.text and "Grand amphi" in ok.text
+
+
+def test_identifiants_de_toutes_les_pages(ids):
+    with session_base() as session:
+        tous = operations.identifiants(session, "salle")
+        issy = operations.identifiants(session, "salle", filtres={"campus": str(ids.issy)})
+        cherches = operations.identifiants(session, "salle", recherche="n2")
+    assert len(tous) == 6 and len(issy) == 2 and len(cherches) == 1

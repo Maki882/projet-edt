@@ -114,9 +114,17 @@ class Champ:
 class Colonne:
     """Une colonne de liste : `valeur` donne le texte (ou nombre, booléen) affiché.
 
-    `tri` : expression SQL (ou tuple d'expressions) de tri ; vide = colonne non triable.
-    `nombre` : valeur numérique (alignée à droite) ; `format` : présentation
-    particulière (« couleur » : pastille de la couleur).
+    Une valeur peut être une **liste** (groupes, équipements...) : la liste
+    affiche ses `apercu` premiers éléments suivis de « +n ».
+
+    - `tri` : expression SQL (ou tuple d'expressions) de tri ; vide = non triable ;
+    - `nombre` : valeur numérique (alignée à droite) ;
+    - `format` : présentation particulière (« couleur » : pastille de la couleur) ;
+    - `texte` : texte libre qui peut tenir sur deux lignes (les autres colonnes
+      restent sur une ligne) ;
+    - `detail` : texte complet affiché au survol d'une valeur abrégée ;
+    - `filtre` : nom du filtre qui fixe cette valeur ; la colonne est omise
+      quand ce filtre est appliqué.
     """
 
     cle: str
@@ -125,6 +133,10 @@ class Colonne:
     tri: Any = None
     nombre: bool = False
     format: str = ""
+    texte: bool = False
+    apercu: int = 2
+    detail: Callable[[Any], str] | None = None
+    filtre: str = ""
 
 
 @dataclass(frozen=True)
