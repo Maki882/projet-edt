@@ -44,6 +44,7 @@ from edt.verification.contexte import (
     Contexte,
     Element,
     cle_tri,
+    creneau_impose,
     defauts_de_plage,
     resoudre_codes,
 )
@@ -52,6 +53,7 @@ from edt.verification.messages import date_texte, plage
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
+from edt.verification.semaine_type import CAUSES_SEANCE_RETIREE, CONSEIL_RECALCUL
 
 journal = logging.getLogger(__name__)
 
@@ -165,11 +167,10 @@ def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence
 def _element(
     occurrence: Occurrence, besoin: Besoin, seance: SeanceAPlacer | None, position: int
 ) -> Element:
-    imposee = (
-        besoin.debut_impose is not None
-        or besoin.ponctuel
-        or (seance is not None and seance.verrou is not None)
-    )
+    # Le verrou fixe la place de la semaine type : une occurrence déplacée à la
+    # main (autre jour ou autre heure) ne bénéficie plus des écarts admis.
+    verrou = None if seance is None else seance.verrou
+    imposee = creneau_impose(besoin, verrou, occurrence.date.weekday(), occurrence.debut)
     return Element(
         besoin=besoin,
         jour=occurrence.date.weekday(),
@@ -220,13 +221,22 @@ def _seance_inconnue(ctx: Contexte, occurrence: Occurrence, besoin: Besoin) -> I
     yield ctx.anomalie(
         CodeContrainte.VOLUME,
         Gravite.AVERTISSEMENT,
-        f"La séance {ctx.libelle_seance(besoin, None)} du {date_texte(occurrence.date)} se "
-        f"rattache à la séance hebdomadaire « {occurrence.seance_id} », qui n'existe pas dans "
-        "ce semestre : elle est vérifiée sans son éventuel verrou.",
+        f"La séance {_numero(occurrence.seance_id)}de « {ctx.libelle_seance(besoin, None)} » "
+        f"du {date_texte(occurrence.date)} vient d'une séance de la semaine type que le besoin ne "
+        f"demande plus ({CAUSES_SEANCE_RETIREE}) : elle est vérifiée sans son éventuel verrou. "
+        f"{CONSEIL_RECALCUL}",
+        seances=() if occurrence.seance_id is None else (occurrence.seance_id,),
+        occurrences=() if occurrence.id is None else (occurrence.id,),
         besoins=(besoin.id,),
         groupes=besoin.groupes,
         date=occurrence.date,
     )
+
+
+def _numero(seance_id: str | None) -> str:
+    """« n° 2 » pour la séance « 107-2 », rien si le rang est illisible."""
+    rang = (seance_id or "").partition("-")[2]
+    return f"n° {rang} " if rang.isdigit() else ""
 
 
 def _a_programmer(ctx: Contexte, element: Element) -> Iterator[Anomalie]:

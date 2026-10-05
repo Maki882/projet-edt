@@ -22,7 +22,14 @@ from dataclasses import dataclass
 from edt.domaine.contraintes import CodeContrainte, codes_par_defaut, normaliser_codes
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR
-from edt.domaine.instantane import Besoin, Campus, Indisponibilite, Instantane, Salle
+from edt.domaine.instantane import (
+    Besoin,
+    Campus,
+    Indisponibilite,
+    Instantane,
+    Placement,
+    Salle,
+)
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import (
@@ -50,7 +57,8 @@ class Element:
     - couche datée : `date` renseignée, `semaines` à `None` ; `occurrence_id`
       vaut `None` pour une occurrence candidate pas encore enregistrée ;
     - `position` : rang dans la liste reçue (départage les doublons) ;
-    - `imposee` : créneau imposé (début imposé, besoin ponctuel ou verrou) ;
+    - `imposee` : créneau imposé (début imposé, besoin ponctuel, ou verrou
+      resté à sa place : voir `creneau_impose`) ;
     - `jour_impose` / `date_imposee` : ce que le besoin impose au placement.
     """
 
@@ -108,6 +116,21 @@ def defauts_de_plage(jour: int | None, debut: object, fin: object) -> list[str]:
 
 def _est_entier(valeur: object) -> bool:
     return isinstance(valeur, int) and not isinstance(valeur, bool)
+
+
+def creneau_impose(besoin: Besoin, verrou: Placement | None, jour: int, debut: int) -> bool:
+    """Vrai si une séance placée le `jour` à `debut` est sur un créneau **imposé**.
+
+    Le créneau est imposé par le besoin (début imposé ou séance ponctuelle), ou
+    par un verrou **à condition d'être resté à sa place** (même jour de la
+    semaine, même début) : le verrou fixe la place de la semaine type, pas une
+    place choisie ensuite à la main. Une séance verrouillée déplacée ailleurs
+    n'a donc plus droit aux écarts admis (information au lieu d'erreur) de
+    `DEJEUNER`, `JOURS` et `HORAIRES` (a), (b), (c).
+    """
+    if besoin.debut_impose is not None or besoin.ponctuel:
+        return True
+    return verrou is not None and (verrou.jour, verrou.debut) == (jour, debut)
 
 
 def valider_indisponibilite(indisponibilite: Indisponibilite) -> None:
@@ -184,6 +207,7 @@ class Contexte:
         self.parametres = instantane.parametres
         self.toutes_semaines = frozenset(semaine.numero for semaine in instantane.semaines)
         self._campus = {campus.id: campus for campus in instantane.campus}
+        self._besoins: dict[int, Besoin] | None = None
         self._seances_par_besoin = Counter(seance.besoin.id for seance in instantane.seances)
         self._enseignants_reels: dict[int, frozenset[int]] = {}
         self._groupes_lies: dict[int, frozenset[int]] = {}
@@ -215,6 +239,16 @@ class Contexte:
             raise ErreurIntrouvable(
                 f"Campus {campus_id!r} absent de l'instantané du semestre."
             ) from None
+
+    def besoin(self, besoin_id: int) -> Besoin | None:
+        """Besoin de l'instantané, ou `None` s'il n'y est pas (placement d'une séance retirée).
+
+        Pour nommer la séance dans le message qui signale ce placement : un
+        besoin absent n'est pas une erreur de l'entrée, c'est l'anomalie même.
+        """
+        if self._besoins is None:
+            self._besoins = {besoin.id: besoin for besoin in self.instantane.besoins}
+        return self._besoins.get(besoin_id)
 
     def enseignants_reels(self, besoin: Besoin) -> frozenset[int]:
         """Enseignants non fictifs du besoin : les seuls soumis aux contraintes d'enseignant."""

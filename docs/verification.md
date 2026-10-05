@@ -73,7 +73,11 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
   (`Instantane.besoins_en_conflit_de_groupes` : même groupe, groupe et
   ascendant, groupes déclarés chevauchants, étudiant commun).
 - Une séance est **imposée** si son besoin a un début imposé, s'il est
-  ponctuel, ou si la séance porte un verrou.
+  ponctuel, ou si elle porte un verrou **et est restée à sa place** (même jour
+  de la semaine et même début que le verrou). Le verrou fixe la place de la
+  semaine type, pas une place choisie ensuite à la main : une séance
+  verrouillée déplacée (semaine type ou séance datée) n'a plus droit aux
+  écarts admis (`edt.verification.contexte.creneau_impose`).
 - Un enseignant fictif n'entre dans aucune contrainte d'enseignant.
 
 ## Règles et gravités
@@ -98,6 +102,15 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 | `MAX_ENSEIGNANT` | Pour chaque enseignant non fictif, somme des durées placées par semaine ≤ `max_minutes_semaine` et par (semaine, jour) ≤ `max_minutes_jour`. Une anomalie par enseignant pour l'hebdomadaire, une par enseignant et par jour de la semaine type pour le journalier, qui détaillent les semaines en cause. Égalité permise. | Erreur |
 | `VOLUME` | Chaque séance de l'instantané a exactement un placement ; un placement désigne une séance connue ; chaque problème de dépliage est rapporté tel quel avec son propre code (`VOLUME` ou `JOUR_FERME`). | Erreur |
 | `VOLUME` | Séance placée sans salle : « salle à définir » ; aucune règle de salle ne s'applique à elle. | Avertissement |
+
+Un placement d'une séance que les besoins ne demandent plus (cas typique :
+semestre ou période d'un besoin raccourcis après le calcul) nomme le besoin,
+donne la cause probable et conseille de relancer le calcul, par exemple « La
+séance n° 3 de « CM Physique - A1 », placée le lundi de 8 h 30 à 10 h 30 en
+salle N016, n'est plus demandée : la période du besoin ou celle du semestre a
+été raccourcie, ou le nombre de séances demandées a diminué. Relancer le
+calcul pour remettre l'emploi du temps en accord avec les besoins. »
+L'identifiant technique reste dans le champ `seances`, pas dans le message.
 | `VERROU` | Une séance verrouillée est placée au jour et aux heures du verrou, et dans sa salle si le verrou en fixe une. | Erreur |
 | `JOUR_FERME` | Couche datée seulement (voir plus bas). | Erreur |
 
@@ -325,8 +338,9 @@ def verifier_occurrences_version(
     session, version_id, date_debut=None, date_fin=None, contraintes_actives=None
 ) -> RapportVerification
 def verifier_modification(
-    session, version_id, seance_id, jour, debut, fin, salle_id
+    session, version_id, seance_id, jour, debut, fin, salle_id, *, contraintes_actives=None
 ) -> RapportVerification
+def anomalies_introduites(avant, apres, seance_id) -> list[Anomalie]
 def version_a_verifier(session, version_id=None, semestre_id=None) -> int
 ```
 
@@ -336,13 +350,19 @@ def version_a_verifier(session, version_id=None, semestre_id=None) -> int
   les semaines entières qui la recoupent, pour que les maxima hebdomadaires
   soient complets, et seules les anomalies qui citent une séance de la
   période sont gardées. Pas d'indicateurs.
-- `verifier_modification` : ce que donnerait la semaine type si la séance
-  `seance_id` était placée ainsi. Les placements de la version sont relus,
-  celui de la séance est remplacé (ou ajouté si elle n'était pas placée),
-  toute la semaine type est vérifiée avec les contraintes par défaut, et
-  seules les anomalies qui citent cette séance sont renvoyées (conflits avec
-  les autres séances compris ; `VERROU` si la séance est verrouillée). Rien
-  n'est enregistré. Pas d'indicateurs.
+- `verifier_modification` : les anomalies que **introduirait** le placement
+  de la séance `seance_id` à cette place. La semaine type est vérifiée telle
+  qu'elle est enregistrée (avant), puis avec le placement de la séance
+  remplacé, ou ajouté si elle n'était pas placée (après). Seules les
+  anomalies d'après qui citent la séance et sont **nouvelles ou aggravées**
+  sont renvoyées (`anomalies_introduites`) : deux anomalies se correspondent
+  quand elles ont le même code et citent les mêmes séances ; celles d'après
+  sont gardées si elles sont plus nombreuses ou plus graves qu'avant. Une
+  violation déjà présente et sans rapport avec le déplacement (maximum
+  hebdomadaire, contrainte décochée au calcul) ne fige donc pas la séance ;
+  elle reste signalée par `verifier_version`. Contraintes vérifiées : celles
+  actives par défaut, ou `contraintes_actives` (par exemple celles du calcul
+  qui a produit la version). Rien n'est enregistré. Pas d'indicateurs.
 - `version_a_verifier` : la version donnée ; sinon la version active du
   semestre donné ; sinon celle du semestre proposé par défaut
   (`semestre_par_defaut`). `ErreurIntrouvable` si rien ne correspond.
