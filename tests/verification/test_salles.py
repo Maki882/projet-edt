@@ -73,7 +73,10 @@ def test_type_de_salle():
     f, seance, salle = seance_en_salle({"type_salle": 1}, types_salle_acceptes=frozenset({2, 3}))
     anomalies = anomalies_salle(f, seance, salle)
     assert codes(anomalies) == ["TYPE_SALLE"]
-    assert "ne fait pas partie des types acceptés" in anomalies[0].message
+    assert anomalies[0].message.endswith(
+        ": son type de salle (« Salle de cours ») n'est pas accepté (attendu : « Amphithéâtre » "
+        "ou « Salle de TP »)."
+    )
 
 
 def test_salle_et_campus_imposes():
@@ -93,7 +96,10 @@ def test_equipement_manquant():
     )
     anomalies = anomalies_salle(f, seance, salle)
     assert codes(anomalies) == ["EQUIPEMENT"]
-    assert anomalies[0].message.endswith("il manque les équipements n° 4 et 7.")
+    # L'équipement 7 n'a pas de nom dans l'instantané : son numéro est affiché.
+    assert anomalies[0].message.endswith(
+        "il manque les équipements « Matériel d'électronique » et n° 7."
+    )
 
 
 def test_salle_a_definir_avertissement_sans_regle_de_salle():

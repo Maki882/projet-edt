@@ -9,7 +9,7 @@ connaissent que cette vue et le `Contexte` ; seuls `semaine_type` et
 
 Le contexte porte l'instantané, les codes actifs et des index calculés une
 fois par vérification (campus, enseignants non fictifs par besoin,
-groupes liés, indisponibilités projetées, libellés des séances).
+groupes liés, indisponibilités à vérifier, libellés des séances).
 """
 
 from __future__ import annotations
@@ -25,7 +25,6 @@ from edt.domaine.heures import MINUTES_PAR_JOUR
 from edt.domaine.instantane import Besoin, Campus, Indisponibilite, Instantane, Salle
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.verification.contrat import Anomalie
-from edt.verification.indisponibilites import PlageInterdite, projeter, valider_indisponibilite
 from edt.verification.messages import (
     date_texte,
     enumerer,
@@ -111,6 +110,25 @@ def _est_entier(valeur: object) -> bool:
     return isinstance(valeur, int) and not isinstance(valeur, bool)
 
 
+def valider_indisponibilite(indisponibilite: Indisponibilite) -> None:
+    """Lève `ErreurDonneesInvalides` si l'indisponibilité ne décrit pas une plage vérifiable."""
+    defauts: list[str] = []
+    if indisponibilite.jour is not None:
+        if not _est_entier(indisponibilite.jour) or not 0 <= indisponibilite.jour <= 6:
+            defauts.append(f"jour {indisponibilite.jour!r} hors de 0 (lundi) à 6 (dimanche)")
+    elif indisponibilite.date_debut is None or indisponibilite.date_fin is None:
+        defauts.append("ni jour de la semaine ni période datée complète")
+    elif indisponibilite.date_fin < indisponibilite.date_debut:
+        defauts.append("la fin de la période précède son début")
+    defauts.extend(defauts_de_plage(None, indisponibilite.debut, indisponibilite.fin))
+    if defauts:
+        raise ErreurDonneesInvalides(
+            f"L'indisponibilité n° {indisponibilite.id} ({indisponibilite.cible.libelle.lower()} "
+            f"n° {indisponibilite.ressource_id}) est incohérente : vérification impossible.",
+            details=defauts,
+        )
+
+
 def cle_naturelle_seance(identifiant: str) -> tuple[int, int, int, str]:
     """Clé de tri des identifiants de séance : « 2-1 » avant « 10-1 »."""
     besoin, _, rang = identifiant.partition("-")
@@ -170,8 +188,11 @@ class Contexte:
         self._enseignants_reels: dict[int, frozenset[int]] = {}
         self._groupes_lies: dict[int, frozenset[int]] = {}
         self._libelles: dict[tuple[int, str | None], str] = {}
-        self._plages: dict[tuple[CibleIndisponibilite, int], tuple[PlageInterdite, ...]] = {}
-        self._datees: dict[tuple[CibleIndisponibilite, int], tuple[Indisponibilite, ...]] = {}
+        self._indisponibilites: dict[
+            tuple[CibleIndisponibilite, int], tuple[Indisponibilite, ...]
+        ] = {}
+        self._types_salle = frozenset(reference.id for reference in instantane.types_salle)
+        self._equipements = frozenset(reference.id for reference in instantane.equipements)
         self._limites_demi_journee = self._calculer_limites_demi_journee()
 
     # -- codes ------------------------------------------------------------------
@@ -269,38 +290,51 @@ class Contexte:
 
     # -- indisponibilités -------------------------------------------------------
 
-    def plages_interdites(
-        self, cible: CibleIndisponibilite, ressource_id: int
-    ) -> tuple[PlageInterdite, ...]:
-        """Indisponibilités dures de la ressource projetées sur la semaine type."""
-        cle = (cible, ressource_id)
-        valeur = self._plages.get(cle)
-        if valeur is None:
-            valeur = tuple(
-                plage_interdite
-                for indisponibilite in self.instantane.indisponibilites_de(cible, ressource_id)
-                if indisponibilite.dure
-                for plage_interdite in projeter(self.instantane, indisponibilite)
-            )
-            self._plages[cle] = valeur
-        return valeur
-
     def indisponibilites_dures(
         self, cible: CibleIndisponibilite, ressource_id: int
     ) -> tuple[Indisponibilite, ...]:
-        """Indisponibilités dures de la ressource, validées (couche datée)."""
+        """Indisponibilités dures de la ressource à vérifier dans cette couche, validées.
+
+        Semaine type : les **récurrentes** seulement
+        (`Instantane.indisponibilites_recurrentes`) ; chacune interdit sa plage
+        de son jour toutes les semaines, quelles que soient les semaines
+        actives de la séance. Les indisponibilités datées relèvent de la couche
+        datée (l'occurrence qui tombe dessus est replacée ou passe « à
+        programmer »). Couche datée : toutes (`Instantane.indisponibilites_de`),
+        à évaluer à la date avec `Indisponibilite.concerne`. Celles dont `dure`
+        est faux (préférences des versions suivantes) sont écartées.
+        """
         cle = (cible, ressource_id)
-        valeur = self._datees.get(cle)
+        valeur = self._indisponibilites.get(cle)
         if valeur is None:
-            valeur = tuple(
-                indisponibilite
-                for indisponibilite in self.instantane.indisponibilites_de(cible, ressource_id)
-                if indisponibilite.dure
-            )
+            if self.datee:
+                toutes = self.instantane.indisponibilites_de(cible, ressource_id)
+            else:
+                toutes = self.instantane.indisponibilites_recurrentes(cible, ressource_id)
+            valeur = tuple(indisponibilite for indisponibilite in toutes if indisponibilite.dure)
             for indisponibilite in valeur:
                 valider_indisponibilite(indisponibilite)
-            self._datees[cle] = valeur
+            self._indisponibilites[cle] = valeur
         return valeur
+
+    # -- listes configurables ---------------------------------------------------
+
+    def nom_type_salle(self, type_salle_id: int) -> str:
+        """« « Amphithéâtre » » ; « n° 3 » si l'instantané ne porte pas la liste des types.
+
+        Un instantané chargé depuis la base porte toujours la liste
+        (`Instantane.types_salle`) ; un instantané construit à la main (tests,
+        solveur) peut s'en passer : le message montre alors le numéro.
+        """
+        if type_salle_id in self._types_salle:
+            return f"« {self.instantane.libelle_type_salle(type_salle_id)} »"
+        return f"n° {type_salle_id}"
+
+    def nom_equipement(self, equipement_id: int) -> str:
+        """« « Vidéoprojecteur » » ; « n° 4 » si l'instantané ne porte pas la liste des équipements."""
+        if equipement_id in self._equipements:
+            return f"« {self.instantane.libelle_equipement(equipement_id)} »"
+        return f"n° {equipement_id}"
 
     # -- textes -----------------------------------------------------------------
 

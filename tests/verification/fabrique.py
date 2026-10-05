@@ -13,8 +13,8 @@ Usage :
 
 Par défaut : semestre de 15 semaines à partir du lundi 7 septembre 2026,
 grille de l'ISEP (quatre créneaux du lundi au vendredi, deux le samedi
-matin), deux campus (1 = Notre-Dame-des-Champs, 2 = Issy), paramètres par
-défaut. Les conflits de groupes suivent l'arbre (un groupe est en conflit
+matin), deux campus (1 = Notre-Dame-des-Champs, 2 = Issy), trois types de
+salle et trois équipements nommés, paramètres par défaut. Les conflits de groupes suivent l'arbre (un groupe est en conflit
 avec ses ascendants) ; `conflit(a, b)` en déclare d'autres.
 """
 
@@ -47,6 +47,7 @@ from edt.domaine.instantane import (
     Occurrence,
     Placement,
     ProblemeDepliage,
+    Reference,
     Salle,
     SeanceAPlacer,
     Trajet,
@@ -57,6 +58,18 @@ from edt.domaine.parametres import Parametres
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI, SAMEDI, DIMANCHE = range(7)
 DEBUT_SEMESTRE = dt.date(2026, 9, 7)
 NOTRE_DAME, ISSY = 1, 2
+
+TYPES_SALLE = (
+    Reference(1, "COURS", "Salle de cours"),
+    Reference(2, "AMPHI", "Amphithéâtre"),
+    Reference(3, "TP", "Salle de TP"),
+)
+EQUIPEMENTS = (
+    Reference(1, "VIDEOPROJ", "Vidéoprojecteur"),
+    Reference(2, "ORDINATEURS", "Ordinateurs"),
+    Reference(4, "ELECTRONIQUE", "Matériel d'électronique"),
+)
+"""Listes configurables nommées ; l'équipement n° 7, volontairement absent, n'a pas de nom."""
 
 
 def h(texte: str | int) -> int:
@@ -103,6 +116,8 @@ class Fabrique:
         self.besoins: list[Besoin] = []
         self.seances: list[SeanceAPlacer] = []
         self.problemes: list[ProblemeDepliage] = []
+        self.types_salle = list(TYPES_SALLE)
+        self.equipements = list(EQUIPEMENTS)
 
     # -- référentiels -----------------------------------------------------------
 
@@ -301,6 +316,8 @@ class Fabrique:
             besoins=tuple(self.besoins),
             seances=tuple(self.seances),
             problemes_depliage=tuple(self.problemes),
+            types_salle=tuple(self.types_salle),
+            equipements=tuple(self.equipements),
         )
 
 

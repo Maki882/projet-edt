@@ -12,7 +12,9 @@
   imposée, campus imposé), `EQUIPEMENT` ; une séance sans salle donne un
   avertissement `VOLUME` (« salle à définir ») et échappe aux règles de salle ;
 - disponibilités : `DISPO_ENSEIGNANT` (enseignants non fictifs),
-  `DISPO_SALLE`, `DISPO_GROUPE` (groupes du besoin et groupes liés).
+  `DISPO_SALLE`, `DISPO_GROUPE` (groupes du besoin et groupes liés) ;
+  indisponibilités dures seulement, récurrentes sur la semaine type, toutes
+  (à la date) dans la couche datée (voir `Contexte.indisponibilites_dures`).
 
 Gravité : `ERREUR`, sauf pour une séance **imposée** (début imposé, besoin
 ponctuel ou verrou) où `DEJEUNER`, `JOURS` et les points (a), (b), (c) de
@@ -241,7 +243,11 @@ def _salle(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
     if ctx.actif(CodeContrainte.TYPE_SALLE):
         raisons: list[str] = []
         if besoin.types_salle_acceptes and salle.type_salle_id not in besoin.types_salle_acceptes:
-            raisons.append("son type de salle ne fait pas partie des types acceptés")
+            acceptes = [ctx.nom_type_salle(t) for t in sorted(besoin.types_salle_acceptes)]
+            raisons.append(
+                f"son type de salle ({ctx.nom_type_salle(salle.type_salle_id)}) n'est pas "
+                f"accepté (attendu : {enumerer(acceptes, 'ou')})"
+            )
         if besoin.salle_imposee_id is not None and salle.id != besoin.salle_imposee_id:
             raisons.append(f"la salle imposée est {ctx.salle(besoin.salle_imposee_id).code}")
         if besoin.campus_impose_id is not None and salle.campus_id != besoin.campus_impose_id:
@@ -257,10 +263,8 @@ def _salle(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
 
     manquants = sorted(besoin.equipements_requis - salle.equipements)
     if ctx.actif(CodeContrainte.EQUIPEMENT) and manquants:
-        numeros = enumerer([str(numero) for numero in manquants])
-        manque = (
-            f"l'équipement n° {numeros}" if len(manquants) == 1 else f"les équipements n° {numeros}"
-        )
+        noms = enumerer([ctx.nom_equipement(numero) for numero in manquants])
+        manque = f"l'équipement {noms}" if len(manquants) == 1 else f"les équipements {noms}"
         yield ctx.anomalie(
             CodeContrainte.EQUIPEMENT,
             Gravite.ERREUR,
@@ -290,32 +294,25 @@ def _disponibilites(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
         if not ctx.actif(code):
             continue
         for ressource in sorted(ressources):
-            if element.date is not None:
-                for indisponibilite in ctx.indisponibilites_dures(cible, ressource):
-                    if indisponibilite.concerne(element.date) and se_chevauchent(
-                        element.debut, element.fin, indisponibilite.debut, indisponibilite.fin
-                    ):
-                        yield _anomalie_dispo(ctx, code, cible, ressource, indisponibilite, element)
-                continue
-            for plage_interdite in ctx.plages_interdites(cible, ressource):
-                assert element.semaines is not None  # semaine type
-                communes = plage_interdite.semaines & element.semaines
-                if (
-                    plage_interdite.jour == element.jour
-                    and communes
-                    and se_chevauchent(
-                        element.debut, element.fin, plage_interdite.debut, plage_interdite.fin
-                    )
-                ):
-                    yield _anomalie_dispo(
-                        ctx,
-                        code,
-                        cible,
-                        ressource,
-                        plage_interdite.indisponibilite,
-                        element,
-                        communes,
-                    )
+            for indisponibilite in ctx.indisponibilites_dures(cible, ressource):
+                if _indisponibilite_touche(indisponibilite, element):
+                    yield _anomalie_dispo(ctx, code, cible, ressource, indisponibilite, element)
+
+
+def _indisponibilite_touche(indisponibilite: Indisponibilite, element: Element) -> bool:
+    """Vrai si l'indisponibilité recoupe la séance placée.
+
+    Semaine type : indisponibilité récurrente du même jour, toutes les
+    semaines (les semaines actives de la séance n'y changent rien). Couche
+    datée : indisponibilité qui concerne la date de l'occurrence.
+    """
+    if element.date is not None:
+        meme_jour = indisponibilite.concerne(element.date)
+    else:
+        meme_jour = indisponibilite.jour == element.jour
+    return meme_jour and se_chevauchent(
+        element.debut, element.fin, indisponibilite.debut, indisponibilite.fin
+    )
 
 
 def _anomalie_dispo(
@@ -325,7 +322,6 @@ def _anomalie_dispo(
     ressource: int,
     indisponibilite: Indisponibilite,
     element: Element,
-    semaines: frozenset[int] | None = None,
 ) -> Anomalie:
     if cible is CibleIndisponibilite.ENSEIGNANT:
         sujet = ctx.nom_enseignant(ressource)
@@ -342,8 +338,7 @@ def _anomalie_dispo(
         Gravite.ERREUR,
         f"{sujet} est indisponible {ctx.quand(element)} "
         f"{plage(indisponibilite.debut, indisponibilite.fin)}{motif}, pendant la séance "
-        f"{ctx.libelle(element)} prévue {plage(element.debut, element.fin)}"
-        f"{ctx.precision_semaines(semaines)}.",
+        f"{ctx.libelle(element)} prévue {plage(element.debut, element.fin)}.",
         (element,),
         **champs,
         **ctx.reperes(element),

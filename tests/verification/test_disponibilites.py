@@ -60,20 +60,21 @@ def test_enseignant_fictif_et_preference_ignores():
     assert verifier(f.construire(), [placer(td, MARDI, "8h30", n204)], DISPOS) == []
 
 
-def test_indisponibilite_datee_projetee_sur_ses_semaines():
-    # Le mardi 22 septembre 2026 tombe en semaine 3 du semestre.
+def test_indisponibilite_recurrente_quelles_que_soient_les_semaines_actives():
+    # Une indisponibilité récurrente vaut toutes les semaines, même pour un module court.
+    f, n204, martin, _, _, td = base(semaines=range(5, 9))
+    f.indisponibilite(ENSEIGNANT, martin, "8h30", "12h45", jour=MARDI)
+    anomalies = verifier(f.construire(), [placer(td, MARDI, "8h30", n204)], DISPOS)
+    assert codes(anomalies) == ["DISPO_ENSEIGNANT"]
+    assert anomalies[0].message.endswith("prévue de 8 h 30 à 10 h 30.")
+
+
+def test_indisponibilite_datee_ignoree_sur_la_semaine_type():
+    # Datée : elle relève de la couche datée (l'occurrence de ce jour-là est replacée).
     mardi_s3 = dt.date(2026, 9, 22)
     f, n204, martin, _, _, td = base()
     f.indisponibilite(ENSEIGNANT, martin, "8h30", "12h45", date_debut=mardi_s3, date_fin=mardi_s3)
-    anomalies = verifier(f.construire(), [placer(td, MARDI, "8h30", n204)], DISPOS)
-    assert codes(anomalies) == ["DISPO_ENSEIGNANT"]
-    assert anomalies[0].message.endswith("prévue de 8 h 30 à 10 h 30 (semaine 3).")
-
-
-def test_indisponibilite_datee_hors_des_semaines_de_la_seance():
-    mardi_s3 = dt.date(2026, 9, 22)
-    f, n204, martin, _, _, td = base(semaines=range(5, 16))
-    f.indisponibilite(ENSEIGNANT, martin, "8h30", "12h45", date_debut=mardi_s3, date_fin=mardi_s3)
+    f.indisponibilite(SALLE, n204, "8h00", "18h00", date_debut=mardi_s3, date_fin=mardi_s3)
     assert verifier(f.construire(), [placer(td, MARDI, "8h30", n204)], DISPOS) == []
 
 
@@ -111,6 +112,7 @@ def test_disponibilites_desactivees():
 
 def test_indisponibilite_incoherente():
     f, n204, martin, _, _, td = base()
-    f.indisponibilite(ENSEIGNANT, martin, "8h30", "10h30")  # ni jour ni dates
-    with pytest.raises(ErreurDonneesInvalides):
+    f.indisponibilite(ENSEIGNANT, martin, "10h30", "8h30", jour=MARDI)  # fin avant le début
+    with pytest.raises(ErreurDonneesInvalides) as erreur:
         verifier(f.construire(), [placer(td, MARDI, "8h30", n204)], DISPOS)
+    assert "L'indisponibilité n° 1 (enseignant n° 1) est incohérente" in erreur.value.message

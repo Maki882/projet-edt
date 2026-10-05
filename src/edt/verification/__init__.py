@@ -17,7 +17,6 @@ Organisation du paquet :
   verrous, assemblage des règles, tri) ;
 - `contexte` : vue uniforme des séances placées (`Element`) et outils communs ;
 - `regles_seance`, `regles_paires`, `regles_enseignants` : les règles ;
-- `indisponibilites` : projection des indisponibilités sur la semaine type ;
 - `messages` : mise en forme des textes ;
 - `indicateurs` : indicateurs de qualité.
 

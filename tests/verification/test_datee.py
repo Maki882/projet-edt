@@ -156,6 +156,13 @@ def test_indisponibilite_recurrente_a_la_date():
     assert codes(anomalies) == ["DISPO_ENSEIGNANT"]
 
 
+def test_indisponibilite_incoherente_dans_la_couche_datee():
+    f, n204, _, martin, maths, _ = base()
+    f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, martin, "8h30", "10h30")  # ni jour ni dates
+    with pytest.raises(ErreurDonneesInvalides):
+        verifier_occurrences(f.construire(), [occurrence(maths, MARDI_6_OCT, "8h30", n204)])
+
+
 def test_maxima_par_date_et_par_semaine_reelle():
     f, n204, _, _, maths, physique = base(max_jour=3 * 60, max_semaine=5 * 60)
     mercredi = MARDI_6_OCT + dt.timedelta(days=1)
