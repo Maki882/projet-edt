@@ -52,7 +52,7 @@ from edt.db.modeles import Calcul, SeanceHebdo, Semestre, VersionEdt
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
-from edt.domaine.instantane import Instantane
+from edt.domaine.instantane import Instantane, Placement, SeanceAPlacer
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurEDT,
@@ -628,13 +628,29 @@ def _enregistrer_version(
                 debut_min=placement.debut,
                 fin_min=placement.fin,
                 salle_id=placement.salle_id,
-                verrou=seance.verrou is not None,
+                verrou=_verrou_tenu(seance, placement),
                 semaines=sorted(seance.semaines),
             )
         )
     session.add(version)
     session.flush()
     return version
+
+
+def _verrou_tenu(seance: SeanceAPlacer, placement: Placement) -> bool:
+    """Vrai si la séance est verrouillée et que le placement retenu est bien celui du verrou.
+
+    Avec la contrainte « Séances verrouillées » décochée, le moteur déplace
+    librement ces séances : le verrou ne les suit pas à leur nouvelle place,
+    sinon les calculs suivants figeraient une place que personne n'a choisie.
+    """
+    verrou = seance.verrou
+    return (
+        verrou is not None
+        and (placement.jour, placement.debut, placement.fin)
+        == (verrou.jour, verrou.debut, verrou.fin)
+        and (verrou.salle_id is None or placement.salle_id == verrou.salle_id)
+    )
 
 
 def _clore(

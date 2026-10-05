@@ -29,6 +29,16 @@ remplace les occurrences issues de la semaine type ou d'un replacement, et ne
 touche pas aux occurrences saisies à la main ou importées (qui restent en
 place et que les séances replacées évitent).
 
+Une version dont les séances datées ont été **importées** (origine « import »,
+sans lien avec une séance hebdomadaire) n'est pas recalculée : ces séances ne
+viennent pas de la semaine type, et l'instancier à côté doublerait le
+semestre. `instancier_version` le refuse (`ErreurRegleMetier`).
+
+Une séance de la semaine type dont la place est **prise par une retouche**
+(même salle, même groupe ou même enseignant au même moment) est replacée
+comme si elle tombait un jour fermé, avec la raison « place prise par une
+séance saisie à la main ».
+
 Une séance hebdomadaire a **au plus une séance datée par semaine**. Une
 séance datée saisie à la main ou importée, rattachée à une séance
 hebdomadaire, **couvre** sa semaine : celle de sa date d'origine
@@ -55,7 +65,7 @@ from edt.domaine.calendrier import lundi_de
 from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
 from edt.domaine.heures import plage_vers_texte
 from edt.domaine.instantane import Instantane, Occurrence, decomposer_id_seance
-from edt.erreurs import ErreurIntrouvable
+from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
 from edt.solveur.instanciation import instancier
 from edt.solveur.replacement import OptionsReplacement, Replacement, replacer
@@ -147,7 +157,10 @@ def instancier_version(
     """Calcule et enregistre les séances datées de la version `version_id`.
 
     `contraintes_desactivees` : par défaut, celles du calcul qui a produit la
-    version. Lève `ErreurIntrouvable` si la version n'existe pas.
+    version. Lève `ErreurIntrouvable` si la version n'existe pas, et
+    `ErreurRegleMetier`, sans rien modifier, si ses séances datées ont été
+    importées (elles ne viennent pas de la semaine type : les recalculer les
+    doublerait).
     """
     debut = time.perf_counter()
     version, instantane, desactivees = _contexte(session, version_id, contraintes_desactivees)
@@ -165,9 +178,21 @@ def instancier_version(
         )
     placements = [p for p in placements if p.seance_id in connues]
 
+    enregistrees = _occurrences_enregistrees(session, version_id)
+    nb_importees = sum(
+        1
+        for occurrence, origine, _ in enregistrees
+        if origine is OrigineOccurrence.IMPORT and occurrence.seance_id is None
+    )
+    if nb_importees:
+        raise ErreurRegleMetier(
+            f"Les séances datées de la version « {version.libelle} » ont été importées "
+            f"({nb_importees} séance(s)) : les recalculer depuis la semaine type les "
+            "doublerait. Rien n'a été modifié."
+        )
     retouches = [
         (occurrence, date_initiale)
-        for occurrence, origine, date_initiale in _occurrences_enregistrees(session, version_id)
+        for occurrence, origine, date_initiale in enregistrees
         if origine not in ORIGINES_RECALCULEES
     ]
     conservees = [occurrence for occurrence, _ in retouches]
@@ -183,7 +208,7 @@ def instancier_version(
         )
     ).rowcount
 
-    instancie = instancier(instantane, placements, desactivees)
+    instancie = instancier(instantane, placements, desactivees, en_place=conservees)
 
     def a_creer(occurrence: Occurrence) -> bool:
         return (occurrence.seance_id, lundi_de(occurrence.date)) not in couvertes
