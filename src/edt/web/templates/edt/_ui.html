@@ -1,0 +1,103 @@
+{#
+  Macros des écrans de l'emploi du temps. À importer avec le contexte (elles utilisent `fmt`,
+  le module edt.services.emploi_du_temps.presentation, fourni par les routes) :
+
+      {% import "edt/_ui.html" as edt with context %}
+
+  - edt.encart_controle(controle)              vérification indisponible ou en échec : encart clair
+  - edt.indicateurs(controle, nb_a_programmer) les quatre indicateurs de l'équipe
+  - edt.anomalies(liste)                       anomalies en phrases, avec leur gravité
+  - edt.etiquette_gravite(gravite)             pastille « Erreur », « Avertissement »...
+  - edt.ressources(liste)                      feuilles de style et script des écrans
+#}
+{% import "macros.html" as ui %}
+
+{% macro ressources() -%}
+<link rel="stylesheet" href="/static/css/edt.css?v={{ version_application }}">
+{%- endmacro %}
+
+{% macro script() -%}
+<script src="/static/js/edt.js?v={{ version_application }}" defer></script>
+{%- endmacro %}
+
+{% macro etiquette_gravite(gravite) -%}
+{%- set niveaux = {"erreur": "erreur", "avertissement": "attention", "information": "info"} -%}
+{{ ui.etiquette(gravite.libelle, niveaux[gravite.value]) }}
+{%- endmacro %}
+
+{% macro encart_controle(controle) -%}
+{%- if controle is not none and not controle.disponible %}
+{{ ui.message(controle.motif, controle.niveau) }}
+{%- endif %}
+{%- endmacro %}
+
+{% macro anomalies(liste, titre=None) -%}
+{%- if liste %}
+{%- if titre %}<h3>{{ titre }}</h3>{% endif %}
+<ul class="edt-anomalies">
+  {%- for anomalie in liste %}
+  <li>{{ etiquette_gravite(anomalie.gravite) }} <span>{{ anomalie.message }}</span> <small class="discret">{{ fmt.libelle_contrainte(anomalie.code) }}</small></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- endmacro %}
+
+{% macro valeur(texte) -%}
+{%- if texte is none or texte == "" -%}<span class="discret" title="Valeur non disponible">-</span>{%- else -%}{{ texte }}{%- endif -%}
+{%- endmacro %}
+
+{% macro indicateurs(controle, nb_a_programmer=None) -%}
+{%- if controle is not none %}
+{%- if not controle.disponible %}
+{{ ui.message(controle.motif, controle.niveau) }}
+{%- else %}
+{%- set verification = controle.verification %}
+{%- set i = verification.indicateurs %}
+<ul class="compteurs edt-indicateurs">
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(fmt.pourcentage(i.pourcentage_seances_placees) if i else none) }}</span>
+    <span class="compteur-libelle">des séances placées</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ verification.nb_erreurs }}</span>
+    <span class="compteur-libelle">{{ "conflit" if verification.nb_erreurs < 2 else "conflits" }} (règles non respectées)</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(fmt.pourcentage(i.pourcentage_utilisation_salles) if i else none) }}</span>
+    <span class="compteur-libelle">d'utilisation des salles</span>
+  </li>
+  <li class="compteur">
+    <span class="compteur-nombre">{{ valeur(i.changements_campus if i else none) }}</span>
+    <span class="compteur-libelle">changements de campus
+      {%- if i and i.changements_campus_par_semaine is not none %} <small>sur le semestre, soit {{ i.changements_campus_par_semaine|string|replace(".", ",") }} par semaine</small>{% endif %}</span>
+  </li>
+  {%- if nb_a_programmer %}
+  <li class="compteur">
+    <span class="compteur-nombre">{{ nb_a_programmer }}</span>
+    <span class="compteur-libelle">{{ "séance" if nb_a_programmer < 2 else "séances" }} à programmer</span>
+  </li>
+  {%- endif %}
+</ul>
+{%- if i is none %}
+<p class="discret">Le vérificateur n'a pas fourni d'indicateurs de qualité pour cette version.</p>
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- endmacro %}
+
+{% macro choix_semestre(semestres, semestre, action, nom="semestre_id", autres={}) -%}
+<form class="edt-barre-outils" method="get" action="{{ action }}">
+  <div class="champ">
+    <label for="choix-semestre">Semestre</label>
+    <select id="choix-semestre" name="{{ nom }}" data-envoi-auto>
+      {%- for s in semestres %}
+      <option value="{{ s.id }}"{% if semestre and s.id == semestre.id %} selected{% endif %}>{{ s.libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- for cle, valeur_cachee in autres.items() %}
+  <input type="hidden" name="{{ cle }}" value="{{ valeur_cachee }}">
+  {%- endfor %}
+  <button type="submit" class="bouton">Afficher</button>
+</form>
+{%- endmacro %}
