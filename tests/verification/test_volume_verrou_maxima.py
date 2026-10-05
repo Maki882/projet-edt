@@ -10,7 +10,7 @@ from edt.domaine.instantane import Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier
 
-from .fabrique import JEUDI, LUNDI, MARDI, MERCREDI, Fabrique, codes, h, placer
+from .fabrique import JEUDI, LUNDI, MARDI, MERCREDI, SAMEDI, Fabrique, codes, h, placer
 
 # --------------------------------------------------------------------------- #
 # Volume
@@ -36,16 +36,43 @@ def test_seance_non_placee():
     assert anomalies[0].besoins == (1,)
 
 
-def test_placement_d_une_seance_inconnue():
+def test_placement_d_une_seance_qui_n_est_plus_demandee_nomme_le_besoin():
+    # Constat n° 17 de la revue : après le raccourcissement d'un semestre, la version garde
+    # la séance « 1-3 » que le besoin ne produit plus. Le message nomme le besoin et dit quoi
+    # faire, sans exposer l'identifiant technique (qui reste dans le champ `seances`).
     f, n204, s1, s2 = deux_seances()
     placements = [
         placer(s1, LUNDI, "8h30", n204),
         placer(s2, MARDI, "8h30", n204),
-        Placement("99-1", JEUDI, h("8h30"), h("10h30"), n204),
+        Placement("1-3", JEUDI, h("8h30"), h("10h30"), n204),
     ]
     anomalies = verifier(f.construire(), placements, ["VOLUME"])
     assert codes(anomalies) == ["VOLUME"]
-    assert "désigne une séance inconnue dans ce semestre (« 99-1 »)" in anomalies[0].message
+    assert anomalies[0].message == (
+        "La séance n° 3 de « Mathématiques TD (A1-G1) », placée le jeudi de 8 h 30 à 10 h 30 "
+        "en salle N204, n'est plus demandée : la période du besoin ou celle du semestre a été "
+        "raccourcie, ou le nombre de séances demandées a diminué. Relancer le calcul pour "
+        "remettre l'emploi du temps en accord avec les besoins."
+    )
+    assert "1-3" not in anomalies[0].message
+    assert anomalies[0].seances == ("1-3",)
+    assert anomalies[0].besoins == (1,)
+    assert anomalies[0].groupes == (1,)
+
+
+def test_placement_d_un_besoin_absent_du_semestre():
+    f, n204, s1, s2 = deux_seances()
+    placements = [
+        placer(s1, LUNDI, "8h30", n204),
+        placer(s2, MARDI, "8h30", n204),
+        Placement("99-1", JEUDI, h("8h30"), h("10h30"), None),
+    ]
+    anomalies = verifier(f.construire(), placements, ["VOLUME"])
+    assert codes(anomalies) == ["VOLUME"]
+    assert anomalies[0].message.startswith(
+        "La séance placée le jeudi de 8 h 30 à 10 h 30 se rattache à un besoin qui n'existe pas "
+        "dans ce semestre (n° 99) : elle ne peut pas être vérifiée."
+    )
 
 
 def test_placement_inconnu_hors_volume_journalise(caplog):
@@ -243,3 +270,11 @@ def test_libelle_du_socle_qui_cite_deja_ses_groupes():
         "La séance CM Physique - A1 (n° 1) n'est pas placée.",
         "La séance CM Physique - A1 (n° 2) n'est pas placée.",
     ]
+
+
+def test_seance_verrouillee_deplacee_n_est_plus_imposee():
+    # Même règle que la couche datée (constat n° 15) : hors de la place de son verrou, une
+    # séance verrouillée n'a plus droit aux écarts admis.
+    f, n204, _, seance = seance_verrouillee()
+    anomalies = verifier(f.construire(), [placer(seance, SAMEDI, "8h30", n204)], ["JOURS"])
+    assert [(str(a.code), a.gravite) for a in anomalies] == [("JOURS", Gravite.ERREUR)]
