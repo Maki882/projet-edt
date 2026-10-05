@@ -7,9 +7,10 @@
 #
 # Affiche : état du service et de nginx, version déployée et versions
 # disponibles, derniers déploiements, réponse de /sante (sur le serveur),
-# certificat HTTPS, espace disque et mémoire, taille de la base et des
-# sauvegardes, 30 dernières lignes du journal du service, puis vérifie l'URL
-# publique depuis ce poste. Ne modifie rien.
+# certificat HTTPS, espace disque et mémoire, diagnostic de l'application
+# (« edt doctor » : base utilisée, schéma), taille de la base et des
+# sauvegardes, 30 dernières lignes du journal du service, puis l'URL publique
+# vue depuis ce poste. Ne modifie rien.
 #
 # Code de sortie : 0 si tout va bien, 1 si un problème a été détecté (lignes
 # « !!! »), autre valeur si l'état n'a pas pu être lu.
@@ -50,13 +51,7 @@ for unite in edt nginx; do
     probleme "le service $unite n'est pas actif (état : $etat_unite)"
   fi
 done
-if systemctl status edt --no-pager --lines=0; then
-  :
-else
-  code=$?
-  # 3 = service arrêté, déjà signalé ci-dessus ; autre code = vraie erreur.
-  if [ "$code" -ne 3 ]; then probleme "systemctl status edt a renvoyé le code $code"; fi
-fi
+systemctl show edt -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID -p MemoryCurrent
 
 titre "Version déployée"
 if [ -L /opt/edt/courant ]; then
@@ -78,10 +73,10 @@ for dossier in /opt/edt/versions/*/; do
   nom="${dossier%/}"
   echo "  $marque ${nom##*/}"
 done
-if [ -e /var/log/edt/historique-deploiements.log ]; then
+if [ -e /var/log/edt-deploiements/historique.log ]; then
   echo
   echo "Derniers déploiements (date, version, commit, référence, auteur, résultat) :"
-  tail -n 5 /var/log/edt/historique-deploiements.log
+  tail -n 5 /var/log/edt-deploiements/historique.log
 fi
 
 titre "Santé de l'application (http://127.0.0.1:8000/sante, sans passer par nginx)"
@@ -117,26 +112,22 @@ fi
 
 titre "Espace disque et mémoire"
 df -h /
-for dossier in /opt/edt/versions /var/lib/edt /var/lib/edt/sauvegardes /var/log/edt /var/cache/edt; do
+for dossier in /opt/edt/versions /var/lib/edt /var/lib/edt/sauvegardes /var/log/edt /var/log/edt-deploiements /var/cache/edt; do
   if [ -e "$dossier" ]; then du -sh "$dossier"; fi
 done
 free -h
 
-titre "Base de données"
-if [ -e /etc/edt/edt.env ] && url="$(grep -E '^EDT_DB_URL=' /etc/edt/edt.env | tail -n 1)"; then
-  url="${url#EDT_DB_URL=}"
-  base="/${url#sqlite:////}"
-  echo "EDT_DB_URL=$url"
-  if [ -e "$base" ]; then
-    for fichier in "$base" "$base-wal" "$base-shm"; do
-      if [ -e "$fichier" ]; then ls -lh "$fichier"; fi
-    done
-  else
-    probleme "base absente : $base (normal avant le premier déploiement)"
-  fi
-else
-  probleme "EDT_DB_URL introuvable dans /etc/edt/edt.env"
+# La base est décrite par l'application elle-même (sudo edt doctor : même
+# configuration que le service), jamais en relisant edt.env ici.
+titre "Base de données et diagnostic de l'application (sudo edt doctor)"
+if [ ! -x /usr/local/bin/edt ]; then
+  probleme "lanceur /usr/local/bin/edt absent : relancez installer-serveur.sh"
+elif ! /usr/local/bin/edt doctor; then
+  probleme "« edt doctor » signale un échec (lignes ci-dessus)"
 fi
+echo "(Le contrôle du port 8000 est en « ATTENTION » quand le service tourne : c'est normal.)"
+echo "Fichiers de /var/lib/edt :"
+ls -lh /var/lib/edt
 nombre_sauvegardes=0
 derniere=""
 for fichier in /var/lib/edt/sauvegardes/*.db; do

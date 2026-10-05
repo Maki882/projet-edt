@@ -14,14 +14,15 @@
 #   3. envoi du code : git archive <commit> | ssh ... tar -x
 #      vers /opt/edt/versions/<date>-<sha>/code ;
 #   4. sur le serveur (deploy/deployer-distant.sh) : venv et dépendances,
-#      test de chargement, arrêt du service, sauvegarde de la base, init-db,
-#      bascule du lien /opt/edt/courant, redémarrage, attente de /sante (30 s) ;
-#      en cas d'échec : journal du service + retour arrière automatique ;
+#      chargement, arrêt du service, sauvegarde de la base, init-db,
+#      verifier-schema, bascule du lien /opt/edt/courant, redémarrage, attente
+#      de /sante (30 s) ; en cas d'échec : journal + retour arrière automatique ;
 #   5. vérification informative de l'URL publique (n'annule rien).
 #
 # Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
 # (valeurs par défaut et explications dans deploy/commun.sh).
-# Code de sortie : 0 si la nouvelle version est en service, non nul sinon.
+# Code de sortie : 0 si la nouvelle version est en service (éventuellement
+# avec avertissements), non nul sinon.
 # =============================================================================
 set -euo pipefail
 set -o errtrace   # le piège ERR s'applique aussi à l'intérieur des fonctions
@@ -70,10 +71,6 @@ done
 # -----------------------------------------------------------------------------
 etape "Contrôles sur le poste local"
 verifier_poste_local
-if grep -q $'\r' "$DOSSIER_DEPLOY/deployer-distant.sh"; then
-  erreur "deploy/deployer-distant.sh a des fins de ligne Windows (CRLF) : bash échouerait sur le serveur. Restaurez-le avec « git checkout -- deploy/deployer-distant.sh »."
-  exit 1
-fi
 RACINE="$(git -C "$DOSSIER_DEPLOY" rev-parse --show-toplevel)"
 info "Dépôt : $RACINE"
 
@@ -121,7 +118,7 @@ info "Nom de la version : $VERSION"
 
 if [ "$RESET_BASE" = 1 ]; then
   etape "Confirmation de la remise à zéro de la base"
-  avertir "--reset-base : la base de PRODUCTION de $EDT_DOMAINE ($EDT_SSH_HOTE) va être EFFACÉE puis recréée vide. Une sauvegarde est faite juste avant (/var/lib/edt/sauvegardes)."
+  avertir "--reset-base : la base de PRODUCTION de $EDT_DOMAINE ($EDT_SSH_HOTE) va être EFFACÉE puis recréée vide (à repeupler ensuite, par exemple avec « sudo edt jeu ... »). Une sauvegarde est faite juste avant (/var/lib/edt/sauvegardes)."
   printf 'Pour confirmer, tapez exactement EFFACER puis Entrée : '
   if ! read -r REPONSE; then
     erreur "aucune réponse lue : remise à zéro annulée, rien n'a été fait."
@@ -139,23 +136,33 @@ etape "Connexion au serveur $SSH_CIBLE"
 verifier_connexion
 
 etape "Vérification de l'installation du serveur"
-if ! executer_script_distant verification-installation <<'DISTANT'
+# Le serveur renvoie aussi l'empreinte des fichiers posés par
+# installer-serveur.sh, comparée ensuite à celle de ce dossier deploy/.
+if ! EMPREINTES_SERVEUR="$(executer_script_distant verification-installation <<'DISTANT'
 set -euo pipefail
+installes=(/etc/systemd/system/edt.service /etc/nginx/snippets/edt-application.conf
+  /usr/local/bin/edt /var/www/edt-erreurs/erreur-502.html)
 manquant=0
-for chemin in /etc/edt/edt.env /etc/systemd/system/edt.service /opt/edt/versions \
-  /var/lib/edt/sauvegardes /var/log/edt /etc/nginx/sites-enabled/edt; do
+for chemin in /etc/edt/edt.env /opt/edt/versions /var/lib/edt/sauvegardes /var/log/edt-deploiements \
+  /etc/nginx/sites-enabled/edt "${installes[@]}"; do
   if [ ! -e "$chemin" ]; then
     echo "manquant sur le serveur : $chemin" >&2
     manquant=1
   fi
 done
-exit "$manquant"
+if [ "$manquant" = 1 ]; then exit 1; fi
+sha256sum "${installes[@]}" | cut -d' ' -f1
 DISTANT
-then
-  erreur "le serveur n'est pas (complètement) installé : lancez d'abord deploy/installer-serveur.sh (docs/deploiement.md, « Première installation »)."
+)"; then
+  erreur "le serveur n'est pas (complètement) installé ou pas à jour : lancez deploy/installer-serveur.sh (docs/deploiement.md, « Première installation »)."
   exit 1
 fi
-info "Installation du serveur : ok."
+EMPREINTES_LOCALES="$(cd "$DOSSIER_DEPLOY" && sha256sum edt.service nginx-edt-application.conf lanceur-edt.sh erreur-502.html | cut -d' ' -f1)"
+if [ "$EMPREINTES_SERVEUR" = "$EMPREINTES_LOCALES" ]; then
+  info "Installation du serveur : ok, à jour."
+else
+  avertir "edt.service, nginx-edt-application.conf, lanceur-edt.sh ou erreur-502.html diffère entre le serveur et ce dossier deploy/ : relancez installer-serveur.sh pour appliquer la version du dépôt (docs/deploiement.md, section 3, étapes 1 et 2). Le déploiement continue avec la configuration actuelle du serveur."
+fi
 
 etape "Envoi du code ($SHA_COURT) vers $DOSSIER_VERSION_DISTANT/code"
 git -C "$RACINE" archive --format=tar "$SHA" \
@@ -167,13 +174,18 @@ info "(Une coupure de la connexion ou Ctrl+C n'interrompt pas le travail côté 
 CODE_DISTANT=0
 executer_script_distant deployer-distant.sh "$VERSION" "$SHA" "$REF_NETTOYEE" "$RESET_BASE" "$AUTEUR" "$ARBRE_PROPRE" \
   < "$DOSSIER_DEPLOY/deployer-distant.sh" || CODE_DISTANT=$?
-if [ "$CODE_DISTANT" -ne 0 ]; then
-  erreur "le déploiement de $VERSION a échoué sur le serveur (code $CODE_DISTANT) : voir les messages [serveur] ci-dessus."
-  if [ "$CODE_DISTANT" -eq 255 ]; then
-    erreur "code 255 = connexion SSH coupée : le déploiement a pu continuer sur le serveur. Son journal complet : /var/log/edt/deploiements/$VERSION.log ; lancez deploy/etat.sh pour voir où il en est."
-  fi
-  exit 1
-fi
+case "$CODE_DISTANT" in
+  0) ;;
+  3) avertir "version $VERSION en service, mais finalisation incomplète : voir les messages [serveur] ci-dessus et /var/log/edt-deploiements/$VERSION.log." ;;
+  255)
+    erreur "connexion SSH coupée (code 255) : le déploiement a pu continuer sur le serveur. Journal complet : /var/log/edt-deploiements/$VERSION.log ; lancez deploy/etat.sh pour voir où il en est."
+    exit 1
+    ;;
+  *)
+    erreur "le déploiement de $VERSION a échoué sur le serveur (code $CODE_DISTANT) : voir les messages [serveur] ci-dessus."
+    exit 1
+    ;;
+esac
 
 etape "Vérification de l'URL publique (informative)"
 if verifier_url_publique; then
