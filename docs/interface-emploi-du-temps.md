@@ -113,7 +113,8 @@ défaut avec un message, pas une erreur.
   « le jj/mm/aaaa seulement » pour une séance qui n'a pas lieu chaque
   semaine (mode `total`, fenêtre de dates, séance ponctuelle).
 - **Panneau latéral** (clic sur un bloc, fragment HTMX ; sans JavaScript le
-  lien ouvre la même page avec `seance=`) : détail, exigences de salle,
+  lien ouvre la même page avec `seance=`). L'adresse de retour vient de
+  l'en-tête `HX-Current-URL` envoyé par HTMX (limitée à cet onglet) : détail, exigences de salle,
   anomalies de la séance, puis formulaire. Jour et heure de début parmi les
   débuts de la grille ce jour-là (plus l'heure actuelle ou imposée, pour un
   DST hors grille) ; salle parmi les **salles compatibles** (capacité,
@@ -168,7 +169,20 @@ version active, les quatre indicateurs (pourcentage de séances placées,
 nombre de conflits, taux d'utilisation des salles, changements de campus)
 et le nombre de points à traiter. Pour l'étape « saisir », le lien est le
 premier écran de saisie présent dans le menu (`/besoins`, `/salles`...).
-La route `/sante` n'a pas changé.
+Une base au schéma périmé affiche « Le schéma de la base ne correspond
+plus à l'application », la liste des écarts et la marche à suivre
+(`python -m edt init-db --reset`). La route `/sante` n'a reçu qu'une clé :
+`base.ecarts_schema`.
+
+## Temps de réponse
+
+Mesurés sur le jeu « grand » (`python -m edt jeu --taille grand --graine 0
+--reference` : 99 salles, 136 enseignants, 229 groupes, 595 séances au
+premier semestre) : chaque page de grille, « À traiter » et l'accueil
+répondent en moins d'une seconde ; l'essentiel est la vérification de la
+semaine type (environ 0,5 s, dont le chargement de l'instantané). Sans
+vérification, une grille se construit en 5 à 40 ms. La semaine datée ne
+vérifie que la semaine affichée.
 
 ## Disposition des blocs
 
@@ -192,14 +206,21 @@ l'axe et une `Position` par clé, en pourcentages :
    / durée`, `gauche = voie / nb_voies`, `largeur = étendue / nb_voies`.
 
 Deux demi-groupes en TP au même moment occupent chacun la moitié de la
-colonne. Le gabarit place les blocs en `top`/`height` (%) et en variables
+colonne. `Disposition.voies` donne, par jour, le plus grand nombre de
+séances côte à côte : chaque colonne est au moins large de ce nombre de
+fois `--edt-largeur-voie` (l'emploi du temps d'une promotion de
+l'établissement complet en a jusqu'à 18 ; la grille défile), et un bloc
+étroit ne garde que matière, groupes et salle (requête de conteneur CSS). Le gabarit place les blocs en `top`/`height` (%) et en variables
 CSS `--edt-gauche`/`--edt-largeur` ; la hauteur d'une colonne vaut
 `durée de l'axe × --edt-minute`. Le calcul est testé seul
 (`tests/web_edt/test_disposition.py`).
 
 ## Raccords en attente
 
-`raccords.py` importe chaque fonction **au moment de l'appel** :
+`raccords.py` importe chaque fonction **au moment de l'appel**. Le
+vérificateur (`edt.services.verification`) est livré et branché ; les
+pré-vérifications et l'instanciation arrivent avec le solveur : leurs encarts
+restent affichés jusque-là.
 
 | Raccord | Fonction attendue | Utilisée par |
 |---|---|---|
@@ -227,16 +248,20 @@ CSS `--edt-gauche`/`--edt-largeur` ; la hauteur d'une colonne vaut
   `trous_creneaux`, `nb_semaines` ; un nom absent est journalisé et
   l'indicateur affiché « - ». Les comptes par gravité sont recalculés à
   partir des anomalies.
-- **Branchement** : rien à modifier ici. Dès que les modules existent, les
-  encarts disparaissent. À vérifier à l'intégration : que
-  `verifier_modification` ne renvoie que les anomalies de la séance, que
-  les anomalies datées nomment leurs `occurrences`, et que
+- Une anomalie sans séance (séance non placée, besoin impossible à
+  déplier) est rattachée par `Anomalie.besoins` : lien vers le premier
+  groupe du besoin dans « À traiter », liste des anomalies de la vue.
+- **Branchement** : rien à modifier ici. Dès qu'un module existe, ses
+  encarts disparaissent. À vérifier à l'arrivée du solveur : que
   `instancier_version` remplace les occurrences issues de l'instanciation
   (les déplacements et annulations manuels d'une version sont alors
-  recalculés après un déplacement dans la semaine type).
+  recalculés après un déplacement dans la semaine type), et que
+  `pre_verifier_semestre` ne répète pas les besoins impossibles à déplier
+  (déjà affichés à partir de l'instantané).
 - **Tests** : `tests/web_edt/conftest.py` installe de faux modules aux mêmes
-  noms (`faux_verificateur`, `fausse_instanciation`) ; chaque écran est
-  testé avec et sans eux.
+  noms (`faux_verificateur`, `fausse_instanciation`) ou simule leur absence
+  (`sans_verificateur`) ; sans ces fixtures, c'est le vrai vérificateur qui
+  tourne. Chaque écran est testé avec, sans, et avec le vrai.
 
 ## Ajouter une vue
 
