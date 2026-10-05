@@ -70,27 +70,79 @@ def repartition_reguliere(nombre: int, nb_semaines: int) -> list[int]:
     return [plafond(indice + 1) - plafond(indice) for indice in range(nb_semaines)]
 
 
+class _Fermetures:
+    """Semaines et fermetures d'un semestre, préparées une fois pour répondre vite.
+
+    Interroger chaque fermeture pour chaque jour de chaque semaine de chaque
+    besoin coûte cher sur un établissement complet (plus d'un million d'appels
+    à `JourFerme.concerne`). Ici les dates deviennent des numéros de jour
+    (`date.toordinal()`), une fermeture devient une plage de numéros, et « la
+    semaine est entièrement fermée » devient « ses jours ouvrés sont tous dans
+    l'ensemble des jours fermés ». La règle est exactement celle de
+    `JourFerme.concerne` ; seule la façon de la calculer change.
+    """
+
+    def __init__(self, semaines: Iterable[Semaine], jours_fermes: Iterable[JourFerme]) -> None:
+        self._semaines = tuple(
+            (semaine, lundi, range(lundi + JOURS_OUVRES.start, lundi + JOURS_OUVRES.stop))
+            for semaine, lundi in ((semaine, semaine.lundi.toordinal()) for semaine in semaines)
+        )
+        self._fermetures = tuple(jours_fermes)
+        # Par nature de séance (ponctuelle ou non) : les jours fermés pour tous, puis les
+        # plages de jours fermés pour certains groupes seulement. Rempli à la demande.
+        self._preparees: dict[bool, tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]]
+        self._preparees = {}
+
+    def _preparer(
+        self, ponctuelle: bool
+    ) -> tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]:
+        if not self._semaines:
+            return frozenset(), ()
+        premier = min(jours.start for _, _, jours in self._semaines)
+        dernier = max(jours.stop for _, _, jours in self._semaines) - 1
+        pour_tous: set[int] = set()
+        par_groupes: list[tuple[frozenset[int], range]] = []
+        for ferme in self._fermetures:
+            # Seuls comptent les jours du semestre : on borne la plage à ses semaines.
+            jours = range(
+                max(ferme.date_debut.toordinal(), premier),
+                min(ferme.date_fin.toordinal(), dernier) + 1,
+            )
+            if not jours or (ponctuelle and ferme.nature.admet_ponctuels):
+                continue
+            if ferme.groupes is None:
+                pour_tous.update(jours)
+            else:
+                par_groupes.append((ferme.groupes, jours))
+        return frozenset(pour_tous), tuple(par_groupes)
+
+    def jours_fermes(self, groupes: Iterable[int], ponctuelle: bool = False) -> frozenset[int]:
+        """Numéros des jours où une séance des groupes `groupes` ne peut pas avoir lieu."""
+        if ponctuelle not in self._preparees:
+            self._preparees[ponctuelle] = self._preparer(ponctuelle)
+        pour_tous, par_groupes = self._preparees[ponctuelle]
+        propres = [jours for vises, jours in par_groupes if not vises.isdisjoint(groupes)]
+        return pour_tous.union(*propres) if propres else pour_tous
+
+    def semaines_ouvertes(self, besoin: Besoin) -> tuple[Semaine, ...]:
+        """Semaines où le besoin peut avoir cours (voir la règle en tête de module)."""
+        fermes = self.jours_fermes(besoin.groupes, besoin.ponctuel)
+        debut = None if besoin.date_debut is None else besoin.date_debut.toordinal()
+        fin = None if besoin.date_fin is None else besoin.date_fin.toordinal()
+        return tuple(
+            semaine
+            for semaine, lundi, jours_ouvres in self._semaines
+            if (debut is None or lundi + 6 >= debut)  # elle ne finit pas avant la fenêtre
+            and (fin is None or lundi <= fin)  # elle ne commence pas après la fenêtre
+            and not fermes.issuperset(jours_ouvres)  # elle n'est pas entièrement fermée
+        )
+
+
 def semaines_ouvertes(
     besoin: Besoin, semaines: Sequence[Semaine], jours_fermes: Iterable[JourFerme]
 ) -> tuple[Semaine, ...]:
     """Semaines du semestre où le besoin peut avoir cours (voir la règle en tête de module)."""
-    fermetures = tuple(jours_fermes)
-    ouvertes = []
-    for semaine in semaines:
-        if besoin.date_debut is not None and semaine.dimanche < besoin.date_debut:
-            continue
-        if besoin.date_fin is not None and semaine.lundi > besoin.date_fin:
-            continue
-        entierement_fermee = all(
-            any(
-                ferme.concerne(semaine.date_du(jour), besoin.groupes, ponctuelle=besoin.ponctuel)
-                for ferme in fermetures
-            )
-            for jour in JOURS_OUVRES
-        )
-        if not entierement_fermee:
-            ouvertes.append(semaine)
-    return tuple(ouvertes)
+    return _Fermetures(semaines, jours_fermes).semaines_ouvertes(besoin)
 
 
 def deplier(
@@ -103,6 +155,7 @@ def deplier(
     du calendrier. Les séances sortent triées par besoin puis par rang.
     """
     fermetures = tuple(jours_fermes)
+    calendrier = _Fermetures(semaines, fermetures)
     seances: list[SeanceAPlacer] = []
     problemes: list[ProblemeDepliage] = []
 
@@ -111,7 +164,7 @@ def deplier(
             _deplier_ponctuel(besoin, semaines, fermetures, seances, problemes)
             continue
 
-        ouvertes = semaines_ouvertes(besoin, semaines, fermetures)
+        ouvertes = calendrier.semaines_ouvertes(besoin)
         if not ouvertes:
             problemes.append(
                 ProblemeDepliage(
