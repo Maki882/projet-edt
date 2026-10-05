@@ -1,0 +1,21 @@
+{# Ligne en cours d'édition (HTMX) : les champs de l'élément sur une ligne. #}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+{%- set url_element = ecran.prefixe ~ "/" ~ ident %}
+<tr id="ligne-{{ ecran.entite.code }}-{{ ident }}" class="ligne-edition">
+  <td colspan="{{ nb_colonnes }}">
+    {%- if erreur %}{{ ui.message(erreur.message, "erreur", erreur.details) }}{% endif %}
+    <div class="formulaire-ligne" data-formulaire>
+      {%- for rubrique in rubriques %}{% for c in rubrique.champs %}
+      {{ d.champ(c) }}
+      {%- endfor %}{% endfor %}
+      <div class="formulaire-actions">
+        <button type="button" class="bouton bouton-principal bouton-petit"
+                hx-post="{{ url_element }}/ligne" hx-include="closest tr" hx-target="closest tr" hx-swap="outerHTML">Enregistrer</button>
+        <button type="button" class="bouton bouton-petit"
+                hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Annuler</button>
+        <a class="bouton bouton-petit" href="{{ url_element }}">Formulaire complet</a>
+      </div>
+    </div>
+  </td>
+</tr>

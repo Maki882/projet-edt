@@ -115,6 +115,8 @@ class Colonne:
     """Une colonne de liste : `valeur` donne le texte (ou nombre, booléen) affiché.
 
     `tri` : expression SQL (ou tuple d'expressions) de tri ; vide = colonne non triable.
+    `nombre` : valeur numérique (alignée à droite) ; `format` : présentation
+    particulière (« couleur » : pastille de la couleur).
     """
 
     cle: str
@@ -122,6 +124,7 @@ class Colonne:
     valeur: Callable[[Any], object]
     tri: Any = None
     nombre: bool = False
+    format: str = ""
 
 
 @dataclass(frozen=True)

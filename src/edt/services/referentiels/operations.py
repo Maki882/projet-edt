@@ -337,6 +337,13 @@ def lire(session: Session, code: str | Entite, ident: int) -> dict[str, Any]:
     }
 
 
+def ligne(session: Session, code: str | Entite, ident: int) -> dict[str, Any]:
+    """Une ligne de liste (même format que `PageListe.lignes`) pour un seul élément."""
+    description = entite(code)
+    trouve = objet(session, description, ident)
+    return {"id": trouve.id, **{c.cle: c.valeur(trouve) for c in description.colonnes}}
+
+
 def libelle_valeur(session: Session, code: str | Entite, nom_champ: str, valeur: Any) -> str:
     """Texte lisible de la valeur canonique d'un champ (libellé d'un choix, d'une référence)."""
     champ = entite(code).champ(nom_champ)

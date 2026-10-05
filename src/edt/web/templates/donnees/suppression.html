@@ -1,0 +1,40 @@
+{# Confirmation d'une suppression : ce qu'elle emporte, ou pourquoi elle est refusée. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Supprimer {{ entite.nom }} « {{ analyse.libelle }} »{% endblock %}
+
+{% block contenu %}
+{%- if analyse.possible %}
+<section class="carte carte-attention">
+  <h2>Confirmer la suppression</h2>
+  <p>{{ entite.demonstratif }} sera {{ entite.accorde("supprimé") }} définitivement.</p>
+  {%- if analyse.consequences %}
+  <p>Conséquences :</p>
+  <ul>
+    {%- for consequence in analyse.consequences %}
+    <li>{{ consequence }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  <form method="post" action="{{ ecran.prefixe }}/{{ analyse.id }}/supprimer" class="ligne-boutons">
+    <button type="submit" class="bouton bouton-danger-plein">Supprimer définitivement</button>
+    <a class="bouton" href="{{ ecran.prefixe }}/{{ analyse.id }}">Annuler</a>
+  </form>
+</section>
+{%- else %}
+<section class="carte carte-erreur">
+  <h2>Suppression impossible</h2>
+  <ul>
+    {%- for raison in analyse.refus %}
+    <li>{{ raison }}</li>
+    {%- endfor %}
+  </ul>
+  <p>Modifiez ou supprimez d'abord les éléments qui l'utilisent : on ne modifie jamais une demande en silence.</p>
+  <p class="ligne-boutons">
+    <a class="bouton bouton-principal" href="{{ ecran.prefixe }}/{{ analyse.id }}">Revenir à {{ entite.demonstratif|lower }}</a>
+    <a class="bouton" href="{{ ecran.prefixe }}">Retour à la liste</a>
+  </p>
+</section>
+{%- endif %}
+{% endblock %}

@@ -195,7 +195,7 @@ TYPE_SEANCE = Entite(
             lambda t: t.type_salle_defaut.libelle if t.type_salle_defaut else None,
             tri=TypeSalle.libelle,
         ),
-        Colonne("couleur", "Couleur", lambda t: t.couleur),
+        Colonne("couleur", "Couleur", lambda t: t.couleur, format="couleur"),
     ),
     tri_defaut="code",
     recherche=(TypeSeance.code, TypeSeance.libelle),

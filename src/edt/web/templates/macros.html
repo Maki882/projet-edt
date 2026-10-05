@@ -13,6 +13,7 @@
   - ui.etiquette(texte, niveau)               une pastille d'état (succes, info, attention, erreur, neutre)
   - ui.pagination(page, nb_pages, url_page)   liens de pagination (url_page : fonction numéro -> adresse)
   - ui.couleur(code)                          un petit carré de couleur
+  - ui.cellule(valeur)                        contenu d'une cellule (tiret si vide, Oui / Non)
 #}
 
 {% macro message(texte, niveau="info", details=()) -%}
@@ -52,6 +53,11 @@ Non
 {%- else -%}
 {{ valeur }}
 {%- endif -%}
+{%- endmacro %}
+
+{# Cellule de tableau : tiret pour une valeur vide, Oui / Non pour un booléen. #}
+{% macro cellule(valeur) -%}
+{{ _cellule(valeur) }}
 {%- endmacro %}
 
 {#
