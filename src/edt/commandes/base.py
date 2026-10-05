@@ -1,4 +1,4 @@
-"""Commandes du socle : `init-db`, `jeu-minimal`, `serve`, `version`, `doctor`."""
+"""Commandes du socle : `init-db`, `verifier-schema`, `jeu-minimal`, `serve`, `version`, `doctor`."""
 
 from __future__ import annotations
 
@@ -12,11 +12,16 @@ import typer
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
-from edt.db.initialisation import base_initialisee, initialiser_base
+from edt.db.initialisation import (
+    MARCHE_A_SUIVRE_SCHEMA_PERIME,
+    exiger_schema_a_jour,
+    initialiser_base,
+    tables_manquantes,
+)
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.erreurs import ErreurEDT, ErreurRegleMetier
-from edt.services.etat import diagnostiquer_base
+from edt.services.etat import EtatBase, diagnostiquer_base
 
 commandes = typer.Typer()
 journal = logging.getLogger(__name__)
@@ -25,6 +30,10 @@ PYTHON_MINIMUM = (3, 11)
 ORTOOLS_MINIMUM = (9, 15)
 
 OK, ATTENTION, ECHEC = "OK", "ATTENTION", "ECHEC"
+
+CODE_SCHEMA_PERIME = 1
+CODE_BASE_INACCESSIBLE = 2
+"""Codes de sortie de `verifier-schema` (0 : schéma à jour)."""
 
 
 @commandes.command("version")
@@ -42,7 +51,12 @@ def init_db(
         ),
     ] = False,
 ) -> None:
-    """Crée la base, son schéma et les données par défaut (sans risque à relancer)."""
+    """Crée la base, son schéma et les données par défaut (sans risque à relancer).
+
+    Il n'y a pas de migrations : si une table existante n'a plus les colonnes du
+    modèle, la commande échoue sans rien modifier, liste les écarts et indique
+    de relancer avec --reset.
+    """
     rapport = initialiser_base(reset=reset)
     action = "remise à zéro puis initialisée" if rapport.reinitialisee else "initialisée"
     typer.echo(f"Base {action} : {rapport.url}")
@@ -52,10 +66,47 @@ def init_db(
             typer.echo(f"  - {table} : {nombre}")
 
 
+@commandes.command("verifier-schema")
+def verifier_schema() -> None:
+    """Vérifie que les tables de la base ont les colonnes du modèle (rien n'est modifié).
+
+    Code de sortie 0 si le schéma est à jour, 1 s'il est périmé (les écarts sont
+    listés), 2 si la base est inaccessible. Une table pas encore créée n'est pas
+    un écart : « init-db » la crée.
+    """
+    try:
+        etat = diagnostiquer_base()
+    except ErreurEDT as erreur:
+        journal.error("Vérification du schéma impossible : %s", erreur)
+        typer.echo(f"Base inaccessible : {erreur}", err=True)
+        raise typer.Exit(CODE_BASE_INACCESSIBLE) from erreur
+    if not etat.accessible:
+        typer.echo(f"Base inaccessible ({etat.url}) : {etat.erreur}", err=True)
+        raise typer.Exit(CODE_BASE_INACCESSIBLE)
+    if etat.schema_perime:
+        typer.echo(
+            f"schéma périmé : {len(etat.ecarts_schema)} écart(s) entre la base et le modèle "
+            f"({etat.url})"
+        )
+        for ecart in etat.ecarts_schema:
+            typer.echo(f"  - {ecart}")
+        typer.echo(MARCHE_A_SUIVRE_SCHEMA_PERIME)
+        raise typer.Exit(CODE_SCHEMA_PERIME)
+    if etat.tables_manquantes:
+        typer.echo(
+            f"schéma à jour pour les tables existantes ; {len(etat.tables_manquantes)} table(s) "
+            "pas encore créée(s) : lancer « python -m edt init-db »"
+        )
+    else:
+        typer.echo("schéma à jour")
+
+
 @commandes.command("jeu-minimal")
 def jeu_minimal() -> None:
     """Charge un tout petit jeu de données fictif et cohérent dans une base vide."""
-    if not base_initialisee(obtenir_moteur()):
+    moteur = obtenir_moteur()
+    exiger_schema_a_jour(moteur)
+    if tables_manquantes(moteur):
         raise ErreurRegleMetier(
             "La base n'est pas initialisée : lancer d'abord « python -m edt init-db »."
         )
@@ -98,12 +149,14 @@ def serve(
 
 @commandes.command("doctor")
 def doctor() -> None:
-    """Vérifie l'installation : Python, OR-Tools, base, dossier des journaux, port."""
+    """Vérifie l'installation : Python, OR-Tools, base, schéma, dossier des journaux, port."""
     config = charger_configuration()
+    etat = _diagnostiquer()
     controles = [
         _controler_python(),
         _controler_ortools(),
-        _controler_base(),
+        _controler_base(etat),
+        _controler_schema(etat),
         _controler_journaux(config),
         _controler_port(config),
     ]
@@ -157,22 +210,41 @@ def _controler_ortools() -> tuple[str, str]:
     return OK, f"OR-Tools {version_lue} ({requis} ou plus requis), solveur CP-SAT opérationnel"
 
 
-def _controler_base() -> tuple[str, str]:
+def _diagnostiquer() -> EtatBase | str:
+    """État de la base, ou le message d'erreur si elle ne peut même pas être ouverte."""
     try:
-        etat = diagnostiquer_base()
+        return diagnostiquer_base()
     except ErreurEDT as erreur:
         journal.error("Diagnostic de la base impossible : %s", erreur)
-        return ECHEC, f"Base : {erreur}"
+        return str(erreur)
+
+
+def _controler_base(etat: EtatBase | str) -> tuple[str, str]:
+    if isinstance(etat, str):
+        return ECHEC, f"Base : {etat}"
     if not etat.accessible:
         return ECHEC, f"Base {etat.url} inaccessible : {etat.erreur}"
-    if not etat.initialisee:
+    mode = f", mode {etat.mode_journal}" if etat.mode_journal else ""
+    return OK, f"Base {etat.url} accessible{mode}"
+
+
+def _controler_schema(etat: EtatBase | str) -> tuple[str, str]:
+    if isinstance(etat, str) or not etat.accessible:
+        return ATTENTION, "Schéma non vérifié : la base est inaccessible"
+    if etat.schema_perime:
+        return (
+            ECHEC,
+            f"Schéma périmé : {len(etat.ecarts_schema)} écart(s) entre la base et le modèle "
+            "(détail : « python -m edt verifier-schema » ; remède : « python -m edt init-db "
+            "--reset », qui efface les données)",
+        )
+    if etat.tables_manquantes:
         return (
             ATTENTION,
-            f"Base {etat.url} accessible mais non initialisée "
-            f"({len(etat.tables_manquantes)} table(s) manquante(s)) : lancer « python -m edt init-db »",
+            f"Schéma : base non initialisée ({len(etat.tables_manquantes)} table(s) "
+            "manquante(s)) : lancer « python -m edt init-db »",
         )
-    mode = f", mode {etat.mode_journal}" if etat.mode_journal else ""
-    return OK, f"Base {etat.url} accessible, schéma complet{mode}"
+    return OK, "Schéma à jour : les tables de la base correspondent au modèle"
 
 
 def _controler_journaux(config: Configuration) -> tuple[str, str]:
