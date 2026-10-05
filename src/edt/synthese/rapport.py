@@ -15,6 +15,12 @@ Taux de charge (mesurés sur le témoin, semaine par semaine) :
 - d'un **enseignant** : même mesure sur ses propres séances ;
 - d'une **salle** : même mesure sur ses séances, moyenne sur les semaines de
   cours du semestre ; regroupées par type de salle.
+
+Le témoin est aussi soumis au vérificateur officiel (`edt.verification`) :
+le rapport compte ses anomalies par gravité (aucune erreur attendue ; des
+informations pour les créneaux imposés hors grille) et garde les
+indicateurs de qualité du vérificateur, point de comparaison avec la
+solution du solveur.
 """
 
 from __future__ import annotations
@@ -26,6 +32,7 @@ from typing import NamedTuple
 from edt.domaine.instantane import Placement
 from edt.erreurs import ErreurIntrouvable
 from edt.synthese.configuration import ConfigurationJeu
+from edt.verification import Indicateurs
 
 
 class PlaceTemoin(NamedTuple):
@@ -100,6 +107,9 @@ class RapportJeu:
     - `versions_reference` : code -> identifiant de la version « référence »
       créée à partir du témoin (vide sans l'option) ;
     - `nb_recrutements` : enseignants ajoutés au vivier pendant le témoin ;
+    - `anomalies_temoin` : code -> gravité -> nombre d'anomalies relevées par
+      le vérificateur sur le témoin ;
+    - `indicateurs` : code -> indicateurs du vérificateur sur le témoin ;
     - `duree_s` : durée de la génération (seule valeur non déterministe).
     """
 
@@ -116,6 +126,8 @@ class RapportJeu:
     semestres: dict[str, int]
     versions_reference: dict[str, int]
     nb_recrutements: int
+    anomalies_temoin: dict[str, dict[str, int]]
+    indicateurs: dict[str, Indicateurs]
     duree_s: float
 
     @property
@@ -172,6 +184,17 @@ class RapportJeu:
             lignes.append(f"    charge des enseignants : {charge.enseignants}")
             for type_salle, taux in sorted(charge.types_salle.items()):
                 lignes.append(f"    salles {type_salle} : {taux}")
+            anomalies = self.anomalies_temoin.get(charge.semestre, {})
+            lignes.append(
+                "    vérificateur sur le témoin : "
+                + ", ".join(
+                    f"{anomalies.get(g, 0)} {g}(s)"
+                    for g in ("erreur", "avertissement", "information")
+                )
+            )
+            indicateurs = self.indicateurs.get(charge.semestre)
+            if indicateurs is not None:
+                lignes.append(f"    indicateurs du témoin : {_texte_indicateurs(indicateurs)}")
         if self.versions_reference:
             lignes.append(
                 "  Versions de référence (témoin) : "
@@ -185,6 +208,21 @@ class RapportJeu:
         if len(self.besoins_ecartes) > 10:
             lignes.append(f"    ... et {len(self.besoins_ecartes) - 10} autre(s)")
         return "\n".join(lignes)
+
+
+def _texte_indicateurs(ind: Indicateurs) -> str:
+    """Les indicateurs principaux, en une ligne (totaux sur le semestre)."""
+    if ind.pourcentage_utilisation_salles is None:
+        salles = "-"
+    else:
+        salles = f"{ind.pourcentage_utilisation_salles:.0f} %"
+    return (
+        f"salles utilisées {salles}, trous {ind.trous_creneaux} créneaux, "
+        f"changements de campus {ind.changements_campus_groupes} (groupes) / "
+        f"{ind.changements_campus_enseignants} (enseignants), samedi {ind.seances_samedi}, "
+        f"créneaux extrêmes {ind.seances_creneaux_extremes}, objectif {ind.valeur_objectif} "
+        f"(sur {ind.nb_semaines} semaines)"
+    )
 
 
 # --------------------------------------------------------------------------- #

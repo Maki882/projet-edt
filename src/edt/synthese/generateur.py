@@ -57,10 +57,11 @@ from edt.domaine.enumerations import (
 )
 from edt.domaine.instantane import Besoin as BesoinDomaine
 from edt.domaine.instantane import JourFerme as JourFermeDomaine
-from edt.domaine.instantane import id_seance
+from edt.domaine.instantane import Placement, id_seance
 from edt.domaine.parametres import Parametres
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
 from edt.services.conflits_groupes import calculer_conflits_groupes
+from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
 from edt.synthese import catalogue as cat
 from edt.synthese.configuration import ConfigurationJeu, configuration_nommee
@@ -81,6 +82,7 @@ from edt.synthese.temoin import (
     Temoin,
     Vivier,
 )
+from edt.verification import Indicateurs, calculer_indicateurs, verifier
 
 journal = logging.getLogger(__name__)
 
@@ -269,7 +271,8 @@ class _Generateur:
         self._poser_indisponibilites_apres_temoin()
         versions = self._enregistrer_references() if enregistrer_reference else {}
         self.session.flush()
-        return self._rapport(versions, time.perf_counter() - debut)
+        anomalies, indicateurs = self._verifier_temoin()
+        return self._rapport(versions, anomalies, indicateurs, time.perf_counter() - debut)
 
     # -- référentiels -----------------------------------------------------------
 
@@ -1728,7 +1731,43 @@ class _Generateur:
         journal.info("Versions de référence enregistrées : %s", versions)
         return versions
 
-    def _rapport(self, versions: dict[str, int], duree: float) -> RapportJeu:
+    def _verifier_temoin(self) -> tuple[dict[str, dict[str, int]], dict[str, Indicateurs]]:
+        """Soumet le témoin au vérificateur officiel et calcule ses indicateurs.
+
+        Une anomalie de gravité « erreur » trahirait un défaut du générateur :
+        elle est journalisée comme erreur et comptée dans le rapport.
+        """
+        anomalies_par_semestre: dict[str, dict[str, int]] = {}
+        indicateurs: dict[str, Indicateurs] = {}
+        for code in self.config.semestres:
+            instantane = charger_instantane(self.session, self.semestres[code].id)
+            placements = [
+                Placement(seance, p.jour, p.debut, p.fin, p.salle_id)
+                for seance, p in self.temoin[code].items()
+            ]
+            anomalies = verifier(instantane, placements)
+            compte = Counter(str(a.gravite.value) for a in anomalies)
+            anomalies_par_semestre[code] = dict(sorted(compte.items()))
+            for anomalie in anomalies:
+                if anomalie.bloquante:
+                    journal.error(
+                        "Témoin %s refusé par le vérificateur (%s) : %s",
+                        code,
+                        anomalie.code,
+                        anomalie.message,
+                    )
+            indicateurs[code] = calculer_indicateurs(instantane, placements, anomalies)
+            detail = ", ".join(f"{g} {n}" for g, n in sorted(compte.items()))
+            journal.info("Témoin %s vérifié : %s", code, detail or "aucune anomalie")
+        return anomalies_par_semestre, indicateurs
+
+    def _rapport(
+        self,
+        versions: dict[str, int],
+        anomalies: dict[str, dict[str, int]],
+        indicateurs: dict[str, Indicateurs],
+        duree: float,
+    ) -> RapportJeu:
         s = self.session
         compteurs = {
             modele.__tablename__: s.scalar(select(func.count()).select_from(modele))
@@ -1766,6 +1805,8 @@ class _Generateur:
             semestres={code: self.semestres[code].id for code in self.config.semestres},
             versions_reference=versions,
             nb_recrutements=self.vivier.nb_recrutes,
+            anomalies_temoin=anomalies,
+            indicateurs=indicateurs,
             duree_s=round(duree, 3),
         )
 
