@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block titre %}{{ titre }}{% endblock %}
+
+{% block contenu %}
+<section class="carte carte-erreur">
+  <p class="pre-ligne">{{ message }}</p>
+  {% if details %}
+  <ul>
+    {% for detail in details %}
+    <li>{{ detail }}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if id_requete %}
+  <p class="discret">
+    Référence de l'incident : <code>{{ id_requete }}</code>
+    (à communiquer pour retrouver le détail dans le journal).
+  </p>
+  {% endif %}
+  <p>
+    <a class="bouton" href="javascript:history.back()">Revenir à la page précédente</a>
+    <a class="bouton bouton-principal" href="/">Retour à l'accueil</a>
+  </p>
+</section>
+{% endblock %}

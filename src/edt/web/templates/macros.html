@@ -1,0 +1,153 @@
+{#
+  Macros réutilisables par tous les écrans. À importer en tête de gabarit :
+
+      {% import "macros.html" as ui %}
+
+  - ui.message(texte, niveau, details)        un message (succes, info, attention, erreur)
+  - ui.messages(liste)                        une liste de messages (objets Message)
+  - ui.tableau(colonnes, lignes, vide)        un tableau ; avec {% call(ligne) %} : colonne d'actions
+  - ui.formulaire(action, ...)                un formulaire ; les champs vont dans le bloc {% call %}
+  - ui.champ(nom, libelle, valeur, type, ...) un champ de formulaire avec libellé, aide et erreur
+  - ui.bouton_suppression(action, ...)        un bouton de suppression avec confirmation
+  - ui.etiquette(texte, niveau)               une pastille d'état
+#}
+
+{% macro message(texte, niveau="info", details=()) -%}
+<div class="message message-{{ niveau }}" role="{{ 'alert' if niveau == 'erreur' else 'status' }}">
+  <p>{{ texte }}</p>
+  {%- if details %}
+  <ul>
+    {%- for detail in details %}
+    <li>{{ detail }}</li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{% macro messages(liste) -%}
+{%- for element in liste %}
+{{ message(element.texte, element.niveau, element.details) }}
+{%- endfor %}
+{%- endmacro %}
+
+{% macro etiquette(texte, niveau="info") -%}
+<span class="etiquette etiquette-{{ niveau }}">{{ texte }}</span>
+{%- endmacro %}
+
+{% macro _cellule(valeur) -%}
+{%- if valeur is none or valeur == "" -%}
+<span class="discret">-</span>
+{%- elif valeur is sameas true -%}
+Oui
+{%- elif valeur is sameas false -%}
+Non
+{%- else -%}
+{{ valeur }}
+{%- endif -%}
+{%- endmacro %}
+
+{#
+  colonnes : liste de couples (clé, libellé) ; lignes : dictionnaires ou objets
+  (la valeur affichée est ligne[clé]). Appelée avec {% call(ligne) ui.tableau(...) %},
+  une dernière colonne « Actions » reçoit le contenu du bloc pour chaque ligne.
+#}
+{% macro tableau(colonnes, lignes, vide="Aucun élément à afficher.", legende=None) -%}
+{%- if lignes %}
+<div class="tableau-defilant">
+  <table class="tableau">
+    {%- if legende %}
+    <caption>{{ legende }}</caption>
+    {%- endif %}
+    <thead>
+      <tr>
+        {%- for cle, libelle in colonnes %}
+        <th scope="col">{{ libelle }}</th>
+        {%- endfor %}
+        {%- if caller %}
+        <th scope="col" class="colonne-actions">Actions</th>
+        {%- endif %}
+      </tr>
+    </thead>
+    <tbody>
+      {%- for ligne in lignes %}
+      <tr>
+        {%- for cle, libelle in colonnes %}
+        <td>{{ _cellule(ligne[cle]) }}</td>
+        {%- endfor %}
+        {%- if caller %}
+        <td class="colonne-actions">{{ caller(ligne) }}</td>
+        {%- endif %}
+      </tr>
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{%- else %}
+<p class="vide">{{ vide }}</p>
+{%- endif %}
+{%- endmacro %}
+
+{#
+  Formulaire : les champs se placent dans le bloc d'appel.
+
+      {% call ui.formulaire("/salles", libelle_bouton="Créer la salle", annuler="/salles") %}
+        {{ ui.champ("code", "Code", requis=true) }}
+      {% endcall %}
+#}
+{% macro formulaire(action, methode="post", libelle_bouton="Enregistrer", annuler=None, legende=None, attributs={}) -%}
+<form class="formulaire" method="{{ methode }}" action="{{ action }}"{{ attributs|xmlattr }}>
+  {%- if legende %}
+  <h2>{{ legende }}</h2>
+  {%- endif %}
+  {{ caller() }}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">{{ libelle_bouton }}</button>
+    {%- if annuler %}
+    <a class="bouton" href="{{ annuler }}">Annuler</a>
+    {%- endif %}
+  </div>
+</form>
+{%- endmacro %}
+
+{#
+  type : text, number, date, time, email, select, textarea, checkbox...
+  options (type select) : liste de couples (valeur, libellé).
+  attributs : dictionnaire d'attributs HTML supplémentaires (min, max, step, hx-get...).
+#}
+{% macro champ(nom, libelle, valeur="", type="text", requis=false, aide=None, erreur=None, options=(), attributs={}) -%}
+<div class="champ{% if erreur %} champ-en-erreur{% endif %}">
+  {%- if type == "checkbox" %}
+  <label class="case">
+    <input type="checkbox" id="champ-{{ nom }}" name="{{ nom }}" value="1"{% if valeur %} checked{% endif %}{{ attributs|xmlattr }}>
+    {{ libelle }}
+  </label>
+  {%- else %}
+  <label for="champ-{{ nom }}">{{ libelle }}{% if requis %} <span class="requis" title="Obligatoire">*</span>{% endif %}</label>
+  {%- if type == "select" %}
+  <select id="champ-{{ nom }}" name="{{ nom }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>
+    {%- for valeur_option, libelle_option in options %}
+    <option value="{{ valeur_option }}"{% if valeur_option|string == valeur|string %} selected{% endif %}>{{ libelle_option }}</option>
+    {%- endfor %}
+  </select>
+  {%- elif type == "textarea" %}
+  <textarea id="champ-{{ nom }}" name="{{ nom }}" rows="3"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>{{ valeur if valeur is not none else "" }}</textarea>
+  {%- else %}
+  <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur if valeur is not none else '' }}"{% if requis %} required{% endif %}{{ attributs|xmlattr }}>
+  {%- endif %}
+  {%- endif %}
+  {%- if aide %}
+  <p class="aide">{{ aide }}</p>
+  {%- endif %}
+  {%- if erreur %}
+  <p class="erreur-champ">{{ erreur }}</p>
+  {%- endif %}
+</div>
+{%- endmacro %}
+
+{# Bouton de suppression : envoie un POST après confirmation (gérée par static/js/app.js). #}
+{% macro bouton_suppression(action, libelle="Supprimer", confirmation="Confirmer la suppression ? Cette action est définitive.") -%}
+<form class="en-ligne" method="post" action="{{ action }}" data-confirmation="{{ confirmation }}">
+  <button type="submit" class="bouton bouton-danger">{{ libelle }}</button>
+</form>
+{%- endmacro %}

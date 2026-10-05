@@ -1,0 +1,170 @@
+"""Traduction des erreurs en réponses lisibles.
+
+Aucun écran n'affiche d'erreur brute :
+
+- une erreur métier (`ErreurEDT`) devient une page avec son message et ses
+  détails, au statut HTTP correspondant à sa classe ;
+- une erreur HTTP (page inconnue, méthode refusée) et une saisie invalide
+  deviennent une page explicite ;
+- une violation d'intégrité de la base (doublon, élément encore utilisé)
+  devient un refus expliqué ;
+- toute autre exception est interceptée par l'intergiciel
+  (`edt.web.intergiciels`), journalisée avec sa trace, et rendue par la même
+  page d'erreur avec l'identifiant de la requête.
+
+Selon le demandeur, la même erreur est rendue en page complète, en fragment
+de message (requête HTMX, affiché dans la zone de messages par
+`static/js/app.js`) ou en JSON (client qui demande du JSON).
+"""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Iterable
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+from sqlalchemy.exc import IntegrityError, OperationalError
+from starlette.exceptions import HTTPException as ErreurHTTP
+
+from edt.erreurs import (
+    ErreurConfiguration,
+    ErreurDonneesInvalides,
+    ErreurEDT,
+    ErreurInfaisable,
+    ErreurIntrouvable,
+    ErreurNonLivre,
+    ErreurRegleMetier,
+    ErreurTempsDepasse,
+)
+from edt.journal import contexte_requete
+from edt.web.gabarits import est_htmx, gabarits
+
+journal = logging.getLogger(__name__)
+
+STATUTS: tuple[tuple[type[ErreurEDT], int, str], ...] = (
+    (ErreurIntrouvable, 404, "Élément introuvable"),
+    (ErreurDonneesInvalides, 422, "Données invalides"),
+    (ErreurRegleMetier, 409, "Opération refusée"),
+    (ErreurInfaisable, 422, "Emploi du temps impossible"),
+    (ErreurTempsDepasse, 422, "Temps de calcul dépassé"),
+    (ErreurNonLivre, 501, "Fonction pas encore disponible"),
+    (ErreurConfiguration, 500, "Configuration invalide"),
+)
+"""Statut HTTP et titre de page par classe d'erreur métier (la première qui correspond)."""
+
+TITRES_HTTP = {
+    404: ("Page introuvable", "Cette page n'existe pas ou n'existe plus."),
+    405: ("Action non permise", "Cette action n'est pas permise sur cette page."),
+}
+
+
+def veut_du_json(request: Request) -> bool:
+    """Vrai si le client attend du JSON plutôt qu'une page."""
+    accepte = request.headers.get("accept", "")
+    return "application/json" in accepte and "text/html" not in accepte
+
+
+def reponse_erreur(
+    request: Request,
+    *,
+    statut: int,
+    titre: str,
+    message: str,
+    details: Iterable[str] = (),
+) -> Response:
+    """Construit la réponse d'erreur adaptée au demandeur (page, fragment HTMX ou JSON)."""
+    id_requete = contexte_requete.get() or getattr(request.state, "id_requete", None)
+    details = tuple(details)
+    if veut_du_json(request):
+        return JSONResponse(
+            {"erreur": titre, "message": message, "details": details, "id_requete": id_requete},
+            status_code=statut,
+        )
+    contexte = {
+        "titre": titre,
+        "message": message,
+        "details": details,
+        "statut": statut,
+        "id_requete": id_requete,
+        "menu": getattr(request.app.state, "menu", ()),
+        "chemin": request.url.path,
+        "messages": [],
+    }
+    gabarit = "erreur_fragment.html" if est_htmx(request) else "erreur.html"
+    return gabarits.TemplateResponse(request, gabarit, contexte, status_code=statut)
+
+
+def _statut_et_titre(erreur: ErreurEDT) -> tuple[int, str]:
+    for classe, statut, titre in STATUTS:
+        if isinstance(erreur, classe):
+            return statut, titre
+    return 400, "Opération impossible"
+
+
+async def _erreur_metier(request: Request, erreur: ErreurEDT) -> Response:
+    statut, titre = _statut_et_titre(erreur)
+    journal.warning("Erreur métier (%s) : %s", type(erreur).__name__, erreur)
+    return reponse_erreur(
+        request, statut=statut, titre=titre, message=erreur.message, details=erreur.details
+    )
+
+
+async def _erreur_http(request: Request, erreur: ErreurHTTP) -> Response:
+    titre, message = TITRES_HTTP.get(
+        erreur.status_code, ("Requête refusée", "Cette demande n'a pas pu être traitée.")
+    )
+    journal.info("Erreur HTTP %d sur %s", erreur.status_code, request.url.path)
+    return reponse_erreur(request, statut=erreur.status_code, titre=titre, message=message)
+
+
+async def _saisie_invalide(request: Request, erreur: RequestValidationError) -> Response:
+    details = []
+    for anomalie in erreur.errors():
+        champ = " / ".join(str(e) for e in anomalie.get("loc", ()) if e not in ("body", "query"))
+        details.append(f"{champ or 'requête'} : valeur manquante ou invalide")
+    journal.warning("Saisie invalide sur %s : %s", request.url.path, erreur.errors())
+    return reponse_erreur(
+        request,
+        statut=422,
+        titre="Saisie invalide",
+        message="Certaines valeurs envoyées sont manquantes ou invalides.",
+        details=details,
+    )
+
+
+async def _integrite(request: Request, erreur: IntegrityError) -> Response:
+    journal.warning("Violation d'intégrité sur %s : %s", request.url.path, erreur.orig)
+    return reponse_erreur(
+        request,
+        statut=409,
+        titre="Opération refusée",
+        message=(
+            "Cette opération laisserait les données incohérentes : soit un élément identique "
+            "existe déjà, soit l'élément est encore utilisé ailleurs (par un besoin, par "
+            "exemple). Rien n'a été modifié."
+        ),
+    )
+
+
+async def _base_indisponible(request: Request, erreur: OperationalError) -> Response:
+    journal.exception("Base de données indisponible sur %s", request.url.path)
+    return reponse_erreur(
+        request,
+        statut=503,
+        titre="Base de données indisponible",
+        message=(
+            "La base de données n'est pas prête : elle n'est pas initialisée ou n'est pas "
+            "accessible. Lancer « python -m edt init-db », puis réessayer."
+        ),
+    )
+
+
+def installer_gestionnaires(app: FastAPI) -> None:
+    """Enregistre les gestionnaires d'erreurs sur l'application."""
+    app.add_exception_handler(ErreurEDT, _erreur_metier)
+    app.add_exception_handler(ErreurHTTP, _erreur_http)
+    app.add_exception_handler(RequestValidationError, _saisie_invalide)
+    app.add_exception_handler(IntegrityError, _integrite)
+    app.add_exception_handler(OperationalError, _base_indisponible)

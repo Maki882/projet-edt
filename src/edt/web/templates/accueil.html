@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Accueil{% endblock %}
+
+{% block contenu %}
+<section class="carte">
+  <h2>État de la base de données</h2>
+  {% if not etat.accessible %}
+    {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "Vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
+  {% elif not etat.initialisee %}
+    {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["Lancer « python -m edt init-db », puis recharger cette page."]) }}
+  {% else %}
+    <p>
+      {{ ui.etiquette("Prête", "succes") }}
+      La base est initialisée{% if etat.mode_journal %} (mode {{ etat.mode_journal }}){% endif %}.
+    </p>
+    {% if etat.vide %}
+      {{ ui.message("La base ne contient encore aucune donnée.", "info", ["Pour découvrir l'application : « python -m edt jeu-minimal » charge un petit établissement fictif."]) }}
+    {% endif %}
+  {% endif %}
+  <dl class="definitions">
+    <dt>Emplacement</dt>
+    <dd><code>{{ etat.url }}</code></dd>
+    <dt>Environnement</dt>
+    <dd>{{ "production" if environnement == "prod" else "développement" }}</dd>
+  </dl>
+</section>
+
+{% if etat.initialisee %}
+<section class="carte">
+  <h2>Contenu</h2>
+  <ul class="compteurs">
+    {% for libelle, nombre in etat.compteurs.items() %}
+    <li class="compteur">
+      <span class="compteur-nombre">{{ nombre }}</span>
+      <span class="compteur-libelle">{{ libelle }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section class="carte">
+  <h2>Dernier calcul</h2>
+  {% if dernier_calcul %}
+  <p>
+    {{ ui.etiquette(dernier_calcul.etat.libelle, "succes" if dernier_calcul.reussi else ("info" if dernier_calcul.en_cours else "attention")) }}
+    Lancé le {{ dernier_calcul.demarre_le|dateheure_fr }}
+    ({{ dernier_calcul.temps_ecoule_s }} s).
+  </p>
+  {% if dernier_calcul.message %}<p class="pre-ligne">{{ dernier_calcul.message }}</p>{% endif %}
+  {% else %}
+  <p class="vide">Aucun emploi du temps n'a encore été généré.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
