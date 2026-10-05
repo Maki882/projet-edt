@@ -348,12 +348,12 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
         deductions = [
             texte
             for texte, present in (
-                ("indisponibilités", indisponibilites),
-                ("maximum journalier", plafond is not None),
+                ("ses indisponibilités", indisponibilites),
+                ("son maximum journalier", plafond is not None),
             )
             if present
         ]
-        complement = f" ({' et '.join(deductions)} déduits)" if deductions else ""
+        complement = f" (compte tenu de {' et de '.join(deductions)})" if deductions else ""
         for sous_ensemble, blocs_utiles in _decoupes_par_jours(preparation, seances, blocs):
             charge = _pire_semaine(
                 preparation, sous_ensemble, indisponibilites, blocs_utiles, plafond

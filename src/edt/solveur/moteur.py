@@ -58,6 +58,9 @@ INTERVALLE_SUIVI_S = 5.0
 PERIODE_SURVEILLANCE_S = 0.1
 """Fréquence à laquelle la demande d'arrêt est relue pendant la recherche."""
 NB_RAISONS_DANS_LE_MESSAGE = 3
+PART_RESERVEE_AUX_SALLES = 0.05
+"""Part du temps limite gardée pour la phase des salles (au plus `RESERVE_MAX_S`)."""
+RESERVE_MAX_S = 3.0
 NB_SOLUTIONS_GARDEES = 20
 """Dernières solutions d'horaires gardées pour la phase des salles (mode optimisé)."""
 
@@ -240,7 +243,8 @@ def resoudre(
     stats.update(nb_conflits=0, nb_branches=0, nb_solutions=0)
     while True:
         solveur = cp_model.CpSolver()
-        solveur.parameters.max_time_in_seconds = max(0.001, reste())
+        reserve = min(RESERVE_MAX_S, PART_RESERVEE_AUX_SALLES * options.temps_limite_s)
+        solveur.parameters.max_time_in_seconds = max(0.001, reste() - reserve)
         solveur.parameters.num_workers = nb_workers
         solveur.parameters.random_seed = options.graine % (2**31 - 1)
         solveur.parameters.log_to_stdout = False

@@ -13,9 +13,9 @@ défaut décrivent un établissement minimal : un campus, la grille standard
 un semestre de deux semaines. `instantane()` déplie les besoins avec la
 vraie fonction de dépliage du domaine.
 
-`verifier_solution` est le point de passage unique vers l'oracle : tant que
-le vérificateur n'est pas fusionné, le test qui l'appelle est ignoré avec
-une raison explicite.
+`verifier_solution` et `verifier_dates` sont les points de passage vers
+l'oracle : le vérificateur officiel (`edt.verification`) ne doit relever
+aucune erreur sur ce que produit le solveur.
 """
 
 from __future__ import annotations
@@ -24,9 +24,8 @@ import dataclasses
 import datetime as dt
 from collections.abc import Iterable, Sequence
 
-import pytest
-
 from edt.domaine.calendrier import semaines_entre
+from edt.domaine.contraintes import codes_actifs
 from edt.domaine.depliage import deplier
 from edt.domaine.enumerations import (
     Accessibilite,
@@ -45,13 +44,14 @@ from edt.domaine.instantane import (
     Indisponibilite,
     Instantane,
     JourFerme,
+    Occurrence,
     Placement,
     Salle,
     Trajet,
 )
 from edt.domaine.parametres import Parametres
-from edt.erreurs import ErreurNonLivre
-from edt.solveur import OptionsSolveur, ResultatSolveur
+from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
+from edt.verification import verifier, verifier_occurrences
 
 H = 60
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI, SAMEDI = range(6)
@@ -358,21 +358,33 @@ def par_seance(resultat: ResultatSolveur) -> dict[str, Placement]:
 
 def verifier_solution(
     instantane: Instantane,
-    placements: Sequence[Placement],
+    resultat: ResultatSolveur,
+    contraintes_desactivees: Iterable[str] = (),
+) -> dict[str, Placement]:
+    """ORACLE : exige une solution complète, sans aucune erreur du vérificateur officiel.
+
+    Renvoie les placements par identifiant de séance. Les contraintes
+    désactivées pour le calcul ne sont pas vérifiées.
+    """
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    assert {p.seance_id for p in resultat.placements} == {s.id for s in instantane.seances}
+    assert all(placement.salle_id is not None for placement in resultat.placements)
+    anomalies = verifier(instantane, resultat.placements, codes_actifs(contraintes_desactivees))
+    erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
+    assert not erreurs, "
+".join(f"[{a.code}] {a.message}" for a in erreurs)
+    return par_seance(resultat)
+
+
+def verifier_dates(
+    instantane: Instantane,
+    occurrences: Sequence[Occurrence],
     contraintes_desactivees: Iterable[str] = (),
 ) -> None:
-    """ORACLE : exige que le vérificateur ne relève aucune erreur sur ces placements.
-
-    Tant que le vérificateur n'est pas fusionné dans cette branche, il lève
-    `ErreurNonLivre` : le test appelant est alors ignoré, raison à l'appui.
-    Les tests gardent donc chacun une assertion directe, placée avant cet appel.
-    """
-    from edt.domaine.contraintes import codes_actifs
-    from edt.verification import verifier
-
-    try:
-        anomalies = verifier(instantane, placements, codes_actifs(contraintes_desactivees))
-    except ErreurNonLivre:
-        pytest.skip("oracle non encore fusionné (edt.verification.verifier lève ErreurNonLivre)")
+    """ORACLE de la couche datée : aucune erreur du vérificateur sur ces occurrences."""
+    anomalies = verifier_occurrences(
+        instantane, occurrences, codes_actifs(contraintes_desactivees)
+    )
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
-    assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)
+    assert not erreurs, "
+".join(f"[{a.code}] {a.message}" for a in erreurs)

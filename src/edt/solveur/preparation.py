@@ -41,19 +41,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte
-from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite, Gravite
+from edt.domaine.enumerations import JOURS, CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Placement, SeanceAPlacer
 from edt.erreurs import ErreurIntrouvable
-from edt.solveur.regles import Regles, enumerer, limites_demi_journee, nom_creneau, nom_seance
+from edt.solveur.regles import Regles, enumerer, nom_creneau, nom_seance
 from edt.verification import Anomalie
 
 journal = logging.getLogger(__name__)
 
 C = CodeContrainte
-
-PAS_HORS_GRILLE = 30
-"""Pas des débuts proposés (minutes) quand la contrainte `HORAIRES` est désactivée."""
 
 
 @dataclass
@@ -128,7 +125,6 @@ class Preparation:
         self.pas = MINUTES_PAR_JOUR + marge + 1
         self.anomalies: list[Anomalie] = []
         self.conflits_verrous: list[Anomalie] = []
-        self._limites = limites_demi_journee(instantane)
         self._domaines: dict[int, _Domaine] = {}
         self.seances = [
             self._preparer(index, seance) for index, seance in enumerate(instantane.seances)
@@ -215,12 +211,6 @@ class Preparation:
             interdits = {}
         return _Domaine(debuts=debuts, salles=salles, debuts_interdits=interdits)
 
-    def _jour_permis(self, jour: int, besoin: Besoin) -> bool:
-        """Règle `JOURS` : un jour de la grille, et le samedi seulement s'il est autorisé."""
-        if not self.instantane.debuts_de_creneau(jour):
-            return False
-        return jour != SAMEDI or besoin.samedi_autorise
-
     def _debuts_libres(
         self, seance: SeanceAPlacer
     ) -> tuple[tuple[int, ...], dict[tuple[CodeContrainte, str], int], int]:
@@ -229,11 +219,8 @@ class Preparation:
         Renvoie `(débuts codés, éliminations, nombre de débuts examinés)` ;
         les éliminations comptent les débuts écartés par chaque raison.
         """
-        regles, instantane = self.regles, self.instantane
-        parametres = instantane.parametres
-        besoin, duree = seance.besoin, seance.besoin.duree
-        heure_imposee = besoin.debut_impose is not None
-        imposee = heure_imposee or besoin.ponctuel
+        regles, besoin = self.regles, seance.besoin
+        imposee = besoin.debut_impose is not None or besoin.ponctuel
         elimines: dict[tuple[CodeContrainte, str], int] = defaultdict(int)
 
         jour_impose = seance.jour_impose
@@ -242,7 +229,7 @@ class Preparation:
             if (
                 not imposee
                 and regles.active(C.JOURS)
-                and not self._jour_permis(jour_impose, besoin)
+                and not regles.jour_permis(jour_impose, besoin)
             ):
                 elimines[
                     (C.JOURS, f"le {JOURS[jour_impose]} imposé n'est pas un jour de cours permis")
@@ -252,68 +239,30 @@ class Preparation:
             jours = [
                 jour
                 for jour in range(7)
-                if not regles.active(C.JOURS) or self._jour_permis(jour, besoin)
+                if not regles.active(C.JOURS) or regles.jour_permis(jour, besoin)
             ]
 
         plages_par_jour = defaultdict(list)
         for code, nom, plage in regles.recurrentes_des_personnes(besoin):
             plages_par_jour[plage.jour].append((code, nom, plage))
 
-        dejeuner = (
-            regles.active(C.DEJEUNER)
-            and not heure_imposee
-            and parametres.dejeuner_debut_min < parametres.dejeuner_fin_min
-        )
         debuts: list[int] = []
         examines = 0
         for jour in jours:
-            if heure_imposee:
-                minutes: Iterable[int] = (besoin.debut_impose,)
-            elif regles.active(C.HORAIRES):
-                minutes = instantane.debuts_de_creneau(jour)
-            else:
-                minutes = sorted(
-                    set(range(0, MINUTES_PAR_JOUR, PAS_HORS_GRILLE))
-                    | set(instantane.debuts_de_creneau(jour))
-                )
-            for minute in minutes:
+            for minute in regles.debuts_a_examiner(besoin, jour):
                 examines += 1
-                fin = minute + duree
-                if fin > MINUTES_PAR_JOUR:
-                    elimines[(C.HORAIRES, "la séance finirait après minuit")] += 1
-                    continue
-                if (
-                    not heure_imposee
-                    and regles.active(C.HORAIRES)
-                    and (
-                        minute < parametres.ouverture_min
-                        or fin > parametres.fermeture_min
-                        or fin > self._limites[(jour, minute)]
-                    )
-                ):
-                    elimines[
+                refus = regles.refus_horaire(besoin, besoin.duree, jour, minute)
+                if refus is None:
+                    refus = next(
                         (
-                            C.HORAIRES,
-                            f"la séance de {duree_vers_texte(duree)} ne tient pas dans la "
-                            "demi-journée ou dans les heures d'ouverture",
-                        )
-                    ] += 1
-                    continue
-                if dejeuner and se_chevauchent(
-                    minute, fin, parametres.dejeuner_debut_min, parametres.dejeuner_fin_min
-                ):
-                    elimines[(C.DEJEUNER, "la pause déjeuner")] += 1
-                    continue
-                bloquante = next(
-                    (
-                        (code, nom)
-                        for code, nom, plage in plages_par_jour.get(jour, ())
-                        if se_chevauchent(minute, fin, plage.debut, plage.fin)
-                    ),
-                    None,
-                )
-                if bloquante is not None:
-                    elimines[(bloquante[0], f"une indisponibilité de {bloquante[1]}")] += 1
+                            (code, f"une indisponibilité de {nom}")
+                            for code, nom, plage in plages_par_jour.get(jour, ())
+                            if se_chevauchent(minute, minute + besoin.duree, plage.debut, plage.fin)
+                        ),
+                        None,
+                    )
+                if refus is not None:
+                    elimines[refus] += 1
                     continue
                 debuts.append(self.coder(jour, minute))
         return tuple(sorted(debuts)), elimines, examines

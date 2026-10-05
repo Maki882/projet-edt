@@ -32,14 +32,23 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 from edt.domaine.contraintes import CodeContrainte, codes_actifs, normaliser_codes
-from edt.domaine.enumerations import JOURS, CibleIndisponibilite
-from edt.domaine.heures import MINUTES_PAR_JOUR, ecart, plage_vers_texte, se_chevauchent
+from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite
+from edt.domaine.heures import (
+    MINUTES_PAR_JOUR,
+    duree_vers_texte,
+    ecart,
+    plage_vers_texte,
+    se_chevauchent,
+)
 from edt.domaine.instantane import Besoin, Indisponibilite, Instantane, Salle, SeanceAPlacer
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
 C = CodeContrainte
 
 TestSalle = Callable[[Salle], bool]
+
+PAS_HORS_GRILLE = 30
+"""Pas des débuts proposés (minutes) quand la contrainte `HORAIRES` est désactivée."""
 
 
 @dataclass(frozen=True)
@@ -71,10 +80,68 @@ class Regles:
         self._salles: dict[int, SallesCompatibles] = {}
         self._reels: dict[int, frozenset[int]] = {}
         self._lies: dict[int, frozenset[int]] = {}
+        self._limites = limites_demi_journee(instantane)
 
     def active(self, code: CodeContrainte) -> bool:
         """Vrai si la contrainte `code` s'applique à ce calcul."""
         return code in self.actives
+
+    # -- jours et horaires --------------------------------------------------------
+
+    def jour_permis(self, jour: int, besoin: Besoin) -> bool:
+        """Règle `JOURS` : un jour de la grille, et le samedi seulement s'il est autorisé."""
+        if not self.instantane.debuts_de_creneau(jour):
+            return False
+        return jour != SAMEDI or besoin.samedi_autorise
+
+    def debuts_a_examiner(self, besoin: Besoin, jour: int) -> tuple[int, ...]:
+        """Heures de début envisageables ce jour-là, avant toute règle.
+
+        L'heure imposée par le besoin s'il y en a une ; sinon les débuts de
+        créneau de la grille ; sinon, quand `HORAIRES` est désactivée, un
+        début toutes les `PAS_HORS_GRILLE` minutes en plus de ceux de la grille.
+        """
+        if besoin.debut_impose is not None:
+            return (besoin.debut_impose,)
+        grille = self.instantane.debuts_de_creneau(jour)
+        if self.active(C.HORAIRES):
+            return grille
+        return tuple(sorted(set(range(0, MINUTES_PAR_JOUR, PAS_HORS_GRILLE)) | set(grille)))
+
+    def refus_horaire(
+        self, besoin: Besoin, duree: int, jour: int, minute: int
+    ) -> tuple[CodeContrainte, str] | None:
+        """Raison pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
+
+        Règles `HORAIRES` (ouverture, fermeture, demi-journée du créneau de
+        début) et `DEJEUNER`. Une heure imposée par le besoin en dispense : la
+        séance peut alors sortir de la grille. Aucune séance ne passe minuit.
+        """
+        parametres = self.instantane.parametres
+        fin = minute + duree
+        if fin > MINUTES_PAR_JOUR:
+            return C.HORAIRES, "la séance finirait après minuit"
+        if besoin.debut_impose is not None:
+            return None
+        if self.active(C.HORAIRES) and (
+            minute < parametres.ouverture_min
+            or fin > parametres.fermeture_min
+            or fin > self._limites.get((jour, minute), 0)
+        ):
+            return (
+                C.HORAIRES,
+                f"la séance de {duree_vers_texte(duree)} ne tient pas dans la demi-journée ou "
+                "dans les heures d'ouverture",
+            )
+        if (
+            self.active(C.DEJEUNER)
+            and parametres.dejeuner_debut_min < parametres.dejeuner_fin_min
+            and se_chevauchent(
+                minute, fin, parametres.dejeuner_debut_min, parametres.dejeuner_fin_min
+            )
+        ):
+            return C.DEJEUNER, "la pause déjeuner"
+        return None
 
     # -- personnes ------------------------------------------------------------
 
