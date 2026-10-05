@@ -41,6 +41,7 @@ from edt.echange.rapport import Bilan, RapportImport, Signalement, rapport_csv
 from edt.echange.reconstitution import reconstituer
 from edt.echange.seances import ModeImport, lire_tableau_seances
 from edt.echange.transaction import simulation_possible
+from edt.echange.valeurs import lire_choix, lire_date, lire_entier
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurDonneesInvalides,
@@ -70,8 +71,10 @@ __all__ = [
     "compter_remplacement",
     "exporter_donnees",
     "exporter_emploi_du_temps",
+    "lire_options",
     "produire_gabarit",
     "rapport_telechargeable",
+    "resoudre_filtre",
     "semestres_importables",
     "simuler_import",
     "verifier_taille",
@@ -165,6 +168,34 @@ class ChoixExport:
             nom: [{"id": i, "libelle": libelle} for i, libelle in getattr(self, nom)]
             for nom in ("versions", "groupes", "enseignants", "salles")
         }
+
+
+def lire_options(
+    mode: str | None,
+    semestre_id: int | str | None = None,
+    semaine_type: str | dt.date | None = None,
+    tout_remplacer: bool = False,
+    confirmer_remplacement: bool = False,
+) -> OptionsImport:
+    """Options d'import à partir de saisies (formulaire web, ligne de commande).
+
+    `mode` est reconnu sans casse ni accents (« a-replacer » vaut
+    « a_replacer ») ; `semaine_type` est une date « JJ/MM/AAAA » ou ISO ;
+    une saisie vide vaut « non renseigné ».
+    """
+    try:
+        mode_import = lire_choix(mode, ModeImport) or ModeImport.DONNEES
+        semestre = lire_entier(semestre_id)
+        semaine = lire_date(semaine_type)
+    except ErreurDonneesInvalides as erreur:
+        raise ErreurDonneesInvalides(f"Option d'import invalide : {erreur.message}") from None
+    return OptionsImport(
+        mode=mode_import,
+        semestre_id=semestre,
+        semaine_type=semaine,
+        tout_remplacer=tout_remplacer,
+        confirmer_remplacement=confirmer_remplacement,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -458,6 +489,38 @@ def exporter_emploi_du_temps(
     nom = export_edt.nom_fichier(export, format_.value)
     journal.info("Export de l'emploi du temps : %s (%d séance(s))", nom, len(export.elements))
     return FichierProduit(nom, TYPES_MIME[format_.value], contenu)
+
+
+def resoudre_filtre(
+    session: Session,
+    version_id: int,
+    *,
+    groupe: str | None = None,
+    enseignant: str | None = None,
+    salle: str | None = None,
+) -> dict[str, int | None]:
+    """Identifiants des ressources désignées par leur code (ligne de commande).
+
+    Le groupe est cherché dans l'année du semestre de la version ; la salle
+    s'écrit « code » ou « code@campus ». Renvoie les paramètres `groupe_id`,
+    `enseignant_id` et `salle_id` d'`exporter_emploi_du_temps`.
+    """
+    version = session.get(m.VersionEdt, version_id)
+    if version is None:
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
+    contexte = donnees.Contexte(session)
+    try:
+        return {
+            "groupe_id": (
+                contexte.groupe(version.semestre.annee, groupe, "groupe").id if groupe else None
+            ),
+            "enseignant_id": (
+                contexte.enseignant(enseignant, "enseignant").id if enseignant else None
+            ),
+            "salle_id": contexte.salle(salle, "salle").id if salle else None,
+        }
+    except donnees.Rejet as rejet:
+        raise ErreurIntrouvable(rejet.message) from None
 
 
 def choix_export(session: Session) -> ChoixExport:
