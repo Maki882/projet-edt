@@ -1,0 +1,741 @@
+/*
+ * Écrans « Générer », « Emploi du temps », « À traiter » et accueil enrichi.
+ * Complète app.css (variables, cartes, boutons, messages) sans le modifier.
+ *
+ * La grille : une colonne d'axe horaire puis une colonne par jour. Chaque
+ * colonne a une hauteur proportionnelle à la durée de l'axe
+ * (--edt-duree minutes x --edt-minute) ; les blocs y sont placés en
+ * pourcentages calculés par le serveur (services/emploi_du_temps/disposition.py) :
+ * top et height pour l'horaire, --edt-gauche et --edt-largeur pour les
+ * séances simultanées côte à côte.
+ */
+
+:root {
+  --edt-minute: 1.1px;
+  --edt-largeur-axe: 3.6rem;
+  --edt-largeur-panneau: 23rem;
+}
+
+/* ----- Palette des matières : 12 teintes pâles, texte foncé (contraste AA) --- */
+
+.edt-couleur-0 { --edt-fond: #e3eefb; --edt-trait: #2f6fad; }
+.edt-couleur-1 { --edt-fond: #e2f3ea; --edt-trait: #2f8a5a; }
+.edt-couleur-2 { --edt-fond: #fdf0dc; --edt-trait: #b26b12; }
+.edt-couleur-3 { --edt-fond: #f1e8f8; --edt-trait: #7a4fa8; }
+.edt-couleur-4 { --edt-fond: #def3f2; --edt-trait: #237f7c; }
+.edt-couleur-5 { --edt-fond: #fbe5e4; --edt-trait: #b0413e; }
+.edt-couleur-6 { --edt-fond: #f9e6f0; --edt-trait: #a23b72; }
+.edt-couleur-7 { --edt-fond: #eef3d9; --edt-trait: #6b7d1a; }
+.edt-couleur-8 { --edt-fond: #e6e9f9; --edt-trait: #4757a8; }
+.edt-couleur-9 { --edt-fond: #fdf4cf; --edt-trait: #8f7400; }
+.edt-couleur-10 { --edt-fond: #e9eef2; --edt-trait: #4f6475; }
+.edt-couleur-11 { --edt-fond: #f6e9df; --edt-trait: #95562b; }
+
+/* ----- Barre de choix (semestre, version, pour qui) ------------------------- */
+
+.edt-barre-outils {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: 0.75rem 1rem;
+  margin-bottom: var(--espace);
+}
+
+.edt-barre-outils .champ {
+  margin: 0;
+  min-width: 12rem;
+}
+
+.edt-barre-outils .edt-champ-large {
+  flex: 1 1 20rem;
+}
+
+.edt-recherche {
+  margin-bottom: 0.35rem;
+}
+
+.edt-entete-vue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.edt-entete-vue h2 {
+  margin: 0 0 0.2rem;
+  font-size: 1.2rem;
+}
+
+.edt-entete-vue p {
+  margin: 0;
+}
+
+.edt-onglets {
+  display: inline-flex;
+  border: 1px solid #aab3c0;
+  border-radius: var(--rayon);
+  overflow: hidden;
+}
+
+.edt-onglets a {
+  padding: 0.35rem 0.8rem;
+  text-decoration: none;
+  color: var(--texte);
+  background: var(--surface);
+  border-left: 1px solid #aab3c0;
+}
+
+.edt-onglets a:first-child {
+  border-left: none;
+}
+
+.edt-onglets a.actif {
+  background: var(--marque);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.edt-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.edt-navigation-periode {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.edt-navigation-periode strong {
+  display: block;
+}
+
+.edt-navigation .bouton[aria-disabled="true"] {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.edt-saut-date {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.edt-saut-date input {
+  padding: 0.3rem 0.4rem;
+  border: 1px solid #aab3c0;
+  border-radius: var(--rayon);
+  font: inherit;
+}
+
+/* ----- Mise en page grille + panneau ------------------------------------------ */
+
+.edt-mise-en-page {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--espace);
+}
+
+.edt-zone-grille {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.edt-panneau {
+  flex: 0 0 var(--edt-largeur-panneau);
+  width: var(--edt-largeur-panneau);
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: 0.9rem 1rem;
+  position: sticky;
+  top: 0.75rem;
+  max-height: calc(100vh - 1.5rem);
+  overflow: auto;
+}
+
+.edt-panneau:empty {
+  display: none;
+}
+
+.edt-panneau h2 {
+  font-size: 1.05rem;
+  margin-bottom: 0.4rem;
+}
+
+.edt-panneau .formulaire {
+  border: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+}
+
+.edt-panneau-entete {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.edt-fermer {
+  border: none;
+  background: transparent;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--texte-discret);
+  padding: 0.1rem 0.35rem;
+}
+
+.edt-panneau .definitions {
+  grid-template-columns: max-content 1fr;
+  font-size: 0.9rem;
+}
+
+.edt-actions-panneau {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+/* ----- La grille ------------------------------------------------------------------- */
+
+.edt-grille {
+  display: grid;
+  grid-template-columns: var(--edt-largeur-axe) repeat(var(--edt-nb-jours), minmax(7.5rem, 1fr));
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  overflow-x: auto;
+  margin-bottom: var(--espace);
+}
+
+.edt-coin,
+.edt-entete-jour {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  background: var(--fond);
+  border-bottom: 1px solid var(--bordure);
+  padding: 0.4rem 0.5rem;
+  min-height: 2.6rem;
+}
+
+.edt-entete-jour {
+  border-left: 1px solid var(--bordure);
+  font-weight: 600;
+  text-align: center;
+}
+
+.edt-entete-jour a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.edt-entete-jour a:hover {
+  text-decoration: underline;
+}
+
+.edt-entete-ferme {
+  background: #eceef2;
+  color: var(--texte-discret);
+}
+
+.edt-entete-ferme small {
+  display: block;
+  font-weight: 400;
+  font-size: 0.75rem;
+}
+
+.edt-axe,
+.edt-colonne {
+  position: relative;
+  height: calc(var(--edt-duree) * var(--edt-minute));
+}
+
+.edt-graduation {
+  position: absolute;
+  right: 0.35rem;
+  transform: translateY(-50%);
+  font-size: 0.72rem;
+  color: var(--texte-discret);
+  white-space: nowrap;
+}
+
+.edt-graduation:first-child {
+  transform: none;
+}
+
+.edt-graduation:last-child {
+  transform: translateY(-100%);
+}
+
+.edt-colonne {
+  border-left: 1px solid var(--bordure);
+}
+
+.edt-ligne-heure {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed #e3e7ed;
+}
+
+.edt-dejeuner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: repeating-linear-gradient(45deg, #f5f6f9, #f5f6f9 6px, #eceff4 6px, #eceff4 12px);
+  color: var(--texte-discret);
+  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.edt-colonne-fermee {
+  background: repeating-linear-gradient(-45deg, #f1f2f5, #f1f2f5 8px, #e7e9ee 8px, #e7e9ee 16px);
+}
+
+.edt-fermeture {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.4rem;
+  right: 0.4rem;
+  z-index: 1;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--texte-discret);
+  background: rgba(255, 255, 255, 0.85);
+  border-radius: var(--rayon);
+  padding: 0.2rem 0.3rem;
+}
+
+.edt-bloc {
+  position: absolute;
+  left: calc(var(--edt-gauche, 0%) + 2px);
+  width: calc(var(--edt-largeur, 100%) - 4px);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+  overflow: hidden;
+  padding: 0.15rem 0.35rem 0.15rem 0.45rem;
+  border-radius: 4px;
+  border: 1px solid rgba(31, 39, 51, 0.12);
+  border-left: 4px solid var(--edt-trait-type, var(--edt-trait, var(--marque)));
+  background: var(--edt-fond, var(--marque-pale));
+  color: var(--texte);
+  font-size: 0.76rem;
+  line-height: 1.22;
+  text-decoration: none;
+}
+
+.edt-bloc:hover,
+.edt-bloc:focus-visible {
+  z-index: 3;
+  color: var(--texte);
+  box-shadow: 0 2px 8px rgba(20, 30, 50, 0.25);
+}
+
+.edt-bloc-horaire {
+  font-size: 0.7rem;
+  color: var(--texte-discret);
+}
+
+.edt-bloc-titre {
+  font-weight: 700;
+}
+
+.edt-bloc-ligne {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edt-bloc-semaines,
+.edt-bloc-statut,
+.edt-bloc-partie {
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
+.edt-bloc-partielle {
+  background-image: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.55) 0 6px, transparent 6px 12px);
+}
+
+.edt-bloc-annulee {
+  opacity: 0.65;
+  background-image: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.7) 0 5px, transparent 5px 10px);
+}
+
+.edt-bloc-annulee .edt-bloc-titre {
+  text-decoration: line-through;
+}
+
+.edt-bloc-deplacee {
+  border-style: dashed;
+  border-left-style: solid;
+}
+
+.edt-bloc-erreur {
+  box-shadow: inset 0 0 0 2px var(--erreur);
+}
+
+.edt-bloc-avertissement {
+  box-shadow: inset 0 0 0 2px var(--attention);
+}
+
+.edt-bloc-selection {
+  outline: 3px solid #f0a500;
+  outline-offset: 1px;
+  z-index: 3;
+}
+
+.edt-marques {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.2rem;
+  display: flex;
+  gap: 0.15rem;
+}
+
+.edt-marque {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #ffffff;
+  border: 1px solid currentColor;
+}
+
+.edt-marque svg {
+  width: 0.7rem;
+  height: 0.7rem;
+}
+
+.edt-marque-verrou {
+  color: var(--texte);
+}
+
+.edt-marque-erreur {
+  color: var(--erreur);
+}
+
+.edt-marque-avertissement {
+  color: var(--attention);
+}
+
+.edt-marque-information {
+  color: var(--info);
+}
+
+.edt-legende {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.2rem;
+  font-size: 0.82rem;
+  color: var(--texte-discret);
+  margin-bottom: var(--espace);
+}
+
+.edt-legende span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.edt-echantillon {
+  display: inline-block;
+  width: 1.4rem;
+  height: 0.9rem;
+  border-radius: 3px;
+  border: 1px solid var(--bordure);
+  background: var(--marque-pale);
+}
+
+/* ----- Calcul : formulaire, suivi, résultat --------------------------------------- */
+
+.edt-contraintes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.35rem 1rem;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.edt-contraintes label {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  font-weight: 400;
+}
+
+.edt-contraintes input {
+  margin-top: 0.3rem;
+}
+
+.edt-contraintes small {
+  display: block;
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+}
+
+.edt-formulaire-calcul {
+  max-width: none;
+}
+
+.edt-formulaire-calcul fieldset {
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: 0.6rem 0.9rem 0.3rem;
+  margin: 0 0 0.9rem;
+}
+
+.edt-formulaire-calcul legend {
+  font-weight: 600;
+  padding: 0 0.3rem;
+}
+
+.edt-choix-en-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.edt-choix-en-ligne label {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.edt-suivi h2 {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.edt-progression {
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--marque-pale);
+  overflow: hidden;
+  margin: 0.6rem 0;
+}
+
+.edt-progression::after {
+  content: "";
+  display: block;
+  width: 30%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--marque);
+  animation: edt-va-et-vient 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes edt-va-et-vient {
+  from {
+    transform: translateX(-10%);
+  }
+  to {
+    transform: translateX(240%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .edt-progression::after {
+    animation: none;
+    width: 100%;
+    opacity: 0.4;
+  }
+}
+
+.edt-references {
+  font-size: 0.9rem;
+}
+
+.edt-boutons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.edt-boutons form {
+  display: inline;
+}
+
+.edt-indicateurs .compteur-nombre {
+  font-size: 1.35rem;
+}
+
+.edt-indicateurs .compteur small {
+  display: block;
+  color: var(--texte-discret);
+  font-size: 0.75rem;
+}
+
+/* ----- Anomalies et « À traiter » --------------------------------------------------- */
+
+.edt-anomalies {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.edt-anomalies li {
+  display: flex;
+  gap: 0.6rem;
+  align-items: baseline;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid var(--bordure);
+}
+
+.edt-anomalies li:last-child {
+  border-bottom: none;
+}
+
+.edt-anomalies li > span:first-of-type {
+  flex: 1;
+}
+
+.edt-groupe-contrainte {
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: 0.4rem 0.8rem;
+  margin-bottom: 0.6rem;
+  background: var(--surface);
+}
+
+.edt-groupe-contrainte summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.edt-groupe-contrainte summary small {
+  font-weight: 400;
+  color: var(--texte-discret);
+}
+
+.edt-titre-gravite {
+  margin-top: 1rem;
+}
+
+.edt-compteur-onglet {
+  display: inline-block;
+  min-width: 1.4rem;
+  padding: 0 0.4rem;
+  margin-left: 0.35rem;
+  border-radius: 999px;
+  background: var(--erreur);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+/* ----- Accueil ------------------------------------------------------------------------ */
+
+.edt-prochaine-etape {
+  border-left: 4px solid var(--marque);
+}
+
+.edt-prochaine-etape p {
+  font-size: 1.05rem;
+}
+
+/* ----- Impression, écrans étroits ------------------------------------------------- */
+
+.edt-impression-seulement {
+  display: none;
+}
+
+@media (max-width: 64rem) {
+  .edt-mise-en-page {
+    flex-direction: column;
+  }
+
+  .edt-panneau {
+    position: static;
+    width: 100%;
+    max-height: none;
+  }
+}
+
+@media print {
+  @page {
+    size: A4 landscape;
+    margin: 10mm;
+  }
+
+  :root {
+    --edt-minute: 0.8px;
+    --edt-largeur-axe: 2.8rem;
+  }
+
+  .edt-barre-outils,
+  .edt-onglets,
+  .edt-navigation .bouton,
+  .edt-saut-date,
+  .edt-panneau,
+  .edt-ecran-seulement,
+  .messages,
+  .entete-page {
+    display: none !important;
+  }
+
+  .edt-impression-seulement {
+    display: block;
+  }
+
+  .edt-mise-en-page {
+    display: block;
+  }
+
+  .edt-grille {
+    overflow: visible;
+    border-color: #888888;
+    grid-template-columns: var(--edt-largeur-axe) repeat(var(--edt-nb-jours), 1fr);
+    break-inside: avoid;
+  }
+
+  .edt-coin,
+  .edt-entete-jour {
+    position: static;
+  }
+
+  .edt-bloc {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+    border-color: #777777;
+    box-shadow: none;
+    font-size: 7.5pt;
+  }
+
+  .edt-dejeuner,
+  .edt-colonne-fermee,
+  .edt-bloc-partielle,
+  .edt-bloc-annulee {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .edt-bloc-selection {
+    outline: none;
+  }
+}
