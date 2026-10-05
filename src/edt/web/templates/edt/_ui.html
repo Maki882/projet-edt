@@ -108,6 +108,11 @@
 {{ liste[:limite]|join(", ") }}{% if liste|length > limite %} et {{ liste|length - limite }} autre{{ "s" if liste|length - limite > 1 }}{% endif %}
 {%- endmacro %}
 
+{#- « ses classes et demi-groupes » pour une promotion, « ses demi-groupes » pour une classe. #}
+{% macro sous_groupes(p) -%}
+{%- if p.nature.value == "promotion" %}ses classes et demi-groupes{% elif p.nature.value == "classe" %}ses demi-groupes{% else %}ses sous-groupes{% endif -%}
+{%- endmacro %}
+
 {#
   Bandeau au-dessus de la grille : ce qui est affiché, ce qui ne l'est pas, et le lien qui
   bascule entre la vue restreinte (le groupe et ses ascendants) et la vue étendue.
@@ -122,7 +127,7 @@
   <p><strong>Affiché :</strong> les séances de {{ p.groupe }}{% if p.ascendants %} et de {{ codes(p.ascendants) }}, que suivent tous ses étudiants{% endif %}.</p>
   {%- if p.extensible %}
   <p><strong>Non affiché :</strong>
-    {%- if p.descendants %} les séances propres à ses classes et demi-groupes ({{ codes(p.descendants) }}){% endif %}
+    {%- if p.descendants %} les séances propres à {{ sous_groupes(p) }} ({{ codes(p.descendants) }}){% endif %}
     {%- if p.descendants and p.autres %} et{% endif %}
     {%- if p.autres %} celles des groupes qui réunissent une partie de ses étudiants ({{ codes(p.autres) }}){% endif %}
     {%- if p.nb_masquees %}, soit {{ fmt.pluriel(p.nb_masquees, "séance") }} de plus{% endif %}.</p>
@@ -133,7 +138,7 @@
   {%- else %}
   <p><strong>Affiché :</strong> tout ce que suivent ses étudiants : les séances de {{ p.groupe }}
     {%- if p.ascendants %}, de {{ codes(p.ascendants) }}{% endif %}
-    {%- if p.descendants %}, de ses classes et demi-groupes ({{ codes(p.descendants) }}){% endif %}
+    {%- if p.descendants %}, de {{ sous_groupes(p) }} ({{ codes(p.descendants) }}){% endif %}
     {%- if p.autres %} et des groupes qui réunissent une partie de ses étudiants ({{ codes(p.autres) }}){% endif %}.
     {%- if p.descendants or p.autres %} Les séances hachurées ne concernent qu'une partie du groupe.{% endif %}</p>
   {%- if p.extensible %}
