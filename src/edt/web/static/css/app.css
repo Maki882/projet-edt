@@ -1,0 +1,602 @@
+/*
+ * Feuille de style de l'application EDT.
+ * Sobre, sans dépendance. Les couleurs et espacements sont des variables :
+ * un écran n'écrit pas de couleur en dur, il réutilise les classes ci-dessous
+ * (carte, tableau, formulaire, champ, bouton, message, etiquette, compteurs).
+ */
+
+:root {
+  --fond: #f4f6f9;
+  --surface: #ffffff;
+  --bordure: #d9dee7;
+  --texte: #1f2733;
+  --texte-discret: #5d6878;
+  --marque: #1d4f91;
+  --marque-fonce: #163d70;
+  --marque-pale: #e8f0fa;
+  --succes: #1f7a4d;
+  --succes-pale: #e6f4ec;
+  --attention: #9a6200;
+  --attention-pale: #fdf3dc;
+  --erreur: #b3261e;
+  --erreur-pale: #fbe9e7;
+  --info: #1d4f91;
+  --info-pale: #e8f0fa;
+  --rayon: 6px;
+  --espace: 1rem;
+  --largeur-navigation: 15rem;
+  --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --police-code: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--fond);
+  color: var(--texte);
+  font-family: var(--police);
+  line-height: 1.5;
+}
+
+a {
+  color: var(--marque);
+}
+
+a:hover {
+  color: var(--marque-fonce);
+}
+
+code {
+  font-family: var(--police-code);
+  font-size: 0.9em;
+  background: var(--fond);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.25;
+  margin: 0 0 0.6em;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+}
+
+:focus-visible {
+  outline: 3px solid #f0a500;
+  outline-offset: 2px;
+}
+
+.lien-evitement {
+  position: absolute;
+  left: -999rem;
+}
+
+.lien-evitement:focus {
+  left: 0.5rem;
+  top: 0.5rem;
+  z-index: 10;
+  background: var(--surface);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--rayon);
+}
+
+.discret {
+  color: var(--texte-discret);
+}
+
+.pre-ligne {
+  white-space: pre-line;
+}
+
+/* ----- Bandeau « données fictives » ------------------------------------- */
+
+.bandeau-fictif {
+  background: var(--attention-pale);
+  color: #5c3b00;
+  border-bottom: 1px solid #ecd9a8;
+  padding: 0.35rem var(--espace);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+/* ----- Cadre général ------------------------------------------------------ */
+
+.cadre {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.navigation {
+  flex: 0 0 var(--largeur-navigation);
+  background: var(--marque-fonce);
+  color: #dfe8f4;
+  padding: var(--espace) 0;
+}
+
+.marque {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  padding: 0 var(--espace) var(--espace);
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.marque:hover {
+  color: #ffffff;
+}
+
+.marque-sigle {
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.marque-texte {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.navigation h2 {
+  margin: 1rem var(--espace) 0.3rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a9bcd6;
+}
+
+.navigation ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.navigation li a {
+  display: block;
+  padding: 0.4rem var(--espace);
+  color: inherit;
+  text-decoration: none;
+  border-left: 3px solid transparent;
+}
+
+.navigation li a:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.navigation li a.actif {
+  background: rgba(255, 255, 255, 0.14);
+  border-left-color: #ffffff;
+  color: #ffffff;
+  font-weight: 600;
+}
+
+main {
+  flex: 1;
+  min-width: 0;
+  padding: calc(var(--espace) * 1.5);
+  max-width: 78rem;
+}
+
+.entete-page {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: var(--espace);
+}
+
+.entete-page h1 {
+  margin: 0;
+}
+
+.entete-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pied {
+  padding: 0.6rem var(--espace);
+  border-top: 1px solid var(--bordure);
+  background: var(--surface);
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+/* ----- Cartes --------------------------------------------------------------- */
+
+.carte {
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: var(--espace) calc(var(--espace) * 1.25);
+  margin-bottom: var(--espace);
+}
+
+.carte > :last-child {
+  margin-bottom: 0;
+}
+
+.carte-erreur {
+  border-left: 4px solid var(--erreur);
+}
+
+.definitions {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.definitions dt {
+  color: var(--texte-discret);
+}
+
+.definitions dd {
+  margin: 0;
+  min-width: 0;
+}
+
+/* ----- Messages ------------------------------------------------------------- */
+
+.messages:empty {
+  display: none;
+}
+
+.message {
+  border: 1px solid;
+  border-left-width: 4px;
+  border-radius: var(--rayon);
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.message p {
+  margin: 0;
+}
+
+.message ul {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}
+
+.message-succes {
+  background: var(--succes-pale);
+  border-color: var(--succes);
+}
+
+.message-info {
+  background: var(--info-pale);
+  border-color: var(--info);
+}
+
+.message-attention {
+  background: var(--attention-pale);
+  border-color: var(--attention);
+}
+
+.message-erreur {
+  background: var(--erreur-pale);
+  border-color: var(--erreur);
+}
+
+.etiquette {
+  display: inline-block;
+  padding: 0.05rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid;
+  vertical-align: baseline;
+}
+
+.etiquette-succes {
+  background: var(--succes-pale);
+  color: var(--succes);
+}
+
+.etiquette-info {
+  background: var(--info-pale);
+  color: var(--info);
+}
+
+.etiquette-attention {
+  background: var(--attention-pale);
+  color: var(--attention);
+}
+
+.etiquette-erreur {
+  background: var(--erreur-pale);
+  color: var(--erreur);
+}
+
+/* ----- Compteurs ------------------------------------------------------------ */
+
+.compteurs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.compteur {
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: 0.6rem 0.8rem;
+  background: var(--fond);
+}
+
+.compteur-nombre {
+  display: block;
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--marque);
+  line-height: 1.2;
+}
+
+.compteur-libelle {
+  color: var(--texte-discret);
+  font-size: 0.875rem;
+}
+
+/* ----- Tableaux ------------------------------------------------------------- */
+
+.tableau-defilant {
+  overflow-x: auto;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  background: var(--surface);
+  margin-bottom: var(--espace);
+}
+
+.tableau {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.925rem;
+}
+
+.tableau caption {
+  text-align: left;
+  padding: 0.6rem 0.8rem;
+  font-weight: 600;
+}
+
+.tableau th,
+.tableau td {
+  padding: 0.5rem 0.8rem;
+  text-align: left;
+  border-bottom: 1px solid var(--bordure);
+  vertical-align: top;
+}
+
+.tableau thead th {
+  background: var(--fond);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tableau tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.tableau tbody tr:hover {
+  background: var(--marque-pale);
+}
+
+.colonne-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.vide {
+  color: var(--texte-discret);
+  font-style: italic;
+}
+
+/* ----- Formulaires et boutons ----------------------------------------------- */
+
+.formulaire {
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  padding: var(--espace) calc(var(--espace) * 1.25);
+  margin-bottom: var(--espace);
+  max-width: 44rem;
+}
+
+.champ {
+  margin-bottom: 0.9rem;
+}
+
+.champ label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.champ label.case {
+  font-weight: 400;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.champ input:not([type="checkbox"]):not([type="radio"]),
+.champ select,
+.champ textarea {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid #aab3c0;
+  border-radius: var(--rayon);
+  font: inherit;
+  color: inherit;
+  background: var(--surface);
+}
+
+.champ-en-erreur input,
+.champ-en-erreur select,
+.champ-en-erreur textarea {
+  border-color: var(--erreur);
+}
+
+.requis {
+  color: var(--erreur);
+}
+
+.aide {
+  margin: 0.25rem 0 0;
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+}
+
+.erreur-champ {
+  margin: 0.25rem 0 0;
+  color: var(--erreur);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.formulaire-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: var(--espace);
+}
+
+.en-ligne {
+  display: inline;
+}
+
+.bouton {
+  display: inline-block;
+  padding: 0.4rem 0.9rem;
+  border: 1px solid #aab3c0;
+  border-radius: var(--rayon);
+  background: var(--surface);
+  color: var(--texte);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.bouton:hover {
+  background: var(--fond);
+  color: var(--texte);
+}
+
+.bouton-principal {
+  background: var(--marque);
+  border-color: var(--marque);
+  color: #ffffff;
+}
+
+.bouton-principal:hover {
+  background: var(--marque-fonce);
+  color: #ffffff;
+}
+
+.bouton-danger {
+  border-color: var(--erreur);
+  color: var(--erreur);
+}
+
+.bouton-danger:hover {
+  background: var(--erreur-pale);
+  color: var(--erreur);
+}
+
+/* Indicateur HTMX : visible seulement pendant une requête. */
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 150ms ease-in;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+  opacity: 1;
+}
+
+/* ----- Petits écrans et impression ------------------------------------------ */
+
+@media (max-width: 50rem) {
+  .cadre {
+    flex-direction: column;
+  }
+
+  .navigation {
+    flex-basis: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .navigation ul {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .navigation li a {
+    border-left: none;
+    border-bottom: 3px solid transparent;
+    padding: 0.35rem 0.75rem;
+  }
+
+  .navigation li a.actif {
+    border-bottom-color: #ffffff;
+  }
+
+  main {
+    padding: var(--espace);
+  }
+}
+
+@media print {
+  .navigation,
+  .bandeau-fictif,
+  .pied,
+  .entete-actions,
+  .lien-evitement {
+    display: none;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  main {
+    padding: 0;
+    max-width: none;
+  }
+
+  .carte,
+  .tableau-defilant {
+    border: none;
+  }
+}
