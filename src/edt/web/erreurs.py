@@ -39,6 +39,7 @@ from edt.erreurs import (
     ErreurTempsDepasse,
 )
 from edt.journal import contexte_requete
+from edt.services.jeux import operation_en_cours
 from edt.web.gabarits import est_htmx, gabarits
 
 journal = logging.getLogger(__name__)
@@ -149,15 +150,39 @@ async def _integrite(request: Request, erreur: IntegrityError) -> Response:
 
 
 async def _base_indisponible(request: Request, erreur: OperationalError) -> Response:
+    """Base inutilisable : occupée (opération en cours, verrou), non initialisée, ou inaccessible.
+
+    Pendant un chargement de jeu fictif ou une remise à zéro, les tables sont
+    supprimées puis recréées : une requête qui tombe à ce moment-là reçoit
+    « occupée, réessayer », pas le conseil d'initialiser la base.
+    """
+    cause = str(erreur.orig).lower()
+    if operation_en_cours() or "locked" in cause:
+        journal.warning("Base de données occupée sur %s : %s", request.url.path, erreur.orig)
+        return reponse_erreur(
+            request,
+            statut=503,
+            titre="Base de données occupée",
+            message=(
+                "La base de données est momentanément occupée par une autre opération "
+                "(chargement d'un jeu de données, remise à zéro ou calcul). Rien n'a été "
+                "modifié : réessayer dans quelques secondes."
+            ),
+        )
     journal.exception("Base de données indisponible sur %s", request.url.path)
+    if "no such table" in cause:
+        message = (
+            "La base de données n'est pas prête : elle n'est pas initialisée. Lancer "
+            "« python -m edt init-db », ou la remettre à zéro dans Données > Jeux de "
+            "données, puis réessayer."
+        )
+    else:
+        message = (
+            "La base de données n'est pas accessible. Réessayer dans quelques instants ; si "
+            "le problème persiste, communiquer la référence ci-dessous à l'administrateur."
+        )
     return reponse_erreur(
-        request,
-        statut=503,
-        titre="Base de données indisponible",
-        message=(
-            "La base de données n'est pas prête : elle n'est pas initialisée ou n'est pas "
-            "accessible. Lancer « python -m edt init-db », puis réessayer."
-        ),
+        request, statut=503, titre="Base de données indisponible", message=message
     )
 
 

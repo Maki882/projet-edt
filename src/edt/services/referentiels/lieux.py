@@ -28,6 +28,7 @@ from edt.domaine.enumerations import Accessibilite
 from edt.services.parametres import lire_parametres
 from edt.services.referentiels.conversion import ErreurChamp, est_vide
 from edt.services.referentiels.description import (
+    EFFECTIF_MAX,
     Champ,
     Colonne,
     Decompte,
@@ -231,7 +232,13 @@ SALLE = Entite(
             reference=REF_TYPE_SALLE,
         ),
         Champ(
-            "capacite", "Capacité", TypeChamp.ENTIER, obligatoire=True, minimum=0, unite="places"
+            "capacite",
+            "Capacité",
+            TypeChamp.ENTIER,
+            obligatoire=True,
+            minimum=0,
+            maximum=EFFECTIF_MAX,
+            unite="places",
         ),
         Champ("batiment", "Bâtiment"),
         Champ(

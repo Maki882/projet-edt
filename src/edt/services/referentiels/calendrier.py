@@ -41,7 +41,7 @@ from edt.services.referentiels.description import (
     options_reference,
     par_colonne,
 )
-from edt.services.referentiels.operations import lire
+from edt.services.referentiels.operations import identifiant_possible, lire
 from edt.services.referentiels.personnes import REF_ANNEE, REF_GROUPE, annee_par_defaut
 
 journal = logging.getLogger(__name__)
@@ -179,7 +179,11 @@ def creer_annee_par_defaut(session: Session, annee_debut: int) -> dict:
 
 def preremplir_jours_feries(session: Session, annee_scolaire_id: int) -> int:
     """Ajoute les jours fériés manquants de l'année (fériés mobiles compris) ; renvoie le nombre ajouté."""
-    annee = session.get(AnneeScolaire, annee_scolaire_id)
+    annee = (
+        session.get(AnneeScolaire, annee_scolaire_id)
+        if identifiant_possible(annee_scolaire_id)
+        else None
+    )
     if annee is None:
         raise ErreurIntrouvable(f"Année scolaire n° {annee_scolaire_id} introuvable.")
     ajoutes = preremplir_feries(session, annee)
