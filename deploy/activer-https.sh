@@ -11,7 +11,7 @@
 #   1. vérifie, SANS RIEN MODIFIER, que EDT_DOMAINE se résout vers une adresse
 #      de ce serveur et que nginx y répond sur le port 80 (sinon : message et
 #      sortie non nulle) ;
-#   2. installe certbot et python3-certbot-nginx (apt) ;
+#   2. installe certbot (apt) ;
 #   3. obtient le certificat en mode non interactif (méthode « webroot » : le
 #      défi est servi par nginx depuis /var/www/certbot, emplacement
 #      /.well-known/acme-challenge/ prévu dans nginx-edt*.conf) ;
@@ -27,8 +27,9 @@
 #
 # Paramètres (variables d'environnement) :
 #   EDT_DOMAINE        nom de domaine (défaut pts.jorund.xyz)
-#   EDT_CERTBOT_EMAIL  adresse de contact Let's Encrypt (alertes d'expiration) ;
-#                      vide = inscription sans adresse (avertissement affiché)
+#   EDT_CERTBOT_EMAIL  adresse de contact du compte Let's Encrypt (avis liés au
+#                      compte ; Let's Encrypt n'envoie plus d'alertes d'expiration
+#                      depuis juin 2025) ; vide = inscription sans adresse
 #   EDT_IP_PUBLIQUE    adresse IPv4 publique du serveur, si la détection
 #                      automatique (adresses des interfaces) ne convient pas
 # =============================================================================
@@ -140,8 +141,10 @@ FICHIER_TEST="$DOSSIER_ACME/.well-known/acme-challenge/$jeton"
 printf '%s' "$jeton" > "$FICHIER_TEST"
 chmod 644 "$FICHIER_TEST"
 url_test="http://$EDT_DOMAINE/.well-known/acme-challenge/$jeton"
-if ! reponse="$(curl -sS --max-time 10 "$url_test")"; then
-  echouer "le port 80 ne répond pas pour $url_test (code curl $?). nginx tourne-t-il (« systemctl status nginx ») ? Rien n'a été modifié."
+code_curl=0
+reponse="$(curl -sS --max-time 10 "$url_test")" || code_curl=$?
+if [ "$code_curl" -ne 0 ]; then
+  echouer "le port 80 ne répond pas pour $url_test (code curl $code_curl). nginx tourne-t-il (« systemctl status nginx ») ? Rien n'a été modifié."
 fi
 if [ "$reponse" != "$jeton" ]; then
   echouer "le port 80 répond, mais pas avec le fichier de test (réponse : « ${reponse:0:200} »). Vérifiez que le site nginx « edt » est actif (installer-serveur.sh). Rien n'a été modifié."
@@ -156,7 +159,7 @@ etape "Installation de certbot"
 export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=l
 apt-get -o DPkg::Lock::Timeout=300 update
-apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends certbot python3-certbot-nginx
+apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends certbot
 certbot --version
 
 # -----------------------------------------------------------------------------
@@ -170,7 +173,7 @@ if [ -n "$EDT_CERTBOT_EMAIL" ]; then
   arguments_certbot+=(--email "$EDT_CERTBOT_EMAIL" --no-eff-email)
   info "Adresse de contact : $EDT_CERTBOT_EMAIL"
 else
-  avertir "EDT_CERTBOT_EMAIL est vide : inscription Let's Encrypt SANS adresse e-mail (--register-unsafely-without-email). Personne ne sera prévenu si le renouvellement automatique échoue ; surveillez la date d'expiration avec deploy/etat.sh."
+  avertir "EDT_CERTBOT_EMAIL est vide : inscription Let's Encrypt SANS adresse e-mail (--register-unsafely-without-email). Aucune alerte d'expiration n'est envoyée de toute façon : surveillez la date avec deploy/etat.sh (seuil de 14 jours)."
   arguments_certbot+=(--register-unsafely-without-email)
 fi
 certbot "${arguments_certbot[@]}"
@@ -198,8 +201,10 @@ etape "Passage de nginx en HTTPS"
 bash "$DOSSIER_SCRIPT/installer-serveur.sh" --nginx-seulement
 
 etape "Vérification de HTTPS"
-if ! code_https="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$EDT_DOMAINE/sante")"; then
-  echouer "https://$EDT_DOMAINE ne répond pas correctement (code curl $? : certificat refusé ou port 443 injoignable)."
+code_curl=0
+code_https="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "https://$EDT_DOMAINE/sante")" || code_curl=$?
+if [ "$code_curl" -ne 0 ]; then
+  echouer "https://$EDT_DOMAINE ne répond pas correctement (code curl $code_curl : certificat refusé ou port 443 injoignable)."
 fi
 case "$code_https" in
   200) info "https://$EDT_DOMAINE/sante : 200, l'application répond en HTTPS." ;;
@@ -207,8 +212,10 @@ case "$code_https" in
   *) avertir "https://$EDT_DOMAINE/sante : code $code_https inattendu ; HTTPS fonctionne mais vérifiez l'application (deploy/etat.sh)." ;;
 esac
 
-if ! redirection="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$EDT_DOMAINE/sante")"; then
-  echouer "http://$EDT_DOMAINE ne répond plus sur le port 80 (code curl $?)."
+code_curl=0
+redirection="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$EDT_DOMAINE/sante")" || code_curl=$?
+if [ "$code_curl" -ne 0 ]; then
+  echouer "http://$EDT_DOMAINE ne répond plus sur le port 80 (code curl $code_curl)."
 fi
 if [ "$redirection" = "301 https://$EDT_DOMAINE/sante" ]; then
   info "http://$EDT_DOMAINE redirige vers HTTPS (301)."
@@ -216,9 +223,9 @@ else
   echouer "la redirection HTTP → HTTPS ne fonctionne pas (réponse : « $redirection »)."
 fi
 premiere_adresse="${adresses_dns%%$'\n'*}"
-if ! redirection_ip="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$premiere_adresse/")"; then
-  redirection_ip="pas de réponse (code curl $?)"
-fi
+code_curl=0
+redirection_ip="$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' --max-time 10 "http://$premiere_adresse/")" || code_curl=$?
+if [ "$code_curl" -ne 0 ]; then redirection_ip="pas de réponse (code curl $code_curl)"; fi
 if [ "$redirection_ip" = "301 https://$EDT_DOMAINE/" ]; then
   info "http://$premiere_adresse/ (adresse IP) redirige vers https://$EDT_DOMAINE/ (301)."
 else

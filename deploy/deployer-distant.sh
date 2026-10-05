@@ -2,42 +2,34 @@
 # =============================================================================
 # deploy/deployer-distant.sh — partie SERVEUR du déploiement de l'application EDT.
 #
-# Ce script est envoyé et lancé par deploy/deployer.sh (via ssh, en root avec
-# sudo). Il travaille sur une version dont le code vient d'être envoyé dans
-# /opt/edt/versions/<version>/code. Pour déboguer, on peut le relancer à la
-# main sur le serveur, sur une version déjà envoyée :
-#   sudo bash deployer-distant.sh <version> <commit> <référence> <reset 0|1> <auteur> <arbre_propre 0|1>
+# Envoyé et lancé par deploy/deployer.sh (ssh, root via sudo), sur une version
+# dont le code vient d'être envoyé dans /opt/edt/versions/<version>/code.
+# Pour déboguer à la main, copier d'abord la version du dépôt sur le serveur :
+#   ssh ... 'cat > /tmp/deployer-distant.sh' < deploy/deployer-distant.sh
+#   ssh ... 'sudo bash /tmp/deployer-distant.sh <version> <commit> <référence> <reset 0|1> <auteur> <arbre_propre 0|1>'
 #
-# Déroulement :
-#   PRÉPARATION : le service en place n'est pas touché ; un échec laisse
-#   l'ancienne version en ligne.
-#     1. verrou (un seul déploiement à la fois) et contrôles ;
-#     2. environnement Python (venv) propre à la version + dépendances ;
-#     3. test de chargement de edt.web.asgi (base et journaux jetables) ;
-#   BASCULE : tout échec déclenche le retour arrière automatique.
-#     4. arrêt du service ;
-#     5. sauvegarde de la base (API de sauvegarde SQLite + contrôle
-#        d'intégrité), 10 sauvegardes conservées ;
-#     6. python -m edt init-db (avec --reset si demandé) ;
-#     7. bascule atomique du lien /opt/edt/courant vers la nouvelle version ;
-#     8. démarrage, puis attente de GET http://127.0.0.1:8000/sante → 200
-#        (30 s maximum) ;
-#   FINALISATION : version marquée « réussie », 5 versions conservées,
-#   historique.
+# PRÉPARATION (le service en place n'est pas touché ; un échec le laisse en ligne) :
+#   verrou, contrôles, venv propre à la version + dépendances, chargement de
+#   l'application et lecture de la base qu'elle utilise, contrôle du port 8000.
+# BASCULE (tout échec déclenche le retour arrière automatique) :
+#   arrêt du service, sauvegarde de la base, init-db, verifier-schema, bascule
+#   du lien /opt/edt/courant, démarrage, GET /sante → 200 en 30 s maximum.
+# FINALISATION : version marquée réussie, nettoyage (5 versions, 10 sauvegardes).
 #
-# Retour arrière : affiche les 50 dernières lignes du journal du service,
-# restaure la base sauvegardée, remet le lien sur la version précédente et
-# redémarre. Premier déploiement (aucune version précédente) : le service
-# reste arrêté et le lien /opt/edt/courant est retiré ; le site affiche alors
-# la page « application indisponible ».
+# Retour arrière : 50 dernières lignes du journal du service, base restaurée,
+# lien remis sur la version précédente, redémarrage. Sans version précédente
+# (premier déploiement) : service laissé arrêté, lien /opt/edt/courant retiré.
 #
-# Toute la sortie est aussi écrite dans /var/log/edt/deploiements/<version>.log
-# et le script va au bout même si la connexion SSH est coupée en cours de route.
+# Les commandes de l'application sont lancées par systemd-run, comme le
+# service : utilisateur edt et /etc/edt/edt.env lu PAR SYSTEMD (ce script ne
+# relit jamais ce fichier lui-même). Codes de sortie : 0 réussi ; 1 échec, la
+# version précédente (ou rien) est en service ; 3 nouvelle version en service
+# mais finalisation incomplète. Sortie copiée dans
+# /var/log/edt-deploiements/<version>.log ; une coupure SSH n'interrompt rien.
 # =============================================================================
 set -euo pipefail
 set -o errtrace   # le piège ERR s'applique aussi à l'intérieur des fonctions
 
-# --- Paramètres (cohérents avec edt.service, installer-serveur.sh, nginx) ----
 readonly SERVICE="edt"
 readonly UTILISATEUR_APP="edt"
 readonly DOSSIER_VERSIONS="/opt/edt/versions"
@@ -45,17 +37,18 @@ readonly LIEN_COURANT="/opt/edt/courant"
 readonly FICHIER_ENV="/etc/edt/edt.env"
 readonly DOSSIER_DONNEES="/var/lib/edt"
 readonly DOSSIER_SAUVEGARDES="/var/lib/edt/sauvegardes"
-readonly DOSSIER_JOURNAUX_DEPLOIEMENT="/var/log/edt/deploiements"
-readonly HISTORIQUE="/var/log/edt/historique-deploiements.log"
+readonly DOSSIER_JOURNAUX_DEPLOIEMENT="/var/log/edt-deploiements"
+readonly HISTORIQUE="/var/log/edt-deploiements/historique.log"
 readonly VERROU="/run/lock/edt-deploiement.lock"
-readonly URL_SANTE="http://127.0.0.1:8000/sante"
+readonly PORT_APP=8000
+readonly URL_SANTE="http://127.0.0.1:$PORT_APP/sante"
 readonly DELAI_SANTE=30            # secondes
 readonly VERSIONS_A_GARDER=5
 readonly SAUVEGARDES_A_GARDER=10
 readonly LIGNES_JOURNAL=50
-readonly ESPACE_MINIMAL_MO=1024    # place libre exigée avant de créer un venv
+readonly ESPACE_MINIMAL_MO=1024
 readonly MARQUE_REUSSITE="deploiement-reussi"
-readonly PYTHON_SYSTEME="python3"
+readonly EXPLICATION_SCHEMA="le schéma de la base ne correspond plus au modèle de cette version (table ou colonne ajoutée, renommée ou supprimée). Il n'y a pas de migrations : cette version ne peut être déployée qu'avec « deploy/deployer.sh --reset-base », qui EFFACE les données (une sauvegarde est faite juste avant)."
 export PIP_CACHE_DIR="/var/cache/edt/pip"
 
 # --- Messages horodatés ------------------------------------------------------
@@ -72,71 +65,58 @@ if [ $# -ne 6 ]; then
   exit 2
 fi
 readonly VERSION="$1" SHA="$2" REF="$3" RESET_BASE="$4" AUTEUR="$5" ARBRE_PROPRE="$6"
-if ! [[ "$VERSION" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$ ]] \
-  || ! [[ "$SHA" =~ ^[0-9a-f]{40,64}$ ]] \
-  || ! [[ "$REF" =~ ^[A-Za-z0-9._/-]+$ ]] \
-  || ! [[ "$RESET_BASE" =~ ^[01]$ ]] \
-  || ! [[ "$AUTEUR" =~ ^[A-Za-z0-9._-]+$ ]] \
-  || ! [[ "$ARBRE_PROPRE" =~ ^[01]$ ]]; then
+if ! [[ "$VERSION" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$ && "$SHA" =~ ^[0-9a-f]{40,64}$ \
+  && "$REF" =~ ^[A-Za-z0-9._/-]+$ && "$RESET_BASE" =~ ^[01]$ \
+  && "$AUTEUR" =~ ^[A-Za-z0-9._-]+$ && "$ARBRE_PROPRE" =~ ^[01]$ ]]; then
   erreur "arguments invalides : $*"
   exit 2
 fi
 readonly DOSSIER_VERSION="$DOSSIER_VERSIONS/$VERSION"
 readonly DOSSIER_CODE="$DOSSIER_VERSION/code"
-readonly DOSSIER_VENV="$DOSSIER_VERSION/venv"
-readonly PYTHON_VENV="$DOSSIER_VENV/bin/python"
+readonly PYTHON_VENV="$DOSSIER_VERSION/venv/bin/python"
 readonly FICHIER_INFOS="$DOSSIER_VERSION/DEPLOIEMENT.txt"
 
 # --- État du déploiement (lu par la gestion d'erreur) -------------------------
 PHASE="preparation"     # preparation | bascule | finalisation
 PRECEDENTE=""           # dossier de la version en service avant ce déploiement
 SAUVEGARDE=""           # sauvegarde de la base faite par ce déploiement
-BASE=""                 # chemin du fichier SQLite (lu dans edt.env)
+BASE=""                 # fichier SQLite, tel que l'application le voit
 BASE_MODIFIEE=0         # 1 dès que init-db a été lancé
 RESULTAT_RETOUR=""      # résultat du retour arrière, pour l'historique
-VARIABLES_APP=()        # contenu de edt.env (NOM=valeur), pour lancer_comme_app
+JOURNAL_DEPLOIEMENT=""
 
 # --- Gestion des erreurs -----------------------------------------------------
 # Toute commande en échec (hors condition testée) arrive ici : on dit quelle
-# étape a échoué et à quelle ligne, puis on décide quoi faire selon la phase.
+# étape a échoué et à quelle ligne, puis on agit selon la phase.
 sur_erreur() {
   local code=$1 ligne=$2 commande=$3
   case "$commande" in
     return*) commande="une fonction appelée à cette ligne (cause dans le message juste au-dessus)" ;;
   esac
   if [ "$BASH_SUBSHELL" -gt 0 ]; then
-    # Erreur dans une sous-commande « $( ) » ou « ( ) » : on la signale et on
-    # sort ; c'est le script principal qui gère l'échec (une seule fois).
+    # Erreur dans « $( ) » ou « ( ) » : signalée ici, gérée une seule fois par le script principal.
     erreur "« $commande » a renvoyé le code $code (ligne $ligne de deployer-distant.sh)."
     exit "$code"
   fi
-  trap - ERR
-  set +e
-  erreur "échec à l'étape « $ETAPE » : « $commande » a renvoyé le code $code (ligne $ligne de deployer-distant.sh)."
-  abandonner
+  echouer "échec à l'étape « $ETAPE » : « $commande » a renvoyé le code $code (ligne $ligne de deployer-distant.sh)."
 }
 trap 'sur_erreur $? $LINENO "$BASH_COMMAND"' ERR
 
-# Échec détecté par le script lui-même (contrôle, délai dépassé...).
+# Échec : message, puis selon la phase rien (préparation), retour arrière
+# (bascule) ou simple signalement (finalisation). Ne revient jamais.
 echouer() {
   if [ "$BASH_SUBSHELL" -gt 0 ]; then
     erreur "$*"
     exit 1
   fi
   trap - ERR
+  trap '' INT TERM   # le retour arrière va au bout
   set +e
   erreur "$*"
-  abandonner
-}
-
-abandonner() {
-  local etape_en_echec="$ETAPE"
+  local etape_en_echec="$ETAPE" code_sortie=1
   case "$PHASE" in
     preparation)
       info "Le service en place n'a pas été touché : l'ancienne version reste en ligne."
-      if [ -d "$DOSSIER_VERSION" ]; then
-        info "Le dossier $DOSSIER_VERSION reste sur le disque pour diagnostic ; un déploiement réussi le supprimera (après un délai de 2 h)."
-      fi
       noter_historique "ECHEC en préparation (étape : $etape_en_echec)"
       ;;
     bascule)
@@ -145,12 +125,13 @@ abandonner() {
       noter_historique "ECHEC en bascule (étape : $etape_en_echec) ; $RESULTAT_RETOUR"
       ;;
     *)
-      erreur "la nouvelle version est en service, mais la finalisation a échoué (voir ci-dessus)."
+      erreur "la nouvelle version EST en service, seule la finalisation a échoué (voir ci-dessus)."
       noter_historique "EN SERVICE, finalisation en échec (étape : $etape_en_echec)"
+      code_sortie=3
       ;;
   esac
   info "Journal complet de ce déploiement : ${JOURNAL_DEPLOIEMENT:-non créé}"
-  exit 1
+  exit "$code_sortie"
 }
 
 afficher_journal_service() {
@@ -167,8 +148,8 @@ noter_historique() {
   fi
 }
 
-# Appelé en phase de bascule, après une erreur (set +e actif) : chaque commande
-# est vérifiée une par une et tout échec est signalé.
+# Phase de bascule, après une erreur (set +e actif) : chaque commande est
+# vérifiée une par une et tout échec est signalé.
 retour_arriere() {
   etape "Retour arrière"
   local ok=1
@@ -176,22 +157,20 @@ retour_arriere() {
     erreur "arrêt du service impossible."
     ok=0
   fi
-  if [ "$BASE_MODIFIEE" = 1 ]; then
-    if [ -n "$SAUVEGARDE" ]; then
-      if ! restaurer_base "$SAUVEGARDE"; then
-        erreur "restauration de la base impossible ; la sauvegarde reste disponible : $SAUVEGARDE"
-        ok=0
-      fi
-    else
-      avertir "il n'y avait pas de base avant ce déploiement : rien à restaurer ; la base éventuellement créée par init-db est conservée ($BASE)."
+  if [ "$BASE_MODIFIEE" = 1 ] && [ -n "$SAUVEGARDE" ]; then
+    if ! restaurer_base "$SAUVEGARDE"; then
+      erreur "restauration de la base impossible ; la sauvegarde reste disponible : $SAUVEGARDE"
+      ok=0
     fi
+  elif [ "$BASE_MODIFIEE" = 1 ]; then
+    avertir "pas de base avant ce déploiement : rien à restaurer ; la base éventuellement créée par init-db est conservée (« $BASE »)."
   fi
   if [ -z "$PRECEDENTE" ]; then
     if [ -L "$LIEN_COURANT" ] && ! rm -f -- "$LIEN_COURANT"; then
       erreur "impossible de retirer le lien $LIEN_COURANT."
     fi
     RESULTAT_RETOUR="premier déploiement : service laissé arrêté"
-    erreur "aucune version précédente (premier déploiement) : le service reste arrêté et le lien $LIEN_COURANT est retiré. Le site affiche la page « application indisponible ». Corrigez le problème puis relancez deploy/deployer.sh."
+    erreur "aucune version précédente (premier déploiement) : le service reste arrêté et le lien $LIEN_COURANT est retiré. Le site affiche la page « application indisponible ». Corrigez puis relancez deploy/deployer.sh."
     return 0
   fi
   if ! basculer_lien "$PRECEDENTE"; then
@@ -209,58 +188,30 @@ retour_arriere() {
 }
 
 # --- Outils ------------------------------------------------------------------
-# Les fonctions ci-dessous peuvent être appelées dans une condition (où bash
-# ignore « set -e ») : chaque commande y est donc suivie de « || return 1 ».
+# Ces fonctions peuvent être appelées dans une condition (où bash ignore
+# « set -e ») : chaque commande y est donc suivie de « || return 1 ».
 
-# Lit /etc/edt/edt.env (une ligne NOM=valeur, comme systemd) dans VARIABLES_APP.
-charger_environnement() {
-  local ligne numero=0
-  VARIABLES_APP=()
-  while IFS= read -r ligne || [ -n "$ligne" ]; do
-    numero=$((numero + 1))
-    ligne="${ligne%$'\r'}"
-    case "$ligne" in '' | '#'* | ';'*) continue ;; esac
-    if ! [[ "$ligne" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
-      echouer "ligne $numero de $FICHIER_ENV illisible : « $ligne » (format attendu : NOM=valeur, sans espace autour du =)."
-    fi
-    case "${ligne#*=}" in
-      \"* | \'*) echouer "ligne $numero de $FICHIER_ENV : retirez les guillemets autour de la valeur (« $ligne »)." ;;
-    esac
-    VARIABLES_APP+=("$ligne")
-  done < "$FICHIER_ENV"
-}
-
-# Affiche la valeur d'une variable de edt.env (dernière occurrence ; vide si absente).
-valeur_env() {
-  local nom=$1 valeur="" ligne
-  for ligne in "${VARIABLES_APP[@]}"; do
-    if [ "${ligne%%=*}" = "$nom" ]; then valeur="${ligne#*=}"; fi
-  done
-  printf '%s' "$valeur"
-}
-
-# Lance une commande en tant qu'utilisateur edt, avec l'environnement de edt.env
-# (comme le service), dans le dossier du code de la nouvelle version.
+# Lance une commande dans les conditions du service : utilisateur edt,
+# variables de /etc/edt/edt.env lues par systemd lui-même, dossier du code de
+# la NOUVELLE version. Le code de sortie de la commande est transmis.
 lancer_comme_app() {
-  (
-    cd "$DOSSIER_CODE" || exit 1
-    runuser -u "$UTILISATEUR_APP" -- env -i \
-      PATH=/usr/local/bin:/usr/bin:/bin HOME="$DOSSIER_DONNEES" LANG=C.UTF-8 PYTHONUNBUFFERED=1 \
-      "${VARIABLES_APP[@]}" "$@"
-  )
+  systemd-run --quiet --wait --pipe --collect --service-type=exec \
+    --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
+    -p EnvironmentFile="$FICHIER_ENV" -p WorkingDirectory="$DOSSIER_CODE" \
+    -E PYTHONUNBUFFERED=1 "$@"
 }
 
 basculer_lien() {
-  local cible=$1
-  ln -sfn "$cible" "$LIEN_COURANT.nouveau" || return 1
+  ln -sfn "$1" "$LIEN_COURANT.nouveau" || return 1
   mv -Tf "$LIEN_COURANT.nouveau" "$LIEN_COURANT" || return 1
-  info "Lien $LIEN_COURANT → $cible"
+  info "Lien $LIEN_COURANT → $1"
 }
 
+# reset-failed remet aussi à zéro le compteur de démarrages de systemd
+# (StartLimitBurst) : sans lui, un démarrage qui suit plusieurs plantages
+# rapprochés (retour arrière, redéploiement) serait refusé.
 demarrer_service() {
-  if systemctl is-failed --quiet "$SERVICE"; then
-    systemctl reset-failed "$SERVICE" || return 1
-  fi
+  systemctl reset-failed "$SERVICE" || return 1
   systemctl start "$SERVICE" || return 1
   info "Service $SERVICE démarré."
 }
@@ -281,21 +232,25 @@ attendre_sante() {
     sleep 1
   done
   erreur "$URL_SANTE n'a pas répondu 200 en $DELAI_SANTE s (dernier résultat : $code)."
+  if [ "$code" = "HTTP 503" ]; then
+    erreur "503 = l'application tourne mais juge la base inutilisable (non initialisée ou schéma périmé) ; si c'est le schéma : $EXPLICATION_SCHEMA"
+  fi
   return 1
 }
 
-# Copie cohérente de la base, faite par l'utilisateur edt (les fichiers -wal et
-# -shm éventuellement créés lui appartiennent ainsi) puis contrôle d'intégrité.
+# Copie cohérente (API de sauvegarde SQLite) faite par l'utilisateur edt, dans
+# un fichier « .partiel » renommé seulement si le contrôle d'intégrité passe.
 sauvegarder_base() {
   if [ ! -e "$BASE" ]; then
-    info "Aucune base existante ($BASE) : rien à sauvegarder."
+    info "Aucune base existante (« $BASE ») : rien à sauvegarder."
     return 0
   fi
   local cible taille
   cible="$DOSSIER_SAUVEGARDES/edt-$(date '+%Y%m%d-%H%M%S')-avant-$VERSION.db"
   taille="$(du -h "$BASE" | cut -f1)"
-  info "Sauvegarde de $BASE ($taille) vers $cible"
-  runuser -u "$UTILISATEUR_APP" -- "$PYTHON_SYSTEME" -I - "$BASE" "$cible" <<'PY'
+  info "Sauvegarde de « $BASE » ($taille) vers $cible"
+  runuser -u "$UTILISATEUR_APP" -- python3 -I - "$BASE" "$cible.partiel" <<'PY'
+import os
 import sqlite3
 import sys
 
@@ -311,73 +266,40 @@ try:
 finally:
     connexion_source.close()
 if verdict != "ok":
+    os.remove(cible)
     sys.exit(f"contrôle d'intégrité de la sauvegarde en échec : {verdict}")
 print("contrôle d'intégrité de la sauvegarde : ok")
 PY
+  runuser -u "$UTILISATEUR_APP" -- mv -f "$cible.partiel" "$cible"
   SAUVEGARDE="$cible"
-  info "Sauvegarde faite : $SAUVEGARDE"
 }
 
+# Faite par l'utilisateur edt (root n'écrit pas dans ses dossiers). Les
+# fichiers annexes de la base remplacée ne doivent pas être rejoués.
 restaurer_base() {
-  local sauvegarde=$1 temporaire="$BASE.restauration" fichier
-  info "Restauration de la base depuis $sauvegarde"
-  install -o "$UTILISATEUR_APP" -g "$UTILISATEUR_APP" -m 640 "$sauvegarde" "$temporaire" || return 1
-  # Les fichiers annexes de la base remplacée ne doivent pas être rejoués sur la sauvegarde.
+  local fichier
+  info "Restauration de la base depuis $1"
+  runuser -u "$UTILISATEUR_APP" -- install -m 640 "$1" "$BASE.restauration" || return 1
   for fichier in "$BASE-wal" "$BASE-shm" "$BASE-journal"; do
-    if [ -e "$fichier" ]; then rm -f -- "$fichier" || return 1; fi
+    if [ -e "$fichier" ]; then runuser -u "$UTILISATEUR_APP" -- rm -f "$fichier" || return 1; fi
   done
-  mv -f -- "$temporaire" "$BASE" || return 1
+  runuser -u "$UTILISATEUR_APP" -- mv -f "$BASE.restauration" "$BASE" || return 1
   info "Base restaurée."
 }
 
-nettoyer_sauvegardes() {
-  local liste nom rang=0
-  liste="$(find "$DOSSIER_SAUVEGARDES" -maxdepth 1 -type f -name 'edt-*.db' -printf '%f\n' | sort -r)"
-  while IFS= read -r nom; do
-    [ -n "$nom" ] || continue
-    rang=$((rang + 1))
-    if [ "$rang" -gt "$SAUVEGARDES_A_GARDER" ]; then
-      rm -f -- "${DOSSIER_SAUVEGARDES:?}/$nom"
-      info "Ancienne sauvegarde supprimée : $nom"
-    fi
-  done <<< "$liste"
-}
-
-supprimer_version() {
-  local chemin=$1 raison=$2
-  case "$chemin" in
-    "$DOSSIER_VERSIONS"/?*) ;;
-    *) echouer "refus de supprimer un chemin inattendu : $chemin" ;;
-  esac
-  rm -rf -- "$chemin"
-  info "Version supprimée ($raison) : ${chemin##*/}"
-}
-
-# Garde la version en service et les plus récentes versions réussies
-# (VERSIONS_A_GARDER au total). Les versions jamais mises en service (échec)
-# sont supprimées après 2 heures (délai laissé à un déploiement concurrent en
-# cours d'envoi).
-nettoyer_versions() {
-  local courante liste nom chemin recente rang=0
+# Supprime les plus anciens éléments d'une liste triée (noms horodatés) pour
+# n'en garder que $1 ; ne supprime jamais la version en service.
+supprimer_les_plus_anciens() {
+  local a_garder=$1 courante i
+  shift
   courante="$(readlink -f "$LIEN_COURANT")"
-  liste="$(find "$DOSSIER_VERSIONS" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -r)"
-  while IFS= read -r nom; do
-    [ -n "$nom" ] || continue
-    chemin="$DOSSIER_VERSIONS/$nom"
-    if [ "$chemin" = "$courante" ]; then
-      rang=$((rang + 1))
-    elif [ -e "$chemin/$MARQUE_REUSSITE" ]; then
-      rang=$((rang + 1))
-      if [ "$rang" -gt "$VERSIONS_A_GARDER" ]; then
-        supprimer_version "$chemin" "au-delà des $VERSIONS_A_GARDER plus récentes"
-      fi
-    else
-      recente="$(find "$chemin" -maxdepth 0 -mmin -120)"
-      if [ -z "$recente" ]; then
-        supprimer_version "$chemin" "jamais mise en service"
-      fi
+  for (( i = 1; i <= $# - a_garder; i++ )); do
+    local chemin="${!i}"
+    if [ "$chemin" != "$courante" ]; then
+      rm -rf -- "$chemin"
+      info "Supprimé (au-delà des $a_garder plus récents) : ${chemin##*/}"
     fi
-  done <<< "$liste"
+  done
 }
 
 # =============================================================================
@@ -387,16 +309,21 @@ etape "Contrôles du serveur"
 if [ "$EUID" -ne 0 ]; then
   echouer "ce script doit être lancé en root (sudo)."
 fi
-if [ ! -d /var/log/edt ]; then
-  echouer "/var/log/edt absent : le serveur n'est pas installé (deploy/installer-serveur.sh)."
+for chemin in "$DOSSIER_JOURNAUX_DEPLOIEMENT" "$FICHIER_ENV" /etc/systemd/system/edt.service \
+  "$DOSSIER_SAUVEGARDES" /var/cache/edt/pip; do
+  if [ ! -e "$chemin" ]; then
+    echouer "$chemin absent : le serveur n'est pas (complètement) installé ; relancez deploy/installer-serveur.sh."
+  fi
+done
+# tee doit accepter -i (ignorer Ctrl+C) et -p (survivre à une coupure SSH) :
+# vérifié avant de lui confier toute la sortie.
+if ! tee -i -p -a /dev/null < /dev/null; then
+  echouer "la commande tee de ce serveur n'accepte pas les options -i -p."
 fi
-install -d -o root -g root -m 750 "$DOSSIER_JOURNAUX_DEPLOIEMENT"
 JOURNAL_DEPLOIEMENT="$DOSSIER_JOURNAUX_DEPLOIEMENT/$VERSION.log"
-# Une coupure SSH ne doit pas interrompre le déploiement : SIGHUP est ignoré et
-# la sortie passe par « tee -p », qui continue d'écrire le fichier journal même
-# quand plus personne ne lit l'écran.
 trap '' HUP
-exec > >(tee -p -a "$JOURNAL_DEPLOIEMENT") 2>&1
+exec > >(tee -i -p -a "$JOURNAL_DEPLOIEMENT") 2>&1
+trap 'echouer "interrompu par un signal (INT ou TERM), étape « $ETAPE »."' INT TERM
 info "Déploiement de $VERSION (commit $SHA, référence $REF, par $AUTEUR)."
 info "Journal complet : $JOURNAL_DEPLOIEMENT"
 
@@ -404,15 +331,9 @@ exec 9> "$VERROU"
 if ! flock -n 9; then
   echouer "un autre déploiement est en cours sur ce serveur (verrou $VERROU). Attendez sa fin puis relancez."
 fi
-
-for commande in "$PYTHON_SYSTEME" curl runuser systemctl journalctl flock find; do
+for commande in python3 curl runuser systemctl systemd-run journalctl flock ss; do
   if ! command -v "$commande" > /dev/null; then
     echouer "commande « $commande » introuvable sur le serveur (relancez deploy/installer-serveur.sh)."
-  fi
-done
-for chemin in "$FICHIER_ENV" /etc/systemd/system/edt.service "$DOSSIER_SAUVEGARDES"; do
-  if [ ! -e "$chemin" ]; then
-    echouer "$chemin absent : le serveur n'est pas (complètement) installé (deploy/installer-serveur.sh)."
   fi
 done
 if ! id -u "$UTILISATEUR_APP" > /dev/null; then
@@ -421,31 +342,15 @@ fi
 if [ ! -e "$DOSSIER_CODE/pyproject.toml" ]; then
   echouer "code absent ou incomplet dans $DOSSIER_CODE (pyproject.toml introuvable) : l'envoi par deployer.sh a-t-il réussi ?"
 fi
-
-version_python="$("$PYTHON_SYSTEME" -c 'import sys; print("%d.%d.%d" % sys.version_info[:3])')"
-if ! "$PYTHON_SYSTEME" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
-  echouer "Python $version_python est trop ancien (3.11 minimum)."
+# df -P -k : format POSIX, compris par les coreutils GNU comme par uutils.
+espace_libre_ko="$(df -P -k "$DOSSIER_VERSIONS" | awk 'NR == 2 { print $4 }')"
+if ! [[ "$espace_libre_ko" =~ ^[0-9]+$ ]]; then
+  echouer "espace libre illisible sous $DOSSIER_VERSIONS (df a renvoyé « $espace_libre_ko »)."
 fi
-info "Python du serveur : $version_python"
-
-espace_libre_mo="$(df --output=avail -m "$DOSSIER_VERSIONS" | tail -n 1 | tr -d ' ')"
-if [ "$espace_libre_mo" -lt "$ESPACE_MINIMAL_MO" ]; then
-  echouer "seulement $espace_libre_mo Mo libres sous $DOSSIER_VERSIONS (minimum $ESPACE_MINIMAL_MO Mo) : faites de la place (voir deploy/etat.sh)."
+if [ $((espace_libre_ko / 1024)) -lt "$ESPACE_MINIMAL_MO" ]; then
+  echouer "seulement $((espace_libre_ko / 1024)) Mo libres sous $DOSSIER_VERSIONS (minimum $ESPACE_MINIMAL_MO Mo) : faites de la place (voir deploy/etat.sh)."
 fi
-info "Espace libre : $espace_libre_mo Mo"
-
-charger_environnement
-url_base="$(valeur_env EDT_DB_URL)"
-case "$url_base" in
-  sqlite:////*) BASE="/${url_base#sqlite:////}"; BASE="${BASE%%\?*}" ;;
-  "") echouer "EDT_DB_URL absente de $FICHIER_ENV." ;;
-  *) echouer "EDT_DB_URL=« $url_base » : seule une base SQLite à chemin absolu est prise en charge (exemple : sqlite:////var/lib/edt/edt.db)." ;;
-esac
-case "$BASE" in
-  "$DOSSIER_DONNEES"/*) ;;
-  *) avertir "la base $BASE est hors de $DOSSIER_DONNEES : le service ne pourra pas y écrire (ReadWritePaths dans edt.service)." ;;
-esac
-info "Base de données : $BASE"
+info "Espace libre : $((espace_libre_ko / 1024)) Mo"
 
 if [ -L "$LIEN_COURANT" ]; then
   PRECEDENTE="$(readlink -f "$LIEN_COURANT")"
@@ -472,10 +377,7 @@ envoi=$(horodatage)
 EOF
 
 etape "Environnement Python et dépendances"
-if [ -e "$DOSSIER_VENV" ]; then
-  info "Le venv $DOSSIER_VENV existe déjà (relance manuelle) : il est complété."
-fi
-"$PYTHON_SYSTEME" -m venv "$DOSSIER_VENV"
+python3 -m venv "$DOSSIER_VERSION/venv"
 info "Installation du paquet edt et de ses dépendances (journal détaillé : $DOSSIER_VERSION/installation-pip.log)"
 "$PYTHON_VENV" -m pip install --no-input --disable-pip-version-check --progress-bar off \
   --log "$DOSSIER_VERSION/installation-pip.log" "$DOSSIER_CODE"
@@ -483,15 +385,43 @@ info "Installation du paquet edt et de ses dépendances (journal détaillé : $D
 nombre_paquets="$(wc -l < "$DOSSIER_VERSION/paquets-installes.txt")"
 info "$nombre_paquets paquets installés (liste : $DOSSIER_VERSION/paquets-installes.txt)."
 
-etape "Test de chargement de la nouvelle version"
-# Base et journaux jetables : ce test ne touche ni la vraie base ni les vrais journaux.
-dossier_test="$(runuser -u "$UTILISATEUR_APP" -- mktemp -d /tmp/edt-test-import.XXXXXX)"
-if ! lancer_comme_app env "EDT_DB_URL=sqlite:///$dossier_test/test.db" "EDT_LOG_DIR=$dossier_test" \
-  "$PYTHON_VENV" -c 'import edt.web.asgi; print("import de edt.web.asgi : ok")'; then
-  rm -rf -- "$dossier_test"
-  echouer "la nouvelle version ne se charge pas (import de edt.web.asgi impossible : voir l'erreur Python ci-dessus)."
+etape "Chargement de la nouvelle version et base utilisée"
+# L'application elle-même dit quelle base elle utilisera : mêmes valeurs que
+# le service (blancs, valeurs par défaut...). Aucune base n'est ouverte ici.
+if ! sortie="$(lancer_comme_app "$PYTHON_VENV" -c 'import edt.web.asgi
+from sqlalchemy.engine import make_url
+from edt.config import charger_configuration
+print(make_url(charger_configuration().db_url).database or "")')"; then
+  echouer "la nouvelle version ne se charge pas avec la configuration de production (erreur Python ci-dessus) : rien n'a été touché."
 fi
-rm -rf -- "$dossier_test"
+BASE="${sortie##*$'\n'}"
+info "import de edt.web.asgi : ok ; base utilisée : « $BASE »"
+if [[ "$BASE" != /* ]]; then
+  echouer "EDT_DB_URL doit désigner une base SQLite par un chemin absolu (exemple : sqlite:////var/lib/edt/edt.db) ; l'application lit « $BASE » (vérifiez $FICHIER_ENV)."
+fi
+if [[ "$BASE" != "$DOSSIER_DONNEES"/* ]]; then
+  avertir "la base « $BASE » est hors de $DOSSIER_DONNEES : le service ne pourra pas y écrire (ReadWritePaths dans edt.service)."
+fi
+if [ ! -e "$BASE" ] && [ -n "$PRECEDENTE" ] && [ "$RESET_BASE" = 0 ]; then
+  echouer "base « $BASE » introuvable alors qu'une version est en service : vérifiez EDT_DB_URL dans $FICHIER_ENV. Si la base a été retirée exprès, relancez avec --reset-base."
+fi
+
+if aide="$(lancer_comme_app "$PYTHON_VENV" -m edt verifier-schema --help 2>&1)"; then
+  VERIFIER_SCHEMA=1
+else
+  code=$?
+  if [ "$code" -ne 2 ]; then
+    echouer "« python -m edt verifier-schema --help » a échoué (code $code) : $aide"
+  fi
+  VERIFIER_SCHEMA=0
+  avertir "cette version ne fournit pas « python -m edt verifier-schema » (commande inconnue) : le schéma de la base ne sera PAS vérifié ; un changement de colonne passerait inaperçu."
+fi
+
+pid_service="$(systemctl show -p MainPID --value "$SERVICE")"
+ecouteurs="$(ss -Hltnp "sport = :$PORT_APP")"
+if [ -n "$ecouteurs" ] && ! grep -q "pid=$pid_service," <<< "$ecouteurs"; then
+  echouer "le port $PORT_APP est tenu par un autre programme que le service $SERVICE : $ecouteurs (arrêtez-le : docs/deploiement.md, « Port occupé »)."
+fi
 
 # =============================================================================
 # BASCULE (à partir d'ici, tout échec déclenche le retour arrière)
@@ -504,16 +434,20 @@ info "Service arrêté (un calcul d'emploi du temps en cours est interrompu)."
 
 etape "Sauvegarde de la base"
 sauvegarder_base
-nettoyer_sauvegardes
 
-if [ "$RESET_BASE" = 1 ]; then
-  etape "Remise à zéro de la base (python -m edt init-db --reset)"
-  BASE_MODIFIEE=1
-  lancer_comme_app "$PYTHON_VENV" -m edt init-db --reset
-else
-  etape "Initialisation de la base (python -m edt init-db)"
-  BASE_MODIFIEE=1
-  lancer_comme_app "$PYTHON_VENV" -m edt init-db
+options_init=()
+if [ "$RESET_BASE" = 1 ]; then options_init=(--reset); fi
+etape "Initialisation de la base (python -m edt init-db${options_init:+ ${options_init[*]}})"
+BASE_MODIFIEE=1
+if ! lancer_comme_app "$PYTHON_VENV" -m edt init-db "${options_init[@]}"; then
+  echouer "init-db a échoué (message de l'application ci-dessus). S'il parle de colonnes ou d'un schéma différent du modèle : $EXPLICATION_SCHEMA"
+fi
+
+if [ "$VERIFIER_SCHEMA" = 1 ]; then
+  etape "Vérification du schéma (python -m edt verifier-schema)"
+  if ! lancer_comme_app "$PYTHON_VENV" -m edt verifier-schema; then
+    echouer "$EXPLICATION_SCHEMA"
+  fi
 fi
 
 etape "Bascule du lien $LIEN_COURANT"
@@ -534,19 +468,25 @@ PHASE="finalisation"
 etape "Finalisation"
 horodatage > "$DOSSIER_VERSION/$MARQUE_REUSSITE"
 printf 'mise_en_service=%s\n' "$(horodatage)" >> "$FICHIER_INFOS"
-
 if version_appli="$(lancer_comme_app "$PYTHON_VENV" -m edt version)"; then
   info "Version annoncée par l'application : $version_appli"
   printf 'version_application=%s\n' "$version_appli" >> "$FICHIER_INFOS"
 else
   avertir "« python -m edt version » a échoué (code $?) ; la version reste en service."
 fi
-if lancer_comme_app "$PYTHON_VENV" -m edt doctor; then
-  info "Diagnostic « python -m edt doctor » : ok."
-else
-  avertir "« python -m edt doctor » signale un problème (code $?, détails ci-dessus) ; la version reste en service."
+if ! lancer_comme_app "$PYTHON_VENV" -m edt doctor; then
+  avertir "« python -m edt doctor » signale un échec (détails ci-dessus) ; la version reste en service."
 fi
 
-nettoyer_versions
+versions=()
+for chemin in "$DOSSIER_VERSIONS"/*/; do
+  if [ -d "$chemin" ]; then versions+=("${chemin%/}"); fi
+done
+supprimer_les_plus_anciens "$VERSIONS_A_GARDER" "${versions[@]}"
+sauvegardes=()
+for chemin in "$DOSSIER_SAUVEGARDES"/edt-*.db; do
+  if [ -e "$chemin" ]; then sauvegardes+=("$chemin"); fi
+done
+supprimer_les_plus_anciens "$SAUVEGARDES_A_GARDER" "${sauvegardes[@]}"
 noter_historique "RÉUSSI"
 info "Déploiement de $VERSION réussi."

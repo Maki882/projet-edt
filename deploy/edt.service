@@ -33,7 +33,8 @@ Environment=PYTHONUNBUFFERED=1
 # état est gardé en mémoire), pas de rechargement automatique. Derrière nginx :
 # --proxy-headers fait confiance aux en-têtes X-Forwarded-* envoyés par
 # 127.0.0.1 seulement (bon schéma http/https et vraie adresse du client).
-ExecStart=/opt/edt/courant/venv/bin/python -m uvicorn edt.web.asgi:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1
+# --no-access-log : l'application journalise déjà chaque requête (avec son identifiant).
+ExecStart=/opt/edt/courant/venv/bin/python -m uvicorn edt.web.asgi:app --host 127.0.0.1 --port 8000 --workers 1 --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-access-log
 Restart=on-failure
 RestartSec=3
 # Arrêt : 20 s de délai de grâce, puis arrêt forcé (un calcul en cours est perdu).
