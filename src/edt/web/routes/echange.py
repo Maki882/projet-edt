@@ -5,6 +5,8 @@
   premières lignes de chaque tableau, bilan, rapport, bouton d'application ;
 - `POST /import/appliquer` : application ; mêmes fichiers, renvoyés par le
   navigateur (aucun fichier n'est conservé sur le serveur) ;
+- `POST /import/rapport.csv` : le rapport complet en CSV, recalculé par une
+  simulation sur les mêmes fichiers (il n'est jamais encodé dans la page) ;
 - `GET /export` : gabarit vide, données, emploi du temps ;
 - `GET /export/gabarit.{xlsx|zip}`, `GET /export/donnees.{xlsx|zip}` ;
 - `GET /export/emploi-du-temps.csv` et `GET /export/emploi-du-temps.ics` :
@@ -13,12 +15,18 @@
 
 Les fichiers produits sont construits en mémoire avant la réponse (la
 session de la requête est fermée au retour de la route). Envoi limité à 20 Mo.
+
+Le serveur n'a qu'un processus : seule la lecture du formulaire (des
+entrées-sorties) se fait dans la boucle d'événements ; l'import, le calcul
+du contexte et le rendu de la page s'exécutent dans le pool de fils, pour
+qu'un gros fichier ne gèle pas les autres requêtes. La page n'affiche que
+les premiers signalements, besoins et aperçus (`LIMITE_*`), avec leur total.
 """
 
 from __future__ import annotations
 
-import base64
 import logging
+from dataclasses import replace
 from typing import Annotated
 from urllib.parse import quote
 
@@ -47,6 +55,14 @@ MARGE_ENTETES_OCTETS = 512 * 1024
 """Marge tolérée au-delà de 20 Mo pour l'enveloppe du formulaire (en-têtes des parties)."""
 MAX_FICHIERS = 50
 EXTENSIONS = ".csv,.txt,.tsv,.xlsx,.zip,.ics"
+LIMITE_SIGNALEMENTS = 200
+"""Signalements affichés au plus (le rapport CSV les contient tous)."""
+LIMITE_BESOINS = 500
+"""Besoins reconstitués affichés au plus."""
+LIMITE_APERCUS = 20
+"""Tableaux montrés au plus dans l'aperçu."""
+LIMITE_COLONNES_APERCU = 40
+"""Colonnes montrées au plus par tableau dans l'aperçu."""
 
 
 # --------------------------------------------------------------------------- #
@@ -64,25 +80,37 @@ def page_import(request: Request, session: SessionRequete) -> HTMLResponse:
 async def simuler(request: Request, session: SessionRequete) -> HTMLResponse:
     """Simule l'import : aperçu, bilan et rapport, sans rien écrire."""
     envois, options = await _lire_envoi(request)
-    rapport = await run_in_threadpool(service.simuler_import, session, envois, options)
-    remplacement = (
-        await run_in_threadpool(service.compter_remplacement, session)
-        if options.tout_remplacer
-        else {}
-    )
-    resultat = _contexte_resultat(rapport, remplacement)
-    if est_htmx(request):
-        return rendre(request, "echange/_resultat.html", resultat)
-    contexte = await run_in_threadpool(_contexte_import, session)
-    return rendre(request, "echange/import.html", contexte | resultat)
+    return await run_in_threadpool(_simuler, request, session, envois, options)
 
 
 @routeur.post("/import/appliquer", response_class=HTMLResponse, name="import_appliquer")
 async def appliquer(request: Request, session: SessionRequete) -> HTMLResponse:
     """Applique l'import : les lignes valides entrent, les autres sont listées."""
     envois, options = await _lire_envoi(request)
-    rapport = await run_in_threadpool(service.appliquer_import, session, envois, options)
-    contexte = await run_in_threadpool(_contexte_import, session)
+    return await run_in_threadpool(_appliquer, request, session, envois, options)
+
+
+@routeur.post("/import/rapport.csv", name="import_rapport")
+async def telecharger_rapport(request: Request, session: SessionRequete) -> Response:
+    """Rapport complet en CSV : simulation des mêmes fichiers (rien n'est écrit)."""
+    envois, options = await _lire_envoi(request)
+    return await run_in_threadpool(_rapport_csv, session, envois, options)
+
+
+def _simuler(request: Request, session, envois, options) -> HTMLResponse:
+    rapport = service.simuler_import(session, envois, options)
+    remplacement = service.compter_remplacement(session) if options.tout_remplacer else {}
+    resultat = _contexte_resultat(rapport, remplacement)
+    if est_htmx(request):
+        return rendre(request, "echange/_resultat.html", resultat)
+    return rendre(request, "echange/import.html", _contexte_import(session) | resultat)
+
+
+def _appliquer(request: Request, session, envois, options) -> HTMLResponse:
+    rapport = service.appliquer_import(session, envois, options)
+    resultat = _contexte_resultat(rapport, {})
+    if est_htmx(request):
+        return rendre(request, "echange/_resultat.html", resultat)
     if rapport.a_des_rejets:
         message = Message(
             f"Import appliqué : {rapport.nb_rejets} ligne(s) ou séance(s) non importée(s), "
@@ -92,10 +120,14 @@ async def appliquer(request: Request, session: SessionRequete) -> HTMLResponse:
     else:
         message = Message("Import appliqué : toutes les lignes sont entrées.", "succes")
     return rendre(
-        request,
-        "echange/import.html",
-        contexte | _contexte_resultat(rapport, {}),
-        messages=[message],
+        request, "echange/import.html", _contexte_import(session) | resultat, messages=[message]
+    )
+
+
+def _rapport_csv(session, envois, options) -> Response:
+    simulation = replace(options, confirmer_remplacement=False)
+    return _telecharger(
+        service.rapport_telechargeable(service.simuler_import(session, envois, simulation))
     )
 
 
@@ -151,21 +183,30 @@ def _contexte_import(session) -> dict:
 
 
 def _contexte_resultat(rapport: RapportImport, remplacement: dict[str, int]) -> dict:
-    """Ce que le gabarit du résultat affiche (aperçu, bilan, rapport, téléchargement)."""
-    fichier_rapport = service.rapport_telechargeable(rapport)
+    """Ce que le gabarit du résultat affiche : aperçu, bilan, premiers signalements et besoins."""
     apercus = [
         {
             "titre": f"{a.fichier} - {a.feuille}",
             "nb_lignes": a.nb_lignes,
-            "colonnes": [(str(i), entete) for i, entete in enumerate(a.entetes)],
-            "lignes": [{str(i): valeur for i, valeur in enumerate(ligne)} for ligne in a.lignes],
+            "nb_colonnes": len(a.entetes),
+            "colonnes": [
+                (str(i), entete) for i, entete in enumerate(a.entetes[:LIMITE_COLONNES_APERCU])
+            ],
+            "lignes": [
+                {str(i): valeur for i, valeur in enumerate(ligne[:LIMITE_COLONNES_APERCU])}
+                for ligne in a.lignes
+            ],
         }
-        for a in rapport.apercus
+        for a in rapport.apercus[:LIMITE_APERCUS]
     ]
     return {
         "rapport": rapport,
         "mode_libelle": ModeImport(rapport.mode).libelle,
         "apercus": apercus,
+        "nb_apercus": len(rapport.apercus),
+        "limite_colonnes_apercu": LIMITE_COLONNES_APERCU,
+        "besoins": rapport.besoins[:LIMITE_BESOINS],
+        "nb_signalements": rapport.nb_signalements,
         "signalements": [
             {
                 "gravite": s.gravite,
@@ -175,7 +216,7 @@ def _contexte_resultat(rapport: RapportImport, remplacement: dict[str, int]) -> 
                 "colonne": s.colonne,
                 "message": s.message,
             }
-            for s in rapport.signalements
+            for s in rapport.signalements[:LIMITE_SIGNALEMENTS]
         ],
         "remplacement_texte": ", ".join(
             f"{n} {libelle}" for libelle, n in remplacement.items() if n
@@ -183,9 +224,6 @@ def _contexte_resultat(rapport: RapportImport, remplacement: dict[str, int]) -> 
         or "aucune donnée",
         "tout_remplacer": bool(remplacement)
         or any(b.objet == "tout remplacer" for b in rapport.bilans),
-        "rapport_nom": fichier_rapport.nom,
-        "rapport_url": "data:text/csv;charset=utf-8;base64,"
-        + base64.b64encode(fichier_rapport.contenu).decode("ascii"),
     }
 
 

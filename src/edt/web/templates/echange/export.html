@@ -28,7 +28,8 @@
   <h2>Emploi du temps</h2>
   {% if choix.versions %}
   <form class="formulaire" method="get" action="/export/emploi-du-temps.csv">
-    {{ ui.champ("version_id", "Version", valeur=choix.versions[0][0], type="select", options=choix.versions, requis=true) }}
+    {{ ui.champ("version_id", "Version", valeur=choix.version_par_defaut, type="select", options=choix.versions, requis=true,
+                aide="Présélection : la version active du semestre en cours.") }}
     {{ ui.champ("couche", "Contenu", valeur="hebdo", type="select", options=couches,
                 aide="Semaine type : une ligne (ou un événement récurrent) par séance hebdomadaire. Séances datées : les séances enregistrées pour chaque date.") }}
     <p class="discret">Pour exporter une seule ressource, choisir au plus un groupe, un enseignant ou une salle.</p>

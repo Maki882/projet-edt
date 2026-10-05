@@ -48,7 +48,8 @@ def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fi
     assert "2 créé(s), 4 rejeté(s)" in page
     assert "Campus « LYON » inconnu" in page
     assert "N401" in page  # aperçu des premières lignes
-    assert "data:text/csv;charset=utf-8;base64," in page
+    assert "data:text/csv" not in page  # le rapport n'est pas encodé dans la page
+    assert 'formaction="/import/rapport.csv"' in page
     assert 'formaction="/import/appliquer"' in page
     assert _compter(m.Salle) == jeu_minimal.nb_salles
 

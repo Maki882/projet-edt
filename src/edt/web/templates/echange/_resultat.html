@@ -1,7 +1,9 @@
 {#
   Résultat d'un import (simulation ou application) : bilan, semaine type, besoins
-  reconstitués, rapport ligne par ligne, aperçu des tableaux lus, bouton d'application.
-  Fragment rendu seul (HTMX) ou inclus dans echange/import.html.
+  reconstitués, premiers signalements du rapport, aperçu des tableaux lus, bouton
+  d'application. Fragment rendu seul (HTMX) ou inclus dans echange/import.html.
+  La page n'affiche que les premiers signalements, besoins et aperçus ; le rapport
+  complet se télécharge (POST /import/rapport.csv, avec les fichiers du formulaire).
 #}
 {% import "macros.html" as ui %}
 <section class="carte" id="resultat">
@@ -29,25 +31,42 @@
   <p>{{ phrase }}</p>
   {% endfor %}
 
-  {% if rapport.besoins %}
+  {% if besoins %}
   <h3>Besoins reconstitués et semaine type proposée</h3>
+  {% if rapport.besoins|length > besoins|length %}
+  <p class="discret">{{ rapport.besoins|length }} besoins : les {{ besoins|length }} premiers sont affichés.</p>
+  {% endif %}
   {{ ui.tableau([("etat", "État"), ("matiere", "Matière"), ("type", "Type"), ("libelle", "Libellé"), ("groupes", "Groupes"),
                  ("enseignants", "Enseignants"), ("duree", "Durée"), ("volume", "Volume"), ("creneaux", "Créneaux de la semaine type"),
-                 ("seances", "Séances")], rapport.besoins) }}
+                 ("seances", "Séances")], besoins) }}
   <p class="discret">Les besoins et la semaine type restent modifiables après l'import dans les écrans de planification ;
     pour retenir une autre semaine type, indiquer une date de cette semaine et simuler de nouveau.</p>
   {% endif %}
 
-  <h3>Rapport ({{ signalements|length }} ligne(s))</h3>
-  <p><a class="bouton" download="{{ rapport_nom }}" href="{{ rapport_url }}">Télécharger le rapport (CSV)</a></p>
+  <h3>Rapport ({{ nb_signalements }} ligne(s){% if nb_signalements > signalements|length %}, les {{ signalements|length }} premières affichées{% endif %})</h3>
+  {% if rapport.signalements_omis %}
+  <p class="discret">Au-delà de {{ rapport.signalements|length }} lignes, le détail n'est pas conservé : {{ rapport.signalements_omis }} signalement(s) sont seulement comptés.</p>
+  {% endif %}
+  {% if nb_signalements %}
+  <p>
+    <button type="submit" class="bouton" form="formulaire-import"
+            formaction="/import/rapport.csv" formmethod="post" formenctype="multipart/form-data">
+      {% if rapport.simulation %}Télécharger le rapport complet (CSV){% else %}Télécharger le rapport des lignes non importées (CSV){% endif %}
+    </button>
+    <span class="discret">Recalculé par une simulation sur les fichiers choisis ci-dessus (rien n'est écrit).</span>
+  </p>
+  {% endif %}
   {{ ui.tableau([("gravite", "Gravité"), ("fichier", "Fichier"), ("feuille", "Feuille"), ("ligne", "Ligne"),
                  ("colonne", "Colonne"), ("message", "Message")], signalements, vide="Rien à signaler.") }}
 
   {% if apercus %}
   <h3>Aperçu des fichiers lus</h3>
+  {% if nb_apercus > apercus|length %}
+  <p class="discret">{{ nb_apercus }} tableaux lus : les {{ apercus|length }} premiers sont montrés.</p>
+  {% endif %}
   {% for apercu in apercus %}
   <details>
-    <summary>{{ apercu.titre }} : {{ apercu.nb_lignes }} ligne(s){% if apercu.nb_lignes > apercu.lignes|length %}, les {{ apercu.lignes|length }} premières affichées{% endif %}</summary>
+    <summary>{{ apercu.titre }} : {{ apercu.nb_lignes }} ligne(s){% if apercu.nb_lignes > apercu.lignes|length %}, les {{ apercu.lignes|length }} premières affichées{% endif %}{% if apercu.nb_colonnes > limite_colonnes_apercu %}, {{ limite_colonnes_apercu }} colonnes sur {{ apercu.nb_colonnes }}{% endif %}</summary>
     {{ ui.tableau(apercu.colonnes, apercu.lignes, vide="Aucune ligne.") }}
   </details>
   {% endfor %}
@@ -68,6 +87,8 @@
   {% endif %}
   <p class="discret">L'application renvoie les fichiers choisis dans le formulaire ci-dessus (ne pas les changer entre-temps).</p>
   <button type="submit" class="bouton bouton-principal" form="formulaire-import"
+          hx-post="/import/appliquer" hx-target="#resultat-import" hx-encoding="multipart/form-data"
+          hx-validate="true" hx-indicator="#indicateur-import"
           formaction="/import/appliquer" formmethod="post" formenctype="multipart/form-data">Appliquer l'import</button>
   {% endif %}
 </section>

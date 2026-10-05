@@ -161,19 +161,24 @@ class OptionsImport:
 
 @dataclass(frozen=True)
 class ChoixExport:
-    """Listes proposées par l'écran d'export : versions, groupes, enseignants, salles."""
+    """Listes proposées par l'écran d'export : versions, groupes, enseignants, salles.
+
+    `version_par_defaut` : la version à présélectionner (voir `choix_export`).
+    """
 
     versions: tuple[tuple[int, str], ...]
     groupes: tuple[tuple[int, str], ...]
     enseignants: tuple[tuple[int, str], ...]
     salles: tuple[tuple[int, str], ...]
+    version_par_defaut: int | None = None
 
     def vers_dict(self) -> dict:
         """Représentation JSON."""
-        return {
+        listes = {
             nom: [{"id": i, "libelle": libelle} for i, libelle in getattr(self, nom)]
             for nom in ("versions", "groupes", "enseignants", "salles")
         }
+        return listes | {"version_par_defaut": self.version_par_defaut}
 
 
 def lire_options(
@@ -537,12 +542,19 @@ def resoudre_filtre(
         raise ErreurIntrouvable(rejet.message) from None
 
 
-def choix_export(session: Session) -> ChoixExport:
-    """Versions et ressources proposées par l'écran d'export."""
-    versions = session.scalars(
-        select(m.VersionEdt)
-        .options(selectinload(m.VersionEdt.semestre))
-        .order_by(m.VersionEdt.semestre_id.desc(), m.VersionEdt.numero.desc())
+def choix_export(session: Session, aujourdhui: dt.date | None = None) -> ChoixExport:
+    """Versions et ressources proposées par l'écran d'export.
+
+    La version présélectionnée est la version active du semestre proposé par
+    défaut (celui du jour) ; à défaut, la version active la plus récente ; à
+    défaut, la première de la liste.
+    """
+    versions = list(
+        session.scalars(
+            select(m.VersionEdt)
+            .options(selectinload(m.VersionEdt.semestre))
+            .order_by(m.VersionEdt.semestre_id.desc(), m.VersionEdt.numero.desc())
+        )
     )
     groupes = session.scalars(
         select(m.Groupe).options(selectinload(m.Groupe.annee)).order_by(m.Groupe.code)
@@ -564,4 +576,22 @@ def choix_export(session: Session) -> ChoixExport:
             for e in session.scalars(select(m.Enseignant).order_by(m.Enseignant.nom))
         ),
         salles=tuple((s.id, f"{s.code} ({s.campus.code})") for s in salles),
+        version_par_defaut=_version_par_defaut(session, versions, aujourdhui),
     )
+
+
+def _version_par_defaut(
+    session: Session, versions: list[m.VersionEdt], aujourdhui: dt.date | None
+) -> int | None:
+    if not versions:
+        return None
+    actives = [v for v in versions if v.active]
+    try:
+        semestre_id = semestre_par_defaut(session, aujourdhui).id
+    except ErreurIntrouvable:
+        journal.info("Aucun semestre : la version active la plus récente est présélectionnée")
+        semestre_id = None
+    for version in actives:
+        if version.semestre_id == semestre_id:
+            return version.id
+    return actives[0].id if actives else versions[0].id
