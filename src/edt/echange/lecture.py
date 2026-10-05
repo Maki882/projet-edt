@@ -10,9 +10,22 @@ Lecture tolérante d'un CSV :
   Windows-1252 **avec un avertissement** (les accents sont à vérifier) ;
 - séparateur : point-virgule, virgule ou tabulation, détecté sur la ligne
   d'en-tête ;
-- les lignes entièrement vides sont sautées ; une valeur sans en-tête est
-  gardée sous le nom « colonne N » (elle finira dans les colonnes non
-  reconnues, jamais perdue en silence).
+- les lignes entièrement vides sont sautées (sans être gardées en mémoire) ;
+  une valeur sans en-tête est gardée sous le nom « colonne N » (elle finira
+  dans les colonnes non reconnues, jamais perdue en silence).
+
+Bornes (le site est public : un fichier ne doit pas pouvoir épuiser la
+mémoire ou le processeur du serveur). Au-delà, le tableau ou le fichier est
+refusé avec un signalement d'erreur lisible, jamais tronqué en silence :
+
+- archive ZIP : `MAX_MEMBRES_ARCHIVE` fichiers ; classeur XLSX (qui est
+  aussi une archive) : `MAX_MEMBRES_CLASSEUR` parties ; dans les deux cas,
+  `TAILLE_MAX_DECOMPRESSEE` octets une fois décompressé (tailles déclarées,
+  qu'un membre ne peut pas dépasser à la lecture) ;
+- tableau : `MAX_LIGNES_TABLEAU` lignes de données, `MAX_LIGNES_LUES`
+  lignes lues (vides comprises), `MAX_COLONNES` colonnes ;
+- envoi : `MAX_LIGNES_ENVOI` lignes de données pour tous les fichiers et
+  onglets réunis (`Limites`).
 
 Un fichier `.ics` n'est pas un tableau : il est lu par `edt.echange.ical`.
 """
@@ -23,6 +36,8 @@ import csv
 import io
 import logging
 import zipfile
+import zlib
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,6 +52,40 @@ journal = logging.getLogger(__name__)
 NB_LIGNES_APERCU = 20
 SEPARATEURS = (";", "\t", ",")
 """Séparateurs reconnus, par ordre de préférence en cas d'égalité."""
+
+MAX_LIGNES_TABLEAU = 50_000
+"""Lignes de données au plus par tableau (un CSV ou un onglet)."""
+MAX_LIGNES_LUES = 2 * MAX_LIGNES_TABLEAU
+"""Lignes lues au plus par tableau, lignes vides comprises."""
+MAX_LIGNES_ENVOI = 100_000
+"""Lignes de données au plus pour tout un envoi (tous fichiers et onglets)."""
+MAX_COLONNES = 500
+"""Colonnes au plus par tableau."""
+MAX_MEMBRES_ARCHIVE = 50
+"""Fichiers au plus dans une archive ZIP."""
+MAX_MEMBRES_CLASSEUR = 300
+"""Parties au plus dans un classeur XLSX (le gabarit en compte une soixantaine)."""
+TAILLE_MAX_DECOMPRESSEE = 20 * 1024 * 1024
+"""Taille au plus d'une archive ou d'un classeur une fois décompressé (comme un envoi)."""
+ERREURS_DECOMPRESSION = (
+    zipfile.BadZipFile,
+    zlib.error,
+    EOFError,
+    NotImplementedError,
+    RuntimeError,
+)
+"""Erreurs d'un membre d'archive abîmé, chiffré ou compressé d'une façon inconnue."""
+
+
+class TableauRefuse(Exception):  # noqa: N818 - refus d'un tableau, converti en signalement
+    """Tableau ou fichier qui dépasse une borne : refusé en entier, avec ce message."""
+
+
+@dataclass
+class Limites:
+    """Ce qu'il reste à lire pour un envoi : partagé par tous ses fichiers."""
+
+    lignes_restantes: int = MAX_LIGNES_ENVOI
 
 
 @dataclass(frozen=True)
@@ -113,8 +162,15 @@ def nature_fichier(fichier: FichierEnvoye) -> str:
     return "csv"
 
 
-def lire_fichier(fichier: FichierEnvoye) -> tuple[FichierLu, list[Signalement]]:
-    """Lit un fichier ; un fichier illisible donne un signalement d'erreur et aucun tableau."""
+def lire_fichier(
+    fichier: FichierEnvoye, limites: Limites | None = None
+) -> tuple[FichierLu, list[Signalement]]:
+    """Lit un fichier ; un fichier illisible ou trop grand donne un signalement d'erreur.
+
+    `limites` est partagé par les fichiers d'un même envoi (défaut : un envoi
+    réduit à ce fichier).
+    """
+    limites = limites if limites is not None else Limites()
     nature = nature_fichier(fichier)
     signalements: list[Signalement] = []
     if not fichier.contenu.strip():
@@ -133,13 +189,15 @@ def lire_fichier(fichier: FichierEnvoye) -> tuple[FichierLu, list[Signalement]]:
         texte = decoder(fichier.contenu, fichier.nom, signalements)
         return FichierLu(fichier.nom, texte_ical=texte), signalements
     if nature == "xlsx":
-        return FichierLu(fichier.nom, tuple(lire_xlsx(fichier, signalements))), signalements
+        tableaux = lire_xlsx(fichier, signalements, limites)
+        return FichierLu(fichier.nom, tuple(tableaux)), signalements
     if nature == "zip":
-        return FichierLu(fichier.nom, tuple(lire_zip(fichier, signalements))), signalements
+        tableaux = lire_zip(fichier, signalements, limites)
+        return FichierLu(fichier.nom, tuple(tableaux)), signalements
     texte = decoder(fichier.contenu, fichier.nom, signalements)
     if texte is None:
         return FichierLu(fichier.nom), signalements
-    tableau = lire_csv_texte(fichier.nom, fichier.nom, texte)
+    tableau = lire_csv_texte(fichier.nom, fichier.nom, texte, signalements, limites)
     return FichierLu(fichier.nom, (tableau,) if tableau else ()), signalements
 
 
@@ -197,14 +255,32 @@ def detecter_separateur(texte: str) -> str:
     return next(separateur for separateur in SEPARATEURS if comptes[separateur] == meilleur)
 
 
-def lire_csv_texte(fichier: str, nom: str, texte: str) -> Tableau | None:
-    """Tableau d'un texte CSV (`None` s'il ne contient aucune ligne non vide)."""
+def lire_csv_texte(
+    fichier: str,
+    nom: str,
+    texte: str,
+    signalements: list[Signalement],
+    limites: Limites | None = None,
+) -> Tableau | None:
+    """Tableau d'un texte CSV (`None` s'il est vide, refusé ou illisible, avec un signalement)."""
     separateur = detecter_separateur(texte)
     lecteur = csv.reader(io.StringIO(texte, newline=""), delimiter=separateur)
-    lignes = []
-    for cellules in lecteur:
-        lignes.append((lecteur.line_num, tuple(cellules)))
-    return _tableau(fichier, nom, lignes)
+    lignes = ((lecteur.line_num, cellules) for cellules in lecteur)
+    try:
+        return _tableau(fichier, nom, lignes, limites if limites is not None else Limites())
+    except TableauRefuse as refus:
+        signalements.append(Signalement(Gravite.ERREUR, str(refus), fichier, nom))
+    except csv.Error as erreur:
+        signalements.append(
+            Signalement(
+                Gravite.ERREUR,
+                f"CSV illisible à la ligne {lecteur.line_num} ({erreur}) : fichier non importé.",
+                fichier,
+                nom,
+                lecteur.line_num,
+            )
+        )
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -212,10 +288,15 @@ def lire_csv_texte(fichier: str, nom: str, texte: str) -> Tableau | None:
 # --------------------------------------------------------------------------- #
 
 
-def lire_xlsx(fichier: FichierEnvoye, signalements: list[Signalement]) -> list[Tableau]:
+def lire_xlsx(
+    fichier: FichierEnvoye, signalements: list[Signalement], limites: Limites | None = None
+) -> list[Tableau]:
     """Un tableau par onglet (l'onglet d'explications est sauté)."""
     from openpyxl import load_workbook
 
+    limites = limites if limites is not None else Limites()
+    if not _archive_acceptable(fichier, MAX_MEMBRES_CLASSEUR, "Classeur Excel", signalements):
+        return []
     try:
         classeur = load_workbook(io.BytesIO(fichier.contenu), read_only=True, data_only=True)
     except Exception as erreur:  # openpyxl lève des erreurs variées sur un fichier abîmé
@@ -229,39 +310,60 @@ def lire_xlsx(fichier: FichierEnvoye, signalements: list[Signalement]) -> list[T
         for onglet in classeur.worksheets:
             if est_lisez_moi(onglet.title):
                 continue
-            lignes = [
-                (numero, tuple(cellules))
-                for numero, cellules in enumerate(onglet.iter_rows(values_only=True), start=1)
-            ]
-            tableau = _tableau(fichier.nom, onglet.title, lignes)
+            # Les dimensions déclarées par le fichier ne servent pas : chaque ligne garde sa
+            # longueur réelle (un onglet qui se dit large de 16 384 colonnes reste borné).
+            onglet.reset_dimensions()
+            lignes = enumerate(onglet.iter_rows(values_only=True), start=1)
+            try:
+                tableau = _tableau(fichier.nom, onglet.title, lignes, limites)
+            except TableauRefuse as refus:
+                signalements.append(
+                    Signalement(Gravite.ERREUR, str(refus), fichier.nom, onglet.title)
+                )
+                continue
             if tableau is not None:
                 tableaux.append(tableau)
+    except ERREURS_DECOMPRESSION as erreur:
+        journal.warning("Classeur %s : partie illisible (%r)", fichier.nom, erreur)
+        signalements.append(
+            _erreur(fichier.nom, f"Classeur Excel abîmé ({erreur}) : lecture interrompue.")
+        )
     finally:
         classeur.close()
     return tableaux
 
 
-def lire_zip(fichier: FichierEnvoye, signalements: list[Signalement]) -> list[Tableau]:
+def lire_zip(
+    fichier: FichierEnvoye, signalements: list[Signalement], limites: Limites | None = None
+) -> list[Tableau]:
     """Les CSV et classeurs d'une archive (le fichier d'explications est sauté)."""
-    try:
-        archive = zipfile.ZipFile(io.BytesIO(fichier.contenu))
-    except zipfile.BadZipFile as erreur:
-        signalements.append(_erreur(fichier.nom, f"Archive ZIP illisible ({erreur})."))
+    limites = limites if limites is not None else Limites()
+    if not _archive_acceptable(fichier, MAX_MEMBRES_ARCHIVE, "Archive ZIP", signalements):
         return []
     tableaux: list[Tableau] = []
-    with archive:
+    with zipfile.ZipFile(io.BytesIO(fichier.contenu)) as archive:  # lisible : vérifiée avant
         for membre in archive.infolist():
             if membre.is_dir() or est_lisez_moi(membre.filename.rsplit("/", 1)[-1]):
                 continue
             nom_complet = f"{fichier.nom}/{membre.filename}"
-            interne = FichierEnvoye(nom_complet, archive.read(membre))
+            try:
+                contenu = archive.read(membre)
+            except ERREURS_DECOMPRESSION as erreur:
+                journal.warning("Archive %s : membre illisible (%r)", nom_complet, erreur)
+                signalements.append(
+                    _erreur(nom_complet, f"Fichier de l'archive illisible ({erreur}) : ignoré.")
+                )
+                continue
+            interne = FichierEnvoye(nom_complet, contenu)
             nature = nature_fichier(interne)
             if nature == "xlsx":
-                tableaux.extend(lire_xlsx(interne, signalements))
+                tableaux.extend(lire_xlsx(interne, signalements, limites))
             elif nature == "csv":
                 texte = decoder(interne.contenu, nom_complet, signalements)
                 if texte is not None:
-                    tableau = lire_csv_texte(nom_complet, membre.filename, texte)
+                    tableau = lire_csv_texte(
+                        nom_complet, membre.filename, texte, signalements, limites
+                    )
                     if tableau is not None:
                         tableaux.append(tableau)
             else:
@@ -427,44 +529,110 @@ def comparable(colonne: Colonne, valeur: Any) -> Any:
 # --------------------------------------------------------------------------- #
 
 
-def _tableau(fichier: str, nom: str, lignes: list[tuple[int, tuple[Any, ...]]]) -> Tableau | None:
-    """Construit un tableau : la première ligne non vide est l'en-tête."""
-    non_vides = [(numero, cellules) for numero, cellules in lignes if _non_vide(cellules)]
-    if not non_vides:
+def _archive_acceptable(
+    fichier: FichierEnvoye, max_membres: int, nature: str, signalements: list[Signalement]
+) -> bool:
+    """Vérifie, avant toute décompression, le nombre de membres et la taille décompressée.
+
+    Les tailles déclarées suffisent : à la lecture, un membre qui dépasse sa
+    taille déclarée lève une erreur au lieu de déborder.
+    """
+    try:
+        with zipfile.ZipFile(io.BytesIO(fichier.contenu)) as archive:
+            membres = archive.infolist()
+    except (zipfile.BadZipFile, EOFError, ValueError) as erreur:
+        signalements.append(_erreur(fichier.nom, f"{nature} illisible ({erreur})."))
+        return False
+    if len(membres) > max_membres:
+        signalements.append(
+            _erreur(
+                fichier.nom,
+                f"{nature} refusé : {len(membres)} fichiers à l'intérieur, {max_membres} au "
+                "plus. Envoyer les fichiers séparément.",
+            )
+        )
+        return False
+    taille = sum(membre.file_size for membre in membres)
+    if taille > TAILLE_MAX_DECOMPRESSEE:
+        journal.warning("%s %s refusé : %d octets décompressés", nature, fichier.nom, taille)
+        signalements.append(
+            _erreur(
+                fichier.nom,
+                f"{nature} refusé : {taille / 1024 / 1024:.0f} Mo une fois décompressé, "
+                f"{TAILLE_MAX_DECOMPRESSEE // (1024 * 1024)} Mo au plus. Découper l'envoi.",
+            )
+        )
+        return False
+    return True
+
+
+def _tableau(
+    fichier: str,
+    nom: str,
+    lignes: Iterable[tuple[int, Sequence[Any]]],
+    limites: Limites,
+) -> Tableau | None:
+    """Construit un tableau au fil de la lecture : la première ligne non vide est l'en-tête.
+
+    Les lignes vides ne sont pas gardées. Lève `TableauRefuse` dès qu'une
+    borne est dépassée (le reste du fichier n'est pas lu).
+    """
+    entetes_bruts: Sequence[Any] | None = None
+    ligne_entetes = 0
+    donnees: list[tuple[int, tuple[Any, ...]]] = []
+    utiles: set[int] = set()
+    for lues, (numero, cellules) in enumerate(lignes, start=1):
+        if lues > MAX_LIGNES_LUES:
+            raise TableauRefuse(
+                f"Tableau « {nom} » refusé : plus de {MAX_LIGNES_LUES} lignes (lignes vides "
+                "comprises). Découper le fichier."
+            )
+        cellules = _borner_colonnes(nom, cellules)
+        remplies = [i for i, cellule in enumerate(cellules) if texte_cellule(cellule)]
+        if not remplies:
+            continue
+        utiles.update(remplies)
+        if entetes_bruts is None:
+            entetes_bruts, ligne_entetes = cellules, numero
+            continue
+        if len(donnees) >= MAX_LIGNES_TABLEAU:
+            raise TableauRefuse(
+                f"Tableau « {nom} » refusé : plus de {MAX_LIGNES_TABLEAU} lignes de données. "
+                "Découper le fichier."
+            )
+        if len(donnees) >= limites.lignes_restantes:
+            raise TableauRefuse(
+                f"Tableau « {nom} » refusé : l'envoi dépasse {MAX_LIGNES_ENVOI} lignes de "
+                "données au total. Importer en plusieurs fois."
+            )
+        donnees.append((numero, tuple(cellules[: remplies[-1] + 1])))
+    if entetes_bruts is None:
         return None
-    ligne_entetes, entetes_bruts = non_vides[0]
-    donnees = non_vides[1:]
-    largeur = (
-        max(len(entetes_bruts), *(len(cellules) for _, cellules in donnees))
-        if donnees
-        else len(entetes_bruts)
-    )
-    entetes = tuple(
-        (texte_cellule(entetes_bruts[i]) if i < len(entetes_bruts) else None) or f"colonne {i + 1}"
-        for i in range(largeur)
-    )
-    # Une colonne sans en-tête et sans aucune valeur (cellules vides de fin de ligne) disparaît.
-    utiles = [
-        i
-        for i in range(largeur)
-        if i < len(entetes_bruts)
-        and texte_cellule(entetes_bruts[i])
-        or any(i < len(c) and texte_cellule(c[i]) for _, c in donnees)
-    ]
+    limites.lignes_restantes -= len(donnees)
+    colonnes = sorted(utiles)
     return Tableau(
         fichier=fichier,
         nom=nom,
-        entetes=tuple(entetes[i] for i in utiles),
+        entetes=tuple(
+            (texte_cellule(entetes_bruts[i]) if i < len(entetes_bruts) else None)
+            or f"colonne {i + 1}"
+            for i in colonnes
+        ),
         ligne_entetes=ligne_entetes,
         lignes=tuple(
-            LigneBrute(numero, tuple(cellules[i] if i < len(cellules) else None for i in utiles))
+            LigneBrute(numero, tuple(cellules[i] if i < len(cellules) else None for i in colonnes))
             for numero, cellules in donnees
         ),
     )
 
 
-def _non_vide(cellules: tuple[Any, ...]) -> bool:
-    return any(texte_cellule(cellule) for cellule in cellules)
+def _borner_colonnes(nom: str, cellules: Sequence[Any]) -> Sequence[Any]:
+    """Les `MAX_COLONNES` premières cellules ; refuse le tableau si une valeur est au-delà."""
+    if len(cellules) <= MAX_COLONNES:
+        return cellules
+    if any(texte_cellule(cellule) for cellule in cellules[MAX_COLONNES:]):
+        raise TableauRefuse(f"Tableau « {nom} » refusé : plus de {MAX_COLONNES} colonnes remplies.")
+    return cellules[:MAX_COLONNES]
 
 
 def _erreur(fichier: str, message: str) -> Signalement:

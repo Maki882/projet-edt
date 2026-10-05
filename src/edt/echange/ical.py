@@ -24,13 +24,17 @@ C'est un **adaptateur isolé** : il produit le même tableau intermédiaire
   fait mettre la séance de côté par la reconstitution, avec un message.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
   jours n'est pas une séance : il est signalé et non importé.
+- Bornes : un fichier de plus de `MAX_EVENEMENTS` événements, ou qui donne
+  plus de séances qu'il n'en reste pour l'envoi, est refusé avant ou pendant
+  la lecture ; une règle de récurrence qui donne plus de `MAX_OCCURRENCES`
+  occurrences (ou demande plus de `MAX_ITERATIONS` pas pour les trouver)
+  est refusée, avec un signalement d'erreur.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import logging
-from itertools import islice
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -49,8 +53,14 @@ journal = logging.getLogger(__name__)
 
 PARIS = ZoneInfo("Europe/Paris")
 NOM_FUSEAU = "Europe/Paris"
+MAX_EVENEMENTS = 50_000
+"""Événements au plus dans un fichier (compté avant l'analyse du fichier)."""
 MAX_OCCURRENCES = 1000
-"""Garde-fou pour une règle sans fin développée sans période."""
+"""Occurrences au plus d'une règle de récurrence (un cours hebdomadaire en compte une vingtaine)."""
+MAX_ITERATIONS = 10 * MAX_OCCURRENCES
+"""Pas de calcul au plus pour développer une règle (une règle très dense est refusée)."""
+MAX_SEANCES = 100_000
+"""Séances au plus produites par un fichier (défaut de `lire_ical`)."""
 
 PROPRIETES_EDT = {
     "matiere": "X-EDT-MATIERE",
@@ -76,13 +86,29 @@ def vers_paris(valeur: dt.datetime) -> dt.datetime:
 
 
 def lire_ical(
-    nom: str, texte: str, periode: tuple[dt.date, dt.date] | None = None
+    nom: str,
+    texte: str,
+    periode: tuple[dt.date, dt.date] | None = None,
+    max_seances: int = MAX_SEANCES,
 ) -> tuple[list[SeanceLue], list[Signalement]]:
     """Séances d'un fichier iCal ; `periode` borne le développement des récurrences.
 
     Chaque événement illisible donne un signalement d'erreur (et rien d'autre).
+    Un fichier trop grand (événements, ou séances au-delà de `max_seances`)
+    est refusé en entier, avec un signalement d'erreur.
     """
     signalements: list[Signalement] = []
+    nombre = texte.upper().count("BEGIN:VEVENT")
+    if nombre > MAX_EVENEMENTS:
+        journal.warning("Fichier iCal %s refusé : %d événements", nom, nombre)
+        return [], [
+            Signalement(
+                Gravite.ERREUR,
+                f"Fichier iCal refusé : {nombre} événements, {MAX_EVENEMENTS} au plus. "
+                "Découper le fichier.",
+                fichier=nom,
+            )
+        ]
     try:
         calendrier = Calendar.from_ical(texte)
     except ValueError as erreur:
@@ -105,13 +131,26 @@ def lire_ical(
             remplacements[(str(ev.get("UID", "")), _instant(identifiant.dt))] = ev
 
     seances: list[SeanceLue] = []
+
+    def refus() -> tuple[list[SeanceLue], list[Signalement]]:
+        journal.warning("Fichier iCal %s refusé : plus de %d séances", nom, max_seances)
+        message = (
+            f"Fichier iCal refusé : il donne plus de {max_seances} séances une fois les "
+            "récurrences développées. Découper le fichier ou l'envoi."
+        )
+        return [], [Signalement(Gravite.ERREUR, message, fichier=nom)]
+
     for ev in maitres:
         seances.extend(
             _lire_ou_signaler(nom, lignes[id(ev)], ev, remplacements, periode, signalements)
         )
+        if len(seances) > max_seances:
+            return refus()
     for ev in list(remplacements.values()):
         # Remplacement sans événement d'origine dans le fichier : une séance comme une autre.
         seances.extend(_lire_ou_signaler(nom, lignes[id(ev)], ev, {}, periode, signalements))
+        if len(seances) > max_seances:
+            return refus()
     journal.info(
         "Fichier iCal %s : %d événement(s), %d séance(s)", nom, len(evenements), len(seances)
     )
@@ -152,7 +191,7 @@ def _lire_evenement(
     if regles is None and not ev.get("RDATE"):
         return [_seance(nom, ligne, debut, duree, champs, uid)]
 
-    instances = _developper(ev, debut, periode, nom, ligne, signalements)
+    instances = _developper(ev, debut, periode)
     exclues = {_instant(x) for x in ev.exdates}
     seances = []
     for instance in instances:
@@ -346,9 +385,6 @@ def _developper(
     ev: Any,
     debut: dt.datetime,
     periode: tuple[dt.date, dt.date] | None,
-    nom: str,
-    ligne: int | None,
-    signalements: list[Signalement],
 ) -> list[dt.datetime]:
     """Occurrences d'un événement récurrent, dans le fuseau de son début.
 
@@ -377,23 +413,20 @@ def _developper(
     for date_supplementaire, _ in ev.rdates:
         ensemble.rdate(_dans_fuseau(date_supplementaire, fuseau))
 
+    bas = haut = None
     if periode is not None:
         bas = dt.datetime.combine(periode[0] - dt.timedelta(days=1), dt.time())
         haut = dt.datetime.combine(periode[1] + dt.timedelta(days=2), dt.time())
-        instances = ensemble.between(bas, haut, inc=True)
-    else:
-        instances = list(islice(ensemble, MAX_OCCURRENCES + 1))
-        if len(instances) > MAX_OCCURRENCES:
-            instances = instances[:MAX_OCCURRENCES]
-            signalements.append(
-                Signalement(
-                    Gravite.AVERTISSEMENT,
-                    f"Règle de récurrence sans fin : seules les {MAX_OCCURRENCES} premières "
-                    "occurrences sont lues.",
-                    nom,
-                    "événements",
-                    ligne,
-                )
+    instances = []
+    for pas, instance in enumerate(ensemble, start=1):  # calcul paresseux, borné
+        if haut is not None and instance > haut:
+            break
+        if bas is None or instance >= bas:
+            instances.append(instance)
+        if len(instances) > MAX_OCCURRENCES or pas > MAX_ITERATIONS:
+            raise _Illisible(
+                f"Règle de récurrence refusée : trop d'occurrences (plus de {MAX_OCCURRENCES}, "
+                "ou une règle sans fin et sans période) ; ce n'est pas un emploi du temps de cours."
             )
     occurrences = [instance.replace(tzinfo=fuseau) for instance in instances]
     if periode is not None:

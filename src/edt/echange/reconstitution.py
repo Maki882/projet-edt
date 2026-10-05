@@ -319,7 +319,7 @@ class Resolveur:
         return any(f.concerne(jour, groupes) for f in self.instantane.jours_fermes)
 
     def _matiere(self, code: str, groupes: tuple[m.Groupe, ...]) -> m.Matiere:
-        candidates = [x for x in self.contexte.matieres if cle_code(x.code) == cle_code(code)]
+        candidates = list(self.contexte.matieres.get(cle_code(code), ()))
         if not candidates:
             raise _Ecart(
                 "matiere",
