@@ -27,6 +27,7 @@ from edt.db.modeles import (
 from edt.domaine.enumerations import NatureGroupe, StatutEnseignant
 from edt.domaine.heures import duree_vers_texte
 from edt.services.referentiels.description import (
+    EFFECTIF_MAX,
     Champ,
     Colonne,
     Decompte,
@@ -380,6 +381,7 @@ GROUPE = Entite(
             obligatoire=True,
             defaut=0,
             minimum=0,
+            maximum=EFFECTIF_MAX,
             unite="étudiants",
         ),
         Champ(

@@ -39,6 +39,9 @@ from sqlalchemy.orm import Session
 from edt.domaine.enumerations import JOURS, EnumLibelle
 from edt.erreurs import ErreurIntrouvable
 
+EFFECTIF_MAX = 100_000
+"""Borne raisonnable d'une capacité ou d'un effectif (protège aussi la base d'un nombre absurde)."""
+
 
 class TypeChamp(StrEnum):
     """Nature d'un champ : décide de la conversion de la saisie et du contrôle affiché."""

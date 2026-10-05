@@ -1,8 +1,9 @@
 {# Zone remplacée par HTMX : résumé, tableau trié, pagination. #}
 {% import "macros.html" as ui %}
 <p class="barre-liste-resume">
-  {{ page.total }} {{ entite.nom if page.total == 1 else entite.pluriel }}
-  {%- if filtre_actif %} correspondant à la recherche et aux filtres{% endif %}.
+  {{ page.total }} {{ entite.nom if page.total <= 1 else entite.pluriel }}
+  {%- if filtre_actif %} correspondant à la recherche et aux filtres
+  {%- elif filtres_par_defaut %} ({{ filtres_par_defaut|join(", ") }}){% endif %}.
 </p>
 {%- if page.lignes %}
 <div class="tableau-defilant">
@@ -32,9 +33,19 @@
 </div>
 {{ ui.pagination(page.page, page.nb_pages, etat.url_page, "zone-liste") }}
 {%- elif filtre_actif %}
-<p class="vide">Aucun élément ne correspond à la recherche ou aux filtres.</p>
+<p class="vide">
+  Aucun élément ne correspond à la recherche ou aux filtres.
+  <a href="{{ ecran.prefixe }}">Effacer la recherche et les filtres</a>
+  ou « <a href="{{ url_nouveau }}">{{ entite.nouveau }}</a> » pour en ajouter {{ "une" if entite.feminin else "un" }}.
+</p>
+{%- elif filtres_par_defaut %}
+<p class="vide">
+  Aucun élément pour l'instant ({{ filtres_par_defaut|join(", ") }}) :
+  « <a href="{{ url_nouveau }}">{{ entite.nouveau }}</a> » pour commencer, ou choisir une autre
+  valeur dans les filtres ci-dessus.
+</p>
 {%- else %}
-<p class="vide">Aucun élément pour l'instant : « {{ entite.nouveau }} » pour commencer.</p>
+<p class="vide">Aucun élément pour l'instant : « <a href="{{ url_nouveau }}">{{ entite.nouveau }}</a> » pour commencer.</p>
 {%- endif %}
 {%- if ecran.complement_zone %}
 {% include ecran.complement_zone %}

@@ -231,6 +231,16 @@ d'un champ), la création (`POST <p>`), la modification (`GET`/`POST <p>/<n>`),
 la confirmation et la suppression (`GET`/`POST <p>/<n>/supprimer`), la ligne
 seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
 
+- Un filtre qui a une valeur par défaut (l'année ou le semestre en cours) est
+  rappelé dans le résumé (« 0 groupe (Année : 2026-2027) ») mais ne compte pas
+  comme un filtre posé : une liste vide invite alors à ajouter un élément ou
+  à choisir une autre valeur ; une liste vidée par une recherche ou un filtre
+  posé propose de les effacer. Une valeur de filtre absente de ses choix, un
+  numéro de page ou un identifiant aberrant donnent un message, pas une
+  erreur.
+- Les entiers saisis sont bornés : par le champ (`maximum`, par exemple
+  100 000 places ou étudiants) puis par ce que la base sait enregistrer ;
+  seuls les chiffres 0 à 9 sont acceptés.
 - La liste fonctionne sans JavaScript (liens et bouton « Filtrer ») ; avec
   HTMX, recherche, filtres, tri et pagination remplacent seulement la zone
   `#zone-liste` (en-tête `HX-Target: zone-liste`) et l'adresse suit.
@@ -270,7 +280,12 @@ Page `/jeux` : la base n'est touchée qu'au travers de
 leurs propres sessions (ces routes n'ont pas de `SessionRequete`). Un
 chargement dans une base qui contient déjà des données, et toute remise à
 zéro, exigent une case de confirmation qui liste ce qui sera effacé. Pendant
-un calcul, les deux actions sont refusées avec un message clair.
+un calcul, les deux actions sont refusées avec un message clair. Une seule
+de ces opérations tourne à la fois : une seconde demande pendant la première
+(deux personnes qui cliquent en même temps) est refusée tout de suite avec
+« un chargement ou une remise à zéro est déjà en cours », sans toucher à la
+base ; une page demandée pendant ce temps reçoit « base de données occupée,
+réessayer », jamais le conseil d'initialiser la base.
 
 ## 5. Services (`edt.services.referentiels`)
 
