@@ -257,6 +257,10 @@ def lister(
 
     conditions: list[Any] = []
     texte = recherche.strip()
+    if texte and not description.cherchable:
+        raise ErreurDonneesInvalides(
+            f"La recherche n'est pas proposée pour les {description.pluriel}."
+        )
     if texte:
         motif = f"%{_echapper_motif(texte)}%"
         alternatives = [col.ilike(motif, escape="\\") for col in description.recherche]

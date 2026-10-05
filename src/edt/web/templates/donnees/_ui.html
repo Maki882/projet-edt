@@ -34,11 +34,13 @@
 <form class="barre-liste" method="get" action="{{ ecran.prefixe }}" role="search"
       hx-get="{{ ecran.prefixe }}" hx-target="#zone-liste" hx-push-url="true"
       hx-trigger="input delay:350ms, submit" hx-sync="this:replace">
+  {%- if ecran.entite.cherchable %}
   <div class="champ champ-recherche">
     <label for="recherche-{{ ecran.entite.code }}">Rechercher</label>
     <input type="search" id="recherche-{{ ecran.entite.code }}" name="q" value="{{ etat.recherche }}"
            placeholder="Saisir un mot, un code..." autocomplete="off">
   </div>
+  {%- endif %}
   {%- for filtre, options, valeur in filtres %}
   <div class="champ">
     <label for="filtre-{{ filtre.nom }}">{{ filtre.libelle }}</label>

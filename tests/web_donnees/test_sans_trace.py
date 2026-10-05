@@ -24,7 +24,8 @@ def _adresses() -> list[str]:
             f"{ecran.prefixe}/nouveau",
             f"{ecran.prefixe}/1",
             f"{ecran.prefixe}/1/supprimer",
-            f"{ecran.prefixe}?q=%25_&tri={ecran.entite.tri_defaut}&sens=desc&page=1",
+            f"{ecran.prefixe}?tri={ecran.entite.tri_defaut}&sens=desc&page=1"
+            + ("&q=%25_" if ecran.entite.cherchable else ""),
         ]
     return adresses
 
@@ -45,6 +46,7 @@ def test_adresses_erronees_expliquees(site):
         ("/salles?tri=inconnu", 422),
         ("/besoins?semestre=abc", 422),
         ("/groupes/arbre?annee=999", 404),
+        ("/grille?q=lundi", 422),  # pas de recherche sur la grille : refus expliqué
     ):
         reponse = site.get(adresse)
         assert reponse.status_code == statut, adresse

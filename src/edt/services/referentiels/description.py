@@ -242,6 +242,11 @@ class Entite:
         return participe + "e" if self.feminin else participe
 
     @property
+    def cherchable(self) -> bool:
+        """Vrai si la liste propose une recherche plein texte."""
+        return bool(self.recherche or self.recherche_avancee)
+
+    @property
     def titre(self) -> str:
         """Nom pluriel avec majuscule, pour un titre de page."""
         return self.pluriel[:1].upper() + self.pluriel[1:]
