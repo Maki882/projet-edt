@@ -11,8 +11,8 @@ pour ouvrir le panneau d'une séance `h<id>` ou d'une occurrence `o<id>`) :
 - `POST /emploi-du-temps/seances/{id}/modifier`, `.../verrou` ;
 - `GET /emploi-du-temps/occurrences/{id}/panneau`, `.../formulaire` ;
 - `POST /emploi-du-temps/occurrences/{id}/deplacer`, `.../annuler` ;
-- `POST /emploi-du-temps/versions/{id}/seances-datees` : produire les
-  séances datées d'une version.
+- `POST /emploi-du-temps/versions/{id}/seances-datees` : (re)calculer les
+  séances datées d'une version (les retouches à la main sont conservées).
 
 Après une action, on revient sur la vue d'où l'on vient (`retour`, limité aux
 adresses de cet onglet). Les exports (CSV, iCal) sont servis par un autre
@@ -506,17 +506,17 @@ def annuler_occurrence(
     return rediriger(request, _retour(retour), message)
 
 
-@routeur.post("/versions/{version_id:int}/seances-datees", name="produire_seances_datees")
-def produire_seances_datees(
+@routeur.post("/versions/{version_id:int}/seances-datees", name="recalculer_seances_datees")
+def recalculer_seances_datees(
     request: Request,
     session: SessionRequete,
     version_id: int,
     retour: Annotated[str, Form()] = "",
 ):
-    """Applique la semaine type au calendrier pour produire les séances datées."""
+    """Réapplique la semaine type au calendrier ; les retouches à la main sont conservées."""
     retour = _retour(retour, f"{ADRESSE}?version_id={version_id}&couche=date")
     try:
-        message = modifications.produire_seances_datees(session, version_id)
+        bilan = modifications.recalculer_seances_datees(session, version_id)
     except raccords.ErreurRaccordIndisponible as erreur:
         return rediriger(request, retour, erreur.message, "attention")
-    return rediriger(request, retour, message)
+    return rediriger(request, retour, bilan.message)

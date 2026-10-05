@@ -11,13 +11,21 @@ Déroulement d'un calcul :
 
 1. une ligne `calcul` est créée à l'état « en cours » ; **un seul calcul à la
    fois** (`ErreurCalculEnCours` sinon) ;
-2. un fil d'exécution d'arrière-plan charge l'instantané du semestre, refuse
-   de continuer si des besoins ne peuvent pas être dépliés, puis appelle le
-   moteur (`edt.solveur.resoudre` par défaut) ;
-3. tout ce qui est journalisé pendant le calcul va aussi dans un fichier
-   dédié de `<EDT_LOG_DIR>/generations/` ;
-4. en cas de solution, une **nouvelle version** d'emploi du temps est
-   enregistrée avec ses séances hebdomadaires (et activée) ; dans tous les
+2. un fil d'exécution d'arrière-plan charge l'instantané du semestre et lance
+   les **pré-vérifications** (`pre_verifier_semestre` les expose aussi seules
+   à l'interface) : une impossibilité certaine (besoin impossible à déplier,
+   séance sans salle, charge trop forte, verrous contradictoires...) **refuse**
+   le calcul, qui passe à l'état « impossible » avec la liste des raisons ;
+   une situation tendue devient un avertissement joint au suivi ;
+3. le moteur (`edt.solveur.resoudre` par défaut) est appelé ; tout ce qui est
+   journalisé pendant le calcul va aussi dans un fichier dédié de
+   `<EDT_LOG_DIR>/generations/` ;
+4. une solution est **contrôlée par le vérificateur** (`edt.verification`) :
+   s'il relève une erreur, c'est un défaut du moteur, le calcul est en échec
+   et rien n'est enregistré ;
+5. la solution contrôlée devient une **nouvelle version** d'emploi du temps
+   avec ses séances hebdomadaires (et activée), puis ses **séances datées**
+   sont produites et replacées (`edt.services.instanciation`) ; dans tous les
    autres cas (impossible, temps dépassé, arrêt, erreur) **aucune version
    n'est créée** et le message explique pourquoi.
 
@@ -32,7 +40,8 @@ import datetime as dt
 import logging
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
@@ -41,20 +50,24 @@ from edt import solveur
 from edt.config import Configuration, charger_configuration
 from edt.db.modeles import Calcul, SeanceHebdo, Semestre, VersionEdt
 from edt.db.moteur import session_base
+from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
 from edt.domaine.instantane import Instantane
 from edt.erreurs import (
     ErreurCalculEnCours,
-    ErreurDonneesInvalides,
     ErreurEDT,
     ErreurInfaisable,
     ErreurIntrouvable,
+    ErreurNonLivre,
     ErreurTempsDepasse,
 )
 from edt.journal import ouvrir_journal_calcul
+from edt.services.instanciation import instancier_version
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import Moteur, OptionsSolveur, ResultatSolveur, StatutSolveur
+from edt.solveur.preverification import pre_verifier
+from edt.verification import Anomalie, calculer_indicateurs, verifier
 
 journal = logging.getLogger(__name__)
 
@@ -78,6 +91,9 @@ _MESSAGES_PAR_DEFAUT = {
 }
 
 MESSAGE_INTERROMPU = "Calcul interrompu par l'arrêt de l'application."
+NB_RAISONS_DANS_LE_MESSAGE = 3
+"""Raisons citées dans le message d'un refus ; la liste complète est dans les statistiques."""
+
 MESSAGE_ERREUR_INATTENDUE = (
     "Une erreur inattendue a interrompu le calcul. Le détail est dans le journal du calcul."
 )
@@ -93,7 +109,12 @@ class SuiviCalcul:
     - `message` : phrase française pour l'utilisateur ;
     - `version_id` : version créée, seulement si le calcul a réussi ;
     - `contraintes_desactivees` : codes décochés par l'utilisateur au lancement ;
-    - `fichier_journal` : chemin du journal dédié du calcul.
+    - `fichier_journal` : chemin du journal dédié du calcul ;
+    - `avertissements` : situations tendues relevées par les pré-vérifications
+      et remarques du moteur, à montrer à l'utilisateur ;
+    - `statistiques` : mesures du moteur, plus `impossibilites` (raisons d'un
+      refus), `indicateurs` (qualité de la solution) et `instanciation`
+      (bilan des séances datées) quand ils existent.
     """
 
     id: int
@@ -108,6 +129,7 @@ class SuiviCalcul:
     statistiques: dict
     fichier_journal: str | None
     arret_demande: bool
+    avertissements: tuple[str, ...] = field(default=())
 
     @property
     def en_cours(self) -> bool:
@@ -193,6 +215,32 @@ def lancer_calcul(
 
     journal.info("Calcul %d lancé pour le semestre %d", calcul_id, semestre_id)
     return calcul_id
+
+
+def pre_verifier_semestre(
+    session: Session,
+    semestre_id: int,
+    contraintes_desactivees: Iterable[str] = (),
+    *,
+    version_base_id: int | None = None,
+    tolerer_violations_heritees: bool = False,
+) -> list[Anomalie]:
+    """Pré-vérifications d'un calcul sur le semestre, sans le lancer.
+
+    Renvoie les impossibilités certaines (gravité « erreur » : un calcul
+    serait refusé) et les situations tendues (« avertissement »), en phrases
+    lisibles : charge des groupes et des enseignants, salles, séances sans
+    salle ou sans horaire possible, verrous contradictoires, besoins non
+    dépliables. `contraintes_desactivees` : codes décochés par l'utilisateur.
+    Les verrous examinés sont ceux de `version_base_id` (défaut : la version
+    active du semestre). Voir `edt.solveur.preverification`.
+    """
+    instantane = charger_instantane(session, semestre_id, version_base_id)
+    return pre_verifier(
+        instantane,
+        contraintes_desactivees,
+        tolerer_violations_heritees=tolerer_violations_heritees,
+    )
 
 
 def etat_calcul(calcul_id: int) -> SuiviCalcul:
@@ -338,25 +386,9 @@ def _executer(
                         .values(fichier_journal=chemin_journal)
                     )
                     instantane = charger_instantane(session, semestre_id, version_base_id)
-                _refuser_si_non_depliable(instantane, options)
-
-                resultat = moteur(instantane, options, arret)
-                statistiques = dict(resultat.statistiques)
-                etat = _ETAT_PAR_STATUT[resultat.statut]
-                message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
-                for avertissement in resultat.avertissements:
-                    journal.warning("Avertissement du moteur : %s", avertissement)
-                if resultat.reussi:
-                    with session_base(config.db_url) as session:
-                        version = _enregistrer_version(
-                            session, calcul_id, instantane, resultat, activer
-                        )
-                        journal.info(
-                            "Version %d (n°%d) enregistrée : %d séances",
-                            version.id,
-                            version.numero,
-                            len(resultat.placements),
-                        )
+                etat, message, statistiques = _calculer(
+                    calcul_id, instantane, options, moteur, arret, activer, config
+                )
             except ErreurEDT as erreur:
                 journal.error("Calcul %d refusé ou en échec : %s", calcul_id, erreur)
                 etat, message = EtatCalcul.ERREUR, str(erreur)
@@ -373,28 +405,153 @@ def _executer(
             _actifs.pop(calcul_id, None)
 
 
-def _refuser_si_non_depliable(instantane: Instantane, options: OptionsSolveur) -> None:
-    bloquants = [
-        probleme
-        for probleme in instantane.problemes_depliage
-        if probleme.code not in options.contraintes_desactivees
-    ]
-    if bloquants:
-        raise ErreurDonneesInvalides(
-            "Le calcul n'a pas été lancé : certains besoins ne peuvent pas être planifiés "
-            "tels qu'ils sont saisis.",
-            [probleme.message for probleme in bloquants],
-        )
-
-
-def _enregistrer_version(
-    session: Session,
+def _calculer(
     calcul_id: int,
     instantane: Instantane,
-    resultat: ResultatSolveur,
+    options: OptionsSolveur,
+    moteur: Moteur,
+    arret: threading.Event,
     activer: bool,
-) -> VersionEdt:
-    """Crée la version et ses séances hebdomadaires ; refuse toute solution incomplète."""
+    config: Configuration,
+) -> tuple[EtatCalcul, str, dict]:
+    """Pré-vérifications, moteur, contrôle, enregistrement, séances datées.
+
+    Renvoie l'état final, le message et les statistiques du calcul. Un calcul
+    refusé par les pré-vérifications a toujours le même visage : état
+    « impossible », `statistiques["refuse"]` vrai, message qui cite les
+    premières raisons et liste complète dans `statistiques["impossibilites"]`.
+    """
+    # Pré-vérifications : une impossibilité certaine arrête tout de suite.
+    anomalies = pre_verifier(
+        instantane,
+        options.contraintes_desactivees,
+        tolerer_violations_heritees=options.tolerer_violations_heritees,
+    )
+    impossibilites = [anomalie.message for anomalie in anomalies if anomalie.bloquante]
+    alertes = [anomalie.message for anomalie in anomalies if not anomalie.bloquante]
+    for anomalie in anomalies:
+        niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
+        journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
+    if impossibilites:
+        reste = len(impossibilites) - NB_RAISONS_DANS_LE_MESSAGE
+        suite = f" (et {reste} autre(s) raison(s))" if reste > 0 else ""
+        message = (
+            f"Le calcul n'a pas été lancé : {len(impossibilites)} impossibilité(s) certaine(s) "
+            "relevée(s) par les pré-vérifications. "
+            + " ".join(impossibilites[:NB_RAISONS_DANS_LE_MESSAGE])
+            + suite
+        )
+        statistiques = {
+            "refuse": True,
+            "nb_seances": len(instantane.seances),
+            "impossibilites": impossibilites,
+            "avertissements": alertes,
+        }
+        return EtatCalcul.INFAISABLE, message, statistiques
+
+    resultat = moteur(instantane, options, arret)
+    statistiques = dict(resultat.statistiques)
+    etat = _ETAT_PAR_STATUT[resultat.statut]
+    message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
+    for avertissement in resultat.avertissements:
+        journal.warning("Avertissement du moteur : %s", avertissement)
+    statistiques["avertissements"] = list(dict.fromkeys([*alertes, *resultat.avertissements]))
+    if not resultat.reussi:
+        return etat, message, statistiques
+
+    _exiger_solution_complete(instantane, resultat)
+    indicateurs = _controler(instantane, resultat, options)
+    if indicateurs is not None:
+        statistiques["indicateurs"] = indicateurs
+    with session_base(config.db_url) as session:
+        version = _enregistrer_version(session, calcul_id, instantane, resultat, activer)
+        version_id = version.id
+        journal.info(
+            "Version %d (n°%d) enregistrée : %d séances",
+            version.id,
+            version.numero,
+            len(resultat.placements),
+        )
+    message += " " + _instancier(version_id, statistiques, config)
+    return etat, message, statistiques
+
+
+def _controler(
+    instantane: Instantane, resultat: ResultatSolveur, options: OptionsSolveur
+) -> dict | None:
+    """Contrôle la solution du moteur avec le vérificateur officiel et renvoie ses indicateurs.
+
+    Une erreur relevée sur une solution du moteur est un défaut du moteur :
+    elle est journalisée en détail et le calcul échoue (`ErreurEDT`), sans
+    rien enregistrer. Avec `tolerer_violations_heritees`, les violations
+    entre séances toutes verrouillées sont attendues et ne comptent pas.
+    """
+    try:
+        anomalies = verifier(
+            instantane, resultat.placements, codes_actifs(options.contraintes_desactivees)
+        )
+    except ErreurNonLivre:
+        journal.warning(
+            "Résultat non contrôlé : le vérificateur n'est pas livré (edt.verification)."
+        )
+        return None
+    verrouillees = {seance.id for seance in instantane.seances if seance.verrou is not None}
+    erreurs = [
+        anomalie
+        for anomalie in anomalies
+        if anomalie.bloquante
+        and not (
+            options.tolerer_violations_heritees
+            and len(anomalie.seances) >= 2
+            and verrouillees.issuperset(anomalie.seances)
+        )
+    ]
+    if erreurs:
+        for anomalie in erreurs:
+            journal.error(
+                "Défaut du moteur, solution refusée [%s] : %s (séances %s)",
+                anomalie.code.value,
+                anomalie.message,
+                ", ".join(anomalie.seances),
+            )
+        raise ErreurEDT(
+            f"Le moteur a produit un emploi du temps qui viole {len(erreurs)} contrainte(s) "
+            "active(s) : c'est un défaut du moteur, à signaler avec le journal du calcul. "
+            "Aucun emploi du temps n'a été enregistré.",
+            [anomalie.message for anomalie in erreurs[:10]],
+        )
+    indicateurs = calculer_indicateurs(instantane, resultat.placements, anomalies)
+    journal.info(
+        "Solution contrôlée par le vérificateur : aucune erreur ; objectif %d, %d créneau(x) "
+        "de trou",
+        indicateurs.valeur_objectif,
+        indicateurs.trous_creneaux,
+    )
+    return indicateurs.vers_dict()
+
+
+def _instancier(version_id: int, statistiques: dict, config: Configuration) -> str:
+    """Produit les séances datées de la version ; renvoie la phrase à ajouter au message.
+
+    La semaine type est déjà enregistrée : un échec ici ne l'annule pas, il
+    est journalisé et dit à l'utilisateur, qui peut relancer l'instanciation.
+    """
+    try:
+        with session_base(config.db_url) as session:
+            rapport = instancier_version(session, version_id)
+    except Exception:
+        journal.exception("Échec de l'instanciation de la version %d", version_id)
+        statistiques["instanciation"] = {"erreur": True}
+        return (
+            "Ses séances datées n'ont pas pu être produites (détail dans le journal du "
+            "calcul) : relancer l'instanciation."
+        )
+    statistiques["instanciation"] = rapport.vers_dict()
+    return rapport.resume()
+
+
+def _exiger_solution_complete(instantane: Instantane, resultat: ResultatSolveur) -> None:
+    """Refuse toute solution incomplète ou incohérente (un placement par séance, avec salle)."""
     places = [placement.seance_id for placement in resultat.placements]
     attendues = {seance.id for seance in instantane.seances}
     if len(places) != len(set(places)) or set(places) != attendues:
@@ -427,6 +584,16 @@ def _enregistrer_version(
     for placement in resultat.placements:
         instantane.salle(placement.salle_id)  # lève ErreurIntrouvable si la salle est inconnue
 
+
+def _enregistrer_version(
+    session: Session,
+    calcul_id: int,
+    instantane: Instantane,
+    resultat: ResultatSolveur,
+    activer: bool,
+) -> VersionEdt:
+    """Crée la version et ses séances hebdomadaires à partir d'une solution complète."""
+    _exiger_solution_complete(instantane, resultat)
     numero = 1 + (
         session.scalar(
             select(func.max(VersionEdt.numero)).where(
@@ -518,4 +685,5 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         statistiques=dict(calcul.statistiques or {}),
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
+        avertissements=tuple((calcul.statistiques or {}).get("avertissements", ())),
     )

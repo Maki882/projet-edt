@@ -154,6 +154,20 @@
   margin-top: 0.3rem;
 }
 
+.edt-recalcul {
+  margin-bottom: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.edt-recalcul summary {
+  cursor: pointer;
+  color: var(--marque);
+}
+
+.edt-recalcul p {
+  max-width: 60rem;
+}
+
 /* ----- Mise en page grille + panneau ------------------------------------------ */
 
 .edt-mise-en-page {

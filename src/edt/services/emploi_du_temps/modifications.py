@@ -12,9 +12,21 @@ Règles :
   dans la transaction, vérifiée par `raccords.verifier_occurrences_version`
   sur son jour, puis remise en l'état si le déplacement est refusé ;
 - après un déplacement dans la semaine type, si la version a déjà des
-  séances datées, elles sont recalculées (`raccords.instancier_version`) ;
+  séances datées, elles sont recalculées (`recalculer_seances_datees`) ;
 - poser ou lever un verrou, annuler une occurrence ne demandent pas de
   vérification (cela ne crée aucun conflit).
+
+Retouches des séances datées
+----------------------------
+Déplacer ou annuler une séance datée en fait une **retouche** : son origine
+devient « saisie manuelle ». Recalculer les séances datées
+(`instancier_version`) remplace les séances issues de la semaine type et des
+replacements, mais **conserve** les saisies manuelles et les évite. Comme
+l'instanciation produit de nouveau la séance de la semaine type pour la
+semaine retouchée, `recalculer_seances_datees` retire ensuite ce doublon :
+une retouche reste la seule séance de sa semaine pour sa séance
+hebdomadaire. Une annulation reste donc une annulation, un déplacement reste
+à sa nouvelle place.
 
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
@@ -28,11 +40,19 @@ import datetime as dt
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from edt.db import modeles as m
-from edt.domaine.enumerations import JOURS, SAMEDI, Accessibilite, Gravite, StatutOccurrence
+from edt.domaine.calendrier import lundi_de
+from edt.domaine.enumerations import (
+    JOURS,
+    SAMEDI,
+    Accessibilite,
+    Gravite,
+    OrigineOccurrence,
+    StatutOccurrence,
+)
 from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
@@ -122,6 +142,34 @@ class ResultatModification:
     niveau: str
     anomalies: tuple[Anomalie, ...] = ()
     remarques: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class BilanRecalcul:
+    """Séances datées d'une version après un recalcul."""
+
+    nb_occurrences: int
+    nb_replacees: int
+    nb_a_programmer: int
+    nb_retouches: int
+    nb_doublons_retires: int
+
+    @property
+    def message(self) -> str:
+        """Phrase pour l'utilisateur."""
+        texte = (
+            f"Séances datées recalculées : {self.nb_occurrences} au total, dont "
+            f"{self.nb_replacees} replacée(s) après un jour fermé ou une indisponibilité et "
+            f"{self.nb_a_programmer} à programmer."
+        )
+        if self.nb_retouches:
+            texte += (
+                f" Vos {self.nb_retouches} retouche(s) à la main (déplacements, annulations) "
+                "sont conservées."
+            )
+        if self.nb_a_programmer:
+            texte += " Les séances à programmer sont listées dans l'onglet « À traiter »."
+        return texte
 
 
 @dataclass(frozen=True)
@@ -427,11 +475,13 @@ def deplacer_occurrence(
         occurrence.salle_id,
         occurrence.statut,
         occurrence.date_initiale,
+        occurrence.origine,
     )
     occurrence.date_initiale = occurrence.date_initiale or occurrence.date
     occurrence.date, occurrence.debut_min, occurrence.fin_min = date, debut, debut + duree
     occurrence.salle_id = salle_id
     occurrence.statut = StatutOccurrence.DEPLACEE
+    occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
     session.flush()
 
     def remettre() -> None:
@@ -442,6 +492,7 @@ def deplacer_occurrence(
             occurrence.salle_id,
             occurrence.statut,
             occurrence.date_initiale,
+            occurrence.origine,
         ) = ancien
         session.flush()
 
@@ -501,6 +552,7 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
     if occurrence.statut == StatutOccurrence.ANNULEE:
         raise ErreurRegleMetier("Cette séance est déjà annulée.")
     occurrence.statut = StatutOccurrence.ANNULEE
+    occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
     motif = (motif or "").strip()
     if motif:
         note = f"Annulée : {motif}"
@@ -512,26 +564,91 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
     return f"Séance du {occurrence.date:%d/%m/%Y} annulée."
 
 
-def produire_seances_datees(session: Session, version_id: int) -> str:
-    """Applique la semaine type d'une version au calendrier (séances datées) ; renvoie un résumé.
+def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcul:
+    """Réapplique la semaine type de la version au calendrier, retouches conservées.
 
-    Lève `raccords.ErreurRaccordIndisponible` tant que l'instanciation n'est pas livrée.
+    Les séances datées issues de la semaine type ou d'un replacement sont
+    recalculées (jours fermés et indisponibilités replacés, sinon « à
+    programmer ») ; les retouches à la main et les séances importées restent
+    telles quelles (voir l'en-tête du module). Lève
+    `raccords.ErreurRaccordIndisponible` si l'instanciation n'est pas livrée.
     """
     if session.get(m.VersionEdt, version_id) is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     raccords.instancier_version(session, version_id)
     session.flush()
-    statuts = session.execute(
-        select(m.Occurrence.statut).where(m.Occurrence.version_id == version_id)
-    ).scalars()
-    total = a_programmer = 0
-    for statut in statuts:
-        total += 1
-        a_programmer += statut == StatutOccurrence.A_PROGRAMMER
-    message = f"{total} séance(s) datée(s) produite(s)."
-    if a_programmer:
-        message += f" {a_programmer} reste(nt) à programmer : voir l'onglet « À traiter »."
-    return message
+    retouches, doublons = _retirer_doublons_des_retouches(session, version_id)
+    comptes = dict(
+        session.execute(
+            select(m.Occurrence.statut, func.count())
+            .where(m.Occurrence.version_id == version_id)
+            .group_by(m.Occurrence.statut)
+        ).all()
+    )
+    nb_replacees = (
+        session.scalar(
+            select(func.count()).where(
+                m.Occurrence.version_id == version_id,
+                m.Occurrence.origine == OrigineOccurrence.REPLACEMENT,
+                m.Occurrence.statut == StatutOccurrence.DEPLACEE,
+            )
+        )
+        or 0
+    )
+    bilan = BilanRecalcul(
+        nb_occurrences=sum(comptes.values()),
+        nb_replacees=nb_replacees,
+        nb_a_programmer=comptes.get(StatutOccurrence.A_PROGRAMMER, 0),
+        nb_retouches=retouches,
+        nb_doublons_retires=doublons,
+    )
+    journal.info(
+        "Séances datées de la version %d recalculées : %d séance(s), %d retouche(s) "
+        "conservée(s), %d doublon(s) retiré(s)",
+        version_id,
+        bilan.nb_occurrences,
+        retouches,
+        doublons,
+    )
+    return bilan
+
+
+def _retirer_doublons_des_retouches(session: Session, version_id: int) -> tuple[int, int]:
+    """Retire la séance recalculée d'une semaine déjà couverte par une retouche à la main.
+
+    Une séance hebdomadaire a au plus une séance datée par semaine : la
+    semaine d'une séance datée est celle de sa date d'origine
+    (`date_initiale`, sinon sa date). Renvoie (retouches, doublons retirés).
+    """
+    lignes = session.execute(
+        select(
+            m.Occurrence.id,
+            m.Occurrence.seance_hebdo_id,
+            m.Occurrence.date,
+            m.Occurrence.date_initiale,
+            m.Occurrence.origine,
+        ).where(m.Occurrence.version_id == version_id, m.Occurrence.seance_hebdo_id.is_not(None))
+    ).all()
+    couvertes = {
+        (seance, lundi_de(initiale or date))
+        for _, seance, date, initiale, origine in lignes
+        if origine == OrigineOccurrence.MANUELLE
+    }
+    if not couvertes:
+        return 0, 0
+    doublons = [
+        identifiant
+        for identifiant, seance, date, initiale, origine in lignes
+        if origine != OrigineOccurrence.MANUELLE
+        and origine != OrigineOccurrence.IMPORT
+        and (seance, lundi_de(initiale or date)) in couvertes
+    ]
+    for debut in range(0, len(doublons), 500):
+        session.execute(
+            delete(m.Occurrence).where(m.Occurrence.id.in_(doublons[debut : debut + 500]))
+        )
+    session.flush()
+    return len(couvertes), len(doublons)
 
 
 # --------------------------------------------------------------------------- #
@@ -840,11 +957,10 @@ def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
     ):
         return []
     try:
-        raccords.instancier_version(session, version_id)
+        bilan = recalculer_seances_datees(session, version_id)
     except raccords.ErreurRaccordIndisponible as erreur:
         return [
             "Les séances datées de cette version n'ont pas été recalculées : "
             + _minuscule(erreur.message)
         ]
-    session.flush()
-    return ["Les séances datées de cette version ont été recalculées."]
+    return [bilan.message]

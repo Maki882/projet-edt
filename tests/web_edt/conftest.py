@@ -5,13 +5,16 @@ instanciation) sont **simulées** en installant de faux modules aux noms
 convenus : le raccord (`edt.services.emploi_du_temps.raccords`) les trouve
 exactement comme il trouvera les vrais.
 
-- `version_generee` : jeu minimal + un calcul réussi du moteur provisoire ;
+- `version_generee` : jeu minimal + un calcul réussi du vrai moteur (ses
+  séances datées sont produites par l'orchestration) ;
 - `faux_verificateur` : faux `edt.services.verification`, réglable ;
 - `sans_verificateur` : comme si le vérificateur n'était pas livré (sans
   ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
-- `fausse_instanciation` : faux `edt.services.instanciation` ;
-- `seances_datees` : séances datées de la version, produites à la main ;
 - `aujourdhui_fige` : le « semestre par défaut » calculé au 5 octobre 2026.
+
+Aucun test ne suppose l'emploi du temps particulier d'un moteur : les jours
+et les dates utilisés sont lus dans la version produite (`jour_avec_seance`,
+`date_avec_seances`).
 """
 
 from __future__ import annotations
@@ -22,12 +25,11 @@ import types
 from dataclasses import dataclass, field
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.calendrier import semaines_entre
-from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
+from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
@@ -47,7 +49,7 @@ class VersionGeneree:
 
 @pytest.fixture
 def version_generee(jeu_minimal) -> VersionGeneree:
-    """Jeu minimal et une version active produite par le moteur provisoire."""
+    """Jeu minimal et une version active produite par le moteur (séances datées comprises)."""
     calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
     suivi = generation.attendre_calcul(calcul_id, DELAI)
     assert suivi.reussi, suivi.message
@@ -133,56 +135,47 @@ def sans_verificateur(monkeypatch) -> None:
     monkeypatch.setitem(sys.modules, "edt.services.verification", None)
 
 
-def instancier(session, version_id: int) -> int:
-    """Applique la semaine type au calendrier, sans replacement (suffisant pour les tests)."""
-    version = session.get(m.VersionEdt, version_id)
-    semestre = session.get(m.Semestre, version.semestre_id)
-    semaines = {s.numero: s for s in semaines_entre(semestre.date_debut, semestre.date_fin)}
-    session.execute(delete(m.Occurrence).where(m.Occurrence.version_id == version_id))
-    nombre = 0
-    for seance in session.scalars(
-        select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == version_id)
-    ):
-        for numero in seance.semaines:
-            session.add(
-                m.Occurrence(
-                    version_id=version_id,
-                    seance_hebdo_id=seance.id,
-                    besoin_id=seance.besoin_id,
-                    date=semaines[numero].date_du(seance.jour),
-                    debut_min=seance.debut_min,
-                    fin_min=seance.fin_min,
-                    salle_id=seance.salle_id,
-                    statut=StatutOccurrence.PLANIFIEE,
-                    origine=OrigineOccurrence.INSTANCIATION,
-                )
-            )
-            nombre += 1
-    session.flush()
-    return nombre
-
-
-@pytest.fixture
-def fausse_instanciation(monkeypatch) -> list[int]:
-    """Installe un faux `edt.services.instanciation` ; renvoie la liste des versions instanciées."""
-    appels: list[int] = []
-    module = types.ModuleType("edt.services.instanciation")
-
-    def instancier_version(session, version_id):
-        appels.append(version_id)
-        return instancier(session, version_id)
-
-    module.instancier_version = instancier_version
-    monkeypatch.setitem(sys.modules, "edt.services.instanciation", module)
-    return appels
-
-
 @pytest.fixture
 def seances_datees(version_generee) -> VersionGeneree:
-    """La version générée, avec ses séances datées."""
+    """La version générée ; ses séances datées existent dès la fin du calcul."""
     with session_base() as session:
-        instancier(session, version_generee.version_id)
+        nombre = session.scalar(
+            select(func.count())
+            .select_from(m.Occurrence)
+            .where(m.Occurrence.version_id == version_generee.version_id)
+        )
+    assert nombre, "le calcul aurait dû produire les séances datées"
     return version_generee
+
+
+def date_avec_seances(session, version_id: int, minimum: int = 1) -> dt.date:
+    """Première date où la version a au moins `minimum` séances datées qui ont lieu."""
+    date = session.scalar(
+        select(m.Occurrence.date)
+        .where(
+            m.Occurrence.version_id == version_id,
+            m.Occurrence.statut.in_([StatutOccurrence.PLANIFIEE, StatutOccurrence.DEPLACEE]),
+        )
+        .group_by(m.Occurrence.date)
+        .having(func.count() >= minimum)
+        .order_by(m.Occurrence.date)
+        .limit(1)
+    )
+    assert date is not None, f"aucune date avec {minimum} séance(s) datée(s)"
+    return date
+
+
+def jour_avec_seance(session, version_id: int, filtre) -> int:
+    """Un jour de la semaine type où une séance satisfaisant `filtre` (clause SQL) a lieu."""
+    jour = session.scalar(
+        select(m.SeanceHebdo.jour)
+        .join(m.Besoin, m.Besoin.id == m.SeanceHebdo.besoin_id)
+        .where(m.SeanceHebdo.version_id == version_id, filtre)
+        .order_by(m.SeanceHebdo.jour)
+        .limit(1)
+    )
+    assert jour is not None, "aucune séance pour cette cible"
+    return jour
 
 
 @pytest.fixture
@@ -215,7 +208,3 @@ def seance_du_besoin(session, version_id: int, matiere: str, type_code: str, gro
 def identifiant_groupe(session, code: str) -> int:
     """Identifiant d'un groupe du jeu minimal par son code."""
     return session.scalar(select(m.Groupe.id).where(m.Groupe.code == code))
-
-
-JOUR_TEST = dt.date(2026, 10, 12)
-"""Un lundi de cours du semestre 1 du jeu minimal (semaine 6)."""

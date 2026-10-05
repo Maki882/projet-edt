@@ -1,10 +1,11 @@
 """Raccords vers les fonctions des autres lots : le SEUL endroit où les écrans les appellent.
 
 Les pré-vérifications, le vérificateur et l'instanciation datée sont écrits
-par d'autres lots. Leurs noms et signatures sont fixés :
+par d'autres lots ; tous sont livrés. Leurs noms et signatures :
 
 - `edt.services.generation.pre_verifier_semestre(session, semestre_id,
-  contraintes_desactivees=()) -> list[Anomalie]` ;
+  contraintes_desactivees=(), *, version_base_id=None,
+  tolerer_violations_heritees=False) -> list[Anomalie]` ;
 - `edt.services.verification.verifier_version(session, version_id,
   contraintes_actives=None) -> RapportVerification` ;
 - `edt.services.verification.verifier_occurrences_version(session,
@@ -14,11 +15,12 @@ par d'autres lots. Leurs noms et signatures sont fixés :
   seance_id, jour, debut, fin, salle_id) -> RapportVerification` (ce que
   donnerait la semaine type si la séance était placée ainsi, sans rien
   enregistrer ; seulement les anomalies qui concernent cette séance) ;
-- `edt.services.instanciation.instancier_version(session, version_id)
-  -> RapportInstanciation`.
+- `edt.services.instanciation.instancier_version(session, version_id,
+  contraintes_desactivees=None) -> RapportInstanciation`.
 
-Chaque fonction est importée **au moment de l'appel**. Si le module ou la
-fonction n'existe pas encore, ou si elle lève `ErreurNonLivre`, le raccord
+Chaque fonction est importée **au moment de l'appel** : le raccord reste un
+garde-fou. Si le module ou la fonction venait à manquer, ou si elle lève
+`ErreurNonLivre`, le raccord
 lève `ErreurRaccordIndisponible` (une `ErreurNonLivre`), journalisée en
 avertissement, avec une phrase affichable telle quelle. Jamais de liste vide
 à la place : un écran qui reçoit cette erreur affiche un encart clair
