@@ -33,6 +33,7 @@ from edt.erreurs import ErreurDonneesInvalides
 from edt.verification.contexte import (
     Contexte,
     Element,
+    cle_chronologique,
     cle_tri,
     defauts_de_plage,
     resoudre_codes,
@@ -219,7 +220,7 @@ def _volume(
                 **ressources,
             )
         elif len(places) > 1:
-            lieux = [ctx.moment(element) for element in places]
+            lieux = [ctx.moment(element) for element in sorted(places, key=cle_chronologique)]
             yield ctx.anomalie(
                 CodeContrainte.VOLUME,
                 Gravite.ERREUR,

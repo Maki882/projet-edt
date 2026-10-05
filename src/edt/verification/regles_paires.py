@@ -42,7 +42,7 @@ from collections.abc import Iterator, Sequence
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.domaine.heures import ecart, se_chevauchent
-from edt.verification.contexte import Contexte, Element
+from edt.verification.contexte import Contexte, Element, cle_chronologique
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import duree, enumerer, heure, plage
 
@@ -106,7 +106,7 @@ def _examiner(
 ) -> Iterator[Anomalie]:
     if not ctx.coexistent(a, b):
         return
-    if (b.debut, b.fin, b.position) < (a.debut, a.fin, a.position):
+    if cle_chronologique(b) < cle_chronologique(a):
         a, b = b, a
     if se_chevauchent(a.debut, a.fin, b.debut, b.fin):
         yield from _chevauchement(ctx, a, b, codes)

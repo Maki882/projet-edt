@@ -119,6 +119,24 @@ def cle_naturelle_seance(identifiant: str) -> tuple[int, int, int, str]:
     return (1, 0, 0, identifiant)
 
 
+def cle_chronologique(element: Element) -> tuple:
+    """Ordre de mention de séances placées dans un message, indépendant de l'ordre reçu.
+
+    Date, jour, heures, puis séance, besoin, occurrence et salle pour départager
+    deux séances aux mêmes horaires.
+    """
+    return (
+        element.date or dt.date.min,
+        element.jour,
+        element.debut,
+        element.fin,
+        cle_naturelle_seance(element.seance_id or ""),
+        element.besoin.id,
+        -1 if element.occurrence_id is None else element.occurrence_id,
+        -1 if element.salle_id is None else element.salle_id,
+    )
+
+
 def cle_tri(anomalie: Anomalie) -> tuple:
     """Clé du tri déterministe des anomalies renvoyées."""
     return (
