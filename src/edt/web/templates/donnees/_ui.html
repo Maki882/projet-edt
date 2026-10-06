@@ -9,6 +9,7 @@
   - d.cellule(colonne, valeur, detail)  contenu d'une cellule de liste (liste abrégée « +n »,
                                texte libre sur deux lignes au plus, détail au survol)
   - d.retour(ecran)            lien vers la page parente d'un écran
+  - d.raisons(liste)           éléments de liste des raisons d'une suppression (texte et lien)
 #}
 {% import "macros.html" as ui %}
 
@@ -82,4 +83,11 @@
 
 {% macro retour(ecran) -%}
 {%- if ecran.parent %}<a class="bouton" href="{{ ecran.parent[1] }}">{{ ecran.parent[0] }}</a>{% endif -%}
+{%- endmacro %}
+
+{# Raisons de refus ou conséquences d'une suppression (edt.services.referentiels.operations.Raison). #}
+{% macro raisons(liste) -%}
+{%- for raison in liste %}
+<li>{{ raison.texte }}{% if raison.lien %} <a href="{{ raison.lien }}">{{ raison.libelle_lien }}</a>{% endif %}</li>
+{%- endfor %}
 {%- endmacro %}

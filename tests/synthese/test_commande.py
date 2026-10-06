@@ -59,6 +59,14 @@ def test_remise_a_zero_demande_confirmation(lanceur, base):
     assert "(graine 5)" in accord.output
 
 
+def test_remise_a_zero_sur_une_base_neuve(lanceur, environnement):
+    # Le fichier de base n'existe pas encore : « jeu --reset » doit créer les tables
+    # puis charger le jeu, sans chercher un calcul en cours dans une table absente.
+    resultat = lanceur.invoke(cli.app, ["jeu", "--taille", "petit", "--reset", "--oui"])
+    assert resultat.exit_code == 0, resultat.output
+    assert _nombre(m.Besoin) > 0
+
+
 def test_second_chargement_refuse_avec_un_message_clair(lanceur, base):
     assert lanceur.invoke(cli.app, ["jeu", "--taille", "petit"]).exit_code == 0
     second = lanceur.invoke(cli.app, ["jeu", "--taille", "petit"])

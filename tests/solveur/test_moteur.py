@@ -259,7 +259,7 @@ def test_arret_demande_avant_le_calcul():
     assert "arrêté" in resultat.message
 
 
-def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee():
+def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(caplog):
     """Arrêt demandé alors qu'une solution existe : rendue en moins de deux secondes, pas perdue."""
     instantane, _ = generer(300, graine=1)
     arret = threading.Event()
@@ -269,8 +269,17 @@ def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee():
             resoudre(instantane, options(optimiser=True, temps_limite_s=120, nb_workers=2), arret)
         )
     )
-    calcul.start()
-    time.sleep(8)  # la première solution est trouvée en deux secondes ; l'amélioration tourne
+    # On attend que le moteur annonce la première solution valide (deux secondes d'ordinaire,
+    # bien plus sur une machine lente ou un cœur économe), puis on laisse l'amélioration tourner.
+    with caplog.at_level(logging.INFO, logger="edt.solveur.moteur"):
+        calcul.start()
+        echeance = time.perf_counter() + 90
+        while not any(
+            r.getMessage().startswith("Emploi du temps valide trouvé") for r in caplog.records
+        ):
+            assert time.perf_counter() < echeance, "aucune solution valide en 90 s"
+            time.sleep(0.1)
+        time.sleep(1.5)
     assert calcul.is_alive(), "le calcul devait encore améliorer la solution"
     demande = time.perf_counter()
     arret.set()

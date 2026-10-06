@@ -165,7 +165,7 @@ def remettre_a_zero(
 
 
 def _remettre_a_zero(aujourdhui: dt.date | None, url: str | None) -> RapportInitialisation:
-    _exiger_aucun_calcul("remettre la base à zéro")
+    _exiger_aucun_calcul("remettre la base à zéro", url)
     journal.warning("Remise à zéro de la base demandée : toutes les données seront supprimées")
     return initialiser_base(reset=True, aujourdhui=aujourdhui, url=url)
 
@@ -201,7 +201,12 @@ def recharger_jeu_fictif(
             return _charger(session, configuration, graine, annee_debut, enregistrer_reference)
 
 
-def _exiger_aucun_calcul(action: str) -> None:
+def _exiger_aucun_calcul(action: str, url: str | None = None) -> None:
+    if not base_initialisee(obtenir_moteur(url)):
+        # Base neuve ou vide de tables : aucun calcul ne peut y tourner, et interroger
+        # la table « calcul » planterait (« no such table »).
+        journal.info("Base non initialisée : aucun calcul à attendre avant de %s", action)
+        return
     suivi = calcul_en_cours()
     if suivi is not None:
         raise ErreurCalculEnCours(

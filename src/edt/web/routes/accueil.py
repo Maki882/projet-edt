@@ -1,9 +1,14 @@
-"""Routes du socle : page d'accueil (état de l'établissement en un coup d'œil) et contrôle de santé.
+"""Routes du socle : page d'accueil (ce qu'il faut faire maintenant) et contrôle de santé.
 
-L'accueil montre, quand la base est prête, la prochaine étape conseillée,
-l'emploi du temps actif du semestre en cours avec les quatre indicateurs de
-l'équipe et ce qui reste à traiter, le dernier calcul, puis les compteurs et
-l'état de la base (`edt.services.emploi_du_temps.tableau_de_bord`).
+L'accueil ne montre que ce dont l'équipe pédagogique a besoin pour avancer
+(`edt.services.emploi_du_temps.tableau_de_bord`) : la prochaine étape
+conseillée ; l'emploi du temps du semestre en cours (calcul en cours, version
+active à consulter, points à traiter) ; le dernier calcul **seulement** s'il
+s'est terminé sans emploi du temps ; l'état de la base **seulement** s'il y a
+un problème ou si la base est vide (`base_a_signaler`). Aucune statistique :
+les indicateurs restent sur le résultat d'un calcul, les nombres dans les
+listes de l'onglet Données, l'emplacement et l'environnement de la base dans
+`/sante` et `python -m edt doctor`.
 """
 
 from __future__ import annotations
@@ -19,8 +24,7 @@ from edt.db.moteur import session_base
 from edt.erreurs import ErreurEDT
 from edt.services.emploi_du_temps import presentation
 from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
-from edt.services.etat import diagnostiquer_base
-from edt.services.generation import dernier_calcul
+from edt.services.etat import EtatBase, diagnostiquer_base
 from edt.web.gabarits import Message, rendre
 from edt.web.menu import EntreeMenu
 
@@ -32,7 +36,7 @@ MENU = [EntreeMenu("Accueil", "/", ordre=0)]
 
 @routeur.get("/", response_class=HTMLResponse, name="accueil")
 def accueil(request: Request) -> HTMLResponse:
-    """Page d'accueil : prochaine étape, emploi du temps actif, indicateurs, base et compteurs."""
+    """Page d'accueil : prochaine étape, emploi du temps du semestre, calcul sans solution, base."""
     etat = diagnostiquer_base()
     tableau = None
     messages = []
@@ -53,14 +57,21 @@ def accueil(request: Request) -> HTMLResponse:
         "accueil.html",
         {
             "etat": etat,
-            "dernier_calcul": dernier_calcul() if etat.initialisee else None,
-            "environnement": charger_configuration().env,
+            "base_a_signaler": base_a_signaler(etat),
             "tableau": tableau,
             "etape": tableau.prochaine_etape if tableau else None,
             "fmt": presentation,
         },
         messages=messages,
     )
+
+
+def base_a_signaler(etat: EtatBase) -> bool:
+    """Vrai si l'accueil doit parler de la base : panne, schéma périmé, base non initialisée ou vide.
+
+    Quand tout va bien, le bloc « État de la base de données » n'est pas affiché.
+    """
+    return not etat.accessible or etat.schema_perime or not etat.initialisee or etat.vide
 
 
 @routeur.get("/sante", name="sante")

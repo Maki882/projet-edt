@@ -1,0 +1,9 @@
+{#
+  Réponse à une suppression depuis la ligne (HTMX) : la zone de liste à jour (compte,
+  page), et le message affiché dans la zone #messages de la page (échange « hors bande »).
+#}
+{% import "macros.html" as ui %}
+{% include "donnees/_zone_liste.html" %}
+<div id="messages" class="messages" aria-live="polite" hx-swap-oob="true">
+  {{ ui.messages(messages) }}
+</div>

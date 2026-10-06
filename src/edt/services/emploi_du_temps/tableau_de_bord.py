@@ -1,10 +1,10 @@
-"""État de l'établissement en un coup d'œil, pour la page d'accueil.
+"""Ce dont l'équipe pédagogique a besoin en arrivant, pour la page d'accueil.
 
-Pour le semestre par défaut (celui du jour) : données saisies, calcul en
-cours ou dernier calcul, version active et ses quatre indicateurs
-(pourcentage de séances placées, nombre de conflits, taux d'utilisation des
-salles, changements de campus), éléments à traiter, et la **prochaine
-étape** conseillée en une phrase :
+Pour le semestre par défaut (celui du jour) : le calcul en cours, la
+version active, le nombre de points à traiter (une action, pas une
+statistique), le dernier calcul **seulement s'il s'est terminé sans emploi
+du temps** (`CalculSansSolution` : un calcul réussi se lit dans la version
+active), et la **prochaine étape** conseillée en une phrase :
 
 1. saisir les données (salles, groupes, puis besoins du semestre) ;
 2. suivre le calcul en cours ;
@@ -13,9 +13,11 @@ salles, changements de campus), éléments à traiter, et la **prochaine
 4. traiter les anomalies et les séances à programmer ;
 5. consulter l'emploi du temps.
 
-Les indicateurs viennent du vérificateur de la semaine type : tant qu'il
-n'est pas livré, le tableau de bord le dit (`controle.motif`) au lieu
-d'afficher des zéros.
+Aucune statistique : les quatre indicateurs de l'équipe restent sur le
+résultat d'un calcul, les nombres de salles, groupes, enseignants et besoins
+ne servent ici qu'à choisir l'étape. Tant que les vérifications ne sont pas
+disponibles, `nb_a_traiter` vaut `None` (l'accueil le dit au lieu
+d'afficher zéro).
 """
 
 from __future__ import annotations
@@ -28,8 +30,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.domaine.enumerations import EtatCalcul
 from edt.services import generation
-from edt.services.emploi_du_temps import anomalies, raccords
+from edt.services.emploi_du_temps import anomalies
 from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
@@ -75,36 +78,55 @@ ECRAN_GROUPES = "/groupes"
 ECRAN_BESOINS = "/besoins"
 
 
+ETATS_A_RELANCER = (EtatCalcul.TEMPS_DEPASSE, EtatCalcul.ARRETE)
+"""États sans solution qui appellent à relancer plutôt qu'à corriger (ton « attention »)."""
+
+
+@dataclass(frozen=True)
+class CalculSansSolution:
+    """Le dernier calcul du semestre, terminé sans emploi du temps.
+
+    `etiquette` : son issue en quelques mots (« Calcul refusé » quand les
+    vérifications préalables l'ont refusé, sinon le libellé de son état) ;
+    `ton` : « attention » pour un temps dépassé ou un arrêt, « erreur » pour
+    un calcul impossible, refusé ou en erreur.
+    """
+
+    suivi: generation.SuiviCalcul
+    etiquette: str
+    ton: str
+
+    @classmethod
+    def du_calcul(cls, suivi: generation.SuiviCalcul | None) -> CalculSansSolution | None:
+        """Le calcul s'il est terminé sans solution ; `None` s'il est absent, en cours ou réussi."""
+        if suivi is None or suivi.en_cours or suivi.reussi:
+            return None
+        if (suivi.statistiques or {}).get("refuse"):
+            return cls(suivi, "Calcul refusé", "erreur")
+        ton = "attention" if suivi.etat in ETATS_A_RELANCER else "erreur"
+        return cls(suivi, suivi.etat.libelle, ton)
+
+
 @dataclass(frozen=True)
 class TableauDeBord:
-    """Ce que la page d'accueil affiche au-delà des compteurs de la base."""
+    """Ce que la page d'accueil affiche (voir l'en-tête du module).
+
+    - `nb_a_traiter` : `ATraiter.total` de la version active (la même
+      définition que la page « À traiter »), `None` si les vérifications ne
+      sont pas disponibles ;
+    - `nb_a_programmer` : séances datées à programmer, affichées seulement
+      quand `nb_a_traiter` est inconnu ;
+    - `calcul_sans_solution` : le dernier calcul du semestre s'il s'est
+      terminé sans emploi du temps, sinon `None`.
+    """
 
     semestre: ResumeSemestre | None
     version: ResumeVersion | None
-    nb_salles: int
-    nb_groupes: int
-    nb_enseignants: int
-    nb_besoins: int
     calcul_en_cours: generation.SuiviCalcul | None
-    dernier_calcul: generation.SuiviCalcul | None
-    controle: raccords.Controle | None
+    calcul_sans_solution: CalculSansSolution | None
     nb_a_traiter: int | None
     nb_a_programmer: int
     prochaine_etape: ProchaineEtape
-
-    @property
-    def indicateurs(self) -> raccords.Indicateurs | None:
-        """Indicateurs de la version active, s'ils sont connus."""
-        if self.controle is None or self.controle.verification is None:
-            return None
-        return self.controle.verification.indicateurs
-
-    @property
-    def nb_conflits(self) -> int | None:
-        """Anomalies bloquantes de la semaine type active, si la vérification a tourné."""
-        if self.controle is None or self.controle.verification is None:
-            return None
-        return self.controle.verification.nb_erreurs
 
 
 def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> TableauDeBord:
@@ -123,13 +145,11 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
     dernier = generation.dernier_calcul(semestre.id) if semestre else generation.dernier_calcul()
     version = version_active(session, semestre.id) if semestre else None
 
-    controle = None
     nb_a_traiter = None
     nb_a_programmer = 0
     if version is not None:
         # Même calcul que la page « À traiter » et la pastille de l'onglet (mémorisé).
         element = anomalies.a_traiter_version(session, semestre, version.id)
-        controle = element.hebdo
         nb_a_programmer = len(element.a_programmer)
         if element.complet:
             nb_a_traiter = element.total
@@ -148,13 +168,8 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
     return TableauDeBord(
         semestre=semestre,
         version=version,
-        nb_salles=nb_salles,
-        nb_groupes=nb_groupes,
-        nb_enseignants=nb_enseignants,
-        nb_besoins=nb_besoins,
         calcul_en_cours=en_cours,
-        dernier_calcul=dernier,
-        controle=controle,
+        calcul_sans_solution=CalculSansSolution.du_calcul(dernier),
         nb_a_traiter=nb_a_traiter,
         nb_a_programmer=nb_a_programmer,
         prochaine_etape=etape,
