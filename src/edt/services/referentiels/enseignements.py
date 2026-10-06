@@ -29,6 +29,8 @@ from edt.domaine.enumerations import JOURS, CibleIndisponibilite, ModeVolume, Na
 from edt.domaine.heures import duree_vers_texte, minutes_vers_texte
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.referentiels.description import (
+    BESOINS,
+    TOUS_SEMESTRES,
     Champ,
     Colonne,
     Decompte,
@@ -139,6 +141,8 @@ MATIERE = Entite(
             par_colonne(Besoin.matiere_id),
             "est enseignée par 1 besoin",
             "est enseignée par {n} besoins",
+            lien=TOUS_SEMESTRES + "&matiere={id}",
+            objets=BESOINS,
         ),
     ),
 )
@@ -209,6 +213,8 @@ TYPE_SEANCE = Entite(
             par_colonne(Besoin.type_seance_id),
             "est le type d'un besoin",
             "est le type de {n} besoins",
+            lien=TOUS_SEMESTRES + "&type={id}",
+            objets=BESOINS,
         ),
     ),
 )
@@ -388,18 +394,23 @@ _G2 = aliased(Groupe)
 _G3 = aliased(Groupe)
 
 
-def _condition_promotion(valeur: str):
-    promotion = int(valeur)
+def _condition_groupe(valeur: str):
+    """Besoins d'un groupe : suivis par lui ou ses sous-groupes, ou de ses matières rattachées.
+
+    Sert aux filtres « Promotion » et « Groupe » (l'arbre a trois niveaux :
+    promotion > classe > demi-groupe).
+    """
+    groupe = int(valeur)
     descendants = select(_G2.id).where(
         or_(
-            _G2.id == promotion,
-            _G2.parent_id == promotion,
-            _G2.parent_id.in_(select(_G3.id).where(_G3.parent_id == promotion)),
+            _G2.id == groupe,
+            _G2.parent_id == groupe,
+            _G2.parent_id.in_(select(_G3.id).where(_G3.parent_id == groupe)),
         )
     )
     return or_(
         Besoin.groupes.any(Groupe.id.in_(descendants)),
-        Besoin.matiere.has(Matiere.promotion_id == promotion),
+        Besoin.matiere.has(Matiere.promotion_id.in_(descendants)),
     )
 
 
@@ -669,7 +680,14 @@ BESOIN = Entite(
             "promotion",
             "Promotion",
             lambda s: options_reference(s, REF_PROMOTION),
-            _condition_promotion,
+            _condition_groupe,
+        ),
+        Filtre(
+            "groupe",
+            "Groupe",
+            lambda s: options_reference(s, REF_GROUPE),
+            _condition_groupe,
+            champ="groupes",
         ),
         Filtre(
             "matiere",
@@ -693,6 +711,13 @@ BESOIN = Entite(
             champ="enseignants",
         ),
         Filtre(
+            "salle_imposee",
+            "Salle imposée",
+            lambda s: options_reference(s, REF_SALLE),
+            lambda v: Besoin.salle_imposee_id == int(v),
+            champ="salle_imposee_id",
+        ),
+        Filtre(
             "mode",
             "Volume",
             lambda s: [(str(v), libelle) for v, libelle in CHOIX_MODE],
@@ -705,8 +730,10 @@ BESOIN = Entite(
             lambda s, i: (
                 compter_ou(s, SeanceHebdo.besoin_id, i) + compter_ou(s, Occurrence.besoin_id, i)
             ),
-            "1 séance déjà placée dans un emploi du temps sera supprimée",
-            "{n} séances déjà placées dans des emplois du temps seront supprimées",
+            "Sa séance déjà placée dans un emploi du temps disparaîtra avec lui ; le reste de "
+            "l'emploi du temps ne change pas",
+            "Ses {n} séances déjà placées dans des emplois du temps disparaîtront avec lui ; le "
+            "reste des emplois du temps ne change pas",
         ),
     ),
     valider=_valider_besoin,

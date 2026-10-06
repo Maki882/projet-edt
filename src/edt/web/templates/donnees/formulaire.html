@@ -8,7 +8,7 @@
 {% block actions %}
 <a class="bouton" href="{{ retour }}">Retour à la liste</a>
 {%- if ident %}
-<a class="bouton bouton-danger" href="{{ ecran.prefixe }}/{{ ident }}/supprimer">Supprimer</a>
+<a class="bouton bouton-danger" href="{{ ecran.prefixe }}/{{ ident }}/supprimer?{{ {'retour': retour, 'depuis': 'fiche'}|urlencode }}">Supprimer</a>
 {%- endif %}
 {% endblock %}
 

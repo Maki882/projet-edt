@@ -218,9 +218,23 @@ Possibilités de la description :
 - `uniques` : contrôlés **avant** l'écriture, erreur sous le champ ;
 - `usages` : ce qui empêche une suppression (`ErreurRegleMetier` levée
   avant d'atteindre la base, avec le décompte) ; `consequences` : ce que la
-  suppression emporte (affiché sur la page de confirmation) ;
+  suppression emporte, et ce qui se passe ensuite (« 17 séances déjà placées
+  resteront sans salle : elles apparaîtront dans « À traiter » et
+  retrouveront une salle au prochain calcul ou par un replacement à la
+  main ») ;
+- `Decompte(compter, singulier, pluriel, lien=..., objets=...)` : `lien` est
+  l'adresse de la liste des éléments comptés, avec `{id}` pour l'élément à
+  supprimer, et `objets` les nomme pour le libellé du lien (« Voir ces
+  12 besoins »). Exemple : `lien=TOUS_SEMESTRES + "&salle_imposee={id}"`,
+  `objets=BESOINS` (`TOUS_SEMESTRES` = `/besoins?semestre=`, car le
+  décompte compte tous les semestres). Liens en place : salle imposée,
+  enseignant, matière, type de séance et groupe vers les besoins ; campus et
+  type de salle vers les salles. Les autres usages (campus imposé, types de
+  salle et équipements demandés par un besoin) n'ont pas de filtre
+  correspondant : le refus reste sans lien ;
 - crochets `valider` (contrôles entre champs), `preparer`,
-  `apres_ecriture`, `analyser` (refus et conséquences calculés).
+  `apres_ecriture`, `analyser` (refus et conséquences calculés, en textes ou
+  en `operations.Raison` avec un lien).
 
 ### Écran générique (`edt.web.donnees.ecrans.Ecran`)
 
@@ -229,7 +243,19 @@ Possibilités de la description :
 (`GET <p>/nouveau`, prérempli par les paramètres d'adresse qui portent le nom
 d'un champ), la création (`POST <p>`), la modification (`GET`/`POST <p>/<n>`),
 la confirmation et la suppression (`GET`/`POST <p>/<n>/supprimer`), la ligne
-seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
+seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`),
+la confirmation et la suppression sur place (`GET <p>/<n>/ligne/suppression`,
+`POST <p>/<n>/ligne/supprimer`).
+
+**Suppression.** Avec JavaScript, « Supprimer » remplace la ligne par une
+ligne de confirmation : ce que la suppression emportera (« Supprimer
+définitivement » / « Annuler »), ou pourquoi elle est refusée, avec un lien
+vers les éléments qui bloquent (« Fermer » rend la ligne). La confirmation
+supprime puis rafraîchit la zone de liste (compte et page à jour) et affiche
+le message dans `#messages` (échange HTMX « hors bande »). Sans JavaScript, le
+même lien ouvre la page de confirmation, qui fait la même chose.
+`AnalyseSuppression` porte des `Raison(texte, lien, libelle_lien)` : `blocages`
+et `effets` (`refus` et `consequences` en donnent les textes).
 
 - Un filtre qui a une valeur par défaut (l'année ou le semestre en cours) est
   rappelé dans le résumé (« 0 groupe (Année : 2026-2027) ») mais ne compte pas
@@ -246,8 +272,13 @@ seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
   `#zone-liste` (en-tête `HX-Target: zone-liste`) et l'adresse suit.
 - Une saisie refusée réaffiche le formulaire (statut 422) avec les messages
   sous les champs et les valeurs saisies ; rien n'est écrit.
-- Après un enregistrement, retour à la liste d'origine (paramètre `retour`,
-  limité aux pages de l'écran).
+- Retour : « Modifier » et « Supprimer » portent l'adresse de la liste
+  (paramètre `retour`, limité aux pages de l'écran : recherche, filtres, tri
+  et page). Après un enregistrement ou une suppression, on revient sur cette
+  liste ; si sa page a disparu, à la dernière page qui existe. « Annuler »
+  ramène là d'où l'on venait : la liste, ou la fiche quand la suppression a
+  été demandée depuis la fiche (`depuis=fiche`). L'adresse d'une liste
+  omet les filtres vides sans valeur par défaut et le tri par défaut.
 - Options d'un écran : `introduction`, `gabarit_liste` (étendre
   `donnees/liste.html`, blocs `avant_liste` et `apres_liste`),
   `contexte_liste`, `edition_en_ligne`, `actions_ligne` (« Dupliquer »),
@@ -268,7 +299,7 @@ seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`).
 | | `/groupes`, `/groupes/arbre` | groupes (liste filtrable et arbre repliable promotion > classe > demi-groupe, groupes à part regroupés par nature), chevauchements, salle accessible requise |
 | | `/etudiants` | étudiants (fictifs) et inscriptions |
 | | `/matieres` | matières, code module, promotion |
-| Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, matière, type, enseignant, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
+| Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, groupe (et ses sous-groupes), matière, type, enseignant, salle imposée, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
 | Règles et calendrier | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`) ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
 | | `/grille` | créneaux de la grille (édition sur place) |

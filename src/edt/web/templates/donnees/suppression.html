@@ -1,39 +1,38 @@
-{# Confirmation d'une suppression : ce qu'elle emporte, ou pourquoi elle est refusée. #}
+{#
+  Confirmation d'une suppression (page entière, utilisée sans JavaScript ou depuis la fiche) :
+  ce qu'elle emporte, ou pourquoi elle est refusée avec des liens vers ce qui bloque.
+  `retour` : la liste où revenir après la suppression ; `annuler` : là d'où l'on vient.
+#}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
 
-{% block titre %}Supprimer {{ entite.nom }} « {{ analyse.libelle }} »{% endblock %}
+{% block titre %}Supprimer {{ entite.demonstratif|lower }} « {{ analyse.libelle }} »{% endblock %}
 
 {% block contenu %}
 {%- if analyse.possible %}
 <section class="carte carte-attention">
   <h2>Confirmer la suppression</h2>
   <p>{{ entite.demonstratif }} sera {{ entite.accorde("supprimé") }} définitivement.</p>
-  {%- if analyse.consequences %}
+  {%- if analyse.effets %}
   <p>Conséquences :</p>
-  <ul>
-    {%- for consequence in analyse.consequences %}
-    <li>{{ consequence }}</li>
-    {%- endfor %}
-  </ul>
+  <ul>{{ d.raisons(analyse.effets) }}</ul>
   {%- endif %}
   <form method="post" action="{{ ecran.prefixe }}/{{ analyse.id }}/supprimer" class="ligne-boutons">
+    <input type="hidden" name="_retour" value="{{ retour }}">
+    {%- if depuis_fiche %}<input type="hidden" name="_depuis" value="fiche">{% endif %}
     <button type="submit" class="bouton bouton-danger-plein">Supprimer définitivement</button>
-    <a class="bouton" href="{{ ecran.prefixe }}/{{ analyse.id }}">Annuler</a>
+    <a class="bouton" href="{{ annuler }}">Annuler</a>
   </form>
 </section>
 {%- else %}
 <section class="carte carte-erreur">
   <h2>Suppression impossible</h2>
-  <ul>
-    {%- for raison in analyse.refus %}
-    <li>{{ raison }}</li>
-    {%- endfor %}
-  </ul>
+  <ul>{{ d.raisons(analyse.blocages) }}</ul>
   <p>Modifiez ou supprimez d'abord les éléments qui l'utilisent : on ne modifie jamais une demande en silence.</p>
   <p class="ligne-boutons">
-    <a class="bouton bouton-principal" href="{{ ecran.prefixe }}/{{ analyse.id }}">Revenir à {{ entite.demonstratif|lower }}</a>
-    <a class="bouton" href="{{ ecran.prefixe }}">Retour à la liste</a>
+    <a class="bouton bouton-principal" href="{{ url_fiche }}">Revenir à {{ entite.demonstratif|lower }}</a>
+    <a class="bouton" href="{{ retour }}">Retour à la liste</a>
   </p>
 </section>
 {%- endif %}

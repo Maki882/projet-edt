@@ -174,15 +174,38 @@ class Decompte:
 
     Sert aux **usages** (ce qui empêche une suppression) et aux **conséquences**
     (ce que la suppression emporte ou modifie).
+
+    `lien` (facultatif) : adresse de la liste des éléments comptés, où `{id}`
+    est l'identifiant de l'élément à supprimer (par exemple
+    `/besoins?semestre=&salle_imposee={id}`) ; `objets` nomme ces éléments
+    pour le libellé du lien (« Voir ces 12 besoins »).
     """
 
     compter: Callable[[Session, int], int]
     singulier: str
     pluriel: str
+    lien: str = ""
+    objets: tuple[str, str] = ("cet élément", "ces {n} éléments")
 
     def texte(self, nombre: int) -> str:
         """Phrase accordée au nombre."""
         return (self.singulier if nombre == 1 else self.pluriel).format(n=nombre)
+
+    def adresse(self, ident: int) -> str:
+        """Adresse de la liste des éléments comptés pour l'élément `ident` (vide sans lien)."""
+        return self.lien.format(id=ident) if self.lien else ""
+
+    def libelle_lien(self, nombre: int) -> str:
+        """Libellé du lien : « Voir ce besoin », « Voir ces 12 besoins »."""
+        return "Voir " + (self.objets[0] if nombre == 1 else self.objets[1]).format(n=nombre)
+
+
+BESOINS = ("ce besoin", "ces {n} besoins")
+"""Noms des besoins comptés, pour `Decompte.objets`."""
+SALLES = ("cette salle", "ces {n} salles")
+"""Noms des salles comptées, pour `Decompte.objets`."""
+TOUS_SEMESTRES = "/besoins?semestre="
+"""Début d'adresse de la liste des besoins de tous les semestres (le décompte les compte tous)."""
 
 
 Valeurs = dict[str, Any]
@@ -202,7 +225,8 @@ class Entite:
     - `apres_ecriture(session, objet, valeurs)` : écritures annexes une fois
       l'objet enregistré (tables d'association sans relation ORM) ;
     - `analyser(session, objet)` : refus et conséquences de suppression
-      calculés (en plus de `usages` et `consequences`).
+      calculés (en plus de `usages` et `consequences`), en textes ou en
+      `operations.Raison` (texte et lien vers les éléments concernés).
     """
 
     code: str
@@ -227,7 +251,7 @@ class Entite:
     valider: Callable[[Session, Valeurs, Any], dict[str, str]] | None = None
     preparer: Callable[[Session, Valeurs], Valeurs] | None = None
     apres_ecriture: Callable[[Session, Any, Valeurs], None] | None = None
-    analyser: Callable[[Session, Any], tuple[list[str], list[str]]] | None = None
+    analyser: Callable[[Session, Any], tuple[list[Any], list[Any]]] | None = None
     _index: dict[str, Champ] = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:

@@ -19,10 +19,19 @@ et reçoit les adresses suivantes (`<p>` = préfixe, `<n>` = identifiant) :
 | GET     | `<p>/<n>/ligne`        | ligne du tableau (fragment HTMX)                  |
 | GET     | `<p>/<n>/ligne/edition`| ligne en édition (si `edition_en_ligne`)          |
 | POST    | `<p>/<n>/ligne`        | enregistrement depuis la ligne                    |
+| GET     | `<p>/<n>/ligne/suppression` | ligne de confirmation de suppression (HTMX)  |
+| POST    | `<p>/<n>/ligne/supprimer`   | suppression depuis la ligne : zone de liste rafraîchie (HTMX) |
 
 Les routes appellent les services génériques ; une saisie refusée réaffiche
 le formulaire avec les messages sous les champs (statut 422), sans rien
 enregistrer.
+
+Retour : les liens « Modifier » et « Supprimer » d'une liste portent son
+adresse (`retour`, avec recherche, filtres, tri et page) ; après un
+enregistrement ou une suppression, on revient sur cette liste (à la page
+précédente si la page a disparu). « Annuler » ramène là d'où l'on venait :
+la liste, ou la fiche si la suppression a été demandée depuis la fiche
+(`depuis=fiche`).
 """
 
 from __future__ import annotations
@@ -44,7 +53,7 @@ from edt.services.referentiels.description import Entite, TypeChamp
 from edt.services.referentiels.operations import ErreurSaisie, PageListe
 from edt.web.dependances import SessionRequete
 from edt.web.donnees.formulaires import champs_affiches, saisies_formulaire
-from edt.web.gabarits import est_htmx, rediriger, rendre
+from edt.web.gabarits import Message, est_htmx, rediriger, rendre
 
 journal = logging.getLogger(__name__)
 
@@ -122,6 +131,7 @@ class EtatListe:
     descendant: bool = False
     page: int = 1
     filtres: dict[str, str] = field(default_factory=dict)
+    tri_defaut: str = ""
 
     def url(self, **changements: Any) -> str:
         """Adresse de la liste avec les changements demandés (page remise à 1 sauf mention)."""
@@ -130,7 +140,7 @@ class EtatListe:
         if etat.recherche:
             parametres["q"] = etat.recherche
         parametres.update(etat.filtres)
-        if etat.tri:
+        if etat.tri and (etat.tri != etat.tri_defaut or etat.descendant):
             parametres["tri"] = etat.tri
         if etat.descendant:
             parametres["sens"] = "desc"
@@ -157,7 +167,11 @@ def _parametres_de_liste(request: Request, ecran: Ecran) -> QueryParams:
 
 
 def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
-    parametres = _parametres_de_liste(request, ecran)
+    return _etat_depuis(_parametres_de_liste(request, ecran), ecran)
+
+
+def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
+    """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
     brute = parametres.get("page", "1").strip() or "1"
     if not (brute.isascii() and brute.isdigit()) or int(brute) < 1:
         raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute} ».")
@@ -169,6 +183,7 @@ def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
         descendant=parametres.get("sens") == "desc",
         page=int(brute),
         filtres={nom: valeur for nom, valeur in parametres.items() if nom in noms},
+        tri_defaut=ecran.entite.tri_defaut,
     )
 
 
@@ -208,7 +223,18 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
         page=demande.page,
         filtres=demande.filtres,
     )
-    etat = replace(demande, tri=page.tri, page=page.page, filtres=dict(page.filtres))
+    # Adresse sans filtre vide inutile : un filtre vide n'est gardé que s'il a une valeur
+    # par défaut (« Semestre : Tous » diffère alors de l'absence du paramètre).
+    etat = replace(
+        demande,
+        tri=page.tri,
+        page=page.page,
+        filtres={
+            nom: valeur
+            for nom, valeur in page.filtres.items()
+            if valeur or ecran.entite.filtre(nom).defaut is not None
+        },
+    )
     prerempli = {
         filtre.champ: page.filtres[filtre.nom]
         for filtre in ecran.entite.filtres
@@ -299,6 +325,41 @@ def _prerempli(request: Request, ecran: Ecran) -> dict[str, Any]:
     return valeurs
 
 
+def _suffixe_retour(adresse: str) -> str:
+    return "?" + urlencode({"retour": adresse})
+
+
+def _liste_courante(request: Request, ecran: Ecran) -> str:
+    """Adresse de la liste d'où vient la demande (pour un fragment : `HX-Current-URL`)."""
+    etat = _etat_demande(request, ecran)
+    return etat.url(page=etat.page)
+
+
+def _retour_apres_suppression(session: Session, ecran: Ecran, retour: str) -> str:
+    """Adresse de retour après une suppression : la même liste, à une page qui existe encore."""
+    morceaux = urlsplit(retour)
+    if morceaux.path != ecran.prefixe:
+        return retour
+    try:
+        demande = _etat_depuis(QueryParams(morceaux.query), ecran)
+        if demande.page <= 1:
+            return retour
+        page = operations.lister(
+            session,
+            ecran.entite,
+            recherche=demande.recherche,
+            tri=demande.tri or None,
+            descendant=demande.descendant,
+            page=demande.page,
+            filtres=demande.filtres,
+        )
+    except ErreurDonneesInvalides as erreur:
+        # Adresse de retour fabriquée ou périmée (filtre disparu...) : retour à la liste.
+        journal.info("Adresse de retour écartée (%s) : %s", retour, erreur.message)
+        return ecran.prefixe
+    return demande.url(page=page.page)
+
+
 def _filtres_appliques(request: Request, session: Session, ecran: Ecran) -> dict[str, str]:
     return operations.valeurs_filtres(session, ecran.entite, _etat_demande(request, ecran).filtres)
 
@@ -315,7 +376,7 @@ def _rendre_ligne(
             "colonnes": colonnes_affichees(
                 ecran.entite, _filtres_appliques(request, session, ecran)
             ),
-            "suffixe_retour": "",
+            "suffixe_retour": _suffixe_retour(_liste_courante(request, ecran)),
             "modifiee": modifiee,
         },
     )
@@ -337,13 +398,51 @@ def _rendre_ligne_edition(
             "ecran": ecran,
             "ident": ident,
             "rubriques": champs_affiches(session, ecran.entite, valeurs, erreurs),
-            "nb_colonnes": len(
-                colonnes_affichees(ecran.entite, _filtres_appliques(request, session, ecran))
-            )
-            + 1,
+            "nb_colonnes": _nb_colonnes(request, session, ecran),
             "erreur": erreur if erreur is not None and not erreurs else None,
         },
     )
+
+
+def _nb_colonnes(request: Request, session: Session, ecran: Ecran) -> int:
+    """Colonnes affichées par la liste courante, colonne d'actions comprise."""
+    filtres = _filtres_appliques(request, session, ecran)
+    return len(colonnes_affichees(ecran.entite, filtres)) + 1
+
+
+def _rendre_ligne_suppression(
+    request: Request, session: Session, ecran: Ecran, ident: int
+) -> Response:
+    retour = _liste_courante(request, ecran)
+    return rendre(
+        request,
+        "donnees/_ligne_suppression.html",
+        {
+            "ecran": ecran,
+            "entite": ecran.entite,
+            "analyse": operations.analyser_suppression(session, ecran.entite, ident),
+            "url_element": ecran.url_element(ident),
+            "url_page": f"{ecran.url_element(ident)}/supprimer{_suffixe_retour(retour)}",
+            "nb_colonnes": _nb_colonnes(request, session, ecran),
+        },
+    )
+
+
+def _contexte_confirmation(
+    request: Request, session: Session, ecran: Ecran, ident: int
+) -> dict[str, Any]:
+    retour = ecran.adresse_retour(request.query_params.get("retour"))
+    depuis_fiche = request.query_params.get("depuis") == "fiche"
+    url_fiche = ecran.url_element(ident) + _suffixe_retour(retour)
+    return {
+        "ecran": ecran,
+        "entite": ecran.entite,
+        "analyse": operations.analyser_suppression(session, ecran.entite, ident),
+        "retour": retour,
+        "depuis_fiche": depuis_fiche,
+        "url_fiche": url_fiche,
+        "annuler": url_fiche if depuis_fiche else retour,
+    }
 
 
 def routeur_ecran(ecran: Ecran) -> APIRouter:
@@ -420,22 +519,56 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         return rendre(
             request,
             "donnees/suppression.html",
-            {
-                "ecran": ecran,
-                "entite": entite,
-                "analyse": operations.analyser_suppression(session, entite, ident),
-            },
+            _contexte_confirmation(request, session, ecran, ident),
         )
 
     @routeur.post("/{ident:int}/supprimer", name=f"{entite.code}_supprimer")
-    def supprimer(request: Request, session: SessionRequete, ident: int) -> Response:
+    def supprimer(
+        request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
+    ) -> Response:
+        retour = ecran.adresse_retour(formulaire.get("_retour"))
         try:
             nom = operations.supprimer(session, entite, ident)
         except ErreurRegleMetier as refus:
+            parametres = {"retour": retour}
+            if formulaire.get("_depuis") == "fiche":
+                parametres["depuis"] = "fiche"
             return rediriger(
-                request, f"{ecran.url_element(ident)}/supprimer", refus.message, "erreur"
+                request,
+                f"{ecran.url_element(ident)}/supprimer?{urlencode(parametres)}",
+                refus.message,
+                "erreur",
             )
-        return rediriger(request, ecran.prefixe, _message(ecran, nom, "supprimé"))
+        return rediriger(
+            request,
+            _retour_apres_suppression(session, ecran, retour),
+            _message(ecran, nom, "supprimé"),
+        )
+
+    @routeur.get("/{ident:int}/ligne/suppression", name=f"{entite.code}_ligne_suppression")
+    def ligne_suppression(request: Request, session: SessionRequete, ident: int) -> Response:
+        return _rendre_ligne_suppression(request, session, ecran, ident)
+
+    @routeur.post("/{ident:int}/ligne/supprimer", name=f"{entite.code}_ligne_supprimer")
+    def ligne_supprimer(request: Request, session: SessionRequete, ident: int) -> Response:
+        """Supprime depuis la ligne et renvoie la zone de liste à jour, avec le message."""
+        try:
+            nom = operations.supprimer(session, entite, ident)
+            message = Message(_message(ecran, nom, "supprimé"), "succes")
+        except ErreurRegleMetier as refus:
+            message = Message(refus.message, "erreur")
+        if not est_htmx(request):
+            retour = _retour_apres_suppression(session, ecran, _liste_courante(request, ecran))
+            return rediriger(request, retour, message.texte, message.niveau)
+        demande = _etat_demande(request, ecran)
+        contexte = contexte_liste(request, session, ecran)
+        reponse = rendre(
+            request, "donnees/_zone_apres_suppression.html", contexte, messages=[message]
+        )
+        if contexte["etat"].page != demande.page:
+            # La page affichée a disparu : l'adresse suit la page montrée.
+            reponse.headers["HX-Replace-Url"] = contexte["url_liste"]
+        return reponse
 
     @routeur.get("/{ident:int}/ligne", name=f"{entite.code}_ligne")
     def ligne(request: Request, session: SessionRequete, ident: int) -> Response:
