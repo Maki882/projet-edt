@@ -84,6 +84,7 @@ from edt.erreurs import (
 from edt.journal import ouvrir_journal_calcul
 from edt.services.instanciation import instancier_version
 from edt.services.instantane import charger_instantane
+from edt.services.niveaux import niveaux_du_calcul
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import Moteur, OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.preverification import pre_verifier
@@ -815,15 +816,13 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
 
 
 def _niveaux_du_calcul(calcul_id: int, parametres: dict, desactivees: Iterable[str]) -> Niveaux:
-    """Niveaux retenus pour un calcul enregistré.
-
-    `parametres["niveaux"]` fait foi ; les contraintes ignorées en sont
-    absentes et sont aussi listées dans `contraintes_desactivees`. Un calcul
-    enregistré avant les niveaux n'a que ses contraintes désactivées : les
-    niveaux par défaut sans ces codes.
+    """Niveaux retenus pour un calcul enregistré (`edt.services.niveaux`, même lecture
+    que le vérificateur) ; des niveaux illisibles sont signalés et remplacés par les
+    niveaux par défaut sans les contraintes désactivées, pour que l'historique reste
+    consultable.
     """
     try:
-        return OptionsSolveur.lire_niveaux(parametres, desactivees)
+        return niveaux_du_calcul(parametres, desactivees)
     except ErreurEDT as erreur:
         journal.warning(
             "Calcul %d : niveaux enregistrés illisibles (%s), niveaux par défaut utilisés",

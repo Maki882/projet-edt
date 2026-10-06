@@ -111,8 +111,10 @@ POIDS_NIVEAU: dict[Niveau, int] = {Niveau.IMPORTANT: 1000, Niveau.FACULTATIF: 20
 
 À comparer aux préférences : 10 par trou, 5 par changement de campus, 2 par
 samedi, 1 par créneau extrême. Une contrainte importante vaut donc une
-centaine de trous, une facultative deux trous. Valeurs provisoires, que le
-lot solveur calibrera.
+centaine de trous-semaines (sept trous sur un semestre de quinze semaines),
+plus que tout gain de confort réaliste d'une seule entorse ; une facultative
+deux trous-semaines, qu'un vrai gain de confort peut emporter. Valeurs
+calibrées par le lot solveur sur les jeux moyen et grand (2026-10-06).
 """
 
 Niveaux = dict[CodeContrainte, Niveau]
