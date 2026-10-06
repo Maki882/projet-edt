@@ -51,12 +51,12 @@ def test_dejeuner_seance_imposee_information():
     assert "pour information" in anomalies[0].message
 
 
-def test_dejeuner_sans_horaires_determines_ne_releve_rien():
-    """Pause déjeuner sans horaires déterminés : la règle ne s'applique plus, même active."""
+def test_dejeuner_sans_pause_ne_releve_rien():
+    """Mode « aucun » (pas de pause) : la règle ne s'applique plus, même active."""
     f, seance, n204 = une_seance()
     midi = [placer(seance, MARDI, "12h00", n204)]
     assert codes(verifier(f.construire(), midi, ["DEJEUNER"])) == ["DEJEUNER"]
-    f.parametres = f.parametres.avec(dejeuner_horaires_determines=False)
+    f.parametres = f.parametres.avec(dejeuner_mode="aucun")
     assert verifier(f.construire(), midi, ["DEJEUNER"]) == []
     assert "DEJEUNER" not in codes(verifier(f.construire(), midi))  # contraintes par défaut
 
