@@ -7,7 +7,9 @@ datées** de tout le semestre. Il s'appuie sur OR-Tools CP-SAT.
 Deux principes, hérités de la spécification :
 
 - **aucune contrainte n'est abandonnée** pour réussir. Seul l'utilisateur
-  désactive une contrainte, et le résultat le rappelle ;
+  choisit le **niveau** de chaque contrainte (nécessaire, important,
+  facultatif) ou l'ignore, et le résultat rappelle ses choix et chaque
+  entorse consentie ;
 - **tout ou rien** : toutes les séances sont placées, ou aucune. Quand c'est
   impossible, le moteur le dit et dit pourquoi.
 
@@ -64,17 +66,18 @@ Fonctions publiques :
 def resoudre(instantane, options: OptionsSolveur, arret: threading.Event | None = None) -> ResultatSolveur
 
 # edt.solveur.preverification
-def pre_verifier(instantane, contraintes_desactivees=(), *, tolerer_violations_heritees=False) -> list[Anomalie]
+def pre_verifier(instantane, contraintes_desactivees=(), *, tolerer_violations_heritees=False,
+                 niveaux=None) -> list[Anomalie]
 
 # edt.solveur.instanciation
-def instancier(instantane, placements, contraintes_desactivees=(), en_place=()) -> ResultatInstanciation
+def instancier(instantane, placements, contraintes_desactivees=(), en_place=(), niveaux=None) -> ResultatInstanciation
 
 # edt.solveur.replacement
 def replacer(instantane, occurrences_fixes, occurrences_a_replacer,
              options: OptionsReplacement | None = None, arret=None) -> ResultatReplacement
 
 # edt.services.generation
-def pre_verifier_semestre(session, semestre_id, contraintes_desactivees=(), *,
+def pre_verifier_semestre(session, semestre_id, contraintes_desactivees=(), *, niveaux=None,
                           version_base_id=None, tolerer_violations_heritees=False) -> list[Anomalie]
 
 # edt.services.instanciation
@@ -265,6 +268,73 @@ Cas particuliers :
   verrou ne suit pas une séance que le moteur a déplacée, sinon les calculs
   suivants figeraient une place que personne n'a choisie.
 
+### Niveaux des contraintes
+
+Chaque contrainte présente dans `OptionsSolveur.niveaux` a un niveau
+(`edt.domaine.contraintes.Niveau`) ; une clé absente est une contrainte
+ignorée, ni posée ni vérifiée.
+
+- **nécessaire** : contrainte **dure**, traduite comme ci-dessus ; rien ne la
+  viole, et une impossibilité certaine refuse le calcul ;
+- **important** et **facultatif** : contrainte **souple**. Elle n'élimine
+  plus aucune possibilité ; chaque **entorse** est une variable du modèle qui
+  coûte `POIDS_NIVEAU[niveau]` dans l'objectif (1 000 pour une règle
+  importante, 20 pour une règle facultative). Le moteur minimise ce coût
+  **dans tous les modes** : sans « optimiser », l'amélioration ne porte que
+  sur les entorses, n'a lieu que si la solution valide en comporte et
+  s'arrête dès qu'elles sont nulles ou qu'elle ne progresse plus ; avec
+  « optimiser », les termes de confort s'y ajoutent.
+
+Six contraintes définissent le problème et restent toujours nécessaires
+(`SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `VERROU`,
+`JOUR_FERME`, `VOLUME`). Par défaut, `PAUSE`, `DEJEUNER`, `EQUIPEMENT` et
+`MAX_ENSEIGNANT` sont importantes, les autres nécessaires.
+
+**Unité d'entorse et lieu de traitement, contrainte par contrainte :**
+
+| Code | Unité d'entorse | Où |
+|---|---|---|
+| `HORAIRES` | une séance placée hors de sa demi-journée ou des heures d'ouverture (les débuts restent ceux de la grille) | phase 1, étiquette du début |
+| `JOURS` | une séance placée un jour non permis (samedi non autorisé, jour sans créneau si `HORAIRES` est ignorée) | phase 1, étiquette du début |
+| `DEJEUNER` | une séance qui recoupe la plage du déjeuner | phase 1, étiquette du début |
+| `DISPO_ENSEIGNANT`, `DISPO_GROUPE` | une séance placée pendant une indisponibilité récurrente (une séance verrouillée là compte aussi) | phase 1, étiquette du début |
+| `PAUSE` | une paire de séances d'une même personne, le même jour, séparées de moins que la pause (une entorse par paire, quel que soit le nombre de semaines) | phase 1, littéral par paire |
+| `CAMPUS_TRAJET` | une paire de séances d'une même personne, le même jour, sur deux campus, séparées de moins que le trajet | phase 1, littéral par paire |
+| `MAX_ENSEIGNANT` | une heure entamée au-delà du maximum **journalier**, par jour et par ensemble de semaines actives ; les heures au-delà du maximum **hebdomadaire** ne dépendent pas du placement : comptées d'avance par les pré-vérifications (avertissement), par semaine | phase 1, entier par jour ; pré-vérifications |
+| `EQUIPEMENT`, `CAPACITE`, `TYPE_SALLE`, `ACCESSIBILITE` | une exigence non satisfaite par la salle d'une séance | phase 2, coût de la salle |
+| `DISPO_SALLE` | une séance dans une salle indisponible à cet horaire | phase 2, coût de la salle |
+
+Ce qui change dans le modèle : une pause souple n'allonge plus les plages
+des contraintes de personnes (les paires trop proches deviennent des
+littéraux d'entorse) ; une exigence de salle souple ne retire aucune salle
+des domaines (la condition de capacité de la phase 1 compte donc toutes les
+salles) ; les débuts qui enfreignent une règle d'horaire souple restent
+dans le domaine avec leur étiquette. `ModeleHoraires.bilan` compte les
+entorses de la phase 1 à partir des seuls choix, `edt.solveur.salles` celles
+de la phase 2.
+
+**Résultat.** `statistiques["entorses"]` donne `{code: nombre}` (vide s'il
+n'y en a aucune) et le message les dit en clair, par niveau : « 2 entorses à
+des règles importantes (pause entre deux séances : 2). 1 entorse à une règle
+facultative (jours de cours : 1). » ; rien s'il n'y en a aucune. Le contrôle
+par le vérificateur ne porte que sur les contraintes nécessaires.
+
+**Couche datée.** Une contrainte souple n'empêche rien à l'instanciation :
+la semaine type l'a arbitrée, déplacer chaque semaine une séance placée en
+connaissance de cause n'aurait pas de sens. Au replacement, une place qui
+enfreint une règle souple reste permise mais son coût s'ajoute à
+l'éloignement (1 000 vaut dix semaines, 20 vaut deux jours) : une règle
+importante fait préférer une autre semaine, une règle facultative une autre
+place proche.
+
+**Limites.** Les horaires sont choisis sans connaître le coût des salles :
+une entorse à `EQUIPEMENT` (ou `CAPACITE`, `TYPE_SALLE`, `ACCESSIBILITE`,
+`DISPO_SALLE`) peut être payée là où d'autres horaires l'auraient évitée ; la
+phase 2 l'évite seulement quand les horaires le permettent. Le maximum
+journalier souple est compté par ensemble de semaines : une séance active
+dans deux ensembles peut compter deux fois. Au replacement, un maximum
+d'enseignant souple dépassé coûte une entorse, pas une par heure.
+
 Violations héritées (`tolerer_violations_heritees`) : aucune contrainte de
 paire ne s'applique entre deux séances verrouillées. En pratique les séances
 verrouillées qui se contredisent, et celles dont la salle reste à choisir,
@@ -364,10 +434,12 @@ faux, borne inférieure dans `borne_objectif`).
    reprise si les salles ne suivent pas. À ce moment une solution
    enregistrable existe : `statistiques["duree_premiere_solution_s"]` donne
    le délai écoulé.
-4. **Amélioration**, en mode optimisé seulement et s'il reste au moins 1 s
-   (`TEMPS_MIN_AMELIORATION_S`) : l'objectif est ajouté au modèle et la
-   recherche repart de la solution valide, jusqu'à la preuve d'optimalité,
-   à la stagnation (plus de progrès), au temps limite ou à l'arrêt demandé.
+4. **Amélioration**, s'il reste au moins 1 s (`TEMPS_MIN_AMELIORATION_S`),
+   en mode optimisé ou dès que la solution valide comporte des entorses à
+   des contraintes souples : l'objectif (entorses, et confort en mode
+   optimisé) est ajouté au modèle et la recherche repart de la solution
+   valide, jusqu'à la preuve d'optimalité, à la stagnation (plus de
+   progrès), au temps limite ou à l'arrêt demandé.
    Les horaires améliorés reçoivent des salles ; si elles ne suivent pas pour
    les meilleurs horaires, les précédents sont essayés (20 gardés), et à
    défaut la solution valide de l'étape 3 est rendue.
@@ -509,10 +581,12 @@ vérificateur, avec la même phrase.
   `duree_premiere_solution_s`, `duree_resolution_s`, `duree_salles_s`,
   `duree_s`, `statut_cp_sat`, `nb_workers` (fils réellement utilisés),
   `graine`, `nb_conflits`, `nb_branches`, `nb_solutions`, `nb_coupes`,
-  `refuse`, `arrete_par_utilisateur`, `raison_arret` (pour une solution) ;
-  et quand l'amélioration a eu lieu `objectif_premiere_solution`, `objectif`,
-  `trous`, `samedis`, `borne_objectif`, `optimal`, `duree_sans_progres_s`
-  (arrêt sur stagnation).
+  `refuse`, `arrete_par_utilisateur`, `raison_arret` et `entorses` (pour
+  une solution) ; et quand l'amélioration a eu lieu
+  `objectif_premiere_solution`, `borne_objectif` (sur l'objectif complet,
+  entorses comprises), et en mode optimisé `objectif` (confort seul),
+  `trous`, `samedis`, `optimal`, `duree_sans_progres_s` (arrêt sur
+  stagnation).
 - **Journal** (`logging`, jamais de `print`) : taille du problème, tailles
   des domaines (minimum, médiane), durée de construction, une ligne de
   progression toutes les 5 s, « Emploi du temps valide trouvé après ... s »,
@@ -644,8 +718,14 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
 ```sh
 python -m edt pre-verifier --semestre 1
 python -m edt generer --semestre 1 --temps-limite 120 --optimiser --graine 3 -d PAUSE
+python -m edt generer --semestre 1 --niveau PAUSE=facultatif --niveau EQUIPEMENT=necessaire
 python -m edt instancier --version 4
 ```
+
+`--niveau CODE=niveau` (répétable) fixe le niveau d'une contrainte
+(`necessaire`, `important`, `facultatif`) ; `-d CODE` l'ignore. Le
+récapitulatif affiché avant le calcul ne cite que les règles qui s'écartent
+de leur niveau par défaut.
 
 `generer` rend le code 1 si le calcul n'aboutit pas ; `pre-verifier` rend le
 code 1 si le calcul serait refusé.
@@ -922,6 +1002,46 @@ exécution à l'autre : le même soir, le grand S1 à 180 s a aussi donné 2 401
 intervienne. La recherche à deux fils n'est pas déterministe, et la machine
 est plus ou moins occupée.
 
+### Niveaux par défaut (quatre règles souples) et entorse forcée
+
+Relevé le 06/10/2026 sur le poste de développement, 2 fils, graine 1, sans
+indices, arrêt sur stagnation, niveaux par défaut (`PAUSE`, `DEJEUNER`,
+`EQUIPEMENT` et `MAX_ENSEIGNANT` importantes, le reste nécessaire) :
+
+| Jeu | Temps limite | Première solution | Durée totale | Raison de l'arrêt | Entorses | Objectif | Trous | Samedi |
+|---|---|---|---|---|---|---|---|---|
+| moyen S1 | 300 s | 1,5 s | 35,5 s | stagnation (12 s) | aucune | 429 | 3 | 0 |
+| moyen S2 | 300 s | 1,7 s | 26,1 s | stagnation (10 s) | aucune | 322 | 0 | 0 |
+| grand S1 | 300 s | 41,8 s | 300,6 s | temps limite | aucune | 3 674 | 10 | 77 |
+| grand S2 | 300 s | 45,0 s | 300,2 s | temps limite | aucune | 5 906 | 195 | 203 |
+| moyen S1, M. Rodrigues (6 séances par semaine) présent le lundi seulement, `DISPO_ENSEIGNANT` importante et `PAUSE` facultative | 300 s | 4,5 s | 48,3 s | stagnation (16 s) | disponibilité des enseignants : 3 | 411 | 0 | 6 |
+
+Avec `DISPO_ENSEIGNANT` nécessaire, le dernier cas est refusé par les
+pré-vérifications (« 12 h de cours la semaine 1 pour 8 h 30 disponibles »).
+Avec la règle importante, le calcul aboutit et compte ses entorses (le
+minimum théorique est 2 : quatre créneaux le lundi pour six séances) ; les
+séances datées de l'enseignant ne sont pas replacées pour autant.
+
+Sur les jeux fictifs, la première solution valide ne comporte aucune
+entorse : la grille laisse 15 minutes entre deux créneaux (la pause), le
+déjeuner tombe entre deux créneaux, les salles équipées suffisent et les
+maxima des enseignants ne sont pas atteints (une exception : la toute
+première solution du grand S1 dépassait de 2 h le maximum journalier d'un
+enseignant, l'amélioration l'a corrigée en quelques secondes et l'a prouvé).
+Le modèle a la même taille qu'avec toutes les contraintes dures, à cent
+variables près, et se construit dans le même temps (1,4 s sur le grand S1).
+
+**Réserve sur les durées.** Ce jour-là le poste était deux à trois fois plus
+lent que la veille (trois agents y travaillaient en parallèle) : toutes
+contraintes nécessaires, la première solution du grand S1 arrivait en
+71,8 s au lieu de 22 s. Dans les mêmes conditions, les niveaux par défaut
+l'ont donnée en 42,8 s (grand S2 : 70,4 s contre 55,9 s) : une pause souple
+n'allonge plus les plages des contraintes de personnes, et la première
+recherche en est plutôt facilitée. Le budget « première solution en moins
+de 40 s » tient donc dès que le poste retrouve sa vitesse ; la qualité à
+300 s du grand est à relire sur un poste au calme.
+
+
 ### Prétraitement de l'amélioration : réglage retenu
 
 Essais sur le grand S1 (machine occupée, première solution vers 25 s) :
@@ -1082,6 +1202,10 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   le serveur pour le jeu grand), le calcul rend « pas trouvé dans le temps
   imparti », en mode optimisé comme en mode faisable. Au-delà, le mode
   optimisé rend au moins la solution valide.
+- **Contraintes souples et salles.** Les horaires sont choisis sans
+  connaître le coût des salles : une exigence de salle souple peut être
+  enfreinte là où d'autres horaires l'auraient évitée (voir « Niveaux des
+  contraintes »).
 - **Arrêt sur stagnation.** La règle ne voit que le temps passé sans
   progrès. Elle peut couper un petit problème avant une dernière
   amélioration tardive (une dizaine de pour cent de l'objectif, sans effet

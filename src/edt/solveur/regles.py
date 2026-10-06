@@ -20,18 +20,37 @@ Définitions
   relèvent de la couche datée, comme les jours fermés
   (`Regles.indisponible_le`).
 
-`Regles` regroupe les contraintes actives d'un calcul et met en cache les
-recherches répétées (personnes partagées, salles compatibles,
-indisponibilités).
+`Regles` regroupe les contraintes d'un calcul avec leur **niveau**
+(`edt.domaine.contraintes.Niveau`) et met en cache les recherches répétées
+(personnes partagées, salles compatibles, indisponibilités).
+
+Niveaux
+-------
+Une contrainte **présente** dans les niveaux est examinée (`active`). Elle est
+**dure** (`dure`) si son niveau est « nécessaire » : rien ne la viole. Elle est
+**souple** (`souple`) sinon : une entorse est permise mais coûte `poids` dans
+l'objectif du moteur, et un coût dans le replacement. Les méthodes qui
+éliminent une possibilité (`refus_horaire`, `salles_compatibles`) ne le font
+que pour les contraintes dures ; les violations des contraintes souples sont
+rendues à part (`entorses_horaire`, `SallesCompatibles.entorses`), à charge
+pour l'appelant de les compter.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from edt.domaine.contraintes import CodeContrainte, codes_actifs, normaliser_codes
+from edt.domaine.contraintes import (
+    CATALOGUE,
+    POIDS_NIVEAU,
+    CodeContrainte,
+    Niveau,
+    Niveaux,
+    niveaux_depuis_desactivees,
+    normaliser_codes,
+)
 from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite
 from edt.domaine.heures import (
     MINUTES_PAR_JOUR,
@@ -62,19 +81,41 @@ class Exigence:
 
 @dataclass(frozen=True)
 class SallesCompatibles:
-    """Salles qui réunissent toutes les exigences actives d'un besoin, et le détail par exigence."""
+    """Salles qui réunissent toutes les exigences dures d'un besoin, et le détail par exigence.
+
+    `entorses` : par salle admissible, les exigences souples qu'elle ne
+    satisfait pas (une salle sans équipement requis quand `EQUIPEMENT` est
+    souple, par exemple).
+    """
 
     salles: tuple[Salle, ...]
     exigences: tuple[Exigence, ...]
+    entorses: dict[int, tuple[CodeContrainte, ...]] = field(default_factory=dict)
 
 
 class Regles:
-    """Contraintes actives d'un calcul et recherches mises en cache sur l'instantané."""
+    """Contraintes d'un calcul, avec leur niveau, et recherches mises en cache sur l'instantané.
 
-    def __init__(self, instantane: Instantane, contraintes_desactivees: Iterable[str] = ()) -> None:
+    `niveaux` donne le niveau de chaque contrainte présente ; à défaut, les
+    contraintes prennent leur niveau par défaut. Dans les deux cas, les codes
+    de `contraintes_desactivees` sont ignorés.
+    """
+
+    def __init__(
+        self,
+        instantane: Instantane,
+        contraintes_desactivees: Iterable[str] = (),
+        niveaux: Niveaux | None = None,
+    ) -> None:
         self.instantane = instantane
-        self.desactivees = normaliser_codes(contraintes_desactivees)
-        self.actives = codes_actifs(self.desactivees)
+        retirees = normaliser_codes(contraintes_desactivees)
+        if niveaux is None:
+            niveaux = niveaux_depuis_desactivees(retirees)
+        self.niveaux: Niveaux = {
+            CodeContrainte(code): Niveau(n) for code, n in niveaux.items() if code not in retirees
+        }
+        self.actives = frozenset(self.niveaux)
+        self.desactivees = frozenset(CATALOGUE) - self.actives
         self._partages: dict[tuple[int, int], tuple[bool, bool]] = {}
         self._recurrentes: dict[tuple[CibleIndisponibilite, int], tuple[Indisponibilite, ...]] = {}
         self._salles: dict[int, SallesCompatibles] = {}
@@ -83,8 +124,26 @@ class Regles:
         self._limites = limites_demi_journee(instantane)
 
     def active(self, code: CodeContrainte) -> bool:
-        """Vrai si la contrainte `code` s'applique à ce calcul."""
-        return code in self.actives
+        """Vrai si la contrainte `code` s'applique à ce calcul (dure ou souple)."""
+        return code in self.niveaux
+
+    def dure(self, code: CodeContrainte) -> bool:
+        """Vrai si la contrainte est présente et nécessaire : rien ne la viole."""
+        return self.niveaux.get(code) is Niveau.NECESSAIRE
+
+    def souple(self, code: CodeContrainte) -> bool:
+        """Vrai si la contrainte est présente et peut être enfreinte contre un coût."""
+        niveau = self.niveaux.get(code)
+        return niveau is not None and niveau is not Niveau.NECESSAIRE
+
+    def poids(self, code: CodeContrainte) -> int:
+        """Coût d'une entorse à la contrainte (0 si elle est dure ou ignorée)."""
+        niveau = self.niveaux.get(code)
+        return POIDS_NIVEAU.get(niveau, 0) if niveau is not None else 0
+
+    def souples(self, codes: Iterable[CodeContrainte]) -> list[CodeContrainte]:
+        """Les codes souples parmi `codes`, sans doublon."""
+        return list(dict.fromkeys(code for code in codes if self.souple(code)))
 
     # -- jours et horaires --------------------------------------------------------
 
@@ -108,32 +167,32 @@ class Regles:
             return grille
         return tuple(sorted(set(range(0, MINUTES_PAR_JOUR, PAS_HORS_GRILLE)) | set(grille)))
 
-    def refus_horaire(
+    def violations_horaire(
         self, besoin: Besoin, duree: int, jour: int, minute: int
-    ) -> tuple[CodeContrainte, str] | None:
-        """Raison pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
+    ) -> list[tuple[CodeContrainte, str]]:
+        """Règles d'horaire présentes que cette heure de début enfreint : `(code, raison)`.
 
         Règles `HORAIRES` (ouverture, fermeture, demi-journée du créneau de
         début) et `DEJEUNER` (seulement si la pause déjeuner a des horaires
         déterminés : `Parametres.plage_dejeuner`). Une heure imposée par le
-        besoin en dispense : la séance peut alors sortir de la grille. Aucune
-        séance ne passe minuit.
+        besoin en dispense : la séance peut alors sortir de la grille.
         """
         parametres = self.instantane.parametres
         fin = minute + duree
-        if fin > MINUTES_PAR_JOUR:
-            return C.HORAIRES, "la séance finirait après minuit"
         if besoin.debut_impose is not None:
-            return None
+            return []
+        violations: list[tuple[CodeContrainte, str]] = []
         if self.active(C.HORAIRES) and (
             minute < parametres.ouverture_min
             or fin > parametres.fermeture_min
             or fin > self._limites.get((jour, minute), 0)
         ):
-            return (
-                C.HORAIRES,
-                f"la séance de {duree_vers_texte(duree)} ne tient pas dans la demi-journée ou "
-                "dans les heures d'ouverture",
+            violations.append(
+                (
+                    C.HORAIRES,
+                    f"la séance de {duree_vers_texte(duree)} ne tient pas dans la demi-journée "
+                    "ou dans les heures d'ouverture",
+                )
             )
         dejeuner = parametres.plage_dejeuner
         if (
@@ -141,8 +200,38 @@ class Regles:
             and dejeuner is not None
             and se_chevauchent(minute, fin, *dejeuner)
         ):
-            return C.DEJEUNER, "la pause déjeuner"
-        return None
+            violations.append((C.DEJEUNER, "la pause déjeuner"))
+        return violations
+
+    def refus_horaire(
+        self, besoin: Besoin, duree: int, jour: int, minute: int
+    ) -> tuple[CodeContrainte, str] | None:
+        """Raison **dure** pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
+
+        Aucune séance ne passe minuit ; ensuite, la première règle d'horaire
+        nécessaire enfreinte (`violations_horaire`). Les règles souples
+        enfreintes sont dans `entorses_horaire`.
+        """
+        if minute + duree > MINUTES_PAR_JOUR:
+            return C.HORAIRES, "la séance finirait après minuit"
+        return next(
+            (
+                (code, raison)
+                for code, raison in self.violations_horaire(besoin, duree, jour, minute)
+                if self.dure(code)
+            ),
+            None,
+        )
+
+    def entorses_horaire(
+        self, besoin: Besoin, duree: int, jour: int, minute: int
+    ) -> list[tuple[CodeContrainte, str]]:
+        """Règles d'horaire **souples** que cette heure de début enfreint."""
+        return [
+            (code, raison)
+            for code, raison in self.violations_horaire(besoin, duree, jour, minute)
+            if self.souple(code)
+        ]
 
     # -- personnes ------------------------------------------------------------
 
@@ -319,25 +408,34 @@ class Regles:
         return tests
 
     def salles_compatibles(self, besoin: Besoin) -> SallesCompatibles:
-        """Salles qui satisfont les exigences actives du besoin, sans regarder les horaires.
+        """Salles qui satisfont les exigences dures du besoin, sans regarder les horaires.
 
-        Les salles sortent triées par capacité puis par identifiant, pour un
-        modèle reproductible.
+        Une exigence souple n'élimine aucune salle : les salles qui ne la
+        satisfont pas sont rendues avec leur entorse (`entorses`). Les salles
+        sortent triées par capacité puis par identifiant, pour un modèle
+        reproductible.
         """
         resultat = self._salles.get(besoin.id)
         if resultat is None:
             tests = self.exigences_de_salle(besoin)
+            dures = [test for test in tests if self.dure(test[0])]
+            souples = [test for test in tests if not self.dure(test[0])]
             salles = tuple(
                 sorted(
-                    (s for s in self.instantane.salles if all(test(s) for _, _, test in tests)),
+                    (s for s in self.instantane.salles if all(test(s) for _, _, test in dures)),
                     key=lambda s: (s.capacite, s.id),
                 )
             )
             exigences = tuple(
                 Exigence(code, libelle, sum(1 for s in self.instantane.salles if test(s)))
-                for code, libelle, test in tests
+                for code, libelle, test in dures
             )
-            resultat = SallesCompatibles(salles, exigences)
+            entorses: dict[int, tuple[CodeContrainte, ...]] = {}
+            for salle in salles:
+                codes = self.souples(code for code, _, test in souples if not test(salle))
+                if codes:
+                    entorses[salle.id] = tuple(codes)
+            resultat = SallesCompatibles(salles, exigences, entorses)
             self._salles[besoin.id] = resultat
         return resultat
 

@@ -25,7 +25,7 @@ import datetime as dt
 from collections.abc import Iterable, Sequence
 
 from edt.domaine.calendrier import semaines_entre
-from edt.domaine.contraintes import codes_actifs
+from edt.domaine.contraintes import CATALOGUE, Niveau, codes_actifs
 from edt.domaine.depliage import deplier
 from edt.domaine.enumerations import (
     Accessibilite,
@@ -342,9 +342,19 @@ class Fabrique:
 # Aides de test
 # --------------------------------------------------------------------------- #
 
-OPTIONS = OptionsSolveur(temps_limite_s=20, graine=1, nb_workers=1, arret_sur_stagnation=False)
+NIVEAUX_DURS = {code: Niveau.NECESSAIRE for code in CATALOGUE}
+"""Toutes les contraintes nécessaires : les tests parlent de règles dures, sauf demande contraire."""
+
+OPTIONS = OptionsSolveur(
+    temps_limite_s=20,
+    graine=1,
+    nb_workers=1,
+    arret_sur_stagnation=False,
+    niveaux=NIVEAUX_DURS,
+)
 """Options des tests : mode reproductible (une graine, un fil de calcul, et pas d'arrêt sur
-stagnation, qui lit l'horloge : un test qui le veut le demande)."""
+stagnation, qui lit l'horloge, et toutes les contraintes nécessaires : un test qui veut une
+contrainte souple ou l'arrêt sur stagnation le demande)."""
 
 
 def options(**changements) -> OptionsSolveur:
@@ -365,12 +375,16 @@ def verifier_solution(
     """ORACLE : exige une solution complète, sans aucune erreur du vérificateur officiel.
 
     Renvoie les placements par identifiant de séance. Les contraintes
-    désactivées pour le calcul ne sont pas vérifiées.
+    désactivées pour le calcul ne sont pas vérifiées, ni les contraintes
+    souples du calcul (leurs entorses sont permises et comptées à part).
     """
     assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
     assert {p.seance_id for p in resultat.placements} == {s.id for s in instantane.seances}
     assert all(placement.salle_id is not None for placement in resultat.placements)
-    anomalies = verifier(instantane, resultat.placements, codes_actifs(contraintes_desactivees))
+    codes = codes_actifs(contraintes_desactivees)
+    if resultat.niveaux:
+        codes &= frozenset(c for c, n in resultat.niveaux.items() if n is Niveau.NECESSAIRE)
+    anomalies = verifier(instantane, resultat.placements, codes)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)
     return par_seance(resultat)

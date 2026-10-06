@@ -70,7 +70,6 @@ from edt.domaine.contraintes import (
     Niveaux,
     niveaux_depuis_desactivees,
     normaliser_codes,
-    normaliser_niveaux,
 )
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
 from edt.domaine.instantane import Instantane, Placement, SeanceAPlacer
@@ -278,6 +277,7 @@ def pre_verifier_semestre(
         instantane,
         contraintes_desactivees,
         tolerer_violations_heritees=tolerer_violations_heritees,
+        niveaux=niveaux,
     )
 
 
@@ -531,6 +531,7 @@ def _calculer(
         instantane,
         options.contraintes_desactivees,
         tolerer_violations_heritees=options.tolerer_violations_heritees,
+        niveaux=options.niveaux,
     )
     impossibilites = [anomalie.message for anomalie in anomalies if anomalie.bloquante]
     alertes = [anomalie.message for anomalie in anomalies if not anomalie.bloquante]
@@ -821,17 +822,12 @@ def _niveaux_du_calcul(calcul_id: int, parametres: dict, desactivees: Iterable[s
     enregistré avant les niveaux n'a que ses contraintes désactivées : les
     niveaux par défaut sans ces codes.
     """
-    retirees = normaliser_codes(desactivees)
-    choix = parametres.get("niveaux")
-    if choix is None:
-        return niveaux_depuis_desactivees(retirees)
     try:
-        niveaux = normaliser_niveaux(choix)
+        return OptionsSolveur.lire_niveaux(parametres, desactivees)
     except ErreurEDT as erreur:
         journal.warning(
             "Calcul %d : niveaux enregistrés illisibles (%s), niveaux par défaut utilisés",
             calcul_id,
             erreur,
         )
-        return niveaux_depuis_desactivees(retirees)
-    return {code: n for code, n in niveaux.items() if code not in retirees}
+        return niveaux_depuis_desactivees(normaliser_codes(desactivees))

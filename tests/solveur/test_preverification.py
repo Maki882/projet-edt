@@ -4,13 +4,21 @@ from __future__ import annotations
 
 import time
 
-from tests.solveur.fabrique import C1, C2, LUNDI, MARDI, Fabrique, H, grille
+from tests.solveur.fabrique import C1, C2, LUNDI, MARDI, NIVEAUX_DURS, Fabrique, H, grille
 from tests.solveur.generateur import generer
 
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.contraintes import CodeContrainte as C
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
-from edt.solveur.preverification import pre_verifier
+from edt.solveur import preverification
+
+
+def pre_verifier(instantane, contraintes_desactivees=(), **reglages):
+    """Pré-vérifications avec toutes les contraintes nécessaires : ces tests parlent de règles dures."""
+    return preverification.pre_verifier(
+        instantane, contraintes_desactivees, niveaux=NIVEAUX_DURS, **reglages
+    )
+
 
 LUNDI_SEUL = grille(jours=[LUNDI], samedi=False)
 """Quatre créneaux : 8 h 30 de cours possibles (deux demi-journées de 4 h 15)."""
