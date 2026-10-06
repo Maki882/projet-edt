@@ -90,7 +90,7 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 | `GROUPE_UNIQUE` | Deux séances qui se chevauchent n'ont pas de besoins en conflit de groupes. | Erreur |
 | `PAUSE` | Deux séances qui coexistent, partagent une personne et ne se chevauchent pas sont séparées d'au moins `pause_min` (fin de la première, début de la seconde). Les salles ne comptent pas. Écart égal : valide. | Erreur |
 | `CAMPUS_TRAJET` | Idem, quand les deux séances ont une salle sur deux campus différents : écart d'au moins `Instantane.trajet(a, b)` (matrice, sinon `trajet_defaut_min`). Écart égal : valide. | Erreur |
-| `DEJEUNER` | La séance ne recoupe pas `[dejeuner_debut_min, dejeuner_fin_min[`. Sans horaires déterminés pour le déjeuner (`dejeuner_horaires_determines` faux), la règle ne s'applique pas : rien n'est relevé, même si `DEJEUNER` est active. | Erreur ; Information si imposée |
+| `DEJEUNER` | Selon `dejeuner_mode` (voir « Pause déjeuner » plus bas). **Fixe** (`plage_dejeuner`) : la séance ne recoupe pas la plage réservée `[X, Y[`. **Libre** (`fenetre_dejeuner`) : chaque jour où une personne a une séance qui recoupe la fenêtre `[X, Y]`, elle y a un intervalle libre d'au moins N minutes. **Aucun** : la règle ne s'applique pas, rien n'est relevé même si `DEJEUNER` est active. | Erreur ; Information si imposée (en mode libre : si toutes les séances en cause sont imposées) |
 | `HORAIRES` | (a) début ≥ ouverture et fin ≤ fermeture ; (b) début parmi `debuts_de_creneau(jour)` ; (c) fin ≤ fin du dernier créneau de la demi-journée du créneau de début, ce jour-là ; (d) `fin - debut` = durée du besoin ; (e) jour imposé, début imposé, date ponctuelle respectés. Une anomalie par séance et par gravité, qui énumère les écarts. | (a)(b)(c) : Erreur, Information si imposée ; (d)(e) : toujours Erreur |
 | `JOURS` | Le jour a au moins un créneau dans la grille ; le samedi est réservé aux besoins `samedi_autorise`. | Erreur ; Information si imposée |
 | `ACCESSIBILITE` | Si le besoin requiert l'accessibilité, `Instantane.salle_accessible(salle)` est vrai. | Erreur |
@@ -114,6 +114,41 @@ calcul pour remettre l'emploi du temps en accord avec les besoins. »
 L'identifiant technique reste dans le champ `seances`, pas dans le message.
 | `VERROU` | Une séance verrouillée est placée au jour et aux heures du verrou, et dans sa salle si le verrou en fixe une. | Erreur |
 | `JOUR_FERME` | Couche datée seulement (voir plus bas). | Erreur |
+
+### Pause déjeuner
+
+Les paramètres (`edt.domaine.parametres`) offrent trois modes ; le
+vérificateur ne lit que `plage_dejeuner`, `fenetre_dejeuner` et
+`dejeuner_actif`.
+
+- **Fixe** (`plage_dejeuner = (X, Y)`) : règle par séance
+  (`regles_seance`) ; toute séance qui recoupe `[X, Y[` donne une anomalie.
+- **Libre** (`fenetre_dejeuner = (X, Y, N)`) : règle par personne et par jour
+  (`regles_dejeuner`). Pour chaque groupe et chaque enseignant non fictif,
+  chaque jour où il a au moins une séance qui recoupe la fenêtre `[X, Y]`, il
+  faut un intervalle libre d'au moins N minutes consécutives inclus dans
+  `[X, Y]` ; un jour sans séance dans la fenêtre est satisfait.
+  - Emploi du temps d'un **groupe** : ses séances et celles des groupes qui
+    lui sont liés (`groupes_lies` : ascendants, groupes déclarés
+    chevauchants, groupes partageant un étudiant), **sauf ses descendants**.
+    Une séance d'un sous-groupe ne concerne qu'une partie des étudiants : la
+    compter priverait à tort la promotion de pause quand ses demi-groupes
+    déjeunent en décalé. Chaque sous-groupe est vérifié pour lui-même, avec
+    les séances de ses ascendants.
+  - Semaine type : par ensemble de semaines actives (deux séances aux
+    semaines disjointes ne se gênent pas) ; couche datée : par date.
+  - **Une anomalie par personne et par jour**, rattachée aux séances qui
+    recoupent la fenêtre dans les semaines en défaut, avec la plus longue
+    plage libre trouvée. Des groupes dans la même situation (mêmes séances,
+    mêmes semaines) donnent une seule anomalie : le message nomme les plus
+    généraux (pas un groupe dont un ascendant est nommé), le champ `groupes`
+    les liste tous. Exemple : « Le groupe A1-G1 n'a pas de pause déjeuner
+    d'au moins 1 h entre 12 h 00 et 14 h 00 le mardi (au plus 30 min libres
+    d'affilée) : Cours 1 (A1-G1) de 11 h 00 à 13 h 00 et Cours 2 (A1-G1) de
+    13 h 30 à 15 h 30. »
+  - Gravité : erreur, ou information si toutes les séances en cause sont
+    imposées ; avec des niveaux, elle suit ensuite le niveau de `DEJEUNER`.
+- **Aucun** : rien n'est vérifié.
 
 ### Indisponibilités sur la semaine type
 
@@ -311,9 +346,9 @@ demi-groupes.
 | `nb_anomalies_bloquantes`, `anomalies_bloquantes_par_code` | Anomalies de gravité « erreur », au total et par code (ordre du catalogue, codes à zéro omis). |
 | `pourcentage_utilisation_salles` | `100 × Σ (fin − debut) × nb de semaines actives` sur les placements avec salle, divisé par `nb de salles × Σ (durée des créneaux de la grille) × nb_semaines`. `None` si rien n'est offert. Les minutes hors grille d'un créneau imposé comptent au numérateur ; les indisponibilités de salle ne réduisent pas le dénominateur. |
 | `utilisation_par_salle` | Même calcul pour chaque salle (couples `(salle_id, pourcentage)`). |
-| `trous_minutes_journee` | Pour chaque groupe feuille, chaque jour, chaque semaine : minutes de `[début de la première séance, fin de la dernière[` couvertes ni par une séance ni par la plage du déjeuner. Somme sur tout le semestre. Les pauses réglementaires de 15 min comptent. Sans horaires déterminés pour le déjeuner, aucune plage n'est retirée : une heure libre à midi compte comme un trou ordinaire. |
-| `trous_minutes_demi_journee` | Même calcul, séparément pour le matin (séances qui commencent avant `dejeuner_debut_min`) et l'après-midi (les autres), donc sans l'intervalle entre les deux. La séparation reste `dejeuner_debut_min` même sans horaires déterminés pour le déjeuner. |
-| `trous_creneaux` | Pour chaque groupe feuille, chaque jour, chaque semaine : nombre de créneaux de la grille entièrement compris entre le début de la première séance et la fin de la dernière, et recoupés par aucune séance. Terme « trous » de l'objectif. |
+| `trous_minutes_journee` | Pour chaque groupe feuille, chaque jour, chaque semaine : minutes de `[début de la première séance, fin de la dernière[` couvertes ni par une séance ni par la pause déjeuner. Somme sur tout le semestre. Les pauses réglementaires de 15 min comptent. Pause déjeuner retirée : en mode **fixe**, la plage réservée ; en mode **libre**, les N premières minutes libres (dans l'ordre chronologique) de la fenêtre `[X, Y]` restreinte à la journée, le temps libre au-delà restant un trou ; en mode **aucun**, rien (une heure libre à midi est un trou ordinaire). |
+| `trous_minutes_demi_journee` | Même calcul, séparément pour le matin (séances qui commencent avant `dejeuner_debut_min`) et l'après-midi (les autres), donc sans l'intervalle entre les deux ; la même pause déjeuner est retirée. La séparation reste `dejeuner_debut_min` quel que soit le mode. |
+| `trous_creneaux` | Pour chaque groupe feuille, chaque jour, chaque semaine : nombre de créneaux de la grille entièrement compris entre le début de la première séance et la fin de la dernière, et recoupés par aucune séance. Terme « trous » de l'objectif. Ne dépend pas du mode de déjeuner : la pause se loge dans le temps libre de la fenêtre, et avec la grille par défaut l'interclasse de midi lui suffit (limite : une grille qui place un créneau entier dans la fenêtre le compte comme trou s'il est libre). |
 | `changements_campus_groupes` | Pour chaque groupe feuille, chaque jour, chaque semaine : séances avec salle triées par heure de début, nombre de paires consécutives sur deux campus différents. Somme sur le semestre. |
 | `changements_campus_enseignants` | Même calcul pour chaque enseignant non fictif. |
 | `seances_samedi` | Somme, sur les placements du samedi, du nombre de semaines actives. |
