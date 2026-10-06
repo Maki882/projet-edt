@@ -758,6 +758,33 @@ semaine type : l'occurrence qui tombe dessus est replacée par la couche
 datée, ou passe « à programmer ». Seule exception, une semaine entièrement
 fermée pour un besoin est retirée de ses semaines actives par le dépliage.
 
+#### Niveaux des contraintes
+
+Chaque contrainte a un **niveau**, choisi par l'utilisateur avant un calcul
+parmi trois, du plus exigeant au moins exigeant (`Niveau`) :
+
+| Niveau | Pour le solveur | Pour le vérificateur |
+|---|---|---|
+| nécessaire | contrainte dure, jamais violée | une entorse est une **erreur** |
+| important | souple à fort poids (`POIDS_NIVEAU`, 1000 par entorse), enfreinte seulement faute de choix | une entorse est un **avertissement** |
+| facultatif | souple à faible poids (20 par entorse) : un souhait | une entorse est une **information** |
+
+Six contraintes définissent le problème et restent toujours nécessaires
+(`Contrainte.modifiable` est faux) : `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`,
+`GROUPE_UNIQUE`, `VERROU`, `JOUR_FERME`, `VOLUME`. Les autres ont un niveau
+par défaut (`Contrainte.niveau_defaut`) : important pour `PAUSE`, `DEJEUNER`,
+`EQUIPEMENT` et `MAX_ENSEIGNANT`, nécessaire pour le reste.
+
+Les niveaux d'un calcul forment un `Niveaux` (`dict[CodeContrainte, Niveau]`),
+construit par `normaliser_niveaux(choix)` à partir des choix de l'utilisateur
+(codes absents complétés par leur défaut, niveau refusé sur une contrainte
+non modifiable). Convention : **une clé absente est une contrainte ignorée**,
+ni posée par le solveur ni vérifiée ; `niveaux_depuis_desactivees(codes)`
+traduit ainsi les anciens calculs, qui ne connaissaient que des contraintes
+désactivées. Les poids des préférences (10 par trou, 5 par changement de
+campus, 2 par samedi, 1 par créneau extrême) restent sous les poids des
+niveaux souples, provisoires jusqu'au calibrage du lot solveur.
+
 ## Journalisation
 
 - Configurée **une seule fois**, par `edt.journal.configurer_journalisation()`

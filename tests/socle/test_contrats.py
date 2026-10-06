@@ -53,7 +53,7 @@ def test_le_catalogue_reprend_exactement_les_codes_des_decisions():
     for code, entree in CATALOGUE.items():
         assert entree.code is code
         assert entree.libelle and entree.description
-        assert entree.active_par_defaut and entree.dure
+        assert entree.active_par_defaut
 
 
 def test_activation_des_contraintes():
