@@ -14,9 +14,10 @@ Fonction pure, sans base. Les définitions exactes sont dans
   semaine sur tout le semestre** : une situation qui se répète sur
   15 semaines compte 15 fois. Diviser par `nb_semaines` donne une moyenne
   hebdomadaire. Ce sont : les **trous** des groupes (en minutes, par
-  demi-journée et par journée, et en créneaux libres ; la plage du déjeuner
-  n'en est retirée que si ses horaires sont déterminés, sinon un créneau
-  libre à midi est un trou comme un autre), les **changements
+  demi-journée et par journée, et en créneaux libres ; la pause déjeuner
+  est retirée des trous en minutes : en mode fixe la plage réservée, en mode
+  libre les N premières minutes libres de la fenêtre de chaque journée, en
+  mode aucun rien ; les créneaux libres ne dépendent pas du mode), les **changements
   de campus** dans une journée (par groupe et par enseignant), les séances
   du **samedi** et les séances sur les **créneaux extrêmes**.
 
@@ -264,9 +265,11 @@ def _utilisation_salles(
 
 def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, int]:
     parametres = instantane.parametres
-    # Plage réservée au déjeuner, retirée des trous ; aucune sans horaires déterminés.
-    # La séparation matin / après-midi reste `dejeuner_debut_min` dans les deux cas.
+    # Pause déjeuner retirée des trous en minutes : en mode fixe, la plage réservée ; en mode
+    # libre, les N premières minutes libres de la fenêtre (calculées par journée) ; en mode
+    # aucun, rien. La séparation matin / après-midi reste `dejeuner_debut_min` dans tous les cas.
     dejeuner = [parametres.plage_dejeuner] if parametres.plage_dejeuner else []
+    fenetre = parametres.fenetre_dejeuner
     creneaux_par_jour: dict[int, list[Creneau]] = defaultdict(list)
     for creneau in instantane.creneaux:
         creneaux_par_jour[creneau.jour].append(creneau)
@@ -278,14 +281,15 @@ def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, i
             seances = [journee[i] for i in actifs]
             plages = [(e.debut, e.fin) for e in seances]
             premier, dernier = min(p[0] for p in plages), max(p[1] for p in plages)
-            journees += nb_semaines * _minutes_libres(premier, dernier, [*plages, *dejeuner])
+            pause = dejeuner if fenetre is None else _pause_libre(fenetre, premier, dernier, plages)
+            journees += nb_semaines * _minutes_libres(premier, dernier, [*plages, *pause])
             for moitie in (
                 [p for p in plages if p[0] < parametres.dejeuner_debut_min],
                 [p for p in plages if p[0] >= parametres.dejeuner_debut_min],
             ):
                 if moitie:
                     debut, fin = min(p[0] for p in moitie), max(p[1] for p in moitie)
-                    demi_journees += nb_semaines * _minutes_libres(debut, fin, [*moitie, *dejeuner])
+                    demi_journees += nb_semaines * _minutes_libres(debut, fin, [*moitie, *pause])
             creneaux_libres += nb_semaines * sum(
                 1
                 for creneau in creneaux_par_jour.get(seances[0].jour, ())
@@ -294,6 +298,30 @@ def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, i
                 and not any(se_chevauchent(creneau.debut, creneau.fin, d, f) for d, f in plages)
             )
     return demi_journees, journees, creneaux_libres
+
+
+def _pause_libre(
+    fenetre: tuple[int, int, int], premier: int, dernier: int, plages: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """Plages de la pause d'une journée en mode libre, à retirer des trous en minutes.
+
+    Les N premières minutes libres (dans l'ordre chronologique) de la fenêtre
+    `[X, Y]` restreinte à la journée `[premier, dernier[` : c'est la pause ;
+    au-delà, le temps libre est un trou ordinaire.
+    """
+    x, y, reste = fenetre
+    pause: list[tuple[int, int]] = []
+    curseur, fin_fenetre = max(x, premier), min(y, dernier)
+    for debut, fin in sorted([*plages, (fin_fenetre, fin_fenetre)]):
+        if reste <= 0 or curseur >= fin_fenetre:
+            break
+        libre_fin = min(debut, fin_fenetre)
+        if libre_fin > curseur:
+            prise = min(reste, libre_fin - curseur)
+            pause.append((curseur, curseur + prise))
+            reste -= prise
+        curseur = max(curseur, fin)
+    return pause
 
 
 def _changements_campus(instantane: Instantane, elements: list[Element]) -> tuple[int, int]:

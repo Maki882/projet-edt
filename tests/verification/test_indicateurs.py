@@ -71,12 +71,27 @@ def test_indicateurs_calcules_a_la_main():
     assert indicateurs.valeur_objectif == 10 * 30 + 5 * 30 + 2 * 5 + 1 * 35
 
 
-def test_sans_horaires_determines_midi_compte_dans_les_trous():
-    """Sans plage réservée au déjeuner, l'heure de midi libre est un trou comme un autre."""
-    instantane, placements, _ = semaine_type(dejeuner_horaires_determines=False)
+def test_sans_pause_midi_compte_dans_les_trous():
+    """Mode « aucun » : l'heure de midi libre est un trou comme un autre."""
+    instantane, placements, _ = semaine_type(dejeuner_mode="aucun")
     indicateurs = calculer_indicateurs(instantane, placements)
     assert indicateurs.trous_minutes_journee == (270 + 60) * 15
     assert indicateurs.trous_creneaux == 2 * 15  # la grille, elle, ne change pas
+
+
+def test_pause_libre_retire_seulement_n_minutes_des_trous():
+    """Mode libre : les N premières minutes libres de la fenêtre sont la pause, le reste un trou."""
+    fenetre = {"dejeuner_mode": "libre", "dejeuner_debut_min": 12 * 60, "dejeuner_fin_min": 14 * 60}
+    # A1-G1 le lundi : de 8 h 30 à 18 h, 240 min de cours, 330 min libres dont 2 h dans la fenêtre.
+    instantane, placements, _ = semaine_type(**fenetre, dejeuner_duree_min=60)
+    indicateurs = calculer_indicateurs(instantane, placements)
+    assert indicateurs.trous_minutes_journee == (330 - 60) * 15
+    assert indicateurs.trous_creneaux == 2 * 15  # les créneaux libres ne dépendent pas du mode
+
+    instantane, placements, _ = semaine_type(**fenetre, dejeuner_duree_min=90)
+    indicateurs = calculer_indicateurs(instantane, placements)
+    assert indicateurs.trous_minutes_journee == (330 - 90) * 15
+    assert indicateurs.trous_minutes_demi_journee == 0
 
 
 def test_anomalies_fournies_et_serialisation():
@@ -111,3 +126,18 @@ def test_rien_a_placer():
     assert indicateurs.pourcentage_seances_placees is None
     assert indicateurs.pourcentage_utilisation_salles is None
     assert indicateurs.valeur_objectif == 0
+
+
+def test_pause_libre_premieres_minutes_libres_de_la_fenetre():
+    from edt.verification.indicateurs import _pause_libre
+
+    fenetre = (12 * 60, 14 * 60, 60)
+    # Occupé de 12 h à 12 h 30 : la pause commence à 12 h 30.
+    assert _pause_libre(fenetre, 510, 1080, [(510, 630), (720, 750), (960, 1080)]) == [(750, 810)]
+    # Libre de 12 h à 12 h 20 puis de 13 h 20 à 14 h : la pause est en deux morceaux.
+    assert _pause_libre(fenetre, 510, 1080, [(740, 800), (960, 1080)]) == [
+        (720, 740),
+        (800, 840),
+    ]
+    # Journée finie avant la fenêtre : aucune pause à retirer.
+    assert _pause_libre(fenetre, 510, 630, [(510, 630)]) == []

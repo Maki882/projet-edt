@@ -50,6 +50,7 @@ from edt.verification.contexte import (
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import date_texte, plage
 from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes
+from edt.verification.regles_dejeuner import verifier_dejeuner_libre
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
@@ -106,6 +107,7 @@ def verifier_occurrences(
             anomalies.extend(_verrou(ctx, element, seance))
 
     anomalies.extend(verifier_seances(ctx, elements))
+    anomalies.extend(verifier_dejeuner_libre(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
     anomalies.extend(verifier_maxima(ctx, elements))
     if niveaux_appliques is not None:
