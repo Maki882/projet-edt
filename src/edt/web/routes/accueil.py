@@ -2,8 +2,10 @@
 
 L'accueil montre, quand la base est prête, la prochaine étape conseillée,
 l'emploi du temps actif du semestre en cours avec les quatre indicateurs de
-l'équipe et ce qui reste à traiter, le dernier calcul, puis les compteurs et
-l'état de la base (`edt.services.emploi_du_temps.tableau_de_bord`).
+l'équipe et ce qui reste à traiter, le dernier calcul, puis l'état de la base
+(`edt.services.emploi_du_temps.tableau_de_bord`). Les nombres de salles,
+d'enseignants, etc. ne sont pas affichés : chaque liste de l'onglet Données les
+donne, et ils n'aident pas à décider quoi faire.
 """
 
 from __future__ import annotations
@@ -32,7 +34,7 @@ MENU = [EntreeMenu("Accueil", "/", ordre=0)]
 
 @routeur.get("/", response_class=HTMLResponse, name="accueil")
 def accueil(request: Request) -> HTMLResponse:
-    """Page d'accueil : prochaine étape, emploi du temps actif, indicateurs, base et compteurs."""
+    """Page d'accueil : prochaine étape, emploi du temps actif, indicateurs et état de la base."""
     etat = diagnostiquer_base()
     tableau = None
     messages = []

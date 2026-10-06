@@ -53,7 +53,7 @@ def client_etendu(base, monkeypatch):
     return TestClient(module_app.creer_app())
 
 
-def test_accueil_affiche_l_etat_et_les_compteurs(jeu_minimal, client):
+def test_accueil_affiche_l_etat_de_la_base(jeu_minimal, client):
     reponse = client.get("/")
 
     assert reponse.status_code == 200
@@ -61,7 +61,7 @@ def test_accueil_affiche_l_etat_et_les_compteurs(jeu_minimal, client):
     page = reponse.text
     assert "Données fictives" in page
     assert "La base est initialisée" in page
-    assert '<span class="compteur-nombre">6</span>' in page  # six salles
+    assert "Contenu</h2>" not in page  # plus de compteurs d'entités sur l'accueil
     assert 'href="/" class="actif"' in page  # l'entrée de menu « Accueil » est active
 
 

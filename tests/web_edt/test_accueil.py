@@ -56,7 +56,6 @@ def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, 
 
     assert "Vérifier les données et lancer le calcul" in page
     assert f'href="/calculs?semestre_id={jeu_minimal.semestre_id}"' in page
-    assert '<span class="compteur-nombre">6</span>' in page  # compteurs de la base conservés
 
 
 def test_version_active_sans_verificateur(

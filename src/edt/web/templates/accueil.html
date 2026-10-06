@@ -69,17 +69,6 @@
   {% endif %}
 </section>
 
-<section class="carte">
-  <h2>Contenu</h2>
-  <ul class="compteurs">
-    {% for libelle, nombre in etat.compteurs.items() %}
-    <li class="compteur">
-      <span class="compteur-nombre">{{ nombre }}</span>
-      <span class="compteur-libelle">{{ libelle }}</span>
-    </li>
-    {% endfor %}
-  </ul>
-</section>
 {% endif %}
 
 <section class="carte">
