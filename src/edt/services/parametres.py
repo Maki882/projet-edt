@@ -1,7 +1,12 @@
 """Lecture et écriture des paramètres globaux (table `parametre`).
 
 Les paramètres, leurs types, leurs bornes et leurs valeurs par défaut sont
-définis une seule fois dans `edt.domaine.parametres.Parametres`.
+définis une seule fois dans `edt.domaine.parametres.Parametres`. La table
+stocke chaque valeur en JSON : entier, booléen ou chaîne (paramètres à choix).
+
+Anciennes bases : la lecture reste possible sans rien modifier en base (voir
+`_mode_dejeuner_herite` et `_dejeuner_lisible`) ; l'enregistrer de nouveau
+dans l'écran des paramètres met la base d'aplomb.
 """
 
 from __future__ import annotations
@@ -13,6 +18,8 @@ from sqlalchemy.orm import Session
 
 from edt.db.modeles import Parametre
 from edt.domaine.parametres import (
+    DEJEUNER_AUCUN,
+    DEJEUNER_FIXE,
     Parametres,
     ValeurParametre,
     borner,
@@ -25,6 +32,9 @@ from edt.erreurs import ErreurDonneesInvalides
 
 journal = logging.getLogger(__name__)
 
+ANCIENNE_CLE_DEJEUNER = "dejeuner_horaires_determines"
+"""Paramètre booléen d'avant `dejeuner_mode` ; encore présent dans les bases d'alors."""
+
 
 def lire_parametres(session: Session) -> Parametres:
     """Tous les paramètres, typés.
@@ -33,13 +43,14 @@ def lire_parametres(session: Session) -> Parametres:
     valeur par défaut documentée, et le fait est journalisé. Un nombre
     enregistré hors des bornes actuelles (bornes resserrées depuis son
     enregistrement) est ramené à la borne la plus proche, avec un
-    avertissement au journal : la valeur en base n'est pas modifiée. Une
-    pause déjeuner « à horaires déterminés » dont la plage enregistrée est
-    incohérente (voir `_dejeuner_lisible`) est lue comme « pas d'horaires
-    déterminés », avec un avertissement. Toute autre valeur enregistrée
-    invalide lève `ErreurDonneesInvalides`.
+    avertissement au journal : la valeur en base n'est pas modifiée. Le mode
+    de déjeuner d'une ancienne base se déduit de `dejeuner_horaires_determines`
+    (voir `_mode_dejeuner_herite`), et des réglages de déjeuner incohérents
+    sont lus comme « pas de pause » (voir `_dejeuner_lisible`). Toute autre
+    valeur enregistrée invalide lève `ErreurDonneesInvalides`.
     """
     enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
+    enregistres.update(_mode_dejeuner_herite(enregistres))
     valeurs: dict[str, ValeurParametre] = {}
     for entree in definitions():
         if entree.cle not in enregistres:
@@ -73,34 +84,60 @@ def lire_parametres(session: Session) -> Parametres:
     return Parametres(**valeurs)
 
 
-def _dejeuner_lisible(valeurs: dict[str, ValeurParametre]) -> dict[str, ValeurParametre]:
-    """Correction de lecture d'une pause déjeuner enregistrée incohérente, ou `{}`.
+def _mode_dejeuner_herite(enregistres: dict[str, object]) -> dict[str, str]:
+    """Mode de déjeuner déduit d'une base d'avant `dejeuner_mode`, ou `{}`.
 
-    Avant le paramètre `dejeuner_horaires_determines`, une plage vide
-    (début = fin) voulait dire « aucune plage réservée » ; la validation
-    exige désormais une plage non vide et dans les heures d'ouverture. Une
-    telle base reste lisible : la pause est lue comme « pas d'horaires
-    déterminés » (même effet qu'avant pour une plage vide) et un
-    avertissement dit quoi régler. La valeur en base n'est pas modifiée.
+    Si la base porte l'ancien booléen `dejeuner_horaires_determines` et pas
+    encore `dejeuner_mode`, vrai devient « horaires déterminés » et faux « pas
+    de pause ». Le fait est journalisé ; la base n'est pas modifiée.
+    """
+    if "dejeuner_mode" in enregistres or ANCIENNE_CLE_DEJEUNER not in enregistres:
+        return {}
+    ancien = enregistres[ANCIENNE_CLE_DEJEUNER]
+    if not isinstance(ancien, bool):
+        raise ErreurDonneesInvalides(
+            f"Le paramètre « {ANCIENNE_CLE_DEJEUNER} » enregistré en base est invalide : "
+            f"oui ou non attendu (lu : {ancien!r})."
+        )
+    mode = DEJEUNER_FIXE if ancien else DEJEUNER_AUCUN
+    journal.info(
+        "Ancien paramètre « %s » = %r lu comme mode de déjeuner « %s » ; la base n'est pas "
+        "modifiée (enregistrer les paramètres dans leur écran pour l'y inscrire).",
+        ANCIENNE_CLE_DEJEUNER,
+        ancien,
+        mode,
+    )
+    return {"dejeuner_mode": mode}
+
+
+def _dejeuner_lisible(valeurs: dict[str, ValeurParametre]) -> dict[str, ValeurParametre]:
+    """Correction de lecture de réglages de déjeuner enregistrés incohérents, ou `{}`.
+
+    Avant le mode de déjeuner, une plage vide (début = fin) voulait dire
+    « aucune plage réservée » ; la validation exige désormais une plage non
+    vide dans les heures d'ouverture (ou, en pause libre, une fenêtre assez
+    longue). Une telle base reste lisible : le déjeuner est lu comme « pas de
+    pause » et un avertissement dit quoi régler. La base n'est pas modifiée.
     """
     lues = {entree.cle: entree.defaut for entree in definitions()} | valeurs
-    if not lues["dejeuner_horaires_determines"]:
+    if lues["dejeuner_mode"] == DEJEUNER_AUCUN:
         return {}
     defauts = defauts_dejeuner(
         lues["dejeuner_debut_min"],
         lues["dejeuner_fin_min"],
         lues["ouverture_min"],
         lues["fermeture_min"],
+        mode=str(lues["dejeuner_mode"]),
+        duree=int(lues["dejeuner_duree_min"]),
     )
     if not defauts:
         return {}
     journal.warning(
-        "Pause déjeuner enregistrée incohérente (%s) : elle est lue comme « pas d'horaires "
-        "déterminés ». L'enregistrer de nouveau dans l'écran des paramètres fait disparaître "
-        "cet avertissement.",
+        "Pause déjeuner enregistrée incohérente (%s) : elle est lue comme « pas de pause ». "
+        "L'enregistrer de nouveau dans l'écran des paramètres fait disparaître cet avertissement.",
         " ".join(defauts.values()),
     )
-    return {"dejeuner_horaires_determines": False}
+    return {"dejeuner_mode": DEJEUNER_AUCUN}
 
 
 def lire_parametre(session: Session, cle: str) -> ValeurParametre:
