@@ -1,7 +1,9 @@
 """Règles portant sur une seule séance placée.
 
-- `DEJEUNER` : la plage de la séance recoupe `[dejeuner_debut_min,
-  dejeuner_fin_min[` (aucune vérification si cette plage est vide) ;
+- `DEJEUNER` : la plage de la séance recoupe la plage réservée au déjeuner
+  (`Parametres.plage_dejeuner`) ; sans horaires déterminés pour le déjeuner
+  (`dejeuner_horaires_determines` faux), la règle ne s'applique pas et ne
+  relève rien ;
 - `HORAIRES` : (a) ouverture et fermeture, (b) début sur un début de
   créneau de la grille du jour, (c) pas de débordement de la demi-journée
   du créneau de début, (d) durée placée égale à la durée du besoin,
@@ -84,10 +86,11 @@ def _gravite_ecart(element: Element) -> Gravite:
 
 
 def _dejeuner(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
-    if not ctx.actif(CodeContrainte.DEJEUNER):
+    plage_dejeuner = ctx.parametres.plage_dejeuner
+    if not ctx.actif(CodeContrainte.DEJEUNER) or plage_dejeuner is None:
         return
-    debut, fin = ctx.parametres.dejeuner_debut_min, ctx.parametres.dejeuner_fin_min
-    if debut >= fin or not se_chevauchent(element.debut, element.fin, debut, fin):
+    debut, fin = plage_dejeuner
+    if not se_chevauchent(element.debut, element.fin, debut, fin):
         return
     message = (
         f"La séance {ctx.libelle(element)} {ctx.moment(element)} empiète sur la pause "

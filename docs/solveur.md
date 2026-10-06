@@ -223,7 +223,7 @@ semaine commune rend le problème impossible.
 | `GROUPE_UNIQUE` | phase 1 | unités de groupes et cliques d'unités en conflit |
 | `PAUSE` | phase 1 | chaque séance est allongée de `pause_min` dans les contraintes de personnes |
 | `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
-| `DEJEUNER` | domaines | débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) |
+| `DEJEUNER` | domaines | débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; rien n'est retiré quand le déjeuner n'a pas d'horaires déterminés (`dejeuner_horaires_determines` faux) |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
 | `JOURS` | domaines | jours avec créneau ; samedi si `samedi_autorise` |
 | `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE`, `EQUIPEMENT` | domaines | salles qui ne conviennent pas retirées (salle et campus imposés compris) |

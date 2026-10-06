@@ -8,6 +8,13 @@ l'instantané d'un semestre embarque un objet `Parametres` figé.
 Pour ajouter un paramètre : ajouter un champ ici (avec `_champ`), c'est tout.
 Il apparaît automatiquement dans la table `parametre` à la prochaine
 initialisation et dans l'écran de configuration.
+
+Pause déjeuner : `dejeuner_horaires_determines` dit si une plage est
+réservée au déjeuner. Si oui, `[dejeuner_debut_min, dejeuner_fin_min[` doit
+être non vide et tenir dans les heures d'ouverture (`defauts_dejeuner`) ;
+sinon ces deux heures sont conservées mais ignorées. `Parametres.plage_dejeuner`
+donne la plage réservée, ou `None` : c'est la seule chose que lisent le
+vérificateur, le solveur et les indicateurs.
 """
 
 from __future__ import annotations
@@ -16,6 +23,7 @@ import dataclasses
 from dataclasses import dataclass, field
 from typing import Any
 
+from edt.domaine.heures import minutes_vers_texte
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
 ValeurParametre = int | bool
@@ -95,10 +103,17 @@ class Parametres:
         maximum=120,
         unite="min",
     )
+    dejeuner_horaires_determines: bool = _champ(
+        True,
+        "Pause déjeuner à horaires déterminés",
+        "Si oui, la plage allant du début à la fin du déjeuner reste libre pour chaque groupe "
+        "et chaque enseignant. Sinon, aucune plage n'est réservée pour le déjeuner : les deux "
+        "heures sont conservées mais ignorées.",
+    )
     dejeuner_debut_min: int = _champ(
         12 * 60 + 45,
         "Début du déjeuner",
-        "Début de la plage laissée libre pour le déjeuner.",
+        "Début de la plage laissée libre pour le déjeuner (si ses horaires sont déterminés).",
         minimum=0,
         maximum=1440,
         unite="heure",
@@ -106,7 +121,7 @@ class Parametres:
     dejeuner_fin_min: int = _champ(
         13 * 60 + 45,
         "Fin du déjeuner",
-        "Fin de la plage laissée libre pour le déjeuner.",
+        "Fin de la plage laissée libre pour le déjeuner (si ses horaires sont déterminés).",
         minimum=0,
         maximum=1440,
         unite="heure",
@@ -166,10 +181,22 @@ class Parametres:
             _valider_valeur(definition, getattr(self, definition.cle))
         if self.ouverture_min >= self.fermeture_min:
             raise ErreurDonneesInvalides("L'heure d'ouverture doit précéder l'heure de fermeture.")
-        if self.dejeuner_debut_min > self.dejeuner_fin_min:
-            raise ErreurDonneesInvalides(
-                "Le début du déjeuner doit précéder (ou égaler) la fin du déjeuner."
+        if self.dejeuner_horaires_determines:
+            defauts = defauts_dejeuner(
+                self.dejeuner_debut_min,
+                self.dejeuner_fin_min,
+                self.ouverture_min,
+                self.fermeture_min,
             )
+            if defauts:
+                raise ErreurDonneesInvalides(" ".join(defauts.values()))
+
+    @property
+    def plage_dejeuner(self) -> tuple[int, int] | None:
+        """Plage `[début, fin[` réservée au déjeuner, ou `None` sans horaires déterminés."""
+        if not self.dejeuner_horaires_determines:
+            return None
+        return self.dejeuner_debut_min, self.dejeuner_fin_min
 
     def avec(self, **changements: ValeurParametre) -> Parametres:
         """Copie modifiée (les valeurs sont validées)."""
@@ -190,6 +217,30 @@ class DefinitionParametre:
     minimum: int | None
     maximum: int | None
     unite: str
+
+
+def defauts_dejeuner(debut: int, fin: int, ouverture: int, fermeture: int) -> dict[str, str]:
+    """Défauts d'une plage de déjeuner à horaires déterminés, par paramètre fautif.
+
+    La plage doit être non vide et tenir dans les heures d'ouverture. Renvoie
+    `{clé du paramètre : message}` (au plus un message par paramètre), vide
+    si la plage convient. Sert à la validation de `Parametres` et aux
+    formulaires, qui affichent chaque message sous son champ.
+    """
+    defauts: dict[str, str] = {}
+    if debut < ouverture:
+        defauts["dejeuner_debut_min"] = (
+            f"Le déjeuner ne peut pas commencer avant l'ouverture ({minutes_vers_texte(ouverture)})."
+        )
+    if debut >= fin:
+        defauts["dejeuner_fin_min"] = (
+            f"La fin du déjeuner doit venir après son début ({minutes_vers_texte(debut)})."
+        )
+    elif fin > fermeture:
+        defauts["dejeuner_fin_min"] = (
+            f"Le déjeuner ne peut pas finir après la fermeture ({minutes_vers_texte(fermeture)})."
+        )
+    return defauts
 
 
 def definitions() -> tuple[DefinitionParametre, ...]:

@@ -3,11 +3,14 @@
 Adresses :
 
 - `GET /calculs` : choix du semestre, récapitulatif, vérifications
-  préalables, contraintes à cocher, options, lancement ; si un calcul tourne
-  déjà, la page le montre au lieu de proposer d'en lancer un second ;
+  préalables, contraintes à cocher, pause déjeuner, options, lancement ; si
+  un calcul tourne déjà, la page le montre au lieu de proposer d'en lancer
+  un second ;
 - `GET /calculs/verifications` : fragment des vérifications préalables,
   recalculé quand on coche ou décoche une contrainte ;
-- `POST /calculs` : lance un calcul puis mène à son suivi ;
+- `POST /calculs` : enregistre la pause déjeuner choisie si elle diffère
+  des paramètres, lance un calcul puis mène à son suivi ; une pause
+  déjeuner mal saisie réaffiche la page (422) avec le message sous le champ ;
 - `GET /calculs/{id}` et `GET /calculs/{id}/etat` (fragment interrogé
   chaque seconde) : suivi et résultat ;
 - `POST /calculs/{id}/arreter`, `POST /calculs/{id}/relancer` ;
@@ -48,6 +51,8 @@ def _page_calculs(
     desactivees: frozenset[str] = frozenset(),
     choix: dict | None = None,
     pre: calculs.PreVerification | None = None,
+    dejeuner: calculs.ChoixDejeuner | None = None,
+    erreurs_dejeuner: dict[str, str] | None = None,
     statut: int = 200,
     messages=(),
 ):
@@ -67,6 +72,10 @@ def _page_calculs(
             options=options,
             choix=choix
             or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False},
+            dejeuner=dejeuner or calculs.choix_dejeuner(session),
+            erreurs_dejeuner=erreurs_dejeuner or {},
+            dejeuner_determine=calculs.DEJEUNER_DETERMINE,
+            dejeuner_aucun=calculs.DEJEUNER_AUCUN,
             en_cours=en_cours,
             r=en_cours,
             dernier=(
@@ -112,9 +121,17 @@ def lancer(
     duree: Annotated[str, Form()] = "court",
     optimiser: Annotated[bool, Form()] = False,
     autre_solution: Annotated[bool, Form()] = False,
+    dejeuner: Annotated[str | None, Form()] = None,
+    dejeuner_debut: Annotated[str | None, Form()] = None,
+    dejeuner_fin: Annotated[str | None, Form()] = None,
 ):
-    """Lance un calcul ; refus expliqué si une vérification préalable bloque."""
+    """Règle la pause déjeuner puis lance un calcul ; refus expliqué sinon.
+
+    Sans le bloc « Pause déjeuner » (`dejeuner` absent), la pause déjeuner
+    enregistrée reste telle quelle.
+    """
     cochees = contraintes or ()
+    choix = {"duree": duree, "optimiser": optimiser, "autre_solution": autre_solution}
     try:
         calcul_id = calculs.demarrer_calcul(
             session,
@@ -123,6 +140,7 @@ def lancer(
             longue=duree == "long",
             optimiser=optimiser,
             autre_solution=autre_solution,
+            dejeuner=calculs.lire_saisie_dejeuner(dejeuner, dejeuner_debut, dejeuner_fin),
         )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
@@ -130,13 +148,25 @@ def lancer(
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
         )
+    except calculs.ErreurSaisieDejeuner as erreur:
+        return _page_calculs(
+            request,
+            session,
+            semestre_id,
+            desactivees=calculs.desactivees_depuis_cochees(cochees),
+            choix=choix,
+            dejeuner=erreur.saisie,
+            erreurs_dejeuner=erreur.champs,
+            statut=422,
+            messages=[Message(erreur.message, "erreur")],
+        )
     except calculs.ErreurPreVerification as erreur:
         return _page_calculs(
             request,
             session,
             semestre_id,
             desactivees=calculs.desactivees_depuis_cochees(cochees),
-            choix={"duree": duree, "optimiser": optimiser, "autre_solution": autre_solution},
+            choix=choix,
             pre=erreur.pre_verification,
             statut=409,
             messages=[Message(erreur.message, "erreur")],

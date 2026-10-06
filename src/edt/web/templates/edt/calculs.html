@@ -61,6 +61,27 @@
       {%- endfor %}
     </div>
   </fieldset>
+  {#- Pause déjeuner : préremplie depuis les paramètres, enregistrée au lancement si elle change.
+      Les heures ne sont visibles (et envoyées) qu'avec « Horaires déterminés » (static/js/app.js). #}
+  <fieldset>
+    <legend>Pause déjeuner</legend>
+    <div class="edt-choix-en-ligne">
+      <label><input type="radio" name="dejeuner" value="{{ dejeuner_determine }}"{% if dejeuner.determines %} checked{% endif %}> Horaires déterminés</label>
+      <span data-visible-si="dejeuner:{{ dejeuner_determine }}">
+        {%- for nom, mot, libelle in [("dejeuner_debut", "de", "Début de la pause déjeuner"), ("dejeuner_fin", "à", "Fin de la pause déjeuner")] %}
+        {%- set erreur = erreurs_dejeuner.get(nom) %}
+        <label{% if erreur %} class="champ-en-erreur"{% endif %}>{{ mot }} <input type="time" id="champ-{{ nom }}" name="{{ nom }}" value="{{ dejeuner.debut if nom == "dejeuner_debut" else dejeuner.fin }}" required aria-label="{{ libelle }}"{% if erreur %} aria-invalid="true" aria-describedby="erreur-{{ nom }}"{% endif %}></label>
+        {%- endfor %}, libres pour tous les groupes et enseignants
+      </span>
+    </div>
+    <div class="edt-choix-en-ligne">
+      <label><input type="radio" name="dejeuner" value="{{ dejeuner_aucun }}"{% if not dejeuner.determines %} checked{% endif %}> Pas d'horaires déterminés</label>
+    </div>
+    {%- for nom in ("dejeuner", "dejeuner_debut", "dejeuner_fin") if erreurs_dejeuner.get(nom) %}
+    <p class="erreur-champ" id="erreur-{{ nom }}">{{ erreurs_dejeuner[nom] }}</p>
+    {%- endfor %}
+    <p class="aide">Ce choix est enregistré dans les paramètres au lancement du calcul : la vérification de l'emploi du temps et les calculs suivants l'appliquent aussi.</p>
+  </fieldset>
   <fieldset>
     <legend>Durée de la recherche</legend>
     <div class="edt-choix-en-ligne">

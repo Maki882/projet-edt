@@ -107,7 +107,10 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
   configurable, avec « samedi autorisé » et type de salle par défaut.
 - **Grille horaire** : créneaux configurables (jour, début, fin, demi-journée).
   Défaut : 8 h 30-10 h 30, 10 h 45-12 h 45, 13 h 45-15 h 45, 16 h 00-18 h 00 du
-  lundi au vendredi ; samedi matin deux créneaux. Déjeuner 12 h 45-13 h 45.
+  lundi au vendredi ; samedi matin deux créneaux. Déjeuner 12 h 45-13 h 45 :
+  la pause déjeuner peut aussi être réglée « sans horaires déterminés »
+  (paramètre `dejeuner_horaires_determines`, réglable dans l'écran
+  « Générer » comme dans les paramètres).
 - **Indisponibilité** : pour un enseignant, une salle ou un groupe ; récurrente
   (jour + plage horaire) ou datée (plage de dates) ; dure en V1, avec un champ
   poids prévu pour les préférences.
@@ -133,7 +136,8 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
   statut (planifiée, annulée, déplacée, à programmer).
 - **Calcul** : suivi d'une génération (état, durée, paramètres, contraintes
   désactivées, message, fichier journal).
-- **Paramètre** : réglages globaux (temps limite, poids de l'objectif, etc.).
+- **Paramètre** : réglages globaux (temps limite, poids de l'objectif, pause
+  déjeuner à horaires déterminés ou non et sa plage, etc.).
 - Provenance des données importées (fichier, ligne, colonnes non reconnues).
 
 ## 5. Calendrier
@@ -179,7 +183,7 @@ contrainte n'est jamais abandonnée automatiquement.
 | `HORAIRES` | Séance dans la plage d'ouverture et sur un début de créneau de la grille, sauf créneau imposé |
 | `JOURS` | Lundi à vendredi ; le samedi matin est une permission réservée aux types de séance qui l'autorisent |
 | `PAUSE` | 15 minutes entre deux séances consécutives d'une même ressource |
-| `DEJEUNER` | La plage de déjeuner reste libre pour chaque groupe et chaque enseignant |
+| `DEJEUNER` | La plage de déjeuner reste libre pour chaque groupe et chaque enseignant. Si la pause déjeuner est réglée « sans horaires déterminés », aucune plage n'est réservée : la règle est inapplicable (le vérificateur ne relève rien, le solveur ne la pose pas) ; c'est un réglage choisi par l'utilisateur, pas un abandon automatique |
 | `CAPACITE` | Capacité de la salle supérieure ou égale à la somme des effectifs |
 | `TYPE_SALLE` | La salle est d'un type accepté par le besoin |
 | `EQUIPEMENT` | La salle possède les équipements requis |

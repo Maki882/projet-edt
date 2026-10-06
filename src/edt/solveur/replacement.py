@@ -18,7 +18,7 @@ date par date)
   groupes (`JOUR_FERME`), jour de cours permis (`JOURS`), jour et heure
   imposés par le besoin respectés (une séance ponctuelle ne change pas de date) ;
 - horaires : début de créneau, demi-journée, ouverture (`HORAIRES`), déjeuner
-  (`DEJEUNER`) ;
+  (`DEJEUNER`, si ses horaires sont déterminés), par `Regles.refus_horaire` ;
 - indisponibilités récurrentes et datées des enseignants, des groupes liés
   et de la salle (`DISPO_*`) ;
 - personnes : unicité, pause et trajet face aux occurrences du même jour

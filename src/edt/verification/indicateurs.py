@@ -14,7 +14,9 @@ Fonction pure, sans base. Les définitions exactes sont dans
   semaine sur tout le semestre** : une situation qui se répète sur
   15 semaines compte 15 fois. Diviser par `nb_semaines` donne une moyenne
   hebdomadaire. Ce sont : les **trous** des groupes (en minutes, par
-  demi-journée et par journée, et en créneaux libres), les **changements
+  demi-journée et par journée, et en créneaux libres ; la plage du déjeuner
+  n'en est retirée que si ses horaires sont déterminés, sinon un créneau
+  libre à midi est un trou comme un autre), les **changements
   de campus** dans une journée (par groupe et par enseignant), les séances
   du **samedi** et les séances sur les **créneaux extrêmes**.
 
@@ -257,7 +259,9 @@ def _utilisation_salles(
 
 def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, int]:
     parametres = instantane.parametres
-    dejeuner = (parametres.dejeuner_debut_min, parametres.dejeuner_fin_min)
+    # Plage réservée au déjeuner, retirée des trous ; aucune sans horaires déterminés.
+    # La séparation matin / après-midi reste `dejeuner_debut_min` dans les deux cas.
+    dejeuner = [parametres.plage_dejeuner] if parametres.plage_dejeuner else []
     creneaux_par_jour: dict[int, list[Creneau]] = defaultdict(list)
     for creneau in instantane.creneaux:
         creneaux_par_jour[creneau.jour].append(creneau)
@@ -269,14 +273,14 @@ def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, i
             seances = [journee[i] for i in actifs]
             plages = [(e.debut, e.fin) for e in seances]
             premier, dernier = min(p[0] for p in plages), max(p[1] for p in plages)
-            journees += nb_semaines * _minutes_libres(premier, dernier, [*plages, dejeuner])
+            journees += nb_semaines * _minutes_libres(premier, dernier, [*plages, *dejeuner])
             for moitie in (
                 [p for p in plages if p[0] < parametres.dejeuner_debut_min],
                 [p for p in plages if p[0] >= parametres.dejeuner_debut_min],
             ):
                 if moitie:
                     debut, fin = min(p[0] for p in moitie), max(p[1] for p in moitie)
-                    demi_journees += nb_semaines * _minutes_libres(debut, fin, [*moitie, dejeuner])
+                    demi_journees += nb_semaines * _minutes_libres(debut, fin, [*moitie, *dejeuner])
             creneaux_libres += nb_semaines * sum(
                 1
                 for creneau in creneaux_par_jour.get(seances[0].jour, ())

@@ -114,8 +114,10 @@ class Regles:
         """Raison pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
 
         Règles `HORAIRES` (ouverture, fermeture, demi-journée du créneau de
-        début) et `DEJEUNER`. Une heure imposée par le besoin en dispense : la
-        séance peut alors sortir de la grille. Aucune séance ne passe minuit.
+        début) et `DEJEUNER` (seulement si la pause déjeuner a des horaires
+        déterminés : `Parametres.plage_dejeuner`). Une heure imposée par le
+        besoin en dispense : la séance peut alors sortir de la grille. Aucune
+        séance ne passe minuit.
         """
         parametres = self.instantane.parametres
         fin = minute + duree
@@ -133,12 +135,11 @@ class Regles:
                 f"la séance de {duree_vers_texte(duree)} ne tient pas dans la demi-journée ou "
                 "dans les heures d'ouverture",
             )
+        dejeuner = parametres.plage_dejeuner
         if (
             self.active(C.DEJEUNER)
-            and parametres.dejeuner_debut_min < parametres.dejeuner_fin_min
-            and se_chevauchent(
-                minute, fin, parametres.dejeuner_debut_min, parametres.dejeuner_fin_min
-            )
+            and dejeuner is not None
+            and se_chevauchent(minute, fin, *dejeuner)
         ):
             return C.DEJEUNER, "la pause déjeuner"
         return None

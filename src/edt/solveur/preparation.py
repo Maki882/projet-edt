@@ -4,8 +4,9 @@ Pour chaque séance de l'instantané, on calcule ici, en Python pur :
 
 - ses **débuts admissibles** : couples (jour, heure) permis par les verrous,
   les jours et heures imposés, la grille (`HORAIRES`, `JOURS`), le déjeuner
-  (`DEJEUNER`) et les indisponibilités récurrentes de ses enseignants et de
-  ses groupes (`DISPO_ENSEIGNANT`, `DISPO_GROUPE`) ;
+  (`DEJEUNER`, seulement si ses horaires sont déterminés : voir
+  `Regles.refus_horaire`) et les indisponibilités récurrentes de ses
+  enseignants et de ses groupes (`DISPO_ENSEIGNANT`, `DISPO_GROUPE`) ;
 - ses **salles admissibles** : celles qui satisfont `TYPE_SALLE`, `CAPACITE`,
   `EQUIPEMENT` et `ACCESSIBILITE`, moins celles qui sont indisponibles à tous
   ses débuts (`DISPO_SALLE`) ; quand une salle n'est indisponible qu'à
@@ -30,7 +31,8 @@ Règles de construction des débuts (voir `docs/solveur.md`)
 - une heure imposée dispense de la grille, du déjeuner et, si le jour est
   imposé lui aussi, de la règle des jours ;
 - sinon la séance commence sur un début de créneau, tient dans sa
-  demi-journée et dans les heures d'ouverture, et évite le déjeuner.
+  demi-journée et dans les heures d'ouverture, et évite le déjeuner (quand
+  ses horaires sont déterminés).
 """
 
 from __future__ import annotations
