@@ -15,9 +15,11 @@ ce module ajoute ce que l'écran doit dire :
   les niveaux du dernier calcul du semestre (`niveaux_proposes`), lus dans
   les champs `niveau_<CODE>` (`lire_niveaux`). L'écran ne propose plus
   d'ignorer une règle ; un ancien calcul qui en ignorait reste lisible ;
-- la **pause déjeuner** : horaires déterminés (de quelle heure à quelle
-  heure) ou non ; un choix qui diffère des paramètres y est enregistré au
-  lancement, avant le calcul (`appliquer_dejeuner`) ;
+- la **pause déjeuner** à trois modes (`dejeuner_mode`) : horaires
+  déterminés (plage réservée de X à Y), pause libre bornée (au moins N
+  minutes d'un seul tenant entre X et Y) ou pas de pause ; un choix qui
+  diffère des paramètres y est enregistré au lancement, avant le calcul
+  (`appliquer_dejeuner`) ;
 - les **options** : temps limite court ou long, recherche d'un emploi du
   temps plus confortable (objectif), **autre solution** (nouvelle graine,
   sans partir des placements de la version active) ;
@@ -55,7 +57,15 @@ from edt.domaine.contraintes import (
 )
 from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
 from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
-from edt.domaine.parametres import ValeurParametre, defauts_dejeuner
+from edt.domaine.parametres import (
+    DEJEUNER_AUCUN,
+    DEJEUNER_FIXE,
+    DEJEUNER_LIBRE,
+    MODES_DEJEUNER,
+    ValeurParametre,
+    defauts_dejeuner,
+)
+from edt.domaine.parametres import definition as definition_parametre
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurDonneesInvalides,
@@ -106,18 +116,29 @@ NIVEAUX_PROPOSES = tuple(Niveau)
 """Niveaux proposés pour une règle modifiable, du plus exigeant au moins exigeant."""
 
 NOTES_DES_REGLES = {
-    CodeContrainte.DEJEUNER: "Ne s'applique pas sans horaires déterminés (voir « Pause déjeuner »).",
+    CodeContrainte.DEJEUNER: "Ne s'applique pas sans pause déjeuner (voir « Pause déjeuner »).",
 }
 """Précision affichée sous certaines règles du tableau."""
 
-DEJEUNER_DETERMINE = "determines"
-DEJEUNER_AUCUN = "aucun"
+CHAMP_MODE_DEJEUNER = "dejeuner"
 CHAMP_DEBUT_DEJEUNER = "dejeuner_debut"
 CHAMP_FIN_DEJEUNER = "dejeuner_fin"
+CHAMP_DUREE_DEJEUNER = "dejeuner_duree"
 _CHAMP_DU_PARAMETRE = {
     "dejeuner_debut_min": CHAMP_DEBUT_DEJEUNER,
     "dejeuner_fin_min": CHAMP_FIN_DEJEUNER,
+    "dejeuner_duree_min": CHAMP_DUREE_DEJEUNER,
 }
+"""Champ du formulaire qui porte chaque paramètre du déjeuner (pour y afficher son message)."""
+
+LIBELLES_DEJEUNER = dict(MODES_DEJEUNER)
+"""Libellé de chaque mode, celui du paramètre `dejeuner_mode` (comme l'écran des paramètres)."""
+
+BORNES_DUREE_DEJEUNER = (
+    definition_parametre("dejeuner_duree_min").minimum,
+    definition_parametre("dejeuner_duree_min").maximum,
+)
+"""Durée minimale permise pour la pause libre (minutes), bornes du paramètre."""
 
 
 @dataclass(frozen=True)
@@ -213,15 +234,17 @@ class ErreurPreVerification(ErreurRegleMetier):
 
 @dataclass(frozen=True)
 class ChoixDejeuner:
-    """Bloc « Pause déjeuner » du formulaire : horaires déterminés ou non, heures « HH:MM ».
+    """Bloc « Pause déjeuner » du formulaire : mode, heures « HH:MM », durée minimale.
 
-    Les heures sont des textes : celles des paramètres à l'affichage, celles
+    `mode` : `DEJEUNER_FIXE`, `DEJEUNER_LIBRE` ou `DEJEUNER_AUCUN`. Heures et
+    durée sont des textes : celles des paramètres à l'affichage, celles
     saisies à l'envoi (réaffichées telles quelles si elles sont refusées).
     """
 
-    determines: bool
+    mode: str
     debut: str
     fin: str
+    duree: str
 
 
 class ErreurSaisieDejeuner(ErreurDonneesInvalides):
@@ -552,43 +575,47 @@ def choix_dejeuner(session: Session) -> ChoixDejeuner:
     """Pause déjeuner enregistrée dans les paramètres, telle que le formulaire la préremplit."""
     parametres = lire_parametres(session)
     return ChoixDejeuner(
-        determines=parametres.dejeuner_horaires_determines,
+        mode=parametres.dejeuner_mode,
         debut=minutes_vers_hhmm(parametres.dejeuner_debut_min),
         fin=minutes_vers_hhmm(parametres.dejeuner_fin_min),
+        duree=str(parametres.dejeuner_duree_min),
     )
 
 
 def lire_saisie_dejeuner(
-    mode: str | None, debut: str | None, fin: str | None
+    mode: str | None, debut: str | None, fin: str | None, duree: str | None = None
 ) -> ChoixDejeuner | None:
     """Bloc « Pause déjeuner » reçu du formulaire, ou `None` s'il n'a pas été envoyé.
 
-    `mode` vaut `DEJEUNER_DETERMINE` ou `DEJEUNER_AUCUN` ; toute autre valeur
-    lève `ErreurSaisieDejeuner`. Les heures absentes (champs masqués, donc
-    non envoyés) deviennent des textes vides.
+    `mode` vaut `DEJEUNER_FIXE`, `DEJEUNER_LIBRE` ou `DEJEUNER_AUCUN` ; toute
+    autre valeur lève `ErreurSaisieDejeuner`. Les heures et la durée absentes
+    (champs masqués, donc non envoyés) deviennent des textes vides.
     """
     if mode is None:
         return None
-    if mode not in (DEJEUNER_DETERMINE, DEJEUNER_AUCUN):
+    if mode not in (DEJEUNER_FIXE, DEJEUNER_LIBRE, DEJEUNER_AUCUN):
         journal.info("Pause déjeuner refusée : choix « %s » inconnu", mode)
-        raise ErreurSaisieDejeuner(
-            {"dejeuner": "Choisir « Horaires déterminés » ou « Pas d'horaires déterminés »."},
-            None,
-        )
-    return ChoixDejeuner(mode == DEJEUNER_DETERMINE, (debut or "").strip(), (fin or "").strip())
+        libelles = " ou ".join(f"« {libelle} »" for _, libelle in MODES_DEJEUNER)
+        raise ErreurSaisieDejeuner({CHAMP_MODE_DEJEUNER: f"Choisir {libelles}."}, None)
+    return ChoixDejeuner(mode, (debut or "").strip(), (fin or "").strip(), (duree or "").strip())
 
 
 def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:
     """Paramètres à modifier pour appliquer `choix` : seulement ceux qui changent.
 
-    Sans horaires déterminés, les heures saisies sont ignorées et celles
-    enregistrées sont conservées. Avec, chaque heure doit être lisible
-    (« 12:45 », « 12 h 45 »), la plage non vide et dans les heures
-    d'ouverture : sinon `ErreurSaisieDejeuner`, un message par champ.
+    - « Pas de pause » : seul le mode change ; heures et durée enregistrées
+      sont conservées (ignorées tant que le mode reste « aucun ») ;
+    - « Horaires déterminés » : les deux heures, lisibles (« 12:45 »,
+      « 12 h 45 »), la plage non vide et dans les heures d'ouverture ;
+    - « Pause libre bornée » : en plus, la durée minimale (en minutes, dans
+      les bornes du paramètre) doit tenir dans la fenêtre.
+
+    Toute saisie fautive lève `ErreurSaisieDejeuner`, un message par champ
+    (ceux de `defauts_dejeuner` pour la cohérence des heures et de la durée).
     """
     courants = lire_parametres(session)
-    voulus: dict[str, ValeurParametre] = {"dejeuner_horaires_determines": choix.determines}
-    if choix.determines:
+    voulus: dict[str, ValeurParametre] = {"dejeuner_mode": choix.mode}
+    if choix.mode != DEJEUNER_AUCUN:
         erreurs: dict[str, str] = {}
         for cle, nom, exemple, texte in (
             ("dejeuner_debut_min", "de début", "12:45", choix.debut),
@@ -606,18 +633,41 @@ def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Va
                     f"Heure {nom} du déjeuner illisible (« {texte} ») : l'écrire par exemple "
                     f"{exemple}."
                 )
+        duree = courants.dejeuner_duree_min
+        if choix.mode == DEJEUNER_LIBRE:
+            lue = _duree_dejeuner(choix.duree)
+            if isinstance(lue, str):
+                erreurs[CHAMP_DUREE_DEJEUNER] = lue
+            else:
+                duree = voulus["dejeuner_duree_min"] = lue
         if not erreurs:
             defauts = defauts_dejeuner(
                 int(voulus["dejeuner_debut_min"]),
                 int(voulus["dejeuner_fin_min"]),
                 courants.ouverture_min,
                 courants.fermeture_min,
+                mode=choix.mode,
+                duree=duree,
             )
             erreurs = {_CHAMP_DU_PARAMETRE[cle]: message for cle, message in defauts.items()}
         if erreurs:
             journal.info("Pause déjeuner refusée : %s", " ".join(erreurs.values()))
             raise ErreurSaisieDejeuner(erreurs, choix)
     return {cle: valeur for cle, valeur in voulus.items() if getattr(courants, cle) != valeur}
+
+
+def _duree_dejeuner(texte: str) -> int | str:
+    """La durée minimale de la pause libre en minutes, ou le message qui dit quoi corriger."""
+    minimum, maximum = BORNES_DUREE_DEJEUNER
+    attendu = f"un nombre de minutes entre {minimum} et {maximum}, par exemple 60"
+    if not texte:
+        return f"Indiquer la durée minimale de la pause : {attendu}."
+    if not (texte.isascii() and texte.isdigit()):
+        return f"Durée minimale illisible (« {texte} ») : indiquer {attendu}."
+    duree = int(texte)
+    if not minimum <= duree <= maximum:
+        return f"Durée minimale de {duree} min hors bornes : indiquer {attendu}."
+    return duree
 
 
 def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:

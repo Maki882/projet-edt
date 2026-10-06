@@ -10,7 +10,7 @@ Adresses :
 - `GET /calculs/verifications` : fragment des vérifications préalables,
   recalculé quand on change le niveau d'une règle (champs `niveau_<CODE>`) ;
 - `POST /calculs` : lit les niveaux (`niveau_<CODE>`), enregistre la pause
-  déjeuner choisie si elle diffère des paramètres, lance un calcul puis mène
+  déjeuner choisie (mode, heures, durée minimale) si elle diffère des paramètres, lance un calcul puis mène
   à son suivi ; un niveau illisible ou interdit, ou une pause déjeuner mal
   saisie, réaffiche la page (422) avec le message ;
 - `GET /calculs/{id}` et `GET /calculs/{id}/etat` (fragment interrogé
@@ -89,8 +89,11 @@ def _page_calculs(
             or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False},
             dejeuner=dejeuner or calculs.choix_dejeuner(session),
             erreurs_dejeuner=erreurs_dejeuner or {},
-            dejeuner_determine=calculs.DEJEUNER_DETERMINE,
+            dejeuner_fixe=calculs.DEJEUNER_FIXE,
+            dejeuner_libre=calculs.DEJEUNER_LIBRE,
             dejeuner_aucun=calculs.DEJEUNER_AUCUN,
+            libelles_dejeuner=calculs.LIBELLES_DEJEUNER,
+            bornes_duree_dejeuner=calculs.BORNES_DUREE_DEJEUNER,
             en_cours=en_cours,
             r=en_cours,
             dernier=(
@@ -134,6 +137,7 @@ def lancer(
     dejeuner: Annotated[str | None, Form()] = None,
     dejeuner_debut: Annotated[str | None, Form()] = None,
     dejeuner_fin: Annotated[str | None, Form()] = None,
+    dejeuner_duree: Annotated[str | None, Form()] = None,
 ):
     """Lit les niveaux des règles, règle la pause déjeuner puis lance un calcul ; refus expliqué sinon.
 
@@ -162,7 +166,9 @@ def lancer(
             longue=duree == "long",
             optimiser=optimiser,
             autre_solution=autre_solution,
-            dejeuner=calculs.lire_saisie_dejeuner(dejeuner, dejeuner_debut, dejeuner_fin),
+            dejeuner=calculs.lire_saisie_dejeuner(
+                dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
+            ),
         )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()

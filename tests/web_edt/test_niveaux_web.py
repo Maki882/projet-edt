@@ -64,7 +64,7 @@ def test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires(j
     assert f'title="{Niveau.FACULTATIF.description}"' in page.replace("&#39;", "'")
     # La pause déjeuner a son niveau, avec sa note ; plus de case pour ignorer une règle.
     assert 'name="niveau_DEJEUNER"' in page
-    assert "Ne s&#39;applique pas sans horaires déterminés" in page
+    assert "Ne s&#39;applique pas sans pause déjeuner" in page
     assert 'type="checkbox" name="contraintes"' not in page
 
 

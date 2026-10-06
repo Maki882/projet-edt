@@ -68,7 +68,7 @@
     <div class="edt-ligne-heure" style="top: {{ axe.position(g) }}%"></div>
     {%- endfor %}
     {%- if vue.dejeuner %}
-    <div class="edt-dejeuner" style="top: {{ vue.dejeuner[0] }}%; height: {{ vue.dejeuner[1] }}%"><span>Déjeuner</span></div>
+    <div class="edt-dejeuner{% if vue.dejeuner.libre %} edt-dejeuner-libre{% endif %}" style="top: {{ vue.dejeuner.haut }}%; height: {{ vue.dejeuner.hauteur }}%" title="{{ vue.dejeuner.titre }}"><span>{{ vue.dejeuner.libelle }}</span></div>
     {%- endif %}
     {%- if j.fermeture %}<div class="edt-fermeture">{{ j.fermeture }}</div>{% endif %}
     {%- for b in vue.blocs if b.jour == j.jour %}

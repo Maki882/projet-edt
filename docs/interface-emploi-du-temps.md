@@ -70,22 +70,34 @@ Section de menu `"Générer"` (ordre 250 et 260).
   choisis et sont relancées au lancement avec eux.
 - **Règles** : un tableau, une ligne par règle du catalogue avec son niveau
   (voir « Règles et niveaux » ci-dessous).
-- **Pause déjeuner** (avant la durée) : deux boutons radio, « Horaires
-  déterminés : de [HH:MM] à [HH:MM], libres pour tous les groupes et
-  enseignants » et « Pas d'horaires déterminés », préremplis depuis les
-  paramètres (`calculs.choix_dejeuner`) ; les deux heures ne sont visibles
-  et envoyées qu'avec le premier choix (`data-visible-si`, visibles sans
-  JavaScript). Au lancement, `calculs.appliquer_dejeuner` enregistre le
-  choix dans les paramètres s'il en diffère (`dejeuner_horaires_determines`,
-  `dejeuner_debut_min`, `dejeuner_fin_min`, journal « Paramètre … réglé
-  sur … »), dans sa propre transaction validée aussitôt : les
-  vérifications préalables, le calcul (qui lit la base dans son propre
-  fil), le vérificateur et les calculs suivants le voient. Sans horaires
-  déterminés, les heures enregistrées sont gardées mais ignorées. Une
-  saisie refusée (heure illisible ou manquante, fin avant le début, plage
-  hors des heures d'ouverture) réaffiche la page en 422 avec le message
-  sous le champ, sans rien enregistrer ni lancer. Un `POST` sans le bloc
-  laisse la pause déjeuner telle quelle.
+- **Pause déjeuner** (avant la durée) : trois boutons radio (champ
+  `dejeuner`, libellés du paramètre `dejeuner_mode`), préremplis depuis
+  les paramètres (`calculs.choix_dejeuner`) :
+  - « Horaires déterminés » (`fixe`) : la plage de X à Y reste libre pour
+    tous les groupes et enseignants ;
+  - « Pause libre bornée » (`libre`) : au moins N minutes d'un seul tenant
+    dans la plage de X à Y, placées par le calcul pour chaque groupe et
+    chaque enseignant (`dejeuner_duree_min`, 15 à 180 minutes) ;
+  - « Pas de pause » (`aucun`) : rien n'est réservé.
+
+  Les heures X et Y (« Plage du déjeuner : de … à … ») ne sont visibles
+  et envoyées qu'en `fixe` et `libre`, la durée N qu'en `libre`
+  (`data-visible-si` ; sans JavaScript tout est visible et le serveur ne
+  lit que les champs du mode choisi). Au lancement,
+  `calculs.appliquer_dejeuner` enregistre le choix dans les paramètres
+  s'il en diffère (`dejeuner_mode`, `dejeuner_debut_min`,
+  `dejeuner_fin_min`, et `dejeuner_duree_min` en pause libre ; journal
+  « Paramètre … réglé sur … »), dans sa propre transaction validée
+  aussitôt : les vérifications préalables, le calcul (qui lit la base dans
+  son propre fil), le vérificateur et les calculs suivants le voient. Les
+  réglages sans objet pour le mode choisi sont gardés mais ignorés. Une
+  saisie refusée (mode inconnu, heure illisible ou manquante, fin avant le
+  début, plage hors des heures d'ouverture, durée illisible, hors bornes
+  ou plus longue que la fenêtre : messages de `defauts_dejeuner(mode=,
+  duree=)`) réaffiche la page en 422 avec le message sous le champ, sans
+  rien enregistrer ni lancer. Un `POST` sans le bloc laisse la pause
+  déjeuner telle quelle. Le suivi d'un calcul n'en dit pas plus : une
+  entorse à la règle `DEJEUNER` passe par les entorses générales.
 - **Options** : « rechercher jusqu'à 5 minutes » (`temps_limite_s`, 300 s
   par défaut) ou « 15 minutes » (`temps_limite_long_s`, 900 s) : les durées
   affichées sont lues dans les paramètres, jamais écrites dans l'écran ni
@@ -154,7 +166,7 @@ Avant un calcul, chaque règle du catalogue (`edt.domaine.contraintes`) a un
   salle, par enseignant, par groupe, séances verrouillées, jours fermés,
   volume demandé) affichent « Toujours nécessaire », sans contrôle.
   `DEJEUNER` a son niveau comme les autres, avec la note « ne s'applique
-  pas sans horaires déterminés » ; le bloc « Pause déjeuner » reste tel quel.
+  pas sans pause déjeuner » ; le bloc « Pause déjeuner » choisit le mode.
 - **Plus aucune règle ne s'ignore depuis l'interface** : la case
   « décocher » a disparu. Un calcul ancien qui ignorait des règles reste
   lisible (« Règles ignorées pour ce calcul », colonne « Règles » de
@@ -201,6 +213,12 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
 - **Sélecteurs** : semestre, version, « pour qui » (groupes par nature,
   enseignants, salles par campus) avec une **recherche rapide** qui filtre
   la liste sans tenir compte des accents (`edt.js`).
+- **Bande du déjeuner** (`vues.bande_dejeuner`) : en horaires
+  déterminés, une bande « Déjeuner » sur la plage réservée ; en pause
+  libre bornée, une bande plus légère (`edt-dejeuner-libre`) sur la
+  fenêtre, « Pause libre (N min) », infobulle « Pause libre : au moins N
+  min dans cette fenêtre » (la pause de chacun n'y est pas dessinée : le
+  calcul la place où il veut) ; sans pause, aucune bande.
 - **Trois affichages** : semaine type ; semaine datée (flèches, saut à une
   date, numéro de semaine du semestre et de l'année, jours fermés et
   vacances grisés avec leur libellé, séances annulées barrées, déplacées en
