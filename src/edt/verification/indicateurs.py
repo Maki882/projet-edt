@@ -33,7 +33,7 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import SAMEDI
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Creneau, Instantane, Placement
@@ -100,11 +100,16 @@ def calculer_indicateurs(
     instantane: Instantane,
     placements: Sequence[Placement],
     anomalies: Sequence[Anomalie] | None = None,
+    *,
+    niveaux: Niveaux | None = None,
 ) -> Indicateurs:
     """Calcule les indicateurs d'une semaine type.
 
     `anomalies` : résultat de `verifier` déjà calculé ; s'il est absent, la
-    vérification est lancée avec les contraintes actives par défaut. Les
+    vérification est lancée avec `niveaux` (par défaut : toutes les
+    contraintes actives par défaut, en dur). Les anomalies « bloquantes »
+    comptées sont celles de gravité « erreur » : avec des niveaux, une entorse
+    à une règle importante ou facultative n'en fait pas partie. Les
     placements d'une séance inconnue sont ignorés ici (le vérificateur les
     signale) ; une séance placée deux fois compte deux fois dans les mesures
     d'occupation, comme dans le vérificateur.
@@ -112,7 +117,7 @@ def calculer_indicateurs(
     placements = tuple(placements)
     valider_placements(instantane, placements)
     if anomalies is None:
-        anomalies = verifier(instantane, placements)
+        anomalies = verifier(instantane, placements, niveaux=niveaux)
     elements, inconnus = construire_elements(instantane, placements)
     if inconnus:
         journal.debug("Indicateurs : %d placement(s) de séance inconnue ignoré(s).", len(inconnus))

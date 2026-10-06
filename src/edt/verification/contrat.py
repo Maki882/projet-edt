@@ -22,6 +22,13 @@ Règles communes aux deux fonctions
   situation douteuse qui n'invalide pas l'emploi du temps ; `INFORMATION`
   pour un écart admis (par exemple un créneau imposé hors de la grille,
   code `HORAIRES`). Un emploi du temps est valide s'il n'a aucune `ERREUR`.
+- Niveaux (`niveaux=`, facultatif) : seules les contraintes présentes sont
+  vérifiées, et la gravité suit le niveau de la contrainte (nécessaire :
+  erreur ; important : avertissement ; facultatif : information), sans
+  jamais dépasser la gravité que la règle donne déjà. Le message d'une
+  entorse à une règle importante ou facultative commence par
+  `PREFIXES_ENTORSE[niveau]`. Sans niveaux, tout est vérifié en dur
+  (comportement d'origine) et `Anomalie.niveau` vaut `None`.
 - Le message est une phrase française lisible par un non-informaticien :
   il nomme les séances, les salles, les personnes et l'heure en clair.
 - Les fonctions sont pures : elles ne modifient rien et ne lèvent pas
@@ -40,7 +47,7 @@ import datetime as dt
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
 from edt.domaine.instantane import Instantane, Occurrence, Placement
 
@@ -59,7 +66,10 @@ class Anomalie:
     - `jour` : jour de la semaine type (0 = lundi), pour une anomalie de semaine type ;
     - `date` : date, pour une anomalie de la couche datée ;
     - `besoins` : identifiants des besoins concernés (ajouté par le lot
-      vérificateur : seul repère d'un problème de dépliage, qui n'a pas de séance).
+      vérificateur : seul repère d'un problème de dépliage, qui n'a pas de séance) ;
+    - `niveau` : niveau appliqué à la contrainte quand la vérification a reçu
+      des niveaux, `None` sinon. Pour un niveau important ou facultatif, le
+      message commence par `PREFIXES_ENTORSE[niveau]`.
 
     Les tuples d'identifiants sont triés et sans doublon.
     """
@@ -75,11 +85,19 @@ class Anomalie:
     jour: int | None = None
     date: dt.date | None = None
     besoins: tuple[int, ...] = ()
+    niveau: Niveau | None = None
 
     @property
     def bloquante(self) -> bool:
         """Vrai si l'anomalie invalide l'emploi du temps (gravité « erreur »)."""
         return self.gravite is Gravite.ERREUR
+
+
+PREFIXES_ENTORSE: dict[Niveau, str] = {
+    Niveau.IMPORTANT: "Entorse à une règle importante : ",
+    Niveau.FACULTATIF: "Entorse à une règle facultative : ",
+}
+"""Début stable du message d'une anomalie selon le niveau de sa contrainte (rien si nécessaire)."""
 
 
 FonctionVerification = Callable[
