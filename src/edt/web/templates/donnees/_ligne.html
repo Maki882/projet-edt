@@ -15,6 +15,7 @@
     {%- for action in ecran.actions_ligne %}
     {{ ui.bouton_action(url_element ~ action.suffixe, action.libelle, classe="bouton bouton-petit") }}
     {%- endfor %}
-    <a class="bouton bouton-petit bouton-danger" href="{{ url_element }}/supprimer">Supprimer</a>
+    <a class="bouton bouton-petit bouton-danger" href="{{ url_element }}/supprimer{{ suffixe_retour }}"
+       hx-get="{{ url_element }}/ligne/suppression" hx-target="closest tr" hx-swap="outerHTML">Supprimer</a>
   </td>
 </tr>

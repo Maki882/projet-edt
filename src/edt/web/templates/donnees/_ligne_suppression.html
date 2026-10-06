@@ -1,0 +1,35 @@
+{#
+  Ligne de confirmation d'une suppression (HTMX), à la place de la ligne de la liste.
+  Possible : ce qui sera emporté, « Supprimer définitivement » (la zone de liste est
+  rafraîchie) ou « Annuler » (la ligne revient). Refusée : pourquoi, avec des liens
+  vers les éléments qui bloquent. Sans JavaScript, la page de confirmation sert.
+#}
+{% import "donnees/_ui.html" as d %}
+<tr id="ligne-{{ ecran.entite.code }}-{{ analyse.id }}" class="ligne-suppression{% if not analyse.possible %} ligne-suppression-refusee{% endif %}">
+  <td colspan="{{ nb_colonnes }}">
+    <div class="ligne-suppression-contenu" role="group" aria-label="Suppression de {{ analyse.libelle }}">
+      {%- if analyse.possible %}
+      <p><strong>Supprimer définitivement {{ entite.demonstratif|lower }} « {{ analyse.libelle }} » ?</strong></p>
+      {%- if analyse.effets %}
+      <ul class="liste-simple">{{ d.raisons(analyse.effets) }}</ul>
+      {%- endif %}
+      <div class="ligne-boutons">
+        <button type="button" class="bouton bouton-petit bouton-danger-plein"
+                hx-post="{{ url_element }}/ligne/supprimer" hx-target="#zone-liste" hx-swap="innerHTML">Supprimer définitivement</button>
+        <button type="button" class="bouton bouton-petit" autofocus
+                hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Annuler</button>
+      </div>
+      {%- else %}
+      <p><strong>Impossible de supprimer {{ entite.demonstratif|lower }} « {{ analyse.libelle }} »</strong> :
+        {{ "elle" if entite.feminin else "il" }} est encore {{ entite.accorde("utilisé") }}.</p>
+      <ul class="liste-simple">{{ d.raisons(analyse.blocages) }}</ul>
+      <p class="discret">Modifiez ou supprimez d'abord ces éléments : on ne modifie jamais une demande en silence.</p>
+      <div class="ligne-boutons">
+        <button type="button" class="bouton bouton-petit" autofocus
+                hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Fermer</button>
+        <a class="bouton bouton-petit" href="{{ url_page }}">Voir le détail</a>
+      </div>
+      {%- endif %}
+    </div>
+  </td>
+</tr>

@@ -630,6 +630,38 @@ main {
   background: var(--marque-pale);
 }
 
+/* Ligne de confirmation d'une suppression, à la place de la ligne de la liste. */
+.tableau tr.ligne-suppression > td {
+  background: var(--attention-pale);
+  border-left: 4px solid var(--attention);
+}
+
+.tableau tr.ligne-suppression-refusee > td {
+  background: var(--erreur-pale);
+  border-left-color: var(--erreur);
+}
+
+/* Lignes d'édition et de confirmation : texte sur plusieurs lignes, visible même
+   quand le tableau défile horizontalement. */
+.tableau-compact tr.ligne-edition > td,
+.tableau-compact tr.ligne-suppression > td {
+  white-space: normal;
+}
+
+.ligne-suppression-contenu {
+  position: sticky;
+  left: 0.5rem;
+  max-width: min(60rem, 85vw);
+}
+
+.ligne-suppression-contenu > p {
+  margin: 0 0 0.4rem;
+}
+
+.ligne-suppression-contenu > ul {
+  margin: 0 0 0.5rem;
+}
+
 /* En-tête de colonne triable : lien avec indicateur de sens. */
 .tri {
   color: inherit;

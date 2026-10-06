@@ -36,6 +36,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMe
 from edt.services.referentiels.conversion import ENTIER_MAX, ErreurChamp, canonique, convertir
 from edt.services.referentiels.description import (
     Champ,
+    Decompte,
     Entite,
     TypeChamp,
     options_reference,
@@ -82,23 +83,47 @@ class PageListe:
 
 
 @dataclass(frozen=True)
+class Raison:
+    """Une raison de refus ou une conséquence d'une suppression.
+
+    `lien` : adresse de la liste des éléments concernés (vide s'il n'y en a
+    pas) ; `libelle_lien` : son libellé (« Voir ces 12 besoins »).
+    """
+
+    texte: str
+    lien: str = ""
+    libelle_lien: str = ""
+
+
+@dataclass(frozen=True)
 class AnalyseSuppression:
     """Ce que donnerait la suppression d'un élément.
 
-    `refus` : raisons qui l'empêchent (vide = possible) ; `consequences` : ce
-    qu'elle emporterait ou modifierait ailleurs.
+    `blocages` : raisons qui l'empêchent (vide = possible), chacune avec si
+    possible un lien vers les éléments qui bloquent ; `effets` : ce qu'elle
+    emporterait ou modifierait ailleurs, et ce qui se passe ensuite.
     """
 
     entite: str
     id: int
     libelle: str
-    refus: tuple[str, ...]
-    consequences: tuple[str, ...]
+    blocages: tuple[Raison, ...]
+    effets: tuple[Raison, ...]
 
     @property
     def possible(self) -> bool:
         """Vrai si rien n'empêche la suppression."""
-        return not self.refus
+        return not self.blocages
+
+    @property
+    def refus(self) -> tuple[str, ...]:
+        """Textes des raisons de refus."""
+        return tuple(raison.texte for raison in self.blocages)
+
+    @property
+    def consequences(self) -> tuple[str, ...]:
+        """Textes des conséquences."""
+        return tuple(effet.texte for effet in self.effets)
 
 
 # --------------------------------------------------------------------------- #
@@ -558,27 +583,37 @@ def analyser_suppression(session: Session, code: str | Entite, ident: int) -> An
     """Dit si l'élément peut être supprimé, et ce que la suppression emporterait."""
     description = entite(code)
     trouve = objet(session, description, ident)
-    refus = [
-        f"{description.demonstratif} {usage.texte(nombre)}."
+
+    def raison(decompte: Decompte, nombre: int, texte: str) -> Raison:
+        adresse = decompte.adresse(ident)
+        return Raison(texte, adresse, decompte.libelle_lien(nombre) if adresse else "")
+
+    blocages = [
+        raison(usage, nombre, f"{description.demonstratif} {usage.texte(nombre)}.")
         for usage in description.usages
         if (nombre := usage.compter(session, ident))
     ]
-    consequences = [
-        f"{effet.texte(nombre)}."
+    effets = [
+        raison(effet, nombre, f"{effet.texte(nombre)}.")
         for effet in description.consequences
         if (nombre := effet.compter(session, ident))
     ]
     if description.analyser is not None:
         refus_calcules, consequences_calculees = description.analyser(session, trouve)
-        refus += refus_calcules
-        consequences += consequences_calculees
+        blocages += [_raison(element) for element in refus_calcules]
+        effets += [_raison(element) for element in consequences_calculees]
     return AnalyseSuppression(
         entite=description.code,
         id=ident,
         libelle=description.libelle(trouve),
-        refus=tuple(refus),
-        consequences=tuple(consequences),
+        blocages=tuple(blocages),
+        effets=tuple(effets),
     )
+
+
+def _raison(element: str | Raison) -> Raison:
+    """Une raison calculée par le crochet `analyser` (texte seul ou `Raison` complète)."""
+    return element if isinstance(element, Raison) else Raison(element)
 
 
 def supprimer(session: Session, code: str | Entite, ident: int) -> str:

@@ -27,7 +27,9 @@ from edt.db.modeles import (
 from edt.domaine.enumerations import NatureGroupe, StatutEnseignant
 from edt.domaine.heures import duree_vers_texte
 from edt.services.referentiels.description import (
+    BESOINS,
     EFFECTIF_MAX,
+    TOUS_SEMESTRES,
     Champ,
     Colonne,
     Decompte,
@@ -42,6 +44,7 @@ from edt.services.referentiels.description import (
     options_reference,
     par_colonne,
 )
+from edt.services.referentiels.operations import Raison
 
 journal = logging.getLogger(__name__)
 
@@ -179,13 +182,15 @@ ENSEIGNANT = Entite(
             par_colonne(besoin_enseignant.c.enseignant_id),
             "assure 1 besoin",
             "assure {n} besoins",
+            lien=TOUS_SEMESTRES + "&enseignant={id}",
+            objets=BESOINS,
         ),
     ),
     consequences=(
         Decompte(
             par_colonne(Indisponibilite.enseignant_id),
-            "1 indisponibilité de l'enseignant sera supprimée",
-            "{n} indisponibilités de l'enseignant seront supprimées",
+            "Son indisponibilité sera supprimée avec lui",
+            "Ses {n} indisponibilités seront supprimées avec lui",
         ),
     ),
 )
@@ -282,10 +287,12 @@ def _ecrire_chevauchements(session: Session, groupe: Groupe, valeurs: Valeurs) -
         )
 
 
-def _analyser_groupe(session: Session, groupe: Groupe) -> tuple[list[str], list[str]]:
+def _analyser_groupe(session: Session, groupe: Groupe) -> tuple[list[Raison], list[str]]:
     arbre = sous_arbre(session, groupe.id)
     sous_groupes = len(arbre) - 1
-    refus: list[str] = []
+    # Le filtre « Groupe » des besoins montre exactement les besoins qui bloquent.
+    lien = f"{TOUS_SEMESTRES}&groupe={groupe.id}"
+    refus: list[Raison] = []
     nb_besoins = session.scalar(
         select(func.count(func.distinct(besoin_groupe.c.besoin_id))).where(
             besoin_groupe.c.groupe_id.in_(arbre)
@@ -294,15 +301,25 @@ def _analyser_groupe(session: Session, groupe: Groupe) -> tuple[list[str], list[
     if nb_besoins:
         sujet = "Ce groupe et ses sous-groupes sont suivis" if sous_groupes else "Ce groupe suit"
         verbe = "par " if sous_groupes else ""
-        refus.append(f"{sujet} {verbe}{_pluriel(nb_besoins, 'besoin', 'besoins')}.")
+        refus.append(
+            Raison(
+                f"{sujet} {verbe}{_pluriel(nb_besoins, 'besoin', 'besoins')}.",
+                lien,
+                "Voir les besoins concernés",
+            )
+        )
     matieres = select(Matiere.id).where(Matiere.promotion_id.in_(arbre))
     nb_besoins_matieres = session.scalar(
         select(func.count()).where(Besoin.matiere_id.in_(matieres))
     )
     if nb_besoins_matieres:
         refus.append(
-            "Les matières rattachées à ce groupe sont enseignées par "
-            f"{_pluriel(nb_besoins_matieres, 'besoin', 'besoins')}."
+            Raison(
+                "Les matières rattachées à ce groupe sont enseignées par "
+                f"{_pluriel(nb_besoins_matieres, 'besoin', 'besoins')}.",
+                lien,
+                "Voir les besoins concernés",
+            )
         )
     consequences: list[str] = []
     decomptes = (

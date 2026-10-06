@@ -28,7 +28,10 @@ from edt.domaine.enumerations import Accessibilite
 from edt.services.parametres import lire_parametres
 from edt.services.referentiels.conversion import ErreurChamp, est_vide
 from edt.services.referentiels.description import (
+    BESOINS,
     EFFECTIF_MAX,
+    SALLES,
+    TOUS_SEMESTRES,
     Champ,
     Colonne,
     Decompte,
@@ -93,7 +96,11 @@ CAMPUS = Entite(
     uniques=(Unicite(("code",), "Un campus porte déjà ce code.", "code"),),
     usages=(
         Decompte(
-            par_colonne(Salle.campus_id), "est le campus d'une salle", "est le campus de {n} salles"
+            par_colonne(Salle.campus_id),
+            "est le campus d'une salle",
+            "est le campus de {n} salles",
+            lien="/salles?campus={id}",
+            objets=SALLES,
         ),
         Decompte(
             par_colonne(Besoin.campus_impose_id),
@@ -106,8 +113,8 @@ CAMPUS = Entite(
             lambda s, i: (
                 compter_ou(s, Trajet.campus_a_id, i) + compter_ou(s, Trajet.campus_b_id, i)
             ),
-            "1 temps de trajet sera supprimé",
-            "{n} temps de trajet seront supprimés",
+            "Son temps de trajet vers l'autre campus sera supprimé avec lui",
+            "Ses {n} temps de trajet vers les autres campus seront supprimés avec lui",
         ),
     ),
 )
@@ -138,7 +145,11 @@ TYPE_SALLE = Entite(
     uniques=(Unicite(("code",), "Un type de salle porte déjà ce code.", "code"),),
     usages=(
         Decompte(
-            par_colonne(Salle.type_salle_id), "est le type d'une salle", "est le type de {n} salles"
+            par_colonne(Salle.type_salle_id),
+            "est le type d'une salle",
+            "est le type de {n} salles",
+            lien="/salles?type={id}",
+            objets=SALLES,
         ),
         Decompte(
             par_colonne(besoin_type_salle.c.type_salle_id),
@@ -149,8 +160,10 @@ TYPE_SALLE = Entite(
     consequences=(
         Decompte(
             par_colonne(TypeSeance.type_salle_defaut_id),
-            "1 type de séance perdra son type de salle par défaut",
-            "{n} types de séance perdront leur type de salle par défaut",
+            "1 type de séance perdra son type de salle par défaut : ses besoins sans type "
+            "de salle précisé accepteront alors toutes les salles",
+            "{n} types de séance perdront leur type de salle par défaut : leurs besoins sans "
+            "type de salle précisé accepteront alors toutes les salles",
         ),
     ),
 )
@@ -197,8 +210,8 @@ EQUIPEMENT = Entite(
     consequences=(
         Decompte(
             par_colonne(salle_equipement.c.equipement_id),
-            "Il sera retiré d'une salle",
-            "Il sera retiré de {n} salles",
+            "Il sera retiré des équipements d'une salle",
+            "Il sera retiré des équipements de {n} salles",
         ),
     ),
 )
@@ -324,20 +337,24 @@ SALLE = Entite(
             par_colonne(Besoin.salle_imposee_id),
             "est imposée à 1 besoin",
             "est imposée à {n} besoins",
+            lien=TOUS_SEMESTRES + "&salle_imposee={id}",
+            objets=BESOINS,
         ),
     ),
     consequences=(
         Decompte(
             par_colonne(Indisponibilite.salle_id),
-            "1 indisponibilité de la salle sera supprimée",
-            "{n} indisponibilités de la salle seront supprimées",
+            "Son indisponibilité sera supprimée avec elle",
+            "Ses {n} indisponibilités seront supprimées avec elle",
         ),
         Decompte(
             lambda s, i: (
                 compter_ou(s, SeanceHebdo.salle_id, i) + compter_ou(s, Occurrence.salle_id, i)
             ),
-            "1 séance déjà placée perdra sa salle",
-            "{n} séances déjà placées perdront leur salle",
+            "1 séance déjà placée restera sans salle : elle apparaîtra dans « À traiter » et "
+            "retrouvera une salle au prochain calcul ou par un replacement à la main",
+            "{n} séances déjà placées resteront sans salle : elles apparaîtront dans « À traiter » "
+            "et retrouveront une salle au prochain calcul ou par un replacement à la main",
         ),
     ),
 )
