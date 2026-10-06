@@ -196,7 +196,7 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
     assert "Écarts aux règles décochées lors du calcul (1)" in page
     assert "0 point à traiter" in page
     accueil = client.get("/").text
-    assert "aux règles décochées lors du calcul" in accueil
+    assert "Aucun point à traiter" in accueil  # même nombre que la page « À traiter »
 
     # Une règle active reste bloquante.
     faux_verificateur.modification = [

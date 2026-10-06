@@ -28,11 +28,11 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter » (somme des `ATraiter.total`) |
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
-| `src/edt/services/emploi_du_temps/tableau_de_bord.py` | l'état de l'établissement pour l'accueil |
+| `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
 | `src/edt/web/routes/a_traiter.py` | onglet « À traiter » (`/a-traiter`) |
-| `src/edt/web/routes/accueil.py` | accueil enrichi (`/`) ; `/sante` (seule la clé `base.ecarts_schema` ajoutée) |
+| `src/edt/web/routes/accueil.py` | accueil (`/`), sans statistiques ; `/sante` (seule la clé `base.ecarts_schema` ajoutée) |
 | `src/edt/web/templates/edt/` | gabarits des trois onglets ; `_ui.html` : macros partagées |
 | `src/edt/web/static/css/edt.css`, `static/js/edt.js` | grille, panneau, impression ; recherche rapide, envoi automatique |
 | `tests/web_edt/` | tests de ces écrans et services |
@@ -248,11 +248,33 @@ le dit de la même façon : jamais d'erreur 500.
 
 ## Accueil
 
-`GET /` garde l'état de la base et les compteurs, et ajoute pour le
-semestre du jour : la **prochaine étape** en une phrase avec son écran,
-la version active, les quatre indicateurs (pourcentage de séances placées,
-nombre de conflits, taux d'utilisation des salles, changements de campus)
-et le nombre de points à traiter. Étapes et écrans :
+`GET /` ne montre que ce dont l'équipe pédagogique a besoin pour avancer,
+**sans aucune statistique** : ni compteurs d'entités, ni indicateurs, ni
+nombres de séances ou de besoins. Quatre blocs, pour le semestre du jour :
+
+1. **Prochaine étape** : une phrase et son écran (tableau ci-dessous).
+2. **Emploi du temps du semestre** : le calcul en cours et « Suivre le
+   calcul » ; la version active, son libellé et « Consulter » ; les points
+   à traiter avec « Voir ce qui reste à traiter » (une action, pas une
+   statistique ; « Aucun point à traiter » quand il n'y en a plus, le
+   nombre de séances à programmer quand les vérifications ne sont pas
+   disponibles) ; sinon « Aucun emploi du temps n'a encore été généré pour
+   ce semestre ». Les quatre indicateurs de l'équipe restent sur le
+   résultat d'un calcul (`edt/_suivi_calcul.html`).
+3. **Dernier calcul**, seulement s'il s'est terminé **sans emploi du
+   temps** (`tableau_de_bord.CalculSansSolution` : impossible, refusé par
+   les vérifications préalables, pas trouvé dans le temps imparti, arrêté,
+   erreur) : étiquette, date, message et « Voir le détail ». Un calcul
+   réussi n'y figure pas (la version active le dit), un calcul en cours est
+   dans le bloc 2, l'historique complet est sur `/versions`.
+4. **État de la base de données**, seulement en cas de problème (base
+   inaccessible, schéma périmé, base non initialisée) ou de base vide
+   (invitation à charger un établissement fictif) :
+   `routes.accueil.base_a_signaler`. Quand tout va bien, le bloc disparaît ;
+   emplacement, mode du journal et environnement sont dans `/sante` et
+   `python -m edt doctor`.
+
+Étapes et écrans :
 
 | Situation | Écran principal | Autres chemins |
 |---|---|---|

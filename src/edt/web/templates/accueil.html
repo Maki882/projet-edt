@@ -4,6 +4,8 @@
 
 {% block titre %}Accueil{% endblock %}
 
+{#- Seulement ce dont l'équipe pédagogique a besoin pour avancer : aucune
+    statistique (voir `edt.services.emploi_du_temps.tableau_de_bord`). -#}
 {% block contenu %}
 {%- if etape %}
 <section class="carte edt-prochaine-etape">
@@ -31,74 +33,58 @@
   {%- endif %}
   {%- if tableau.version %}
   <p>
-    {{ ui.etiquette("Version active", "succes") }} {{ tableau.version.libelle }} :
-    {{ tableau.version.nb_seances }} séances par semaine type{% if tableau.version.nb_occurrences %}, {{ tableau.version.nb_occurrences }} séances datées{% endif %}.
+    {{ ui.etiquette("Version active", "succes") }} {{ tableau.version.libelle }}.
     <a href="/emploi-du-temps?version_id={{ tableau.version.id }}">Consulter</a>
   </p>
-  {{ edt.indicateurs(tableau.controle, tableau.nb_a_programmer) }}
   <p>
-    {%- if tableau.nb_a_traiter is not none %}
-    {%- set reste = tableau.nb_a_traiter %}
-    {{ ui.etiquette(fmt.pluriel(reste, "point") ~ " à traiter", "erreur" if reste else "succes") }}
-    {%- else %}
+    {%- if tableau.nb_a_traiter is none %}
     {{ ui.etiquette(fmt.pluriel(tableau.nb_a_programmer, "séance") ~ " à programmer", "attention" if tableau.nb_a_programmer else "info") }}
     <span class="discret">(anomalies non comptées : vérifications pas encore disponibles)</span>
-    {%- endif %}
     <a href="/a-traiter?semestre_id={{ tableau.semestre.id }}">Voir ce qui reste à traiter</a>
+    {%- elif tableau.nb_a_traiter %}
+    {{ ui.etiquette(fmt.pluriel(tableau.nb_a_traiter, "point") ~ " à traiter", "erreur") }}
+    <a href="/a-traiter?semestre_id={{ tableau.semestre.id }}">Voir ce qui reste à traiter</a>
+    {%- else %}
+    {{ ui.etiquette("Aucun point à traiter", "succes") }}
+    {%- endif %}
   </p>
   {%- else %}
-  <p class="vide">Aucun emploi du temps n'a encore été généré pour ce semestre ({{ fmt.pluriel(tableau.nb_besoins, "besoin") }} d'enseignement saisi{{ "s" if tableau.nb_besoins > 1 }}).</p>
+  <p class="vide">Aucun emploi du temps n'a encore été généré pour ce semestre.</p>
   {%- endif %}
 </section>
 {%- endif %}
 
-{% if etat.initialisee %}
+{%- if tableau and tableau.calcul_sans_solution %}
+{%- set echec = tableau.calcul_sans_solution %}
 <section class="carte">
   <h2>Dernier calcul</h2>
-  {%- set calcul = (tableau.dernier_calcul if tableau and tableau.dernier_calcul else dernier_calcul) %}
-  {% if calcul %}
   <p>
-    {{ ui.etiquette(calcul.etat.libelle, "succes" if calcul.reussi else ("info" if calcul.en_cours else "attention")) }}
-    Lancé le {{ calcul.demarre_le|dateheure_fr }}
-    ({{ fmt.duree_secondes(calcul.temps_ecoule_s) }}).
-    <a href="/calculs/{{ calcul.id }}">Voir le détail</a>
+    {{ ui.etiquette(echec.etiquette, echec.ton) }}
+    Lancé le {{ echec.suivi.demarre_le|dateheure_fr }}.
+    <a href="/calculs/{{ echec.suivi.id }}">Voir le détail</a>
   </p>
-  {% if calcul.message %}<p class="pre-ligne">{{ calcul.message }}</p>{% endif %}
-  {% else %}
-  <p class="vide">Aucun emploi du temps n'a encore été généré.</p>
-  {% endif %}
+  {%- if echec.suivi.message %}
+  <p class="pre-ligne">{{ echec.suivi.message }}</p>
+  {%- endif %}
 </section>
+{%- endif %}
 
-{% endif %}
-
+{%- if base_a_signaler %}
 <section class="carte">
   <h2>État de la base de données</h2>
-  {% if not etat.accessible %}
+  {%- if not etat.accessible %}
     {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "À faire par l'administrateur du serveur : vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
-  {% elif etat.ecarts_schema %}
+  {%- elif etat.ecarts_schema %}
     {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre, par l'administrateur du serveur : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
-  {% elif not etat.initialisee %}
+  {%- elif not etat.initialisee %}
     {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["À faire par l'administrateur du serveur : lancer « python -m edt init-db », puis recharger cette page."]) }}
-  {% else %}
-    <p>
-      {{ ui.etiquette("Prête", "succes") }}
-      La base est initialisée{% if etat.mode_journal and environnement != "prod" %} (mode {{ etat.mode_journal }}){% endif %}.
-    </p>
-    {% if etat.vide %}
-    <div class="message message-info" role="status">
-      <p>La base ne contient encore aucune donnée. Pour découvrir l'application : <a href="/jeux">charger un établissement fictif</a>.</p>
-    </div>
-    {% endif %}
-  {% endif %}
-  <dl class="definitions">
-    {%- if environnement != "prod" %}
-    <dt>Emplacement</dt>
-    <dd><code>{{ etat.url }}</code></dd>
-    {%- endif %}
-    <dt>Environnement</dt>
-    <dd>{{ "production" if environnement == "prod" else "développement" }}</dd>
-  </dl>
+  {%- else %}
+  <div class="message message-info" role="status">
+    <p>La base ne contient encore aucune donnée. Pour découvrir l'application : <a href="/jeux">charger un établissement fictif</a>.</p>
+  </div>
+  {%- endif %}
 </section>
+{%- endif %}
 {% endblock %}
 
 {% block styles %}{{ edt.ressources() }}{% endblock %}

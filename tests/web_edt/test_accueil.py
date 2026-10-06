@@ -1,15 +1,23 @@
-"""Accueil enrichi : prochaine étape conseillée, version active, indicateurs, éléments à traiter."""
+"""Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base.
+
+Seulement ce dont l'équipe pédagogique a besoin : aucune statistique
+(indicateurs, nombres de séances, emplacement de la base).
+"""
 
 from __future__ import annotations
 
 import threading
 
+import pytest
 from sqlalchemy import delete, select
 
 from edt import solveur
 from edt.db import modeles as m
+from edt.db.moteur import session_base
+from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.services import generation
+from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
@@ -26,7 +34,9 @@ def test_base_vide_propose_un_etablissement_fictif(client):
         in page
     )
     assert 'href="/import"' in page and 'href="/salles"' in page
-    assert "La base est initialisée" in page  # l'état de la base reste affiché
+    # Base vide : le bloc de la base apparaît, avec l'invitation à charger un jeu.
+    assert "État de la base de données" in page
+    assert "La base ne contient encore aucune donnée" in page
 
 
 def test_donnees_incompletes_l_etape_mene_a_l_ecran_qui_manque(session, aujourdhui):
@@ -56,6 +66,9 @@ def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, 
 
     assert "Vérifier les données et lancer le calcul" in page
     assert f'href="/calculs?semestre_id={jeu_minimal.semestre_id}"' in page
+    bloc = page.split("<h2>Emploi du temps du semestre", 1)[1].split("</section>", 1)[0]
+    assert "Aucun emploi du temps n'a encore été généré pour ce semestre." in bloc
+    assert "besoin" not in bloc  # plus le nombre de besoins saisis
 
 
 def test_version_active_sans_verificateur(
@@ -65,26 +78,39 @@ def test_version_active_sans_verificateur(
 
     assert "Consulter l&#39;emploi du temps" in page or "Consulter l'emploi du temps" in page
     assert f"/emploi-du-temps?version_id={version_generee.version_id}" in page
-    assert "Les vérifications automatiques ne sont pas encore disponibles" in page
+    assert "les vérifications automatiques ne sont pas encore disponibles" in page
+    assert "anomalies non comptées : vérifications pas encore disponibles" in page
     assert "conflit" not in page  # pas de « 0 conflit » inventé
 
 
-def test_indicateurs_et_points_a_traiter(
+def _sans_statistique(page: str) -> None:
+    """Ni indicateurs, ni nombres de séances, ni détails de la base."""
+    for statistique in (
+        "compteur-nombre",
+        "des séances placées",
+        "utilisation des salles",
+        "changements de campus",
+        "séances par semaine type",
+        "séances datées",
+        "Emplacement",
+        "Environnement",
+        "La base est initialisée",
+    ):
+        assert statistique not in page, statistique
+
+
+def test_points_a_traiter_sans_indicateurs(
     version_generee, client, aujourdhui_fige, faux_verificateur
 ):
     faux_verificateur.hebdo = [
-        Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "La salle N016 est prise deux fois.")
+        Anomalie(CodeContrainte.SALLE_UNIQUE, Gravite.ERREUR, "La salle N016 est prise deux fois.")
     ]
 
     page = client.get("/").text
 
-    assert "100 %" in page and "37,5 %" in page  # séances placées, utilisation des salles
-    assert (
-        '<span class="compteur-nombre">1</span>\n    <span class="compteur-libelle">conflit' in page
-    )
-    assert '<span class="compteur-nombre">8</span>' in page  # changements de campus
     assert "1 point à traiter" in page
     assert f'href="/a-traiter?semestre_id={version_generee.semestre_id}"' in page
+    _sans_statistique(page)
 
 
 def test_calcul_en_cours_conseille_de_le_suivre(jeu_minimal, client, aujourdhui_fige, monkeypatch):
@@ -106,12 +132,71 @@ def test_calcul_en_cours_conseille_de_le_suivre(jeu_minimal, client, aujourdhui_
         generation.attendre_calcul(calcul_id, DELAI)
 
 
-def test_indicateurs_du_vrai_verificateur(version_generee, client, aujourdhui_fige):
+def test_tout_va_bien_version_a_consulter_et_rien_d_autre(version_generee, client, aujourdhui_fige):
     page = client.get("/").text
 
-    assert "des séances placées" in page and "utilisation des salles" in page
-    assert "changements de campus" in page
-    assert "Les vérifications automatiques ne sont pas encore disponibles" not in page
+    with session_base() as session:
+        libelle = session.get(m.VersionEdt, version_generee.version_id).libelle
+        reste = tableau_de_bord(session, aujourdhui_fige).nb_a_traiter
+    assert "Version active" in page and libelle in page
+    adresse = f"/emploi-du-temps?version_id={version_generee.version_id}"
+    assert f'<a href="{adresse}">Consulter</a>' in page
+    assert reste is not None  # le vrai vérificateur a compté
+    attendu = "Aucun point à traiter" if not reste else f"{pluriel(reste, 'point')} à traiter"
+    assert attendu in page
+    # Le calcul réussi ne s'affiche pas : la version active le dit déjà.
+    assert "Dernier calcul" not in page
+    assert f'href="/calculs/{version_generee.calcul_id}"' not in page
+    # La base va bien : son bloc disparaît.
+    assert "État de la base de données" not in page
+    _sans_statistique(page)
+
+
+def _refuser(*args, **kwargs):
+    return [
+        Anomalie(
+            CodeContrainte.DISPO_GROUPE, Gravite.ERREUR, "La classe A1-G1 n'a aucun créneau libre."
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("issue", "etiquette", "extrait"),
+    [
+        ("temps_depasse", "Pas trouvé dans le temps imparti", None),
+        ("refuse", "Calcul refusé", "aucun créneau libre"),
+    ],
+)
+def test_dernier_calcul_sans_solution_visible(
+    version_generee, client, aujourdhui_fige, issue, etiquette, extrait
+):
+    with pytest.MonkeyPatch.context() as temporaire:
+        if issue == "refuse":
+            temporaire.setattr(generation, "pre_verifier", _refuser)
+        else:
+            temporaire.setattr(
+                solveur,
+                "resoudre",
+                lambda instantane, options, arret=None: ResultatSolveur(
+                    StatutSolveur.TEMPS_DEPASSE
+                ),
+            )
+        echoue = generation.attendre_calcul(
+            generation.lancer_calcul(version_generee.semestre_id), DELAI
+        )
+    assert not echoue.reussi
+
+    page = client.get("/").text
+
+    bloc = page.split("<h2>Dernier calcul</h2>", 1)[1].split("</section>", 1)[0]
+    assert etiquette in bloc and "Lancé le" in bloc
+    assert f'<a href="/calculs/{echoue.id}">Voir le détail</a>' in bloc
+    if extrait:
+        assert extrait in bloc  # le message du calcul
+    # La version active d'avant reste affichée à côté.
+    assert f"/emploi-du-temps?version_id={version_generee.version_id}" in page
+    assert f'href="/calculs/{version_generee.calcul_id}"' not in page
+    _sans_statistique(page)
 
 
 def test_base_au_schema_perime(client):

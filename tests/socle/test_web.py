@@ -53,14 +53,16 @@ def client_etendu(base, monkeypatch):
     return TestClient(module_app.creer_app())
 
 
-def test_accueil_affiche_l_etat_de_la_base(jeu_minimal, client):
+def test_accueil_tait_une_base_en_bon_etat(jeu_minimal, client):
     reponse = client.get("/")
 
     assert reponse.status_code == 200
     assert reponse.headers["X-Request-ID"]
     page = reponse.text
     assert "Données fictives" in page
-    assert "La base est initialisée" in page
+    # Tout va bien : ni bloc sur la base, ni emplacement, ni environnement.
+    assert "État de la base de données" not in page
+    assert "Emplacement" not in page and "Environnement" not in page
     assert "Contenu</h2>" not in page  # plus de compteurs d'entités sur l'accueil
     assert 'href="/" class="actif"' in page  # l'entrée de menu « Accueil » est active
 
