@@ -95,9 +95,39 @@ def test_generation_de_bout_en_bout(jeu_minimal):
 
 
 def test_jour_ferie_replace_dans_la_meme_semaine(jeu_minimal):
+    # Le 11 novembre 2026 est un mercredi férié. Le moteur ne donne pas la même première
+    # solution d'une machine à l'autre : pour qu'une séance tombe ce jour-là quoi qu'il
+    # arrive, le TD de mathématiques de la classe 2 est verrouillé le mercredi dans une
+    # première version, puis l'emploi du temps est recalculé autour de ce verrou. (Imposer
+    # le mercredi au besoin ne conviendrait pas : la séance datée devrait alors rester un
+    # mercredi, et partirait dans la semaine voisine.)
+    armistice = dt.date(2026, 11, 11)
+    premiere = generer(jeu_minimal.semestre_id)
+    assert premiere.etat is EtatCalcul.REUSSI, premiere.message
+    with session_base() as session:
+        td = session.scalar(
+            select(m.SeanceHebdo).where(
+                m.SeanceHebdo.version_id == premiere.version_id,
+                m.SeanceHebdo.besoin.has(
+                    m.Besoin.matiere.has(code="IM.1101")
+                    & m.Besoin.type_seance.has(code="TD")
+                    & m.Besoin.groupes.any(code="A1-G2")
+                ),
+            )
+        )
+        td.jour, td.verrou = armistice.weekday(), True  # 2 : mercredi
+        besoin_td = td.besoin_id
     suivi = generer(jeu_minimal.semestre_id)
+    assert suivi.etat is EtatCalcul.REUSSI, suivi.message
     with session_base() as session:
         instantane = charger_instantane(session, jeu_minimal.semestre_id, suivi.version_id)
+        verrouillee = session.scalar(
+            select(m.SeanceHebdo).where(
+                m.SeanceHebdo.version_id == suivi.version_id,
+                m.SeanceHebdo.besoin_id == besoin_td,
+            )
+        )
+        assert (verrouillee.jour, verrouillee.verrou) == (armistice.weekday(), True)
     deplacees = [o for o in occurrences(suivi.version_id) if o.statut is StatutOccurrence.DEPLACEE]
     assert deplacees, "le calendrier 2026-2027 contient des jours fériés en semaine"
     assert suivi.statistiques["instanciation"]["nb_replacees"] == len(deplacees)
@@ -106,13 +136,12 @@ def test_jour_ferie_replace_dans_la_meme_semaine(jeu_minimal):
         assert occurrence.origine is OrigineOccurrence.REPLACEMENT
         assert occurrence.date_initiale is not None and occurrence.commentaire
         assert instantane.fermeture(occurrence.date, besoin) is None
-    # Le 11 novembre 2026 est un mercredi férié : ses séances restent dans la même semaine.
-    armistice = dt.date(2026, 11, 11)
+    # Les séances du 11 novembre sont déplacées pour « jour fermé », et le TD verrouillé le
+    # mercredi reste dans la même semaine.
     du_11 = [o for o in deplacees if o.date_initiale == armistice]
-    assert du_11 and all("jour fermé" in o.commentaire for o in du_11)
-    for occurrence in du_11:
-        assert occurrence.date != armistice
-        assert occurrence.date.isocalendar()[:2] == armistice.isocalendar()[:2]
+    assert all("jour fermé" in o.commentaire and o.date != armistice for o in du_11)
+    (td_du_11,) = [o for o in du_11 if o.besoin_id == besoin_td]
+    assert td_du_11.date.isocalendar()[:2] == armistice.isocalendar()[:2]
 
 
 def test_instanciation_idempotente_et_saisies_manuelles_conservees(jeu_minimal):
