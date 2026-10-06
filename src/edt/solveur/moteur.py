@@ -12,12 +12,21 @@ Déroulement d'un calcul
    une salle (`edt.solveur.salles`). Si les salles ne suivent pas, les
    séances en cause sont signalées au modèle des horaires, qui écarte cette
    combinaison et cherche d'autres horaires.
-4. **Amélioration** (seulement avec `options.optimiser`) : l'objectif de
-   qualité est ajouté au modèle et la recherche repart de la solution valide,
-   dans le temps qui reste. Si elle ne trouve pas mieux, ou n'a plus de
-   temps, c'est la solution valide qui est rendue. Elle s'arrête d'elle-même
-   quand elle ne progresse plus (`options.arret_sur_stagnation`, voir
-   `delai_de_stagnation`), sans attendre le temps limite.
+4. **Amélioration** : l'objectif est ajouté au modèle et la recherche
+   repart de la solution valide, dans le temps qui reste. L'objectif compte
+   toujours les **entorses** aux contraintes souples (niveaux « important »
+   et « facultatif », `edt.domaine.contraintes.POIDS_NIVEAU`) ; avec
+   `options.optimiser` s'y ajoutent les termes de confort (trous, campus,
+   samedi, créneaux extrêmes). Sans `optimiser`, l'amélioration n'a lieu que
+   si la solution valide comporte des entorses, et s'arrête dès qu'elles
+   sont nulles ou qu'elle ne progresse plus. Si elle ne trouve pas mieux, ou
+   n'a plus de temps, c'est la solution valide qui est rendue. Elle s'arrête
+   d'elle-même quand elle ne progresse plus (`options.arret_sur_stagnation`,
+   voir `delai_de_stagnation`), sans attendre le temps limite.
+
+Les entorses retenues sont dans `statistiques["entorses"]` (`{code: nombre}`)
+et le message les dit en clair (« 2 entorses à des règles importantes (pause
+entre deux séances : 2). ») ; rien n'est dit s'il n'y en a aucune.
 
 Le tout est borné par `options.temps_limite_s` (construction du modèle
 comprise) et interruptible par `arret`. Seule exception : si CP-SAT rend la
@@ -68,12 +77,12 @@ from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
 
-from edt.domaine.contraintes import CATALOGUE
+from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
 from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurEDT
 from edt.journal import journal_calcul_courant
 from edt.solveur.contrat import OptionsSolveur, ResultatSolveur, StatutSolveur
-from edt.solveur.modele import Bilan, ModeleHoraires, Option
+from edt.solveur.modele import ModeleHoraires, Option
 from edt.solveur.preparation import Preparation
 from edt.solveur.preverification import diagnostiquer
 from edt.solveur.salles import affecter_salles
@@ -95,6 +104,9 @@ PART_RESERVEE_AUX_SALLES = 0.05
 RESERVE_MAX_S = 3.0
 TEMPS_SALLES_GARANTI_S = 10.0
 """Temps laissé aux salles des meilleurs horaires améliorés, même temps limite atteint."""
+TEMPS_SALLES_MAX_S = 10.0
+"""Temps maximal d'une affectation des salles : avec des exigences souples, elle a un objectif
+à minimiser et ne doit pas consommer le temps de la recherche des horaires."""
 TEMPS_MIN_AMELIORATION_S = 1.0
 """En dessous de ce temps restant, l'amélioration n'est pas tentée."""
 NB_SOLUTIONS_GARDEES = 20
@@ -130,11 +142,15 @@ class _Interruption(Exception):
 
 @dataclass(frozen=True)
 class _Solution:
-    """Une solution complète : le choix de chaque séance, ses horaires et sa salle."""
+    """Une solution complète : le choix de chaque séance, ses horaires, sa salle.
+
+    `entorses` : exigences de salle souples non satisfaites, par contrainte.
+    """
 
     choix: tuple[int, ...]
     horaires: list[Option]
     salles: tuple[int, ...]
+    entorses: dict[CodeContrainte, int]
 
 
 class _Suivi(cp_model.CpSolverSolutionCallback):
@@ -214,6 +230,7 @@ def resoudre(
             message=message,
             avertissements=tuple(avertissements),
             statistiques=stats,
+            niveaux=dict(options.niveaux),
         )
 
     def arret_demande() -> bool:
@@ -238,7 +255,10 @@ def resoudre(
 
     # 1 et 2. Préparation et pré-vérifications.
     preparation = Preparation(
-        instantane, options.contraintes_desactivees, options.tolerer_violations_heritees
+        instantane,
+        options.contraintes_desactivees,
+        options.tolerer_violations_heritees,
+        options.niveaux,
     )
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
@@ -381,13 +401,16 @@ def resoudre(
         debut_salles = time.perf_counter()
         horaires = modele.horaires(choix)
         affectation = affecter_salles(
-            preparation, horaires, options.graine, max(temps_min_s, reste())
+            preparation,
+            horaires,
+            options.graine,
+            max(temps_min_s, min(reste(), TEMPS_SALLES_MAX_S)),
         )
         stats["duree_salles_s"] = round(
             stats["duree_salles_s"] + time.perf_counter() - debut_salles, 3
         )
         if affectation.salles is not None:
-            return _Solution(choix, horaires, affectation.salles)
+            return _Solution(choix, horaires, affectation.salles, affectation.entorses)
         if affectation.conflit:
             modele.interdire(choix, affectation.conflit)
             stats["nb_coupes"] = modele.nb_coupes
@@ -420,27 +443,34 @@ def resoudre(
     # elle, est libérée avant que la seconde commence.
     del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
-    journal.info("Emploi du temps valide trouvé après %.1f s", stats["duree_premiere_solution_s"])
+    bilan = modele.bilan(solution.choix)
+    journal.info(
+        "Emploi du temps valide trouvé après %.1f s%s",
+        stats["duree_premiere_solution_s"],
+        _texte_entorses(_cumul(bilan.entorses, solution.entorses, preparation.entorses_fixes)),
+    )
 
-    # 4. Amélioration : on repart de la solution valide, dans le temps qui reste.
-    bilan: Bilan | None = None
+    # 4. Amélioration : on repart de la solution valide, dans le temps qui reste. Sans
+    # « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a.
     optimal = amelioration_lancee = temps_manquant = False
     stagnation_s: float | None = None
-    if options.optimiser and not arret_demande():
+    if (options.optimiser or bilan.penalite > 0) and not arret_demande():
         if reste() - reserve < TEMPS_MIN_AMELIORATION_S:
             temps_manquant = True
             journal.warning(
                 "Plus de temps pour améliorer la solution : elle est rendue telle quelle."
             )
-        elif modele.poser_objectif():
+        elif modele.poser_objectif(confort=options.optimiser):
             bilan = modele.bilan(solution.choix)
             modele.partir_de(valeurs)
             stats["nb_variables"] = modele.nb_variables
             stats["nb_contraintes"] = modele.nb_contraintes
             stats["objectif_premiere_solution"] = bilan.objectif
             journal.info(
-                "Amélioration : départ à l'objectif %d (%d variable(s), %d contrainte(s))",
-                bilan.objectif,
+                "Amélioration : départ à l'objectif %d (dont %d d'entorses ; %d variable(s), "
+                "%d contrainte(s))",
+                bilan.total,
+                bilan.penalite,
                 modele.nb_variables,
                 modele.nb_contraintes,
             )
@@ -452,7 +482,7 @@ def resoudre(
                 )
             for rang, (_, choix) in enumerate(reversed(suivi.solutions)):
                 candidat = modele.bilan(choix)
-                if candidat.objectif >= bilan.objectif:
+                if candidat.total >= bilan.total:
                     break  # les solutions gardées vont de la moins bonne à la meilleure
                 if rang and reste() <= 0:
                     journal.warning(
@@ -469,14 +499,12 @@ def resoudre(
                     break
                 journal.info(
                     "Horaires améliorés (objectif %d) écartés : les salles ne suivent pas",
-                    candidat.objectif,
+                    candidat.total,
                 )
             stagnation_s = suivi.stagnation_s
             if suivi.solutions:
                 stats["borne_objectif"] = round(solveur.best_objective_bound)
-                optimal = code == cp_model.OPTIMAL and bilan.objectif <= round(
-                    solveur.objective_value
-                )
+                optimal = code == cp_model.OPTIMAL and bilan.total <= round(solveur.objective_value)
             else:
                 journal.info(
                     "L'amélioration n'a pas eu le temps d'aboutir (statut %s) : la première "
@@ -491,8 +519,12 @@ def resoudre(
         jour, minute = preparation.decoder(horaire.debut)
         placements.append(Placement(seance.seance.id, jour, minute, minute + seance.duree, salle))
 
+    entorses = _cumul(bilan.entorses, solution.entorses, preparation.entorses_fixes)
+    stats["entorses"] = {code.value: nombre for code, nombre in entorses.items()}
     message = f"Emploi du temps trouvé : {nb_seances} séance(s) placée(s)."
-    if bilan is not None:
+    if entorses:
+        message += " " + _phrase_entorses(entorses, preparation.regles.niveaux)
+    if options.optimiser and amelioration_lancee:
         stats.update(objectif=bilan.objectif, optimal=optimal)
         mesures = []
         if bilan.trous is not None:
@@ -512,32 +544,74 @@ def resoudre(
         message += f" {MESSAGE_SOLUTION_CONSERVEE}"
     elif optimal:
         stats["raison_arret"] = "optimum_prouve"
-        message += " On ne peut pas faire mieux avec les préférences actuelles."
+        if options.optimiser:
+            message += " On ne peut pas faire mieux avec les préférences actuelles."
     elif stagnation_s is not None:
         stats["raison_arret"] = "stagnation"
         stats["duree_sans_progres_s"] = round(stagnation_s, 1)
-        message += (
-            " L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis "
-            f"{stagnation_s:.0f} s."
-        )
+        if options.optimiser:
+            message += (
+                " L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis "
+                f"{stagnation_s:.0f} s."
+            )
     elif amelioration_lancee:
         stats["raison_arret"] = "temps_limite"
-        message += (
-            " L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut "
-            "encore l'affiner."
-        )
+        if options.optimiser:
+            message += (
+                " L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut "
+                "encore l'affiner."
+            )
     elif temps_manquant:
         stats["raison_arret"] = "temps_manquant"
-        message += (
-            " Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un "
-            "emploi du temps plus confortable."
-        )
+        if options.optimiser:
+            message += (
+                " Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un "
+                "emploi du temps plus confortable."
+            )
     else:
         stats["raison_arret"] = "premiere_solution"
     if options.contraintes_desactivees:
         libelles = sorted(CATALOGUE[code_].libelle for code_ in options.contraintes_desactivees)
         message += " Contraintes ignorées à votre demande : " + ", ".join(libelles) + "."
     return conclure(StatutSolveur.SOLUTION, message, placements)
+
+
+def _cumul(*comptes: dict[CodeContrainte, int]) -> dict[CodeContrainte, int]:
+    """Somme de plusieurs décomptes d'entorses par contrainte, codes triés, zéros omis."""
+    total: dict[CodeContrainte, int] = {}
+    for compte in comptes:
+        for code, nombre in compte.items():
+            if nombre:
+                total[code] = total.get(code, 0) + nombre
+    return dict(sorted(total.items()))
+
+
+def _texte_entorses(entorses: dict[CodeContrainte, int]) -> str:
+    """Complément de journal : « , 2 entorse(s) : PAUSE 2 » ou rien."""
+    if not entorses:
+        return ""
+    detail = ", ".join(f"{code.value} {nombre}" for code, nombre in entorses.items())
+    return f", {sum(entorses.values())} entorse(s) : {detail}"
+
+
+def _phrase_entorses(entorses: dict[CodeContrainte, int], niveaux: dict) -> str:
+    """Phrase du message pour les entorses retenues, par niveau de règle.
+
+    « 2 entorses à des règles importantes (pause entre deux séances : 2). 1
+    entorse à une règle facultative (jours de cours : 1). »
+    """
+    phrases = []
+    for niveau, adjectif in ((Niveau.IMPORTANT, "importante"), (Niveau.FACULTATIF, "facultative")):
+        du_niveau = {c: n for c, n in entorses.items() if niveaux.get(c) is niveau}
+        if not du_niveau:
+            continue
+        total = sum(du_niveau.values())
+        details = ", ".join(
+            f"{CATALOGUE[code].libelle.lower()} : {nombre}" for code, nombre in du_niveau.items()
+        )
+        regles = f"des règles {adjectif}s" if total > 1 else f"une règle {adjectif}"
+        phrases.append(f"{total} entorse{'s' if total > 1 else ''} à {regles} ({details}).")
+    return " ".join(phrases)
 
 
 def _journaliser_domaines(preparation: Preparation) -> None:

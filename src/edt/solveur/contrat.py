@@ -69,7 +69,8 @@ class OptionsSolveur:
       vérité : `contraintes_desactivees` en est déduit ;
     - `contraintes_desactivees` : codes ignorés, c'est-à-dire absents de
       `niveaux`. Donné seul (sans `niveaux`), il sert à construire `niveaux`
-      comme autrefois : niveaux par défaut sans ces codes ;
+      comme autrefois : niveaux par défaut sans ces codes ; donné avec
+      `niveaux`, il en retire ces codes ;
     - `optimiser` : minimiser l'objectif de qualité au lieu de s'arrêter à la
       première solution valide ;
     - `graine` : graine aléatoire (une autre graine donne une autre solution) ;
@@ -100,11 +101,9 @@ class OptionsSolveur:
         niveaux = _niveaux_types(self.niveaux)
         if desactivees and niveaux == niveaux_par_defaut():
             niveaux = niveaux_depuis_desactivees(desactivees)
-        elif desactivees & niveaux.keys():
-            doubles = ", ".join(sorted(desactivees & niveaux.keys()))
-            raise ErreurDonneesInvalides(
-                f"Contrainte(s) à la fois ignorée(s) et dotée(s) d'un niveau : {doubles}."
-            )
+        elif desactivees:
+            # Les deux sont donnés : les codes ignorés le sont, quel que soit leur niveau.
+            niveaux = {code: n for code, n in niveaux.items() if code not in desactivees}
         object.__setattr__(self, "niveaux", niveaux)
         object.__setattr__(self, "contraintes_desactivees", frozenset(CATALOGUE) - niveaux.keys())
         if self.temps_limite_s <= 0:
@@ -138,6 +137,24 @@ class OptionsSolveur:
             nb_workers=parametres.nb_workers,
             tolerer_violations_heritees=tolerer_violations_heritees,
         )
+
+    @staticmethod
+    def lire_niveaux(
+        parametres: Mapping[str, object], contraintes_desactivees: Iterable[str] = ()
+    ) -> Niveaux:
+        """Niveaux d'un calcul enregistré, inverse de `vers_dict` pour cette clé.
+
+        `parametres["niveaux"]` fait foi ; les contraintes ignorées en sont
+        absentes et sont aussi dans `contraintes_desactivees` (la colonne du
+        calcul). Un calcul enregistré avant les niveaux n'a que ses
+        contraintes désactivées : niveaux par défaut sans ces codes. Lève
+        `ErreurDonneesInvalides` sur un code ou un niveau inconnu.
+        """
+        retirees = normaliser_codes(contraintes_desactivees)
+        choix = parametres.get("niveaux")
+        if choix is None:
+            return niveaux_depuis_desactivees(retirees)
+        return {code: n for code, n in _niveaux_types(choix).items() if code not in retirees}
 
     def vers_dict(self) -> dict[str, object]:
         """Représentation JSON des options (enregistrée avec le calcul)."""
@@ -182,6 +199,7 @@ class ResultatSolveur:
       vide sinon ;
     - `contraintes_desactivees` : rappel des contraintes ignorées à la
       demande de l'utilisateur ;
+    - `niveaux` : rappel du niveau retenu pour chaque contrainte présente ;
     - `message` : phrase française pour l'utilisateur (raison de l'échec,
       résumé du succès) ;
     - `avertissements` : pré-vérifications et remarques à afficher ;
@@ -193,6 +211,7 @@ class ResultatSolveur:
     placements: tuple[Placement, ...] = ()
     contraintes_desactivees: frozenset[CodeContrainte] = frozenset()
     message: str = ""
+    niveaux: Niveaux = field(default_factory=dict)
     avertissements: tuple[str, ...] = ()
     statistiques: Mapping[str, int | float | str | bool] = field(default_factory=dict)
 

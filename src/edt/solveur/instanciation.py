@@ -19,8 +19,11 @@ Une occurrence est « à replacer » si, à sa date :
   importée, que l'appelant transmet) : même salle, même groupe ou même
   enseignant au même moment, pause ou trajet non tenus.
 
-Seules les indisponibilités dures comptent. Une contrainte désactivée par
-l'utilisateur n'est pas examinée.
+Seules les indisponibilités dures comptent. Une contrainte ignorée par
+l'utilisateur n'est pas examinée, et une contrainte **souple** (niveau
+« important » ou « facultatif ») n'empêche rien ici : la semaine type l'a
+déjà arbitrée, et déplacer chaque semaine une séance que le moteur a placée
+en connaissance de cause n'aurait pas de sens.
 """
 
 from __future__ import annotations
@@ -31,7 +34,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import CibleIndisponibilite
 from edt.domaine.heures import plage_vers_texte
 from edt.domaine.instantane import Besoin, Instantane, Occurrence, Placement
@@ -79,8 +82,9 @@ def empechement(
 ) -> tuple[CodeContrainte, str] | None:
     """Ce qui empêche l'occurrence d'avoir lieu à sa date (code, raison), ou `None`.
 
-    Ne regarde que l'occurrence elle-même : calendrier et indisponibilités.
-    Les conflits avec d'autres occurrences relèvent du replacement.
+    Ne regarde que l'occurrence elle-même : calendrier et indisponibilités
+    des contraintes dures. Les conflits avec d'autres occurrences relèvent
+    du replacement.
     """
     instantane = regles.instantane
     date, debut, fin = occurrence.date, occurrence.debut, occurrence.fin
@@ -99,7 +103,7 @@ def empechement(
         horaire = plage_vers_texte(indisponibilite.debut, indisponibilite.fin)
         return f"{nom} est indisponible le {date:%d/%m/%Y} ({horaire}){motif}"
 
-    if regles.active(C.DISPO_ENSEIGNANT):
+    if regles.dure(C.DISPO_ENSEIGNANT):
         for enseignant_id in sorted(regles.enseignants_reels(besoin)):
             raison = indisponible(
                 CibleIndisponibilite.ENSEIGNANT,
@@ -108,7 +112,7 @@ def empechement(
             )
             if raison:
                 return C.DISPO_ENSEIGNANT, raison
-    if regles.active(C.DISPO_GROUPE):
+    if regles.dure(C.DISPO_GROUPE):
         for groupe_id in sorted(regles.groupes_lies(besoin)):
             raison = indisponible(
                 CibleIndisponibilite.GROUPE,
@@ -117,7 +121,7 @@ def empechement(
             )
             if raison:
                 return C.DISPO_GROUPE, raison
-    if regles.active(C.DISPO_SALLE) and occurrence.salle_id is not None:
+    if regles.dure(C.DISPO_SALLE) and occurrence.salle_id is not None:
         raison = indisponible(
             CibleIndisponibilite.SALLE,
             occurrence.salle_id,
@@ -131,19 +135,23 @@ def empechement(
 def _heurt(
     regles: Regles, besoin: Besoin, occurrence: Occurrence, en_place: Sequence[Occurrence]
 ) -> tuple[CodeContrainte, str] | None:
-    """Contrainte violée face à une séance en place le même jour (code, raison), ou `None`."""
+    """Contrainte dure violée face à une séance en place le même jour (code, raison), ou `None`."""
     for autre in en_place:
         besoin_autre = regles.instantane.besoin(autre.besoin_id)
-        codes = regles.codes_violes(
-            besoin,
-            occurrence.debut,
-            occurrence.fin,
-            occurrence.salle_id,
-            besoin_autre,
-            autre.debut,
-            autre.fin,
-            autre.salle_id,
-        )
+        codes = [
+            code
+            for code in regles.codes_violes(
+                besoin,
+                occurrence.debut,
+                occurrence.fin,
+                occurrence.salle_id,
+                besoin_autre,
+                autre.debut,
+                autre.fin,
+                autre.salle_id,
+            )
+            if regles.dure(code)
+        ]
         if codes:
             horaire = plage_vers_texte(autre.debut, autre.fin)
             return (
@@ -159,6 +167,7 @@ def instancier(
     placements: Sequence[Placement],
     contraintes_desactivees: Iterable[str] = (),
     en_place: Sequence[Occurrence] = (),
+    niveaux: Niveaux | None = None,
 ) -> ResultatInstanciation:
     """Produit les séances datées de la semaine type `placements`.
 
@@ -170,8 +179,10 @@ def instancier(
     (saisies à la main, importées). Une occurrence de la semaine type qui
     heurte l'une d'elles est rendue « à replacer » : la semaine type, valide
     seule, ne doit pas créer de double réservation avec une retouche.
+    `niveaux` : niveaux des contraintes (voir `Regles`) ; seules les dures
+    comptent ici.
     """
-    regles = Regles(instantane, contraintes_desactivees)
+    regles = Regles(instantane, contraintes_desactivees, niveaux)
     occupees: dict[dt.date, list[Occurrence]] = defaultdict(list)
     for autre in en_place:
         if autre.statut.occupe_les_ressources:
