@@ -22,6 +22,7 @@ import logging
 import threading
 
 from edt.db.moteur import session_base
+from edt.services import generation
 from edt.services.emploi_du_temps import calculs, compteur
 from edt.services.emploi_du_temps.versions import lister_semestres
 
@@ -57,7 +58,8 @@ def _prechauffer(url_base: str) -> None:
             compteur.compteur_a_traiter(session)
             for semestre in lister_semestres(session):
                 if semestre.version_active_id is not None:
-                    calculs.pre_verifier(session, semestre.id)
+                    dernier = generation.dernier_calcul(semestre.id)
+                    calculs.pre_verifier(session, semestre.id, calculs.niveaux_proposes(dernier))
         journal.info("Écrans préchauffés après un calcul")
     except Exception:
         journal.exception("Préchauffage des écrans interrompu (sans effet sur les données)")

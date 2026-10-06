@@ -19,6 +19,7 @@ from edt.db import modeles as m
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion, StatutOccurrence
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.calendrier import semestre_par_defaut
+from edt.services.emploi_du_temps import presentation
 
 journal = logging.getLogger(__name__)
 
@@ -58,7 +59,12 @@ class ResumeVersion:
 
 @dataclass(frozen=True)
 class LigneCalcul:
-    """Un calcul de l'historique."""
+    """Un calcul de l'historique.
+
+    `niveaux_modifies` : règles dont le niveau s'écartait du défaut, en
+    phrases ; `contraintes_desactivees` : règles ignorées (calculs d'avant
+    les niveaux de règles).
+    """
 
     id: int
     etat: EtatCalcul
@@ -68,6 +74,7 @@ class LigneCalcul:
     contraintes_desactivees: tuple[str, ...]
     version_id: int | None
     version_numero: int | None
+    niveaux_modifies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -201,6 +208,7 @@ def historique(session: Session, semestre_id: int) -> Historique:
             contraintes_desactivees=tuple(c.contraintes_desactivees or ()),
             version_id=produites.get(c.id),
             version_numero=numeros.get(produites.get(c.id)),
+            niveaux_modifies=_niveaux_modifies(c),
         )
         for c in calculs
     )
@@ -210,6 +218,17 @@ def historique(session: Session, semestre_id: int) -> Historique:
         versions=lister_versions(session, semestre_id),
         calculs_tronques=tronques,
     )
+
+
+def _niveaux_modifies(calcul: m.Calcul) -> tuple[str, ...]:
+    """Règles dont le niveau s'écartait du défaut pour ce calcul (rien pour un calcul ancien)."""
+    niveaux = (calcul.parametres or {}).get("niveaux")
+    if niveaux is None:
+        return ()
+    if not isinstance(niveaux, dict):
+        journal.warning("Calcul %d : niveaux enregistrés illisibles (%r)", calcul.id, niveaux)
+        return ("niveaux illisibles",)
+    return presentation.libelles_niveaux(niveaux)
 
 
 def activer_version(session: Session, version_id: int) -> ResumeVersion:

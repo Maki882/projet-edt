@@ -21,14 +21,16 @@ from edt.verification.contrat import Anomalie
 from .conftest import DELAI
 
 HX = {"HX-Request": "true"}
-TOUTES = [str(code) for code in CATALOGUE]
+MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 
 
-def _formulaire(semestre_id: int, sauf: tuple[str, ...] = (), **options) -> dict:
+def _formulaire(semestre_id: int, niveaux: dict[str, str] | None = None, **options) -> dict:
+    """Formulaire « Générer » : niveaux par défaut, sauf ceux de `niveaux` (`{code: niveau}`)."""
+    choisis = {str(code): CATALOGUE[code].niveau_defaut.value for code in MODIFIABLES}
+    choisis.update(niveaux or {})
     return {
         "semestre_id": semestre_id,
-        "contraintes": [code for code in TOUTES if code not in sauf],
-        "contraintes_envoyees": "1",
+        **{f"niveau_{code}": valeur for code, valeur in choisis.items()},
         "duree": "court",
         **options,
     }
@@ -54,14 +56,13 @@ def _nb_calculs() -> int:
         return session.scalar(select(func.count()).select_from(m.Calcul))
 
 
-def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client):
+def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
 
     assert '<span class="compteur-nombre">16</span><span class="compteur-libelle">besoins' in page
     assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
-    proposees = len(CATALOGUE) - 1  # la pause déjeuner a son propre bloc
-    assert page.count('name="contraintes"') == proposees
-    assert page.count(" checked>") >= proposees  # toutes cochées par défaut
+    assert page.count('name="niveau_') == 3 * len(MODIFIABLES)  # trois niveaux par règle
+    assert 'name="contraintes"' not in page  # plus de case pour ignorer une règle
     assert all(entree.libelle in page for entree in CATALOGUE.values())
     court, long_ = _durees()
     assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
@@ -72,15 +73,15 @@ def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client)
     assert "Le calcul ne peut pas être lancé" not in page
 
 
-def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_contraintes_decochees(jeu_minimal, client):
-    calcul_id = _lancer(client, jeu_minimal.semestre_id, sauf=("PAUSE",))
+def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis(jeu_minimal, client):
+    calcul_id = _lancer(client, jeu_minimal.semestre_id, niveaux={"PAUSE": "facultatif"})
     suivi = generation.attendre_calcul(calcul_id, DELAI)
     assert suivi.reussi
 
     page = client.get(f"/calculs/{calcul_id}").text
     assert "Emploi du temps généré" in page
     assert f"/emploi-du-temps?version_id={suivi.version_id}" in page
-    assert "Pause entre deux séances" in page
+    assert "<strong>Règles :</strong> Pause entre deux séances : facultatif</p>" in page
     assert "Traceback" not in page
     # Bilan du vrai moteur et de l'instanciation, lu dans les statistiques du calcul.
     bilan = suivi.statistiques["instanciation"]
@@ -239,7 +240,7 @@ def test_autre_solution_donne_un_autre_emploi_du_temps(jeu_minimal, monkeypatch)
     def lancer_autre() -> tuple[dict, list[tuple]]:
         with session_base() as session:
             calcul_id = calculs.demarrer_calcul(
-                session, jeu_minimal.semestre_id, contraintes_cochees=TOUTES, autre_solution=True
+                session, jeu_minimal.semestre_id, autre_solution=True
             )
         suivi = generation.attendre_calcul(calcul_id, DELAI)
         assert suivi.reussi, suivi.message
@@ -269,7 +270,7 @@ def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
         "resoudre",
         lambda instantane, options, arret=None: ResultatSolveur(StatutSolveur.TEMPS_DEPASSE),
     )
-    premier = _lancer(client, jeu_minimal.semestre_id, sauf=("PAUSE",))
+    premier = _lancer(client, jeu_minimal.semestre_id, niveaux={"PAUSE": "facultatif"})
     generation.attendre_calcul(premier, DELAI)
 
     longue = client.post(
@@ -288,7 +289,9 @@ def test_relance_longue_et_autre_solution(jeu_minimal, client, monkeypatch):
     court, long_ = _durees()
     assert par_id[premier].parametres["temps_limite_s"] == court
     assert par_id[second].parametres["temps_limite_s"] == long_
-    assert par_id[second].contraintes_desactivees == ["PAUSE"]  # mêmes règles qu'à l'origine
+    for relance in (second, troisieme):  # mêmes règles qu'à l'origine
+        assert par_id[relance].parametres["niveaux"]["PAUSE"] == "facultatif"
+        assert par_id[relance].contraintes_desactivees == []
     assert par_id[troisieme].parametres["temps_limite_s"] == long_  # garde la durée longue
     assert par_id[troisieme].parametres["graine"] != par_id[second].parametres["graine"]
     assert par_id[second].parametres["utiliser_indices"]  # relance longue : mêmes indices
@@ -317,20 +320,14 @@ def test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non(
     assert "n&#39;a pas été lancé" in refus.text
     assert _nb_calculs() == 0
 
-    # Décocher la contrainte concernée : les vérifications se mettent à jour, le calcul part.
+    # Changer un niveau : les vérifications sont refaites avec les niveaux choisis.
     fragment = client.get(
         "/calculs/verifications",
-        params={
-            "semestre_id": semestre_id,
-            "contraintes": [c for c in TOUTES if c != "DISPO_ENSEIGNANT"],
-            "contraintes_envoyees": "1",
-        },
+        params={"semestre_id": semestre_id, "niveau_DISPO_ENSEIGNANT": "important"},
         headers=HX,
     ).text
-    assert "M. Leroy" not in fragment and "Une seule salle" in fragment
-    calcul_id = _lancer(client, semestre_id, sauf=("DISPO_ENSEIGNANT",))
-    assert generation.attendre_calcul(calcul_id, DELAI).reussi
-    assert "Disponibilité des enseignants" in client.get(f"/calculs/{calcul_id}").text
+    assert "<html" not in fragment and "Une seule salle" in fragment
+    assert faux_verificateur.niveaux_pre_verifies[CodeContrainte.DISPO_ENSEIGNANT] == "important"
 
 
 def test_historique_activation_et_suppression_des_versions(version_generee, client):

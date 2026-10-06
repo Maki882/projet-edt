@@ -70,7 +70,7 @@
           <th scope="col">Lancé le</th>
           <th scope="col">Durée</th>
           <th scope="col">Résultat</th>
-          <th scope="col">Règles décochées</th>
+          <th scope="col">Règles</th>
           <th scope="col">Version produite</th>
         </tr>
       </thead>
@@ -81,7 +81,10 @@
           <td>{{ c.demarre_le|dateheure_fr }}</td>
           <td>{{ fmt.duree_secondes(c.duree_s) if c.duree_s is not none else "en cours" }}</td>
           <td>{{ ui.etiquette(c.etat.libelle, {"reussi": "succes", "en_cours": "info", "temps_depasse": "attention", "arrete": "attention"}.get(c.etat.value, "erreur")) }}</td>
-          <td>{% if c.contraintes_desactivees %}{{ fmt.libelles_contraintes(c.contraintes_desactivees)|join(", ") }}{% else %}<span class="discret">aucune</span>{% endif %}</td>
+          <td>
+            {%- if c.niveaux_modifies %}{{ c.niveaux_modifies|join(" ; ") }}{% endif %}
+            {%- if c.contraintes_desactivees %}{% if c.niveaux_modifies %} ; {% endif %}ignorées : {{ fmt.libelles_contraintes(c.contraintes_desactivees)|join(", ") }}{% endif %}
+            {%- if not c.niveaux_modifies and not c.contraintes_desactivees %}<span class="discret">par défaut</span>{% endif %}</td>
           <td>{% if c.version_id %}<a href="/emploi-du-temps?version_id={{ c.version_id }}">Version {{ c.version_numero }}</a>{% else %}<span class="discret">aucune</span>{% endif %}</td>
         </tr>
         {%- endfor %}

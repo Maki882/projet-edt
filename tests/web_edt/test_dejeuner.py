@@ -8,21 +8,16 @@ from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.parametres import Parametres
 from edt.services import generation
 from edt.services.parametres import ecrire_parametre, lire_parametres
 
 from .conftest import DELAI
 
-COCHEES = [str(code) for code in CATALOGUE if str(code) != "DEJEUNER"]
-
 
 def _envoyer(client, semestre_id: int, **dejeuner: str):
     donnees = {
         "semestre_id": semestre_id,
-        "contraintes": COCHEES,
-        "contraintes_envoyees": "1",
         "duree": "court",
         **dejeuner,
     }
@@ -49,6 +44,8 @@ def test_bloc_prerempli_depuis_les_parametres_a_la_place_de_la_case(jeu_minimal,
     assert 'name="dejeuner_fin" value="13:45"' in page
     assert 'data-visible-si="dejeuner:determines"' in page  # heures masquées avec « aucun »
     assert 'value="DEJEUNER"' not in page  # plus de case « Pause déjeuner » à décocher
+    assert 'name="niveau_DEJEUNER"' in page  # mais un niveau, comme toute règle modifiable
+    assert "Ne s&#39;applique pas sans horaires déterminés" in page
 
 
 def test_pas_d_horaires_determines_enregistre_puis_lance(jeu_minimal, client, caplog):

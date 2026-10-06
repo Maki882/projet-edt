@@ -4,8 +4,9 @@ Les pré-vérifications, le vérificateur et l'instanciation datée sont écrits
 par d'autres lots ; tous sont livrés. Leurs noms et signatures :
 
 - `edt.services.generation.pre_verifier_semestre(session, semestre_id,
-  contraintes_desactivees=(), *, version_base_id=None,
-  tolerer_violations_heritees=False) -> list[Anomalie]` ;
+  contraintes_desactivees=(), *, niveaux=None, version_base_id=None,
+  tolerer_violations_heritees=False) -> list[Anomalie]` (`niveaux` prime
+  sur `contraintes_desactivees`) ;
 - `edt.services.verification.verifier_version(session, version_id,
   contraintes_actives=None) -> RapportVerification` ;
 - `edt.services.verification.verifier_occurrences_version(session,
@@ -186,16 +187,27 @@ class Controle:
 
 
 def pre_verifier_semestre(
-    session: Session, semestre_id: int, contraintes_desactivees: Iterable[str] = ()
+    session: Session,
+    semestre_id: int,
+    contraintes_desactivees: Iterable[str] = (),
+    *,
+    niveaux: Mapping[str, str] | None = None,
 ) -> tuple[Anomalie, ...]:
-    """Pré-vérifications d'un semestre avant un calcul (charges, salles accessibles, verrous...)."""
+    """Pré-vérifications d'un semestre avant un calcul (charges, salles accessibles, verrous...).
+
+    `niveaux` (niveau de chaque règle, clé absente : règle ignorée) prime sur
+    `contraintes_desactivees`.
+    """
+    arguments: dict[str, object] = {"contraintes_desactivees": tuple(contraintes_desactivees)}
+    if niveaux is not None:
+        arguments = {"niveaux": dict(niveaux)}
     anomalies = _appeler(
         MODULE_GENERATION,
         "pre_verifier_semestre",
         MESSAGE_PRE_VERIFICATION,
         session,
         semestre_id,
-        contraintes_desactivees=tuple(contraintes_desactivees),
+        **arguments,
     )
     return tuple(anomalies)
 

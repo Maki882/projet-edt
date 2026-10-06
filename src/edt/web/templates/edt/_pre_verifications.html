@@ -1,6 +1,6 @@
 {#
-  Vérifications préalables d'un calcul (fragment, aussi rafraîchi par HTMX quand on coche
-  ou décoche une contrainte). Variable : pre (calculs.PreVerification).
+  Vérifications préalables d'un calcul (fragment, aussi rafraîchi par HTMX quand on change
+  le niveau d'une règle). Variable : pre (calculs.PreVerification).
   Une erreur empêche de lancer ; un avertissement est une situation tendue, chiffrée.
 #}
 {% import "macros.html" as ui %}
@@ -12,7 +12,7 @@
 {%- endif %}
 {%- set bloquants = pre.problemes|list + pre.erreurs|map(attribute="message")|list %}
 {%- if bloquants %}
-{{ ui.message("Le calcul ne peut pas être lancé : " ~ fmt.pluriel(bloquants|length, "impossibilité certaine", "impossibilités certaines") ~ ". Corriger ces points, ou décocher la contrainte concernée :", "erreur", bloquants[:limite_liste]) }}
+{{ ui.message("Le calcul ne peut pas être lancé : " ~ fmt.pluriel(bloquants|length, "impossibilité certaine", "impossibilités certaines") ~ ". Corriger ces points :", "erreur", bloquants[:limite_liste]) }}
 {%- if bloquants|length > limite_liste %}<p class="discret">... et {{ bloquants|length - limite_liste }} autre(s).</p>{% endif %}
 {%- endif %}
 {%- if pre.avertissements %}

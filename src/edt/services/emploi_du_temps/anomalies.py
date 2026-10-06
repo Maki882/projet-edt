@@ -58,12 +58,17 @@ _TAILLE_LOT = 500
 
 @dataclass(frozen=True)
 class LigneAnomalie:
-    """Une anomalie, avec les paramètres du lien vers l'emploi du temps concerné."""
+    """Une anomalie, avec les paramètres du lien vers l'emploi du temps concerné.
+
+    `niveau` : « règle importante » ou « règle facultative » quand le
+    vérificateur dit le niveau de la règle (`Anomalie.niveau`), sinon `None`.
+    """
 
     message: str
     code: str
     gravite: Gravite
     lien: dict[str, str] | None
+    niveau: str | None = None
 
 
 @dataclass(frozen=True)
@@ -234,7 +239,14 @@ def _grouper(anomalies: Sequence[Anomalie], liens: _Liens) -> tuple[GroupeGravit
                     libelle=entree.libelle if entree else code,
                     description=entree.description if entree else "",
                     lignes=tuple(
-                        LigneAnomalie(a.message, code, gravite, liens.lien(a))
+                        LigneAnomalie(
+                            a.message,
+                            code,
+                            gravite,
+                            liens.lien(a),
+                            # Livré par le lot vérificateur : absent des anomalies plus anciennes.
+                            presentation.etiquette_niveau(getattr(a, "niveau", None)),
+                        )
                         for a in liste[:LIMITE_LIGNES]
                     ),
                     total=len(liste),
