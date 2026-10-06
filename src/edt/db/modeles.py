@@ -924,7 +924,9 @@ class Parametre(Base):
     __tablename__ = "parametre"
 
     cle: Mapped[str] = mapped_column(String(64), primary_key=True, comment="Nom du paramètre")
-    valeur: Mapped[int | bool] = mapped_column(JSON, comment="Valeur, typée selon le paramètre")
+    valeur: Mapped[int | bool | str] = mapped_column(
+        JSON, comment="Valeur, typée selon le paramètre : entier, booléen ou chaîne"
+    )
     modifie_le: Mapped[dt.datetime] = mapped_column(
         DateTime, default=dt.datetime.now, onupdate=dt.datetime.now, comment="Dernière modification"
     )
