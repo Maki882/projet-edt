@@ -7,7 +7,9 @@ import re
 
 import pytest
 
+from edt.db.initialisation import ecarts_schema, initialiser_base
 from edt.db.modeles import Parametre
+from edt.db.moteur import obtenir_moteur
 from edt.domaine.parametres import (
     DEJEUNER_AUCUN,
     DEJEUNER_FIXE,
@@ -179,6 +181,43 @@ def test_ancien_booleen_ignore_quand_le_mode_est_enregistre(session, caplog):
     with caplog.at_level(logging.INFO, logger="edt.services.parametres"):
         assert lire_parametres(session).dejeuner_mode == DEJEUNER_LIBRE
     assert "lu comme mode de déjeuner" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("ancien", "mode_attendu"), [(True, DEJEUNER_FIXE), (False, DEJEUNER_AUCUN)]
+)
+def test_init_db_reprend_l_ancien_booleen_et_supprime_la_cle_morte(
+    session, aujourdhui, caplog, ancien, mode_attendu
+):
+    """Une base d'hier passée par init-db garde le choix de l'utilisateur."""
+    _ancienne_base(session, ancien)
+    session.commit()
+
+    with caplog.at_level(logging.INFO, logger="edt.db.initialisation"):
+        rapport = initialiser_base(aujourdhui=aujourdhui)
+
+    assert rapport.ajouts["parametre"] == 2  # dejeuner_mode et dejeuner_duree_min
+    session.expire_all()
+    assert session.get(Parametre, "dejeuner_mode").valeur == mode_attendu
+    assert session.get(Parametre, "dejeuner_horaires_determines") is None
+    assert f"mode de déjeuner « {mode_attendu} » est enregistré à sa place" in caplog.text
+    assert "supprimé de la base" in caplog.text
+    assert lire_parametres(session).dejeuner_mode == mode_attendu
+    assert ecarts_schema(obtenir_moteur()) == []  # des lignes, pas des colonnes
+    # Relancer init-db ne change plus rien.
+    assert initialiser_base(aujourdhui=aujourdhui).nb_ajouts == 0
+
+
+def test_init_db_supprime_la_cle_morte_sans_toucher_au_mode_enregistre(session, aujourdhui):
+    session.add(Parametre(cle="dejeuner_horaires_determines", valeur=False))
+    session.get(Parametre, "dejeuner_mode").valeur = DEJEUNER_LIBRE
+    session.commit()
+
+    initialiser_base(aujourdhui=aujourdhui)
+
+    session.expire_all()
+    assert session.get(Parametre, "dejeuner_mode").valeur == DEJEUNER_LIBRE
+    assert session.get(Parametre, "dejeuner_horaires_determines") is None
 
 
 def test_ancienne_plage_vide_lue_comme_pas_de_pause(session, caplog):

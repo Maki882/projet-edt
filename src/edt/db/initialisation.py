@@ -57,8 +57,8 @@ from edt.db.modeles import (
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.domaine.calendrier import annee_scolaire_de, decoupage_par_defaut, jours_feries_entre
 from edt.domaine.enumerations import DemiJournee, NatureJourFerme
-from edt.domaine.parametres import definitions
-from edt.erreurs import ErreurRegleMetier
+from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, definitions
+from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 
 journal = logging.getLogger(__name__)
 
@@ -449,12 +449,41 @@ def _inserer_types_seance(session: Session) -> int:
     return len(nouveaux)
 
 
+ANCIENNE_CLE_DEJEUNER = "dejeuner_horaires_determines"
+"""Paramètre booléen d'avant `dejeuner_mode`, encore présent dans les bases d'alors."""
+
+
 def _inserer_parametres(session: Session) -> int:
-    presents = set(session.scalars(select(Parametre.cle)))
+    """Ajoute les paramètres absents avec leur défaut ; reprend l'ancien réglage du déjeuner.
+
+    Une base d'avant `dejeuner_mode` porte le booléen `dejeuner_horaires_determines` :
+    le mode inséré en découle (vrai : horaires déterminés, faux : pas de pause) au
+    lieu du défaut, puis la ligne devenue inutile est supprimée. Sans cela, le
+    choix « pas de pause » de l'utilisateur basculerait en silence au défaut.
+    """
+    enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
+    defauts = {entree.cle: entree.defaut for entree in definitions()}
+    if ANCIENNE_CLE_DEJEUNER in enregistres:
+        ancien = enregistres[ANCIENNE_CLE_DEJEUNER]
+        if "dejeuner_mode" not in enregistres:
+            if not isinstance(ancien, bool):
+                raise ErreurDonneesInvalides(
+                    f"Le paramètre « {ANCIENNE_CLE_DEJEUNER} » enregistré en base est "
+                    f"invalide : oui ou non attendu (lu : {ancien!r})."
+                )
+            defauts["dejeuner_mode"] = DEJEUNER_FIXE if ancien else DEJEUNER_AUCUN
+            journal.info(
+                "Ancien paramètre « %s » = %r : le mode de déjeuner « %s » est enregistré à sa place.",
+                ANCIENNE_CLE_DEJEUNER,
+                ancien,
+                defauts["dejeuner_mode"],
+            )
+        session.delete(session.get(Parametre, ANCIENNE_CLE_DEJEUNER))
+        journal.info("Ancien paramètre « %s » supprimé de la base.", ANCIENNE_CLE_DEJEUNER)
     nouveaux = [
-        Parametre(cle=entree.cle, valeur=entree.defaut)
-        for entree in definitions()
-        if entree.cle not in presents
+        Parametre(cle=cle, valeur=valeur)
+        for cle, valeur in defauts.items()
+        if cle not in enregistres
     ]
     session.add_all(nouveaux)
     session.flush()
