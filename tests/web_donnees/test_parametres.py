@@ -2,8 +2,16 @@
 
 from __future__ import annotations
 
+import re
+
 from edt.db.moteur import session_base
-from edt.domaine.parametres import Parametres, definitions
+from edt.domaine.parametres import (
+    DEJEUNER_FIXE,
+    DEJEUNER_LIBRE,
+    MODES_DEJEUNER,
+    Parametres,
+    definitions,
+)
 from edt.services.parametres import lire_parametres
 
 MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
@@ -29,10 +37,49 @@ def test_formulaire_construit_depuis_les_metadonnees(client):
     assert f"maximum {MAXIMUM_TEMPS_LIMITE}" in page and "secondes" in page
 
 
-def test_pause_dejeuner_a_horaires_determines_affichee(client):
+def test_pause_dejeuner_liste_deroulante_et_champs_selon_le_mode(client):
     page = client.get("/parametres").text
-    assert "Pause déjeuner à horaires déterminés" in page
-    assert 'name="dejeuner_horaires_determines" value="1" checked' in page
+    assert '<select id="champ-dejeuner_mode" name="dejeuner_mode" required' in page
+    for valeur, libelle in MODES_DEJEUNER:
+        selection = " selected" if valeur == DEJEUNER_FIXE else ""
+        assert f'<option value="{valeur}"{selection}>{libelle}</option>' in page
+    assert "Par défaut : Horaires déterminés." in page
+    debut = re.search(r'<div class="champ"[^>]*>\s*<label for="champ-dejeuner_debut_min"', page)
+    assert 'data-visible-si="dejeuner_mode:fixe,libre"' in debut.group(0)
+    duree = re.search(r'<div class="champ"[^>]*>\s*<label for="champ-dejeuner_duree_min"', page)
+    assert 'data-visible-si="dejeuner_mode:libre"' in duree.group(0)
+
+
+def test_pause_libre_enregistree_et_valeur_hors_choix_refusee(client):
+    reponse = client.post(
+        "/parametres",
+        data=_saisies(dejeuner_mode="libre", dejeuner_fin_min="14:00", dejeuner_duree_min="75"),
+        follow_redirects=True,
+    )
+    assert "Paramètres enregistrés." in reponse.text
+    with session_base() as session:
+        parametres = lire_parametres(session)
+    assert parametres.dejeuner_mode == DEJEUNER_LIBRE and parametres.dejeuner_duree_min == 75
+    assert parametres.fenetre_dejeuner == (12 * 60 + 45, 14 * 60, 75)
+    page = client.get("/parametres").text
+    assert '<option value="libre" selected>Pause libre bornée</option>' in page
+
+    refus = client.post("/parametres", data=_saisies(dejeuner_mode="midi"))
+    assert refus.status_code == 422
+    assert re.search(r'id="erreur-dejeuner_mode">Valeur &#39;midi&#39; inconnue', refus.text)
+    with session_base() as session:
+        assert lire_parametres(session).dejeuner_mode == DEJEUNER_LIBRE  # rien n'a changé
+
+
+def test_pause_libre_plus_longue_que_sa_fenetre_signalee_sous_le_champ(client):
+    reponse = client.post(
+        "/parametres", data=_saisies(dejeuner_mode="libre", dejeuner_duree_min="90")
+    )
+    assert reponse.status_code == 422
+    message = re.search(r'id="erreur-dejeuner_duree_min">([^<]+)<', reponse.text).group(1)
+    assert message.startswith("Une pause de 90 min ne tient pas dans la fenêtre du déjeuner")
+    with session_base() as session:
+        assert lire_parametres(session) == Parametres()
 
 
 def test_bornes_refusees_et_signalees_sous_le_champ(client):

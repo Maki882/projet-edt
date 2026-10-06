@@ -3,6 +3,12 @@
 La lecture et l'écriture typées sont dans `edt.services.parametres` ; ce
 module ajoute la conversion des saisies (heures « 08:30 » comprises) avec
 une erreur par champ, pour l'écran de configuration ou une API.
+
+Trois types de paramètre : entier, oui / non, et **à choix** (une valeur
+parmi une liste fermée, `DefinitionParametre.type == "choix"`). Certains
+paramètres ne servent que dans un mode : `ParametreAffiche.visible_si` le dit
+(les bornes du déjeuner ne servent pas sans pause, la durée minimale
+seulement en pause libre).
 """
 
 from __future__ import annotations
@@ -14,7 +20,17 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
-from edt.domaine.parametres import Parametres, ValeurParametre, convertir_texte, definitions
+from edt.domaine.parametres import (
+    DEJEUNER_FIXE,
+    DEJEUNER_LIBRE,
+    TYPE_CHOIX,
+    Choix,
+    Parametres,
+    ValeurParametre,
+    convertir_texte,
+    defauts_dejeuner,
+    definitions,
+)
 from edt.erreurs import ErreurDonneesInvalides
 from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.services.referentiels.operations import ErreurSaisie
@@ -22,6 +38,13 @@ from edt.services.referentiels.operations import ErreurSaisie
 journal = logging.getLogger(__name__)
 
 UNITE_HEURE = "heure"
+
+VISIBLE_SI: dict[str, tuple[str, tuple[str, ...]]] = {
+    "dejeuner_debut_min": ("dejeuner_mode", (DEJEUNER_FIXE, DEJEUNER_LIBRE)),
+    "dejeuner_fin_min": ("dejeuner_mode", (DEJEUNER_FIXE, DEJEUNER_LIBRE)),
+    "dejeuner_duree_min": ("dejeuner_mode", (DEJEUNER_LIBRE,)),
+}
+"""Paramètres utiles dans certains modes seulement : (paramètre du mode, valeurs)."""
 
 
 @dataclass(frozen=True)
@@ -37,6 +60,13 @@ class ParametreAffiche:
     maximum: int | None
     valeur: ValeurParametre
     defaut: ValeurParametre
+    choix: Choix = ()
+    visible_si: tuple[str, tuple[str, ...]] | None = None
+
+    @property
+    def est_choix(self) -> bool:
+        """Vrai pour un paramètre à choix (liste déroulante)."""
+        return self.type == TYPE_CHOIX
 
     @property
     def est_heure(self) -> bool:
@@ -49,6 +79,14 @@ class ParametreAffiche:
             return minutes_vers_hhmm(valeur)
         return str(valeur)
 
+    def texte_lisible(self, valeur: ValeurParametre) -> str:
+        """Valeur telle qu'on la lit : « oui », le libellé d'un choix, « 08:30 »."""
+        if self.type == "bool":
+            return "oui" if valeur else "non"
+        if self.est_choix:
+            return dict(self.choix).get(str(valeur), str(valeur))
+        return self.en_texte(valeur)
+
 
 def parametres_affichables(session: Session) -> tuple[ParametreAffiche, ...]:
     """Tous les paramètres, dans l'ordre de déclaration, avec leur valeur courante."""
@@ -58,12 +96,14 @@ def parametres_affichables(session: Session) -> tuple[ParametreAffiche, ...]:
             cle=d.cle,
             libelle=d.libelle,
             description=d.description,
-            type=d.type.__name__,
+            type=d.type if isinstance(d.type, str) else d.type.__name__,
             unite=d.unite,
             minimum=d.minimum,
             maximum=d.maximum,
             valeur=getattr(courants, d.cle),
             defaut=d.defaut,
+            choix=d.choix,
+            visible_si=VISIBLE_SI.get(d.cle),
         )
         for d in definitions()
     )
@@ -79,9 +119,10 @@ def convertir_saisie(cle: str, texte: str, unite: str) -> ValeurParametre:
 def enregistrer_parametres_saisis(session: Session, saisies: Mapping[str, str]) -> Parametres:
     """Enregistre les paramètres saisis (textes) ; les absents gardent leur valeur.
 
-    Lève `ErreurSaisie` (une erreur par paramètre fautif : type, bornes) avant
-    toute écriture, puis `ErreurDonneesInvalides` si l'ensemble est incohérent
-    (ouverture après la fermeture...).
+    Lève `ErreurSaisie` (une erreur par paramètre fautif : type, bornes,
+    choix inconnu, réglages du déjeuner incohérents) avant toute écriture,
+    puis `ErreurDonneesInvalides` si l'ensemble reste incohérent (ouverture
+    après la fermeture...).
     """
     connues = {d.cle: d for d in definitions()}
     inconnues = sorted(set(saisies) - set(connues))
@@ -96,8 +137,34 @@ def enregistrer_parametres_saisis(session: Session, saisies: Mapping[str, str]) 
         except ErreurDonneesInvalides as erreur:
             message = erreur.message.removeprefix(f"{definition.libelle} : ")
             erreurs[cle] = message[:1].upper() + message[1:]
+    if not erreurs:
+        erreurs = _defauts_du_dejeuner(lire_parametres(session), valeurs)
     if erreurs:
         raise ErreurSaisie(erreurs, {cle: connues[cle].libelle for cle in erreurs})
     resultat = ecrire_parametres(session, valeurs)
     journal.info("Paramètres enregistrés depuis l'écran de configuration (%d)", len(valeurs))
     return resultat
+
+
+def _defauts_du_dejeuner(
+    courants: Parametres, valeurs: Mapping[str, ValeurParametre]
+) -> dict[str, str]:
+    """Réglages du déjeuner incohérents une fois les saisies appliquées, par champ fautif.
+
+    Les messages viennent de `edt.domaine.parametres.defauts_dejeuner`, la règle
+    qui valide aussi `Parametres` : ils s'affichent sous le champ concerné.
+    """
+
+    def valeur(cle: str):
+        return valeurs.get(cle, getattr(courants, cle))
+
+    if valeur("ouverture_min") >= valeur("fermeture_min"):
+        return {}  # incohérence d'ensemble, signalée par `Parametres` en tête du formulaire
+    return defauts_dejeuner(
+        valeur("dejeuner_debut_min"),
+        valeur("dejeuner_fin_min"),
+        valeur("ouverture_min"),
+        valeur("fermeture_min"),
+        mode=valeur("dejeuner_mode"),
+        duree=valeur("dejeuner_duree_min"),
+    )
