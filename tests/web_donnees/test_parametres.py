@@ -29,6 +29,12 @@ def test_formulaire_construit_depuis_les_metadonnees(client):
     assert f"maximum {MAXIMUM_TEMPS_LIMITE}" in page and "secondes" in page
 
 
+def test_pause_dejeuner_a_horaires_determines_affichee(client):
+    page = client.get("/parametres").text
+    assert "Pause déjeuner à horaires déterminés" in page
+    assert 'name="dejeuner_horaires_determines" value="1" checked' in page
+
+
 def test_bornes_refusees_et_signalees_sous_le_champ(client):
     reponse = client.post("/parametres", data=_saisies(temps_limite_s="5000", pause_min="-1"))
     assert reponse.status_code == 422

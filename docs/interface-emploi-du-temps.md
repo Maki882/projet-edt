@@ -47,9 +47,9 @@ Section de menu `"Générer"` (ordre 250 et 260).
 
 | Adresse | Rôle |
 |---|---|
-| `GET /calculs?semestre_id=` | semestre, récapitulatif, vérifications préalables, contraintes, options, lancement |
+| `GET /calculs?semestre_id=` | semestre, récapitulatif, vérifications préalables, contraintes, pause déjeuner, options, lancement |
 | `GET /calculs/verifications` | fragment des vérifications, recalculé quand on coche ou décoche une contrainte |
-| `POST /calculs` | lance le calcul puis redirige vers son suivi |
+| `POST /calculs` | enregistre la pause déjeuner si elle a changé, lance le calcul puis redirige vers son suivi |
 | `GET /calculs/{id}` | suivi puis résultat |
 | `GET /calculs/{id}/etat` | fragment interrogé **chaque seconde** par HTMX tant que le calcul tourne |
 | `POST /calculs/{id}/arreter` | demande l'arrêt |
@@ -69,8 +69,27 @@ Section de menu `"Générer"` (ordre 250 et 260).
   comptés et dépliables. Les pré-vérifications sont relancées au lancement
   avec les contraintes réellement cochées.
 - **Contraintes** : le catalogue (`CATALOGUE`), libellé et description,
-  tout coché par défaut ; ce qui est décoché est rappelé dans le suivi, le
-  résultat et l'historique.
+  tout coché par défaut, sauf `DEJEUNER` qui n'a pas de case
+  (`calculs.CONTRAINTES_HORS_LISTE`) : le bloc « Pause déjeuner » la
+  remplace ; ce qui est décoché est rappelé dans le suivi, le résultat et
+  l'historique. Un ancien calcul enregistré avec `DEJEUNER` désactivée se
+  relance tel quel.
+- **Pause déjeuner** (avant la durée) : deux boutons radio, « Horaires
+  déterminés : de [HH:MM] à [HH:MM], libres pour tous les groupes et
+  enseignants » et « Pas d'horaires déterminés », préremplis depuis les
+  paramètres (`calculs.choix_dejeuner`) ; les deux heures ne sont visibles
+  et envoyées qu'avec le premier choix (`data-visible-si`, visibles sans
+  JavaScript). Au lancement, `calculs.appliquer_dejeuner` enregistre le
+  choix dans les paramètres s'il en diffère (`dejeuner_horaires_determines`,
+  `dejeuner_debut_min`, `dejeuner_fin_min`, journal « Paramètre … réglé
+  sur … »), dans sa propre transaction validée aussitôt : les
+  vérifications préalables, le calcul (qui lit la base dans son propre
+  fil), le vérificateur et les calculs suivants le voient. Sans horaires
+  déterminés, les heures enregistrées sont gardées mais ignorées. Une
+  saisie refusée (heure illisible ou manquante, fin avant le début, plage
+  hors des heures d'ouverture) réaffiche la page en 422 avec le message
+  sous le champ, sans rien enregistrer ni lancer. Un `POST` sans le bloc
+  laisse la pause déjeuner telle quelle.
 - **Options** : « rechercher jusqu'à 5 minutes » (`temps_limite_s`, 300 s
   par défaut) ou « 15 minutes » (`temps_limite_long_s`, 900 s) : les durées
   affichées sont lues dans les paramètres, jamais écrites dans l'écran ni

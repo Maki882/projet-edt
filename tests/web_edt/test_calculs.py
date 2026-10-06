@@ -59,8 +59,9 @@ def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client)
 
     assert '<span class="compteur-nombre">16</span><span class="compteur-libelle">besoins' in page
     assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
-    assert page.count('name="contraintes"') == len(CATALOGUE)
-    assert page.count(" checked>") >= len(CATALOGUE)  # toutes cochées par défaut
+    proposees = len(CATALOGUE) - 1  # la pause déjeuner a son propre bloc
+    assert page.count('name="contraintes"') == proposees
+    assert page.count(" checked>") >= proposees  # toutes cochées par défaut
     assert all(entree.libelle in page for entree in CATALOGUE.values())
     court, long_ = _durees()
     assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
@@ -72,14 +73,14 @@ def test_page_generer_recapitule_et_propose_les_contraintes(jeu_minimal, client)
 
 
 def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_contraintes_decochees(jeu_minimal, client):
-    calcul_id = _lancer(client, jeu_minimal.semestre_id, sauf=("DEJEUNER", "PAUSE"))
+    calcul_id = _lancer(client, jeu_minimal.semestre_id, sauf=("PAUSE",))
     suivi = generation.attendre_calcul(calcul_id, DELAI)
     assert suivi.reussi
 
     page = client.get(f"/calculs/{calcul_id}").text
     assert "Emploi du temps généré" in page
     assert f"/emploi-du-temps?version_id={suivi.version_id}" in page
-    assert "Pause déjeuner" in page and "Pause entre deux séances" in page
+    assert "Pause entre deux séances" in page
     assert "Traceback" not in page
     # Bilan du vrai moteur et de l'instanciation, lu dans les statistiques du calcul.
     bilan = suivi.statistiques["instanciation"]

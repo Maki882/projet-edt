@@ -12,15 +12,15 @@ from edt.verification import calculer_indicateurs
 from .fabrique import ISSY, LUNDI, SAMEDI, Fabrique, placer
 
 
-def semaine_type():
-    """A1 (promotion) avec deux demi-groupes, 15 semaines.
+def semaine_type(**parametres):
+    """A1 (promotion) avec deux demi-groupes, 15 semaines (`parametres` : réglages changés).
 
     - TD de A1-G1 le lundi de 8 h 30 à 10 h 30 en N204 (Notre-Dame) ;
     - TD de A1-G1 le lundi de 16 h 00 à 18 h 00 en L101 (Issy), même enseignante ;
     - CM de A1 le samedi de 8 h 30 à 10 h 30 en N204, semaines 1 à 5 ;
     - un TD de A1-G2 non placé.
     """
-    f = Fabrique()
+    f = Fabrique(**parametres)
     n204, l101 = f.salle("N204"), f.salle("L101", campus=ISSY)
     martin = f.enseignant("Mme Martin")
     a1 = f.groupe("A1", effectif=40)
@@ -69,6 +69,14 @@ def test_indicateurs_calcules_a_la_main():
     assert indicateurs.seances_samedi == 5
     assert indicateurs.seances_creneaux_extremes == 15 + 15 + 5
     assert indicateurs.valeur_objectif == 10 * 30 + 5 * 30 + 2 * 5 + 1 * 35
+
+
+def test_sans_horaires_determines_midi_compte_dans_les_trous():
+    """Sans plage réservée au déjeuner, l'heure de midi libre est un trou comme un autre."""
+    instantane, placements, _ = semaine_type(dejeuner_horaires_determines=False)
+    indicateurs = calculer_indicateurs(instantane, placements)
+    assert indicateurs.trous_minutes_journee == (270 + 60) * 15
+    assert indicateurs.trous_creneaux == 2 * 15  # la grille, elle, ne change pas
 
 
 def test_anomalies_fournies_et_serialisation():

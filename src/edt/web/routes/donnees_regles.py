@@ -78,7 +78,14 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Calcul", ("temps_limite_s", "temps_limite_long_s", "nb_workers")),
     (
         "Journée",
-        ("ouverture_min", "fermeture_min", "pause_min", "dejeuner_debut_min", "dejeuner_fin_min"),
+        (
+            "ouverture_min",
+            "fermeture_min",
+            "pause_min",
+            "dejeuner_horaires_determines",
+            "dejeuner_debut_min",
+            "dejeuner_fin_min",
+        ),
     ),
     ("Lieux", ("trajet_defaut_min", "accessibilite_inconnue_acceptee")),
     (

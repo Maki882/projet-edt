@@ -9,6 +9,11 @@ ce module ajoute ce que l'écran doit dire :
   (`raccords.pre_verifier_semestre` : charges, salles, séances sans place
   possible, verrous contradictoires, besoins impossibles à déplier),
   groupées par gravité : une erreur empêche de lancer, un avertissement non ;
+- les **contraintes à cocher** : le catalogue, sauf `DEJEUNER`, remplacée
+  par le bloc « Pause déjeuner » ;
+- la **pause déjeuner** : horaires déterminés (de quelle heure à quelle
+  heure) ou non ; un choix qui diffère des paramètres y est enregistré au
+  lancement, avant le calcul (`appliquer_dejeuner`) ;
 - les **options** : temps limite court ou long, recherche d'un emploi du
   temps plus confortable (objectif), **autre solution** (nouvelle graine,
   sans partir des placements de la version active) ;
@@ -36,14 +41,22 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.domaine.contraintes import CATALOGUE, normaliser_codes
+from edt.domaine.contraintes import CATALOGUE, CodeContrainte, normaliser_codes
 from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
-from edt.erreurs import ErreurEDT, ErreurIntrouvable, ErreurRegleMetier
+from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
+from edt.domaine.parametres import ValeurParametre, defauts_dejeuner
+from edt.erreurs import (
+    ErreurCalculEnCours,
+    ErreurDonneesInvalides,
+    ErreurEDT,
+    ErreurIntrouvable,
+    ErreurRegleMetier,
+)
 from edt.services import generation
 from edt.services.emploi_du_temps import memoire, presentation, raccords
 from edt.services.emploi_du_temps.versions import ResumeSemestre, exiger_semestre
 from edt.services.instantane import charger_instantane
-from edt.services.parametres import lire_parametres
+from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.solveur.contrat import OptionsSolveur
 from edt.verification.contrat import Anomalie
 
@@ -72,6 +85,23 @@ _ISSUE_PAR_ETAT = {
     EtatCalcul.TEMPS_DEPASSE: Issue.TEMPS_DEPASSE,
     EtatCalcul.ARRETE: Issue.ARRETE,
     EtatCalcul.ERREUR: Issue.ERREUR,
+}
+
+
+CONTRAINTES_HORS_LISTE = frozenset({CodeContrainte.DEJEUNER})
+"""Contraintes sans case à cocher : la pause déjeuner a son propre bloc dans le formulaire.
+
+Le code reste au catalogue : la désactivation enregistrée sur un ancien
+calcul vaut toujours pour sa relance.
+"""
+
+DEJEUNER_DETERMINE = "determines"
+DEJEUNER_AUCUN = "aucun"
+CHAMP_DEBUT_DEJEUNER = "dejeuner_debut"
+CHAMP_FIN_DEJEUNER = "dejeuner_fin"
+_CHAMP_DU_PARAMETRE = {
+    "dejeuner_debut_min": CHAMP_DEBUT_DEJEUNER,
+    "dejeuner_fin_min": CHAMP_FIN_DEJEUNER,
 }
 
 
@@ -149,6 +179,36 @@ class ErreurPreVerification(ErreurRegleMetier):
             details,
         )
         self.pre_verification = pre_verification
+
+
+@dataclass(frozen=True)
+class ChoixDejeuner:
+    """Bloc « Pause déjeuner » du formulaire : horaires déterminés ou non, heures « HH:MM ».
+
+    Les heures sont des textes : celles des paramètres à l'affichage, celles
+    saisies à l'envoi (réaffichées telles quelles si elles sont refusées).
+    """
+
+    determines: bool
+    debut: str
+    fin: str
+
+
+class ErreurSaisieDejeuner(ErreurDonneesInvalides):
+    """Pause déjeuner mal saisie : rien n'est enregistré et le calcul n'est pas lancé.
+
+    `champs` associe à chaque champ fautif du formulaire son message ;
+    `saisie` est ce qui a été reçu (à réafficher), `None` si le choix est illisible.
+    """
+
+    def __init__(self, champs: dict[str, str], saisie: ChoixDejeuner | None) -> None:
+        self.champs = dict(champs)
+        self.saisie = saisie
+        super().__init__(
+            "Le calcul n'a pas été lancé : la pause déjeuner est à corriger (voir sous les "
+            "champs concernés).",
+            tuple(self.champs.values()),
+        )
 
 
 @dataclass(frozen=True)
@@ -309,7 +369,10 @@ def _recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
 
 
 def contraintes_proposees(desactivees: Iterable[str] = ()) -> tuple[ContrainteProposee, ...]:
-    """Les contraintes du catalogue, dans son ordre, cochées sauf celles de `desactivees`."""
+    """Les contraintes à cocher, dans l'ordre du catalogue, cochées sauf celles de `desactivees`.
+
+    Les contraintes de `CONTRAINTES_HORS_LISTE` ne sont pas proposées.
+    """
     eteintes = normaliser_codes(desactivees)
     return tuple(
         ContrainteProposee(
@@ -319,13 +382,22 @@ def contraintes_proposees(desactivees: Iterable[str] = ()) -> tuple[ContraintePr
             active=code not in eteintes and entree.active_par_defaut,
         )
         for code, entree in CATALOGUE.items()
+        if code not in CONTRAINTES_HORS_LISTE
     )
 
 
 def desactivees_depuis_cochees(cochees: Iterable[str]) -> frozenset[str]:
-    """Contraintes décochées, à partir des codes cochés dans le formulaire (codes vérifiés)."""
+    """Contraintes décochées, à partir des codes cochés dans le formulaire (codes vérifiés).
+
+    Seules les contraintes proposées peuvent l'être : une contrainte de
+    `CONTRAINTES_HORS_LISTE`, absente des cases, n'est jamais désactivée ici.
+    """
     actives = normaliser_codes(cochees)
-    return frozenset(str(code) for code in CATALOGUE if code not in actives)
+    return frozenset(
+        str(code)
+        for code in CATALOGUE
+        if code not in CONTRAINTES_HORS_LISTE and code not in actives
+    )
 
 
 def pre_verifier(
@@ -381,6 +453,113 @@ def options_formulaire(session: Session) -> OptionsFormulaire:
 
 
 # --------------------------------------------------------------------------- #
+# Pause déjeuner
+# --------------------------------------------------------------------------- #
+
+
+def choix_dejeuner(session: Session) -> ChoixDejeuner:
+    """Pause déjeuner enregistrée dans les paramètres, telle que le formulaire la préremplit."""
+    parametres = lire_parametres(session)
+    return ChoixDejeuner(
+        determines=parametres.dejeuner_horaires_determines,
+        debut=minutes_vers_hhmm(parametres.dejeuner_debut_min),
+        fin=minutes_vers_hhmm(parametres.dejeuner_fin_min),
+    )
+
+
+def lire_saisie_dejeuner(
+    mode: str | None, debut: str | None, fin: str | None
+) -> ChoixDejeuner | None:
+    """Bloc « Pause déjeuner » reçu du formulaire, ou `None` s'il n'a pas été envoyé.
+
+    `mode` vaut `DEJEUNER_DETERMINE` ou `DEJEUNER_AUCUN` ; toute autre valeur
+    lève `ErreurSaisieDejeuner`. Les heures absentes (champs masqués, donc
+    non envoyés) deviennent des textes vides.
+    """
+    if mode is None:
+        return None
+    if mode not in (DEJEUNER_DETERMINE, DEJEUNER_AUCUN):
+        journal.info("Pause déjeuner refusée : choix « %s » inconnu", mode)
+        raise ErreurSaisieDejeuner(
+            {"dejeuner": "Choisir « Horaires déterminés » ou « Pas d'horaires déterminés »."},
+            None,
+        )
+    return ChoixDejeuner(mode == DEJEUNER_DETERMINE, (debut or "").strip(), (fin or "").strip())
+
+
+def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:
+    """Paramètres à modifier pour appliquer `choix` : seulement ceux qui changent.
+
+    Sans horaires déterminés, les heures saisies sont ignorées et celles
+    enregistrées sont conservées. Avec, chaque heure doit être lisible
+    (« 12:45 », « 12 h 45 »), la plage non vide et dans les heures
+    d'ouverture : sinon `ErreurSaisieDejeuner`, un message par champ.
+    """
+    courants = lire_parametres(session)
+    voulus: dict[str, ValeurParametre] = {"dejeuner_horaires_determines": choix.determines}
+    if choix.determines:
+        erreurs: dict[str, str] = {}
+        for cle, nom, exemple, texte in (
+            ("dejeuner_debut_min", "de début", "12:45", choix.debut),
+            ("dejeuner_fin_min", "de fin", "13:45", choix.fin),
+        ):
+            champ = _CHAMP_DU_PARAMETRE[cle]
+            if not texte:
+                erreurs[champ] = f"Indiquer l'heure {nom} du déjeuner, par exemple {exemple}."
+                continue
+            try:
+                voulus[cle] = texte_vers_minutes(texte)
+            except ErreurDonneesInvalides as erreur:
+                journal.debug("Heure %s du déjeuner illisible : %s", nom, erreur.message)
+                erreurs[champ] = (
+                    f"Heure {nom} du déjeuner illisible (« {texte} ») : l'écrire par exemple "
+                    f"{exemple}."
+                )
+        if not erreurs:
+            defauts = defauts_dejeuner(
+                int(voulus["dejeuner_debut_min"]),
+                int(voulus["dejeuner_fin_min"]),
+                courants.ouverture_min,
+                courants.fermeture_min,
+            )
+            erreurs = {_CHAMP_DU_PARAMETRE[cle]: message for cle, message in defauts.items()}
+        if erreurs:
+            journal.info("Pause déjeuner refusée : %s", " ".join(erreurs.values()))
+            raise ErreurSaisieDejeuner(erreurs, choix)
+    return {cle: valeur for cle, valeur in voulus.items() if getattr(courants, cle) != valeur}
+
+
+def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:
+    """Enregistre la pause déjeuner choisie si elle diffère des paramètres ; renvoie les changements.
+
+    Les changements sont validés aussitôt, dans leur propre transaction sur
+    la même base que `session` : le calcul lancé ensuite lit la base dans son
+    propre fil et doit les voir, comme le vérificateur et les calculs
+    suivants. `session` ne doit donc pas avoir d'écriture en attente.
+
+    Lève `ErreurSaisieDejeuner` (rien n'est enregistré), ou
+    `ErreurCalculEnCours` : on ne change pas les réglages sous un calcul qui
+    tourne.
+    """
+    changements = changements_dejeuner(session, choix)
+    if not changements:
+        journal.debug("Pause déjeuner identique aux paramètres : rien à enregistrer")
+        return {}
+    if generation.calcul_en_cours() is not None:
+        raise ErreurCalculEnCours(
+            "Un calcul est déjà en cours : attendre sa fin ou l'arrêter avant de changer la "
+            "pause déjeuner."
+        )
+    with Session(session.get_bind()) as transaction, transaction.begin():
+        ecrire_parametres(transaction, changements)
+    journal.info(
+        "Pause déjeuner réglée depuis l'écran « Générer » (%s)",
+        ", ".join(f"{cle} = {valeur!r}" for cle, valeur in changements.items()),
+    )
+    return changements
+
+
+# --------------------------------------------------------------------------- #
 # Lancement
 # --------------------------------------------------------------------------- #
 
@@ -393,13 +572,22 @@ def demarrer_calcul(
     longue: bool = False,
     optimiser: bool | None = None,
     autre_solution: bool = False,
+    dejeuner: ChoixDejeuner | None = None,
 ) -> int:
-    """Vérifie, puis lance un calcul en arrière-plan ; renvoie son identifiant.
+    """Règle la pause déjeuner, vérifie, puis lance un calcul en arrière-plan ; renvoie son id.
 
-    Lève `ErreurPreVerification` si une vérification préalable relève une
+    `dejeuner` (bloc du formulaire) est d'abord enregistré dans les
+    paramètres s'il en diffère (`appliquer_dejeuner`) : les vérifications
+    préalables et le calcul en tiennent compte, et le réglage reste même si
+    le calcul est ensuite refusé. `None` laisse la pause déjeuner telle quelle.
+
+    Lève `ErreurSaisieDejeuner` si la pause déjeuner est mal saisie,
+    `ErreurPreVerification` si une vérification préalable relève une
     erreur, `ErreurCalculEnCours` si un calcul tourne déjà.
     """
     exiger_semestre(session, semestre_id)
+    if dejeuner is not None:
+        appliquer_dejeuner(session, dejeuner)
     desactivees = desactivees_depuis_cochees(contraintes_cochees)
     verification = pre_verifier(session, semestre_id, desactivees)
     if verification.bloquante:
