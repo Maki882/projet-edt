@@ -31,6 +31,7 @@ from edt.verification import calculer_indicateurs, verifier, verifier_occurrence
 anomalies = verifier(instantane, placements)                     # semaine type
 anomalies = verifier(instantane, placements, ["SALLE_UNIQUE"])   # une seule contrainte
 anomalies = verifier_occurrences(instantane, occurrences)        # séances datées
+anomalies = verifier(instantane, placements, niveaux=niveaux)    # avec les niveaux d'un calcul
 valide = not any(anomalie.bloquante for anomalie in anomalies)
 indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 ```
@@ -163,7 +164,8 @@ Mêmes règles, avec ces différences :
 `Anomalie` (`src/edt/verification/contrat.py`) porte le code, la gravité, un
 message en français complet et les identifiants utiles à l'interface pour
 surligner : `seances`, `occurrences`, `salles`, `enseignants`, `groupes`,
-`besoins`, et `jour` (semaine type) ou `date` (couche datée). Les ressources
+`besoins`, et `jour` (semaine type) ou `date` (couche datée), ainsi que
+`niveau` (niveau appliqué à la contrainte, `None` sans niveaux). Les ressources
 renseignées sont celles **en cause** : la salle pour `SALLE_UNIQUE`, les
 enseignants communs pour `ENSEIGNANT_UNIQUE`, les groupes en conflit pour
 `GROUPE_UNIQUE`, la ressource indisponible pour `DISPO_*` ; toutes les
@@ -324,6 +326,65 @@ semaine, comme le décrit le catalogue des préférences (`PREFERENCES` :
 l'équipe. En minutes, avec un poids de 10, il écraserait les trois autres
 termes. Les trous en minutes restent un indicateur d'affichage.
 
+## Niveaux des contraintes
+
+Avant un calcul, l'utilisateur choisit le **niveau** de chaque contrainte
+(`edt.domaine.contraintes.Niveau`) : **nécessaire** (contrainte dure),
+**important** (le moteur ne l'enfreint que faute de choix) ou **facultatif**
+(souhait). Six contraintes définissent le problème et restent toujours
+nécessaires (`SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `VERROU`,
+`JOUR_FERME`, `VOLUME`). Les niveaux retenus forment un `Niveaux`
+(`dict[CodeContrainte, Niveau]`).
+
+`verifier(..., *, niveaux=None)` et `verifier_occurrences(..., *, niveaux=None)` :
+
+- **une clé absente est une contrainte ignorée**, ni posée ni vérifiée :
+  seules les contraintes présentes dans `niveaux` sont vérifiées, et
+  `contraintes_actives` est ignoré ;
+- la gravité suit le niveau, **plafonnée** par celle que la règle donne
+  déjà (`edt.verification.niveaux.GRAVITE_DU_NIVEAU`) :
+
+  | Niveau | Gravité d'une entorse | Début du message |
+  |---|---|---|
+  | nécessaire | erreur | (rien) |
+  | important | avertissement | « Entorse à une règle importante : » |
+  | facultatif | information | « Entorse à une règle facultative : » |
+
+  Le plafond garde les écarts admis : l'information d'une séance imposée
+  hors grille reste une information même si `HORAIRES` est nécessaire, et
+  l'avertissement « salle à définir » (`VOLUME`) n'est pas remonté en erreur ;
+- `Anomalie.niveau` porte le niveau appliqué ; le début du message vient
+  de `edt.verification.PREFIXES_ENTORSE` (stable, l'interface peut s'y fier)
+  et, après les deux-points, un article de début de phrase passe en
+  minuscule (« … : la salle N204… », mais « … : Mme Martin… ») ;
+- un niveau autre que « nécessaire » sur une contrainte non modifiable, un
+  code ou un niveau inconnu lèvent `ErreurDonneesInvalides`.
+
+Sans `niveaux`, rien ne change : les contraintes de `contraintes_actives`
+(par défaut, toutes) sont vérifiées en dur et `Anomalie.niveau` vaut `None`.
+Une anomalie « bloquante » reste une anomalie de gravité « erreur » : une
+entorse à une règle importante ou facultative n'invalide pas l'emploi du temps.
+
+### Origine des niveaux d'une version (`edt.services.niveaux`)
+
+- `niveaux_du_calcul(parametres, contraintes_desactivees)` (pur) :
+  `parametres["niveaux"]` (code → « necessaire », « important » ou
+  « facultatif », écrit par le lot solveur dans `Calcul.parametres`) passé
+  par `normaliser_niveaux` (codes absents : niveau par défaut), puis sans les
+  `contraintes_desactivees` éventuellement enregistrées en plus ; à défaut,
+  calcul antérieur aux niveaux : `niveaux_depuis_desactivees` (niveaux par
+  défaut sans les contraintes désactivées) ; à défaut, `niveaux_par_defaut()`.
+  Des niveaux enregistrés illisibles lèvent `ErreurDonneesInvalides`.
+- `niveaux_de_version(session, version_id)` : ceux du calcul qui a produit
+  la version (`VersionEdt.calcul_id`) ; une version de référence ou importée
+  prend les niveaux par défaut, comme une version générée dont le calcul a
+  été supprimé (avec un avertissement dans le journal).
+
+Chaque résolution est journalisée en DEBUG avec son origine. Conséquence
+pour une version produite avant les niveaux sans contrainte désactivée : les
+contraintes importantes par défaut (`PAUSE`, `DEJEUNER`, `EQUIPEMENT`,
+`MAX_ENSEIGNANT`) y sont désormais des avertissements, plus des erreurs.
+
 ## Service (`edt.services.verification`)
 
 Fonctions typées, appelées par la commande et par l'interface. Elles lisent
@@ -333,16 +394,25 @@ version est chargé avec cette version comme version de base : les verrous
 vérifiés sont ceux de la version.
 
 ```python
-def verifier_version(session, version_id, contraintes_actives=None) -> RapportVerification
+def verifier_version(
+    session, version_id, contraintes_actives=None, *, niveaux=None
+) -> RapportVerification
 def verifier_occurrences_version(
-    session, version_id, date_debut=None, date_fin=None, contraintes_actives=None
+    session, version_id, date_debut=None, date_fin=None, contraintes_actives=None, *, niveaux=None
 ) -> RapportVerification
 def verifier_modification(
-    session, version_id, seance_id, jour, debut, fin, salle_id, *, contraintes_actives=None
+    session, version_id, seance_id, jour, debut, fin, salle_id, *,
+    contraintes_actives=None, niveaux=None,
 ) -> RapportVerification
 def anomalies_introduites(avant, apres, seance_id) -> list[Anomalie]
 def version_a_verifier(session, version_id=None, semestre_id=None) -> int
 ```
+
+Niveaux appliqués, pour les trois fonctions : `niveaux` s'il est donné ;
+sinon, si `contraintes_actives` est donné, ces contraintes en dur
+(comportement d'origine) ; sinon, **les niveaux du calcul de la version**
+(`niveaux_de_version`), ce que fait l'interface (À traiter, accueil, grille)
+et la commande sans `-c`.
 
 - `verifier_version` : semaine type de la version et ses indicateurs.
 - `verifier_occurrences_version` : séances datées de la version. Avec une
@@ -372,8 +442,12 @@ def version_a_verifier(session, version_id=None, semestre_id=None) -> int
 `par_code` (nombre d'anomalies de toutes gravités par code, dans l'ordre du
 catalogue), la propriété `valide` (aucune erreur), le contexte (`version_id`,
 `version`, `semestre_id`, `semestre`, `objet`, `contraintes`, `nb_examines`,
-`periode`) et `vers_dict()` pour le JSON. Chaque vérification écrit une ligne
-de journal (niveau INFO).
+`periode`), `niveaux` (niveaux appliqués, ou `None` pour une vérification en
+dur) et `vers_dict()` pour le JSON (chaque anomalie y porte son `niveau`).
+Avec des niveaux, `nb_avertissements` compte les entorses aux règles
+importantes et `nb_informations` les entorses aux règles facultatives (plus
+les écarts admis). Chaque vérification écrit une ligne de journal (niveau
+INFO).
 
 ## Commande `python -m edt verifier`
 
