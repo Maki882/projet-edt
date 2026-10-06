@@ -739,7 +739,7 @@ le vérificateur **et** le solveur.
 |---|---|
 | `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE` | Deux séances se gênent si elles ont lieu le même jour, que leurs plages se recoupent et que leurs semaines actives se croisent. Groupes : relation de conflit de l'instantané. Enseignants fictifs exclus. |
 | `PAUSE`, `CAMPUS_TRAJET` | Concernent les **personnes** (groupes en conflit, enseignants non fictifs), pas les salles. |
-| `DEJEUNER` | Aucune séance ne recoupe la plage `dejeuner_debut_min`..`dejeuner_fin_min`. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), l'écart est une information. |
+| `DEJEUNER` | Quand la pause déjeuner est à horaires déterminés (`dejeuner_horaires_determines`), aucune séance ne recoupe la plage `dejeuner_debut_min`..`dejeuner_fin_min` ; sinon la règle est inapplicable. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), l'écart est une information. |
 | `HORAIRES` | Début sur un début de créneau de la grille, séance dans la plage `ouverture_min`..`fermeture_min`, et séance qui ne déborde pas de sa demi-journée (sa fin ne dépasse pas la fin du dernier créneau de la même demi-journée). La durée placée égale la durée du besoin. Un **jour imposé ou un début imposé non respecté** relève aussi de ce code. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), un écart à la grille est une anomalie de gravité « information », pas une erreur. |
 | `JOURS` | Jours qui ont des créneaux dans la grille (lundi à vendredi) ; samedi seulement si `Besoin.samedi_autorise`. Un samedi hors des créneaux de la grille relève de `HORAIRES`. Information au lieu d'erreur pour une séance imposée. |
 | `CAPACITE` | Capacité de la salle ≥ `Besoin.effectif`. |

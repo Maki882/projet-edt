@@ -503,10 +503,11 @@ def construire_vue(
         parametres.fermeture_min,
     )
     dejeuner = None
-    if parametres.dejeuner_debut_min < parametres.dejeuner_fin_min:
+    plage = parametres.plage_dejeuner  # None sans horaires déterminés : pas de bande
+    if plage is not None and plage[0] < plage[1]:
         axe = disposition.axe
-        haut = axe.position(max(parametres.dejeuner_debut_min, axe.debut))
-        bas = axe.position(min(parametres.dejeuner_fin_min, axe.fin))
+        haut = axe.position(max(plage[0], axe.debut))
+        bas = axe.position(min(plage[1], axe.fin))
         if bas > haut:
             dejeuner = (haut, round(bas - haut, 4))
 

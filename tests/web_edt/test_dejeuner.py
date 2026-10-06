@@ -11,7 +11,7 @@ from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.parametres import Parametres
 from edt.services import generation
-from edt.services.parametres import lire_parametres
+from edt.services.parametres import ecrire_parametre, lire_parametres
 
 from .conftest import DELAI
 
@@ -98,3 +98,14 @@ def test_saisie_invalide_reaffichee_sans_lancer_ni_enregistrer(jeu_minimal, clie
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Calcul)) == 0
     assert _parametres().plage_dejeuner == (765, 825)  # rien n'a été enregistré
+
+
+def test_la_grille_ne_dessine_la_bande_dejeuner_qu_avec_des_horaires_determines(
+    version_generee, client
+):
+    adresse = f"/emploi-du-temps?version_id={version_generee.version_id}"
+    assert 'class="edt-dejeuner"' in client.get(adresse).text
+
+    with session_base() as session:
+        ecrire_parametre(session, "dejeuner_horaires_determines", False)
+    assert 'class="edt-dejeuner"' not in client.get(adresse).text
