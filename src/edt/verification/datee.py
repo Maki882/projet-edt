@@ -36,7 +36,7 @@ import logging
 import time
 from collections.abc import Iterable, Iterator, Sequence
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import Besoin, Instantane, Occurrence, SeanceAPlacer
 from edt.erreurs import ErreurDonneesInvalides
@@ -46,10 +46,10 @@ from edt.verification.contexte import (
     cle_tri,
     creneau_impose,
     defauts_de_plage,
-    resoudre_codes,
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import date_texte, plage
+from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
@@ -62,15 +62,22 @@ def verifier_occurrences(
     instantane: Instantane,
     occurrences: Sequence[Occurrence],
     contraintes_actives: Iterable[str] | None = None,
+    *,
+    niveaux: Niveaux | None = None,
 ) -> list[Anomalie]:
     """Liste les anomalies d'un ensemble de séances datées (liste vide : valide).
 
     Voir l'en-tête du module pour les différences avec la semaine type.
+
+    `niveaux` (facultatif, voir `edt.verification.niveaux`) : seules ses
+    contraintes sont vérifiées, la gravité de chaque anomalie suit le niveau
+    de sa contrainte sans dépasser celle de la règle, et `contraintes_actives`
+    est ignoré. Sans `niveaux`, tout est vérifié en dur.
     Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
     une occurrence est mal formée.
     """
     chrono = time.perf_counter()
-    codes = resoudre_codes(contraintes_actives)
+    niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     occurrences = tuple(occurrences)
     valider_occurrences(instantane, occurrences)
     ctx = Contexte(instantane, codes, datee=True)
@@ -101,6 +108,8 @@ def verifier_occurrences(
     anomalies.extend(verifier_seances(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
     anomalies.extend(verifier_maxima(ctx, elements))
+    if niveaux_appliques is not None:
+        anomalies = appliquer_niveaux(anomalies, niveaux_appliques)
     anomalies.sort(key=cle_tri)
 
     journal.info(
