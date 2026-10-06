@@ -64,7 +64,14 @@ from edt import solveur
 from edt.config import Configuration, charger_configuration
 from edt.db.modeles import Calcul, SeanceHebdo, Semestre, VersionEdt
 from edt.db.moteur import session_base
-from edt.domaine.contraintes import codes_actifs
+from edt.domaine.contraintes import (
+    CATALOGUE,
+    Niveau,
+    Niveaux,
+    niveaux_depuis_desactivees,
+    normaliser_codes,
+    normaliser_niveaux,
+)
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
 from edt.domaine.instantane import Instantane, Placement, SeanceAPlacer
 from edt.erreurs import (
@@ -128,7 +135,10 @@ class SuiviCalcul:
       ou durée totale (calcul terminé) ;
     - `message` : phrase française pour l'utilisateur ;
     - `version_id` : version créée, seulement si le calcul a réussi ;
-    - `contraintes_desactivees` : codes décochés par l'utilisateur au lancement ;
+    - `niveaux` : niveau retenu pour chaque contrainte (clé absente : contrainte
+      ignorée), lu dans les options enregistrées ou, pour un calcul ancien,
+      déduit des contraintes désactivées ;
+    - `contraintes_desactivees` : codes ignorés au lancement (absents de `niveaux`) ;
     - `fichier_journal` : chemin du journal dédié du calcul ;
     - `avertissements` : situations tendues relevées par les pré-vérifications
       et remarques du moteur, à montrer à l'utilisateur ;
@@ -150,6 +160,7 @@ class SuiviCalcul:
     fichier_journal: str | None
     arret_demande: bool
     avertissements: tuple[str, ...] = field(default=())
+    niveaux: Niveaux = field(default_factory=dict)
 
     @property
     def en_cours(self) -> bool:
@@ -244,6 +255,7 @@ def pre_verifier_semestre(
     semestre_id: int,
     contraintes_desactivees: Iterable[str] = (),
     *,
+    niveaux: Niveaux | None = None,
     version_base_id: int | None = None,
     tolerer_violations_heritees: bool = False,
 ) -> list[Anomalie]:
@@ -253,10 +265,14 @@ def pre_verifier_semestre(
     serait refusé) et les situations tendues (« avertissement »), en phrases
     lisibles : charge des groupes et des enseignants, salles, séances sans
     salle ou sans horaire possible, verrous contradictoires, besoins non
-    dépliables. `contraintes_desactivees` : codes décochés par l'utilisateur.
-    Les verrous examinés sont ceux de `version_base_id` (défaut : la version
-    active du semestre). Voir `edt.solveur.preverification`.
+    dépliables. `niveaux` : niveaux retenus ; seules les contraintes présentes
+    sont examinées, quel que soit leur niveau. À défaut,
+    `contraintes_desactivees` donne les codes ignorés. Les verrous examinés
+    sont ceux de `version_base_id` (défaut : la version active du semestre).
+    Voir `edt.solveur.preverification`.
     """
+    if niveaux is not None:
+        contraintes_desactivees = frozenset(CATALOGUE) - normaliser_codes(niveaux.keys())
     instantane = charger_instantane(session, semestre_id, version_base_id)
     return pre_verifier(
         instantane,
@@ -575,10 +591,11 @@ def _controler(
     rien enregistrer. Avec `tolerer_violations_heritees`, les violations
     entre séances toutes verrouillées sont attendues et ne comptent pas.
     """
+    # Seules les contraintes nécessaires sont dures : une entorse à l'une d'elles est un
+    # défaut du moteur. Les contraintes souples relèvent du bilan, pas du contrôle.
+    necessaires = frozenset(c for c, n in options.niveaux.items() if n is Niveau.NECESSAIRE)
     try:
-        anomalies = verifier(
-            instantane, resultat.placements, codes_actifs(options.contraintes_desactivees)
-        )
+        anomalies = verifier(instantane, resultat.placements, necessaires)
     except ErreurNonLivre:
         journal.warning(
             "Résultat non contrôlé : le vérificateur n'est pas livré (edt.verification)."
@@ -777,6 +794,7 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
     else:
         ecoule = calcul.duree_s or 0.0
     version_id = session.scalar(select(VersionEdt.id).where(VersionEdt.calcul_id == calcul.id))
+    desactivees = tuple(calcul.contraintes_desactivees or ())
     return SuiviCalcul(
         id=calcul.id,
         semestre_id=calcul.semestre_id,
@@ -786,9 +804,34 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         temps_ecoule_s=round(max(ecoule, 0.0), 1),
         message=calcul.message,
         version_id=version_id,
-        contraintes_desactivees=tuple(calcul.contraintes_desactivees or ()),
+        contraintes_desactivees=desactivees,
         statistiques=dict(calcul.statistiques or {}),
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
         avertissements=tuple((calcul.statistiques or {}).get("avertissements", ())),
+        niveaux=_niveaux_du_calcul(calcul.id, calcul.parametres or {}, desactivees),
     )
+
+
+def _niveaux_du_calcul(calcul_id: int, parametres: dict, desactivees: Iterable[str]) -> Niveaux:
+    """Niveaux retenus pour un calcul enregistré.
+
+    `parametres["niveaux"]` fait foi ; les contraintes ignorées en sont
+    absentes et sont aussi listées dans `contraintes_desactivees`. Un calcul
+    enregistré avant les niveaux n'a que ses contraintes désactivées : les
+    niveaux par défaut sans ces codes.
+    """
+    retirees = normaliser_codes(desactivees)
+    choix = parametres.get("niveaux")
+    if choix is None:
+        return niveaux_depuis_desactivees(retirees)
+    try:
+        niveaux = normaliser_niveaux(choix)
+    except ErreurEDT as erreur:
+        journal.warning(
+            "Calcul %d : niveaux enregistrés illisibles (%s), niveaux par défaut utilisés",
+            calcul_id,
+            erreur,
+        )
+        return niveaux_depuis_desactivees(retirees)
+    return {code: n for code, n in niveaux.items() if code not in retirees}

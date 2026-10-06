@@ -2,7 +2,8 @@
 
     python -m edt pre-verifier --semestre 1
     python -m edt generer --semestre 1 --temps-limite 120 --optimiser --graine 3
-    python -m edt generer -d SALLE_UNIQUE -d PAUSE        # contraintes désactivées
+    python -m edt generer -d EQUIPEMENT -d PAUSE          # contraintes ignorées
+    python -m edt generer --niveau PAUSE=facultatif       # niveau d'une contrainte
     python -m edt instancier --version 4
 
 `generer` lance un calcul par le même service que l'interface
@@ -31,8 +32,15 @@ import typer
 
 from edt.db.modeles import Semestre
 from edt.db.moteur import session_base
+from edt.domaine.contraintes import (
+    CATALOGUE,
+    Niveaux,
+    contrainte,
+    niveaux_depuis_desactivees,
+    normaliser_niveaux,
+)
 from edt.domaine.enumerations import Gravite
-from edt.erreurs import ErreurIntrouvable
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services import generation
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.instanciation import RapportInstanciation, instancier_version
@@ -57,6 +65,47 @@ OptionDesactiver = Annotated[
         help="Code d'une contrainte à ignorer, par exemple PAUSE (option répétable).",
     ),
 ]
+OptionNiveau = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--niveau",
+        help="Niveau d'une contrainte, CODE=niveau (necessaire, important ou facultatif), "
+        "par exemple PAUSE=facultatif (option répétable).",
+    ),
+]
+
+
+def niveaux_choisis(desactiver: list[str] | None, niveau: list[str] | None) -> Niveaux:
+    """Niveaux d'un calcul d'après la ligne de commande : codes ignorés, puis niveaux choisis."""
+    niveaux = niveaux_depuis_desactivees(desactiver or ())
+    for choix in niveau or ():
+        code, separateur, valeur = choix.partition("=")
+        if not separateur or not code or not valeur:
+            raise ErreurDonneesInvalides(
+                "Option --niveau : écrire CODE=niveau, par exemple PAUSE=facultatif "
+                f"(lu : {choix!r})."
+            )
+        entree = contrainte(code)
+        if entree.code not in niveaux:
+            raise ErreurDonneesInvalides(
+                f"La contrainte {entree.code} est à la fois ignorée (--desactiver) et dotée d'un "
+                "niveau (--niveau) : choisir."
+            )
+        niveaux[entree.code] = normaliser_niveaux({entree.code: valeur})[entree.code]
+    return niveaux
+
+
+def _recapitulatif_des_niveaux(niveaux: Niveaux) -> str | None:
+    """Les contraintes dont le niveau n'est pas celui par défaut, et celles ignorées."""
+    changements = [
+        f"{entree.libelle} : {niveaux[code].libelle.lower()}"
+        for code, entree in CATALOGUE.items()
+        if code in niveaux and niveaux[code] is not entree.niveau_defaut
+    ]
+    changements += [
+        f"{entree.libelle} : ignorée" for code, entree in CATALOGUE.items() if code not in niveaux
+    ]
+    return "Règles : " + " ; ".join(changements) + "." if changements else None
 
 
 def _semestre(session, semestre_id: int | None) -> Semestre:
@@ -117,6 +166,7 @@ def generer(
         ),
     ] = None,
     desactiver: OptionDesactiver = None,
+    niveau: OptionNiveau = None,
     fils: Annotated[
         int | None,
         typer.Option("--fils", help="Fils de calcul (défaut : paramètre ; 0 = au plus deux)."),
@@ -143,7 +193,7 @@ def generer(
         semestre_id, libelle = cible.id, cible.libelle
         options = OptionsSolveur.depuis_parametres(
             lire_parametres(session),
-            contraintes_desactivees=desactiver or (),
+            niveaux=niveaux_choisis(desactiver, niveau),
             graine=graine,
             tolerer_violations_heritees=tolerer,
         )
@@ -161,6 +211,9 @@ def generer(
         f"(temps limite {options.temps_limite_s:g} s, "
         f"{'avec' if options.optimiser else 'sans'} optimisation)..."
     )
+    recapitulatif = _recapitulatif_des_niveaux(options.niveaux)
+    if recapitulatif:
+        typer.echo(recapitulatif)
     identifiant = generation.lancer_calcul(semestre_id, options, activer=not sans_activer)
     try:
         suivi = generation.attendre_calcul(identifiant)

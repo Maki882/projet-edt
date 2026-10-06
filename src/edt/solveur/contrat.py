@@ -5,8 +5,9 @@ Un moteur est une fonction pure du point de vue de l'application :
     resoudre(instantane, options, arret=None) -> ResultatSolveur
 
 - il ne lit que l'instantané (jamais la base) et n'écrit rien ;
-- il respecte toutes les contraintes du catalogue sauf celles de
-  `options.contraintes_desactivees`, et n'en abandonne jamais une de lui-même ;
+- il respecte toutes les contraintes présentes dans `options.niveaux` (une
+  clé absente est une contrainte ignorée, ce que `options.contraintes_desactivees`
+  répète), et n'en abandonne jamais une de lui-même ;
 - il place **toutes** les séances ou n'en place aucune : jamais de solution
   partielle (`placements` est vide hors statut `SOLUTION`) ;
 - il surveille `arret` (un `threading.Event`) et rend la main rapidement
@@ -28,7 +29,17 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 
-from edt.domaine.contraintes import CodeContrainte, normaliser_codes
+from edt.domaine.contraintes import (
+    CATALOGUE,
+    CodeContrainte,
+    Niveau,
+    Niveaux,
+    contrainte,
+    niveau,
+    niveaux_depuis_desactivees,
+    niveaux_par_defaut,
+    normaliser_codes,
+)
 from edt.domaine.instantane import Instantane, Placement
 from edt.domaine.parametres import Parametres
 from edt.erreurs import ErreurDonneesInvalides
@@ -52,8 +63,13 @@ class OptionsSolveur:
     """Réglages d'un calcul.
 
     - `temps_limite_s` : durée maximale de la recherche ;
-    - `contraintes_desactivees` : codes du catalogue que l'utilisateur a
-      décochés (tracés dans le résultat) ;
+    - `niveaux` : niveau retenu pour chaque contrainte (`edt.domaine.contraintes`) ;
+      dictionnaire **complet** attendu, une clé absente étant une contrainte
+      ignorée (`normaliser_niveaux` complète un choix partiel). C'est la seule
+      vérité : `contraintes_desactivees` en est déduit ;
+    - `contraintes_desactivees` : codes ignorés, c'est-à-dire absents de
+      `niveaux`. Donné seul (sans `niveaux`), il sert à construire `niveaux`
+      comme autrefois : niveaux par défaut sans ces codes ;
     - `optimiser` : minimiser l'objectif de qualité au lieu de s'arrêter à la
       première solution valide ;
     - `graine` : graine aléatoire (une autre graine donne une autre solution) ;
@@ -77,11 +93,20 @@ class OptionsSolveur:
     utiliser_indices: bool = True
     tolerer_violations_heritees: bool = False
     arret_sur_stagnation: bool = True
+    niveaux: Niveaux = field(default_factory=niveaux_par_defaut)
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self, "contraintes_desactivees", normaliser_codes(self.contraintes_desactivees)
-        )
+        desactivees = normaliser_codes(self.contraintes_desactivees)
+        niveaux = _niveaux_types(self.niveaux)
+        if desactivees and niveaux == niveaux_par_defaut():
+            niveaux = niveaux_depuis_desactivees(desactivees)
+        elif desactivees & niveaux.keys():
+            doubles = ", ".join(sorted(desactivees & niveaux.keys()))
+            raise ErreurDonneesInvalides(
+                f"Contrainte(s) à la fois ignorée(s) et dotée(s) d'un niveau : {doubles}."
+            )
+        object.__setattr__(self, "niveaux", niveaux)
+        object.__setattr__(self, "contraintes_desactivees", frozenset(CATALOGUE) - niveaux.keys())
         if self.temps_limite_s <= 0:
             raise ErreurDonneesInvalides("Le temps limite doit être strictement positif.")
         if self.nb_workers < 0:
@@ -93,16 +118,21 @@ class OptionsSolveur:
         parametres: Parametres,
         *,
         contraintes_desactivees: Iterable[str] = (),
+        niveaux: Mapping[str, str | Niveau] | None = None,
         relance_longue: bool = False,
         graine: int = 0,
         tolerer_violations_heritees: bool = False,
     ) -> OptionsSolveur:
-        """Options par défaut d'un calcul, tirées des paramètres globaux."""
+        """Options par défaut d'un calcul, tirées des paramètres globaux.
+
+        `niveaux`, s'il est donné, prime sur `contraintes_desactivees`.
+        """
         return cls(
             temps_limite_s=float(
                 parametres.temps_limite_long_s if relance_longue else parametres.temps_limite_s
             ),
             contraintes_desactivees=normaliser_codes(contraintes_desactivees),
+            niveaux=dict(niveaux) if niveaux is not None else niveaux_par_defaut(),
             optimiser=parametres.objectif_actif,
             graine=graine,
             nb_workers=parametres.nb_workers,
@@ -120,7 +150,27 @@ class OptionsSolveur:
             "utiliser_indices": self.utiliser_indices,
             "tolerer_violations_heritees": self.tolerer_violations_heritees,
             "arret_sur_stagnation": self.arret_sur_stagnation,
+            "niveaux": {code.value: n.value for code, n in sorted(self.niveaux.items())},
         }
+
+
+def _niveaux_types(choix: Mapping[str, str | Niveau]) -> Niveaux:
+    """Niveaux validés et typés ; une clé absente reste absente (contrainte ignorée).
+
+    Lève `ErreurDonneesInvalides` pour un code ou un niveau inconnu, et pour un
+    niveau autre que « nécessaire » sur une contrainte qui définit le problème.
+    """
+    niveaux: Niveaux = {}
+    for code, valeur in choix.items():
+        entree = contrainte(code)
+        retenu = valeur if isinstance(valeur, Niveau) else niveau(valeur)
+        if not entree.modifiable and retenu is not Niveau.NECESSAIRE:
+            raise ErreurDonneesInvalides(
+                f"La contrainte « {entree.libelle} » ({entree.code}) définit le problème : elle "
+                f"reste nécessaire, son niveau ne peut pas être « {retenu.libelle} »."
+            )
+        niveaux[entree.code] = retenu
+    return niveaux
 
 
 @dataclass(frozen=True)
