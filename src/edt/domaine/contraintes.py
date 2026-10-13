@@ -73,6 +73,7 @@ class CodeContrainte(StrEnum):
     VOLUME = "VOLUME"
     VERROU = "VERROU"
     JOUR_FERME = "JOUR_FERME"
+    REGLE = "REGLE"
 
 
 class Niveau(StrEnum):
@@ -147,9 +148,15 @@ _TOUJOURS_NECESSAIRES: frozenset[CodeContrainte] = frozenset(
         CodeContrainte.VERROU,
         CodeContrainte.JOUR_FERME,
         CodeContrainte.VOLUME,
+        CodeContrainte.REGLE,
     }
 )
-"""Contraintes qui définissent le problème : toujours nécessaires, niveau non modifiable."""
+"""Contraintes qui définissent le problème : toujours nécessaires, niveau non modifiable.
+
+`REGLE` y figure pour une autre raison : chaque règle personnalisée porte son
+propre niveau, le code n'en a pas à choisir (il n'apparaît pas dans le tableau
+des niveaux de la page Générer).
+"""
 
 _IMPORTANTES_PAR_DEFAUT: frozenset[CodeContrainte] = frozenset(
     {
@@ -276,6 +283,12 @@ CATALOGUE: dict[CodeContrainte, Contrainte] = dict(
             CodeContrainte.JOUR_FERME,
             "Jours fermés",
             "Aucune séance datée un jour fermé pour les groupes concernés.",
+        ),
+        _c(
+            CodeContrainte.REGLE,
+            "Règle personnalisée",
+            "Une règle personnalisée (`edt.domaine.regles`) est respectée ; chaque règle porte "
+            "son propre niveau, choisi à chaque calcul.",
         ),
     ]
 )
