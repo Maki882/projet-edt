@@ -145,7 +145,8 @@ class SuiviCalcul:
       niveau ;
     - `regles` : copie des règles personnalisées du semestre au lancement
       (`parametres["regles"]` : code, type, portée, paramètres, niveau retenu
-      ou `None` si la règle était ignorée, phrase) ;
+      ou `None` si la règle était ignorée, niveau propre de la règle
+      (`niveau_regle`), phrase) ;
     - `contraintes_desactivees` : codes ignorés au lancement (absents de `niveaux`) ;
     - `fichier_journal` : chemin du journal dédié du calcul ;
     - `avertissements` : situations tendues relevées par les pré-vérifications
@@ -859,8 +860,9 @@ def _regles_du_calcul(
     """Copie des règles personnalisées du semestre au lancement (`calcul.parametres["regles"]`).
 
     Une entrée par règle active de l'instantané : identifiant, code, type,
-    portée, paramètres canoniques, phrase, et le niveau retenu pour ce calcul
-    (`None` pour une règle ignorée). Le vérificateur lit cette copie pour
+    portée, paramètres canoniques, phrase, le niveau retenu pour ce calcul
+    (`niveau`, `None` pour une règle ignorée) et le niveau propre de la règle
+    au moment du calcul (`niveau_regle`). Le vérificateur lit cette copie pour
     rejouer les mêmes niveaux sur la version ; une règle qui en est absente a
     été créée après le calcul.
     """
@@ -889,6 +891,7 @@ def _regles_du_calcul(
                 },
                 "parametres": dict(canonique.parametres) if canonique else {},
                 "niveau": niveau.value if niveau is not None else None,
+                "niveau_regle": regle.niveau.value,
                 "phrase": regle.phrase,
             }
         )

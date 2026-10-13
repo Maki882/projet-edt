@@ -521,6 +521,8 @@ def test_les_regles_sont_copiees_avec_le_calcul_et_rendues_au_suivi(jeu_minimal)
     par_code = {regle["code"]: regle for regle in suivi.regles}
     assert par_code["R001"]["niveau"] == "facultatif"
     assert par_code["R002"]["niveau"] is None  # ignorée : copiée quand même, sans niveau
+    assert par_code["R001"]["niveau_regle"] == "necessaire"  # le niveau propre de la règle
+    assert par_code["R002"]["niveau_regle"] == "important"
     assert par_code["R001"]["type"] == "JOURS_TRAVAILLES"
     assert par_code["R001"]["portee"]["nature"] == "groupe"
     assert par_code["R001"]["parametres"]["jours"] == [
