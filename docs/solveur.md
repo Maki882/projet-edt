@@ -451,9 +451,11 @@ Dur ou souple se décide au niveau de la **source** ; une entorse souple coûte
 règle). Le message les dit : « 2 entorses à la règle R007 (Le groupe A1 ne
 travaille pas le samedi). ».
 
-**Poseurs** (`edt.solveur.personnalisees`, registre `enregistrer("solveur",
-type)` ; `types_non_couverts("solveur")` liste les types restants). Une règle
-active d'un type sans poseur fait refuser le calcul en la nommant.
+**Poseurs** (`edt.solveur.personnalisees` pour les types de sorte « séance »
+et les réglages de personne, `edt.solveur.regles_emploi` pour les types
+d'emploi du temps et de relation ; registre `enregistrer("solveur", type)`,
+`types_non_couverts("solveur")` est vide). Garde-fou : une règle active d'un
+type ajouté sans poseur fait refuser le calcul en la nommant.
 
 | Type | Où | Dur | Souple | Unité d'entorse |
 |---|---|---|---|---|
@@ -463,6 +465,27 @@ active d'un type sans poseur fait refuser le calcul en la nommant.
 | `SALLES` | domaines (dur), phase des salles (souple) | les salles refusées sont retirées | coût de la salle dans l'objectif de la phase des salles (`SeancePreparee.entorses_salles`) | une séance dans une salle refusée |
 | `PAUSE_DEJEUNER` | réglage de la personne : domaines (fixe) ou `_pause_dejeuner` (libre) | comme le déjeuner de l'établissement, avec les bornes de la règle | de même, l'entorse imputée à la règle | fixe : une séance qui recoupe la plage ; libre : une personne, un jour, un ensemble de semaines sans pause |
 | `PAUSE_MINIMALE` | réglage de la personne : `_pauses_et_trajets` | couples de choix interdits au-delà de la pause garantie par l'allongement des plages | un littéral par paire de séances et par source | une paire de séances de la personne trop rapprochées |
+| `MAX_PAR_JOUR` | `_regles_personnalisees` | par personne, jour et configuration de semaines : Σ durée (ou nombre) des choix du jour ≤ maximum | un booléen par inégalité relâchée (`_depasse`), un par (personne, jour) | une personne et un jour en défaut |
+| `CAMPUS_PAR_JOUR` | idem | booléens de présence par campus du jour ; « pas deux campus » par paire de campus | Σ présences ≤ 1 relâchée | une personne et un jour sur deux campus |
+| `MATIERES_PAR_JOUR` | idem | booléens de présence par matière du jour ; Σ ≤ maximum | relâchée | un groupe et un jour avec trop de matières |
+| `JOURNEES_LIBRES` | idem | booléens « occupée » par candidate (demi-journée ou journée) ; Σ occupées ≤ candidates − nombre, par configuration | relâchée, un par personne | une personne sans assez de demi-journées (ou journées) libres une semaine au moins |
+| `SANS_TROU` | idem | booléens de trou de l'objectif (`ModeleHoraires.trous`, partagés avec le confort) ; Σ ≤ maximum par configuration | relâchée, un par personne | une personne avec trop de créneaux de trou une semaine au moins |
+| `ORDRE_SEMAINE` | idem | par paire (avant, après) d'une même matière aux semaines communes : début(avant) − début(après) ≤ −1 sur les débuts codés (jour puis heure) | relâchée | une paire dans le mauvais ordre |
+| `REPARTITION_MATIERE` | idem | même jour : Σ jours présents ≤ 1 par (groupe, matière, configuration) ; jours différents : au plus un choix de la matière par jour | relâchée | un couple (groupe, matière, semaines) sur plusieurs jours ; un jour avec plus d'une séance |
+
+Pour ces sept types, `_depasse` pose « constante + Σ coef × choix ≤ maximum »
+en dur, ou la relâche en souple par un booléen d'entorse `e` et une marge
+(`≤ maximum + marge × e`), dont `bilan` recalcule la valeur (nature
+« depasse »). Les semaines suivent la définition du vérificateur : chaque
+séance est ramenée aux semaines de la règle, puis les semaines sont regroupées
+par ensemble de séances actives ensemble (`_configurations`) ; une entorse
+par jour ou par personne réunit les configurations (« une semaine au moins »),
+comme l'anomalie du vérificateur qui détaille les semaines. Définitions
+communes : le matin va jusqu'au début de la plage du déjeuner, une séance
+occupe chaque demi-journée qu'elle recoupe ; les jours travaillés de
+`JOURNEES_LIBRES` sans `parmi` sont le standard, un jour vaut ses deux
+demi-journées ; un créneau de trou est celui de l'indicateur `trous_creneaux` ;
+« après » commence strictement plus tard dans la semaine.
 
 Les domaines d'une séance dépendent de son besoin **et** des règles qui la
 concernent (une règle datée ne vise que les séances dont les semaines
@@ -491,8 +514,10 @@ horaires, campus et salle) et la pause déjeuner de chaque personne, en dur
 jours qu'elle couvre (`RegleResolue.couvre`). Un réglage de personne
 (déjeuner, pause) vaut toute la période sur la couche datée.
 
-**Temps B** (à venir) : `MAX_PAR_JOUR`, `JOURNEES_LIBRES`, `SANS_TROU`,
-`CAMPUS_PAR_JOUR`, `MATIERES_PAR_JOUR`, `ORDRE_SEMAINE`, `REPARTITION_MATIERE`.
+**Écart avec le vérificateur.** Une entorse par personne : deux personnes au
+même emploi du temps (deux demi-groupes sans séance propre) comptent deux
+entorses là où le vérificateur réunit les personnes dans la même situation en
+une seule anomalie (`entorses_par_regle` compte les anomalies).
 
 ## Objectif (mode optimisé)
 
@@ -1286,32 +1311,39 @@ Lecture :
   2 621 988 contraintes, 29 s de construction et aucune solution en 120 s.
   Le partage par séance (`seance_sur`) divise ces contraintes par 3,5.
 
-### Règles personnalisées (temps A)
+### Règles personnalisées
 
 Jeux fictifs `moyen` S1 (111 séances, 11 règles actives) et `grand` S1 (602
-séances, 13 règles actives), réglages par défaut (sans « optimiser », fils
-choisis par le moteur, niveaux par défaut), temps limite 120 s, graine 1, un
-processus neuf par mesure, poste de développement au calme. « Sans » : toutes
-les règles ignorées (`niveaux_regles={}`) ; « posables » : les règles des sept
-types du temps A à leur niveau, les autres (`CAMPUS_PAR_JOUR`, `MAX_PAR_JOUR`,
-`JOURNEES_LIBRES`) ignorées. Le vérificateur, aux mêmes niveaux, ne relève
-aucune erreur ni aucune entorse à une règle sur les quatre solutions.
+séances, 13 règles actives, des quatorze types : jours, horaires, créneaux
+interdits, campus, salles, déjeuner, pause, campus par jour, maximum par
+jour, journées libres, répartition), réglages par défaut (sans « optimiser »,
+fils choisis par le moteur, niveaux par défaut), temps limite 120 s, graine 1,
+un processus neuf par mesure, poste de développement au calme. « Sans » :
+toutes les règles ignorées (`niveaux_regles={}`) ; « toutes » : chaque règle
+active à son niveau. Le vérificateur, aux mêmes niveaux, ne relève aucune
+erreur ni aucune entorse à une règle sur les quatre solutions.
 
-| Jeu | Règles | Variables / contraintes | Construction | 1re solution | Entorses | Objectif, trous |
-|---|---|---|---|---|---|---|
-| moyen S1 | sans | 5 562 / 44 628 | 0,25 s | 2,1 s | 0 | 7 513, 458 |
-| moyen S1 | 7 posables | 2 809 / 7 192 | 0,10 s | 0,5 s | 0 | 4 407, 355 |
-| grand S1 | sans | 37 444 / 369 039 | 1,9 s | 16,6 s (MAX_ENSEIGNANT 2, retirées en 20,9 s) | 0 | 43 924, 2 489 |
-| grand S1 | 9 posables | 32 946 / 305 463 | 1,7 s | 16,2 s | 0 | 27 447, 1 408 |
+| Jeu | Règles | Variables / contraintes | Construction | 1re solution (entorses au départ) | Durée, arrêt | Entorses finales | Objectif, trous |
+|---|---|---|---|---|---|---|---|
+| moyen S1 | sans | 5 562 / 44 628 | 0,21 s | 1,8 s | 1,8 s, première solution | 0 | 7 513, 458 |
+| moyen S1 | toutes (11) | 2 861 / 7 274 | 0,09 s | 0,5 s | 0,5 s, première solution | 0 | 4 407, 355 |
+| grand S1 | sans | 37 444 / 369 039 | 1,6 s | 17,3 s (MAX_ENSEIGNANT 2) | 21,6 s, optimum prouvé | 0 | 43 924, 2 489 |
+| grand S1 | toutes (13) | 33 143 / 305 949 | 1,4 s | 16,2 s (R010 `MAX_PAR_JOUR` 2) | 20,2 s, optimum prouvé | 0 | 26 384, 1 327 |
 
 Lecture : les types de sorte « séance » ne coûtent rien et réduisent même le
 modèle (les règles `CAMPUS` et `PLAGE_HORAIRE` nécessaires retirent des choix :
 sur le jeu moyen, un seul campus reste en jeu et les couples de trajet
-disparaissent) ; les réglages par personne (`PAUSE_DEJEUNER` libre d'une
-classe, `PAUSE_MINIMALE` d'un groupe) ajoutent quelques dizaines de littéraux
-d'entorse. Le budget « première solution du jeu grand en moins de 45 s » est
-tenu avec les règles (16 s). Les trous et l'objectif ne sont pas comparables
-entre les lignes (sans « optimiser », ils ne sont pas minimisés).
+disparaissent) ; les réglages par personne et les règles d'emploi du temps
+(`PAUSE_DEJEUNER` libre d'une classe, `PAUSE_MINIMALE`, `CAMPUS_PAR_JOUR`
+d'une promotion, `MAX_PAR_JOUR`, `JOURNEES_LIBRES` de deux vacataires,
+`REPARTITION_MATIERE`) ajoutent quelques centaines de variables (sur le jeu
+grand : 33 143 variables avec toutes les règles contre 32 946 avec les seuls
+types de sorte séance et de réglage). La première solution, trouvée sans
+objectif, peut enfreindre une règle souple (deux jours au-delà du maximum de
+la promotion A5) ; l'amélioration la retire en quelques secondes. Le budget
+« première solution du jeu grand en moins de 45 s » est tenu avec toutes les
+règles (16 s). Les trous et l'objectif ne sont pas comparables entre les
+lignes (sans « optimiser », ils ne sont pas minimisés).
 
 ### Couche datée
 

@@ -38,7 +38,7 @@ from typer.testing import CliRunner
 from edt import cli
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.contraintes import Niveau
+from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import CibleIndisponibilite, DemiJournee, EtatCalcul
 from edt.domaine.instantane import Creneau
 from edt.domaine.regles import NaturePortee, TypeRegle, types_non_couverts
@@ -49,18 +49,9 @@ from edt.solveur.instanciation import instancier
 from edt.solveur.personnalisees import POSEURS
 from edt.solveur.preverification import pre_verifier
 from edt.solveur.replacement import OptionsReplacement, replacer
+from edt.verification import verifier
 
-TEMPS_B = frozenset(
-    {
-        TypeRegle.MAX_PAR_JOUR,
-        TypeRegle.JOURNEES_LIBRES,
-        TypeRegle.SANS_TROU,
-        TypeRegle.CAMPUS_PAR_JOUR,
-        TypeRegle.MATIERES_PAR_JOUR,
-        TypeRegle.ORDRE_SEMAINE,
-        TypeRegle.REPARTITION_MATIERE,
-    }
-)
+REGLE = CodeContrainte.REGLE
 
 LUNDI_SEUL = grille(jours=[LUNDI], samedi=False)
 """Quatre créneaux le lundi : 8 h 30, 10 h 45, 13 h 45 et 16 h."""
@@ -92,12 +83,13 @@ def souple(instantane, regle_id: int, niveau: str = "important"):
 # --------------------------------------------------------------------------- #
 
 
-def test_les_types_du_temps_a_ont_un_poseur():
-    assert types_non_couverts("solveur") == TEMPS_B
-    assert set(POSEURS) == set(TypeRegle) - TEMPS_B
+def test_tous_les_types_ont_un_poseur():
+    assert types_non_couverts("solveur") == frozenset()
+    assert set(POSEURS) == set(TypeRegle)
 
 
-def test_une_regle_d_un_type_sans_poseur_fait_refuser_le_calcul():
+def test_une_regle_d_un_type_sans_poseur_fait_refuser_le_calcul(monkeypatch):
+    monkeypatch.delitem(POSEURS, TypeRegle.MAX_PAR_JOUR)  # comme un type ajouté sans poseur
     f = Fabrique(creneaux=LUNDI_SEUL)
     f.salle()
     classe = f.groupe("A1")
@@ -601,3 +593,220 @@ def test_commande_pre_verifier_regle(jeu_minimal):
     )
     assert resultat.exit_code == 0, resultat.output
     assert "Règles personnalisées : R001 : ignorée." in resultat.output
+
+
+# --------------------------------------------------------------------------- #
+# Temps B : emploi du temps par jour ou par semaine, relations
+# --------------------------------------------------------------------------- #
+
+
+def entorses_verifiees(instantane, resultat, regle_id: int = 1) -> int:
+    """Anomalies `REGLE` du vérificateur pour la règle, aux niveaux retenus par le moteur."""
+    anomalies = verifier(instantane, resultat.placements, niveaux_regles=resultat.niveaux_regles)
+    de_la_regle = [a for a in anomalies if a.code is REGLE and a.regle_id == regle_id]
+    assert not [a for a in de_la_regle if a.bloquante], [a.message for a in de_la_regle]
+    return len(de_la_regle)
+
+
+def dur_puis_souple(instantane, regle_id: int = 1, attendu: int = 1):
+    """La règle nécessaire rend le calcul impossible ; souple, l'entorse est comptée, et le
+    vérificateur relève le même nombre d'anomalies sur la solution du moteur."""
+    refuse(instantane)
+    resultat = souple(instantane, regle_id)
+    code = instantane.regle(regle_id).code
+    assert resultat.statistiques["entorses_regles"] == {code: attendu}, resultat.message
+    assert f"{attendu} entorse" in resultat.message and code in resultat.message
+    assert entorses_verifiees(instantane, resultat, regle_id) == attendu
+    return resultat
+
+
+def test_max_par_jour():
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], nombre=3)  # 6 h le lundi, seul jour de la grille
+    f.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire", maximum=240)
+    instantane = f.instantane()
+    assert instantane.regles[0].phrase == "La classe A1 n'a pas plus de 4 h de cours par jour."
+    dur_puis_souple(instantane)
+
+    # En séances, pour un enseignant (seule unité admise) ; satisfaite avec une grille plus large.
+    g = Fabrique(creneaux=grille(jours=[LUNDI, MARDI], samedi=False))
+    g.salle()
+    petit = g.enseignant("M. Petit")
+    g.besoin([g.groupe("A1")], [petit], nombre=3)
+    g.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.ENSEIGNANT, petit, unite="seances", maximum=2)
+    instantane = g.instantane()
+    resultat = resoudre(instantane, OPTIONS)
+    places = verifier_solution(instantane, resultat)
+    assert max(sum(1 for p in places.values() if p.jour == jour) for jour in (LUNDI, MARDI)) <= 2
+    assert resultat.statistiques["entorses_regles"] == {}
+
+
+def test_campus_par_jour():
+    """Les salles ne laissent qu'une place sur chaque campus : deux campus le même jour."""
+    f = Fabrique(creneaux=LUNDI_SEUL[:2])
+    ndc, issy = f.campus("NDC"), f.campus("ISSY")
+    f.trajet(ndc, issy, 0)  # deux campus voisins : seule la règle sépare les campus
+    n101, i101 = f.salle("N101", campus=ndc), f.salle("I101", campus=issy)
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], nombre=2)
+    f.indisponibilite(CibleIndisponibilite.SALLE, n101, jour=LUNDI, debut=0, fin=10 * H + 40)
+    f.indisponibilite(CibleIndisponibilite.SALLE, i101, jour=LUNDI, debut=10 * H + 40)
+    f.regle(TypeRegle.CAMPUS_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    assert instantane.regles[0].phrase == "La classe A1 ne change pas de campus dans la journée."
+    resultat = dur_puis_souple(instantane)
+    places = verifier_solution(instantane, resultat)
+    assert {places["1-1"].salle_id, places["1-2"].salle_id} == {n101, i101}
+
+
+def test_matieres_par_jour():
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    classe = f.groupe("A1")
+    for _ in range(3):
+        f.besoin([classe], [f.enseignant()])  # trois matières différentes, le même lundi
+    f.regle(TypeRegle.MATIERES_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire", maximum=2)
+    instantane = f.instantane()
+    dur_puis_souple(instantane)
+
+
+def test_journees_libres():
+    """M. Petit remplit le lundi matin et le lundi après-midi : aucune demi-journée libre le lundi."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    petit = f.enseignant("M. Petit")
+    f.besoin([f.groupe("A1")], [petit], nombre=4)
+    f.regle(
+        TypeRegle.JOURNEES_LIBRES,
+        NaturePortee.ENSEIGNANT,
+        petit,
+        "necessaire",
+        parmi=["lundi matin", "lundi après-midi"],
+    )
+    instantane = f.instantane()
+    dur_puis_souple(instantane)
+
+    # Sans « parmi » : les jours travaillés de l'établissement ; les autres jours restent libres.
+    g = Fabrique(creneaux=LUNDI_SEUL)
+    g.salle()
+    petit = g.enseignant("M. Petit")
+    g.besoin([g.groupe("A1")], [petit], nombre=4)
+    g.regle(TypeRegle.JOURNEES_LIBRES, NaturePortee.ENSEIGNANT, petit, "necessaire", nombre=6)
+    instantane = g.instantane()
+    resultat = resoudre(instantane, OPTIONS)
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses_regles"] == {}
+
+    # En journées : venir au plus deux jours par semaine, pour trois séances sur trois jours.
+    h = Fabrique(creneaux=[c for c in grille(samedi=False) if c.debut == C1][:3])
+    h.salle()
+    petit = h.enseignant("M. Petit")
+    h.besoin([h.groupe("A1")], [petit], nombre=3)
+    h.regle(
+        TypeRegle.JOURNEES_LIBRES,
+        NaturePortee.ENSEIGNANT,
+        petit,
+        "necessaire",
+        unite="journee",
+        nombre=3,
+    )
+    instantane = h.instantane()
+    assert instantane.regles[0].phrase == "M. Petit vient au plus deux jours par semaine."
+    dur_puis_souple(instantane)
+
+
+def test_sans_trou():
+    """L'enseignant n'est libre qu'aux deux extrémités du lundi : deux créneaux de trou pour A1."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    classe, petit = f.groupe("A1"), f.enseignant("M. Petit")
+    f.besoin([classe], [petit], nombre=2)
+    f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, petit, jour=LUNDI, debut=C1 + 2 * H, fin=C4)
+    f.regle(TypeRegle.SANS_TROU, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    assert instantane.regles[0].phrase == "La classe A1 n'a aucun trou dans la semaine."
+    dur_puis_souple(instantane)
+
+    # Deux créneaux de trou tolérés : rien à signaler.
+    f.regle(TypeRegle.SANS_TROU, NaturePortee.GROUPE, classe, "necessaire", maximum=2)
+    instantane = f.instantane()
+    resultat = resoudre(instantane, options(niveaux_regles={2: Niveau.NECESSAIRE}))
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses_regles"] == {}
+
+
+def test_ordre_semaine():
+    """Le CM est imposé à 10 h 45 : le TD de la même matière ne peut passer qu'avant."""
+    f = Fabrique(creneaux=LUNDI_SEUL[:2])
+    f.salle()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], type_seance="CM", debut_impose=C2, jour_impose=LUNDI)
+    f.besoin([classe], [f.enseignant()], type_seance="TD", matiere_id=1)
+    f.regle(TypeRegle.ORDRE_SEMAINE, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    assert instantane.regles[0].phrase == (
+        "Pour la classe A1, dans chaque matière, le CM précède les TD de la semaine."
+    )
+    dur_puis_souple(instantane)
+
+    # Avec un troisième créneau, le TD passe après le CM.
+    g = Fabrique(creneaux=LUNDI_SEUL[:3])
+    g.salle()
+    classe = g.groupe("A1")
+    g.besoin([classe], [g.enseignant()], type_seance="CM", debut_impose=C2, jour_impose=LUNDI)
+    g.besoin([classe], [g.enseignant()], type_seance="TD", matiere_id=1)
+    g.regle(TypeRegle.ORDRE_SEMAINE, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = g.instantane()
+    places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
+    assert places["2-1"].debut == C3
+
+
+def test_repartition_matiere():
+    # Jours différents : deux séances de la matière, un seul jour dans la grille.
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], nombre=2)
+    f.regle(
+        TypeRegle.REPARTITION_MATIERE,
+        NaturePortee.GROUPE,
+        classe,
+        "necessaire",
+        mode="jours_differents",
+    )
+    instantane = f.instantane()
+    assert instantane.regles[0].phrase == (
+        "Les séances d'une même matière de la classe A1 ont lieu des jours différents."
+    )
+    dur_puis_souple(instantane)
+
+    # Même jour : un créneau par jour sur deux jours, deux séances.
+    g = Fabrique(creneaux=[c for c in grille(jours=[LUNDI, MARDI], samedi=False) if c.debut == C1])
+    g.salle()
+    classe = g.groupe("A1")
+    g.besoin([classe], [g.enseignant()], nombre=2)
+    g.regle(
+        TypeRegle.REPARTITION_MATIERE, NaturePortee.GROUPE, classe, "necessaire", mode="meme_jour"
+    )
+    instantane = g.instantane()
+    dur_puis_souple(instantane)
+
+
+def test_reproductible_avec_des_regles_d_emploi_du_temps():
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    f.salle()
+    classe = f.groupe("A1")
+    for _ in range(3):
+        f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.MATIERES_PAR_JOUR, NaturePortee.GROUPE, classe, maximum=2)
+    f.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.GROUPE, classe, maximum=240)
+    instantane = f.instantane()
+    premier, second = resoudre(instantane, OPTIONS), resoudre(instantane, OPTIONS)
+    assert premier.statut is StatutSolveur.SOLUTION
+    assert premier.placements == second.placements
+    assert premier.statistiques["entorses_regles"] == second.statistiques["entorses_regles"]
+    assert premier.statistiques["entorses_regles"] == {"R001": 1, "R002": 1}
+    verifier_solution(instantane, premier)

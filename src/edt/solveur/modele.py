@@ -63,8 +63,12 @@ Règles personnalisées (`edt.solveur.personnalisees`) : les types de sorte
 « séance » sont réglés dans les domaines par la préparation (entorse par choix,
 sans variable : `_creer_variables` la note) ; la pause déjeuner et la pause
 minimale de chaque personne viennent de `Instantane.reglages` avec leur
-source. Chaque entorse est imputée à sa source (`Regles.Imputation` : un code
-du catalogue ou l'identifiant d'une règle), au poids du niveau de la source ;
+source ; les types d'emploi du temps et de relation (maximum par jour,
+journées libres, trous, campus par jour, matières par jour, ordre dans la
+semaine, répartition d'une matière) ont chacun leur poseur
+(`edt.solveur.regles_emploi`, étape `_regles_personnalisees`). Chaque entorse
+est imputée à sa source (`Regles.Imputation` : un code du catalogue ou
+l'identifiant d'une règle), au poids du niveau de la source ;
 `Bilan.entorses_regles` les compte par règle.
 
 Les entorses aux exigences de salle (`EQUIPEMENT`, `CAPACITE`, `TYPE_SALLE`,
@@ -102,6 +106,7 @@ from edt.erreurs import ErreurEDT
 from edt.solveur.contrat import OptionsSolveur
 from edt.solveur.preparation import Preparation
 from edt.solveur.regles import ExigencePause, Imputation
+from edt.solveur.regles_emploi import PAR_MODELE
 
 journal = logging.getLogger(__name__)
 
@@ -272,6 +277,8 @@ class ModeleHoraires:
         self._compteurs: dict[str, list[tuple[int, Litteral]] | None] = {}
         # Entorses aux contraintes souples : par code, (unités, variable qui vaut l'entorse).
         self._entorses: dict[Imputation, list[tuple[int, Litteral]]] = defaultdict(list)
+        self._cache_trous: dict[tuple[int, ...], list[cp_model.IntVar]] = {}
+        self.index_de: dict[str, int] = {}
         self._campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
 
         etapes = [
@@ -280,6 +287,7 @@ class ModeleHoraires:
             self._pauses_et_trajets,
             self._maxima_journaliers,
             self._pause_dejeuner,
+            self._regles_personnalisees,
             self._capacite_des_salles,
             self._briser_les_symetries,
         ]
@@ -370,6 +378,25 @@ class ModeleHoraires:
         self._definitions.append((penalite, "aucun", exceptions))
         return penalite
 
+    def au_moins_un(self, litteraux: Sequence[Litteral]) -> Litteral:
+        """`_au_moins_un`, pour les poseurs de `edt.solveur.regles_emploi`."""
+        return self._au_moins_un(litteraux)
+
+    def definir(self, variable: cp_model.IntVar, nature: str, donnees: object) -> None:
+        """Enregistre la définition d'une variable auxiliaire (pour `bilan`, voir `_completer`)."""
+        self._definitions.append((variable, nature, donnees))
+
+    def noter_entorse(self, imputation: Imputation, unites: int, litteral: Litteral) -> None:
+        """Compte `unites` entorses imputées à `imputation` quand `litteral` est vrai."""
+        self._entorses[imputation].append((unites, litteral))
+
+    def trous(self, emploi: Sequence[int]) -> list[cp_model.IntVar]:
+        """Booléens de trou d'un emploi du temps (`_trous`), partagés entre l'objectif et les règles."""
+        cle = tuple(emploi)
+        if cle not in self._cache_trous:
+            self._cache_trous[cle] = self._trous(emploi, self._creneaux_par_jour())
+        return self._cache_trous[cle]
+
     def _ensemble(self, litteraux: Sequence[Litteral]) -> Litteral:
         """Littéral impliqué par la conjonction des `litteraux` (vrai dès qu'ils le sont tous)."""
         restants = [litteral for litteral in litteraux if litteral is not True]
@@ -399,6 +426,7 @@ class ModeleHoraires:
 
     def _creer_variables(self) -> None:
         cache: dict[tuple[int, int, int], tuple[Option, ...]] = {}
+        self.index_de = {seance.seance.id: seance.index for seance in self.seances}
         for seance in self.seances:
             # Les séances d'un même besoin partagent leurs domaines (mêmes objets).
             cle = (id(seance.debuts), id(seance.salles), id(seance.debuts_interdits))
@@ -738,7 +766,7 @@ class ModeleHoraires:
         sa lignée, un enseignant les siennes. Deux personnes au même emploi du
         temps (deux demi-groupes sans séance propre) le partagent.
         """
-        index_de = {seance.seance.id: seance.index for seance in self.seances}
+        index_de = self.index_de
         emplois: dict[tuple[int, ...], list[tuple]] = defaultdict(list)
         for emploi in self.instantane.emplois:
             indices = tuple(sorted(index_de[s] for s in emploi.seances if s in index_de))
@@ -886,6 +914,27 @@ class ModeleHoraires:
             nb_entorses,
             len(recoupe),
         )
+
+    # -- règles personnalisées d'emploi du temps et de relation ----------------------
+
+    def _regles_personnalisees(self) -> None:
+        """Un poseur par type (`edt.solveur.regles_emploi.PAR_MODELE`) ; les types de sorte
+        « séance » et les réglages de personne sont déjà réglés ailleurs."""
+        for regle in sorted(self.instantane.regles, key=lambda r: r.id):
+            poseur = PAR_MODELE.get(regle.type)
+            if poseur is None:
+                continue
+            avant_contraintes = self.nb_contraintes
+            avant_entorses = sum(len(liste) for liste in self._entorses.values())
+            poseur(self, regle)
+            journal.debug(
+                "Règle %s (%s, %s) : %d contrainte(s), %d littéral(aux) d'entorse",
+                regle.code,
+                regle.type.value,
+                regle.niveau.value,
+                self.nb_contraintes - avant_contraintes,
+                sum(len(liste) for liste in self._entorses.values()) - avant_entorses,
+            )
 
     # -- salles (condition nécessaire) --------------------------------------------
 
@@ -1147,7 +1196,7 @@ class ModeleHoraires:
             for emploi, nb_groupes in emplois_groupes:
                 for actives, nb_semaines in self._configurations(emploi):
                     fois = nb_groupes * nb_semaines
-                    for trou in self._trous(actives, creneaux):
+                    for trou in self.trous(actives):
                         trous.append((fois, trou))
                         self._termes.append((parametres.poids_trous * fois, trou))
         if parametres.poids_changement_campus:
@@ -1178,7 +1227,8 @@ class ModeleHoraires:
         Chaque variable auxiliaire reçoit sa plus petite valeur permise : « ou »
         vaut vrai si l'un de ses littéraux est vrai, « et » s'ils le sont tous,
         « aucun » si aucun ne l'est ; un « surplus » vaut le nombre d'unités
-        entamées au-delà du maximum. Les définitions sont dans l'ordre de
+        entamées au-delà du maximum ; un « depasse » vaut vrai si la somme
+        pondérée dépasse le maximum. Les définitions sont dans l'ordre de
         création : leurs littéraux sont toujours déjà connus.
         """
 
@@ -1195,6 +1245,11 @@ class ModeleHoraires:
                 termes, acquis, maximum, unite = donnees
                 charge = acquis + sum(duree for duree, litteral in termes if vrai(litteral))
                 valeurs[variable.index] = max(0, -(-(charge - maximum) // unite))
+                continue
+            if nature == "depasse":
+                termes, acquis, maximum = donnees
+                total = acquis + sum(coef for coef, litteral in termes if vrai(litteral))
+                valeurs[variable.index] = int(total > maximum)
                 continue
             un_vrai = any(vrai(litteral) for litteral in donnees)
             if nature == "ou":
