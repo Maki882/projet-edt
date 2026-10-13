@@ -62,7 +62,6 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from edt.db import modeles as m
 from edt.domaine.enumerations import (
     JOURS,
-    SAMEDI,
     Accessibilite,
     Gravite,
     OrigineOccurrence,
@@ -72,7 +71,7 @@ from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
-from edt.services.emploi_du_temps import raccords
+from edt.services.emploi_du_temps import raccords, regles_personnalisees
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
@@ -244,7 +243,7 @@ def formulaire_seance(
     seance = _seance(session, seance_hebdo_id)
     besoin = seance.besoin
     duree = seance.fin_min - seance.debut_min
-    jours = _jours_possibles(session, besoin, seance.jour)
+    jours = _jours_possibles(session, seance, salle_id)
     jour = seance.jour if jour is None else jour
     if jour not in dict(jours):
         jour = seance.jour
@@ -291,7 +290,7 @@ def modifier_placement(
     duree = seance.fin_min - seance.debut_min
     if not 0 <= jour <= 6:
         raise ErreurDonneesInvalides(f"Jour invalide : {jour} (attendu : 0 pour lundi à 6).")
-    if jour not in dict(_jours_possibles(session, besoin, seance.jour)):
+    if jour not in dict(_jours_possibles(session, seance, salle_id)):
         raise ErreurDonneesInvalides(f"Cette séance ne peut pas être proposée le {JOURS[jour]}.")
     debuts = dict(
         _debuts_possibles(
@@ -765,13 +764,26 @@ def _occurrence(session: Session, occurrence_id: int) -> m.Occurrence:
 
 
 def _jours_possibles(
-    session: Session, besoin: m.Besoin, actuel: int
+    session: Session, seance: m.SeanceHebdo, salle_id: int | None
 ) -> tuple[tuple[int, str], ...]:
-    """Jours de la grille ; le samedi seulement si le type de séance l'autorise (ou s'il est actuel)."""
-    jours = set(session.scalars(select(m.Creneau.jour).distinct()))
-    if not besoin.type_seance.samedi_autorise and actuel != SAMEDI:
-        jours.discard(SAMEDI)
-    jours.add(actuel)
+    """Jours de la grille où la séance peut avoir lieu, plus son jour actuel.
+
+    Les jours permis sont ceux des réglages résolus (`Instantane.reglages`) :
+    jours travaillés de l'établissement, case « samedi autorisé » du type de
+    séance, règles `JOURS_TRAVAILLES` de chaque axe et du campus de la salle
+    `salle_id` (à défaut, celle de la séance). Si la séance n'est pas dans
+    l'instantané ou que les règles ne se lisent pas (journalisé), les jours
+    travaillés de l'établissement.
+    """
+    grille = set(session.scalars(select(m.Creneau.jour).distinct()))
+    salle_id = seance.salle_id if salle_id is None else salle_id
+    campus_id = session.scalar(select(m.Salle.campus_id).where(m.Salle.id == salle_id))
+    permis = regles_personnalisees.jours_permis(
+        session, seance.besoin.semestre_id, seance.besoin_id, seance.rang, campus_id
+    )
+    if permis is None:
+        permis = frozenset(lire_parametres(session).jours_travailles)
+    jours = (grille & permis) | {seance.jour}
     return tuple((jour, JOURS[jour].capitalize()) for jour in sorted(jours))
 
 
