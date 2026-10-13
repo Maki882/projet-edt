@@ -270,6 +270,7 @@ class _Planning:
         voisins: Sequence[_Place],
         ordre,
         seance_id: str | None = None,
+        besoin_jour: Besoin | None = None,
     ) -> tuple[int, int] | None:
         """`(salle, coût des entorses)` : la salle de `ordre` la moins coûteuse, libre et permise.
 
@@ -278,7 +279,8 @@ class _Planning:
         `SALLES`, `CAMPUS` ou d'horaires de portée campus de la séance est
         écartée si la contrainte est dure, pénalisée si elle est souple. Le
         coût des exigences de salle souples que la salle ne satisfait pas
-        s'ajoute.
+        s'ajoute. Avec `besoin_jour`, les jours permis se jugent ici, avec le
+        campus de chaque salle (une règle de jours vise un campus possible).
         """
         regles = self.regles
         compatibles = regles.salles_compatibles(besoin)
@@ -297,6 +299,17 @@ class _Planning:
         meilleure: tuple[int, int] | None = None
         for salle_id in ordre:
             cout = sum(regles.poids(code) for code in compatibles.entorses.get(salle_id, ()))
+            if besoin_jour is not None:
+                du_jour = [
+                    v
+                    for v in regles.violations_de_jour(
+                        seance_id, date.weekday(), campus_de.get(salle_id), besoin_jour
+                    )
+                    if regles.couvre(v, date)
+                ]
+                if any(regles.dure_violation(v) for v in du_jour):
+                    continue
+                cout += sum(regles.poids_violation(v) for v in regles.souples_violations(du_jour))
             if regles_salle:
                 choix = Choix(
                     date.weekday(), debut, fin, campus_id=campus_de.get(salle_id), salle_id=salle_id
@@ -435,6 +448,18 @@ def _a_programmer(origine: Occurrence, raison: str) -> Replacement:
     return Replacement(origine, occurrence, None, raison)
 
 
+def _jours_par_campus(regles: Regles, besoin: Besoin, seance_id: str | None) -> bool:
+    """Vrai si une règle de jours vise le campus d'une salle possible de la séance.
+
+    Le jour se juge alors salle par salle (campus de la salle), comme la
+    préparation le fait campus par campus sur la semaine type.
+    """
+    if seance_id is None or seance_id not in regles.instantane.reglages.jours:
+        return False
+    campus = {salle.campus_id for salle in regles.salles_compatibles(besoin).salles}
+    return bool(regles.jours_de(seance_id).campus_regles & campus)
+
+
 def _candidates(
     regles: Regles,
     besoin: Besoin,
@@ -463,6 +488,8 @@ def _candidates(
     else:
         dates = (premier + dt.timedelta(days=n) for n in range((dernier - premier).days + 1))
     lundi_origine = lundi_de(origine.date)
+    par_campus = _jours_par_campus(regles, besoin, origine.seance_id)
+    campus_possibles = sorted({s.campus_id for s in regles.salles_compatibles(besoin).salles})
     places = []
     for date in dates:
         jour = date.weekday()
@@ -473,13 +500,28 @@ def _candidates(
         )
         if not impose and not regles.instantane.debuts_de_creneau(jour):
             continue
-        violations_jour = [
-            v
-            for v in (
-                [] if impose else regles.violations_de_jour(origine.seance_id, jour, None, besoin)
-            )
-            if regles.couvre(v, date)
-        ]
+        if impose:
+            violations_jour: list = []
+        elif par_campus:
+            # Jugé salle par salle (`_Planning.salle_libre`) : le jour n'est écarté ici que
+            # s'il est fermé sur tous les campus possibles.
+            fermes = [
+                any(
+                    regles.dure_violation(v)
+                    for v in regles.violations_de_jour(origine.seance_id, jour, campus, besoin)
+                    if regles.couvre(v, date)
+                )
+                for campus in campus_possibles
+            ]
+            if fermes and all(fermes):
+                continue
+            violations_jour = []
+        else:
+            violations_jour = [
+                v
+                for v in regles.violations_de_jour(origine.seance_id, jour, None, besoin)
+                if regles.couvre(v, date)
+            ]
         if any(regles.dure_violation(v) for v in violations_jour):
             continue
         entorses_jour = sum(
@@ -529,6 +571,7 @@ def _placer(
     # La place retenue minimise éloignement et entorses : les candidates arrivent par
     # éloignement croissant, on s'arrête dès qu'aucune ne peut plus battre la meilleure.
     meilleure: tuple[int, Occurrence] | None = None
+    par_campus = _jours_par_campus(regles, besoin, origine.seance_id)
     for cout, date, debut in _candidates(regles, besoin, origine, premier, dernier, options):
         if meilleure is not None and cout >= meilleure[0]:
             break
@@ -564,7 +607,14 @@ def _placer(
             continue
         cout += sum(regles.poids_violation(v) * n for v, n in sans_pause.items())
         salle = planning.salle_libre(
-            besoin, date, debut, fin, voisins, salles, seance_id=origine.seance_id
+            besoin,
+            date,
+            debut,
+            fin,
+            voisins,
+            salles,
+            seance_id=origine.seance_id,
+            besoin_jour=besoin if par_campus else None,
         )
         if salle is None:
             refus["l'absence de salle libre"] += 1

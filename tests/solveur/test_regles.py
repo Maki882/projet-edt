@@ -30,6 +30,7 @@ from tests.solveur.fabrique import (
     H,
     grille,
     options,
+    verifier_dates,
     verifier_solution,
 )
 from tests.solveur.test_couche_datee import SEMAINE, place
@@ -948,3 +949,66 @@ def test_verrou_et_regles_de_salle():
     assert verifier_solution(instantane, resoudre(instantane, OPTIONS))["1-1"].salle_id == 2
     h.indisponibilite(CibleIndisponibilite.SALLE, 2, jour=LUNDI)
     refuse(h.instantane(), "indisponibles")
+
+
+def test_replacement_juge_le_jour_avec_le_campus_de_la_salle():
+    """Scénario de la revue : le vendredi est fermé sur C2 ; S1 (C1) est indisponible ce jour-là :
+    rien ne convient en dur, et la règle souple fait payer la salle de C2."""
+
+    def etablissement(niveau: str):
+        f = Fabrique(nb_semaines=2)
+        c1, c2 = f.campus("C1"), f.campus("C2")
+        f.salle("S1", campus=c1)
+        f.salle("S2", campus=c2)
+        classe = f.groupe("A1")
+        f.besoin([classe], [f.enseignant()])
+        for jour in (MARDI, MERCREDI, 3):
+            f.indisponibilite(CibleIndisponibilite.GROUPE, classe, jour=jour)
+        f.indisponibilite(CibleIndisponibilite.SALLE, 1, jour=4)
+        f.jour_ferme(RENTREE + SEMAINE)
+        f.regle(
+            TypeRegle.JOURS_TRAVAILLES,
+            NaturePortee.CAMPUS,
+            c2,
+            niveau,
+            jours=["lundi", "mardi", "mercredi", "jeudi"],
+        )
+        return f.instantane()
+
+    placements = [place("1-1", LUNDI, C1, 1)]
+    instantane = etablissement("necessaire")
+    instancie = instancier(instantane, placements)
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    nouvelle = replacement.occurrence
+    # Pas le vendredi sur C2 : la place va au lundi de l'autre semaine, en S1.
+    assert (nouvelle.date.weekday(), nouvelle.salle_id) != (4, 2)
+    assert nouvelle.date == RENTREE and nouvelle.salle_id == 1
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, nouvelle],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles={1: Niveau.NECESSAIRE},
+    )
+
+    instantane = etablissement("facultatif")
+    instancie = instancier(instantane, placements)
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    assert (replacement.occurrence.date, replacement.occurrence.salle_id) == (
+        RENTREE + SEMAINE + dt.timedelta(days=4),
+        2,
+    )
+    assert replacement.cout == 4 * 10 + 20  # quatre jours d'éloignement, une entorse facultative
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, replacement.occurrence],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles={1: Niveau.FACULTATIF},
+    )
