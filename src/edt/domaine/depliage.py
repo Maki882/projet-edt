@@ -6,9 +6,10 @@ Semaines ouvertes d'un besoin
 -----------------------------
 Une semaine du semestre est *ouverte* pour un besoin si elle recoupe sa
 fenêtre (`date_debut`..`date_fin`, par défaut tout le semestre) et si elle
-n'est pas entièrement fermée pour lui : au moins un jour du lundi au
-vendredi n'est couvert par aucune fermeture globale ni par une fermeture
-visant l'un de ses groupes. Une semaine entièrement fermée n'est pas
+n'est pas entièrement fermée pour lui : au moins un **jour travaillé** de
+l'établissement (paramètre `jours_travailles`, lundi à vendredi par défaut)
+n'est couvert par aucune fermeture globale ni par une fermeture visant l'un
+de ses groupes. Une semaine entièrement fermée n'est pas
 instanciée ; une semaine partiellement fermée (un jour férié) reste active
 et l'occurrence qui tombe le jour fermé est replacée par la couche datée.
 
@@ -42,8 +43,11 @@ from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import JOURS, ModeVolume
 from edt.domaine.instantane import Besoin, JourFerme, ProblemeDepliage, SeanceAPlacer, id_seance
 
-JOURS_OUVRES = range(5)
-"""Lundi à vendredi : les jours examinés pour dire qu'une semaine est entièrement fermée."""
+JOURS_OUVRES_PAR_DEFAUT: tuple[int, ...] = (0, 1, 2, 3, 4)
+"""Lundi à vendredi : valeur par défaut du paramètre `jours_travailles`."""
+
+JOURS_OUVRES = JOURS_OUVRES_PAR_DEFAUT
+"""Ancien nom, conservé pour les appelants : préférer `Parametres.jours_travailles`."""
 
 _JoursFermes = tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]
 """Jours fermés pour tous, puis plages de jours fermés pour certains groupes (numéros de jour)."""
@@ -85,9 +89,17 @@ class _Fermetures:
     `JourFerme.concerne` ; seule la façon de la calculer change.
     """
 
-    def __init__(self, semaines: Iterable[Semaine], jours_fermes: Iterable[JourFerme]) -> None:
+    def __init__(
+        self,
+        semaines: Iterable[Semaine],
+        jours_fermes: Iterable[JourFerme],
+        jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
+    ) -> None:
+        travailles = tuple(sorted(set(jours_travailles)))
+        if not travailles:
+            raise ValueError("Au moins un jour travaillé est attendu.")
         self._semaines = tuple(
-            (semaine, lundi, range(lundi + JOURS_OUVRES.start, lundi + JOURS_OUVRES.stop))
+            (semaine, lundi, tuple(lundi + jour for jour in travailles))
             for semaine, lundi in ((semaine, semaine.lundi.toordinal()) for semaine in semaines)
         )
         self._fermetures = tuple(jours_fermes)
@@ -138,23 +150,31 @@ class _Fermetures:
 
 
 def semaines_ouvertes(
-    besoin: Besoin, semaines: Sequence[Semaine], jours_fermes: Iterable[JourFerme]
+    besoin: Besoin,
+    semaines: Sequence[Semaine],
+    jours_fermes: Iterable[JourFerme],
+    jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
 ) -> tuple[Semaine, ...]:
     """Semaines du semestre où le besoin peut avoir cours (voir la règle en tête de module)."""
-    return _Fermetures(semaines, jours_fermes).semaines_ouvertes(besoin)
+    return _Fermetures(semaines, jours_fermes, jours_travailles).semaines_ouvertes(besoin)
 
 
 def deplier(
-    besoins: Iterable[Besoin], semaines: Sequence[Semaine], jours_fermes: Iterable[JourFerme]
+    besoins: Iterable[Besoin],
+    semaines: Sequence[Semaine],
+    jours_fermes: Iterable[JourFerme],
+    jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
 ) -> Depliage:
     """Déplie les besoins d'un semestre en séances hebdomadaires à placer.
 
     `semaines` sont les semaines du semestre (voir
     `edt.domaine.calendrier.semaines_entre`), `jours_fermes` les fermetures
-    du calendrier. Les séances sortent triées par besoin puis par rang.
+    du calendrier, `jours_travailles` les jours travaillés de l'établissement
+    (`Parametres.jours_travailles`). Les séances sortent triées par besoin
+    puis par rang.
     """
     fermetures = tuple(jours_fermes)
-    calendrier = _Fermetures(semaines, fermetures)
+    calendrier = _Fermetures(semaines, fermetures, jours_travailles)
     seances: list[SeanceAPlacer] = []
     problemes: list[ProblemeDepliage] = []
 

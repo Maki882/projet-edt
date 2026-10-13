@@ -12,6 +12,8 @@ Chargé par `python -m edt jeu-minimal` et par les tests (fixture
   (un étudiant fictif inscrit aussi dans un demi-groupe) ;
 - 6 matières, 16 besoins dans les trois modes de volume (dont un besoin à
   deux groupes sans enseignant, un DST et un examen ponctuels) ;
+- 2 règles personnalisées actives (la promotion ne travaille pas le samedi,
+  la classe 1 a une pause déjeuner libre) et les règles de base, proposées ;
 - le semestre 1 de l'année 2026-2027, deux périodes de vacances et une
   semaine d'examens propre à la promotion.
 
@@ -39,12 +41,14 @@ from edt.db.modeles import (
     Indisponibilite,
     JourFerme,
     Matiere,
+    Regle,
     Salle,
     Trajet,
     TypeSalle,
     TypeSeance,
     groupe_chevauchement,
 )
+from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import (
     Accessibilite,
     CibleIndisponibilite,
@@ -52,6 +56,15 @@ from edt.domaine.enumerations import (
     NatureGroupe,
     NatureJourFerme,
     StatutEnseignant,
+)
+from edt.domaine.parametres import Parametres
+from edt.domaine.regles import (
+    REGLES_DE_BASE,
+    EtatRegle,
+    NaturePortee,
+    OrigineRegle,
+    TypeRegle,
+    valider_parametres,
 )
 from edt.erreurs import ErreurRegleMetier
 
@@ -73,6 +86,7 @@ class JeuMinimal:
     nb_groupes: int
     nb_matieres: int
     nb_besoins: int
+    nb_regles: int = 0
 
 
 def creer_jeu_minimal(session: Session) -> JeuMinimal:
@@ -342,6 +356,59 @@ def creer_jeu_minimal(session: Session) -> JeuMinimal:
     session.add_all(besoins)
     session.flush()
 
+    # -- règles personnalisées ------------------------------------------------------
+    # Validées par le schéma de leur type ; les règles de base restent « proposées ».
+    globaux = Parametres()
+    regles = [
+        Regle(
+            annee_scolaire_id=annee.id,
+            code="R001",
+            type=TypeRegle.JOURS_TRAVAILLES,
+            portee=NaturePortee.GROUPE,
+            groupe_id=promo.id,
+            parametres=valider_parametres(
+                TypeRegle.JOURS_TRAVAILLES,
+                {"jours": ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]},
+            ),
+            niveau=Niveau.NECESSAIRE,
+            etat=EtatRegle.ACTIVE,
+            origine=OrigineRegle.SAISIE,
+            commentaire="La promotion ne travaille pas le samedi, même pour les TP.",
+        ),
+        Regle(
+            annee_scolaire_id=annee.id,
+            code="R002",
+            type=TypeRegle.PAUSE_DEJEUNER,
+            portee=NaturePortee.GROUPE,
+            groupe_id=g1.id,
+            parametres=valider_parametres(
+                TypeRegle.PAUSE_DEJEUNER,
+                {"mode": "libre", "debut": "12:00", "fin": "14:00", "duree": 60},
+                globaux,
+            ),
+            niveau=Niveau.IMPORTANT,
+            etat=EtatRegle.ACTIVE,
+            semestre_id=semestre.id,
+            origine=OrigineRegle.SAISIE,
+        ),
+    ]
+    regles.extend(
+        Regle(
+            annee_scolaire_id=annee.id,
+            code=f"R{numero:03d}",
+            type=base.type,
+            portee=NaturePortee.ETABLISSEMENT,
+            parametres=valider_parametres(base.type, base.parametres, globaux),
+            niveau=base.niveau,
+            etat=EtatRegle.PROPOSEE,
+            origine=OrigineRegle.BASE,
+            commentaire=base.commentaire,
+        )
+        for numero, base in enumerate(REGLES_DE_BASE, start=len(regles) + 1)
+    )
+    session.add_all(regles)
+    session.flush()
+
     jeu = JeuMinimal(
         annee_scolaire_id=annee.id,
         semestre_id=semestre.id,
@@ -351,6 +418,7 @@ def creer_jeu_minimal(session: Session) -> JeuMinimal:
         nb_groupes=len(groupes),
         nb_matieres=len(matieres),
         nb_besoins=len(besoins),
+        nb_regles=len(regles),
     )
     journal.info(
         "Jeu minimal créé : %d salles, %d groupes, %d besoins (semestre %s)",

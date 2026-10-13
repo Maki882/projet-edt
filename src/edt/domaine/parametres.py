@@ -10,7 +10,16 @@ Pour ajouter un paramètre : ajouter un champ ici (avec `_champ`), c'est tout.
 Il apparaît automatiquement dans la table `parametre` à la prochaine
 initialisation et dans l'écran de configuration. Un paramètre **à choix**
 (`choix=((valeur, libellé), ...)`) est une chaîne parmi une liste fermée ; sa
-définition a `type == "choix"`.
+définition a `type == "choix"`. Un paramètre **ensemble de jours**
+(`jours=True`) est un tuple trié de numéros de jour (0 = lundi), enregistré
+en JSON comme une liste ; sa définition a `type == "jours"`.
+
+Jours travaillés : `jours_travailles` est le **standard** des jours de cours
+de l'établissement (lundi à vendredi par défaut). Un jour de la grille hors
+du standard (le samedi) est un jour d'appoint, ouvert seulement par une
+exception : la case « samedi autorisé » d'un type de séance ou une règle
+personnalisée (`edt.domaine.regles`). Le dépliage, la contrainte `JOURS` et
+les écrans lisent ce paramètre ; rien ne code plus « lundi à vendredi » en dur.
 
 Pause déjeuner
 --------------
@@ -36,19 +45,26 @@ Le vérificateur, le solveur et les indicateurs ne lisent que `plage_dejeuner`,
 from __future__ import annotations
 
 import dataclasses
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_texte
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
-ValeurParametre = int | bool | str
+ValeurParametre = int | bool | str | tuple[int, ...]
 
 Choix = tuple[tuple[str, str], ...]
 """Valeurs permises d'un paramètre à choix : couples (valeur enregistrée, libellé affiché)."""
 
 TYPE_CHOIX = "choix"
 """Valeur de `DefinitionParametre.type` pour un paramètre à choix."""
+
+TYPE_JOURS = "jours"
+"""Valeur de `DefinitionParametre.type` pour un ensemble de jours (numéros, 0 = lundi)."""
+
+JOURS_TRAVAILLES_PAR_DEFAUT: tuple[int, ...] = (0, 1, 2, 3, 4)
 
 DEJEUNER_FIXE = "fixe"
 DEJEUNER_LIBRE = "libre"
@@ -69,6 +85,7 @@ def _champ(
     maximum: int | None = None,
     unite: str = "",
     choix: Choix | None = None,
+    jours: bool = False,
 ) -> Any:
     return field(
         default=defaut,
@@ -79,6 +96,7 @@ def _champ(
             "maximum": maximum,
             "unite": unite,
             "choix": choix or (),
+            "jours": jours,
         },
     )
 
@@ -127,6 +145,14 @@ class Parametres:
         minimum=0,
         maximum=1440,
         unite="heure",
+    )
+    jours_travailles: tuple[int, ...] = _champ(
+        JOURS_TRAVAILLES_PAR_DEFAUT,
+        "Jours travaillés de l'établissement",
+        "Les jours où les cours ont lieu en temps normal. Un autre jour de la grille (le "
+        "samedi) n'est ouvert que par exception : un type de séance qui l'autorise ou une "
+        "règle personnalisée.",
+        jours=True,
     )
     pause_min: int = _champ(
         15,
@@ -268,8 +294,9 @@ class Parametres:
 class DefinitionParametre:
     """Description d'un paramètre pour l'interface et la validation.
 
-    `type` vaut `int`, `bool` ou la chaîne `"choix"` ; dans ce dernier cas
-    `choix` donne les couples (valeur, libellé) permis.
+    `type` vaut `int`, `bool`, la chaîne `"choix"` (`choix` donne alors les
+    couples valeur / libellé permis) ou la chaîne `"jours"` (ensemble de
+    numéros de jour, 0 = lundi).
     """
 
     cle: str
@@ -367,6 +394,8 @@ def convertir_texte(cle: str, texte: str) -> ValeurParametre:
     entree = definition(cle)
     if entree.type == TYPE_CHOIX:
         return _valider_valeur(entree, texte.strip())
+    if entree.type == TYPE_JOURS:
+        return _valider_valeur(entree, _jours_depuis_texte(entree, texte))
     brut = texte.strip().lower()
     if entree.type is bool:
         if brut in ("1", "true", "vrai", "oui", "on"):
@@ -385,7 +414,42 @@ def convertir_texte(cle: str, texte: str) -> ValeurParametre:
     return _valider_valeur(entree, nombre)
 
 
+def _jours_depuis_texte(entree: DefinitionParametre, texte: str) -> tuple[int, ...]:
+    """Lit « lundi, mardi » ou « 0,1 » (séparateurs : virgule, point-virgule, espace)."""
+    noms = {nom: numero for numero, nom in enumerate(JOURS)}
+    jours = []
+    for mot in re.split(r"[,;\s]+", texte.strip().lower()):
+        if not mot:
+            continue
+        if mot in noms:
+            jours.append(noms[mot])
+        elif mot.isdigit():
+            jours.append(int(mot))
+        else:
+            raise ErreurDonneesInvalides(
+                f"{entree.libelle} : jour inconnu « {mot} » (attendu : " + ", ".join(JOURS) + ")."
+            )
+    return tuple(jours)
+
+
 def _valider_valeur(entree: DefinitionParametre, valeur: object) -> ValeurParametre:
+    if entree.type == TYPE_JOURS:
+        if isinstance(valeur, str | bytes) or not isinstance(
+            valeur, list | tuple | set | frozenset
+        ):
+            raise ErreurDonneesInvalides(
+                f"{entree.libelle} : une liste de jours est attendue (lu : {valeur!r})."
+            )
+        jours = []
+        for jour in valeur:
+            if isinstance(jour, bool) or not isinstance(jour, int) or not 0 <= jour <= 6:
+                raise ErreurDonneesInvalides(
+                    f"{entree.libelle} : jour invalide {jour!r} (numéros de 0, lundi, à 6)."
+                )
+            jours.append(jour)
+        if not jours:
+            raise ErreurDonneesInvalides(f"{entree.libelle} : au moins un jour est attendu.")
+        return tuple(sorted(set(jours)))
     if entree.type == TYPE_CHOIX:
         permises = [permise for permise, _ in entree.choix]
         if not isinstance(valeur, str) or valeur not in permises:
@@ -419,6 +483,8 @@ _TYPES = {"int": int, "bool": bool, "str": str}
 
 
 def _type_de(champ: dataclasses.Field) -> type | str:
+    if champ.metadata["jours"]:
+        return TYPE_JOURS
     if champ.metadata["choix"]:
         return TYPE_CHOIX
     return _TYPES[champ.type] if isinstance(champ.type, str) else champ.type

@@ -43,6 +43,7 @@ CODES_DES_DECISIONS = {
     "VOLUME",
     "VERROU",
     "JOUR_FERME",
+    "REGLE",
 }
 """Section 6 de docs/decisions.md : ces codes sont stables."""
 

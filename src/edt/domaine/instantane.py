@@ -37,6 +37,25 @@ Conventions
 - les jours fermés ne concernent que la couche datée (`JOUR_FERME`), sauf
   une semaine entièrement fermée, qui est retirée des semaines actives par
   le dépliage.
+
+Règles personnalisées et réglages
+---------------------------------
+- `regles` : les règles **actives** de l'année dont la période recoupe le
+  semestre, résolues (`edt.domaine.regles.RegleResolue`) : valeurs
+  converties, semaines couvertes, séances et personnes concernées, phrase.
+  Le solveur et le vérificateur reçoivent en plus un `dict[int, Niveau]`
+  (identifiant de règle → niveau retenu pour le calcul) : une règle absente
+  de ce dictionnaire est ignorée pour ce calcul.
+- `emplois` : l'emploi du temps de chaque **personne** (groupe feuille avec
+  les séances de sa lignée, enseignant non fictif avec les siennes) :
+  définition unique des trous, des indicateurs et des règles de sorte
+  « emploi du temps ».
+- `reglages` : pour chaque séance, ses jours permis (standard et règles
+  retenues par axe, campus compris) ; pour chaque personne, sa pause déjeuner
+  et sa pause minimale, chacune avec sa source (une règle ou le paramètre
+  global). Le solveur et le vérificateur lisent ces valeurs et non plus
+  directement `Parametres.plage_dejeuner`, `fenetre_dejeuner`, `pause_min` ni
+  `Besoin.samedi_autorise` (conservés comme façades).
 """
 
 from __future__ import annotations
@@ -59,6 +78,14 @@ from edt.domaine.enumerations import (
     StatutOccurrence,
 )
 from edt.domaine.parametres import Parametres
+from edt.domaine.regles import (
+    Emploi,
+    NaturePersonne,
+    Personne,
+    Reglages,
+    RegleResolue,
+    resoudre_reglages,
+)
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
 
@@ -359,6 +386,9 @@ class Instantane:
     `types_salle` et `equipements` sont les listes configurables, utiles pour
     nommer un type ou un équipement dans un message (`libelle_type_salle`,
     `libelle_equipement`).
+
+    `regles` sont les règles personnalisées actives résolues (voir le module) ;
+    `emplois` et `reglages` en découlent, calculés une fois à la demande.
     """
 
     semestre_id: int
@@ -382,6 +412,7 @@ class Instantane:
     version_base_id: int | None = field(default=None)
     types_salle: tuple[Reference, ...] = ()
     equipements: tuple[Reference, ...] = ()
+    regles: tuple[RegleResolue, ...] = ()
 
     # -- accès par identifiant ------------------------------------------------
 
@@ -460,6 +491,116 @@ class Instantane:
     def debuts_de_creneau(self, jour: int) -> tuple[int, ...]:
         """Heures de début des créneaux de la grille pour `jour` (vide si aucun créneau)."""
         return self._debuts.get(jour, ())
+
+    @property
+    def jours_travailles(self) -> frozenset[int]:
+        """Jours travaillés de l'établissement (le standard des jours, voir `reglages`)."""
+        return frozenset(self.parametres.jours_travailles)
+
+    # -- personnes, emplois du temps, règles ------------------------------------
+
+    @cached_property
+    def _lignees(self) -> dict[int, tuple[int, ...]]:
+        parents = {groupe.id: groupe.parent_id for groupe in self.groupes}
+        lignees: dict[int, tuple[int, ...]] = {}
+        for groupe_id in parents:
+            lignee, courant = [groupe_id], parents[groupe_id]
+            while courant is not None and courant in parents and courant not in lignee:
+                lignee.append(courant)
+                courant = parents[courant]
+            lignees[groupe_id] = tuple(lignee)
+        return lignees
+
+    def lignee(self, groupe_id: int) -> tuple[int, ...]:
+        """Le groupe puis ses ascendants, jusqu'à la racine (demi-groupe, classe, promotion)."""
+        return self._lignees.get(groupe_id) or (groupe_id,)
+
+    def ascendants(self, groupe_id: int) -> tuple[int, ...]:
+        """Les ascendants du groupe, du plus proche au plus lointain."""
+        return self.lignee(groupe_id)[1:]
+
+    @cached_property
+    def _descendants(self) -> dict[int, frozenset[int]]:
+        descendants: dict[int, set[int]] = {groupe.id: set() for groupe in self.groupes}
+        for groupe_id, lignee in self._lignees.items():
+            for ascendant in lignee[1:]:
+                descendants[ascendant].add(groupe_id)
+        return {g: frozenset(d) for g, d in descendants.items()}
+
+    def descendants(self, groupe_id: int) -> frozenset[int]:
+        """Tous les groupes du sous-arbre du groupe (lui exclu)."""
+        return self._descendants.get(groupe_id, frozenset())
+
+    @cached_property
+    def groupes_feuilles(self) -> tuple[int, ...]:
+        """Groupes qui ne sont le parent d'aucun autre : les personnes « groupe »."""
+        parents = {groupe.parent_id for groupe in self.groupes if groupe.parent_id is not None}
+        return tuple(sorted(groupe.id for groupe in self.groupes if groupe.id not in parents))
+
+    def feuilles(self, groupe_id: int) -> tuple[int, ...]:
+        """Groupes feuilles du sous-arbre du groupe (lui-même s'il est une feuille)."""
+        feuilles = set(self.groupes_feuilles)
+        return tuple(
+            sorted(g for g in (self.descendants(groupe_id) | {groupe_id}) if g in feuilles)
+        )
+
+    @cached_property
+    def emplois(self) -> tuple[Emploi, ...]:
+        """L'emploi du temps de chaque personne (définition unique, voir le module).
+
+        Un groupe feuille suit ses séances et celles de ses ascendants ; un
+        enseignant non fictif suit les siennes (seulement s'il en a). Deux
+        demi-groupes sans séance propre ont le même emploi du temps.
+        """
+        par_groupe: dict[int, set[str]] = {}
+        par_enseignant: dict[int, set[str]] = {}
+        for seance in self.seances:
+            for groupe in seance.besoin.groupes:
+                par_groupe.setdefault(groupe, set()).add(seance.id)
+            for enseignant in seance.besoin.enseignants:
+                par_enseignant.setdefault(enseignant, set()).add(seance.id)
+        emplois = [
+            Emploi(
+                personne=Personne(NaturePersonne.GROUPE, feuille),
+                seances=frozenset(s for g in self.lignee(feuille) for s in par_groupe.get(g, ())),
+                lignee=self.lignee(feuille),
+            )
+            for feuille in self.groupes_feuilles
+        ]
+        emplois.extend(
+            Emploi(
+                personne=Personne(NaturePersonne.ENSEIGNANT, enseignant.id),
+                seances=frozenset(par_enseignant[enseignant.id]),
+            )
+            for enseignant in sorted(self.enseignants, key=lambda e: e.id)
+            if not enseignant.fictif and enseignant.id in par_enseignant
+        )
+        return tuple(emplois)
+
+    @cached_property
+    def _emplois(self) -> dict[Personne, Emploi]:
+        return {emploi.personne: emploi for emploi in self.emplois}
+
+    def emploi(self, personne: Personne) -> Emploi:
+        """L'emploi du temps d'une personne ; erreur si elle n'en a pas."""
+        return _trouver(self._emplois, personne, "Personne")
+
+    def personnes_de(self, seance_id: str) -> tuple[Personne, ...]:
+        """Personnes dont l'emploi du temps contient la séance."""
+        return tuple(e.personne for e in self.emplois if seance_id in e.seances)
+
+    @cached_property
+    def _regles(self) -> dict[int, RegleResolue]:
+        return {regle.id: regle for regle in self.regles}
+
+    def regle(self, regle_id: int) -> RegleResolue:
+        """Règle personnalisée résolue d'identifiant `regle_id`."""
+        return _trouver(self._regles, regle_id, "Règle")
+
+    @cached_property
+    def reglages(self) -> Reglages:
+        """Jours permis par séance, déjeuner et pause par personne (voir `edt.domaine.regles`)."""
+        return resoudre_reglages(self)
 
     # -- groupes ----------------------------------------------------------------
 
