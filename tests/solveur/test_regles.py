@@ -580,6 +580,13 @@ def test_commande_generer_regle(jeu_minimal):
         assert refuse.exit_code == 1, refuse.output
         assert attendu in refuse.output
 
+    # Espaces et casse tolérés.
+    resultat = lanceur.invoke(
+        cli.app, [*base, "--regle", "r001 = Facultatif", "--sans-regle", " r002 "]
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "Règles personnalisées : R001 : facultatif ; R002 : ignorée." in resultat.output
+
     # Sans option, rien à dire sur les règles.
     resultat = lanceur.invoke(cli.app, base)
     assert resultat.exit_code == 0 and "Règles personnalisées : " not in resultat.output
