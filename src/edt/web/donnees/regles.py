@@ -13,14 +13,18 @@ deux sens avec le brouillon de `edt.services.regles` :
 
 Les champs utiles à un seul choix (cible d'une nature, paramètre d'un mode,
 semestre ou dates) portent `data-visible-si` : masqués, ils ne sont pas
-envoyés. Un paramètre propre à la portée établissement (`CHAMPS_ETABLISSEMENT`)
-n'est affiché que pour elle, et retiré du brouillon pour une autre portée
-(envoi sans JavaScript compris). Les erreurs du service (clé = chemin JSON) reviennent sous le champ
-correspondant (`erreurs_par_champ`).
+envoyés. Un paramètre réservé à certaines portées (`ChampRegle.portees`, comme
+« Personnes concernées » pour l'établissement) n'est affiché que pour elles, et
+retiré du brouillon pour une autre portée (envoi sans JavaScript compris). Un
+type dont la période n'est pas datable (`DefinitionType.periode_datable`) n'offre
+que l'année ou un semestre. Les erreurs du service (clé = chemin JSON) reviennent
+sous le champ correspondant, ou sous leur bloc, ou en tête : jamais perdues
+(`erreurs_par_champ`).
 """
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -39,6 +43,7 @@ from edt.domaine.regles import (
     DefinitionType,
     NaturePortee,
     SorteChamp,
+    erreurs_periode,
 )
 from edt.services.referentiels.enseignements import libelle_besoin
 from edt.services.referentiels.personnes import NoeudGroupe, arbre_groupes
@@ -49,14 +54,8 @@ PREFIXE_PARAMETRE = "p_"
 NATURES_AVEC_CIBLE: tuple[NaturePortee, ...] = tuple(
     nature for nature in NaturePortee if nature is not NaturePortee.ETABLISSEMENT
 )
-CHAMPS_ETABLISSEMENT: frozenset[str] = frozenset({"personnes"})
-"""Paramètres qui n'ont de sens que pour la portée établissement.
-
-« Personnes concernées » (groupes, enseignants ou les deux) choisit qui vise
-une règle d'établissement ; pour un groupe ou un enseignant, la cible le dit
-déjà et le domaine ignore ce paramètre. Le schéma ne le marque que dans sa
-description : la liste est tenue ici.
-"""
+CLE_BLOC_PARAMETRES = "_parametres"
+"""Clé (dans les erreurs par champ) d'un message pour le bloc « Paramètres » entier."""
 PERIODES = (("annee", "Toute l'année"), ("semestre", "Un semestre"), ("dates", "Entre deux dates"))
 DEMI_JOURNEES = ("matin", "après-midi")
 
@@ -245,10 +244,11 @@ def brouillon_depuis_formulaire(
     """
     nature = str(formulaire.get("portee", "")).strip()
     cible = str(formulaire.get(f"cible_{nature}", "")).strip()
+    portee = _nature(nature)
     parametres: dict[str, Any] = {}
     for champ in definition.champs:
         nom = PREFIXE_PARAMETRE + champ.nom
-        if champ.nom in CHAMPS_ETABLISSEMENT and nature != NaturePortee.ETABLISSEMENT.value:
+        if champ.sans_objet(portee):
             continue
         if champ.sorte in SORTES_LISTE:
             parametres[champ.nom] = formulaire.getlist(nom)
@@ -275,34 +275,69 @@ def brouillon_depuis_formulaire(
     }
 
 
-def controles_formulaire(formulaire: FormData) -> dict[str, str]:
-    """Erreurs propres au formulaire, que le service ne peut pas voir (champ laissé vide)."""
-    if formulaire.get("periode") == "semestre" and not str(formulaire.get("semestre", "")).strip():
-        return {"semestre": "Choisir le semestre."}
-    return {}
+def _nature(valeur: str) -> NaturePortee | None:
+    """La nature de portée envoyée, ou None si elle est inconnue (le service le dira)."""
+    try:
+        return NaturePortee(valeur)
+    except ValueError:
+        return None
 
 
-def erreurs_par_champ(erreurs: Mapping[str, str], nature: str) -> ErreursRegle:
-    """Erreurs du service (chemin JSON) rangées sous les champs du formulaire."""
-    champs: dict[str, str] = {}
-    generales: list[str] = []
+def controles_formulaire(definition: DefinitionType, formulaire: FormData) -> dict[str, str]:
+    """Erreurs propres au formulaire, que le service ne peut pas voir (champ laissé vide).
+
+    « Entre deux dates » pour un type non datable, dates laissées vides : le service
+    n'y verrait que l'année entière ; on refuse avec son message (`erreurs_periode`,
+    à qui toute date suffit pour le produire).
+    """
+    erreurs: dict[str, str] = {}
+    mode = formulaire.get("periode")
+    if mode == "semestre" and not str(formulaire.get("semestre", "")).strip():
+        erreurs["semestre"] = "Choisir le semestre."
+    if mode == "dates" and not definition.periode_datable:
+        une_date = dt.date(2000, 1, 1)
+        erreurs.update(erreurs_periode(definition.code, None, une_date, None))
+    return erreurs
+
+
+def erreurs_par_champ(
+    erreurs: Mapping[str, str], nature: str, definition: DefinitionType
+) -> ErreursRegle:
+    """Erreurs du service (chemin JSON) rangées sous les champs du formulaire.
+
+    Une erreur globale d'un bloc (`portee`, `periode`, `parametres`) va sous ce
+    bloc : le choix de la portée, le choix de la période, le bloc « Paramètres »
+    (`CLE_BLOC_PARAMETRES`). Un paramètre inconnu du type va sous le bloc
+    « Paramètres », une cible sans liste (portée inconnue ou établissement) sous
+    le choix de la portée. Le reste (`origine`, `type`, `annee`...) va en tête.
+    Deux messages pour une même place sont mis bout à bout : aucun n'est perdu.
+    """
+    avec_cible = {n.value for n in natures_admises(definition)} - {NaturePortee.ETABLISSEMENT.value}
+    connus = {champ.nom for champ in definition.champs}
     correspondances = {
         "portee.nature": "portee",
         "portee": "portee",
-        "portee.cible": f"cible_{nature}",
+        "portee.cible": f"cible_{nature}" if nature in avec_cible else "portee",
         "niveau": "niveau",
         "periode": "periode",
         "periode.semestre": "semestre",
         "periode.date_debut": "date_debut",
         "periode.date_fin": "date_fin",
+        "parametres": CLE_BLOC_PARAMETRES,
     }
+    champs: dict[str, str] = {}
+    generales: list[str] = []
     for cle, message in erreurs.items():
         if cle in correspondances:
-            champs.setdefault(correspondances[cle], message)
+            place = correspondances[cle]
         elif cle.startswith("parametres."):
-            champs.setdefault(PREFIXE_PARAMETRE + cle.removeprefix("parametres."), message)
+            nom = cle.removeprefix("parametres.")
+            place = PREFIXE_PARAMETRE + nom if nom in connus else CLE_BLOC_PARAMETRES
         else:
             generales.append(message)
+            continue
+        deja = champs.get(place)
+        champs[place] = message if not deja or message in deja else f"{deja} {message}"
     return ErreursRegle(champs, generales)
 
 
@@ -323,14 +358,13 @@ def _champ_parametre(
     if champ.defaut_global is not None:
         defaut = _defaut_parametre(champ, parametres)
         aide = (aide + " " if aide else "") + f"Défaut de l'établissement : {defaut}."
-    conteneur: dict[str, Any] = {}
+    conditions = []
+    if champ.portees is not None:
+        conditions.append(f"portee:{_valeurs_portees(champ.portees)}")
     if champ.condition is not None:
         autre, permises = champ.condition
-        conteneur["data-visible-si"] = f"{PREFIXE_PARAMETRE}{autre}:{','.join(permises)}"
-    if champ.nom in CHAMPS_ETABLISSEMENT:
-        # Une seule condition par bloc : celle de la portée prime (aucun de ces
-        # paramètres n'a de condition de mode aujourd'hui) ; le brouillon le filtre aussi.
-        conteneur["data-visible-si"] = f"portee:{NaturePortee.ETABLISSEMENT.value}"
+        conditions.append(f"{PREFIXE_PARAMETRE}{autre}:{','.join(permises)}")
+    conteneur: dict[str, Any] = {"data-visible-si": ";".join(conditions)} if conditions else {}
     attributs: dict[str, Any] = {}
     unite = champ.unite or None
     if champ.sorte is SorteChamp.JOURS or (
@@ -372,6 +406,10 @@ def _champ_parametre(
         conteneur=conteneur,
         large=type_html in ("cases", "multiple"),
     )
+
+
+def _valeurs_portees(portees: frozenset[NaturePortee]) -> str:
+    return ",".join(sorted(p.value for p in portees))
 
 
 def rubriques_regle(
@@ -428,6 +466,12 @@ def rubriques_regle(
         for champ in definition.champs
     ]
     semestres = [(s.code, f"{s.code} - {s.libelle}") for s in annee.semestres]
+    # Un type non datable n'offre pas « Entre deux dates » ; une règle déjà datée
+    # le garde affiché, pour que l'enregistrement dise pourquoi il est refusé.
+    datable = definition.periode_datable or valeurs.get("periode") == "dates"
+    aide_periode = f"Dans l'année {annee.libelle}."
+    if not definition.periode_datable:
+        aide_periode += " Ce type vaut toute l'année ou un semestre entier, sans dates."
     niveau_defaut = definition.niveau_defaut.libelle.lower()
     reglages = [
         ChampAffiche(
@@ -447,9 +491,9 @@ def rubriques_regle(
             type="select",
             valeur=str(valeurs.get("periode", "annee")),
             requis=True,
-            aide=f"Dans l'année {annee.libelle}.",
+            aide=aide_periode,
             erreur=erreurs.get("periode"),
-            options=PERIODES,
+            options=PERIODES if datable else tuple(p for p in PERIODES if p[0] != "dates"),
         ),
         ChampAffiche(
             nom="semestre",
@@ -462,6 +506,8 @@ def rubriques_regle(
             options=(("", "Choisir..."), *semestres),
             conteneur={"data-visible-si": "periode:semestre"},
         ),
+    ]
+    dates = [
         ChampAffiche(
             nom="date_debut",
             libelle="Du",
@@ -482,6 +528,8 @@ def rubriques_regle(
             erreur=erreurs.get("date_fin"),
             conteneur={"data-visible-si": "periode:dates"},
         ),
+    ]
+    commentaire = [
         ChampAffiche(
             nom="commentaire",
             libelle="Commentaire",
@@ -494,8 +542,21 @@ def rubriques_regle(
             large=True,
         ),
     ]
+    if datable:
+        reglages += dates
+    reglages += commentaire
     rubriques = [RubriqueChamps("Portée", tuple(portee))]
-    if champs_parametres:
-        rubriques.append(RubriqueChamps("Paramètres", tuple(champs_parametres)))
+    erreur_bloc = erreurs.get(CLE_BLOC_PARAMETRES)
+    if champs_parametres or erreur_bloc:
+        # Bloc masqué quand aucun de ses paramètres ne vaut pour la portée choisie
+        # (« Personnes concernées » seul, portée groupe), sauf s'il porte une erreur.
+        restreints = [c.portees for c in definition.champs if c.portees is not None]
+        conteneur: dict[str, Any] = {}
+        if not erreur_bloc and restreints and len(restreints) == len(definition.champs):
+            union = frozenset().union(*restreints)
+            conteneur = {"data-visible-si": f"portee:{_valeurs_portees(union)}"}
+        rubriques.append(
+            RubriqueChamps("Paramètres", tuple(champs_parametres), erreur_bloc, conteneur)
+        )
     rubriques.append(RubriqueChamps("Niveau, période et commentaire", tuple(reglages)))
     return tuple(rubriques)

@@ -13,7 +13,8 @@
  *    état conservé d'une page à l'autre (stockage local du navigateur).
  * 4. Champs conditionnels : un champ portant `data-visible-si="nom:v1,v2"`
  *    n'est affiché (et envoyé) que si le champ `nom` du même formulaire vaut
- *    v1 ou v2.
+ *    v1 ou v2 ; plusieurs conditions séparées par « ; » doivent toutes tenir
+ *    (`portee:etablissement;p_mode:libre`).
  * 5. Choix multiples : filtre de la liste de cases à cocher (`.choix-multiple`).
  * 6. Attente : un formulaire portant `data-attente="..."` désactive ses boutons
  *    pendant l'envoi et affiche ce texte (opérations longues).
@@ -228,9 +229,11 @@
 
   function appliquerVisibilite(formulaire) {
     formulaire.querySelectorAll("[data-visible-si]").forEach(function (bloc) {
-      var regle = bloc.getAttribute("data-visible-si").split(":");
-      var valeurs = (regle[1] || "").split(",");
-      var visible = valeurs.indexOf(valeurDe(formulaire, regle[0])) !== -1;
+      var visible = bloc.getAttribute("data-visible-si").split(";").every(function (condition) {
+        var regle = condition.split(":");
+        var valeurs = (regle[1] || "").split(",");
+        return valeurs.indexOf(valeurDe(formulaire, regle[0])) !== -1;
+      });
       bloc.hidden = !visible;
       // Un champ masqué n'est ni exigé ni envoyé : le serveur applique sa valeur par défaut.
       bloc.querySelectorAll("input, select, textarea").forEach(function (champ) {

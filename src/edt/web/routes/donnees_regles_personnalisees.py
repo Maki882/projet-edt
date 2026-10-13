@@ -383,7 +383,7 @@ def creer(request: Request, session: SessionRequete, formulaire: Formulaire) -> 
     definition = _definition(formulaire.get("type"))
     annee = _annee(session, formulaire.get("annee"))
     retour = adresse_sure(formulaire.get("_retour"), f"{PREFIXE}?annee={annee.id}")
-    locales = controles_formulaire(formulaire)
+    locales = controles_formulaire(definition, formulaire)
     brouillon = brouillon_depuis_formulaire(definition, annee.id, formulaire)
     try:
         if locales:
@@ -391,7 +391,7 @@ def creer(request: Request, session: SessionRequete, formulaire: Formulaire) -> 
         detail = service_regles.creer(session, brouillon, origine=OrigineRegle.SAISIE)
     except ErreurSaisie as refus:
         session.rollback()
-        reparties = erreurs_par_champ(refus.erreurs, str(formulaire.get("portee", "")))
+        reparties = erreurs_par_champ(refus.erreurs, str(formulaire.get("portee", "")), definition)
         journal.info("Création de règle refusée : %s", {**refus.erreurs, **locales})
         return _rendre_formulaire(
             request,
@@ -432,7 +432,7 @@ def modifier(
     definition = detail.regle.definition
     annee = _annee(session, detail.regle.annee_scolaire_id)
     retour = adresse_sure(formulaire.get("_retour"), f"{PREFIXE}?annee={annee.id}")
-    locales = controles_formulaire(formulaire)
+    locales = controles_formulaire(definition, formulaire)
     changements = brouillon_depuis_formulaire(definition, annee.id, formulaire)
     try:
         if locales:
@@ -442,7 +442,7 @@ def modifier(
         nouveau = service_regles.modifier(session, annee.id, detail.code, changements)
     except ErreurSaisie as refus:
         session.rollback()
-        reparties = erreurs_par_champ(refus.erreurs, str(formulaire.get("portee", "")))
+        reparties = erreurs_par_champ(refus.erreurs, str(formulaire.get("portee", "")), definition)
         journal.info("Modification de la règle %s refusée : %s", detail.code, refus.erreurs)
         return _rendre_formulaire(
             request,
@@ -473,7 +473,7 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
         # Une règle modifiée ne fait pas doublon avec elle-même : contrôle fait à l'enregistrement.
         brouillon["etat"] = EtatRegle.INACTIVE.value
     validation = service_regles.valider(session, brouillon)
-    locales = controles_formulaire(formulaire)
+    locales = controles_formulaire(definition, formulaire)
     libelles = {
         **{f"parametres.{c.nom}": c.libelle for c in definition.champs},
         "portee": "Portée",
@@ -484,11 +484,18 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
         "periode.semestre": "Semestre",
         "periode.date_debut": "Du",
         "periode.date_fin": "Au",
+        "parametres": "Paramètres",
+        "origine": "Origine",
     }
     erreurs = [
         _avec_libelle(libelles.get(cle, cle), texte) for cle, texte in validation.erreurs.items()
     ]
-    erreurs += [_avec_libelle("Semestre", texte) for texte in locales.values()]
+    libelles_locaux = {"semestre": "Semestre", "periode": "Période"}
+    erreurs += [
+        _avec_libelle(libelles_locaux.get(cle, cle), texte)
+        for cle, texte in locales.items()
+        if texte not in validation.erreurs.values()
+    ]
     return rendre(
         request,
         "donnees/_regle_apercu.html",
