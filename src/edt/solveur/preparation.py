@@ -190,6 +190,9 @@ class Preparation:
                     f"La règle {regle.code} ({regle.phrase}) est d'un type que le moteur ne sait "
                     f"pas encore poser (« {regle.type.libelle} ») : ne pas l'appliquer à ce "
                     "calcul, ou la désactiver.",
+                    regle_id=regle.id,
+                    regle_code=regle.code,
+                    regle_phrase=regle.phrase,
                 )
             )
         self._domaines: dict[tuple, _Domaine] = {}

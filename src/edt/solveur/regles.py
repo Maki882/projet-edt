@@ -288,13 +288,26 @@ class Regles:
             tuple(sorted((campus, regle.id) for campus, regle in jours.par_campus.items())),
         )
 
-    def violations_du_choix(self, seance_id: str, choix: Choix) -> list[Violation]:
-        """Règles de sorte « séance » (hors jours) que ce choix enfreint."""
+    def violations_du_choix(
+        self, seance_id: str, choix: Choix, date: dt.date | None = None
+    ) -> list[Violation]:
+        """Règles de sorte « séance » (hors jours) que ce choix enfreint.
+
+        Avec `date` (couche datée), une règle à période datée ne compte que si
+        elle couvre ce jour (`RegleResolue.couvre`).
+        """
         return [
             self.violation_de_regle(regle)
             for regle in self.regles_de_seance(seance_id)
-            if enfreint(regle, choix)
+            if (date is None or regle.couvre(date)) and enfreint(regle, choix)
         ]
+
+    def couvre(self, violation: Violation, date: dt.date | None) -> bool:
+        """Vrai si la violation vaut ce jour-là : toujours pour le standard, selon sa période
+        pour une règle (`None` : semaine type, toute règle retenue compte)."""
+        if date is None or violation.regle_id is None:
+            return True
+        return self.regle(violation.regle_id).couvre(date)
 
     # -- jours et horaires --------------------------------------------------------
 
@@ -361,7 +374,13 @@ class Regles:
         return tuple(sorted(set(range(0, MINUTES_PAR_JOUR, PAS_HORS_GRILLE)) | set(grille)))
 
     def violations_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int, seance_id: str | None = None
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
     ) -> list[Violation]:
         """Règles d'horaire présentes que cette heure de début enfreint.
 
@@ -408,11 +427,17 @@ class Regles:
             ):
                 violations.append(violation)
         if seance_id is not None:
-            violations.extend(self.violations_du_choix(seance_id, Choix(jour, minute, fin)))
+            violations.extend(self.violations_du_choix(seance_id, Choix(jour, minute, fin), date))
         return violations
 
     def refus_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int, seance_id: str | None = None
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
     ) -> Violation | None:
         """Raison **dure** pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
 
@@ -425,18 +450,26 @@ class Regles:
         return next(
             (
                 violation
-                for violation in self.violations_horaire(besoin, duree, jour, minute, seance_id)
+                for violation in self.violations_horaire(
+                    besoin, duree, jour, minute, seance_id, date
+                )
                 if self.dure_violation(violation)
             ),
             None,
         )
 
     def entorses_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int, seance_id: str | None = None
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
     ) -> tuple[Violation, ...]:
         """Règles d'horaire **souples** que cette heure de début enfreint."""
         return self.souples_violations(
-            self.violations_horaire(besoin, duree, jour, minute, seance_id)
+            self.violations_horaire(besoin, duree, jour, minute, seance_id, date)
         )
 
     # -- personnes ------------------------------------------------------------

@@ -284,7 +284,7 @@ class _Planning:
         regles_salle = [
             regle
             for regle in (regles.regles_de_seance(seance_id) if seance_id else ())
-            if regle.type in (TypeRegle.SALLES, TypeRegle.CAMPUS)
+            if regle.type in (TypeRegle.SALLES, TypeRegle.CAMPUS) and regle.couvre(date)
         ]
         campus_de = {salle.id: salle.campus_id for salle in regles.instantane.salles}
         meilleure: tuple[int, int] | None = None
@@ -464,9 +464,13 @@ def _candidates(
         )
         if not impose and not regles.instantane.debuts_de_creneau(jour):
             continue
-        violations_jour = (
-            [] if impose else regles.violations_de_jour(origine.seance_id, jour, None, besoin)
-        )
+        violations_jour = [
+            v
+            for v in (
+                [] if impose else regles.violations_de_jour(origine.seance_id, jour, None, besoin)
+            )
+            if regles.couvre(v, date)
+        ]
         if any(regles.dure_violation(v) for v in violations_jour):
             continue
         entorses_jour = sum(
@@ -475,11 +479,16 @@ def _candidates(
         semaines = abs((lundi_de(date) - lundi_origine).days) // 7
         jours = abs((date - origine.date).days)
         for debut in regles.debuts_a_examiner(besoin, jour):
-            if regles.refus_horaire(besoin, duree, jour, debut, origine.seance_id) is not None:
+            if (
+                regles.refus_horaire(besoin, duree, jour, debut, origine.seance_id, date)
+                is not None
+            ):
                 continue
             entorses = entorses_jour + sum(
                 regles.poids_violation(v)
-                for v in regles.entorses_horaire(besoin, duree, jour, debut, origine.seance_id)
+                for v in regles.entorses_horaire(
+                    besoin, duree, jour, debut, origine.seance_id, date
+                )
             )
             cout = (
                 options.cout_semaine * semaines
