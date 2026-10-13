@@ -1102,3 +1102,45 @@ def test_replacement_respecte_l_ordre_dans_la_semaine():
     replacement = _replacer(instantane, placements, Niveau.FACULTATIF)
     assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=1)
     assert replacement.cout == 10 + 1 + 20
+
+
+def test_replacement_ouverture_datee_du_samedi():
+    """Le samedi n'est ouvert à la classe que la 2e semaine : l'occurrence du lundi fermé de cette
+    semaine va au samedi ; celle du lundi fermé de la 3e semaine, hors période, non."""
+    f = Fabrique(nb_semaines=3, creneaux=grille(jours=[LUNDI], samedi=True))
+    f.salle("S1")
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.jour_ferme(RENTREE + SEMAINE)
+    f.jour_ferme(RENTREE + 2 * SEMAINE)
+    f.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        NaturePortee.GROUPE,
+        classe,
+        "necessaire",
+        jours=["lundi", "samedi"],
+        date_debut=RENTREE + SEMAINE,
+        date_fin=RENTREE + SEMAINE + dt.timedelta(days=6),
+    )
+    instantane = f.instantane()
+    instancie = instancier(instantane, [place("1-1", LUNDI, C1, 1)])
+    assert len(instancie.a_replacer) == 2
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    par_origine = {r.origine.date: r for r in resultat.replacements}
+    dans_la_periode = par_origine[RENTREE + SEMAINE]
+    hors_periode = par_origine[RENTREE + 2 * SEMAINE]
+    assert dans_la_periode.replacee and dans_la_periode.occurrence.date.weekday() == SAMEDI
+    assert dans_la_periode.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=5)
+    # Hors période, le samedi le plus proche (26/09) est fermé : la place va ailleurs
+    # (ici le samedi 19/09, dans la période, moins loin qu'un autre lundi).
+    assert hors_periode.replacee
+    assert hors_periode.occurrence.date != RENTREE + 2 * SEMAINE + dt.timedelta(days=5)
+    assert hors_periode.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=5)
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, *(r.occurrence for r in resultat.replacees)],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles={1: Niveau.NECESSAIRE},
+    )

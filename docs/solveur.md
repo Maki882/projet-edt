@@ -516,8 +516,10 @@ d'emploi du temps et de relation sont évalués, salle choisie, par les
 vérificateurs datés sur la semaine réelle de la candidate
 (`_Planning.regles_emploi_enfreintes`), avec leurs définitions ; une règle
 à période datée ne compte que les jours qu'elle couvre
-(`RegleResolue.couvre`). Un réglage de personne (déjeuner, pause) vaut toute
-la période sur la couche datée.
+(`RegleResolue.couvre`). Les règles de jours sont résolues à la date de chaque candidate
+(`Reglages.jours_de(seance_id, date)`) : hors de la période d'une ouverture
+datée, le standard reprend sa place. Les réglages de personne (déjeuner,
+pause) ne sont pas datables (contrat) : rien à filtrer.
 
 **Écart avec le vérificateur.** Une entorse par personne : deux personnes au
 même emploi du temps (deux demi-groupes sans séance propre) comptent deux
@@ -1539,8 +1541,7 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   pré-vérifications ne retirent pas le temps fermé par une règle d'horaires
   ou de jours : une impossibilité qui tient à plusieurs séances (quatre
   séances pour trois créneaux après 10 h) est prouvée par CP-SAT, sans
-  nommer la règle. Un réglage de personne à période datée vaut toute la
-  période sur la couche datée.
+  nommer la règle.
 - **Pause déjeuner libre et groupes qui se chevauchent.** Deux groupes
   déclarés chevauchants (ou avec un étudiant commun) comptent chacun les
   séances de l'autre : un étudiant qui n'est que dans l'un des deux peut
