@@ -14,16 +14,12 @@ tire ce que les écrans affichent :
   (`dejeuner_de_la_cible`) et, pour une retouche, les jours permis d'une
   séance (`jours_permis`), lus dans `Instantane.reglages`.
 
-Raccords avec les lots en cours, lus défensivement (rien ne casse tant
-qu'ils manquent ; l'écran dit ce qui n'est pas encore pris en compte) :
-
-- solveur : `OptionsSolveur.niveaux_regles` (id de règle → niveau ; une règle
-  absente est ignorée), la copie des règles appliquées dans
-  `calcul.parametres["regles"]` (ou `SuiviCalcul.regles`) : liste de
-  `{id, code, type, portee, parametres, niveau, phrase}`, et le décompte
-  `statistiques["entorses_regles"]` (code → nombre) ;
-- vérificateur : `Anomalie.regle_id`, `regle_code`, `regle_phrase` (lus par
-  `presentation.regle_citee`).
+Ce qu'il lit des autres lots : `OptionsSolveur.niveaux_regles` (id de
+règle → niveau ; une règle active absente est ignorée), `SuiviCalcul.regles`
+(copie des règles du semestre au lancement, niveau `None` pour une règle
+ignorée), `SuiviCalcul.niveaux_regles`, `statistiques["entorses_regles"]`
+(code → nombre), et `Anomalie.regle_id`, `regle_code`, `regle_phrase`
+(`presentation.regle_citee`).
 """
 
 from __future__ import annotations
@@ -53,7 +49,6 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurEDT
 from edt.services import regles as service_regles
 from edt.services.emploi_du_temps import memoire, presentation
 from edt.services.instantane import charger_instantane
-from edt.solveur.contrat import OptionsSolveur
 
 journal = logging.getLogger(__name__)
 
@@ -244,12 +239,36 @@ class RegleDuCalcul:
 class BlocRegles:
     """Le bloc « Règles personnalisées » de la page Générer.
 
-    `erreur` : les règles n'ont pas pu être lues (le message dit laquelle).
+    `erreur` : les règles n'ont pas pu être lues (le message dit laquelle) ;
+    `niveaux_actifs` : niveau de chaque règle active de l'année (celles d'un
+    autre semestre comprises), base des niveaux transmis au moteur.
     """
 
     regles: tuple[RegleDuCalcul, ...] = ()
     nb_proposees: int = 0
     erreur: str | None = None
+    niveaux_actifs: dict[int, Niveau] = dataclasses.field(default_factory=dict)
+
+    @property
+    def choix(self) -> dict[int, Niveau | None]:
+        """Les choix affichés (id → niveau, `None` pour une règle ignorée)."""
+        return {regle.id: None if regle.ignoree else regle.niveau for regle in self.regles}
+
+    @property
+    def rappel_proposees(self) -> str | None:
+        """Le rappel des règles proposées, sans effet tant qu'elles ne sont pas confirmées."""
+        n = self.nb_proposees
+        if not n:
+            return None
+        if n == 1:
+            return (
+                "1 règle proposée n'est pas encore activée : elle n'a aucun effet sur le calcul "
+                "tant qu'elle n'est pas confirmée."
+            )
+        return (
+            f"{n} règles proposées ne sont pas encore activées : elles n'ont aucun effet sur le "
+            "calcul tant qu'elles ne sont pas confirmées."
+        )
 
     @property
     def replie(self) -> bool:
@@ -313,12 +332,14 @@ def bloc_regles(
     """Le tableau des règles personnalisées du semestre, prérempli.
 
     `choix` : saisie à réafficher (id → niveau, `None` : ignorée) ; sinon
-    `precedents` : niveaux du dernier calcul (une règle qu'il n'a pas citée
-    reprend son propre niveau : la case « ignorer » ne vaut que pour un
-    calcul) ; sinon le niveau de la règle.
+    `precedents` : niveaux du dernier calcul (`SuiviCalcul.niveaux_regles` ;
+    une règle qu'il a ignorée ou ne connaissait pas reprend son propre
+    niveau : la case « ignorer » ne vaut que pour un calcul) ; sinon le
+    niveau de la règle.
     """
     try:
-        details = regles_actives_du_semestre(session, semestre, annee_id)
+        actives = service_regles.lister(session, annee_id, etat=EtatRegle.ACTIVE)
+        details = [d for d in actives if _concerne_le_semestre(d, semestre)]
         proposees = len(service_regles.lister(session, annee_id, etat=EtatRegle.PROPOSEE))
     except ErreurEDT as erreur:
         journal.warning("Règles personnalisées illisibles (année %d) : %s", annee_id, erreur)
@@ -344,7 +365,11 @@ def bloc_regles(
                 ignoree=ignoree,
             )
         )
-    return BlocRegles(regles=tuple(lignes), nb_proposees=proposees)
+    return BlocRegles(
+        regles=tuple(lignes),
+        nb_proposees=proposees,
+        niveaux_actifs={detail.id: detail.niveau for detail in actives},
+    )
 
 
 def champs_regles(champs: Iterable[tuple[str, str]]) -> dict[str, str]:
@@ -394,9 +419,26 @@ def lire_choix_regles(
     return choix
 
 
-def niveaux_pour_le_calcul(choix: Mapping[int, Niveau | None]) -> dict[int, Niveau]:
-    """Les niveaux transmis au moteur : les règles ignorées en sont absentes (convention)."""
-    return {identifiant: niveau for identifiant, niveau in choix.items() if niveau is not None}
+def niveaux_pour_le_calcul(
+    choix: Mapping[int, Niveau | None], bloc: BlocRegles
+) -> dict[int, Niveau] | None:
+    """Les niveaux transmis au moteur (`OptionsSolveur.niveaux_regles`).
+
+    `None` quand chaque règle garde son niveau (rien à transmettre) ou que les
+    règles n'ont pas pu être lues ; sinon toutes les règles actives de
+    l'année à leur niveau, corrigées des choix : une règle ignorée en est
+    absente (convention des niveaux). Une règle hors du tableau (autre
+    semestre) garde ainsi son niveau, jamais ignorée par mégarde.
+    """
+    if bloc.erreur or not choix_modifies(choix, bloc.regles):
+        return None
+    niveaux = dict(bloc.niveaux_actifs)
+    for identifiant, niveau in choix.items():
+        if niveau is None:
+            niveaux.pop(identifiant, None)
+        else:
+            niveaux[identifiant] = niveau
+    return niveaux
 
 
 def choix_modifies(choix: Mapping[int, Niveau | None], regles: Sequence[RegleDuCalcul]) -> bool:
@@ -406,35 +448,13 @@ def choix_modifies(choix: Mapping[int, Niveau | None], regles: Sequence[RegleDuC
     )
 
 
-# --------------------------------------------------------------------------- #
-# Options du calcul
-# --------------------------------------------------------------------------- #
-
-
-def moteur_lit_les_niveaux_regles() -> bool:
-    """Vrai si `OptionsSolveur` porte `niveaux_regles` (lot solveur livré)."""
-    return "niveaux_regles" in {champ.name for champ in dataclasses.fields(OptionsSolveur)}
-
-
-def avec_niveaux_regles(
-    options: OptionsSolveur, niveaux_regles: Mapping[int, Niveau] | None
-) -> OptionsSolveur:
-    """Les options avec les niveaux des règles personnalisées, si le moteur sait les lire.
-
-    `None` : rien à transmettre (le moteur applique chaque règle à son niveau).
-    Sans `OptionsSolveur.niveaux_regles`, les options sont rendues telles
-    quelles et l'absence est journalisée ; l'écran le dit
-    (`moteur_lit_les_niveaux_regles`).
-    """
+def cle_niveaux_regles(niveaux_regles: Mapping[int, Niveau] | None) -> tuple | None:
+    """Clé stable des niveaux des règles (mémoire des pré-vérifications)."""
     if niveaux_regles is None:
-        return options
-    if not moteur_lit_les_niveaux_regles():
-        journal.warning(
-            "Niveaux des règles personnalisées non transmis : le moteur ne les lit pas encore "
-            "(OptionsSolveur.niveaux_regles absent)"
-        )
-        return options
-    return dataclasses.replace(options, niveaux_regles=dict(niveaux_regles))
+        return None
+    return tuple(
+        sorted((identifiant, str(niveau)) for identifiant, niveau in niveaux_regles.items())
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -444,96 +464,64 @@ def avec_niveaux_regles(
 
 @dataclass(frozen=True)
 class RegleAppliquee:
-    """Une règle telle que le calcul l'a appliquée (copie de `calcul.parametres["regles"]`)."""
+    """Une règle de la copie enregistrée avec le calcul ; `niveau` `None` : ignorée."""
 
     id: int
     code: str
     phrase: str
-    niveau: Niveau
+    niveau: Niveau | None
 
 
-def regles_enregistrees(
-    suivi, parametres: Mapping | None = None
-) -> tuple[RegleAppliquee, ...] | None:
-    """Les règles appliquées par un calcul, ou `None` s'il n'en a rien enregistré.
+def regles_enregistrees(copie: Iterable[Mapping], calcul_id: int) -> tuple[RegleAppliquee, ...]:
+    """La copie des règles d'un calcul (`SuiviCalcul.regles`), typée.
 
-    Lues dans `SuiviCalcul.regles` sinon `parametres["regles"]` ; une entrée
-    illisible est journalisée et laissée de côté.
+    Une entrée illisible est journalisée et laissée de côté.
     """
-    brut = getattr(suivi, "regles", None)
-    if brut is None and parametres is not None:
-        brut = parametres.get("regles")
-    if brut is None:
-        return None
-    if not isinstance(brut, list | tuple):
-        journal.warning("Calcul %s : règles enregistrées illisibles (%r)", suivi.id, brut)
-        return None
     lues = []
-    for entree in brut:
+    for entree in copie or ():
         try:
+            niveau = entree.get("niveau")
             lues.append(
                 RegleAppliquee(
                     id=int(entree["id"]),
                     code=str(entree.get("code") or f"n° {entree['id']}"),
                     phrase=str(entree.get("phrase") or ""),
-                    niveau=Niveau(entree["niveau"]),
+                    niveau=None if niveau is None else Niveau(niveau),
                 )
             )
         except (KeyError, TypeError, ValueError, AttributeError) as erreur:
             journal.warning(
-                "Calcul %s : règle enregistrée illisible (%r) : %s", suivi.id, entree, erreur
+                "Calcul %s : règle enregistrée illisible (%r) : %s", calcul_id, entree, erreur
             )
     return tuple(lues)
 
 
-def niveaux_regles_du_calcul(suivi, parametres: Mapping | None = None) -> dict[int, Niveau] | None:
-    """Niveaux à reprendre pour relancer un calcul (absente = ignorée), `None` s'il n'y en a pas."""
-    appliquees = regles_enregistrees(suivi, parametres)
-    if appliquees is None:
-        return None
-    return {regle.id: regle.niveau for regle in appliquees}
+def _niveaux_actuels(session: Session, identifiants: Iterable[int]) -> dict[int, Niveau]:
+    return dict(
+        session.execute(
+            select(m.Regle.id, m.Regle.niveau).where(m.Regle.id.in_(list(identifiants)))
+        ).all()
+    )
 
 
-def libelles_regles_du_calcul(
-    session: Session,
-    suivi,
-    parametres: Mapping | None,
-    semestre,
-    annee_id: int,
-) -> tuple[str, ...]:
+def libelles_regles_du_calcul(session: Session, suivi) -> tuple[str, ...]:
     """Les règles qui s'écartent de leur niveau ou ont été ignorées par ce calcul, en phrases.
 
     « R002 (La classe A1-G1 a une pause déjeuner libre…) : facultatif » ;
-    « R001 (…) : ignorée pour ce calcul » pour une règle active du semestre,
-    déjà créée au lancement, que le calcul n'a pas appliquée. Rien si le
-    calcul n'a pas enregistré ses règles.
+    « R001 (…) : ignorée pour ce calcul ». D'après `SuiviCalcul.regles`,
+    comparée au niveau actuel de chaque règle ; rien pour un calcul sans
+    copie des règles.
     """
-    appliquees = regles_enregistrees(suivi, parametres)
-    if appliquees is None:
-        return ()
-    try:
-        actuelles = {d.id: d for d in regles_actives_du_semestre(session, semestre, annee_id)}
-    except ErreurEDT as erreur:
-        journal.warning("Règles actuelles illisibles pour le calcul %s : %s", suivi.id, erreur)
-        actuelles = {}
+    appliquees = regles_enregistrees(suivi.regles, suivi.id)
+    actuels = _niveaux_actuels(session, (regle.id for regle in appliquees))
     phrases = []
     for regle in appliquees:
-        actuelle = actuelles.get(regle.id)
-        if actuelle is not None and actuelle.niveau is not regle.niveau:
+        if regle.niveau is None:
+            phrases.append(f"{_citation(regle.code, regle.phrase)} : ignorée pour ce calcul")
+        elif regle.id in actuels and actuels[regle.id] is not regle.niveau:
             phrases.append(
                 f"{_citation(regle.code, regle.phrase)} : {regle.niveau.libelle.lower()}"
             )
-    appliquees_ids = {regle.id for regle in appliquees}
-    creees = dict(
-        session.execute(
-            select(m.Regle.id, m.Regle.cree_le).where(m.Regle.id.in_(list(actuelles)))
-        ).all()
-    )
-    for identifiant, detail in actuelles.items():
-        cree_le = creees.get(identifiant)
-        if identifiant in appliquees_ids or cree_le is None or cree_le > suivi.demarre_le:
-            continue
-        phrases.append(f"{_citation(detail.code, detail.phrase)} : ignorée pour ce calcul")
     return tuple(phrases)
 
 
@@ -542,11 +530,7 @@ def _citation(code: str, phrase: str) -> str:
 
 
 def libelles_entorses_regles(
-    session: Session,
-    suivi,
-    statistiques: Mapping,
-    parametres: Mapping | None,
-    annee_id: int,
+    session: Session, suivi, statistiques: Mapping, annee_id: int
 ) -> tuple[str, ...]:
     """Entorses par règle : « 2 entorses à R007 (Le groupe A1 ne travaille pas le samedi) ».
 
@@ -566,9 +550,8 @@ def libelles_entorses_regles(
         return (
             "Le décompte des entorses par règle est illisible : le journal du calcul le détaille.",
         )
-    phrases_par_code = {r.code: r.phrase for r in regles_enregistrees(suivi, parametres) or ()}
-    manquants = [code for code in entorses if code not in phrases_par_code]
-    if manquants:
+    phrases_par_code = {r.code: r.phrase for r in regles_enregistrees(suivi.regles, suivi.id)}
+    if any(code not in phrases_par_code for code in entorses):
         try:
             for detail in service_regles.lister(session, annee_id):
                 phrases_par_code.setdefault(detail.code, detail.phrase)
@@ -590,24 +573,20 @@ def _cle_code(code: str) -> tuple[int, str]:
 
 
 def resume_regles_du_calcul(calcul: m.Calcul) -> tuple[str, ...]:
-    """Pour l'historique : les règles appliquées hors de leur niveau, en bref (« R002 : facultatif »).
+    """Pour l'historique, en bref : « R002 : facultatif », « R001 : ignorée ».
 
-    D'après `calcul.parametres["regles"]` comparé aux niveaux actuels des
-    règles ; rien si le calcul ne les a pas enregistrées.
+    D'après la copie des règles enregistrée avec le calcul
+    (`calcul.parametres["regles"]`), comparée au niveau actuel des règles.
     """
-    appliquees = regles_enregistrees(calcul, dict(calcul.parametres or {}))
-    if not appliquees:
-        return ()
+    appliquees = regles_enregistrees((calcul.parametres or {}).get("regles") or (), calcul.id)
     session = Session.object_session(calcul)
-    if session is None:
+    if not appliquees or session is None:
         return ()
-    actuels = dict(
-        session.execute(
-            select(m.Regle.id, m.Regle.niveau).where(m.Regle.id.in_([r.id for r in appliquees]))
-        ).all()
-    )
-    return tuple(
-        f"{regle.code} : {regle.niveau.libelle.lower()}"
-        for regle in appliquees
-        if regle.id in actuels and actuels[regle.id] is not regle.niveau
-    )
+    actuels = _niveaux_actuels(session, (regle.id for regle in appliquees))
+    resume = []
+    for regle in appliquees:
+        if regle.niveau is None:
+            resume.append(f"{regle.code} : ignorée")
+        elif regle.id in actuels and actuels[regle.id] is not regle.niveau:
+            resume.append(f"{regle.code} : {regle.niveau.libelle.lower()}")
+    return tuple(resume)

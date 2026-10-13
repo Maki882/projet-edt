@@ -3,19 +3,14 @@
 Le jeu minimal a deux règles actives : R001 (la promotion A1 ne travaille pas
 le samedi, nécessaire) et R002 (la classe A1-G1 a une pause déjeuner libre
 d'au moins 1 h entre 12 h et 14 h au S1, importante), plus deux règles de base
-proposées. Les raccords des lots solveur et vérificateur
-(`OptionsSolveur.niveaux_regles`, `calcul.parametres["regles"]`,
-`statistiques["entorses_regles"]`, `Anomalie.regle_id`) sont remplacés par des
-doubles : ces tests ne dépendent pas de leur livraison.
+proposées (R003, R004). Les calculs passent par le vrai moteur ; seuls les
+décomptes d'entorses sont injectés quand le test a besoin d'un nombre précis.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-
 from sqlalchemy import select
 
-from edt import solveur
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CodeContrainte, Niveau
@@ -23,9 +18,8 @@ from edt.domaine.enumerations import SAMEDI, Gravite
 from edt.domaine.instantane import id_seance
 from edt.services import generation
 from edt.services import regles as service_regles
-from edt.services.emploi_du_temps import modifications, presentation, regles_personnalisees, vues
+from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.parametres import ecrire_parametres
-from edt.solveur.contrat import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
 from .conftest import DELAI, identifiant_groupe, seance_du_besoin
@@ -40,51 +34,26 @@ def _regles(semestre_id: int) -> dict[str, service_regles.RegleDetail]:
         return {detail.code: detail for detail in service_regles.lister(session, annee)}
 
 
-class _Capture:
-    """Double de `avec_niveaux_regles` : retient ce que l'écran transmet au moteur."""
-
-    def __init__(self) -> None:
-        self.niveaux_regles: list[dict | None] = []
-
-    def __call__(self, options, niveaux_regles):
-        self.niveaux_regles.append(None if niveaux_regles is None else dict(niveaux_regles))
-        return options
-
-
 def _formulaire(semestre_id: int, **champs: str) -> dict:
     return {"semestre_id": semestre_id, "duree": "court", **champs}
 
 
-def _calcul_temps_depasse(client, semestre_id: int, monkeypatch) -> int:
-    monkeypatch.setattr(
-        solveur,
-        "resoudre",
-        lambda instantane, options, arret=None: ResultatSolveur(StatutSolveur.TEMPS_DEPASSE),
+def _lancer(client, semestre_id: int, **champs: str) -> generation.SuiviCalcul:
+    """Lance un calcul par la page Générer (vrai moteur) et attend sa fin."""
+    reponse = client.post(
+        "/calculs", data=_formulaire(semestre_id, **champs), follow_redirects=False
     )
-    reponse = client.post("/calculs", data=_formulaire(semestre_id), follow_redirects=False)
     assert reponse.status_code == 303, reponse.text
     calcul_id = int(reponse.headers["location"].rsplit("/", 1)[1])
-    generation.attendre_calcul(calcul_id, DELAI)
-    return calcul_id
+    return generation.attendre_calcul(calcul_id, DELAI)
 
 
-def _enregistrer_regles(calcul_id: int, regles: list[dict], **statistiques) -> None:
-    """Ce que le lot solveur enregistrera avec le calcul (double)."""
-    with session_base() as session:
-        calcul = session.get(m.Calcul, calcul_id)
-        calcul.parametres = {**(calcul.parametres or {}), "regles": regles}
-        calcul.statistiques = {**(calcul.statistiques or {}), **statistiques}
-
-
-def _copie(detail: service_regles.RegleDetail, niveau: Niveau) -> dict:
+def _r001_facultative_r002_ignoree(regles) -> dict[str, str]:
+    r001, r002 = regles["R001"], regles["R002"]
     return {
-        "id": detail.id,
-        "code": detail.code,
-        "type": detail.type.value,
-        "portee": detail.portee.nature.value,
-        "parametres": dict(detail.regle.parametres),
-        "niveau": niveau.value,
-        "phrase": detail.phrase,
+        f"niveau_regle_{r001.id}": "facultatif",
+        f"niveau_regle_{r002.id}": "important",
+        f"ignorer_regle_{r002.id}": "1",
     }
 
 
@@ -112,58 +81,56 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
     assert "Jours travaillés" in bloc and "Pause déjeuner" in bloc  # types
     assert "S1" in bloc and "toute l&#39;année" in bloc  # périodes
     # Les règles de base proposées sont rappelées, sans effet ; liens vers l'écran des règles.
-    assert "2 règles proposées ne sont pas encore activées" in bloc
+    assert (
+        "2 règles proposées ne sont pas encore activées : elles n&#39;ont aucun effet sur le "
+        "calcul tant qu&#39;elles ne sont pas confirmées." in bloc
+    )
     assert 'href="/regles"' in bloc and 'href="/regles/ajouter"' in bloc
+    assert "pas encore transmis" not in page and "ne lit pas encore" not in page
     # REGLE n'est pas dans le tableau des niveaux du catalogue.
     assert 'name="niveau_REGLE"' not in page
 
 
-def test_niveau_modifie_et_regle_ignoree_transmis_au_moteur(jeu_minimal, client, monkeypatch):
+def test_niveau_modifie_et_regle_ignoree_transmis_au_moteur(jeu_minimal, client):
     regles = _regles(jeu_minimal.semestre_id)
-    r001, r002 = regles["R001"], regles["R002"]
-    capture = _Capture()
-    monkeypatch.setattr(regles_personnalisees, "avec_niveaux_regles", capture)
-    lancees = []
-    monkeypatch.setattr(
-        generation, "lancer_calcul", lambda semestre_id, options: lancees.append(options) or 999
+    r001 = regles["R001"]
+
+    suivi = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
+
+    assert suivi.etat.est_termine, suivi.message
+    # Transmis au moteur : R001 facultative, R002 absente (ignorée).
+    assert suivi.niveaux_regles == {r001.id: Niveau.FACULTATIF}
+    copie = {entree["code"]: entree for entree in suivi.regles}
+    assert copie["R001"]["niveau"] == "facultatif" and copie["R002"]["niveau"] is None
+    assert copie["R001"]["phrase"] == r001.phrase
+    with session_base() as session:
+        parametres = session.get(m.Calcul, suivi.id).parametres
+    assert parametres["niveaux_regles"] == {str(r001.id): "facultatif"}
+    assert {entree["code"] for entree in parametres["regles"]} == {"R001", "R002"}
+
+
+def test_sans_choix_chaque_regle_garde_son_niveau(jeu_minimal, client):
+    suivi = _lancer(client, jeu_minimal.semestre_id)
+    assert suivi.niveaux_regles is None  # rien à transmettre
+    assert {e["code"]: e["niveau"] for e in suivi.regles} == {
+        "R001": "necessaire",
+        "R002": "important",
+    }
+
+
+def test_pre_verifications_recoivent_les_niveaux_des_regles(jeu_minimal, client, faux_verificateur):
+    regles = _regles(jeu_minimal.semestre_id)
+    fragment = client.get(
+        "/calculs/verifications",
+        params={"semestre_id": jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles)},
+        headers=HX,
     )
-
-    reponse = client.post(
-        "/calculs",
-        data=_formulaire(
-            jeu_minimal.semestre_id,
-            **{
-                f"niveau_regle_{r001.id}": "necessaire",
-                f"ignorer_regle_{r001.id}": "1",
-                f"niveau_regle_{r002.id}": "facultatif",
-            },
-        ),
-        follow_redirects=False,
-    )
-
-    assert reponse.status_code == 303 and reponse.headers["location"] == "/calculs/999"
-    assert capture.niveaux_regles == [{r002.id: Niveau.FACULTATIF}]  # R001 ignorée : absente
-    assert len(lancees) == 1
-    # Tant que le moteur ne lit pas les niveaux des règles, l'écran le dit.
-    page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
-    assert "ne sont pas encore transmis" in page
+    assert fragment.status_code == 200 and "<html" not in fragment.text
+    assert faux_verificateur.niveaux_regles_pre_verifies == {regles["R001"].id: Niveau.FACULTATIF}
 
 
-def test_options_portent_les_niveaux_quand_le_moteur_les_lit(monkeypatch):
-    @dataclass(frozen=True)
-    class OptionsAvecRegles(OptionsSolveur):
-        niveaux_regles: dict = field(default_factory=dict)
-
-    monkeypatch.setattr(regles_personnalisees, "OptionsSolveur", OptionsAvecRegles)
-    assert regles_personnalisees.moteur_lit_les_niveaux_regles()
-    options = regles_personnalisees.avec_niveaux_regles(OptionsAvecRegles(), {7: Niveau.FACULTATIF})
-    assert options.niveaux_regles == {7: Niveau.FACULTATIF}
-    assert regles_personnalisees.avec_niveaux_regles(options, None) is options
-
-
-def test_choix_illisible_sur_une_regle_reaffiche_la_page(jeu_minimal, client, monkeypatch):
+def test_choix_illisible_sur_une_regle_reaffiche_la_page(jeu_minimal, client):
     r002 = _regles(jeu_minimal.semestre_id)["R002"]
-    monkeypatch.setattr(generation, "lancer_calcul", lambda *a, **k: 999)
     for champs, attendu in (
         ({f"niveau_regle_{r002.id}": "tres_important"}, "niveau inconnu pour la règle R002"),
         ({"niveau_regle_99999": "important"}, "n&#39;est pas (ou plus) active"),
@@ -177,31 +144,34 @@ def test_choix_illisible_sur_une_regle_reaffiche_la_page(jeu_minimal, client, mo
         assert attendu in reponse.text and "Traceback" not in reponse.text
         # Les autres choix reviennent tels quels.
         assert 'name="niveau_PAUSE" value="facultatif" checked' in reponse.text
+    with session_base() as session:
+        assert not session.scalars(select(m.Calcul)).all()
 
 
-def test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul(
-    jeu_minimal, client, monkeypatch
-):
+def test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul(jeu_minimal, client):
     regles = _regles(jeu_minimal.semestre_id)
-    r002 = regles["R002"]
-    calcul_id = _calcul_temps_depasse(client, jeu_minimal.semestre_id, monkeypatch)
-    # Le calcul a appliqué R002 en facultatif et ignoré R001 (absente de la copie).
-    _enregistrer_regles(calcul_id, [_copie(r002, Niveau.FACULTATIF)])
+    r001, r002 = regles["R001"], regles["R002"]
+    origine = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
 
     page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
-    assert f'name="niveau_regle_{r002.id}" value="facultatif" checked' in page
-    # « Ignorer » ne vaut que pour un calcul : R001 n'est pas préremplie ignorée.
-    assert f'name="ignorer_regle_{regles["R001"].id}" value="1">' in page
+    assert f'name="niveau_regle_{r001.id}" value="facultatif" checked' in page
+    # « Ignorer » ne vaut que pour un calcul : R002 revient à son niveau, non ignorée.
+    assert f'name="niveau_regle_{r002.id}" value="important" checked' in page
+    assert f'name="ignorer_regle_{r002.id}" value="1">' in page
 
-    capture = _Capture()
-    monkeypatch.setattr(regles_personnalisees, "avec_niveaux_regles", capture)
     for donnees in ({"longue": "1"}, {"autre_solution": "1"}):
         relance = client.post(
-            f"/calculs/{calcul_id}/relancer", data=donnees, follow_redirects=False
+            f"/calculs/{origine.id}/relancer", data=donnees, follow_redirects=False
         )
         assert relance.status_code == 303, relance.text
-        generation.attendre_calcul(int(relance.headers["location"].rsplit("/", 1)[1]), DELAI)
-    assert capture.niveaux_regles == [{r002.id: Niveau.FACULTATIF}] * 2
+        suivi = generation.attendre_calcul(
+            int(relance.headers["location"].rsplit("/", 1)[1]), DELAI
+        )
+        assert suivi.niveaux_regles == origine.niveaux_regles == {r001.id: Niveau.FACULTATIF}
+        assert {e["code"]: e["niveau"] for e in suivi.regles} == {
+            "R001": "facultatif",
+            "R002": None,
+        }
 
 
 # --------------------------------------------------------------------------- #
@@ -209,50 +179,43 @@ def test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul(
 # --------------------------------------------------------------------------- #
 
 
-def test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses(
-    jeu_minimal, client, monkeypatch
-):
+def test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses(jeu_minimal, client):
     regles = _regles(jeu_minimal.semestre_id)
     r001, r002 = regles["R001"], regles["R002"]
-    calcul_id = _calcul_temps_depasse(client, jeu_minimal.semestre_id, monkeypatch)
-    page = client.get(f"/calculs/{calcul_id}").text
-    assert "Règles personnalisées :" not in page  # rien d'enregistré : rien d'inventé
+    suivi = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
+    # Décompte du moteur remplacé par un nombre connu (le vrai dépend de la solution).
+    with session_base() as session:
+        calcul = session.get(m.Calcul, suivi.id)
+        calcul.statistiques = {
+            **(calcul.statistiques or {}),
+            "entorses_regles": {"R001": 2, "R002": 1, "R009": 0},
+        }
 
-    _enregistrer_regles(
-        calcul_id,
-        [_copie(r002, Niveau.FACULTATIF)],
-        entorses_regles={"R002": 2, "R001": 1, "R009": 0},
-    )
-    page = client.get(f"/calculs/{calcul_id}").text.replace("&#39;", "'")
+    page = client.get(f"/calculs/{suivi.id}").text.replace("&#39;", "'")
 
     phrase1, phrase2 = r001.phrase.rstrip("."), r002.phrase.rstrip(".")
     assert (
-        f"<strong>Règles personnalisées :</strong> R002 ({phrase2}) : facultatif ; "
-        f"R001 ({phrase1}) : ignorée pour ce calcul</p>"
+        f"<strong>Règles personnalisées :</strong> R001 ({phrase1}) : facultatif ; "
+        f"R002 ({phrase2}) : ignorée pour ce calcul</p>"
     ) in page
     assert (
         "<strong>Entorses aux règles personnalisées :</strong> "
-        f"1 entorse à R001 ({phrase1}) ; 2 entorses à R002 ({phrase2})</p>"
+        f"2 entorses à R001 ({phrase1}) ; 1 entorse à R002 ({phrase2})</p>"
     ) in page
     assert "R009" not in page  # aucune entorse : non citée
     assert "Comptées par le calcul" in page
 
     historique = client.get(f"/versions?semestre_id={jeu_minimal.semestre_id}").text
-    assert "R002 : facultatif" in historique
+    assert "R001 : facultatif ; R002 : ignorée" in historique
+
+    # Un calcul où chaque règle garde son niveau n'en dit rien.
+    defaut = _lancer(client, jeu_minimal.semestre_id)
+    assert "Règles personnalisées :" not in client.get(f"/calculs/{defaut.id}").text
 
 
 # --------------------------------------------------------------------------- #
 # Anomalies d'une règle : À traiter et panneau d'une séance
 # --------------------------------------------------------------------------- #
-
-
-@dataclass(frozen=True)
-class AnomalieDeRegle(Anomalie):
-    """Anomalie telle que le lot vérificateur la livrera : avec la règle citée."""
-
-    regle_id: int | None = None
-    regle_code: str | None = None
-    regle_phrase: str | None = None
 
 
 def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, faux_verificateur):
@@ -264,7 +227,7 @@ def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, fa
         identifiant = seance.id
         cle = id_seance(seance.besoin_id, seance.rang)
     faux_verificateur.hebdo = [
-        AnomalieDeRegle(
+        Anomalie(
             CodeContrainte.REGLE,
             Gravite.AVERTISSEMENT,
             "Le mardi, A1-G1a n'a que 30 min de libre dans la fenêtre du déjeuner.",
@@ -288,7 +251,7 @@ def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, fa
 def test_anomalie_sans_regle_citee_reste_telle_quelle():
     simple = Anomalie(CodeContrainte.HORAIRES, Gravite.ERREUR, "Hors grille.")
     assert presentation.regle_citee(simple) is None
-    sans_code = AnomalieDeRegle(CodeContrainte.REGLE, Gravite.ERREUR, "Écart.", regle_id=4)
+    sans_code = Anomalie(CodeContrainte.REGLE, Gravite.ERREUR, "Écart.", regle_id=4)
     citee = presentation.regle_citee(sans_code)
     assert citee.code == "règle n° 4" and citee.lien is None
 

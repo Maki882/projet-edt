@@ -127,13 +127,9 @@
     {%- else %}
     {{ tableau_regles(bloc_regles.regles) }}
     {%- endif %}
-    {%- if not moteur_lit_niveaux_regles %}
-    <p class="discret">Le moteur ne lit pas encore ces choix : chaque règle garde son niveau tant que ce raccord n'est pas livré.</p>
     {%- endif %}
-    {%- endif %}
-    {%- if bloc_regles.nb_proposees %}
-    {%- set n = bloc_regles.nb_proposees %}
-    {{ ui.message(fmt.pluriel(n, "règle proposée", "règles proposées") ~ (" n'est pas encore activée : elle n'a" if n == 1 else " ne sont pas encore activées : elles n'ont") ~ " aucun effet sur le calcul tant qu'elle" ~ ("" if n == 1 else "s") ~ " n'" ~ ("est" if n == 1 else "sont") ~ " pas confirmée" ~ ("" if n == 1 else "s") ~ ".", "info") }}
+    {%- if bloc_regles.rappel_proposees %}
+    {{ ui.message(bloc_regles.rappel_proposees, "info") }}
     {%- endif %}
     <p class="edt-boutons">
       <a class="bouton" href="{{ adresse_regles }}">Voir les règles personnalisées</a>
