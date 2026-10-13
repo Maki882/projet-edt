@@ -28,6 +28,7 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/compteur.py` | compteur de l'onglet « À traiter » (somme des `ATraiter.total`) |
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
+| `src/edt/services/emploi_du_temps/regles_personnalisees.py` | règles personnalisées sur ces écrans : tableau de la page Générer, règles appliquées et entorses d'un calcul, déjeuner de la personne affichée, jours permis d'une séance |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -190,6 +191,58 @@ Avant un calcul, chaque règle du catalogue (`edt.domaine.contraintes`) a un
   « 2 entorses à des règles importantes : Pause entre deux séances (2) ») ;
   un décompte illisible est signalé, pas tu.
 
+## Règles personnalisées
+
+Les règles personnalisées (`docs/regles-personnalisees.md`) se saisissent
+sur l'écran Données › Règles personnalisées (`/regles`, lot web données).
+Ces écrans les montrent ainsi (`regles_personnalisees`) :
+
+- **Générer**, sous le tableau des contraintes : un tableau « Règles
+  personnalisées » des règles **actives** de l'année dont la période
+  recoupe le semestre : code (lien vers la règle), phrase, type, portée,
+  période ; trois boutons radio « Nécessaire / Important / Facultatif »
+  (champ `niveau_regle_<id>`, « (niveau de la règle) » à côté du sien) et
+  une case « Ignorer pour ce calcul » (`ignorer_regle_<id>`). Préremplis
+  avec le niveau du dernier calcul du semestre s'il l'a enregistré, sinon
+  celui de la règle ; « ignorer » n'est jamais prérempli : le choix vaut
+  pour un calcul. Au-delà de vingt règles, regroupées par type, repliées.
+  Un rappel compte les règles **proposées** (sans effet tant qu'elles ne
+  sont pas confirmées) ; liens vers `/regles` et `/regles/ajouter`. Un
+  choix illisible (niveau inconnu, règle qui n'est plus active) réaffiche
+  la page en 422 avec le message.
+- **Lancement** : `OptionsSolveur.niveaux_regles` (id de la règle →
+  niveau ; une règle ignorée en est absente, convention des niveaux).
+  Relance plus longue et « autre solution » reprennent les niveaux du
+  calcul d'origine (`calcul.parametres["regles"]`). Tant que le moteur ne
+  lit pas `niveaux_regles`, les options partent sans eux, la page le dit
+  sous le tableau et, si un choix s'écartait des niveaux des règles, au
+  lancement.
+- **Suivi et historique** : « Règles personnalisées : R002 (phrase) :
+  facultatif ; R001 (phrase) : ignorée pour ce calcul » (règles prises à
+  un autre niveau que le leur, ou actives et déjà créées au lancement mais
+  absentes de la copie du calcul) ; « Entorses aux règles personnalisées :
+  2 entorses à R007 (phrase) » (`statistiques["entorses_regles"]`, code →
+  nombre ; un décompte illisible est dit). L'historique résume : « R002 :
+  facultatif ». Rien n'est affiché pour un calcul qui n'a pas enregistré
+  ses règles.
+- **À traiter, panneau d'une séance et toute liste d'anomalies** : une
+  anomalie qui cite une règle (`Anomalie.regle_id`, `regle_code`,
+  `regle_phrase`, lus par `presentation.regle_citee`) porte son code en
+  lien vers elle (`/regles?code=R007`) et sa phrase quand le message ne la
+  contient pas déjà. Les anomalies `REGLE` se regroupent sous « Règle
+  personnalisée ».
+- **Grille** : voir « Bande du déjeuner » et les colonnes ci-dessous ;
+  **retouche** : les jours proposés pour déplacer une séance sont ses
+  jours permis (`Instantane.reglages.jours_de(séance).jours_permis(campus
+  de la salle)` : jours travaillés, case « samedi autorisé » du type de
+  séance, règles `JOURS_TRAVAILLES` de chaque axe), plus son jour actuel.
+
+L'instantané du semestre est mémorisé tant que la base ne change pas
+(`regles_personnalisees.instantane_du_semestre`, 0,1 s sur le jeu grand) ;
+une règle illisible (`ErreurDonneesInvalides` à son chargement) n'empêche
+pas d'afficher : la grille revient au déjeuner de l'établissement et le
+dit, une retouche propose les jours travaillés de l'établissement.
+
 ## Onglet « Emploi du temps »
 
 Section de menu `SECTION_EMPLOI_DU_TEMPS` (ordre 300).
@@ -213,12 +266,24 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
 - **Sélecteurs** : semestre, version, « pour qui » (groupes par nature,
   enseignants, salles par campus) avec une **recherche rapide** qui filtre
   la liste sans tenir compte des accents (`edt.js`).
-- **Bande du déjeuner** (`vues.bande_dejeuner`) : en horaires
-  déterminés, une bande « Déjeuner » sur la plage réservée ; en pause
-  libre bornée, une bande plus légère (`edt-dejeuner-libre`) sur la
-  fenêtre, « Pause libre (N min) », infobulle « Pause libre : au moins N
-  min dans cette fenêtre » (la pause de chacun n'y est pas dessinée : le
-  calcul la place où il veut) ; sans pause, aucune bande.
+- **Bande du déjeuner** (`vues.bande_dejeuner`) : celle de la **personne
+  affichée** (`regles_personnalisees.dejeuner_de_la_cible`, d'après
+  `Instantane.reglages.dejeuner`) : pour un groupe, son propre réglage le
+  long de sa lignée (une règle `PAUSE_DEJEUNER` sur lui ou un ascendant) ;
+  pour un enseignant, le sien ; pour une salle, celui de l'établissement.
+  Pour un groupe qui n'est pas une feuille, le réglage d'une de ses
+  feuilles qui n'a pas de règle plus précise que lui ; si toutes en ont
+  une, l'établissement. En horaires déterminés, une bande « Déjeuner » sur
+  la plage réservée ; en pause libre bornée, une bande plus légère
+  (`edt-dejeuner-libre`) sur la fenêtre, « Pause libre (N min) », infobulle
+  « Pause libre : au moins N min dans cette fenêtre » (la pause de chacun
+  n'y est pas dessinée : le calcul la place où il veut) ; sans pause,
+  aucune bande. Une valeur venue d'une règle la nomme dans l'infobulle
+  (« (règle R002) »).
+- **Colonnes** : les jours travaillés de l'établissement
+  (`jours_travailles`, samedi compris s'il l'est), plus tout jour où une
+  séance affichée tombe (un samedi ouvert par une règle ou un type de
+  séance).
 - **Trois affichages** : semaine type ; semaine datée (flèches, saut à une
   date, numéro de semaine du semestre et de l'année, jours fermés et
   vacances grisés avec leur libellé, séances annulées barrées, déplacées en
@@ -296,8 +361,10 @@ gravité puis par contrainte (libellé et description du catalogue, 100
 lignes au plus par contrainte, le total restant affiché). Chaque ligne mène
 à l'emploi du temps du premier groupe, enseignant ou salle nommé par
 l'anomalie (à défaut, le premier groupe de la séance), avec la séance mise
-en évidence. Puis les séances « à programmer » avec leur raison (le
-commentaire de l'occurrence, sinon une phrase par défaut).
+en évidence. Une anomalie d'une règle personnalisée porte le code de la
+règle en lien vers elle (voir « Règles personnalisées »). Puis les séances
+« à programmer » avec leur raison (le commentaire de l'occurrence, sinon
+une phrase par défaut).
 
 **Nombre de points à traiter** : une seule définition, `ATraiter.total`,
 reprise par la page, la pastille de l'onglet (`GET /a-traiter/compteur`,

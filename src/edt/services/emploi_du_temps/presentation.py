@@ -12,6 +12,7 @@ import datetime as dt
 import re
 import zlib
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass
 
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
 from edt.domaine.enumerations import JOURS
@@ -224,6 +225,44 @@ def libelles_entorses(
         details = ", ".join(f"{libelle} ({nombre})" for libelle, nombre in regles)
         phrases.append(f"{debut} : {details}")
     return tuple(phrases)
+
+
+ADRESSE_REGLES = "/regles"
+"""Écran Données › Règles personnalisées (lot web données)."""
+
+ADRESSE_AJOUT_REGLE = "/regles/ajouter"
+"""Ajout guidé d'une règle (lot web données ; adresse à confirmer avec lui)."""
+
+
+def adresse_regle(code: str) -> str:
+    """Adresse d'une règle sur l'écran des règles personnalisées (année en cours par défaut)."""
+    return f"{ADRESSE_REGLES}?code={code}"
+
+
+@dataclass(frozen=True)
+class RegleCitee:
+    """La règle personnalisée qu'une anomalie cite : code, phrase, lien (`None` sans code)."""
+
+    code: str
+    phrase: str
+    lien: str | None
+
+
+def regle_citee(anomalie: object) -> RegleCitee | None:
+    """La règle citée par une anomalie `REGLE`, d'après `regle_id`, `regle_code`, `regle_phrase`.
+
+    Ces champs sont livrés par le lot vérificateur et lus par `getattr` : une
+    anomalie qui ne les porte pas n'en cite aucune (`None`). Sans code, la
+    règle est désignée par son numéro, sans lien.
+    """
+    regle_id = getattr(anomalie, "regle_id", None)
+    code = getattr(anomalie, "regle_code", None)
+    if regle_id is None and not code:
+        return None
+    phrase = str(getattr(anomalie, "regle_phrase", None) or "")
+    if not code:
+        return RegleCitee(f"règle n° {regle_id}", phrase, None)
+    return RegleCitee(str(code), phrase, adresse_regle(str(code)))
 
 
 def pourcentage(valeur: float | None) -> str:

@@ -48,10 +48,10 @@ from edt.domaine.enumerations import (
     StatutOccurrence,
 )
 from edt.domaine.instantane import id_seance
-from edt.domaine.parametres import Parametres
+from edt.domaine.regles import ReglageDejeuner
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.conflits_groupes import conflits_groupes
-from edt.services.emploi_du_temps import presentation, raccords
+from edt.services.emploi_du_temps import presentation, raccords, regles_personnalisees
 from edt.services.emploi_du_temps.disposition import Axe, Disposition, Plage, disposer
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
@@ -63,9 +63,6 @@ from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
-
-JOURS_OUVRES = (0, 1, 2, 3, 4)
-"""Colonnes toujours affichées en vue semaine ; le samedi s'ajoute s'il a des séances."""
 
 ORDRE_GRAVITE = {Gravite.ERREUR: 0, Gravite.AVERTISSEMENT: 1, Gravite.INFORMATION: 2}
 
@@ -290,7 +287,7 @@ class BandeDejeuner:
     """Bande du déjeuner sur la grille : position en pourcentage de l'axe, libellé, infobulle.
 
     `libre` : fenêtre d'une pause libre bornée (bande plus légère : chacun y
-    prend sa pause, rien n'y est réservé) ; sinon plage réservée à tous.
+    prend sa pause, rien n'y est réservé) ; sinon plage réservée.
     """
 
     haut: float
@@ -300,30 +297,37 @@ class BandeDejeuner:
     libre: bool = False
 
 
-def bande_dejeuner(parametres: Parametres, axe: Axe) -> BandeDejeuner | None:
-    """La bande du déjeuner selon le mode : plage réservée, fenêtre de la pause libre ou rien.
+def bande_dejeuner(reglage: ReglageDejeuner, axe: Axe) -> BandeDejeuner | None:
+    """La bande du déjeuner d'une personne selon son mode : plage réservée, fenêtre ou rien.
 
+    `reglage` : celui de la personne affichée (`regles_personnalisees.
+    dejeuner_de_la_cible`), l'établissement ou une règle `PAUSE_DEJEUNER`.
     Horaires déterminés : bande « Déjeuner » sur la plage. Pause libre bornée :
     bande plus légère sur la fenêtre, « Pause libre : au moins N min dans
-    cette fenêtre ». Pas de pause : aucune bande. La bande est rognée aux
-    bornes de l'axe ; rien si elle n'y tient pas.
+    cette fenêtre ». Pas de pause : aucune bande. Une valeur venue d'une règle
+    la nomme dans l'infobulle. La bande est rognée aux bornes de l'axe ; rien
+    si elle n'y tient pas.
     """
-    plage, fenetre = parametres.plage_dejeuner, parametres.fenetre_dejeuner
-    if plage is not None:
-        debut, fin = plage
+    regle = reglage.source.regle
+    if reglage.plage is not None:
+        debut, fin = reglage.plage
         libelle = "Déjeuner"
-        titre = f"Déjeuner : {presentation.plage_horaire(debut, fin)}, libre pour tous"
-    elif fenetre is not None:
-        debut, fin, duree = fenetre
+        titre = f"Déjeuner : {presentation.plage_horaire(debut, fin)}"
+        titre += ", libre pour tous" if regle is None else f" (règle {regle.code})"
+    elif reglage.fenetre is not None:
+        debut, fin, duree = reglage.fenetre
         libelle = f"Pause libre ({duree} min)"
         titre = f"Pause libre : au moins {duree} min dans cette fenêtre"
+        titre += "" if regle is None else f" (règle {regle.code})"
     else:
         return None
     haut = axe.position(max(debut, axe.debut))
     bas = axe.position(min(fin, axe.fin))
     if bas <= haut:
         return None
-    return BandeDejeuner(haut, round(bas - haut, 4), libelle, titre, libre=fenetre is not None)
+    return BandeDejeuner(
+        haut, round(bas - haut, 4), libelle, titre, libre=reglage.fenetre is not None
+    )
 
 
 @dataclass(frozen=True)
@@ -351,6 +355,7 @@ class VueEmploiDuTemps:
     nb_semaines: int
     perimetre: Perimetre | None = None
     seances_datees_importees: bool = False
+    alerte_regles: str | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -482,7 +487,10 @@ def construire_vue(
             blocs = [bloc for bloc in blocs if bloc.jour == jour]
             jours = (JourAffiche(jour, None, None),)
         else:
-            jours = tuple(JourAffiche(j, None, None) for j in _jours_de_semaine(blocs))
+            jours = tuple(
+                JourAffiche(j, None, None)
+                for j in _jours_de_semaine(blocs, parametres.jours_travailles)
+            )
         date = None
         navigation = _navigation_hebdo(affichage, jour)
     else:
@@ -500,7 +508,7 @@ def construire_vue(
         if affichage is Affichage.JOUR:
             jours_affiches = (date.weekday(),)
         else:
-            jours_affiches = _jours_de_semaine(blocs)
+            jours_affiches = _jours_de_semaine(blocs, parametres.jours_travailles)
         jours = tuple(
             JourAffiche(j, debut + dt.timedelta(days=j - debut.weekday()), None)
             for j in jours_affiches
@@ -544,7 +552,15 @@ def construire_vue(
         parametres.ouverture_min,
         parametres.fermeture_min,
     )
-    dejeuner = bande_dejeuner(parametres, disposition.axe)
+    reglage, alerte_regles = regles_personnalisees.dejeuner_de_la_cible(
+        session,
+        semestre.id,
+        annee_id,
+        parametres,
+        cible.nature.value if cible is not None else None,
+        cible.id if cible is not None else None,
+    )
+    dejeuner = bande_dejeuner(reglage, disposition.axe)
 
     return VueEmploiDuTemps(
         semestre=semestre,
@@ -560,6 +576,7 @@ def construire_vue(
         a_programmer=a_programmer,
         disposition=disposition,
         dejeuner=dejeuner,
+        alerte_regles=alerte_regles,
         navigation=navigation,
         controle=controle,
         anomalies=anomalies,
@@ -971,12 +988,13 @@ def _a_des_occurrences(session: Session, version_id: int) -> bool:
 # --------------------------------------------------------------------------- #
 
 
-def _jours_de_semaine(blocs: Iterable[Bloc]) -> tuple[int, ...]:
-    """Lundi à vendredi, plus le samedi (et le dimanche) s'ils ont des séances."""
-    presents = {bloc.jour for bloc in blocs}
-    jours = list(JOURS_OUVRES)
-    jours.extend(j for j in (SAMEDI, DIMANCHE) if j in presents)
-    return tuple(jours)
+def _jours_de_semaine(blocs: Iterable[Bloc], jours_travailles: Iterable[int]) -> tuple[int, ...]:
+    """Les jours travaillés de l'établissement (samedi compris s'il l'est), plus ceux qui ont des séances.
+
+    Un jour d'appoint (le samedi ouvert par une règle ou par le type de
+    séance) apparaît dès qu'une séance y tombe.
+    """
+    return tuple(sorted(set(jours_travailles) | {bloc.jour for bloc in blocs}))
 
 
 ECART_MAX_JOURS = 366

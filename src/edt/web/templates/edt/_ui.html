@@ -7,6 +7,7 @@
   - edt.encart_controle(controle)              vérification indisponible ou en échec : encart clair
   - edt.indicateurs(controle, nb_a_programmer) les quatre indicateurs de l'équipe
   - edt.anomalies(liste)                       anomalies en phrases, avec leur gravité
+  - edt.regle_citee(regle, message)             la règle personnalisée d'une anomalie, avec son lien
   - edt.etiquette_gravite(gravite)             pastille « Erreur », « Avertissement »...
   - edt.ressources(liste)                      feuilles de style et script des écrans
   - edt.perimetre(vue, url_vue)                ce que la grille affiche et ce qu'elle laisse de côté
@@ -37,10 +38,20 @@
 {%- if titre %}<h3>{{ titre }}</h3>{% endif %}
 <ul class="edt-anomalies">
   {%- for anomalie in liste %}
-  <li>{{ etiquette_gravite(anomalie.gravite) }} <span>{{ anomalie.message }}</span> <small class="discret">{{ fmt.libelle_contrainte(anomalie.code) }}</small></li>
+  {%- set regle = fmt.regle_citee(anomalie) %}
+  <li>{{ etiquette_gravite(anomalie.gravite) }} <span>{{ anomalie.message }}</span> <small class="discret">{{ fmt.libelle_contrainte(anomalie.code) }}</small>
+    {%- if regle %} {{ regle_citee(regle, anomalie.message) }}{% endif %}</li>
   {%- endfor %}
 </ul>
 {%- endif %}
+{%- endmacro %}
+
+{#- La règle personnalisée citée par une anomalie : lien vers elle, et sa phrase si le message
+    ne la contient pas déjà (presentation.RegleCitee). #}
+{% macro regle_citee(regle, message="") -%}
+<small class="edt-regle-citee">
+  {%- if regle.lien %}<a href="{{ regle.lien }}">{{ regle.code }}</a>{% else %}{{ regle.code }}{% endif %}
+  {%- if regle.phrase and regle.phrase not in message %} : {{ regle.phrase }}{% endif %}</small>
 {%- endmacro %}
 
 {% macro valeur(texte) -%}

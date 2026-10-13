@@ -61,7 +61,9 @@ class LigneAnomalie:
     """Une anomalie, avec les paramètres du lien vers l'emploi du temps concerné.
 
     `niveau` : « règle importante » ou « règle facultative » quand le
-    vérificateur dit le niveau de la règle (`Anomalie.niveau`), sinon `None`.
+    vérificateur dit le niveau de la règle (`Anomalie.niveau`), sinon `None` ;
+    `regle` : la règle personnalisée citée par une anomalie `REGLE` (code,
+    phrase, lien), sinon `None`.
     """
 
     message: str
@@ -69,6 +71,7 @@ class LigneAnomalie:
     gravite: Gravite
     lien: dict[str, str] | None
     niveau: str | None = None
+    regle: presentation.RegleCitee | None = None
 
 
 @dataclass(frozen=True)
@@ -246,6 +249,7 @@ def _grouper(anomalies: Sequence[Anomalie], liens: _Liens) -> tuple[GroupeGravit
                             liens.lien(a),
                             # Livré par le lot vérificateur : absent des anomalies plus anciennes.
                             presentation.etiquette_niveau(getattr(a, "niveau", None)),
+                            presentation.regle_citee(a),
                         )
                         for a in liste[:LIMITE_LIGNES]
                     ),

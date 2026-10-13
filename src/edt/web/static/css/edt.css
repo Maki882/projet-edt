@@ -565,6 +565,29 @@
   font-size: 0.75rem;
 }
 
+/* Règles personnalisées : case « ignorer pour ce calcul » sous les niveaux, citation d'une règle. */
+.edt-regles-perso td {
+  vertical-align: top;
+}
+
+.edt-ignorer {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  margin-top: 0.25rem;
+  font-weight: 400;
+  color: var(--texte-discret);
+}
+
+.edt-groupe-regles summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.edt-regle-citee {
+  color: var(--texte-discret);
+}
+
 .edt-formulaire-calcul {
   max-width: none;
 }
