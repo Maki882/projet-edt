@@ -548,11 +548,12 @@ class Regles:
 
         Une exigence par personne commune (`personnes`), selon son réglage
         (`Instantane.reglages`) ; deux personnes au même réglage et à la même
-        source n'en font qu'une. Comme pour le vérificateur, les personnes
-        sont celles de `Instantane.emplois` (lignée) : deux groupes seulement
-        chevauchants n'ont pas de personne commune, donc pas de pause exigée
-        entre eux. Le standard ne compte que si `PAUSE` est active ; une pause
-        nulle n'exige rien.
+        source n'en font qu'une. Les personnes sont celles de
+        `Instantane.emplois` (lignée) ; deux besoins en conflit de groupes
+        sans groupe feuille commun (groupes seulement chevauchants) gardent
+        le **standard** entre eux, comme chez le vérificateur : un réglage
+        par personne ne remplace que la pause de cette personne. Le standard
+        ne compte que si `PAUSE` est active ; une pause nulle n'exige rien.
         """
         cle = (a.id, b.id) if a.id <= b.id else (b.id, a.id)
         exigences = self._pauses.get(cle)
@@ -574,6 +575,17 @@ class Regles:
                     (reglage.duree, violation.imputation),
                     ExigencePause(reglage.duree, violation, self.dure_violation(violation)),
                 )
+            _, groupes_en_conflit = self.partage(a, b)
+            if (
+                groupes_en_conflit
+                and self.active(C.PAUSE)
+                and not any(p.nature is NaturePersonne.GROUPE for p in communes)
+            ):
+                duree = self.instantane.parametres.pause_min
+                if duree > 0:
+                    vues.setdefault(
+                        (duree, C.PAUSE), ExigencePause(duree, standard, self.dure(C.PAUSE))
+                    )
             exigences = tuple(vues.values())
             self._pauses[cle] = exigences
         return exigences

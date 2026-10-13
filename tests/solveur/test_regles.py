@@ -854,3 +854,35 @@ def test_horaires_de_portee_campus_ne_jouent_que_sur_ce_campus(type_regle, param
     g, c2 = _deux_campus_matin_pris(avec_s1=False)
     g.regle(type_regle, NaturePortee.CAMPUS, c2, "necessaire", **parametres)
     dur_puis_souple(g.instantane())
+
+
+def test_la_pause_standard_reste_entre_deux_groupes_chevauchants():
+    """Scénario de la revue : une règle PAUSE_MINIMALE plus courte sur un tiers ne supprime pas la
+    pause standard entre deux groupes déclarés en conflit sans lignée commune."""
+    contigus = (
+        Creneau(LUNDI, 8 * H + 30, 10 * H + 30, DemiJournee.MATIN),
+        Creneau(LUNDI, 10 * H + 30, 12 * H + 30, DemiJournee.MATIN),
+    )
+    f = Fabrique(creneaux=contigus)
+    f.salle()
+    f.salle()
+    f.salle()
+    a, b, x = f.groupe("A"), f.groupe("B"), f.groupe("X")
+    f.conflit(a, b)
+    for groupe in (a, b, x):
+        f.besoin([groupe], [f.enseignant()])
+    sans_regle = f.instantane()
+    refuse(sans_regle)  # A et B ne peuvent pas se suivre sans les 15 min de pause
+    f.regle(TypeRegle.PAUSE_MINIMALE, NaturePortee.GROUPE, x, "necessaire", duree=0)
+    instantane = f.instantane()
+    refuse(instantane)  # toujours impossible : la règle de X ne change rien entre A et B
+
+    # PAUSE souple : une entorse au standard entre A et B, relevée aussi par le vérificateur.
+    reglages = options(niveaux={**OPTIONS.niveaux, "PAUSE": "important"})
+    resultat = resoudre(instantane, reglages)
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"PAUSE": 1}
+    assert resultat.statistiques["entorses_regles"] == {}
+    anomalies = verifier(instantane, resultat.placements, niveaux_regles=resultat.niveaux_regles)
+    assert [a.code for a in anomalies if a.code is CodeContrainte.PAUSE] == [CodeContrainte.PAUSE]
