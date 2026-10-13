@@ -477,6 +477,7 @@ def regles_proposees(
             note=NOTES_DES_REGLES.get(code),
         )
         for code, entree in CATALOGUE.items()
+        if code is not CodeContrainte.REGLE  # chaque règle personnalisée porte son propre niveau
     )
 
 

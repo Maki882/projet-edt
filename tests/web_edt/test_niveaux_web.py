@@ -27,7 +27,11 @@ from edt.verification.contrat import Anomalie
 from .conftest import DELAI
 
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
-FIXES = [code for code, entree in CATALOGUE.items() if not entree.modifiable]
+FIXES = [
+    code
+    for code, entree in CATALOGUE.items()
+    if not entree.modifiable and code is not CodeContrainte.REGLE  # REGLE absente du tableau
+]
 
 
 def _lancer(client, semestre_id: int, **niveaux: str):

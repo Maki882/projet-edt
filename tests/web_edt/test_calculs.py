@@ -63,7 +63,11 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
     assert page.count('name="niveau_') == 3 * len(MODIFIABLES)  # trois niveaux par règle
     assert 'name="contraintes"' not in page  # plus de case pour ignorer une règle
-    assert all(entree.libelle in page for entree in CATALOGUE.values())
+    assert all(
+        entree.libelle in page
+        for code, entree in CATALOGUE.items()
+        if code is not CodeContrainte.REGLE  # chaque règle personnalisée porte son niveau
+    )
     court, long_ = _durees()
     assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
     assert f"Rechercher jusqu'à {presentation.duree_secondes(long_)}" in page

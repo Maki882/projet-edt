@@ -1177,6 +1177,7 @@ def _rejeter(
 # --------------------------------------------------------------------------- #
 
 TABLES_REMPLACEES: tuple[tuple[str, type], ...] = (
+    ("règles personnalisées", m.Regle),
     ("versions d'emploi du temps", m.VersionEdt),
     ("calculs", m.Calcul),
     ("besoins", m.Besoin),
