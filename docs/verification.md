@@ -444,10 +444,16 @@ def version_a_verifier(session, version_id=None, semestre_id=None) -> int
 ```
 
 Niveaux appliqués, pour les trois fonctions : `niveaux` s'il est donné ;
-sinon, si `contraintes_actives` est donné, ces contraintes en dur
-(comportement d'origine) ; sinon, **les niveaux du calcul de la version**
-(`niveaux_de_version`), ce que fait l'interface (À traiter, accueil, grille)
-et la commande sans `-c`.
+sinon **les niveaux du calcul de la version** (`niveaux_de_version`), ce que
+fait l'interface (À traiter, accueil, grille) et la commande. Avec
+`contraintes_actives` (option `-c` de la commande), ces niveaux sont
+**restreints** aux codes demandés, les autres contraintes n'étant pas
+vérifiées : restreindre la vérification ne change pas la gravité d'une
+entorse (une règle importante reste un avertissement, avec ou sans `-c`). Un
+code demandé que le calcul avait ignoré est vérifié à son niveau par défaut
+du catalogue, ce qui est journalisé (INFO). La vérification en dur
+(`niveau` à `None`) n'existe plus qu'au niveau du vérificateur pur, appelé
+sans `niveaux`.
 
 - `verifier_version` : semaine type de la version et ses indicateurs.
 - `verifier_occurrences_version` : séances datées de la version. Avec une
