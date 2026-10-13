@@ -85,7 +85,13 @@ def test_choix_du_type_puis_formulaire_tire_du_schema(site, ids):
     assert 'data-visible-si="p_mode:libre"' in page  # durée : mode libre seulement
     assert 'data-visible-si="portee:enseignant"' in page
     assert re.search(r'<option value="\d+"> └ A1-G1 - ', page)  # arbre des groupes
-    assert 'hx-post="/regles/apercu"' in page
+    # L'aperçu part de sa section, pas du formulaire : HTMX valide un formulaire avant de
+    # l'envoyer et n'enverrait rien tant qu'un champ requis est vide ou hors bornes.
+    formulaire = re.search(r'<form class="formulaire formulaire-large"[^>]*>', page).group(0)
+    assert "hx-post" not in formulaire and 'action="/regles/nouveau"' in formulaire
+    section = re.search(r'<section class="apercu-regle"[^>]*>', page).group(0)
+    assert 'hx-post="/regles/apercu"' in section and 'hx-include="closest form"' in section
+    assert "from:closest form" in section and "load" not in section  # pas d'erreurs d'emblée
 
 
 def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
@@ -106,6 +112,8 @@ def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
     assert re.search(r'id="erreur-p_jours">Au moins un jour', vide.text)
     sans_cible = site.post("/regles/nouveau", data={**donnees, "cible_groupe": ""})
     assert 'id="erreur-cible_groupe"' in sans_cible.text
+    # Saisie refusée : l'aperçu est redemandé au chargement, il liste ce qui reste à corriger.
+    assert re.search(r'<section class="apercu-regle"[^>]*hx-trigger="load, ', sans_cible.text)
     apercu_vide = site.post("/regles/apercu", data={**donnees, "p_jours": []}).text
     assert "À compléter ou corriger" in apercu_vide and "Jours travaillés" in apercu_vide
 
@@ -132,6 +140,8 @@ def test_ajout_pause_dejeuner_d_un_enseignant(site, ids):
     trop = site.post("/regles/nouveau", data=donnees)
     assert trop.status_code == 422 and 'id="erreur-p_duree"' in trop.text
     assert 'value="11:45"' in trop.text  # la saisie est conservée
+    apercu = site.post("/regles/apercu", data=donnees, headers=HTMX).text
+    assert apercu.count("Durée minimale") == 1  # libellé non répété devant le message
     sans_semestre = site.post("/regles/nouveau", data={**donnees, "p_duree": "75", "semestre": ""})
     assert re.search(r'id="erreur-semestre">Choisir le semestre', sans_semestre.text)
 
@@ -226,7 +236,7 @@ def test_suppression_d_une_regle_sur_place_et_sans_javascript(site, ids):
     liste = f"/regles?annee={ids.annee}&etat=proposee"
     entetes = {**HTMX, "HX-Current-URL": f"http://testserver{liste}"}
     ligne = site.get(f"/regles/{r003.id}/ligne/suppression", headers=entetes).text
-    assert "Supprimer définitivement la règle R003 ?" in ligne and 'colspan="9"' in ligne
+    assert "Supprimer définitivement la règle R003 ?" in ligne and 'colspan="7"' in ligne
     zone = site.post(f"/regles/{r003.id}/ligne/supprimer", headers=entetes).text
     assert _codes(zone) == ["R004"] and "Règle R003 supprimée" in zone
 

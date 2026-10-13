@@ -346,6 +346,7 @@ def _rendre_formulaire(
             ),
             "action": f"{PREFIXE}/{detail.id}/modifier" if detail else f"{PREFIXE}/nouveau",
             "retour": retour,
+            "a_corriger": bool(erreurs or generales),
             "portees": [n.libelle for n in natures_admises(definition)],
         },
         statut=statut,
@@ -456,6 +457,11 @@ def modifier(
     return rediriger(request, retour, f"Règle {nouveau.code} modifiée : {nouveau.phrase}")
 
 
+def _avec_libelle(libelle: str, texte: str) -> str:
+    """« Libellé : message », sans répéter le libellé quand le message le donne déjà."""
+    return texte if texte.startswith(f"{libelle} :") else f"{libelle} : {texte}"
+
+
 @routeur.post("/apercu", name="regle_apercu")
 def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) -> Response:
     """Aperçu (HTMX) : la phrase de la règle telle qu'elle serait enregistrée, ou ce qui manque."""
@@ -478,8 +484,10 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
         "periode.date_debut": "Du",
         "periode.date_fin": "Au",
     }
-    erreurs = [f"{libelles.get(cle, cle)} : {texte}" for cle, texte in validation.erreurs.items()]
-    erreurs += [f"Semestre : {texte}" for texte in locales.values()]
+    erreurs = [
+        _avec_libelle(libelles.get(cle, cle), texte) for cle, texte in validation.erreurs.items()
+    ]
+    erreurs += [_avec_libelle("Semestre", texte) for texte in locales.values()]
     return rendre(
         request,
         "donnees/_regle_apercu.html",

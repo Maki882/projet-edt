@@ -1250,6 +1250,33 @@ fieldset.champ {
   max-width: 28rem;
 }
 
+/*
+ * Deux informations l'une sous l'autre (type et origine, portée et période),
+ * une ligne chacune : un texte trop long finit par « ... », entier au survol.
+ */
+.tableau-regles .cellule-empilee {
+  min-width: 9rem;
+  max-width: 11rem;
+}
+
+.tableau-regles tbody .cellule-empilee > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Quatre boutons au plus : ils passent sur deux lignes plutôt que d'élargir le tableau. */
+.tableau-regles tbody .colonne-actions {
+  white-space: normal;
+  width: 11.5rem;
+  min-width: 11.5rem;
+}
+
+.tableau-regles tbody .colonne-actions > * {
+  display: inline-block;
+  margin: 0 0 0.2rem 0.2rem;
+}
+
 .apercu-regle {
   margin-bottom: var(--espace);
   padding: 0.6rem 0.9rem;
@@ -1301,8 +1328,15 @@ fieldset.champ {
   margin-top: auto;
 }
 
-.exemples-regle {
+/* Cartes des types : texte resserré pour voir plusieurs rangées sans défiler. */
+.carte-type p,
+.carte-type ul {
+  font-size: 0.9rem;
+  line-height: 1.4;
   margin: 0 0 0.5rem;
+}
+
+.exemples-regle {
   padding-left: 1.1rem;
   color: var(--texte-discret);
   font-style: italic;

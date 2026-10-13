@@ -9,12 +9,16 @@
 <tr id="regle-{{ regle.id }}"{% if r.etat.value == "proposee" %} class="ligne-proposee"{% endif %}>
   <td><a href="{{ url }}/modifier{{ suffixe }}"><strong>{{ regle.code }}</strong></a></td>
   <td class="cellule-texte"><span class="deux-lignes" title="{{ regle.phrase }}{% if r.commentaire %} ({{ r.commentaire }}){% endif %}">{{ regle.phrase }}</span></td>
-  <td>{{ r.type.libelle }}</td>
-  <td>{{ portee[:1]|upper ~ portee[1:] }}</td>
+  <td class="cellule-empilee">
+    <span title="{{ r.type.libelle }}">{{ r.type.libelle }}</span>
+    <span class="discret">{{ r.origine.libelle }}</span>
+  </td>
+  <td class="cellule-empilee">
+    <span title="{{ portee }}">{{ portee[:1]|upper ~ portee[1:] }}</span>
+    <span class="discret" title="{{ periode }}">{{ periode[:1]|upper ~ periode[1:] }}</span>
+  </td>
   <td>{{ ui.etiquette(r.niveau.libelle, "neutre") }}</td>
   <td>{{ ui.etiquette(r.etat.libelle, niveaux_etat[r.etat.value]) }}</td>
-  <td>{{ periode[:1]|upper ~ periode[1:] }}</td>
-  <td>{{ r.origine.libelle }}</td>
   <td class="colonne-actions">
     <a class="bouton bouton-petit" href="{{ url }}/modifier{{ suffixe }}">Modifier</a>
     {%- if r.etat.value == "proposee" %}
