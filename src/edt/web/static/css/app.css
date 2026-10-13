@@ -959,6 +959,23 @@ main {
   padding: 0.1rem 0;
 }
 
+/* Cases sur une ligne (jours de la semaine) : chaque case garde son libellé. */
+.cases-en-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1rem;
+  padding: 0.35rem 0;
+}
+
+.cases-en-ligne label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 400;
+  margin: 0;
+  white-space: nowrap;
+}
+
 .choix-multiple-resume {
   margin: 0.25rem 0 0;
   font-size: 0.85rem;
@@ -1221,6 +1238,78 @@ fieldset.champ {
   font-family: var(--police-code);
   font-size: 0.85rem;
   line-height: 1.45;
+}
+
+/* Règles personnalisées : règle proposée, aperçu de la phrase, choix du type. */
+.tableau tr.ligne-proposee > td {
+  background: var(--attention-pale);
+}
+
+.tableau-regles .cellule-texte {
+  min-width: 16rem;
+  max-width: 28rem;
+}
+
+.apercu-regle {
+  margin-bottom: var(--espace);
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--bordure);
+  border-left: 4px solid var(--marque);
+  border-radius: var(--rayon);
+  background: var(--marque-pale);
+}
+
+.apercu-regle h2 {
+  margin: 0 0 0.3rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--texte-discret);
+}
+
+.apercu-regle p,
+.apercu-regle ul {
+  margin: 0 0 0.3rem;
+}
+
+.apercu-phrase {
+  font-size: 1.05rem;
+  font-weight: 600;
+}
+
+.cartes-types {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(19rem, 1fr));
+  gap: var(--espace);
+}
+
+.carte-type {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+}
+
+.carte-type h2 {
+  margin-bottom: 0.4rem;
+}
+
+.carte-type > .bouton {
+  align-self: flex-start;
+  margin-top: auto;
+}
+
+.exemples-regle {
+  margin: 0 0 0.5rem;
+  padding-left: 1.1rem;
+  color: var(--texte-discret);
+  font-style: italic;
+}
+
+.liste-regles-touchees li {
+  margin-bottom: 0.3rem;
 }
 
 /* ----- 10. Panneau Assistant ------------------------------------------------------ */

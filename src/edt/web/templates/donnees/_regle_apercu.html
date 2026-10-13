@@ -1,0 +1,16 @@
+{# Aperçu d'une règle en cours de saisie (HTMX) : sa phrase, ou ce qui manque. #}
+{% import "macros.html" as ui %}
+{%- if validation.valide and not erreurs %}
+{%- set r = validation.regle %}
+<p class="apercu-phrase">« {{ validation.phrase }} »</p>
+<p class="discret">
+  {{ ui.etiquette(r.niveau.libelle, "neutre") }} {{ r.periode_texte() }} en {{ validation.annee_libelle }}.
+</p>
+{%- else %}
+<p>À compléter ou corriger avant d'enregistrer :</p>
+<ul class="liste-simple">
+  {%- for erreur in erreurs %}
+  <li>{{ erreur }}</li>
+  {%- endfor %}
+</ul>
+{%- endif %}

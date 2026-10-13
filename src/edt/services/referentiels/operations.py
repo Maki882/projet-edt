@@ -25,9 +25,9 @@ from __future__ import annotations
 
 import logging
 import math
-from collections.abc import Mapping
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
@@ -41,6 +41,9 @@ from edt.services.referentiels.description import (
     TypeChamp,
     options_reference,
 )
+
+if TYPE_CHECKING:
+    from edt.services.referentiels.regles_cibles import RegleTouchee
 
 journal = logging.getLogger(__name__)
 
@@ -101,7 +104,10 @@ class AnalyseSuppression:
 
     `blocages` : raisons qui l'empêchent (vide = possible), chacune avec si
     possible un lien vers les éléments qui bloquent ; `effets` : ce qu'elle
-    emporterait ou modifierait ailleurs, et ce qui se passe ensuite.
+    emporterait ou modifierait ailleurs, et ce qui se passe ensuite ;
+    `regles` : règles personnalisées qui visent l'élément ou le citent, que la
+    suppression supprimerait ou modifierait (avec l'accord explicite de
+    l'utilisateur : voir `supprimer`).
     """
 
     entite: str
@@ -109,6 +115,12 @@ class AnalyseSuppression:
     libelle: str
     blocages: tuple[Raison, ...]
     effets: tuple[Raison, ...]
+    regles: tuple[RegleTouchee, ...] = ()
+
+    @property
+    def ids_regles(self) -> tuple[int, ...]:
+        """Identifiants des règles touchées (ce que l'utilisateur confirme)."""
+        return tuple(regle.id for regle in self.regles)
 
     @property
     def possible(self) -> bool:
@@ -531,6 +543,9 @@ def creer(session: Session, code: str | Entite, valeurs: Mapping[str, Any]) -> d
     saisies = {**valeurs_par_defaut(description), **valeurs}
     nouveau = description.modele()
     _enregistrer(session, description, nouveau, saisies, None)
+    if description.apres_creation is not None:
+        description.apres_creation(session, nouveau)
+        session.flush()
     resultat = lire(session, description, nouveau.id)
     journal.info(
         "%s %s : %s (n° %d)",
@@ -608,7 +623,22 @@ def analyser_suppression(session: Session, code: str | Entite, ident: int) -> An
         libelle=description.libelle(trouve),
         blocages=tuple(blocages),
         effets=tuple(effets),
+        regles=tuple(regles_touchees(session, description.code, trouve)),
     )
+
+
+def regles_touchees(session: Session, code_entite: str, trouve: Any) -> list[RegleTouchee]:
+    """Règles personnalisées touchées par la suppression (voir `regles_cibles`)."""
+    from edt.services.referentiels.regles_cibles import regles_touchees as calculer
+
+    return calculer(session, code_entite, trouve)
+
+
+def appliquer_aux_regles(session: Session, regles: Iterable[RegleTouchee], cible: str) -> None:
+    """Supprime ou modifie les règles touchées (voir `regles_cibles.appliquer`)."""
+    from edt.services.referentiels.regles_cibles import appliquer
+
+    appliquer(session, regles, cible)
 
 
 def _raison(element: str | Raison) -> Raison:
@@ -616,11 +646,23 @@ def _raison(element: str | Raison) -> Raison:
     return element if isinstance(element, Raison) else Raison(element)
 
 
-def supprimer(session: Session, code: str | Entite, ident: int) -> str:
+def supprimer(
+    session: Session,
+    code: str | Entite,
+    ident: int,
+    *,
+    regles_confirmees: Collection[int] | None = None,
+) -> str:
     """Supprime un élément et renvoie son libellé.
 
     Lève `ErreurRegleMetier` **avant toute écriture** si l'élément est encore
     utilisé (« Cette salle est imposée à 12 besoins. »).
+
+    Règles personnalisées (décision 3) : si des règles visent l'élément ou le
+    citent, la suppression n'a lieu que si `regles_confirmees` donne exactement
+    leurs identifiants (l'utilisateur a vu la liste et accepté) ; elles sont
+    alors supprimées, ou l'élément retiré de leurs paramètres, dans la même
+    transaction, avant l'élément. Sinon : `ErreurRegleMetier` qui les nomme.
     """
     description = entite(code)
     analyse = analyser_suppression(session, description, ident)
@@ -636,6 +678,22 @@ def supprimer(session: Session, code: str | Entite, ident: int) -> str:
             + " Modifiez ou supprimez d'abord ces éléments : rien n'a été supprimé.",
             analyse.refus,
         )
+    if analyse.regles:
+        if regles_confirmees is None or set(regles_confirmees) != set(analyse.ids_regles):
+            codes = ", ".join(f"{regle.code} ({regle.annee})" for regle in analyse.regles)
+            journal.warning(
+                "Suppression refusée (%s « %s ») : règles personnalisées non confirmées (%s)",
+                description.nom,
+                analyse.libelle,
+                codes,
+            )
+            raise ErreurRegleMetier(
+                f"{description.demonstratif} est concerné{'e' if description.feminin else ''} "
+                f"par {len(analyse.regles)} règle(s) personnalisée(s) ({codes}) : confirmer "
+                "leur suppression avec la sienne, ou les modifier d'abord. Rien n'a été supprimé.",
+                [f"{regle.code} : {regle.phrase}" for regle in analyse.regles],
+            )
+        appliquer_aux_regles(session, analyse.regles, f"{description.nom} « {analyse.libelle} »")
     session.delete(objet(session, description, ident))
     session.flush()
     journal.info(

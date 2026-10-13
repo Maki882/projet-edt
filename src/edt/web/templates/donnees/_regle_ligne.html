@@ -1,0 +1,31 @@
+{# Une règle dans la liste (aussi renvoyée seule à HTMX après « Annuler »). Variables : regle, url_liste. #}
+{% import "macros.html" as ui %}
+{%- set r = regle.regle %}
+{%- set url = "/regles/" ~ regle.id %}
+{%- set suffixe = "?" ~ {"retour": url_liste}|urlencode %}
+{%- set portee = r.portee.designation %}
+{%- set periode = r.periode_texte() %}
+{%- set niveaux_etat = {"active": "succes", "proposee": "attention", "inactive": "neutre"} %}
+<tr id="regle-{{ regle.id }}"{% if r.etat.value == "proposee" %} class="ligne-proposee"{% endif %}>
+  <td><a href="{{ url }}/modifier{{ suffixe }}"><strong>{{ regle.code }}</strong></a></td>
+  <td class="cellule-texte"><span class="deux-lignes" title="{{ regle.phrase }}{% if r.commentaire %} ({{ r.commentaire }}){% endif %}">{{ regle.phrase }}</span></td>
+  <td>{{ r.type.libelle }}</td>
+  <td>{{ portee[:1]|upper ~ portee[1:] }}</td>
+  <td>{{ ui.etiquette(r.niveau.libelle, "neutre") }}</td>
+  <td>{{ ui.etiquette(r.etat.libelle, niveaux_etat[r.etat.value]) }}</td>
+  <td>{{ periode[:1]|upper ~ periode[1:] }}</td>
+  <td>{{ r.origine.libelle }}</td>
+  <td class="colonne-actions">
+    <a class="bouton bouton-petit" href="{{ url }}/modifier{{ suffixe }}">Modifier</a>
+    {%- if r.etat.value == "proposee" %}
+    {{ ui.bouton_action(url ~ "/etat", "Activer", classe="bouton bouton-petit bouton-principal", champs={"etat": "active", "_retour": url_liste}) }}
+    {{ ui.bouton_action(url ~ "/etat", "Écarter", classe="bouton bouton-petit", champs={"etat": "inactive", "_retour": url_liste}) }}
+    {%- elif r.etat.value == "active" %}
+    {{ ui.bouton_action(url ~ "/etat", "Désactiver", classe="bouton bouton-petit", champs={"etat": "inactive", "_retour": url_liste}) }}
+    {%- else %}
+    {{ ui.bouton_action(url ~ "/etat", "Activer", classe="bouton bouton-petit", champs={"etat": "active", "_retour": url_liste}) }}
+    {%- endif %}
+    <a class="bouton bouton-petit bouton-danger" href="{{ url }}/supprimer{{ suffixe }}"
+       hx-get="{{ url }}/ligne/suppression" hx-target="closest tr" hx-swap="outerHTML">Supprimer</a>
+  </td>
+</tr>

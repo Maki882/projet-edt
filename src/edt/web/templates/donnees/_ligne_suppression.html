@@ -13,9 +13,11 @@
       {%- if analyse.effets %}
       <ul class="liste-simple">{{ d.raisons(analyse.effets) }}</ul>
       {%- endif %}
+      {{ d.regles_touchees(analyse, retour_regles) }}
       <div class="ligne-boutons">
         <button type="button" class="bouton bouton-petit bouton-danger-plein"
-                hx-post="{{ url_element }}/ligne/supprimer" hx-target="#zone-liste" hx-swap="innerHTML">Supprimer définitivement</button>
+                hx-post="{{ url_element }}/ligne/supprimer" hx-target="#zone-liste" hx-swap="innerHTML"
+                hx-vals='{{ {"_regles": analyse.ids_regles|join(",")}|tojson }}'>{{ d.libelle_suppression(entite, analyse) }}</button>
         <button type="button" class="bouton bouton-petit" autofocus
                 hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Annuler</button>
       </div>
@@ -23,6 +25,7 @@
       <p><strong>Impossible de supprimer {{ entite.demonstratif|lower }} « {{ analyse.libelle }} »</strong> :
         {{ "elle" if entite.feminin else "il" }} est encore {{ entite.accorde("utilisé") }}.</p>
       <ul class="liste-simple">{{ d.raisons(analyse.blocages) }}</ul>
+      {{ d.regles_touchees(analyse, retour_regles) }}
       <p class="discret">Modifiez ou supprimez d'abord ces éléments : on ne modifie jamais une demande en silence.</p>
       <div class="ligne-boutons">
         <button type="button" class="bouton bouton-petit" autofocus

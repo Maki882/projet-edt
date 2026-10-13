@@ -19,11 +19,13 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
     DEJEUNER_LIBRE,
     TYPE_CHOIX,
+    TYPE_JOURS,
     Choix,
     Parametres,
     ValeurParametre,
@@ -69,6 +71,22 @@ class ParametreAffiche:
         return self.type == TYPE_CHOIX
 
     @property
+    def est_jours(self) -> bool:
+        """Vrai pour un ensemble de jours (sept cases à cocher)."""
+        return self.type == TYPE_JOURS
+
+    @property
+    def options_jours(self) -> tuple[tuple[str, str], ...]:
+        """Cases d'un ensemble de jours : (numéro, nom du jour)."""
+        return tuple((str(numero), nom.capitalize()) for numero, nom in enumerate(JOURS))
+
+    def jours_coches(self, saisie: object) -> list[str]:
+        """Numéros cochés, depuis la valeur enregistrée ou la saisie réaffichée (« 0,1,4 »)."""
+        if isinstance(saisie, str):
+            return [morceau for morceau in saisie.split(",") if morceau.strip()]
+        return [str(jour) for jour in (saisie or ())]
+
+    @property
     def est_heure(self) -> bool:
         """Vrai pour une heure du jour (saisie « 08:30 »)."""
         return self.unite == UNITE_HEURE
@@ -77,6 +95,8 @@ class ParametreAffiche:
         """Valeur telle qu'on la saisit (« 08:30 » pour une heure)."""
         if self.est_heure and isinstance(valeur, int) and not isinstance(valeur, bool):
             return minutes_vers_hhmm(valeur)
+        if self.est_jours and isinstance(valeur, tuple | list):
+            return ",".join(str(jour) for jour in valeur)
         return str(valeur)
 
     def texte_lisible(self, valeur: ValeurParametre) -> str:
@@ -85,6 +105,8 @@ class ParametreAffiche:
             return "oui" if valeur else "non"
         if self.est_choix:
             return dict(self.choix).get(str(valeur), str(valeur))
+        if self.est_jours and isinstance(valeur, tuple | list):
+            return ", ".join(JOURS[jour] for jour in valeur)
         return self.en_texte(valeur)
 
 

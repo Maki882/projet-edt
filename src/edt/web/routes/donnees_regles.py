@@ -79,6 +79,7 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Journée",
         (
+            "jours_travailles",
             "ouverture_min",
             "fermeture_min",
             "pause_min",
@@ -149,8 +150,18 @@ def ajouter_annee(request: Request, session: SessionRequete, formulaire: Formula
     return rediriger(
         request,
         "/calendrier",
-        f"Année scolaire {annee['libelle']} créée avec ses deux semestres et ses jours fériés.",
+        f"Année scolaire {annee['libelle']} créée avec ses deux semestres et ses jours fériés. "
+        + texte_regles_proposees(annee["regles_proposees"]),
     )
+
+
+def texte_regles_proposees(nombre: int) -> str:
+    """« 2 règles proposées, à revoir dans Règles personnalisées. » (ou rien à revoir)."""
+    if nombre == 0:
+        return "Aucune règle personnalisée à proposer."
+    if nombre == 1:
+        return "1 règle proposée, à revoir dans Règles personnalisées."
+    return f"{nombre} règles proposées, à revoir dans Règles personnalisées."
 
 
 @routeur.post("/calendrier/annees/{ident:int}/feries", name="annee_feries")
@@ -222,6 +233,9 @@ def enregistrer_parametres(
     for parametre in parametres_affichables(session):
         if parametre.type == "bool":
             saisies[parametre.cle] = "oui" if parametre.cle in formulaire else "non"
+        elif parametre.est_jours:
+            # Cases décochées : absentes de l'envoi ; aucune case = ensemble vide, refusé.
+            saisies[parametre.cle] = ",".join(formulaire.getlist(parametre.cle))
         elif parametre.cle in formulaire:
             saisies[parametre.cle] = str(formulaire[parametre.cle])
     try:

@@ -8,6 +8,7 @@ from edt.db.moteur import session_base
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
     DEJEUNER_LIBRE,
+    JOURS_TRAVAILLES_PAR_DEFAUT,
     MODES_DEJEUNER,
     Parametres,
     definitions,
@@ -25,6 +26,8 @@ def _saisies(**changements):
         for d in definitions()
         if d.type is int
     }
+    # Comme un navigateur : les cases cochées des jours travaillés (lundi à vendredi).
+    valeurs["jours_travailles"] = [str(jour) for jour in JOURS_TRAVAILLES_PAR_DEFAUT]
     valeurs.update(changements)
     return valeurs
 
