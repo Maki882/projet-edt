@@ -115,9 +115,10 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
                 besoins=conflit.besoins,
             )
         anomalies.append(conflit)
-    # Les charges se mesurent au temps ouvert par la grille : sans `HORAIRES`, les séances
-    # peuvent en sortir et seuls les maxima des enseignants restent certains.
-    blocs = blocs_de_la_grille(instantane) if regles.active(C.HORAIRES) else []
+    # Les charges se mesurent au temps ouvert par la grille : si `HORAIRES` n'est pas dure
+    # (ignorée ou souple), les séances peuvent en sortir et seuls les maxima des enseignants
+    # restent certains.
+    blocs = blocs_de_la_grille(instantane) if regles.dure(C.HORAIRES) else []
     if blocs and regles.active(C.GROUPE_UNIQUE):
         anomalies.extend(_charges_des_groupes(preparation, blocs))
     anomalies.extend(_charges_des_enseignants(preparation, blocs))

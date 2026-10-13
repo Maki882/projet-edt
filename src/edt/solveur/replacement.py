@@ -18,7 +18,10 @@ date par date)
   groupes (`JOUR_FERME`), jour de cours permis (`JOURS`), jour et heure
   imposés par le besoin respectés (une séance ponctuelle ne change pas de date) ;
 - horaires : début de créneau, demi-journée, ouverture (`HORAIRES`), déjeuner
-  (`DEJEUNER`, si ses horaires sont déterminés), par `Regles.refus_horaire` ;
+  à horaires déterminés (`DEJEUNER`), par `Regles.refus_horaire` ; déjeuner
+  en pause libre bornée : la séance replacée ne doit pas priver un de ses
+  groupes (liés) ou enseignants de sa pause ce jour-là
+  (`Regles.pause_dejeuner_tenue`) ;
 - indisponibilités récurrentes et datées des enseignants, des groupes liés
   et de la salle (`DISPO_*`) ;
 - personnes : unicité, pause et trajet face aux occurrences du même jour
@@ -65,7 +68,7 @@ from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Occurrence
 from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur.instanciation import empechement
-from edt.solveur.regles import Regles
+from edt.solveur.regles import Regles, pause_dejeuner_tenue
 
 journal = logging.getLogger(__name__)
 
@@ -213,6 +216,35 @@ class _Planning:
             ):
                 return True
         return False
+
+    def pauses_dejeuner_supprimees(
+        self, besoin: Besoin, date: dt.date, debut: int, fin: int
+    ) -> int:
+        """Nombre de personnes qui perdraient leur pause libre ce jour-là si la séance s'y mettait.
+
+        Les enseignants du besoin et les groupes que la séance occupe
+        (`Regles.groupes_occupes`), chacun avec son emploi du temps de la
+        journée (`Regles.occupants`). Pause déjeuner libre bornée seulement ;
+        0 si la séance ne recoupe pas la fenêtre.
+        """
+        regles = self.regles
+        fenetre = regles.instantane.parametres.fenetre_dejeuner
+        if fenetre is None or not regles.active(C.DEJEUNER):
+            return 0
+        if not se_chevauchent(debut, fin, fenetre[0], fenetre[1]):
+            return 0
+        journees: list[list[tuple[int, int]]] = []
+        for enseignant in regles.enseignants_reels(besoin):
+            places = self.par_enseignant.get((date, enseignant), ())
+            journees.append([(p.debut, p.fin) for p in places])
+        for groupe in regles.groupes_occupes(besoin):
+            places = [
+                p for lie in regles.occupants(groupe) for p in self.par_groupe.get((date, lie), ())
+            ]
+            journees.append([(p.debut, p.fin) for p in places])
+        return sum(
+            1 for journee in journees if not pause_dejeuner_tenue([*journee, (debut, fin)], fenetre)
+        )
 
     def salle_libre(
         self, besoin: Besoin, date: dt.date, debut: int, fin: int, voisins: Sequence[_Place], ordre
@@ -439,9 +471,12 @@ def _placer(
         nb_examinees += 1
         fin = debut + duree
         candidate = dataclasses.replace(origine, date=date, debut=debut, fin=fin, salle_id=None)
-        if empechement(regles, besoin, candidate) is not None:
-            refus["un jour fermé ou une indisponibilité"] += 1
-            continue
+        obstacle = empechement(regles, besoin, candidate, toutes_les_souples=True)
+        if obstacle is not None:
+            if regles.dure(obstacle[0]):
+                refus["un jour fermé ou une indisponibilité"] += 1
+                continue
+            cout += regles.poids(obstacle[0])  # indisponibilité sous une règle souple : une entorse
         if planning.maximum_depasse(besoin, date, duree):
             if regles.dure(C.MAX_ENSEIGNANT):
                 refus["le maximum horaire d'un enseignant"] += 1
@@ -459,6 +494,12 @@ def _placer(
             refus["l'emploi du temps de ses groupes ou de ses enseignants"] += 1
             continue
         cout += sum(regles.poids(code) for code in codes)
+        sans_pause = planning.pauses_dejeuner_supprimees(besoin, date, debut, fin)
+        if sans_pause:
+            if regles.dure(C.DEJEUNER):
+                refus["la pause déjeuner de ses groupes ou de ses enseignants"] += 1
+                continue
+            cout += sans_pause * regles.poids(C.DEJEUNER)
         salle = planning.salle_libre(besoin, date, debut, fin, voisins, salles)
         if salle is None:
             refus["l'absence de salle libre"] += 1

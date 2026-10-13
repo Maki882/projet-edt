@@ -14,6 +14,8 @@ import pytest
 from sqlalchemy import select
 from tests.solveur.fabrique import (
     C1,
+    C2,
+    C3,
     LUNDI,
     MARDI,
     NIVEAUX_DURS,
@@ -25,7 +27,7 @@ from tests.solveur.fabrique import (
     options,
     verifier_solution,
 )
-from tests.solveur.test_contraintes import UN_CRENEAU
+from tests.solveur.test_contraintes import MATINEE, UN_CRENEAU
 from tests.solveur.test_couche_datee import SEMAINE, place
 from typer.testing import CliRunner
 
@@ -51,6 +53,7 @@ from edt.domaine.heures import ecart
 from edt.domaine.instantane import Creneau
 from edt.erreurs import ErreurDonneesInvalides
 from edt.services import generation
+from edt.services.niveaux import niveaux_du_calcul
 from edt.solveur import OptionsSolveur, StatutSolveur, resoudre
 from edt.solveur.instanciation import instancier
 from edt.solveur.preverification import pre_verifier
@@ -210,6 +213,42 @@ def test_pre_verifier_semestre_ne_regarde_que_les_contraintes_presentes(jeu_mini
 # --------------------------------------------------------------------------- #
 # Ligne de commande
 # --------------------------------------------------------------------------- #
+
+
+def test_lire_niveaux_complete_les_codes_absents_et_exige_un_dictionnaire():
+    """Même lecture que `edt.services.niveaux.niveaux_du_calcul`."""
+    lus = OptionsSolveur.lire_niveaux({"niveaux": {"PAUSE": "facultatif"}}, ["EQUIPEMENT"])
+    attendus = niveaux_par_defaut()
+    attendus[C.PAUSE] = Niveau.FACULTATIF
+    del attendus[C.EQUIPEMENT]
+    assert lus == attendus
+    assert lus == niveaux_du_calcul({"niveaux": {"PAUSE": "facultatif"}}, ["EQUIPEMENT"])
+    with pytest.raises(ErreurDonneesInvalides, match="dictionnaire"):
+        OptionsSolveur.lire_niveaux({"niveaux": ["PAUSE"]})
+
+
+def test_commande_pre_verifier_niveau(jeu_minimal):
+    lanceur = CliRunner()
+    semestre = str(jeu_minimal.semestre_id)
+    resultat = lanceur.invoke(
+        cli.app,
+        [
+            "pre-verifier",
+            "--semestre",
+            semestre,
+            "--niveau",
+            "PAUSE=facultatif",
+            "-d",
+            "EQUIPEMENT",
+        ],
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "Pause entre deux séances : facultatif" in resultat.output
+    assert "ignorée" in resultat.output and "Pré-vérifications du semestre" in resultat.output
+    refuse = lanceur.invoke(
+        cli.app, ["pre-verifier", "--semestre", semestre, "--niveau", "PAUSE=souhaitable"]
+    )
+    assert refuse.exit_code != 0 and "Niveau inconnu" in refuse.output
 
 
 def test_commande_generer_niveau(jeu_minimal):
@@ -417,6 +456,186 @@ def test_dispo_enseignant_souple_et_verrou_pendant_une_indisponibilite():
     verrouille = resoudre(f.instantane(), options(niveaux=souples))
     assert verrouille.statut is StatutSolveur.SOLUTION
     assert verrouille.statistiques["entorses"] == {"DISPO_ENSEIGNANT": 1}
+
+
+def _deux_horaires_fixes_colles(verrous: bool) -> Fabrique:
+    """Deux séances de la même classe le mardi, 8 h 30-10 h 40 puis 10 h 45 : cinq minutes de pause.
+
+    Horaires fixés par des verrous, ou imposés par les besoins.
+    """
+    f = Fabrique()
+    f.salle("N101")
+    f.salle("N102")
+    classe = f.groupe("A1")
+    imposes = {} if verrous else {"jour_impose": MARDI}
+    f.besoin([classe], [f.enseignant()], duree=2 * H + 10, **({"debut_impose": C1} | imposes))
+    f.besoin([classe], [f.enseignant()], **({"debut_impose": C2} | imposes))
+    if verrous:
+        f.verrou("1-1", MARDI, C1, 1)
+        f.verrou("2-1", MARDI, C2, 2)
+    return f
+
+
+@pytest.mark.parametrize("verrous", [True, False], ids=["verrous", "heures imposées"])
+def test_deux_horaires_fixes_qui_n_enfreignent_qu_une_regle_souple_ne_refusent_pas_le_calcul(
+    verrous,
+):
+    """La pré-vérification ne retient que les règles dures entre horaires fixes ; souple, l'entorse
+    est comptée par le modèle."""
+    instantane = _deux_horaires_fixes_colles(verrous).instantane()
+    refuse = resoudre(instantane, OPTIONS)
+    assert (
+        refuse.statut is StatutSolveur.INFAISABLE and "Pause entre deux séances" in refuse.message
+    )
+    for niveau in ("facultatif", "important"):
+        resultat = resoudre(instantane, options(niveaux=niveaux_avec(PAUSE=niveau)))
+        assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+        places = verifier_solution(instantane, resultat)
+        assert (places["1-1"].debut, places["2-1"].debut) == (C1, C2)
+        assert resultat.statistiques["entorses"] == {"PAUSE": 1}
+
+
+def test_deux_verrous_sur_deux_campus_et_trajet_souple():
+    """Même chose pour le trajet : deux verrous à un quart d'heure sur deux campus distants."""
+    f = Fabrique(creneaux=MATINEE)
+    nord, sud = f.campus("N"), f.campus("S")
+    f.trajet(nord, sud, 60)
+    f.salle("N101", campus=nord)
+    f.salle("S101", campus=sud)
+    martin = f.enseignant("Mme Martin")
+    f.besoin([f.groupe("A1")], [martin])
+    f.besoin([f.groupe("A2")], [martin])
+    f.verrou("1-1", LUNDI, C1, 1)
+    f.verrou("2-1", LUNDI, C2, 2)
+    instantane = f.instantane()
+    refuse = resoudre(instantane, OPTIONS)
+    assert refuse.statut is StatutSolveur.INFAISABLE and "campus" in refuse.message.lower()
+    resultat = resoudre(instantane, options(niveaux=niveaux_avec(CAMPUS_TRAJET="facultatif")))
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"CAMPUS_TRAJET": 1}
+
+
+@pytest.mark.parametrize(
+    ("cible", "code"),
+    [
+        (CibleIndisponibilite.ENSEIGNANT, "DISPO_ENSEIGNANT"),
+        (CibleIndisponibilite.GROUPE, "DISPO_GROUPE"),
+    ],
+)
+def test_indisponibilite_datee_souple_fait_replacer_l_occurrence(cible, code):
+    """Souple, une indisponibilité récurrente n'empêche rien (la semaine type l'a arbitrée) ; une
+    indisponibilité datée, que la semaine type ignore, envoie l'occurrence au replacement, qui
+    préfère un autre jour à une entorse."""
+    f = Fabrique(nb_semaines=3)
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant("Mme Martin")])
+    f.indisponibilite(cible, 1, jour=LUNDI)  # récurrente : arbitrée par la semaine type
+    f.indisponibilite(cible, 1, date_debut=RENTREE + SEMAINE)  # datée : le lundi de la 2e semaine
+    f.indisponibilite(cible, 1, jour=MARDI)  # récurrente : le mardi coûtera une entorse
+    instantane = f.instantane()
+    niveaux = niveaux_avec(**{code: "important"})
+    placements = [place("1-1", LUNDI, C1, 1)]
+    instancie = instancier(instantane, placements, niveaux=niveaux)
+    assert [(r.occurrence.date, r.code.value) for r in instancie.a_replacer] == [
+        (RENTREE + SEMAINE, code)
+    ]
+    assert "est indisponible le 14/09/2026" in instancie.a_replacer[0].raison
+    assert [o.date for o in instancie.occurrences] == [RENTREE, RENTREE + 2 * SEMAINE]
+    resultat = replacer(
+        instantane,
+        instancie.occurrences,
+        [revoir.occurrence for revoir in instancie.a_replacer],
+        OptionsReplacement(niveaux=niveaux),
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    # Rester le lundi (datée) ou aller au mardi (récurrente) coûterait une entorse : le mercredi.
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=2)
+    assert replacement.cout == 20
+    # Règle nécessaire : l'indisponibilité récurrente aussi fait replacer, dès l'instanciation.
+    assert len(instancier(instantane, placements, niveaux=NIVEAUX_DURS).a_replacer) == 3
+
+
+def test_replacement_paie_une_indisponibilite_souple():
+    """La place de la même semaine tombe pendant une indisponibilité récurrente de l'enseignante :
+    prise si la règle est facultative (20 < une autre semaine), pas si elle est importante."""
+    f = Fabrique(nb_semaines=3, creneaux=grille(jours=[LUNDI, MARDI], samedi=False))
+    f.salle("N101")
+    martin = f.enseignant("Mme Martin")
+    f.besoin([f.groupe("A1")], [martin])
+    f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, martin, jour=MARDI)
+    lundi_ferme = RENTREE + SEMAINE
+    f.jour_ferme(lundi_ferme)
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1)]
+    for niveau, meme_semaine in (("facultatif", True), ("important", False), ("necessaire", False)):
+        niveaux = niveaux_avec(DISPO_ENSEIGNANT=niveau)
+        instancie = instancier(instantane, placements, niveaux=niveaux)
+        resultat = replacer(
+            instantane,
+            instancie.occurrences,
+            [revoir.occurrence for revoir in instancie.a_replacer],
+            OptionsReplacement(niveaux=niveaux),
+        )
+        (replacement,) = resultat.replacements
+        assert replacement.replacee, replacement.raison
+        nouvelle = replacement.occurrence
+        if meme_semaine:
+            assert (nouvelle.date, nouvelle.debut) == (lundi_ferme + dt.timedelta(days=1), C1)
+            assert replacement.cout == 10 + 20  # un jour, une entorse
+        else:
+            assert nouvelle.date.isocalendar()[1] != lundi_ferme.isocalendar()[1]
+
+
+def test_optimal_n_est_pas_affirme_tant_qu_il_reste_une_entorse_de_salle():
+    """Deux cours qui exigent le même matériel, forcés à la même heure : une salle nue pour l'un.
+    Les horaires sont les mieux notés possibles (prouvé), pas l'emploi du temps."""
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    f.salle("N101", equipements=[7])
+    f.salle("N102")
+    f.salle("N103")
+    for code in ("A1", "A2"):
+        enseignant = f.enseignant()
+        # Libre le matin seulement : la séance ne peut être qu'au premier créneau.
+        f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, enseignant, jour=LUNDI, debut=C1 + 2 * H)
+        f.besoin([f.groupe(code)], [enseignant], equipements_requis=frozenset({7}))
+    f.besoin([f.groupe("A3")], [f.enseignant()], nombre=2)  # de quoi noter (trous, extrémités)
+    instantane = f.instantane()
+    reglages = options(niveaux=niveaux_avec(EQUIPEMENT="important"), optimiser=True)
+    resultat = resoudre(instantane, reglages)
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"EQUIPEMENT": 1}
+    assert resultat.statistiques["raison_arret"] == "optimum_prouve"
+    assert resultat.statistiques["optimal"] is False
+    assert "On ne peut pas faire mieux" not in resultat.message
+    assert "viennent des salles" in resultat.message
+
+
+def test_des_horaires_mieux_notes_sont_ecartes_si_leurs_salles_coutent_une_entorse():
+    """Sans séance aux extrémités de la journée, la note serait parfaite, mais il faudrait deux
+    cours à matériel à la même heure pour une seule salle équipée : l'entorse coûte plus que la
+    note, les horaires de départ (donnés en indices) sont gardés."""
+    f = Fabrique(
+        creneaux=grille(jours=[LUNDI], samedi=False), poids_trous=10, poids_creneaux_extremes=5
+    )
+    f.salle("N101", equipements=[7])
+    f.salle("N102")
+    f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2, equipements_requis=frozenset({7}))
+    f.besoin([f.groupe("A2")], [f.enseignant()], equipements_requis=frozenset({7}))
+    f.indice("1-1", LUNDI, C1, 1)
+    f.indice("1-2", LUNDI, C2, 1)
+    f.indice("2-1", LUNDI, C3, 1)
+    instantane = f.instantane()
+    reglages = options(niveaux=niveaux_avec(EQUIPEMENT="important"), optimiser=True)
+    resultat = resoudre(instantane, reglages)
+    places = verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {}
+    assert len({places["1-1"].debut, places["1-2"].debut, places["2-1"].debut}) == 3
+    assert resultat.statistiques["raison_arret"] == "optimum_prouve"
+    assert resultat.statistiques["optimal"] is False
+    assert "coûteraient des entorses" in resultat.message
 
 
 def test_reproductible_a_un_fil_avec_des_entorses():

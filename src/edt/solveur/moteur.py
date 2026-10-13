@@ -306,8 +306,8 @@ def resoudre(
     message_infaisable = (
         "Aucun emploi du temps ne peut respecter toutes les contraintes actives : c'est "
         "prouvé, relancer le calcul ne changera rien. Il faut alléger les données (salles, "
-        "indisponibilités, verrous, volumes) ou désactiver une contrainte ; les "
-        "avertissements des pré-vérifications indiquent où chercher en premier."
+        "indisponibilités, verrous, volumes) ou abaisser le niveau d'une règle (important ou "
+        "facultatif) ; les avertissements des pré-vérifications indiquent où chercher en premier."
     )
     debut_modele = time.perf_counter()
     try:
@@ -443,7 +443,14 @@ def resoudre(
     # elle, est libérée avant que la seconde commence.
     del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
+
+    def cout_salles(entorses: dict[CodeContrainte, int]) -> int:
+        """Pénalité des entorses de la phase des salles, au poids de l'objectif."""
+        return sum(preparation.regles.poids(code) * nombre for code, nombre in entorses.items())
+
     bilan = modele.bilan(solution.choix)
+    # Coût complet de la solution retenue : objectif et entorses des horaires, entorses des salles.
+    cout = bilan.total + cout_salles(solution.entorses)
     journal.info(
         "Emploi du temps valide trouvé après %.1f s%s",
         stats["duree_premiere_solution_s"],
@@ -451,10 +458,11 @@ def resoudre(
     )
 
     # 4. Amélioration : on repart de la solution valide, dans le temps qui reste. Sans
-    # « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a.
-    optimal = amelioration_lancee = temps_manquant = False
+    # « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a (phase des
+    # horaires ou des salles).
+    optimal = optimum_horaires = amelioration_lancee = temps_manquant = False
     stagnation_s: float | None = None
-    if (options.optimiser or bilan.penalite > 0) and not arret_demande():
+    if (options.optimiser or cout > 0) and not arret_demande():
         if reste() - reserve < TEMPS_MIN_AMELIORATION_S:
             temps_manquant = True
             journal.warning(
@@ -462,6 +470,7 @@ def resoudre(
             )
         elif modele.poser_objectif(confort=options.optimiser):
             bilan = modele.bilan(solution.choix)
+            cout = bilan.total + cout_salles(solution.entorses)
             modele.partir_de(valeurs)
             stats["nb_variables"] = modele.nb_variables
             stats["nb_contraintes"] = modele.nb_contraintes
@@ -480,10 +489,13 @@ def resoudre(
                 journal.warning(
                     "La recherche a rendu la main %.1f s après le temps limite.", -reste()
                 )
+            # Les horaires gardés vont de la moins bonne à la meilleure note : chacun reçoit ses
+            # salles tant qu'il peut battre le coût complet de la solution retenue (sa note seule
+            # est une borne inférieure), et le premier dont les salles ne coûtent rien conclut.
             for rang, (_, choix) in enumerate(reversed(suivi.solutions)):
                 candidat = modele.bilan(choix)
-                if candidat.total >= bilan.total:
-                    break  # les solutions gardées vont de la moins bonne à la meilleure
+                if candidat.total >= cout:
+                    break
                 if rang and reste() <= 0:
                     journal.warning(
                         "Temps limite atteint : les horaires améliorés précédents ne sont pas "
@@ -494,17 +506,35 @@ def resoudre(
                 # a rendu la main en retard : une seconde de dépassement vaut mieux que des
                 # minutes d'amélioration perdues.
                 essai = donner_des_salles(choix, TEMPS_SALLES_GARANTI_S if rang == 0 else 1.0)
-                if isinstance(essai, _Solution):
-                    solution, bilan = essai, candidat
+                if not isinstance(essai, _Solution):
+                    journal.info(
+                        "Horaires améliorés (objectif %d) écartés : les salles ne suivent pas",
+                        candidat.total,
+                    )
+                    continue
+                cout_essai = candidat.total + cout_salles(essai.entorses)
+                if cout_essai < cout:
+                    solution, bilan, cout = essai, candidat, cout_essai
+                if not essai.entorses:
                     break
                 journal.info(
-                    "Horaires améliorés (objectif %d) écartés : les salles ne suivent pas",
+                    "Horaires améliorés (objectif %d) : leurs salles coûtent %d d'entorses (%s), "
+                    "les horaires précédents sont essayés",
                     candidat.total,
+                    cout_salles(essai.entorses),
+                    ", ".join(f"{c.value} {n}" for c, n in sorted(essai.entorses.items())),
                 )
             stagnation_s = suivi.stagnation_s
             if suivi.solutions:
                 stats["borne_objectif"] = round(solveur.best_objective_bound)
-                optimal = code == cp_model.OPTIMAL and bilan.total <= round(solveur.objective_value)
+                # Optimal : les horaires retenus sont les mieux notés possibles (prouvé) et leurs
+                # salles ne coûtent aucune entorse ; la phase des horaires ignore le coût des salles.
+                optimum_horaires = code == cp_model.OPTIMAL
+                optimal = (
+                    optimum_horaires
+                    and bilan.total <= round(solveur.objective_value)
+                    and not solution.entorses
+                )
             else:
                 journal.info(
                     "L'amélioration n'a pas eu le temps d'aboutir (statut %s) : la première "
@@ -542,10 +572,22 @@ def resoudre(
         stats["arrete_par_utilisateur"] = True
         avertissements.append(MESSAGE_SOLUTION_CONSERVEE)
         message += f" {MESSAGE_SOLUTION_CONSERVEE}"
-    elif optimal:
+    elif optimum_horaires:
         stats["raison_arret"] = "optimum_prouve"
-        if options.optimiser:
+        if not options.optimiser:
+            pass
+        elif optimal:
             message += " On ne peut pas faire mieux avec les préférences actuelles."
+        elif solution.entorses:
+            message += (
+                " Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent "
+                "des salles."
+            )
+        else:
+            message += (
+                " Des horaires mieux notés existent, mais leurs salles coûteraient des entorses : "
+                "ceux-ci sont gardés."
+            )
     elif stagnation_s is not None:
         stats["raison_arret"] = "stagnation"
         stats["duree_sans_progres_s"] = round(stagnation_s, 1)

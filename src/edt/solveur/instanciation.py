@@ -19,11 +19,15 @@ Une occurrence est « à replacer » si, à sa date :
   importée, que l'appelant transmet) : même salle, même groupe ou même
   enseignant au même moment, pause ou trajet non tenus.
 
-Seules les indisponibilités dures comptent. Une contrainte ignorée par
-l'utilisateur n'est pas examinée, et une contrainte **souple** (niveau
-« important » ou « facultatif ») n'empêche rien ici : la semaine type l'a
-déjà arbitrée, et déplacer chaque semaine une séance que le moteur a placée
-en connaissance de cause n'aurait pas de sens.
+Seules les indisponibilités dures (`Indisponibilite.dure`) comptent, et une
+contrainte ignorée par l'utilisateur n'est pas examinée. Une contrainte
+`DISPO_*` **souple** (niveau « important » ou « facultatif ») ne fait rien
+aux indisponibilités **récurrentes** : la semaine type les a arbitrées, et
+déplacer chaque semaine une séance que le moteur a placée en connaissance
+de cause n'aurait pas de sens. Les indisponibilités **datées**, elles, sont
+inconnues de la semaine type : sous une règle souple comme sous une règle
+dure, l'occurrence est renvoyée au replacement, qui la laisse sur place au
+prix d'une entorse si rien de mieux n'existe.
 """
 
 from __future__ import annotations
@@ -78,13 +82,16 @@ class ResultatInstanciation:
 
 
 def empechement(
-    regles: Regles, besoin: Besoin, occurrence: Occurrence
+    regles: Regles, besoin: Besoin, occurrence: Occurrence, *, toutes_les_souples: bool = False
 ) -> tuple[CodeContrainte, str] | None:
     """Ce qui empêche l'occurrence d'avoir lieu à sa date (code, raison), ou `None`.
 
-    Ne regarde que l'occurrence elle-même : calendrier et indisponibilités
-    des contraintes dures. Les conflits avec d'autres occurrences relèvent
-    du replacement.
+    Ne regarde que l'occurrence elle-même : calendrier, puis indisponibilités
+    des contraintes dures, puis celles des contraintes `DISPO_*` souples —
+    les datées seulement, ou toutes avec `toutes_les_souples` (le replacement
+    fait payer chaque candidate). L'appelant distingue refus et entorse par
+    `Regles.dure(code)`. Les conflits avec d'autres occurrences relèvent du
+    replacement.
     """
     instantane = regles.instantane
     date, debut, fin = occurrence.date, occurrence.debut, occurrence.fin
@@ -95,40 +102,49 @@ def empechement(
         if fermeture is not None:
             return C.JOUR_FERME, f"le {date:%d/%m/%Y} est un jour fermé ({fermeture.libelle})"
 
-    def indisponible(cible: CibleIndisponibilite, ressource_id: int, nom: str) -> str | None:
-        indisponibilite = regles.indisponible_le(cible, ressource_id, date, debut, fin)
+    def indisponible(
+        cible: CibleIndisponibilite, ressource_id: int, nom: str, datees_seulement: bool
+    ) -> str | None:
+        indisponibilite = regles.indisponible_le(
+            cible, ressource_id, date, debut, fin, datees_seulement=datees_seulement
+        )
         if indisponibilite is None:
             return None
         motif = f" ({indisponibilite.motif})" if indisponibilite.motif.strip() else ""
         horaire = plage_vers_texte(indisponibilite.debut, indisponibilite.fin)
         return f"{nom} est indisponible le {date:%d/%m/%Y} ({horaire}){motif}"
 
-    if regles.dure(C.DISPO_ENSEIGNANT):
-        for enseignant_id in sorted(regles.enseignants_reels(besoin)):
-            raison = indisponible(
-                CibleIndisponibilite.ENSEIGNANT,
-                enseignant_id,
-                instantane.enseignant(enseignant_id).nom,
-            )
-            if raison:
-                return C.DISPO_ENSEIGNANT, raison
-    if regles.dure(C.DISPO_GROUPE):
-        for groupe_id in sorted(regles.groupes_lies(besoin)):
-            raison = indisponible(
-                CibleIndisponibilite.GROUPE,
-                groupe_id,
-                f"le groupe {instantane.groupe(groupe_id).code}",
-            )
-            if raison:
-                return C.DISPO_GROUPE, raison
-    if regles.dure(C.DISPO_SALLE) and occurrence.salle_id is not None:
-        raison = indisponible(
+    ressources: list[tuple[CodeContrainte, CibleIndisponibilite, list[tuple[int, str]]]] = [
+        (
+            C.DISPO_ENSEIGNANT,
+            CibleIndisponibilite.ENSEIGNANT,
+            [(e, instantane.enseignant(e).nom) for e in sorted(regles.enseignants_reels(besoin))],
+        ),
+        (
+            C.DISPO_GROUPE,
+            CibleIndisponibilite.GROUPE,
+            [
+                (g, f"le groupe {instantane.groupe(g).code}")
+                for g in sorted(regles.groupes_lies(besoin))
+            ],
+        ),
+        (
+            C.DISPO_SALLE,
             CibleIndisponibilite.SALLE,
-            occurrence.salle_id,
-            f"la salle {instantane.salle(occurrence.salle_id).code}",
-        )
-        if raison:
-            return C.DISPO_SALLE, raison
+            []
+            if occurrence.salle_id is None
+            else [(occurrence.salle_id, f"la salle {instantane.salle(occurrence.salle_id).code}")],
+        ),
+    ]
+    # Les règles dures d'abord : un refus passe avant une entorse.
+    for souple in (False, True):
+        for code, cible, liste in ressources:
+            if not regles.active(code) or regles.souple(code) is not souple:
+                continue
+            for ressource_id, nom in liste:
+                raison = indisponible(cible, ressource_id, nom, souple and not toutes_les_souples)
+                if raison:
+                    return code, raison
     return None
 
 

@@ -226,7 +226,7 @@ semaine commune rend le problème impossible.
 | `GROUPE_UNIQUE` | phase 1 | unités de groupes et cliques d'unités en conflit |
 | `PAUSE` | phase 1 | chaque séance est allongée de `pause_min` dans les contraintes de personnes |
 | `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
-| `DEJEUNER` | domaines | débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; rien n'est retiré quand le déjeuner n'a pas d'horaires déterminés (`dejeuner_horaires_determines` faux) |
+| `DEJEUNER` | domaines, phase 1 | mode fixe : débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; mode libre : une position de pause libre par personne et par jour (voir « Pause déjeuner ») ; mode « aucun » : rien |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
 | `JOURS` | domaines | jours avec créneau ; samedi si `samedi_autorise` |
 | `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE`, `EQUIPEMENT` | domaines | salles qui ne conviennent pas retirées (salle et campus imposés compris) |
@@ -296,7 +296,7 @@ Six contraintes définissent le problème et restent toujours nécessaires
 |---|---|---|
 | `HORAIRES` | une séance placée hors de sa demi-journée ou des heures d'ouverture (les débuts restent ceux de la grille) | phase 1, étiquette du début |
 | `JOURS` | une séance placée un jour non permis (samedi non autorisé, jour sans créneau si `HORAIRES` est ignorée) | phase 1, étiquette du début |
-| `DEJEUNER` | une séance qui recoupe la plage du déjeuner | phase 1, étiquette du début |
+| `DEJEUNER` | mode fixe : une séance qui recoupe la plage du déjeuner ; mode libre : une personne (groupe ou enseignant), un jour et un ensemble de semaines sans N minutes libres d'un seul tenant dans la fenêtre | phase 1, étiquette du début (fixe) ou littéral par personne et jour (libre) |
 | `DISPO_ENSEIGNANT`, `DISPO_GROUPE` | une séance placée pendant une indisponibilité récurrente (une séance verrouillée là compte aussi) | phase 1, étiquette du début |
 | `PAUSE` | une paire de séances d'une même personne, le même jour, séparées de moins que la pause (une entorse par paire, quel que soit le nombre de semaines) | phase 1, littéral par paire |
 | `CAMPUS_TRAJET` | une paire de séances d'une même personne, le même jour, sur deux campus, séparées de moins que le trajet | phase 1, littéral par paire |
@@ -330,7 +330,12 @@ place proche.
 **Limites.** Les horaires sont choisis sans connaître le coût des salles :
 une entorse à `EQUIPEMENT` (ou `CAPACITE`, `TYPE_SALLE`, `ACCESSIBILITE`,
 `DISPO_SALLE`) peut être payée là où d'autres horaires l'auraient évitée ; la
-phase 2 l'évite seulement quand les horaires le permettent. Le maximum
+phase 2 l'évite seulement quand les horaires le permettent. Le moteur
+compare toutefois ses solutions au **coût complet** (objectif et entorses
+des horaires, plus `POIDS_NIVEAU` par entorse de salle) : l'amélioration est
+lancée dès qu'il y a une entorse, de salle comprise ; des horaires mieux
+notés dont les salles coûtent plus cher sont écartés au profit des
+précédents ; et `optimal` n'est affirmé que sans entorse de salle. Le maximum
 journalier souple est compté par ensemble de semaines : une séance active
 dans deux ensembles peut compter deux fois. Au replacement, un maximum
 d'enseignant souple dépassé coûte une entorse, pas une par heure.
@@ -340,6 +345,77 @@ paire ne s'applique entre deux séances verrouillées. En pratique les séances
 verrouillées qui se contredisent, et celles dont la salle reste à choisir,
 sont « isolées » : elles ne sont réunies qu'aux séances libres. Sans cette
 option, des verrous contradictoires font refuser le calcul avec la liste.
+
+### Pause déjeuner
+
+`Parametres.dejeuner_mode` choisit l'un de trois modes (contrat dans
+`docs/architecture.md`) ; la règle `DEJEUNER` les traduit tous les trois.
+
+| Mode | Règle | Traduction |
+|---|---|---|
+| **fixe** | aucune séance ne recoupe la plage `[dejeuner_debut_min, dejeuner_fin_min[` (`plage_dejeuner`) | domaines : les débuts qui la recoupent sont retirés (dure) ou étiquetés (souple), par `Regles.violations_horaire` |
+| **libre** | pour chaque groupe et chaque enseignant, chaque jour où une séance recoupe la fenêtre `[X, Y[` (`fenetre_dejeuner` = `(X, Y, N)`), il reste un intervalle libre d'au moins N minutes d'un seul tenant dans `[X, Y[` ; un jour sans séance dans la fenêtre est satisfait | phase 1, `ModeleHoraires._pause_dejeuner_libre` (ci-dessous) ; couche datée, `Regles.pause_dejeuner_tenue` |
+| **aucun** | rien | rien |
+
+**Les personnes.** Un enseignant : ses séances (enseignants fictifs
+exclus). Un groupe : les séances qui occupent **tous** ses étudiants, c'est-à-
+dire celles de ses groupes liés **moins ses sous-groupes** (`Regles.occupants`,
+par `Groupe.parent_id`). Un sous-groupe ne mobilise qu'une partie des
+étudiants : compter ses séances priverait à tort la classe de pause quand
+ses demi-groupes déjeunent en décalé (TD de A-1 de 12 h à 13 h, TD de A-2 de
+13 h à 14 h : la classe a bien sa pause, et chaque demi-groupe aussi, avec
+les séances de la classe). Chaque sous-groupe porte sa propre règle. C'est
+la lecture du vérificateur (`docs/verification.md`). Les groupes qui se
+chevauchent sans se contenir (chevauchement déclaré, étudiant commun)
+comptent l'un pour l'autre, comme pour `GROUPE_UNIQUE` : c'est une
+approximation prudente, faute de connaître les étudiants communs.
+
+**Discrétisation (exacte).** Pour une personne, un jour et un ensemble de
+semaines actives (`Preparation.ensembles_par_semaines`), le modèle énumère
+les **positions de pause** `[p, p + N[` avec `p` = X ou la fin possible
+d'une de ses séances, pour `X < p ≤ Y − N`. C'est exact : un intervalle libre
+d'au moins N minutes commence toujours à X ou à la fin d'une séance. Pour
+chaque séance et chaque position, un littéral « la séance recoupe la
+position » (`_au_moins_un` de ses choix qui la recoupent : une implication
+par choix), partagé entre toutes les personnes de la séance et entre les
+positions aux mêmes choix ; pour chaque personne, jour et position, un
+littéral « occupée » (`_au_moins_un` de ces littéraux : une implication par
+séance). Règle dure : clause « une position non occupée » ; règle souple :
+un littéral d'entorse vrai si toutes les positions sont occupées
+(`_sauf_si`), pesant `POIDS_NIVEAU` dans l'objectif. Un jour sans séance
+dans la fenêtre n'occupe aucune position : la règle y est satisfaite
+d'elle-même, sans condition supplémentaire. Rien n'est posé pour une journée
+où aucune séance ne peut recouper la fenêtre, ni quand une position ne peut
+être recoupée par aucun choix (une grille qui ménage la pause, comme la
+grille par défaut avec 12 h 45-13 h 45, ne coûte donc rien). Les personnes
+au même emploi du temps (un groupe et
+son unique enseignant, par exemple) partagent la contrainte mais comptent
+chacune pour une entorse. Une séance qui, à elle seule, ne laisserait pas N
+minutes dans la fenêtre est écartée dès la préparation quand la règle est
+dure (`Regles.violations_horaire`, message « la pause déjeuner » des
+pré-vérifications) ; souple, elle n'est pas étiquetée pour ne pas compter
+deux fois : l'entorse est celle de la journée.
+
+**Unité d'entorse** : une personne, un jour, un ensemble de semaines sans
+pause suffisante, exactement l'anomalie du vérificateur (une par personne et
+par jour). `statistiques["entorses"]["DEJEUNER"]` les additionne aux
+entorses du mode fixe (il n'y a jamais les deux à la fois).
+
+**Couche datée.** `instancier` ne regarde pas la pause libre (la semaine
+type l'a arbitrée). `replacer` refuse une place qui priverait un groupe
+(ceux que la séance occupe, `Regles.groupes_occupes`) ou un enseignant de
+sa pause ce jour-là, compte tenu des occurrences en place (règle dure,
+raison « la pause déjeuner de ses groupes ou de ses enseignants ») ; souple,
+la place coûte `POIDS_NIVEAU` par personne privée.
+
+**Taille.** Le pas de la grille n'intervient pas : seules comptent les fins
+de séance possibles dans la fenêtre. Sur la grille par défaut (créneaux de
+8 h 30, 10 h 45, 13 h 45 et 16 h), la position 12 h 45-13 h 45 ne peut être
+recoupée par aucune séance : rien n'est posé, le modèle est identique au
+mode fixe. Sur une grille serrée (créneaux de 12 h et 13 h en plus), le jeu
+grand S1 pose 3 300 littéraux d'entorse et 5 900 littéraux de séance : le
+modèle passe de 489 000 à 754 000 contraintes (voir « Mesures : pause
+déjeuner libre »).
 
 ## Objectif (mode optimisé)
 
@@ -440,9 +516,12 @@ faux, borne inférieure dans `borne_objectif`).
    optimisé) est ajouté au modèle et la recherche repart de la solution
    valide, jusqu'à la preuve d'optimalité, à la stagnation (plus de
    progrès), au temps limite ou à l'arrêt demandé.
-   Les horaires améliorés reçoivent des salles ; si elles ne suivent pas pour
-   les meilleurs horaires, les précédents sont essayés (20 gardés), et à
-   défaut la solution valide de l'étape 3 est rendue.
+   Les horaires améliorés reçoivent des salles, des mieux notés aux moins
+   bien (20 gardés), tant que leur note peut battre le coût complet de la
+   solution retenue (note des horaires plus entorses des salles) : des
+   horaires dont les salles ne suivent pas, ou coûtent plus d'entorses
+   qu'ils ne font gagner, sont écartés et les précédents essayés ; à défaut
+   la solution valide de l'étape 3 est rendue.
 5. **Résultat** : placements de toutes les séances, message, statistiques.
 
 ### Une solution trouvée n'est jamais perdue
@@ -455,7 +534,7 @@ ensuite.
 | le temps limite tombe avant l'étape 3 | `TEMPS_DEPASSE` | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » |
 | le temps limite tombe juste après l'étape 3 | `SOLUTION` (la solution valide) | « Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un emploi du temps plus confortable. » |
 | le temps limite tombe pendant l'amélioration | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut encore l'affiner. » |
-| l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » |
+| l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » ; s'il reste des entorses de salle : « Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent des salles. » ; si les horaires les mieux notés ont été écartés à cause de leurs salles : « Des horaires mieux notés existent, mais leurs salles coûteraient des entorses : ceux-ci sont gardés. » |
 | l'amélioration ne progresse plus | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis N s. » |
 | arrêt demandé avant l'étape 3 | `ARRETE` | « Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a été enregistré. » |
 | arrêt demandé après l'étape 3 | `SOLUTION` (la meilleure trouvée) | « Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée. » |
@@ -472,7 +551,7 @@ recherche s'est arrêtée là :
 | `raison_arret` | Sens |
 |---|---|
 | `premiere_solution` | pas d'amélioration demandée (mode faisable) |
-| `optimum_prouve` | on ne peut pas faire mieux |
+| `optimum_prouve` | les horaires les mieux notés sont prouvés ; `optimal` dit si l'emploi du temps l'est aussi, salles comprises |
 | `stagnation` | plus de progrès ; `duree_sans_progres_s` donne la durée du silence |
 | `temps_limite` | l'amélioration avançait encore au temps limite |
 | `temps_manquant` | le temps limite est tombé avant que l'amélioration commence |
@@ -652,9 +731,10 @@ maintenues, et les `OccurrenceARevoir(occurrence, code, raison)`.
 cherche pour chaque occurrence à replacer une date, une heure et une salle
 qui respectent toutes les contraintes actives, date par date, face aux
 occurrences en place : calendrier, grille, indisponibilités récurrentes et
-datées, unicité, pause, trajets, maxima par jour et par semaine réelle,
-salle compatible et libre. Le jour et l'heure imposés par le besoin sont
-gardés ; une séance ponctuelle ne change pas de date.
+datées, unicité, pause, trajets, pause déjeuner (plage fixe ou pause libre
+de chaque groupe et enseignant ce jour-là), maxima par jour et par semaine
+réelle, salle compatible et libre. Le jour et l'heure imposés par le besoin
+sont gardés ; une séance ponctuelle ne change pas de date.
 
 `OptionsReplacement` : contraintes désactivées, fenêtre de dates
 (`date_debut`, `date_fin`), coût d'éloignement (`cout_semaine` = 100 par
@@ -1085,6 +1165,50 @@ prétraitement est allégé. À 120 s l'écart se resserre (grand S1 : 3 256
 contre 3 371 ; grand S2 : 3 836 contre 3 195), et le nouveau moteur garantit
 un résultat dès que la première solution existe.
 
+### Mesures : pause déjeuner libre
+
+Mode libre : fenêtre 12 h-14 h, pause de 60 min ; mode fixe : plage
+12 h 45-13 h 45 (défaut). Réglages par défaut (sans « optimiser », fils
+choisis par le moteur, niveaux par défaut : `DEJEUNER` importante), temps
+limite 120 s, graine 1, un processus neuf par mesure, poste de développement
+chargé par trois autres agents (le jeu grand y trouve sa première solution
+en 35 à 45 s au calme). Jeux fictifs `moyen` S1 (111 séances) et `grand` S1
+(595 séances). « Grille serrée » : les créneaux par défaut plus 12 h-14 h et
+13 h-15 h chaque jour, pour que la pause soit vraiment en jeu.
+
+| Jeu | Grille | Mode | Variables / contraintes | Construction | 1re solution (entorses au départ) | Durée, arrêt | Entorses finales | Trous |
+|---|---|---|---|---|---|---|---|---|
+| moyen S1 | défaut | fixe | 5 400 / 43 365 | 0,16 s | 1,4 s (0) | 1,4 s, première solution | 0 | 350 |
+| moyen S1 | défaut | libre | 5 400 / 43 365 | 0,20 s | 1,5 s (0) | 1,5 s, première solution | 0 | 350 |
+| grand S1 | défaut | fixe | 41 732 / 352 951 | 1,3 s | 42,5 s (MAX_ENSEIGNANT 2) | 59,0 s, optimum prouvé | 0 | 1 640 |
+| grand S1 | défaut | libre | 41 732 / 352 951 | 1,5 s | 43,4 s (MAX_ENSEIGNANT 2) | 59,9 s, optimum prouvé | 0 | 1 640 |
+| moyen S1 | serrée | fixe | 8 440 / 61 087 | 0,24 s | 2,4 s (DEJEUNER 6) | 6,8 s, optimum prouvé | 0 | 690 |
+| moyen S1 | serrée | libre | 12 061 / 114 255 | 0,43 s | 3,2 s (DEJEUNER 56) | 8,0 s, optimum prouvé | 0 | 436 |
+| grand S1 | serrée | fixe | 61 247 / 489 074 | 1,9 s | 82,9 s (DEJEUNER 16, MAX 2) | 119,5 s, temps limite | DEJEUNER 5, MAX 2 | 4 790 |
+| grand S1 | serrée | libre | 78 252 / 753 917 | 5,7 s | 89,3 s (DEJEUNER 407, MAX 2) | 119,6 s, temps limite | DEJEUNER 389 | 2 703 |
+
+Lecture :
+
+- sur la grille par défaut, le mode libre ne pose rien (3 504 journées
+  examinées sur le jeu grand, 0 contrainte) : même modèle, mêmes temps, même
+  solution que le mode fixe. Le budget « première solution du jeu grand en
+  moins de 45 s » est tenu dans les deux modes, machine chargée ;
+- sur la grille serrée, la pause est en jeu : la première solution, trouvée
+  sans objectif, viole beaucoup de pauses (une par groupe, enseignant et
+  jour), et c'est l'amélioration qui les retire. Le jeu moyen y arrive en
+  8 s (optimum prouvé, 0 entorse) ; le jeu grand, dont la première solution
+  prend déjà 83 s en mode fixe sur cette grille, n'a que 30 s d'amélioration
+  avant le temps limite de 120 s : il en reste 389. Un temps limite de
+  plusieurs minutes est nécessaire sur ce jeu et cette grille, en mode fixe
+  comme en mode libre ;
+- les trous ne sont pas comparables entre les lignes : sans « optimiser »,
+  ils ne sont pas minimisés ;
+- la première écriture (un littéral « occupée » par personne, jour et
+  position, défini directement sur les choix de chaque séance, soit une
+  implication par choix et par personne) donnait sur le jeu grand serré
+  2 621 988 contraintes, 29 s de construction et aucune solution en 120 s.
+  Le partage par séance (`seance_sur`) divise ces contraintes par 3,5.
+
 ### Couche datée
 
 Instanciation puis replacement de la solution du mode faisable (les nombres
@@ -1203,8 +1327,11 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   imparti », en mode optimisé comme en mode faisable. Au-delà, le mode
   optimisé rend au moins la solution valide.
 - **Contraintes souples et salles.** Les horaires sont choisis sans
-  connaître le coût des salles : une exigence de salle souple peut être
-  enfreinte là où d'autres horaires l'auraient évitée (voir « Niveaux des
+  connaître le coût des salles (le campus, lui, est fixé en phase 1) : une
+  exigence de salle souple peut être enfreinte là où d'autres horaires
+  l'auraient évitée. Le moteur compare ses solutions au coût complet et ne
+  dit jamais « optimal » tant qu'une entorse de salle subsiste, mais il ne
+  relance pas la recherche des horaires pour l'éviter (voir « Niveaux des
   contraintes »).
 - **Arrêt sur stagnation.** La règle ne voit que le temps passé sans
   progrès. Elle peut couper un petit problème avant une dernière
@@ -1220,10 +1347,12 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   exécutions identiques peuvent finir à 2 400 comme à 4 500 d'objectif en
   180 s (voir « Arrêt sur stagnation : règle retenue et mesures »).
 - **Amélioration et salles.** Les horaires améliorés reçoivent leurs salles
-  après coup. Si elles ne suivent pas, le moteur essaie les horaires
-  précédents (20 gardés) mais ne relance pas l'amélioration : au pire, c'est
-  la solution valide du départ qui est rendue. Le journal le dit (« Horaires
-  améliorés ... écartés : les salles ne suivent pas »).
+  après coup. Si elles ne suivent pas, ou coûtent plus d'entorses que les
+  horaires ne font gagner, le moteur essaie les horaires précédents (20
+  gardés) mais ne relance pas l'amélioration : au pire, c'est la solution
+  valide du départ qui est rendue. Le journal le dit (« Horaires améliorés
+  ... écartés : les salles ne suivent pas », « ... leurs salles coûtent ...
+  d'entorses »).
 - **Prétraitement allégé de l'amélioration.** Il fait gagner les premières
   dizaines de secondes, celles qui comptent avec un temps limite de quelques
   minutes. Sur un calcul très long, le prétraitement complet de CP-SAT
@@ -1253,6 +1382,11 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 - **Semaines modifiées par un replacement.** Une séance déplacée dans une
   semaine voisine s'ajoute au volume de cette semaine ; `max_par_semaine`
   d'un besoin en mode « total » n'est pas recontrôlé à cet endroit.
+- **Pause déjeuner libre et groupes qui se chevauchent.** Deux groupes
+  déclarés chevauchants (ou avec un étudiant commun) comptent chacun les
+  séances de l'autre : un étudiant qui n'est que dans l'un des deux peut
+  avoir sa pause alors que la règle dit le contraire. Les sous-groupes d'une
+  hiérarchie, eux, sont traités exactement.
 
 ## Comment ajouter une contrainte
 

@@ -561,11 +561,14 @@ class Preparation:
         return jour, minute, minute + seance.duree, salle
 
     def _relever_les_contradictions(self) -> None:
-        """Paires de séances à horaire fixe qui violent déjà entre elles une contrainte.
+        """Paires de séances à horaire fixe qui violent déjà entre elles une contrainte **dure**.
 
         Deux séances verrouillées : `conflits_verrous` (violation héritée, que
         l'utilisateur peut tolérer). Sinon l'une au moins tient son horaire de
         son besoin (jour et heure imposés) : l'impossibilité est certaine.
+        Une règle souple enfreinte entre deux horaires fixes n'est pas une
+        impossibilité : le modèle compte l'entorse (comme `_heurt` et le
+        replacement dans la couche datée).
         """
         par_jour: dict[int, list[tuple[SeancePreparee, tuple[int, int, int, int | None]]]] = (
             defaultdict(list)
@@ -580,9 +583,13 @@ class Preparation:
                 for b, (_, debut_b, fin_b, salle_b) in groupe[position + 1 :]:
                     if not a.semaines & b.semaines:
                         continue
-                    codes = self.regles.codes_violes(
-                        a.besoin, debut_a, fin_a, salle_a, b.besoin, debut_b, fin_b, salle_b
-                    )
+                    codes = [
+                        code
+                        for code in self.regles.codes_violes(
+                            a.besoin, debut_a, fin_a, salle_a, b.besoin, debut_b, fin_b, salle_b
+                        )
+                        if self.regles.dure(code)
+                    ]
                     if not codes:
                         continue
                     violees = enumerer(f"« {CATALOGUE[code].libelle} »" for code in codes)
