@@ -414,7 +414,30 @@ Identifiant métier : `cible`, `ressource`, `annee`, `jour`, `date_debut`, `date
 | `dure` | Contrainte dure | oui / non |  |  | Toujours oui en V1. Vide : oui. |  |
 | `poids` | Poids | nombre entier |  |  | Préférences (versions futures). Vide : 0. |  |
 
-#### 14. `seances` : Séances
+#### 14. `regles` : Règles
+
+Règles personnalisées d'une année (docs/regles-personnalisees.md) : un type, une portée et sa cible, des paramètres, un niveau, un état et une période. Une règle créée par import a l'origine « import ». Réimport : mise à jour par année et code.
+
+Identifiant métier : `annee`, `code`.
+
+| Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
+|---|---|---|---|---|---|---|
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
+| `code` | Code | code |  | oui | Code de la règle dans l'année ; vide = attribué à l'import (R001, R002...). Donner le code pour réimporter sans doublon ; un code garde son type. | R007 |
+| `type` | Type de règle | une valeur de la liste | oui |  | Valeurs : JOURS_TRAVAILLES, PLAGE_HORAIRE, CRENEAUX_INTERDITS, CAMPUS, SALLES, PAUSE_DEJEUNER, PAUSE_MINIMALE, MAX_PAR_JOUR, JOURNEES_LIBRES, SANS_TROU, CAMPUS_PAR_JOUR, MATIERES_PAR_JOUR, ORDRE_SEMAINE, REPARTITION_MATIERE. | PAUSE_DEJEUNER |
+| `portee` | Portée | une valeur de la liste | oui |  | Valeurs : etablissement, groupe, enseignant, campus, type_seance, matiere, besoin. | groupe |
+| `cible` | Cible | code |  |  | Code du groupe, identifiant de l'enseignant, code du campus, du type de séance ou de la matière ; un besoin s'écrit « matière / type / groupes » (ex. « IM.1101 / CM / A1 ») ; vide pour l'établissement. | A2-G3 |
+| `parametres` | Paramètres | texte |  |  | « clé = valeur » séparés par des points-virgules, listes séparées par des virgules ; clés et valeurs selon le type (onglet Lisez-moi) ; vide = défauts. | mode = libre ; debut = 11:45 ; fin = 14:15 ; duree = 1 h 15 |
+| `niveau` | Niveau | une valeur de la liste |  |  | Vide = niveau par défaut du type. Valeurs : necessaire, important, facultatif. | important |
+| `etat` | État | une valeur de la liste |  |  | Valeurs : proposee, active, inactive. Vide : active. | active |
+| `semestre` | Semestre | code |  |  | Code du semestre ; semestre et dates vides = toute l'année. | S1 |
+| `date_debut` | Début de la période | date JJ/MM/AAAA |  |  | Période datée, au lieu d'un semestre. |  |
+| `date_fin` | Fin de la période | date JJ/MM/AAAA |  |  |  |  |
+| `commentaire` | Commentaire | texte |  |  |  | Demande de la responsable |
+| `origine` | Origine | texte |  |  | Saisie, import, assistant, base ou reprise. Export seulement : ignorée à l'import. |  |
+| `phrase` | Phrase | texte |  |  | Phrase générée de la règle. Export seulement : ignorée à l'import. |  |
+
+#### 15. `seances` : Séances
 
 Emploi du temps existant, une ligne par séance : datée (colonne date) ou hebdomadaire (colonne jour, la séance a lieu chaque semaine ouverte du semestre).
 
@@ -433,6 +456,25 @@ Identifiant métier : aucun.
 | `salle` | Salle | code |  |  | Code de la salle ; vide ou « à définir » = salle choisie par le générateur. | N016 |
 | `statut` | Statut | une valeur de la liste |  |  | Vide = réalisée ; une séance annulée n'est pas comptée. Valeurs : realisee, planifiee, deplacee, annulee, a_programmer. | realisee |
 | `libelle` | Libellé | texte |  |  | Intitulé libre (événement spécial). | Forum entreprises |
+
+#### Types de règle et paramètres (colonnes `type` et `parametres` de `regles`)
+
+| Type | Libellé | Portées admises | Paramètres | Niveau par défaut |
+|---|---|---|---|---|
+| `JOURS_TRAVAILLES` | Jours travaillés | groupe, enseignant, campus, type_seance, matiere, besoin | jours (liste de jours ; au moins 1 ; obligatoire) | necessaire |
+| `PLAGE_HORAIRE` | Horaires | etablissement, groupe, enseignant, campus, type_seance, matiere, besoin | debut (heure ; défaut : paramètre global); fin (heure ; défaut : paramètre global); jours (liste de jours) | necessaire |
+| `CRENEAUX_INTERDITS` | Créneaux interdits | etablissement, groupe, enseignant, campus, type_seance, matiere, besoin | jours (liste de jours ; au moins 1 ; obligatoire); debut (heure ; défaut : paramètre global); fin (heure ; défaut : paramètre global) | necessaire |
+| `CAMPUS` | Campus imposés ou interdits | etablissement, groupe, enseignant, type_seance, matiere | mode (imposer / interdire ; obligatoire); campus (liste de codes ; au moins 1 ; obligatoire) | necessaire |
+| `SALLES` | Salles imposées ou interdites | groupe, enseignant, type_seance, matiere | mode (imposer / interdire ; obligatoire); salles (liste de codes ; au moins 1 ; obligatoire) | necessaire |
+| `PAUSE_DEJEUNER` | Pause déjeuner | groupe, enseignant | mode (fixe / libre / aucun ; défaut : paramètre global); debut (heure ; défaut : paramètre global ; si mode = fixe ou libre); fin (heure ; défaut : paramètre global ; si mode = fixe ou libre); duree (durée ; 15 à 180 min ; défaut : paramètre global ; si mode = libre) | important |
+| `PAUSE_MINIMALE` | Pause entre deux séances | groupe, enseignant | duree (durée ; 0 à 120 min ; défaut : paramètre global) | important |
+| `MAX_PAR_JOUR` | Maximum par jour | etablissement, groupe, enseignant | personnes (groupes / enseignants / tous ; défaut groupes); unite (minutes / seances ; défaut minutes); maximum (nombre ; 1 à 720 ; obligatoire) | important |
+| `JOURNEES_LIBRES` | Demi-journées ou journées libres | etablissement, groupe, enseignant | personnes (groupes / enseignants / tous ; défaut groupes); unite (demi_journee / journee ; défaut demi_journee); nombre (nombre ; 1 à 6 ; défaut 1); parmi (liste de jours ou de demi-journées) | important |
+| `SANS_TROU` | Trous limités | groupe, enseignant | maximum (nombre ; 0 à 10 ; défaut 0) | facultatif |
+| `CAMPUS_PAR_JOUR` | Un seul campus par jour | etablissement, groupe, enseignant | personnes (groupes / enseignants / tous ; défaut groupes) | important |
+| `MATIERES_PAR_JOUR` | Matières par jour | groupe | maximum (nombre ; 1 à 8 ; obligatoire) | facultatif |
+| `ORDRE_SEMAINE` | Ordre dans la semaine | etablissement, groupe, matiere | avant (code ; défaut CM); apres (code ; défaut TD) | facultatif |
+| `REPARTITION_MATIERE` | Regroupement ou étalement d'une matière | etablissement, groupe, matiere | mode (meme_jour / jours_differents ; obligatoire) | facultatif |
 
 <!-- fin du format généré -->
 
