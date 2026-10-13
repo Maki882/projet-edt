@@ -821,9 +821,14 @@ def valider_parametres(
     codes_connus: Mapping[str, Collection[str]] | None = None, portee: NaturePortee | None = None,
 ) -> dict[str, Any]:                 # valeurs canoniques, défauts du type et globaux complétés
 def valider_regle(regle: Regle, parametres=None, codes_connus=None) -> Regle:
+def erreurs_periode(type_regle: TypeRegle | None, semestre_id, date_debut, date_fin) -> dict[str, str]:
 def phrase(type_regle, portee: Portee, valeurs: Mapping, parametres: Parametres | None = None) -> str:
 def resoudre_regle(regle: Regle, instantane: Instantane, identifiants=None) -> RegleResolue:
 def resoudre_reglages(instantane: Instantane) -> Reglages:
+class Reglages:
+    def jours_de(self, seance_id: str, date: dt.date | None = None) -> ReglesJours:
+class ReglesJours:                   # standard, retenues, par_campus ; jours_permis(campus_id), entorses(jour, campus_id)
+    def a_la_date(self, date: dt.date) -> ReglesJours:
 def enregistrer(registre: str, type_regle: TypeRegle):          # décorateur, "solveur" | "verificateur"
 def types_non_couverts(registre: str) -> frozenset[TypeRegle]:
 def decrire_catalogue() -> dict[str, Any]:
@@ -867,18 +872,35 @@ Ce qu'il faut savoir :
   sans aucune règle ; un axe sans règle est neutre. `entorses(jour, campus_id)`
   rend les sources enfreintes par un jour : le solveur pénalise chacune à son
   niveau, le vérificateur impute l'anomalie à chacune (code `REGLE` et
-  `regle_id` pour une règle, `JOURS` pour le standard).
+  `regle_id` pour une règle, `JOURS` pour le standard). Sur la semaine type,
+  une règle compte si ses semaines croisent celles de la séance ; deux règles
+  de même cible aux périodes disjointes se succèdent (la plus couvrante est
+  retenue, journalisé), deux qui se recoupent font échouer `reglages`. Sur la
+  **couche datée**, `jours_de(seance_id, date)` ne retient que les règles qui
+  couvrent la date (le standard reprend sa place sinon) : le replacement et le
+  vérificateur daté passent la date de la séance.
 - **Déjeuner et pause** (`Reglages.dejeuner[personne]`, `.pause[personne]`) :
   chaque personne résout sa lignée, sinon la valeur de l'établissement ;
   `ReglageDejeuner.plage` / `.fenetre` / `.actif` remplacent la lecture
-  directe de `plage_dejeuner`, `fenetre_dejeuner` et `dejeuner_actif`.
+  directe de `plage_dejeuner`, `fenetre_dejeuner` et `dejeuner_actif`. Ces
+  réglages de personne ne sont **pas datables** (`DefinitionType.periode_datable`
+  faux, `erreurs_periode`) : période = année ou semestre entier, une seule
+  valeur par personne et par semestre.
 - **Registres** : `enregistrer("solveur", type)` et
   `enregistrer("verificateur", type)` déclarent le poseur et le vérificateur
   d'un type ; `types_non_couverts` sert au test qui vérifie que le catalogue
   est couvert.
 - **États** : une règle proposée ou inactive n'est ni posée, ni vérifiée, ni
   chargée dans l'instantané. Le service refuse deux règles actives d'un même
-  type de réglage, de même cible, aux périodes qui se recoupent.
+  type de réglage, de même cible, aux périodes qui se recoupent (pour un
+  réglage de personne : qui touchent un même semestre) ; une activation
+  revalide la règle en entier. Une règle sur un besoin concerne le semestre
+  du besoin : hors périmètre au chargement de l'autre semestre.
+- **Champs selon la portée** : `ChampRegle.portees` limite un paramètre à
+  certaines portées (`personnes` à l'établissement) ; ailleurs il est ignoré
+  et absent des valeurs canoniques. `decrire_catalogue()` expose `portees`
+  par paramètre et `periode_datable` par type pour les formulaires et
+  l'assistant.
 
 ### Sémantique des contraintes
 

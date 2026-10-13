@@ -44,16 +44,23 @@ et qu'aucune règle retenue ne contient *j*.
 
 Période d'une règle : sur la semaine type, une règle s'applique aux séances
 dont les semaines actives croisent ses semaines couvertes ; sur les séances
-datées, au jour près (`RegleResolue.semaines`, `Regle.couvre`).
+datées, au jour près (`RegleResolue.semaines`, `RegleResolue.couvre`,
+`Reglages.jours_de(seance_id, date)`). Deux règles de réglage de même type et
+même cible ne se recoupent jamais dans le temps ; aux périodes disjointes, elles
+se succèdent : chaque séance suit celle qui couvre ses semaines. Les réglages
+de **personne** (`PAUSE_DEJEUNER`, `PAUSE_MINIMALE`) ne sont pas datables
+(`DefinitionType.periode_datable`) : une personne a une seule valeur pour le
+semestre ; la période vaut l'année ou un semestre entier.
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 import unicodedata
 from collections.abc import Callable, Collection, Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
@@ -73,6 +80,8 @@ from edt.erreurs import ErreurDonneesInvalides
 if TYPE_CHECKING:
     from edt.domaine.calendrier import Semaine
     from edt.domaine.instantane import Instantane
+
+journal = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
@@ -197,7 +206,9 @@ class ChampRegle:
       « salle », « type_seance ») ;
     - `condition` : le champ ne compte que si un autre champ a l'une des valeurs
       données, par exemple `duree` seulement en mode libre ;
-    - `minimum_vide` : pour une liste, nombre minimal d'éléments.
+    - `portees` : le champ n'a de sens que pour ces portées (vide : toutes) ;
+      pour une autre portée il est ignoré et absent des valeurs canoniques ;
+    - `minimum_elements` : pour une liste, nombre minimal d'éléments.
     """
 
     nom: str
@@ -214,6 +225,11 @@ class ChampRegle:
     entite: str | None = None
     condition: tuple[str, tuple[str, ...]] | None = None
     minimum_elements: int = 0
+    portees: frozenset[NaturePortee] | None = None
+
+    def sans_objet(self, portee: NaturePortee | None) -> bool:
+        """Vrai si le champ n'a pas de sens pour cette portée (voir `portees`)."""
+        return self.portees is not None and portee is not None and portee not in self.portees
 
     def concerne(self, valeurs: Mapping[str, Any]) -> bool:
         """Vrai si le champ s'applique étant donné les autres valeurs (voir `condition`)."""
@@ -237,6 +253,8 @@ class DefinitionType:
     exemples: tuple[str, ...]
     refus: tuple[tuple[NaturePortee, str], ...] = ()
     """Portées admises par principe mais refusées avec une explication (voir § 1.4)."""
+    periode_datable: bool = True
+    """Faux pour un réglage de personne : période = année ou semestre entier, jamais des dates."""
 
     @property
     def libelle(self) -> str:
@@ -262,7 +280,11 @@ _CHAMP_PERSONNES = ChampRegle(
         (PERSONNES_ENSEIGNANTS, "Les enseignants"),
         (PERSONNES_TOUS, "Les groupes et les enseignants"),
     ),
+    portees=frozenset({NaturePortee.ETABLISSEMENT}),
 )
+
+_NON_DATABLES = frozenset({TypeRegle.PAUSE_DEJEUNER, TypeRegle.PAUSE_MINIMALE})
+"""Réglages de personne : `Reglages` n'a pas de dimension semaine, la période ne peut être datée."""
 
 _JOURS_SEMAINE = frozenset(NaturePortee) - {NaturePortee.ETABLISSEMENT}
 
@@ -288,6 +310,7 @@ def _d(
         description=description,
         exemples=tuple(exemples),
         refus=tuple(refus),
+        periode_datable=code not in _NON_DATABLES,
     )
 
 
@@ -1014,8 +1037,17 @@ def _canonique(
         _verifier_codes(champ, [code], codes_connus)
         return code
     if champ.sorte is SorteChamp.MOMENTS:
-        moments = sorted({moment_depuis_texte(v) for v in _liste(valeur, nom)})
-        return [moment_canonique(jour, demi) for jour, demi in moments]
+        moments = {moment_depuis_texte(v) for v in _liste(valeur, nom)}
+        # Un jour entier absorbe ses demi-journées (« mardi » et « mardi matin » = « mardi »).
+        entiers = {jour for jour, demi in moments if demi is None}
+        ordre = {None: 0, DemiJournee.MATIN: 1, DemiJournee.APRES_MIDI: 2}
+        return [
+            moment_canonique(jour, demi)
+            for jour, demi in sorted(
+                ((j, d) for j, d in moments if d is None or j not in entiers),
+                key=lambda m: (m[0], ordre[m[1]]),
+            )
+        ]
     raise ErreurDonneesInvalides(f"Sorte de paramètre inconnue : {champ.sorte}.")
 
 
@@ -1043,9 +1075,12 @@ def valider_parametres(
     - les champs absents prennent leur défaut (celui du type, ou le paramètre
       global correspondant si `parametres` est donné) ;
     - `codes_connus` (`{"campus": codes, "salle": codes, "type_seance": codes}`)
-      permet de refuser un code inconnu ;
+      permet de refuser un code inconnu, valeur par défaut comprise ;
     - `portee` permet les refus qui en dépendent (`MAX_PAR_JOUR` en minutes
-      pour un enseignant).
+      pour un enseignant) et écarte les champs sans objet pour elle
+      (`personnes` hors de la portée établissement) ;
+    - les choix sont lus sans casse ni accent (« Fixe » vaut « fixe ») et les
+      champs conditionnés (`debut`, `fin`, `duree`) suivent la valeur canonique.
     """
     definition = CATALOGUE_TYPES[type_regle]
     brouillon = dict(brouillon or {})
@@ -1060,16 +1095,25 @@ def valider_parametres(
                 + "."
             )
     for champ in definition.champs:
-        if not champ.concerne({**valeurs, **brouillon}):
+        if champ.sans_objet(portee):
+            continue  # ni défaut ni valeur enregistrée pour cette portée
+        if not champ.concerne({**brouillon, **valeurs}):  # la valeur canonique prime
             continue
         valeur = brouillon.get(champ.nom)
         if valeur is None or valeur == "":
             if champ.defaut_global is not None and parametres is not None:
                 valeurs[champ.nom] = _defaut_global_canonique(champ, parametres)
             elif champ.defaut is not None:
-                valeurs[champ.nom] = (
-                    list(champ.defaut) if isinstance(champ.defaut, list) else champ.defaut
-                )
+                defaut = list(champ.defaut) if isinstance(champ.defaut, list) else champ.defaut
+                try:
+                    if champ.sorte in (SorteChamp.CODE, SorteChamp.CODES):
+                        codes = list(defaut) if isinstance(defaut, list) else [defaut]
+                        _verifier_codes(champ, codes, codes_connus)
+                except ErreurDonneesInvalides as erreur:
+                    erreurs[f"parametres.{champ.nom}"] = (
+                        f"{erreur.message} Valeur par défaut « {defaut} » : en donner une autre."
+                    )
+                valeurs[champ.nom] = defaut
             elif champ.obligatoire or champ.defaut_global is None:
                 erreurs[f"parametres.{champ.nom}"] = f"{champ.libelle} : valeur attendue."
             continue
@@ -1078,16 +1122,19 @@ def valider_parametres(
         except ErreurDonneesInvalides as erreur:
             erreurs[f"parametres.{champ.nom}"] = erreur.message
     if not erreurs:
-        erreurs.update(_coherence(definition, valeurs, portee))
+        erreurs.update(_coherence(definition, valeurs, portee, parametres))
     if erreurs:
         raise ErreurSaisie(erreurs, f"Paramètres invalides pour {definition.libelle}.")
     return valeurs
 
 
 def _coherence(
-    definition: DefinitionType, valeurs: dict[str, Any], portee: NaturePortee | None
+    definition: DefinitionType,
+    valeurs: dict[str, Any],
+    portee: NaturePortee | None,
+    parametres: Parametres | None = None,
 ) -> dict[str, str]:
-    """Contrôles entre champs, par type."""
+    """Contrôles entre champs, par type (et selon la portée et les paramètres globaux)."""
     erreurs: dict[str, str] = {}
     code = definition.code
     heures = {
@@ -1120,14 +1167,19 @@ def _coherence(
             erreurs["parametres.maximum"] = f"Au plus 8 séances par jour (lu : {maximum})."
         if unite == UNITE_MINUTES and isinstance(maximum, int) and maximum < 30:
             erreurs["parametres.maximum"] = f"Au moins 30 minutes par jour (lu : {maximum})."
-        if unite == UNITE_MINUTES and portee is NaturePortee.ENSEIGNANT:
+        concerne_enseignants = portee is NaturePortee.ENSEIGNANT or (
+            portee is NaturePortee.ETABLISSEMENT
+            and valeurs.get("personnes") in (PERSONNES_ENSEIGNANTS, PERSONNES_TOUS)
+        )
+        if unite == UNITE_MINUTES and concerne_enseignants:
             erreurs["parametres.unite"] = (
-                "Pour un enseignant, le maximum en minutes se règle dans sa fiche "
+                "Le maximum en minutes d'un enseignant se règle dans sa fiche "
                 "(maxima horaires) ; ici, compter en séances."
             )
     elif code is TypeRegle.JOURNEES_LIBRES:
         unite = valeurs.get("unite")
-        for moment in valeurs.get("parmi", ()):
+        parmi = list(valeurs.get("parmi") or ())
+        for moment in parmi:
             jour, demi = moment_depuis_texte(moment)
             if unite == UNITE_JOURNEE and demi is not None:
                 erreurs["parametres.parmi"] = (
@@ -1138,6 +1190,23 @@ def _coherence(
                     "En demi-journées, « parmi » contient des demi-journées, par exemple "
                     f"« {JOURS[jour]} matin » (lu : « {moment} »)."
                 )
+        nombre = valeurs.get("nombre")
+        if isinstance(nombre, int) and "parametres.parmi" not in erreurs:
+            # Une règle impossible à satisfaire est refusée : il faut qu'il reste au moins
+            # un moment pour avoir cours.
+            unites = "journées libres" if unite == UNITE_JOURNEE else "demi-journées libres"
+            if parmi and nombre > len(parmi):
+                erreurs["parametres.nombre"] = (
+                    f"Au plus {len(parmi)} {unites} : « parmi » n'en propose que {len(parmi)}."
+                )
+            elif not parmi and parametres is not None:
+                travailles = len(parametres.jours_travailles)
+                maximum = travailles - 1 if unite == UNITE_JOURNEE else 2 * travailles - 1
+                if nombre > maximum:
+                    erreurs["parametres.nombre"] = (
+                        f"Au plus {maximum} {unites} par semaine, l'établissement travaillant "
+                        f"{travailles} jour(s)."
+                    )
     elif code is TypeRegle.ORDRE_SEMAINE and valeurs.get("avant") == valeurs.get("apres"):
         erreurs["parametres.apres"] = "Le type qui suit doit différer du type qui précède."
     return erreurs
@@ -1179,13 +1248,32 @@ def valider_regle(
         )
     except ErreurSaisie as erreur:
         erreurs.update(erreur.erreurs)
-    if regle.semestre_id is not None and (regle.date_debut or regle.date_fin):
-        erreurs["periode"] = "Choisir un semestre ou des dates, pas les deux."
-    if regle.date_debut and regle.date_fin and regle.date_fin < regle.date_debut:
-        erreurs["periode.date_fin"] = "La date de fin précède la date de début."
+    erreurs.update(erreurs_periode(regle.type, regle.semestre_id, regle.date_debut, regle.date_fin))
     if erreurs:
         raise ErreurSaisie(erreurs)
     return Regle(**{**regle.__dict__, "parametres": valeurs})
+
+
+def erreurs_periode(
+    type_regle: TypeRegle | None,
+    semestre_id: int | None,
+    date_debut: dt.date | None,
+    date_fin: dt.date | None,
+) -> dict[str, str]:
+    """Erreurs par champ d'une période : semestre ou dates, dates ordonnées, type datable."""
+    erreurs: dict[str, str] = {}
+    if semestre_id is not None and (date_debut or date_fin):
+        erreurs["periode"] = "Choisir un semestre ou des dates, pas les deux."
+    if date_debut and date_fin and date_fin < date_debut:
+        erreurs["periode.date_fin"] = "La date de fin précède la date de début."
+    if (date_debut or date_fin) and type_regle is not None:
+        definition = CATALOGUE_TYPES[type_regle]
+        if not definition.periode_datable:
+            erreurs["periode"] = (
+                f"{definition.libelle} vaut toute l'année ou un semestre entier, sans dates : "
+                "un réglage de personne n'a qu'une valeur par semestre."
+            )
+    return erreurs
 
 
 # --------------------------------------------------------------------------- #
@@ -1387,9 +1475,11 @@ def phrase(
     if code is TypeRegle.CAMPUS_PAR_JOUR:
         return _majuscule(f"{_sujet_personnes(portee, v)} ne change pas de campus dans la journée.")
     if code is TypeRegle.MATIERES_PAR_JOUR:
-        return _majuscule(
-            f"{portee.designation} n'a pas plus de {v['maximum']} matières différentes par jour."
+        maximum = v["maximum"]
+        combien = (
+            "d'une matière différente" if maximum == 1 else f"de {maximum} matières différentes"
         )
+        return _majuscule(f"{portee.designation} n'a pas plus {combien} par jour.")
     if code is TypeRegle.ORDRE_SEMAINE:
         corps = f"le {v['avant']} précède les {v['apres']} de la semaine"
         if portee.nature is NaturePortee.MATIERE:
@@ -1556,14 +1646,116 @@ class Source:
         return "établissement" if self.regle is None else f"règle {self.regle.code}"
 
 
+Lignee = tuple[tuple[RegleResolue, ...], ...]
+"""Candidates d'un axe : un tuple par niveau, du plus précis au moins précis (niveaux vides omis)."""
+
+
+def _rang_code(code: str | None) -> tuple[int, str]:
+    lu = re.match(r"^R(\d+)$", code or "")
+    return (int(lu.group(1)) if lu else 10**9, code or "")
+
+
+def _choisir(
+    lignee: Lignee, compte: Callable[[RegleResolue], bool], semaines: frozenset[int]
+) -> RegleResolue | None:
+    """Première règle qui compte le long de la lignée.
+
+    Au même niveau, plusieurs candidates ne peuvent qu'avoir des périodes
+    disjointes (`resoudre_reglages` refuse les autres) : on retient la plus
+    couvrante sur `semaines`, puis le plus petit code.
+    """
+    for niveau in lignee:
+        candidates = [r for r in niveau if compte(r)]
+        if candidates:
+            return min(candidates, key=lambda r: (-len(r.semaines & semaines), _rang_code(r.code)))
+    return None
+
+
 @dataclass(frozen=True)
 class ReglesJours:
-    """Jours permis d'une séance : standard, règles retenues par axe, règles de campus."""
+    """Jours permis d'une séance : standard, règles retenues par axe, règles de campus.
+
+    `standard`, `retenues` et `par_campus` sont le résultat ; les autres champs
+    gardent les candidates par axe (`axes`, `regles_type`, `axes_campus`) pour
+    recalculer à une date. Sans `date` (semaine type), une règle compte si ses
+    semaines croisent celles de la séance ; avec `a_la_date(date)` (couche
+    datée), seules les règles dont la période couvre la date comptent et le
+    standard reprend sa place pour les autres.
+    """
 
     seance_id: str
     standard: frozenset[int]
     retenues: tuple[RegleResolue, ...]
     par_campus: dict[int, RegleResolue]
+    semaines: frozenset[int] = frozenset()
+    jours_travailles: frozenset[int] = frozenset()
+    samedi_autorise: bool = False
+    axes: tuple[Lignee, ...] = ()
+    regles_type: tuple[RegleResolue, ...] = ()
+    axes_campus: dict[int, Lignee] = field(default_factory=dict)
+    date: dt.date | None = None
+
+    @classmethod
+    def construire(
+        cls,
+        seance_id: str,
+        semaines: Iterable[int],
+        jours_travailles: Iterable[int],
+        samedi_autorise: bool,
+        axes: Iterable[Lignee],
+        regles_type: Iterable[RegleResolue],
+        axes_campus: Mapping[int, Lignee],
+        date: dt.date | None = None,
+    ) -> ReglesJours:
+        """Résout les axes pour la semaine type (`date` vide) ou pour une date."""
+        semaines = frozenset(semaines)
+
+        def compte(regle: RegleResolue) -> bool:
+            if date is None:
+                return not regle.semaines.isdisjoint(semaines)
+            return regle.couvre(date)
+
+        retenues: dict[int, RegleResolue] = {}
+        for lignee in axes:
+            regle = _choisir(lignee, compte, semaines)
+            if regle is not None:
+                retenues[regle.id] = regle
+        par_campus: dict[int, RegleResolue] = {}
+        for campus_id, lignee in axes_campus.items():
+            regle = _choisir(lignee, compte, semaines)
+            if regle is not None:
+                par_campus[campus_id] = regle
+        regles_type = tuple(regles_type)
+        standard = set(jours_travailles)
+        if samedi_autorise and not any(compte(regle) for regle in regles_type):
+            standard.add(SAMEDI)
+        return cls(
+            seance_id=seance_id,
+            standard=frozenset(standard),
+            retenues=tuple(retenues[k] for k in sorted(retenues)),
+            par_campus=par_campus,
+            semaines=semaines,
+            jours_travailles=frozenset(jours_travailles),
+            samedi_autorise=samedi_autorise,
+            axes=tuple(axes),
+            regles_type=regles_type,
+            axes_campus=dict(axes_campus),
+            date=date,
+        )
+
+    def a_la_date(self, date: dt.date) -> ReglesJours:
+        """Les mêmes axes résolus pour une séance datée : seules les règles qui couvrent
+        `date` comptent (une ouverture datée ne vaut pas hors de sa période)."""
+        return ReglesJours.construire(
+            self.seance_id,
+            self.semaines,
+            self.jours_travailles,
+            self.samedi_autorise,
+            self.axes,
+            self.regles_type,
+            self.axes_campus,
+            date,
+        )
 
     def jours_permis(self, campus_id: int | None = None) -> frozenset[int]:
         """Jours permis quand la séance est sur `campus_id` (ou sans considérer le lieu)."""
@@ -1632,9 +1824,14 @@ class Reglages:
     dejeuner: dict[Personne, ReglageDejeuner]
     pause: dict[Personne, ReglagePause]
 
-    def jours_de(self, seance_id: str) -> ReglesJours:
-        """Jours permis d'une séance."""
-        return self.jours[seance_id]
+    def jours_de(self, seance_id: str, date: dt.date | None = None) -> ReglesJours:
+        """Jours permis d'une séance : sur la semaine type, ou à une date (couche datée).
+
+        Avec `date`, seules les règles de jours dont la période couvre la date
+        comptent ; le standard reprend sa place pour les autres.
+        """
+        jours = self.jours[seance_id]
+        return jours if date is None else jours.a_la_date(date)
 
 
 def valeurs_resolues(
@@ -1814,112 +2011,102 @@ def resoudre_regle(
 def resoudre_reglages(instantane: Instantane) -> Reglages:
     """Réglages d'un instantané : jours permis par séance, déjeuner et pause par personne.
 
-    Applique la précédence décrite en tête de module. Lève
-    `ErreurDonneesInvalides` si deux règles de réglage retenues au même rang
-    d'un même axe se contredisent (même cible, périodes qui se recoupent).
+    Applique la précédence décrite en tête de module. Deux règles de réglage
+    de même type et même cible ne peuvent pas se recouper dans le temps
+    (`ErreurDonneesInvalides` qui les nomme) ; aux périodes disjointes, elles
+    se succèdent et chaque séance suit celle qui couvre ses semaines (la plus
+    couvrante si plusieurs, puis le plus petit code), ce qui est journalisé.
+    Les réglages de personne (déjeuner, pause) ne sont pas datables : une
+    personne a une seule valeur pour le semestre.
     """
     parametres = instantane.parametres
-    regles = [r for r in instantane.regles if r.famille is FamilleRegle.REGLAGE]
     par_type: dict[TypeRegle, dict[tuple[NaturePortee, int | None], list[RegleResolue]]] = {}
-    for regle in regles:
-        par_type.setdefault(regle.type, {}).setdefault((regle.portee, regle.cible_id), []).append(
-            regle
-        )
+    for regle in instantane.regles:
+        if regle.famille is FamilleRegle.REGLAGE:
+            par_type.setdefault(regle.type, {}).setdefault(
+                (regle.portee, regle.cible_id), []
+            ).append(regle)
+    for type_regle, par_cible in par_type.items():
+        for liste in par_cible.values():
+            liste.sort(key=lambda r: _rang_code(r.code))
+            for rang, a in enumerate(liste):
+                for b in liste[rang + 1 :]:
+                    if not a.semaines.isdisjoint(b.semaines):
+                        raise ErreurDonneesInvalides(
+                            f"Les règles {a.code}, {b.code} ({type_regle.libelle}) règlent la "
+                            "même chose pour la même cible sur des périodes qui se recoupent : "
+                            "en garder une seule."
+                        )
+            if len(liste) > 1:
+                journal.info(
+                    "Règles %s (%s, %s) aux périodes disjointes sur la même cible : chaque "
+                    "séance suit celle qui couvre ses semaines",
+                    ", ".join(r.code for r in liste),
+                    type_regle.libelle,
+                    liste[0].portee.value,
+                )
     lignees, _ = _feuilles_et_lignees(instantane)
 
-    def retenue(
-        type_regle: TypeRegle,
-        nature: NaturePortee,
-        cible: int | None,
-        semaines: frozenset[int],
-    ) -> RegleResolue | None:
-        candidates = [
-            r
-            for r in par_type.get(type_regle, {}).get((nature, cible), ())
-            if not r.semaines.isdisjoint(semaines)
-        ]
-        if len(candidates) > 1:
-            codes = ", ".join(sorted(r.code for r in candidates))
-            raise ErreurDonneesInvalides(
-                f"Les règles {codes} ({type_regle.libelle}) règlent la même chose pour la même "
-                "cible sur des périodes qui se recoupent : en garder une seule."
-            )
-        return candidates[0] if candidates else None
+    def candidates(
+        type_regle: TypeRegle, nature: NaturePortee, cible: int | None
+    ) -> tuple[RegleResolue, ...]:
+        return tuple(par_type.get(type_regle, {}).get((nature, cible), ()))
 
-    def premiere(
-        type_regle: TypeRegle, axes: Iterable[tuple[NaturePortee, int | None]], semaines
-    ) -> RegleResolue | None:
-        for nature, cible in axes:
-            regle = retenue(type_regle, nature, cible, semaines)
-            if regle is not None:
-                return regle
-        return None
+    def lignee(type_regle: TypeRegle, axe: Iterable[tuple[NaturePortee, int | None]]) -> Lignee:
+        return tuple(c for nature, cible in axe if (c := candidates(type_regle, nature, cible)))
 
-    types_vises = {
-        r.cible_id
-        for r in par_type.get(TypeRegle.JOURS_TRAVAILLES, {}).values()
-        for r in r
-        if r.portee is NaturePortee.TYPE_SEANCE
-    }
+    jt = TypeRegle.JOURS_TRAVAILLES
     jours: dict[str, ReglesJours] = {}
     for seance in instantane.seances:
         besoin = seance.besoin
-        standard = set(parametres.jours_travailles)
-        if besoin.samedi_autorise and besoin.type_seance_id not in types_vises:
-            standard.add(SAMEDI)
-        retenues: dict[int, RegleResolue] = {}
+        axes: list[Lignee] = []
         for groupe in besoin.groupes:
             for feuille in _feuilles_de(groupe, lignees):
-                regle = premiere(
-                    TypeRegle.JOURS_TRAVAILLES,
-                    ((NaturePortee.GROUPE, g) for g in lignees.get(feuille, (feuille,))),
-                    seance.semaines,
+                axes.append(
+                    lignee(jt, [(NaturePortee.GROUPE, g) for g in lignees.get(feuille, (feuille,))])
                 )
-                if regle is not None:
-                    retenues[regle.id] = regle
         for enseignant in besoin.enseignants:
-            if instantane.enseignant(enseignant).fictif:
-                continue
-            regle = retenue(
-                TypeRegle.JOURS_TRAVAILLES, NaturePortee.ENSEIGNANT, enseignant, seance.semaines
+            if not instantane.enseignant(enseignant).fictif:
+                axes.append(lignee(jt, [(NaturePortee.ENSEIGNANT, enseignant)]))
+        axes.append(
+            lignee(
+                jt,
+                [
+                    (NaturePortee.BESOIN, besoin.id),
+                    (NaturePortee.MATIERE, besoin.matiere_id),
+                    (NaturePortee.TYPE_SEANCE, besoin.type_seance_id),
+                ],
             )
-            if regle is not None:
-                retenues[regle.id] = regle
-        regle = premiere(
-            TypeRegle.JOURS_TRAVAILLES,
-            (
-                (NaturePortee.BESOIN, besoin.id),
-                (NaturePortee.MATIERE, besoin.matiere_id),
-                (NaturePortee.TYPE_SEANCE, besoin.type_seance_id),
-            ),
-            seance.semaines,
         )
-        if regle is not None:
-            retenues[regle.id] = regle
-        par_campus = {}
+        axes_campus: dict[int, Lignee] = {}
         for campus in instantane.campus:
-            regle = retenue(
-                TypeRegle.JOURS_TRAVAILLES, NaturePortee.CAMPUS, campus.id, seance.semaines
-            )
-            if regle is not None:
-                par_campus[campus.id] = regle
-        jours[seance.id] = ReglesJours(
-            seance_id=seance.id,
-            standard=frozenset(standard),
-            retenues=tuple(retenues[k] for k in sorted(retenues)),
-            par_campus=par_campus,
+            axe_campus = lignee(jt, [(NaturePortee.CAMPUS, campus.id)])
+            if axe_campus:
+                axes_campus[campus.id] = axe_campus
+        jours[seance.id] = ReglesJours.construire(
+            seance.id,
+            seance.semaines,
+            parametres.jours_travailles,
+            besoin.samedi_autorise,
+            tuple(axe for axe in axes if axe),
+            candidates(jt, NaturePortee.TYPE_SEANCE, besoin.type_seance_id),
+            axes_campus,
         )
 
     toutes = frozenset(semaine.numero for semaine in instantane.semaines)
+
+    def dans_le_semestre(regle: RegleResolue) -> bool:
+        return not regle.semaines.isdisjoint(toutes)
+
     dejeuner: dict[Personne, ReglageDejeuner] = {}
     pause: dict[Personne, ReglagePause] = {}
     for emploi in instantane.emplois:
         personne = emploi.personne
         if personne.nature is NaturePersonne.GROUPE:
-            axes = [(NaturePortee.GROUPE, g) for g in emploi.lignee]
+            axe = [(NaturePortee.GROUPE, g) for g in emploi.lignee]
         else:
-            axes = [(NaturePortee.ENSEIGNANT, personne.id)]
-        regle = premiere(TypeRegle.PAUSE_DEJEUNER, axes, toutes)
+            axe = [(NaturePortee.ENSEIGNANT, personne.id)]
+        regle = _choisir(lignee(TypeRegle.PAUSE_DEJEUNER, axe), dans_le_semestre, toutes)
         if regle is None:
             dejeuner[personne] = ReglageDejeuner(
                 mode=parametres.dejeuner_mode,
@@ -1937,7 +2124,7 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
                 duree=v.get("duree", parametres.dejeuner_duree_min),
                 source=Source(regle=regle),
             )
-        regle = premiere(TypeRegle.PAUSE_MINIMALE, axes, toutes)
+        regle = _choisir(lignee(TypeRegle.PAUSE_MINIMALE, axe), dans_le_semestre, toutes)
         if regle is None:
             pause[personne] = ReglagePause(
                 parametres.pause_min, Source(contrainte=CodeContrainte.PAUSE)
@@ -2007,6 +2194,7 @@ def decrire_catalogue() -> dict[str, Any]:
                 "niveau_defaut": d.niveau_defaut.value,
                 "portees": sorted(p.value for p in d.portees),
                 "portees_refusees": {p.value: raison for p, raison in d.refus},
+                "periode_datable": d.periode_datable,
                 "parametres": [
                     {
                         "nom": c.nom,
@@ -2023,6 +2211,9 @@ def decrire_catalogue() -> dict[str, Any]:
                             {"valeur": valeur, "libelle": libelle} for valeur, libelle in c.choix
                         ],
                         "entite": c.entite,
+                        "portees": (
+                            sorted(p.value for p in c.portees) if c.portees is not None else None
+                        ),
                         "condition": (
                             {"champ": c.condition[0], "valeurs": list(c.condition[1])}
                             if c.condition

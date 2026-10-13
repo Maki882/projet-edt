@@ -43,6 +43,7 @@ from edt.domaine.regles import (
     decrire_catalogue,
     definition_type,
     enregistrer,
+    erreurs_periode,
     phrase,
     resoudre_regle,
     types_non_couverts,
@@ -756,18 +757,19 @@ def test_cibles_resolues_sous_groupes_et_groupes_lies(etab):
 
 
 def test_periode_d_une_regle(etab):
-    annee = etab.regle(TypeRegle.PAUSE_MINIMALE, groupe_portee(etab, 6), {"duree": 30})
+    creneau = {"jours": ["lundi"], "debut": "08:30", "fin": "10:30"}
+    annee = etab.regle(TypeRegle.CRENEAUX_INTERDITS, groupe_portee(etab, 6), creneau)
     datee = etab.regle(
-        TypeRegle.PAUSE_MINIMALE,
+        TypeRegle.CRENEAUX_INTERDITS,
         groupe_portee(etab, 5),
-        {"duree": 45},
+        creneau,
         date_debut=dt.date(2026, 10, 1),
         date_fin=dt.date(2026, 10, 20),
     )
     hors_periode = etab.regle(
-        TypeRegle.PAUSE_MINIMALE,
+        TypeRegle.CRENEAUX_INTERDITS,
         groupe_portee(etab, 2),
-        {"duree": 60},
+        creneau,
         date_debut=dt.date(2027, 2, 1),
         date_fin=dt.date(2027, 3, 1),
     )
@@ -856,3 +858,204 @@ def test_la_regle_resolue_garde_sa_periode_datee(jeu_minimal):
         fin + dt.timedelta(days=1)
     )
     assert len(resolue.semaines) == 1
+
+
+# --------------------------------------------------------------------------- #
+# Corrections de la revue : validations, réglages datés, couche datée
+# --------------------------------------------------------------------------- #
+
+
+def test_parmi_mixte_et_casse_des_choix():
+    # « mardi » et « mardi matin » : le jour entier absorbe sa demi-journée (plus de TypeError).
+    valeurs = valider_parametres(
+        TypeRegle.JOURNEES_LIBRES, {"unite": "journee", "parmi": ["mardi", "mardi matin", "lundi"]}
+    )
+    assert valeurs["parmi"] == ["lundi", "mardi"]
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(
+            TypeRegle.JOURNEES_LIBRES, {"unite": "demi_journee", "parmi": ["mardi", "mardi matin"]}
+        )
+    assert "En demi-journées" in capture.value.erreurs["parametres.parmi"]
+    assert valider_parametres(
+        TypeRegle.JOURNEES_LIBRES,
+        {"unite": "demi_journee", "parmi": ["mardi après-midi", "lundi matin", "lundi matin"]},
+    )["parmi"] == ["lundi matin", "mardi après-midi"]
+    # Un choix en casse différente est canonique avant les champs qui en dépendent.
+    valeurs = valider_parametres(
+        TypeRegle.PAUSE_DEJEUNER,
+        {"mode": "LIBRE", "debut": "11:30", "fin": "14:00", "duree": 90},
+        PARAMETRES,
+    )
+    assert valeurs == {"mode": "libre", "debut": "11:30", "fin": "14:00", "duree": 90}
+    assert phrase(TypeRegle.PAUSE_DEJEUNER, CLASSE, valeurs, PARAMETRES) == (
+        "La classe A2-G3 a une pause déjeuner libre d'au moins 1 h 30 entre 11 h 30 et 14 h 00."
+    )
+    assert valider_parametres(
+        TypeRegle.PAUSE_DEJEUNER, {"mode": "Fixe", "debut": "12:00", "fin": "13:00"}, PARAMETRES
+    ) == {"mode": "fixe", "debut": "12:00", "fin": "13:00"}
+
+
+def test_regles_impossibles_et_champs_selon_la_portee():
+    # Journées libres : il doit rester au moins un moment pour avoir cours.
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(TypeRegle.JOURNEES_LIBRES, {"unite": "journee", "nombre": 5}, PARAMETRES)
+    assert "5 jour(s)" in capture.value.erreurs["parametres.nombre"]
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(
+            TypeRegle.JOURNEES_LIBRES,
+            {"unite": "journee", "nombre": 3, "parmi": ["lundi", "mardi"]},
+            PARAMETRES,
+        )
+    assert "parmi" in capture.value.erreurs["parametres.nombre"]
+    assert (
+        valider_parametres(
+            TypeRegle.JOURNEES_LIBRES, {"unite": "journee", "nombre": 4}, PARAMETRES
+        )["nombre"]
+        == 4
+    )
+    assert valider_parametres(TypeRegle.JOURNEES_LIBRES, {"nombre": 6}, PARAMETRES)["nombre"] == 6
+    # Minutes par jour pour les enseignants via l'établissement : refusé comme pour un enseignant.
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(
+            TypeRegle.MAX_PAR_JOUR,
+            {"personnes": "tous", "maximum": 300},
+            PARAMETRES,
+            portee=NaturePortee.ETABLISSEMENT,
+        )
+    assert "parametres.unite" in capture.value.erreurs
+    assert (
+        valider_parametres(
+            TypeRegle.MAX_PAR_JOUR, {"maximum": 300}, PARAMETRES, portee=NaturePortee.ETABLISSEMENT
+        )["personnes"]
+        == "groupes"
+    )
+    # « personnes » n'a de sens que pour l'établissement : retiré des valeurs canoniques.
+    assert valider_parametres(
+        TypeRegle.MAX_PAR_JOUR,
+        {"personnes": "tous", "unite": "seances", "maximum": 3},
+        PARAMETRES,
+        portee=NaturePortee.ENSEIGNANT,
+    ) == {"unite": "seances", "maximum": 3}
+    assert (
+        valider_parametres(TypeRegle.CAMPUS_PAR_JOUR, {}, PARAMETRES, portee=NaturePortee.GROUPE)
+        == {}
+    )
+    # Les valeurs par défaut de type « code » passent par le contrôle des codes connus.
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(TypeRegle.ORDRE_SEMAINE, {}, PARAMETRES, {"type_seance": {"TD", "TP"}})
+    assert "défaut" in capture.value.erreurs["parametres.avant"]
+    assert valider_parametres(TypeRegle.ORDRE_SEMAINE, {}, PARAMETRES, CODES) == {
+        "avant": "CM",
+        "apres": "TD",
+    }
+    # Matières par jour au singulier.
+    assert phrase(TypeRegle.MATIERES_PAR_JOUR, PROMO, {"maximum": 1}) == (
+        "La promotion A1 n'a pas plus d'une matière différente par jour."
+    )
+    assert phrase(TypeRegle.MATIERES_PAR_JOUR, PROMO, {"maximum": 3}).endswith(
+        "de 3 matières différentes par jour."
+    )
+    par_code = {t["code"]: t for t in decrire_catalogue()["types"]}
+    assert par_code["PAUSE_DEJEUNER"]["periode_datable"] is False
+    assert par_code["JOURS_TRAVAILLES"]["periode_datable"] is True
+    assert par_code["MAX_PAR_JOUR"]["parametres"][0]["portees"] == ["etablissement"]
+    assert par_code["MAX_PAR_JOUR"]["parametres"][1]["portees"] is None
+
+
+def test_un_reglage_de_personne_n_est_pas_datable():
+    regle = Regle(
+        TypeRegle.PAUSE_MINIMALE,
+        CLASSE,
+        {"duree": 30},
+        Niveau.IMPORTANT,
+        date_debut=dt.date(2026, 10, 1),
+        date_fin=dt.date(2026, 10, 20),
+    )
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_regle(regle, PARAMETRES)
+    assert "sans dates" in capture.value.erreurs["periode"]
+    au_semestre = dataclasses.replace(regle, date_debut=None, date_fin=None, semestre_id=1)
+    assert valider_regle(au_semestre, PARAMETRES).semestre_id == 1
+    assert not CATALOGUE_TYPES[TypeRegle.PAUSE_DEJEUNER].periode_datable
+    assert all(
+        d.periode_datable for d in CATALOGUE_TYPES.values() if d.famille is FamilleRegle.EXIGENCE
+    )
+    assert erreurs_periode(TypeRegle.JOURS_TRAVAILLES, None, dt.date(2026, 10, 1), None) == {}
+    assert erreurs_periode(None, 1, dt.date(2026, 10, 1), None) == {
+        "periode": "Choisir un semestre ou des dates, pas les deux."
+    }
+    assert "periode.date_fin" in erreurs_periode(
+        None, None, dt.date(2026, 10, 2), dt.date(2026, 10, 1)
+    )
+
+
+def test_deux_regles_de_jours_datees_disjointes_se_succedent(etab, caplog):
+    import logging
+
+    etab.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        groupe_portee(etab, 1),
+        {"jours": LUNDI_A_VENDREDI[:4]},
+        date_debut=DEBUT,
+        date_fin=DEBUT + dt.timedelta(days=20),  # semaines 1 à 3
+    )
+    seconde = etab.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        groupe_portee(etab, 1),
+        {"jours": LUNDI_A_VENDREDI[1:]},
+        date_debut=DEBUT + dt.timedelta(days=21),  # de la semaine 4 à la fin
+    )
+    with caplog.at_level(logging.INFO, logger="edt.domaine.regles"):
+        reglages = etab.instantane().reglages
+    assert "R001, R002" in caplog.text and "périodes disjointes" in caplog.text
+    # Séance active toutes les semaines : la plus couvrante sur la semaine type.
+    jours = reglages.jours_de("1-1")
+    assert [r.code for r in jours.retenues] == [seconde.code]
+    assert jours.jours_permis() == frozenset({1, 2, 3, 4})
+    # Au jour près, chaque règle vaut sur sa période.
+    assert reglages.jours_de("1-1", DEBUT + dt.timedelta(days=8)).jours_permis() == frozenset(
+        range(4)
+    )
+    assert reglages.jours_de("1-1", DEBUT + dt.timedelta(days=70)).jours_permis() == frozenset(
+        {1, 2, 3, 4}
+    )
+    # Deux règles qui se recoupent restent une erreur qui les nomme.
+    etab.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        groupe_portee(etab, 1),
+        {"jours": LUNDI_A_VENDREDI},
+        date_debut=DEBUT + dt.timedelta(days=14),
+    )
+    with pytest.raises(ErreurDonneesInvalides, match="R001, R003"):
+        _ = etab.instantane().reglages
+
+
+def test_une_ouverture_datee_ne_vaut_pas_hors_de_sa_periode(etab):
+    etab.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        groupe_portee(etab, 5),
+        {"jours": LUNDI_A_VENDREDI + ["samedi"]},
+        date_debut=DEBUT,
+        date_fin=DEBUT + dt.timedelta(days=6),  # semaine 1
+    )
+    reglages = etab.instantane().reglages
+    semaine_type = reglages.jours_de("4-1")
+    assert semaine_type.jours_permis() == frozenset(range(6)) and semaine_type.date is None
+    dans = reglages.jours_de("4-1", DEBUT + dt.timedelta(days=5))  # samedi de la semaine 1
+    hors = reglages.jours_de("4-1", DEBUT + dt.timedelta(days=12))  # samedi de la semaine 2
+    assert dans.jours_permis() == frozenset(range(6)) and dans.entorses(SAMEDI) == ()
+    assert hors.retenues == () and hors.jours_permis() == frozenset(range(5))
+    assert [s.texte for s in hors.entorses(SAMEDI)] == ["établissement"]
+    assert hors.date == DEBUT + dt.timedelta(days=12)
+    # Une règle datée sur le type DST : la case « samedi autorisé » reprend sa place hors période.
+    etab.regle(
+        TypeRegle.JOURS_TRAVAILLES,
+        Portee(NaturePortee.TYPE_SEANCE, 4, "DST", "Devoir surveillé"),
+        {"jours": LUNDI_A_VENDREDI},
+        date_debut=DEBUT,
+        date_fin=DEBUT + dt.timedelta(days=6),
+    )
+    reglages = etab.instantane().reglages
+    assert reglages.jours_de("6-1").standard == frozenset(range(5))
+    assert reglages.jours_de("6-1", DEBUT + dt.timedelta(days=5)).standard == frozenset(range(5))
+    assert reglages.jours_de("6-1", DEBUT + dt.timedelta(days=12)).standard == frozenset(range(6))
