@@ -121,6 +121,9 @@ class Regles:
         self._salles: dict[int, SallesCompatibles] = {}
         self._reels: dict[int, frozenset[int]] = {}
         self._lies: dict[int, frozenset[int]] = {}
+        self._occupants: dict[int, frozenset[int]] = {}
+        self._occupes: dict[int, frozenset[int]] = {}
+        self._parents = {groupe.id: groupe.parent_id for groupe in instantane.groupes}
         self._limites = limites_demi_journee(instantane)
 
     def active(self, code: CodeContrainte) -> bool:
@@ -173,9 +176,14 @@ class Regles:
         """Règles d'horaire présentes que cette heure de début enfreint : `(code, raison)`.
 
         Règles `HORAIRES` (ouverture, fermeture, demi-journée du créneau de
-        début) et `DEJEUNER` (seulement si la pause déjeuner a des horaires
-        déterminés : `Parametres.plage_dejeuner`). Une heure imposée par le
-        besoin en dispense : la séance peut alors sortir de la grille.
+        début) et `DEJEUNER` : à horaires déterminés (`Parametres.plage_dejeuner`),
+        la séance ne doit pas recouper la plage ; en pause libre bornée
+        (`Parametres.fenetre_dejeuner`), la séance ne doit pas, à elle seule,
+        priver ses groupes et ses enseignants de leur pause — seulement quand la
+        règle est dure : souple, l'entorse est comptée à l'échelle de la journée
+        d'une personne par le modèle (`pause_dejeuner_tenue`), pas par séance.
+        Une heure imposée par le besoin en dispense : la séance peut alors
+        sortir de la grille.
         """
         parametres = self.instantane.parametres
         fin = minute + duree
@@ -199,6 +207,13 @@ class Regles:
             self.active(C.DEJEUNER)
             and dejeuner is not None
             and se_chevauchent(minute, fin, *dejeuner)
+        ):
+            violations.append((C.DEJEUNER, "la pause déjeuner"))
+        fenetre = parametres.fenetre_dejeuner
+        if (
+            fenetre is not None
+            and self.dure(C.DEJEUNER)
+            and not pause_dejeuner_tenue([(minute, fin)], fenetre)
         ):
             violations.append((C.DEJEUNER, "la pause déjeuner"))
         return violations
@@ -252,6 +267,51 @@ class Regles:
             lies = frozenset().union(*(self.instantane.groupes_lies(g) for g in besoin.groupes))
             self._lies[besoin.id] = lies
         return lies
+
+    def _ascendants(self, groupe_id: int) -> frozenset[int]:
+        """Groupes qui contiennent `groupe_id` : sa lignée de parents (`Groupe.parent_id`)."""
+        lignee: set[int] = set()
+        parent = self._parents.get(groupe_id)
+        while parent is not None and parent not in lignee:
+            lignee.add(parent)
+            parent = self._parents.get(parent)
+        return frozenset(lignee)
+
+    def occupants(self, groupe_id: int) -> frozenset[int]:
+        """Groupes dont les séances occupent **tous** les étudiants de `groupe_id`.
+
+        Ses groupes liés (lui-même, ceux qui le contiennent, ceux qui le
+        chevauchent), sauf ses sous-groupes : une séance d'un sous-groupe ne
+        mobilise qu'une partie de ses étudiants, et le sous-groupe porte sa
+        propre règle. C'est l'emploi du temps d'un groupe vu comme une
+        personne (pause déjeuner).
+        """
+        occupants = self._occupants.get(groupe_id)
+        if occupants is None:
+            occupants = frozenset(
+                lie
+                for lie in self.instantane.groupes_lies(groupe_id)
+                if groupe_id not in self._ascendants(lie)
+            )
+            self._occupants[groupe_id] = occupants
+        return occupants
+
+    def groupes_occupes(self, besoin: Besoin) -> frozenset[int]:
+        """Groupes dont tous les étudiants sont pris par une séance du besoin.
+
+        Réciproque de `occupants` : ses groupes, leurs sous-groupes et les
+        groupes qui les chevauchent, mais pas les groupes qui les contiennent.
+        """
+        occupes = self._occupes.get(besoin.id)
+        if occupes is None:
+            occupes = frozenset(
+                lie
+                for groupe in besoin.groupes
+                for lie in self.instantane.groupes_lies(groupe)
+                if lie not in self._ascendants(groupe)
+            )
+            self._occupes[besoin.id] = occupes
+        return occupes
 
     def partage(self, a: Besoin, b: Besoin) -> tuple[bool, bool]:
         """`(enseignant commun non fictif, groupes en conflit)` pour deux besoins."""
@@ -487,6 +547,37 @@ class Regles:
             if campus_a != campus_b and libre < self.instantane.trajet(campus_a, campus_b):
                 violes.append(C.CAMPUS_TRAJET)
         return violes
+
+
+# --------------------------------------------------------------------------- #
+# Pause déjeuner libre bornée
+# --------------------------------------------------------------------------- #
+
+
+def pause_dejeuner_tenue(
+    intervalles: Iterable[tuple[int, int]], fenetre: tuple[int, int, int]
+) -> bool:
+    """Règle `DEJEUNER` en pause libre bornée, pour la journée d'une personne.
+
+    `intervalles` : les plages `[début, fin[` de ses séances ce jour-là ;
+    `fenetre` : `(X, Y, N)` de `Parametres.fenetre_dejeuner`. Vrai si aucune
+    séance ne recoupe `[X, Y[`, ou s'il reste dans `[X, Y[` un intervalle
+    libre d'au moins N minutes d'un seul tenant.
+    """
+    debut_f, fin_f, duree = fenetre
+    dans_la_fenetre = sorted(
+        (max(debut, debut_f), min(fin, fin_f))
+        for debut, fin in intervalles
+        if se_chevauchent(debut, fin, debut_f, fin_f)
+    )
+    if not dans_la_fenetre:
+        return True
+    curseur = debut_f
+    for debut, fin in dans_la_fenetre:
+        if debut - curseur >= duree:
+            return True
+        curseur = max(curseur, fin)
+    return fin_f - curseur >= duree
 
 
 # --------------------------------------------------------------------------- #

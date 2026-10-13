@@ -23,6 +23,11 @@ Contraintes
 - **trajets** (`CAMPUS_TRAJET`) et pause sans unicité : les couples de choix
   trop rapprochés de deux séances d'une même personne sont interdits ;
 - **maxima journaliers** (`MAX_ENSEIGNANT`) ;
+- **pause déjeuner libre bornée** (`DEJEUNER`, `Parametres.fenetre_dejeuner`) :
+  pour chaque groupe (avec les séances des groupes qui le contiennent ou le
+  chevauchent, `Regles.occupants`) et chaque enseignant, chaque jour où une
+  séance recoupe la fenêtre `[X, Y[`, l'une des positions de pause possibles
+  reste libre de toute séance (voir `_pause_dejeuner_libre`) ;
 - **capacité des salles** (`SALLE_UNIQUE`, condition nécessaire) : à chaque
   instant, les séances en cours se répartissent entre des classes de salles
   interchangeables sans dépasser le nombre de salles libres de chaque classe.
@@ -49,7 +54,10 @@ modèle, qui coûte `Regles.poids` dans l'objectif. Unités d'entorse :
   même jour, trop rapprochées (une seule entorse par paire, quel que soit le
   nombre de semaines) ;
 - `MAX_ENSEIGNANT` : une heure entamée au-delà du maximum journalier, par
-  jour et par ensemble de semaines actives.
+  jour et par ensemble de semaines actives ;
+- `DEJEUNER` en pause libre bornée : une personne (groupe ou enseignant), un
+  jour et un ensemble de semaines sans N minutes libres d'un seul tenant
+  dans la fenêtre.
 
 Les entorses aux exigences de salle (`EQUIPEMENT`, `CAPACITE`, `TYPE_SALLE`,
 `ACCESSIBILITE`, `DISPO_SALLE`) relèvent de la seconde phase
@@ -258,6 +266,7 @@ class ModeleHoraires:
             self._separer_les_personnes,
             self._pauses_et_trajets,
             self._maxima_journaliers,
+            self._pause_dejeuner_libre,
             self._capacite_des_salles,
             self._briser_les_symetries,
         ]
@@ -698,6 +707,109 @@ class ModeleHoraires:
                         (heures, "surplus", (list(termes[jour]), acquis[jour], maximum, 60))
                     )
                     self._entorses[C.MAX_ENSEIGNANT].append((1, heures))
+
+    # -- pause déjeuner libre bornée -----------------------------------------------
+
+    def _emplois_du_temps_des_personnes(self) -> dict[tuple[int, ...], list[str]]:
+        """Séances de chaque groupe (celles qui occupent tous ses étudiants :
+        `Regles.occupants`) et de chaque enseignant : `{indices triés: désignations}`.
+
+        Les personnes au même emploi du temps sont réunies : une seule
+        contrainte, mais une entorse par personne.
+        """
+        par_enseignant, par_groupe = self._par_personne()
+        emplois: dict[tuple[int, ...], list[str]] = defaultdict(list)
+        for groupe in self.instantane.groupes:
+            indices = {
+                index
+                for lie in self.regles.occupants(groupe.id)
+                for index in par_groupe.get(lie, ())
+            }
+            if indices:
+                emplois[tuple(sorted(indices))].append(f"le groupe {groupe.code}")
+        for enseignant_id in sorted(par_enseignant):
+            nom = self.instantane.enseignant(enseignant_id).nom
+            emplois[tuple(sorted(par_enseignant[enseignant_id]))].append(nom)
+        return emplois
+
+    def _pause_dejeuner_libre(self) -> None:
+        """`DEJEUNER` en pause libre bornée (`Parametres.fenetre_dejeuner`).
+
+        Pour une personne, un jour et un ensemble de semaines : si l'une de
+        ses séances recoupe la fenêtre `[X, Y[`, alors l'une des **positions
+        de pause** `[p, p + N[` est libre de toute séance. Les positions
+        examinées sont X et les fins possibles de ses séances dans `]X, Y - N]` :
+        un intervalle libre d'au moins N minutes commence toujours à X ou à la
+        fin d'une séance, l'énumération est donc exacte. Une position qu'aucune
+        séance ne peut recouper satisfait la règle d'avance : rien n'est posé
+        (c'est le cas d'une grille qui ménage déjà la pause). Dure : clause ;
+        souple : un littéral d'entorse par (personne, jour, semaines).
+        """
+        regles = self.regles
+        fenetre = self.instantane.parametres.fenetre_dejeuner
+        if fenetre is None or not regles.active(C.DEJEUNER):
+            return
+        debut_f, fin_f, duree_pause = fenetre
+        souple = regles.souple(C.DEJEUNER)
+        pas = self.preparation.pas
+        nb_contraintes = nb_entorses = nb_examines = 0
+        for indices, personnes in self._emplois_du_temps_des_personnes().items():
+            for ensemble in self.preparation.ensembles_par_semaines(indices, isoler=False):
+                par_jour: dict[int, list[Plage]] = defaultdict(list)
+                for index in ensemble:
+                    duree = self.seances[index].duree
+                    for option, litteral in zip(
+                        self.options[index], self.litteraux[index], strict=True
+                    ):
+                        jour, minute = divmod(option.debut, pas)
+                        if se_chevauchent(minute, minute + duree, debut_f, fin_f):
+                            par_jour[jour].append((minute, minute + duree, litteral))
+                for jour in sorted(par_jour):
+                    plages = par_jour[jour]
+                    nb_examines += 1
+                    positions = sorted(
+                        {debut_f}
+                        | {fin for _, fin, _ in plages if debut_f < fin <= fin_f - duree_pause}
+                    )
+                    occupees: list[Litteral] = []
+                    toujours_libre = False
+                    for position in positions:
+                        dessus = [
+                            litteral
+                            for debut, fin, litteral in plages
+                            if se_chevauchent(debut, fin, position, position + duree_pause)
+                        ]
+                        if not dessus:
+                            toujours_libre = True
+                            break
+                        occupees.append(self._au_moins_un(dessus))
+                    if toujours_libre:
+                        continue
+                    concerne = self._au_moins_un([litteral for _, _, litteral in plages])
+                    # Satisfaite si aucune séance ne recoupe la fenêtre, ou si une position est libre.
+                    exceptions = [occupee.negated() for occupee in occupees if occupee is not True]
+                    if concerne is not True:
+                        exceptions.append(concerne.negated())
+                    if souple:
+                        penalite = self._sauf_si(exceptions)
+                        self._entorses[C.DEJEUNER].append((len(personnes), penalite))
+                        nb_entorses += len(personnes)
+                    else:
+                        self.cp.add_bool_or(exceptions)  # clause vide : impossible, prouvé
+                        nb_contraintes += 1
+                    journal.debug(
+                        "Pause déjeuner libre : %s, jour %d, %d position(s) de pause possibles",
+                        ", ".join(personnes),
+                        jour,
+                        len(positions),
+                    )
+        journal.debug(
+            "Pause déjeuner libre : %d journée(s) examinée(s), %d contrainte(s), %d entorse(s) "
+            "possible(s)",
+            nb_examines,
+            nb_contraintes,
+            nb_entorses,
+        )
 
     # -- salles (condition nécessaire) --------------------------------------------
 
