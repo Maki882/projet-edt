@@ -14,6 +14,7 @@ import pytest
 from sqlalchemy import select
 from tests.solveur.fabrique import (
     C1,
+    C2,
     LUNDI,
     MARDI,
     NIVEAUX_DURS,
@@ -25,7 +26,7 @@ from tests.solveur.fabrique import (
     options,
     verifier_solution,
 )
-from tests.solveur.test_contraintes import UN_CRENEAU
+from tests.solveur.test_contraintes import MATINEE, UN_CRENEAU
 from tests.solveur.test_couche_datee import SEMAINE, place
 from typer.testing import CliRunner
 
@@ -417,6 +418,64 @@ def test_dispo_enseignant_souple_et_verrou_pendant_une_indisponibilite():
     verrouille = resoudre(f.instantane(), options(niveaux=souples))
     assert verrouille.statut is StatutSolveur.SOLUTION
     assert verrouille.statistiques["entorses"] == {"DISPO_ENSEIGNANT": 1}
+
+
+def _deux_horaires_fixes_colles(verrous: bool) -> Fabrique:
+    """Deux séances de la même classe le mardi, 8 h 30-10 h 40 puis 10 h 45 : cinq minutes de pause.
+
+    Horaires fixés par des verrous, ou imposés par les besoins.
+    """
+    f = Fabrique()
+    f.salle("N101")
+    f.salle("N102")
+    classe = f.groupe("A1")
+    imposes = {} if verrous else {"jour_impose": MARDI}
+    f.besoin([classe], [f.enseignant()], duree=2 * H + 10, **({"debut_impose": C1} | imposes))
+    f.besoin([classe], [f.enseignant()], **({"debut_impose": C2} | imposes))
+    if verrous:
+        f.verrou("1-1", MARDI, C1, 1)
+        f.verrou("2-1", MARDI, C2, 2)
+    return f
+
+
+@pytest.mark.parametrize("verrous", [True, False], ids=["verrous", "heures imposées"])
+def test_deux_horaires_fixes_qui_n_enfreignent_qu_une_regle_souple_ne_refusent_pas_le_calcul(
+    verrous,
+):
+    """La pré-vérification ne retient que les règles dures entre horaires fixes ; souple, l'entorse
+    est comptée par le modèle."""
+    instantane = _deux_horaires_fixes_colles(verrous).instantane()
+    refuse = resoudre(instantane, OPTIONS)
+    assert (
+        refuse.statut is StatutSolveur.INFAISABLE and "Pause entre deux séances" in refuse.message
+    )
+    for niveau in ("facultatif", "important"):
+        resultat = resoudre(instantane, options(niveaux=niveaux_avec(PAUSE=niveau)))
+        assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+        places = verifier_solution(instantane, resultat)
+        assert (places["1-1"].debut, places["2-1"].debut) == (C1, C2)
+        assert resultat.statistiques["entorses"] == {"PAUSE": 1}
+
+
+def test_deux_verrous_sur_deux_campus_et_trajet_souple():
+    """Même chose pour le trajet : deux verrous à un quart d'heure sur deux campus distants."""
+    f = Fabrique(creneaux=MATINEE)
+    nord, sud = f.campus("N"), f.campus("S")
+    f.trajet(nord, sud, 60)
+    f.salle("N101", campus=nord)
+    f.salle("S101", campus=sud)
+    martin = f.enseignant("Mme Martin")
+    f.besoin([f.groupe("A1")], [martin])
+    f.besoin([f.groupe("A2")], [martin])
+    f.verrou("1-1", LUNDI, C1, 1)
+    f.verrou("2-1", LUNDI, C2, 2)
+    instantane = f.instantane()
+    refuse = resoudre(instantane, OPTIONS)
+    assert refuse.statut is StatutSolveur.INFAISABLE and "campus" in refuse.message.lower()
+    resultat = resoudre(instantane, options(niveaux=niveaux_avec(CAMPUS_TRAJET="facultatif")))
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"CAMPUS_TRAJET": 1}
 
 
 def test_reproductible_a_un_fil_avec_des_entorses():
