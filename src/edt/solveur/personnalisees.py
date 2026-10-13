@@ -35,9 +35,11 @@ modèle (`_pause_dejeuner`, `_pauses_et_trajets`) et le replacement lisent ces
 valeurs par `reglage_dejeuner` et `reglage_pause` et imputent chaque entorse
 à sa source, la règle ou le paramètre global.
 
-Les types restants (maximum par jour, journées libres, trous, campus par
-jour, matières par jour, ordre dans la semaine, répartition d'une matière)
-n'ont pas encore de poseur : `types_non_couverts("solveur")` les liste.
+Les types d'emploi du temps et de relation (maximum par jour, journées
+libres, trous, campus par jour, matières par jour, ordre dans la semaine,
+répartition d'une matière) ont leur poseur dans `edt.solveur.regles_emploi`,
+appelé par le modèle des horaires (`ModeleHoraires._regles_personnalisees`).
+`types_non_couverts("solveur")` est vide.
 """
 
 from __future__ import annotations

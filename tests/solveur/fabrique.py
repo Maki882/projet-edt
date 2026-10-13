@@ -75,6 +75,9 @@ C1, C2, C3, C4 = (creneau[0] for creneau in CRENEAUX_JOUR)
 """Débuts des quatre créneaux standard : 8 h 30, 10 h 45, 13 h 45 et 16 h."""
 
 RENTREE = dt.date(2026, 9, 7)
+
+TYPES_SEANCE = {"TD": 1, "CM": 2, "TP": 3}
+"""Types de séance des besoins fabriqués : code → identifiant."""
 """Un lundi : premier jour du semestre des instantanés fabriqués."""
 
 
@@ -259,9 +262,14 @@ class Fabrique:
         nombre: int = 1,
         libelle: str | None = None,
         samedi_autorise: bool = False,
+        type_seance: str = "TD",
         **champs,
     ) -> int:
         """Ajoute un besoin ; `champs` passe tels quels les autres champs de `Besoin`.
+
+        `type_seance` : « TD » (1), « CM » (2) ou « TP » (3), comme
+        `TYPES_SEANCE` ; `matiere_id` et `matiere_code` se donnent dans `champs`
+        (défaut : un par besoin).
 
         L'effectif est la somme des effectifs des groupes ; l'accessibilité
         est requise si un groupe du besoin, ou un groupe en conflit avec l'un
@@ -269,14 +277,15 @@ class Fabrique:
         """
         identifiant = len(self._besoins) + 1
         groupes = frozenset(groupes)
+        matiere_id = champs.pop("matiere_id", identifiant)
         self._besoins.append(
             Besoin(
                 id=identifiant,
                 libelle=libelle or f"Cours {identifiant}",
-                matiere_id=identifiant,
-                matiere_code=f"M{identifiant}",
-                type_seance_id=1,
-                type_seance_code="TD",
+                matiere_id=matiere_id,
+                matiere_code=champs.pop("matiere_code", f"M{matiere_id}"),
+                type_seance_id=TYPES_SEANCE[type_seance],
+                type_seance_code=type_seance,
                 samedi_autorise=samedi_autorise,
                 duree=duree,
                 groupes=groupes,
@@ -317,7 +326,8 @@ class Fabrique:
             campus = self._campus[cible - 1]
             return Portee(nature, cible, campus.code, campus.nom)
         if nature is NaturePortee.TYPE_SEANCE:
-            return Portee(nature, cible, "TD", "TD")
+            code = next(code for code, numero in TYPES_SEANCE.items() if numero == cible)
+            return Portee(nature, cible, code, code)
         if nature is NaturePortee.MATIERE:
             besoin = next(b for b in self._besoins if b.matiere_id == cible)
             return Portee(nature, cible, besoin.matiere_code, besoin.matiere_code)
@@ -416,7 +426,7 @@ class Fabrique:
         identifiants = {
             "campus": {campus.code: campus.id for campus in self._campus},
             "salle": {salle.code: salle.id for salle in self._salles},
-            "type_seance": {"TD": 1},
+            "type_seance": dict(TYPES_SEANCE),
         }
         resolues = tuple(
             resolue
