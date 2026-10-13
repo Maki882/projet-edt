@@ -38,12 +38,12 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable, Iterator, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.domaine.heures import se_chevauchent
-from edt.domaine.regles import NaturePersonne, Personne
+from edt.domaine.regles import NaturePersonne, Personne, RegleResolue
 from edt.verification.contexte import Contexte, Element, cle_chronologique
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import duree, enumerer, heure, plage
@@ -107,39 +107,27 @@ def par_personne(
     personnes: Iterable[Personne],
     x: int,
     y: int,
-    semaines_admises: frozenset[int] | None = None,
+    regle: RegleResolue | None = None,
 ) -> dict[Personne, list[Element]]:
-    """Séances de chaque personne qui recoupent `[x, y]` (et, si donné, l'une des semaines admises).
+    """Séances de chaque personne qui recoupent `[x, y]` (et, si donnée, la période de `regle`).
 
-    `semaines_admises` (période d'une règle) : sur la semaine type, les
-    semaines actives des séances y sont restreintes ; sur la couche datée, une
-    séance hors de ces semaines est écartée.
+    `regle` : sur la semaine type, les semaines actives des séances sont
+    restreintes à celles de la règle ; sur la couche datée, une séance hors de
+    sa période est écartée (`Contexte.restreindre`).
     """
     voulues = set(personnes)
     resultat: dict[Personne, list[Element]] = defaultdict(list)
     for element in elements:
         if not se_chevauchent(element.debut, element.fin, x, y):
             continue
-        if semaines_admises is not None:
-            element = _restreindre(ctx, element, semaines_admises)
+        if regle is not None:
+            element = ctx.restreindre(element, regle)
             if element is None:
                 continue
         for personne in ctx.personnes_de(element):
             if personne in voulues:
                 resultat[personne].append(element)
     return resultat
-
-
-def _restreindre(ctx: Contexte, element: Element, semaines: frozenset[int]) -> Element | None:
-    if element.date is None:
-        actives = (element.semaines or frozenset()) & semaines
-        if not actives:
-            return None
-        if actives == element.semaines:
-            return element
-        return replace(element, semaines=actives)
-    semaine = ctx.instantane.semaine_du(element.date)
-    return element if semaine is not None and semaine.numero in semaines else None
 
 
 def jours_en_defaut(
@@ -153,7 +141,7 @@ def jours_en_defaut(
     return [defaut for defaut in defauts if defaut is not None]
 
 
-def _configurations(
+def configurations(
     seances: list[Element],
 ) -> list[tuple[list[Element], frozenset[int] | None]]:
     """Ensembles de séances actives ensemble, avec leurs semaines (`None` : couche datée)."""
@@ -179,7 +167,7 @@ def defaut_libre(seances: list[Element], x: int, y: int, n: int) -> Defaut | Non
     en_cause: dict[int, Element] = {}
     semaines_en_cause: set[int] = set()
     plus_longue: int | None = None
-    for actives, semaines in _configurations(seances):
+    for actives, semaines in configurations(seances):
         libre = plus_longue_pause(x, y, [(e.debut, e.fin) for e in actives])
         if libre >= n:
             continue

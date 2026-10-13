@@ -15,7 +15,8 @@ Unité d'une anomalie, selon la sorte du type :
 - **emploi du temps** (`PAUSE_DEJEUNER` : une par personne et par jour, les
   personnes dans la même situation réunies ; `PAUSE_MINIMALE` : une par paire
   de séances trop rapprochées) ;
-- **relation** : à venir (temps B).
+- **relation** et règles d'emploi du temps par jour ou par semaine :
+  `edt.verification.regles_emploi`.
 
 Message : « Règle R007 (phrase de la règle) : l'écart. » Gravité de base :
 erreur, ou information pour une séance imposée (début imposé, ponctuelle,
@@ -297,7 +298,7 @@ def _personnes_reglees(
     return personnes
 
 
-def _sujet(
+def sujet_personnes(
     ctx: Contexte, groupes: Sequence[int], enseignants: Sequence[int]
 ) -> tuple[str, bool, list[int]]:
     """Sujet d'une phrase pour des personnes réunies, pluriel, et groupes en cause."""
@@ -335,13 +336,11 @@ def verifier_pause_dejeuner(
 
     defauts = [
         (personne, defaut)
-        for personne, seances in par_personne(
-            ctx, elements, personnes, x, y, regle.semaines
-        ).items()
+        for personne, seances in par_personne(ctx, elements, personnes, x, y, regle).items()
         for defaut in jours_en_defaut(seances, examiner)
     ]
     for defaut, groupes, enseignants in situations(defauts):
-        sujet, pluriel, en_cause = _sujet(ctx, groupes, enseignants)
+        sujet, pluriel, en_cause = sujet_personnes(ctx, groupes, enseignants)
         premiere = defaut.seances[0]
         quand = f"{ctx.quand(premiere)}{ctx.precision_semaines(defaut.semaines)}"
         if fixe:
@@ -362,7 +361,7 @@ def verifier_pause_dejeuner(
         yield ctx.anomalie(
             CodeContrainte.REGLE,
             Gravite.INFORMATION if imposees else Gravite.ERREUR,
-            f"{entete(regle)} : {_minuscule_article(ecart_texte)} : "
+            f"{entete(regle)} : {minuscule_article(ecart_texte)} : "
             f"{liste_seances(ctx, defaut)}." + (MENTION_IMPOSEES if imposees else ""),
             defaut.seances,
             groupes=en_cause,
@@ -416,7 +415,7 @@ def verifier_pause_minimale(
     for a, b, communes, concernees in paires.values():
         groupes = [p.id for p in concernees if p.nature is NaturePersonne.GROUPE]
         enseignants = [p.id for p in concernees if p.nature is NaturePersonne.ENSEIGNANT]
-        sujet, pluriel, en_cause = _sujet(ctx, groupes, enseignants)
+        sujet, pluriel, en_cause = sujet_personnes(ctx, groupes, enseignants)
         libre = ecart(a.debut, a.fin, b.debut, b.fin)
         negation = "n'ont" if pluriel else "n'a"
         constat = (
@@ -424,7 +423,7 @@ def verifier_pause_minimale(
             if libre == 0
             else f"{sujet} {negation} que {duree(libre)} de pause"
         )
-        constat = _minuscule_article(constat)
+        constat = minuscule_article(constat)
         yield ctx.anomalie(
             CodeContrainte.REGLE,
             Gravite.ERREUR,
@@ -439,7 +438,7 @@ def verifier_pause_minimale(
         )
 
 
-def _minuscule_article(texte: str) -> str:
+def minuscule_article(texte: str) -> str:
     """Après « : », « Le groupe… » devient « le groupe… » ; un nom propre est gardé."""
     if texte.startswith(("Le ", "Les ")):
         return texte[:1].lower() + texte[1:]
@@ -453,3 +452,8 @@ def _semaines_communes(
     if a.semaines is None or b.semaines is None:
         return None
     return a.semaines & b.semaines & regle.semaines
+
+
+# Vérificateurs du temps B (emploi du temps et relations) : importés ici pour que le
+# registre soit complet dès que `verifier_regles` est disponible.
+from edt.verification import regles_emploi as _regles_emploi  # noqa: E402, F401

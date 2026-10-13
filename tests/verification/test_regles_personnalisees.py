@@ -13,7 +13,7 @@ import pytest
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
-from edt.domaine.regles import TypeRegle, types_non_couverts
+from edt.domaine.regles import REGISTRES, TypeRegle, types_non_couverts
 from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
 
 from .fabrique import (
@@ -55,21 +55,13 @@ def promotion():
 # --------------------------------------------------------------------------- #
 
 
-def test_types_non_couverts_reduits_aux_types_du_temps_b():
-    assert types_non_couverts("verificateur") == frozenset(
-        {
-            TypeRegle.MAX_PAR_JOUR,
-            TypeRegle.JOURNEES_LIBRES,
-            TypeRegle.SANS_TROU,
-            TypeRegle.CAMPUS_PAR_JOUR,
-            TypeRegle.MATIERES_PAR_JOUR,
-            TypeRegle.ORDRE_SEMAINE,
-            TypeRegle.REPARTITION_MATIERE,
-        }
-    )
+def test_tous_les_types_ont_un_verificateur():
+    assert types_non_couverts("verificateur") == frozenset()
 
 
-def test_type_sans_verificateur_signale_et_jamais_bloquant():
+def test_type_sans_verificateur_signale_et_jamais_bloquant(monkeypatch):
+    # Garde-fou d'un type ajouté au catalogue sans vérificateur : simulé en retirant le sien.
+    monkeypatch.delitem(REGISTRES["verificateur"], TypeRegle.MAX_PAR_JOUR)
     f, _, (a1, *_rest) = promotion()
     f.regle("MAX_PAR_JOUR", "groupe", a1, "necessaire", maximum=360)
     (anomalie,) = verifier(f.construire(), [])
