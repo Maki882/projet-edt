@@ -5,8 +5,8 @@ quelques règles réalistes, choisies selon les groupes, matières et sites
 présents (le jeu grand les a toutes, les autres une partie), plus les
 règles de base du catalogue, laissées « proposées » (sans effet).
 
-Le témoin respecte toutes les règles **actives** des types que le
-vérificateur sait vérifier en premier (`JOURS_TRAVAILLES`, `PLAGE_HORAIRE`,
+Le témoin respecte toutes les règles **actives** de sorte « séance » et de
+réglage (`JOURS_TRAVAILLES`, `PLAGE_HORAIRE`,
 `CRENEAUX_INTERDITS`, `CAMPUS`, `SALLES`, `PAUSE_DEJEUNER`,
 `PAUSE_MINIMALE`), quel que soit leur niveau, et `MAX_PAR_JOUR` :
 `ExigencesRegles` les traduit en exigences simples pour le moteur
@@ -18,9 +18,14 @@ respectées **par construction** (`RESPECT_CONSTRUCTION`) :
 - « M. X vient au plus deux jours par semaine » : posée sur des vacataires
   dont les indisponibilités récurrentes laissent au plus deux jours.
 
-Prudence sur les jours : tant que le vérificateur lit encore la case
-« samedi autorisé » du type de séance, le témoin n'utilise pas un jour
-qu'une règle seule ouvre (il reste dans le standard historique).
+Jours : le témoin suit la précédence du contrat, comme le vérificateur et
+le solveur (`Instantane.reglages`) ; un jour ouvert par une règle seule (le
+samedi d'A3-APP1) lui est permis, mais il le garde en dernier recours, le
+samedi passant après les jours de semaine dans son ordre de préférence.
+
+Le vérificateur et le solveur vérifient et posent les quatorze types ; le
+test `tests/synthese/test_verificateur.py` s'assure que le témoin ne
+provoque aucune anomalie `REGLE`.
 """
 
 from __future__ import annotations
@@ -76,7 +81,7 @@ TYPES_POSES = frozenset(
         TypeRegle.MAX_PAR_JOUR,
     }
 )
-"""Types que le témoin pose lui-même (les sept premiers vérifiés, plus le maximum par jour)."""
+"""Types que le témoin pose lui-même ; les autres règles actives sont respectées par construction."""
 
 SEMAINE = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
 
@@ -447,7 +452,13 @@ class ExigencesRegles:
     def jours(
         self, groupes: Iterable[int], type_id: int, matiere_id: int, samedi_autorise: bool
     ) -> tuple[int, ...]:
-        """Jours permis (précédence du contrat), restreints au standard historique par prudence."""
+        """Jours permis selon la précédence du contrat (`edt.domaine.regles`).
+
+        Sans règle retenue, le standard : jours travaillés, plus le samedi si le
+        type de séance l'autorise et qu'aucune règle ne vise ce type. Sinon,
+        l'intersection des règles retenues, qui peut ouvrir un jour (le samedi
+        d'A3-APP1).
+        """
         groupes = tuple(groupes)
         retenues = [
             jours
@@ -460,14 +471,11 @@ class ExigencesRegles:
         if enseignement is not None:
             retenues.append(enseignement)
         type_vise = (NaturePortee.TYPE_SEANCE, type_id) in self._jours_enseignement
-        historique = set(self._parametres.jours_travailles)
-        if samedi_autorise:
-            historique.add(SAMEDI)
         standard = set(self._parametres.jours_travailles)
         if samedi_autorise and not type_vise:
             standard.add(SAMEDI)
         permis = frozenset.intersection(*retenues) if retenues else frozenset(standard)
-        return tuple(sorted(permis & historique))
+        return tuple(sorted(permis))
 
     def _concernee(self, regle: ReglePrevue, groupes: tuple[int, ...], type_id, matiere_id):
         cible = getattr(regle.cible, "id", None)
