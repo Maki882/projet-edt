@@ -17,7 +17,7 @@ from __future__ import annotations
 import datetime as dt
 from collections import Counter
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from edt.domaine.contraintes import CodeContrainte, Niveau, codes_par_defaut, normaliser_codes
 from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite, Gravite
@@ -365,13 +365,40 @@ class Contexte:
         """Semaines où la règle vaut pour la séance placée ; vide si elle ne vaut jamais.
 
         Semaine type : semaines actives de la séance couvertes par la règle.
-        Couche datée : `None` si la semaine de la date est couverte, vide sinon.
+        Couche datée : `None` si la date est couverte (`couvre_date`), vide sinon.
         """
         if element.date is None:
             return (element.semaines or frozenset()) & regle.semaines
-        semaine = self.instantane.semaine_du(element.date)
-        couverte = semaine is not None and semaine.numero in regle.semaines
-        return None if couverte else frozenset()
+        return None if self.couvre_date(regle, element.date) else frozenset()
+
+    def couvre_date(self, regle: RegleResolue, jour: dt.date) -> bool:
+        """Vrai si la période de la règle couvre la date.
+
+        Au jour près quand la règle résolue porte ses dates (`date_debut`,
+        `date_fin`, champs facultatifs annoncés pour `RegleResolue`) ; sinon à
+        la semaine (`RegleResolue.semaines`).
+        """
+        debut = getattr(regle, "date_debut", None)
+        fin = getattr(regle, "date_fin", None)
+        if debut is not None and jour < debut:
+            return False
+        if fin is not None and jour > fin:
+            return False
+        semaine = self.instantane.semaine_du(jour)
+        return semaine is not None and semaine.numero in regle.semaines
+
+    def restreindre(self, element: Element, regle: RegleResolue) -> Element | None:
+        """La séance placée ramenée à la période de la règle, ou `None` si la règle ne la couvre pas.
+
+        Semaine type : ses semaines actives sont réduites à celles de la règle.
+        Couche datée : inchangée si la date est couverte.
+        """
+        if element.date is not None:
+            return element if self.couvre_date(regle, element.date) else None
+        actives = (element.semaines or frozenset()) & regle.semaines
+        if not actives:
+            return None
+        return element if actives == element.semaines else replace(element, semaines=actives)
 
     def besoins_vises(self, regle: RegleResolue) -> frozenset[int]:
         """Besoins dont les séances sont concernées par une règle de sorte séance.

@@ -335,9 +335,7 @@ def verifier_pause_dejeuner(
 
     defauts = [
         (personne, defaut)
-        for personne, seances in par_personne(
-            ctx, elements, personnes, x, y, regle.semaines
-        ).items()
+        for personne, seances in par_personne(ctx, elements, personnes, x, y, regle).items()
         for defaut in jours_en_defaut(seances, examiner)
     ]
     for defaut, groupes, enseignants in situations(defauts):
