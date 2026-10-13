@@ -141,7 +141,7 @@ def jours_en_defaut(
     return [defaut for defaut in defauts if defaut is not None]
 
 
-def _configurations(
+def configurations(
     seances: list[Element],
 ) -> list[tuple[list[Element], frozenset[int] | None]]:
     """Ensembles de séances actives ensemble, avec leurs semaines (`None` : couche datée)."""
@@ -167,7 +167,7 @@ def defaut_libre(seances: list[Element], x: int, y: int, n: int) -> Defaut | Non
     en_cause: dict[int, Element] = {}
     semaines_en_cause: set[int] = set()
     plus_longue: int | None = None
-    for actives, semaines in _configurations(seances):
+    for actives, semaines in configurations(seances):
         libre = plus_longue_pause(x, y, [(e.debut, e.fin) for e in actives])
         if libre >= n:
             continue
