@@ -351,9 +351,9 @@ class Contexte:
             )
             if element.date is None:
                 return sources
-            semaine = self.instantane.semaine_du(element.date)
-            numero = None if semaine is None else semaine.numero
-            return tuple(s for s in sources if s.regle is None or numero in s.regle.semaines)
+            return tuple(
+                s for s in sources if s.regle is None or self.couvre_date(s.regle, element.date)
+            )
         standard = set(self.instantane.jours_travailles)
         if element.besoin.samedi_autorise:
             standard.add(SAMEDI)
@@ -372,20 +372,10 @@ class Contexte:
         return None if self.couvre_date(regle, element.date) else frozenset()
 
     def couvre_date(self, regle: RegleResolue, jour: dt.date) -> bool:
-        """Vrai si la période de la règle couvre la date.
-
-        Au jour près quand la règle résolue porte ses dates (`date_debut`,
-        `date_fin`, champs facultatifs annoncés pour `RegleResolue`) ; sinon à
-        la semaine (`RegleResolue.semaines`).
-        """
-        debut = getattr(regle, "date_debut", None)
-        fin = getattr(regle, "date_fin", None)
-        if debut is not None and jour < debut:
-            return False
-        if fin is not None and jour > fin:
-            return False
+        """Vrai si la période de la règle couvre la date : au jour près (`RegleResolue.couvre`),
+        dans une semaine du semestre que la règle couvre."""
         semaine = self.instantane.semaine_du(jour)
-        return semaine is not None and semaine.numero in regle.semaines
+        return semaine is not None and semaine.numero in regle.semaines and regle.couvre(jour)
 
     def restreindre(self, element: Element, regle: RegleResolue) -> Element | None:
         """La séance placée ramenée à la période de la règle, ou `None` si la règle ne la couvre pas.
