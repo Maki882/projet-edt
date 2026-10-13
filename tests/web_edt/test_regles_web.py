@@ -34,6 +34,16 @@ def _regles(semestre_id: int) -> dict[str, service_regles.RegleDetail]:
         return {detail.code: detail for detail in service_regles.lister(session, annee)}
 
 
+def _annee(semestre_id: int) -> int:
+    with session_base() as session:
+        return session.get(m.Semestre, semestre_id).annee_scolaire_id
+
+
+def _lien(code: str, annee_id: int) -> str:
+    """Le lien d'une règle tel que la page l'écrit (année du semestre, `&` échappé)."""
+    return f'<a href="/regles?annee={annee_id}&amp;q={code}">{code}</a>'
+
+
 def _formulaire(semestre_id: int, **champs: str) -> dict:
     return {"semestre_id": semestre_id, "duree": "court", **champs}
 
@@ -71,7 +81,7 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
     assert "<legend>Règles personnalisées</legend>" in page
     bloc = page.split("<legend>Règles personnalisées</legend>", 1)[1].split("</fieldset>", 1)[0]
     for detail in (r001, r002):
-        assert f'<a href="/regles?q={detail.code}">{detail.code}</a>' in bloc
+        assert _lien(detail.code, _annee(jeu_minimal.semestre_id)) in bloc
         assert detail.phrase.replace("'", "&#39;") in bloc
         for niveau in Niveau:
             assert f'name="niveau_regle_{detail.id}" value="{niveau.value}"' in bloc
@@ -213,6 +223,65 @@ def test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses(jeu_
     assert "Règles personnalisées :" not in client.get(f"/calculs/{defaut.id}").text
 
 
+def test_les_ecarts_se_mesurent_au_niveau_que_la_regle_avait_au_calcul(jeu_minimal, client):
+    regles = _regles(jeu_minimal.semestre_id)
+    r001 = regles["R001"]  # nécessaire
+    suivi = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
+
+    # La copie ne porte pas le niveau propre de la règle au calcul : comparé au niveau
+    # actuel, et la page le dit.
+    page = client.get(f"/calculs/{suivi.id}").text
+    assert "R001 (" in page and ") : facultatif" in page
+    assert "Comparés au niveau actuel de chaque règle" in page
+
+    # Avec le niveau d'alors dans la copie (`niveau_regle`), la comparaison ne bouge plus
+    # quand la règle change ensuite.
+    with session_base() as session:
+        calcul = session.get(m.Calcul, suivi.id)
+        calcul.parametres = {
+            **calcul.parametres,
+            "regles": [
+                {**entree, "niveau_regle": regles[entree["code"]].niveau.value}
+                for entree in calcul.parametres["regles"]
+            ],
+        }
+        session.get(m.Regle, r001.id).niveau = Niveau.FACULTATIF  # modifiée après le calcul
+    page = client.get(f"/calculs/{suivi.id}").text.replace("&#39;", "'")
+    assert f"R001 ({r001.phrase.rstrip('.')}) : facultatif" in page
+    assert "Comparés au niveau actuel" not in page
+    historique = client.get(f"/versions?semestre_id={jeu_minimal.semestre_id}").text
+    assert "R001 : facultatif ; R002 : ignorée" in historique
+
+
+def test_une_relance_applique_les_regles_creees_depuis_et_le_dit(jeu_minimal, client):
+    regles = _regles(jeu_minimal.semestre_id)
+    origine = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
+    with session_base() as session:
+        annee = session.get(m.AnneeScolaire, _annee(jeu_minimal.semestre_id)).libelle
+        nouvelle = service_regles.creer(
+            session,
+            {
+                "type": "CRENEAUX_INTERDITS",
+                "portee": {"nature": "etablissement"},
+                "parametres": {"jours": ["vendredi"], "debut": "16:00", "fin": "18:00"},
+                "niveau": "facultatif",
+                "annee": annee,
+            },
+        )
+
+    relance = client.post(f"/calculs/{origine.id}/relancer", data={"longue": "1"})
+    assert relance.status_code == 200
+    assert f"appliquées à leur propre niveau : {nouvelle.code}" in relance.text
+    with session_base() as session:
+        dernier = session.scalar(select(m.Calcul).order_by(m.Calcul.id.desc()))
+        calcul_id = dernier.id
+    suivi = generation.attendre_calcul(calcul_id, DELAI)
+    # Jamais ignorée en silence : la règle nouvelle part à son niveau ; R002 reste ignorée.
+    assert suivi.niveaux_regles[nouvelle.id] is Niveau.FACULTATIF
+    assert suivi.niveaux_regles[regles["R001"].id] is Niveau.FACULTATIF
+    assert regles["R002"].id not in suivi.niveaux_regles
+
+
 # --------------------------------------------------------------------------- #
 # Anomalies d'une règle : À traiter et panneau d'une séance
 # --------------------------------------------------------------------------- #
@@ -240,11 +309,11 @@ def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, fa
 
     page = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
     assert "Règle personnalisée (1)" in page
-    assert '<a href="/regles?q=R002">R002</a>' in page
+    assert _lien("R002", _annee(version_generee.semestre_id)) in page
     assert r002.phrase.replace("'", "&#39;") in page
 
     panneau = client.get(f"/emploi-du-temps/seances/{identifiant}/panneau", headers=HX).text
-    assert '<a href="/regles?q=R002">R002</a>' in panneau
+    assert _lien("R002", _annee(version_generee.semestre_id)) in panneau
     assert "n&#39;a que 30 min de libre" in panneau
 
 

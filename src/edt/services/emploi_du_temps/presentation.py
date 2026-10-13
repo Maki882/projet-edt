@@ -234,9 +234,16 @@ ADRESSE_AJOUT_REGLE = "/regles/nouveau"
 """Ajout guidé d'une règle (lot web données ; adresse à confirmer avec lui)."""
 
 
-def adresse_regle(code: str) -> str:
-    """Adresse d'une règle sur l'écran des règles personnalisées (année en cours par défaut)."""
-    return f"{ADRESSE_REGLES}?q={code}"  # la liste filtre par recherche (code, phrase, cible)
+def adresse_regle(code: str, annee_id: int | None = None) -> str:
+    """Adresse d'une règle sur l'écran des règles personnalisées, dans l'année `annee_id`.
+
+    La liste filtre par recherche (`q` : code, phrase, cible) dans une année
+    (`annee` : son identifiant) ; un code n'est unique que dans son année.
+    Sans année, l'écran prend l'année en cours.
+    """
+    if annee_id is None:
+        return f"{ADRESSE_REGLES}?q={code}"
+    return f"{ADRESSE_REGLES}?annee={annee_id}&q={code}"
 
 
 @dataclass(frozen=True)
@@ -248,12 +255,13 @@ class RegleCitee:
     lien: str | None
 
 
-def regle_citee(anomalie: object) -> RegleCitee | None:
+def regle_citee(anomalie: object, annee_id: int | None = None) -> RegleCitee | None:
     """La règle citée par une anomalie `REGLE`, d'après `regle_id`, `regle_code`, `regle_phrase`.
 
     Ces champs sont livrés par le lot vérificateur et lus par `getattr` : une
     anomalie qui ne les porte pas n'en cite aucune (`None`). Sans code, la
-    règle est désignée par son numéro, sans lien.
+    règle est désignée par son numéro, sans lien. `annee_id` : année du
+    semestre affiché, pour que le lien ouvre la liste de cette année.
     """
     regle_id = getattr(anomalie, "regle_id", None)
     code = getattr(anomalie, "regle_code", None)
@@ -262,7 +270,7 @@ def regle_citee(anomalie: object) -> RegleCitee | None:
     phrase = str(getattr(anomalie, "regle_phrase", None) or "")
     if not code:
         return RegleCitee(f"règle n° {regle_id}", phrase, None)
-    return RegleCitee(str(code), phrase, adresse_regle(str(code)))
+    return RegleCitee(str(code), phrase, adresse_regle(str(code), annee_id))
 
 
 def pourcentage(valeur: float | None) -> str:

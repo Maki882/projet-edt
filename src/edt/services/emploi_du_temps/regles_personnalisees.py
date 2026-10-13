@@ -218,6 +218,7 @@ class RegleDuCalcul:
     niveau: Niveau
     niveau_regle: Niveau
     ignoree: bool = False
+    annee_id: int | None = None
 
     @property
     def champ_niveau(self) -> str:
@@ -231,8 +232,8 @@ class RegleDuCalcul:
 
     @property
     def lien(self) -> str:
-        """Adresse de la règle sur l'écran Données › Règles personnalisées."""
-        return presentation.adresse_regle(self.code)
+        """Adresse de la règle sur l'écran Données › Règles personnalisées, dans son année."""
+        return presentation.adresse_regle(self.code, self.annee_id)
 
 
 @dataclass(frozen=True)
@@ -363,6 +364,7 @@ def bloc_regles(
                 niveau=niveau,
                 niveau_regle=detail.niveau,
                 ignoree=ignoree,
+                annee_id=annee_id,
             )
         )
     return BlocRegles(
@@ -464,12 +466,18 @@ def cle_niveaux_regles(niveaux_regles: Mapping[int, Niveau] | None) -> tuple | N
 
 @dataclass(frozen=True)
 class RegleAppliquee:
-    """Une règle de la copie enregistrée avec le calcul ; `niveau` `None` : ignorée."""
+    """Une règle de la copie enregistrée avec le calcul.
+
+    `niveau` : niveau retenu pour le calcul, `None` si elle a été ignorée ;
+    `niveau_propre` : son propre niveau au moment du calcul, quand la copie
+    le porte (clé `niveau_regle`), sinon `None`.
+    """
 
     id: int
     code: str
     phrase: str
     niveau: Niveau | None
+    niveau_propre: Niveau | None = None
 
 
 def regles_enregistrees(copie: Iterable[Mapping], calcul_id: int) -> tuple[RegleAppliquee, ...]:
@@ -481,12 +489,14 @@ def regles_enregistrees(copie: Iterable[Mapping], calcul_id: int) -> tuple[Regle
     for entree in copie or ():
         try:
             niveau = entree.get("niveau")
+            propre = entree.get("niveau_regle")
             lues.append(
                 RegleAppliquee(
                     id=int(entree["id"]),
                     code=str(entree.get("code") or f"n° {entree['id']}"),
                     phrase=str(entree.get("phrase") or ""),
                     niveau=None if niveau is None else Niveau(niveau),
+                    niveau_propre=None if propre is None else Niveau(propre),
                 )
             )
         except (KeyError, TypeError, ValueError, AttributeError) as erreur:
@@ -504,25 +514,68 @@ def _niveaux_actuels(session: Session, identifiants: Iterable[int]) -> dict[int,
     )
 
 
-def libelles_regles_du_calcul(session: Session, suivi) -> tuple[str, ...]:
-    """Les règles qui s'écartent de leur niveau ou ont été ignorées par ce calcul, en phrases.
+REMARQUE_NIVEAUX_ACTUELS = (
+    "Comparés au niveau actuel de chaque règle : le calcul n'a pas enregistré celui qu'elle "
+    "avait alors."
+)
+"""Dite quand l'écart d'une règle n'a pu être mesuré qu'au niveau qu'elle a aujourd'hui."""
 
-    « R002 (La classe A1-G1 a une pause déjeuner libre…) : facultatif » ;
-    « R001 (…) : ignorée pour ce calcul ». D'après `SuiviCalcul.regles`,
-    comparée au niveau actuel de chaque règle ; rien pour un calcul sans
-    copie des règles.
+
+@dataclass(frozen=True)
+class EcartRegle:
+    """Une règle que le calcul a ignorée (`niveau` `None`) ou prise à un autre niveau que le sien."""
+
+    regle: RegleAppliquee
+    niveau: Niveau | None
+
+
+def ecarts_du_calcul(
+    session: Session, copie: Iterable[Mapping], niveaux_regles: Mapping | None, calcul_id: int
+) -> tuple[tuple[EcartRegle, ...], bool]:
+    """Les règles ignorées ou prises à un autre niveau que le leur par ce calcul.
+
+    La référence est le niveau que la règle avait **au calcul** :
+    `niveaux_regles` `None`, chaque règle valait à son propre niveau, celui de
+    la copie (aucun écart) ; sinon le niveau propre que porte la copie
+    (`niveau_regle`), et à défaut le niveau actuel de la règle. Le booléen
+    rendu dit qu'il a fallu prendre le niveau actuel (à signaler, écart ou
+    non : la règle a pu changer depuis). Une règle ignorée est toujours un écart.
     """
-    appliquees = regles_enregistrees(suivi.regles, suivi.id)
-    actuels = _niveaux_actuels(session, (regle.id for regle in appliquees))
-    phrases = []
+    appliquees = regles_enregistrees(copie, calcul_id)
+    ignorees = tuple(EcartRegle(r, None) for r in appliquees if r.niveau is None)
+    if niveaux_regles is None:
+        return ignorees, False
+    sans_propre = [r for r in appliquees if r.niveau is not None and r.niveau_propre is None]
+    actuels = _niveaux_actuels(session, (r.id for r in sans_propre)) if sans_propre else {}
+    ecarts = list(ignorees)
+    niveau_actuel_utilise = False
     for regle in appliquees:
         if regle.niveau is None:
-            phrases.append(f"{_citation(regle.code, regle.phrase)} : ignorée pour ce calcul")
-        elif regle.id in actuels and actuels[regle.id] is not regle.niveau:
-            phrases.append(
-                f"{_citation(regle.code, regle.phrase)} : {regle.niveau.libelle.lower()}"
-            )
-    return tuple(phrases)
+            continue
+        reference = regle.niveau_propre
+        if reference is None:
+            reference = actuels.get(regle.id)
+            niveau_actuel_utilise = niveau_actuel_utilise or reference is not None
+        if reference is not None and reference is not regle.niveau:
+            ecarts.append(EcartRegle(regle, regle.niveau))
+    ordre = {regle.id: rang for rang, regle in enumerate(appliquees)}
+    ecarts.sort(key=lambda ecart: ordre[ecart.regle.id])
+    return tuple(ecarts), niveau_actuel_utilise
+
+
+def libelles_regles_du_calcul(session: Session, suivi) -> tuple[tuple[str, ...], str | None]:
+    """Les écarts du calcul en phrases, et une remarque si la référence est le niveau actuel.
+
+    « R002 (La classe A1-G1 a une pause déjeuner libre…) : facultatif » ;
+    « R001 (…) : ignorée pour ce calcul ». Voir `ecarts_du_calcul`.
+    """
+    ecarts, actuel = ecarts_du_calcul(session, suivi.regles, suivi.niveaux_regles, suivi.id)
+    phrases = tuple(
+        f"{_citation(e.regle.code, e.regle.phrase)} : "
+        + ("ignorée pour ce calcul" if e.niveau is None else e.niveau.libelle.lower())
+        for e in ecarts
+    )
+    return phrases, (REMARQUE_NIVEAUX_ACTUELS if actuel else None)
 
 
 def _citation(code: str, phrase: str) -> str:
@@ -575,18 +628,51 @@ def _cle_code(code: str) -> tuple[int, str]:
 def resume_regles_du_calcul(calcul: m.Calcul) -> tuple[str, ...]:
     """Pour l'historique, en bref : « R002 : facultatif », « R001 : ignorée ».
 
-    D'après la copie des règles enregistrée avec le calcul
-    (`calcul.parametres["regles"]`), comparée au niveau actuel des règles.
+    Mêmes écarts que le suivi (`ecarts_du_calcul`) ; « (niveaux actuels) »
+    termine la liste quand la référence a dû être le niveau actuel des règles.
     """
-    appliquees = regles_enregistrees((calcul.parametres or {}).get("regles") or (), calcul.id)
     session = Session.object_session(calcul)
-    if not appliquees or session is None:
+    parametres = dict(calcul.parametres or {})
+    if session is None or not parametres.get("regles"):
         return ()
-    actuels = _niveaux_actuels(session, (regle.id for regle in appliquees))
-    resume = []
-    for regle in appliquees:
-        if regle.niveau is None:
-            resume.append(f"{regle.code} : ignorée")
-        elif regle.id in actuels and actuels[regle.id] is not regle.niveau:
-            resume.append(f"{regle.code} : {regle.niveau.libelle.lower()}")
+    ecarts, actuel = ecarts_du_calcul(
+        session, parametres["regles"], parametres.get("niveaux_regles"), calcul.id
+    )
+    resume = [
+        f"{e.regle.code} : " + ("ignorée" if e.niveau is None else e.niveau.libelle.lower())
+        for e in ecarts
+    ]
+    if actuel and resume:
+        resume.append("(par rapport aux niveaux actuels)")
     return tuple(resume)
+
+
+def niveaux_pour_la_relance(
+    session: Session, suivi, semestre, annee_id: int
+) -> tuple[dict[int, Niveau] | None, tuple[str, ...]]:
+    """Niveaux à transmettre pour relancer un calcul, et les règles qu'il ne connaissait pas.
+
+    `None` quand le calcul d'origine laissait chaque règle à son niveau : les
+    règles créées ou activées depuis s'appliquent aussi, à leur niveau. Sinon
+    ses niveaux (ses règles ignorées le restent : c'était un choix), plus
+    chaque règle active de l'année absente de sa copie, à son propre niveau :
+    une règle créée ou activée depuis n'est jamais ignorée en silence. Les
+    codes rendus sont ceux de ces règles qui concernent le semestre, pour le
+    dire à l'utilisateur.
+    """
+    copie = regles_enregistrees(suivi.regles, suivi.id)
+    connues = {regle.id for regle in copie}
+    actives = service_regles.lister(session, annee_id, etat=EtatRegle.ACTIVE)
+    # Sans copie (calcul d'avant les règles), rien ne permet de dire ce qui est nouveau.
+    nouvelles = tuple(
+        detail.code
+        for detail in actives
+        if copie and detail.id not in connues and _concerne_le_semestre(detail, semestre)
+    )
+    if suivi.niveaux_regles is None:
+        return None, nouvelles
+    niveaux = dict(suivi.niveaux_regles)
+    for detail in actives:
+        if detail.id not in connues and detail.id not in niveaux:
+            niveaux[detail.id] = detail.niveau
+    return niveaux, nouvelles

@@ -38,7 +38,8 @@
 {%- if titre %}<h3>{{ titre }}</h3>{% endif %}
 <ul class="edt-anomalies">
   {%- for anomalie in liste %}
-  {%- set regle = fmt.regle_citee(anomalie) %}
+  {#- annee_regles : année du semestre affiché (contexte de la page), pour le lien. #}
+  {%- set regle = fmt.regle_citee(anomalie, annee_regles|default(none)) %}
   <li>{{ etiquette_gravite(anomalie.gravite) }} <span>{{ anomalie.message }}</span> <small class="discret">{{ fmt.libelle_contrainte(anomalie.code) }}</small>
     {%- if regle %} {{ regle_citee(regle, anomalie.message) }}{% endif %}</li>
   {%- endfor %}

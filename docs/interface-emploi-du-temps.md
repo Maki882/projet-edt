@@ -207,7 +207,7 @@ Ces écrans les montrent ainsi (`regles_personnalisees`) :
   celui de la règle ; « ignorer » n'est jamais prérempli : le choix vaut
   pour un calcul. Au-delà de vingt règles, regroupées par type, repliées.
   Un rappel compte les règles **proposées** (sans effet tant qu'elles ne
-  sont pas confirmées) ; liens vers `/regles` et `/regles/ajouter`. Un
+  sont pas confirmées) ; liens vers `/regles` et `/regles/nouveau`. Un
   choix illisible (niveau inconnu, règle qui n'est plus active) réaffiche
   la page en 422 avec le message.
 - **Lancement** : `OptionsSolveur.niveaux_regles`
@@ -218,11 +218,20 @@ Ces écrans les montrent ainsi (`regles_personnalisees`) :
   jamais ignorée par mégarde. Les mêmes niveaux vont aux pré-vérifications
   (`pre_verifier_semestre(..., niveaux_regles=)`), à l'affichage comme au
   changement d'un choix (fragment HTMX). Relance plus longue et « autre
-  solution » reprennent `SuiviCalcul.niveaux_regles` du calcul d'origine.
+  solution » reprennent `SuiviCalcul.niveaux_regles` du calcul d'origine
+  (`regles_personnalisees.niveaux_pour_la_relance`) : ses règles ignorées
+  le restent, mais une règle créée ou activée depuis (absente de sa copie)
+  s'applique à son propre niveau, jamais ignorée en silence, et le message
+  de la relance la nomme.
 - **Suivi et historique** : « Règles personnalisées : R002 (phrase) :
   facultatif ; R001 (phrase) : ignorée pour ce calcul », d'après la copie
   des règles du calcul (`SuiviCalcul.regles`, niveau `None` pour une règle
-  ignorée) comparée au niveau actuel de chaque règle ; « Entorses aux
+  ignorée). La référence est le niveau que la règle avait **au calcul**
+  (`regles_personnalisees.ecarts_du_calcul`) : sans choix, aucun écart ;
+  avec des choix, le niveau propre que porte la copie (`niveau_regle`) et,
+  quand elle ne le porte pas, le niveau actuel de la règle, ce que la page
+  dit (« Comparés au niveau actuel de chaque règle… ») et l'historique
+  aussi (« (par rapport aux niveaux actuels) ») ; « Entorses aux
   règles personnalisées : 2 entorses à R007 (phrase) »
   (`statistiques["entorses_regles"]`, code → nombre ; un décompte illisible
   est dit). L'historique résume : « R002 : facultatif ; R001 : ignorée ».
@@ -230,7 +239,8 @@ Ces écrans les montrent ainsi (`regles_personnalisees`) :
 - **À traiter, panneau d'une séance et toute liste d'anomalies** : une
   anomalie qui cite une règle (`Anomalie.regle_id`, `regle_code`,
   `regle_phrase`, lus par `presentation.regle_citee`) porte son code en
-  lien vers elle (`/regles?code=R007`) et sa phrase quand le message ne la
+  lien vers elle dans l'année du semestre affiché (`/regles?annee=<id>&q=R007`,
+  comme les liens du tableau de Générer) et sa phrase quand le message ne la
   contient pas déjà. Les anomalies `REGLE` se regroupent sous « Règle
   personnalisée ».
 - **Grille** : voir « Bande du déjeuner » et les colonnes ci-dessous ;
