@@ -507,12 +507,17 @@ petite pause **dure** en vigueur (`Regles.pause_garantie`) ; le reste passe
 par des couples de choix. Comme pour le vérificateur, deux groupes seulement
 chevauchants (sans personne commune) n'exigent plus de pause entre eux.
 
-**Couche datée.** `instancier` et `replacer` reçoivent `niveaux_regles` ; le
+**Couche datée.** `instancier` et `replacer` reçoivent `niveaux_regles`
+(ceux de la version : `edt.services.niveaux.niveaux_regles_de_version`) ; le
 replacement juge chaque candidate selon les règles de la séance (jours,
-horaires, campus et salle) et la pause déjeuner de chaque personne, en dur
-(refus) ou en souple (coût) ; une règle à période datée ne compte que les
-jours qu'elle couvre (`RegleResolue.couvre`). Un réglage de personne
-(déjeuner, pause) vaut toute la période sur la couche datée.
+campus de la salle compris, horaires, campus et salle) et la pause déjeuner
+de chaque personne, en dur (refus) ou en souple (coût) ; les sept types
+d'emploi du temps et de relation sont évalués, salle choisie, par les
+vérificateurs datés sur la semaine réelle de la candidate
+(`_Planning.regles_emploi_enfreintes`), avec leurs définitions ; une règle
+à période datée ne compte que les jours qu'elle couvre
+(`RegleResolue.couvre`). Un réglage de personne (déjeuner, pause) vaut toute
+la période sur la couche datée.
 
 **Écart avec le vérificateur.** Une entorse par personne : deux personnes au
 même emploi du temps (deux demi-groupes sans séance propre) comptent deux
@@ -835,8 +840,13 @@ qui respectent toutes les contraintes actives, date par date, face aux
 occurrences en place : calendrier, grille, indisponibilités récurrentes et
 datées, unicité, pause, trajets, pause déjeuner (plage fixe ou pause libre
 de chaque groupe et enseignant ce jour-là), maxima par jour et par semaine
-réelle, salle compatible et libre. Le jour et l'heure imposés par le besoin
-sont gardés ; une séance ponctuelle ne change pas de date.
+réelle, salle compatible et libre, règles personnalisées (jours, horaires,
+campus et salles de la séance ; règles d'emploi du temps et de relation :
+la candidate, salle choisie, est soumise avec les occurrences en place de
+la même semaine réelle aux vérificateurs datés de `edt.verification`, une
+anomalie qui la cite valant refus en dur ou coût en souple ; le choix de la
+salle tient compte de `CAMPUS_PAR_JOUR`). Le jour et l'heure imposés par le
+besoin sont gardés ; une séance ponctuelle ne change pas de date.
 
 `OptionsReplacement` : contraintes désactivées, fenêtre de dates
 (`date_debut`, `date_fin`), coût d'éloignement (`cout_semaine` = 100 par
@@ -1518,6 +1528,13 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 - **Semaines modifiées par un replacement.** Une séance déplacée dans une
   semaine voisine s'ajoute au volume de cette semaine ; `max_par_semaine`
   d'un besoin en mode « total » n'est pas recontrôlé à cet endroit.
+- **Replacement et règles d'emploi du temps.** La salle d'une candidate est
+  choisie avant l'évaluation des règles d'emploi du temps (sauf
+  `CAMPUS_PAR_JOUR`, vue au choix de la salle) : une place refusée par une
+  règle nécessaire l'est pour cette salle, sans essayer les autres salles de
+  la même heure. Chaque candidate coûte une vérification datée des
+  occurrences de la semaine qui partagent une personne avec elle, seulement
+  quand une règle de ces types concerne la séance.
 - **Règles personnalisées et pré-vérifications.** Les bornes de charge des
   pré-vérifications ne retirent pas le temps fermé par une règle d'horaires
   ou de jours : une impossibilité qui tient à plusieurs séances (quatre

@@ -108,15 +108,16 @@ def niveaux_regles_choisis(
     if not regle and not sans_regle:
         return None
     actives = charger_regles_actives(session, semestre.annee_scolaire_id)
-    par_code = {r.code: r for r in actives if r.code and r.id is not None}
+    par_code = {r.code.upper(): r for r in actives if r.code and r.id is not None}
     niveaux: dict[int, Niveau] = {r.id: r.niveau for r in par_code.values()}
 
     def trouver(code: str):
-        entree = par_code.get(code.strip())
+        # Espaces et casse tolérés : « r003 », « R003 ».
+        entree = par_code.get(code.strip().upper())
         if entree is None:
             raise ErreurDonneesInvalides(
                 f"Règle personnalisée inconnue ou inactive : {code.strip()!r} (règles actives : "
-                + (", ".join(sorted(par_code)) or "aucune")
+                + (", ".join(sorted(r.code for r in par_code.values())) or "aucune")
                 + ")."
             )
         return entree
@@ -124,7 +125,7 @@ def niveaux_regles_choisis(
     for code in sans_regle or ():
         niveaux.pop(trouver(code).id, None)
     for choix in regle or ():
-        code, separateur, valeur = choix.partition("=")
+        code, separateur, valeur = (morceau.strip() for morceau in choix.partition("="))
         if not separateur or not code or not valeur:
             raise ErreurDonneesInvalides(
                 f"Option --regle : écrire CODE=niveau, par exemple R007=facultatif (lu : {choix!r})."
@@ -135,7 +136,7 @@ def niveaux_regles_choisis(
                 f"La règle {entree.code} est à la fois ignorée (--sans-regle) et dotée d'un "
                 "niveau (--regle) : choisir."
             )
-        niveaux[entree.id] = niveau(valeur)
+        niveaux[entree.id] = niveau(valeur.lower())
     return niveaux
 
 

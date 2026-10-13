@@ -27,7 +27,10 @@ Le modèle n'a aucune variable à poser pour ces types. `JOURS_TRAVAILLES`
 obéit en plus à la précédence des axes : ce sont les règles **retenues** pour
 la séance (`Reglages.jours_de(...).entorses`) qui sont examinées, pas toutes
 celles qui la concernent ; `CAMPUS` se décide sur le campus du choix, `SALLES`
-sur la salle, dans la phase des salles.
+sur la salle, dans la phase des salles. Une règle d'horaires (`PLAGE_HORAIRE`,
+`CRENEAUX_INTERDITS`) de **portée campus** ne joue que pour un choix sur ce
+campus (`sur_le_campus`) : la préparation la juge par (début, campus), le
+replacement au choix de la salle.
 
 Types de réglage d'une personne (`PAUSE_DEJEUNER`, `PAUSE_MINIMALE`) : la
 valeur de chaque personne est dans `Instantane.reglages`, avec sa source ; le
@@ -55,6 +58,7 @@ from edt.domaine.instantane import Instantane
 from edt.domaine.regles import (
     MODE_IMPOSER,
     REGISTRES,
+    NaturePortee,
     Personne,
     ReglageDejeuner,
     ReglagePause,
@@ -118,11 +122,21 @@ def jours_travailles(regle: RegleResolue, choix: Choix) -> bool:
     return choix.jour not in regle.jours
 
 
+def sur_le_campus(regle: RegleResolue, choix: Choix) -> bool:
+    """Vrai si la règle joue pour ce choix : toujours, sauf une portée campus sur un autre campus.
+
+    Une règle de portée campus ne vise que les séances placées sur ce campus
+    (`RegleResolue.seances` les contient toutes) ; un choix dont le campus
+    est inconnu (`None`) n'est pas jugé par elle.
+    """
+    return regle.portee is not NaturePortee.CAMPUS or choix.campus_id == regle.cible_id
+
+
 @enregistrer("solveur", TypeRegle.PLAGE_HORAIRE)
 def plage_horaire(regle: RegleResolue, choix: Choix) -> bool:
     """La séance déborde de `[debut, fin]` un jour visé (tous les jours si `jours` est vide)."""
     jours = regle.jours
-    if jours and choix.jour not in jours:
+    if not sur_le_campus(regle, choix) or (jours and choix.jour not in jours):
         return False
     return choix.minute < regle.valeurs["debut"] or choix.fin > regle.valeurs["fin"]
 
@@ -130,6 +144,8 @@ def plage_horaire(regle: RegleResolue, choix: Choix) -> bool:
 @enregistrer("solveur", TypeRegle.CRENEAUX_INTERDITS)
 def creneaux_interdits(regle: RegleResolue, choix: Choix) -> bool:
     """La séance recoupe la plage interdite un jour visé."""
+    if not sur_le_campus(regle, choix):
+        return False
     return choix.jour in regle.jours and se_chevauchent(
         choix.minute, choix.fin, regle.valeurs["debut"], regle.valeurs["fin"]
     )

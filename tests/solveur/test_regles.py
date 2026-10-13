@@ -30,6 +30,7 @@ from tests.solveur.fabrique import (
     H,
     grille,
     options,
+    verifier_dates,
     verifier_solution,
 )
 from tests.solveur.test_couche_datee import SEMAINE, place
@@ -40,7 +41,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import CibleIndisponibilite, DemiJournee, EtatCalcul
-from edt.domaine.instantane import Creneau
+from edt.domaine.instantane import Creneau, Placement
 from edt.domaine.regles import NaturePortee, TypeRegle, types_non_couverts
 from edt.services import generation
 from edt.services.regles import charger_regles_actives
@@ -520,6 +521,8 @@ def test_les_regles_sont_copiees_avec_le_calcul_et_rendues_au_suivi(jeu_minimal)
     par_code = {regle["code"]: regle for regle in suivi.regles}
     assert par_code["R001"]["niveau"] == "facultatif"
     assert par_code["R002"]["niveau"] is None  # ignorée : copiée quand même, sans niveau
+    assert par_code["R001"]["niveau_regle"] == "necessaire"  # le niveau propre de la règle
+    assert par_code["R002"]["niveau_regle"] == "important"
     assert par_code["R001"]["type"] == "JOURS_TRAVAILLES"
     assert par_code["R001"]["portee"]["nature"] == "groupe"
     assert par_code["R001"]["parametres"]["jours"] == [
@@ -579,6 +582,13 @@ def test_commande_generer_regle(jeu_minimal):
         refuse = lanceur.invoke(cli.app, [*base, *arguments])
         assert refuse.exit_code == 1, refuse.output
         assert attendu in refuse.output
+
+    # Espaces et casse tolérés.
+    resultat = lanceur.invoke(
+        cli.app, [*base, "--regle", "r001 = Facultatif", "--sans-regle", " r002 "]
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "Règles personnalisées : R001 : facultatif ; R002 : ignorée." in resultat.output
 
     # Sans option, rien à dire sur les règles.
     resultat = lanceur.invoke(cli.app, base)
@@ -810,3 +820,285 @@ def test_reproductible_avec_des_regles_d_emploi_du_temps():
     assert premier.statistiques["entorses_regles"] == second.statistiques["entorses_regles"]
     assert premier.statistiques["entorses_regles"] == {"R001": 1, "R002": 1}
     verifier_solution(instantane, premier)
+
+
+# --------------------------------------------------------------------------- #
+# Revue adversariale : règles de portée campus, verrous, pauses, replacement
+# --------------------------------------------------------------------------- #
+
+
+def _deux_campus_matin_pris(avec_s1: bool = True):
+    """Campus C1 (S1) et C2 (S2), grille du lundi, classe A1 indisponible le lundi matin."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    c1, c2 = f.campus("C1"), f.campus("C2")
+    if avec_s1:
+        f.salle("S1", campus=c1)
+    f.salle("S2", campus=c2)
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.indisponibilite(CibleIndisponibilite.GROUPE, classe, jour=LUNDI, fin=12 * H + 45)
+    return f, c2
+
+
+@pytest.mark.parametrize(
+    ("type_regle", "parametres"),
+    [
+        (TypeRegle.PLAGE_HORAIRE, {"fin": "12:00"}),
+        (TypeRegle.CRENEAUX_INTERDITS, {"jours": ["lundi"], "debut": "13:00", "fin": "19:00"}),
+    ],
+    ids=["plage", "creneaux"],
+)
+def test_horaires_de_portee_campus_ne_jouent_que_sur_ce_campus(type_regle, parametres):
+    """Scénarios de la revue : la règle de C2 ne gêne pas une séance placée sur C1 (S1, 13 h 45),
+    en dur comme en souple, et le vérificateur ne relève rien ; sans salle sur C1, elle joue."""
+    for niveau in ("necessaire", "important"):
+        f, c2 = _deux_campus_matin_pris()
+        f.regle(type_regle, NaturePortee.CAMPUS, c2, niveau, **parametres)
+        instantane = f.instantane()
+        resultat = resoudre(instantane, OPTIONS)
+        places = verifier_solution(instantane, resultat)
+        assert (places["1-1"].salle_id, places["1-1"].debut) == (1, C3)
+        assert resultat.statistiques["entorses_regles"] == {}
+        assert entorses_verifiees(instantane, resultat) == 0
+
+    g, c2 = _deux_campus_matin_pris(avec_s1=False)
+    g.regle(type_regle, NaturePortee.CAMPUS, c2, "necessaire", **parametres)
+    dur_puis_souple(g.instantane())
+
+
+def test_la_pause_standard_reste_entre_deux_groupes_chevauchants():
+    """Scénario de la revue : une règle PAUSE_MINIMALE plus courte sur un tiers ne supprime pas la
+    pause standard entre deux groupes déclarés en conflit sans lignée commune."""
+    contigus = (
+        Creneau(LUNDI, 8 * H + 30, 10 * H + 30, DemiJournee.MATIN),
+        Creneau(LUNDI, 10 * H + 30, 12 * H + 30, DemiJournee.MATIN),
+    )
+    f = Fabrique(creneaux=contigus)
+    f.salle()
+    f.salle()
+    f.salle()
+    a, b, x = f.groupe("A"), f.groupe("B"), f.groupe("X")
+    f.conflit(a, b)
+    for groupe in (a, b, x):
+        f.besoin([groupe], [f.enseignant()])
+    sans_regle = f.instantane()
+    refuse(sans_regle)  # A et B ne peuvent pas se suivre sans les 15 min de pause
+    f.regle(TypeRegle.PAUSE_MINIMALE, NaturePortee.GROUPE, x, "necessaire", duree=0)
+    instantane = f.instantane()
+    refuse(instantane)  # toujours impossible : la règle de X ne change rien entre A et B
+
+    # PAUSE souple : une entorse au standard entre A et B, relevée aussi par le vérificateur.
+    reglages = options(niveaux={**OPTIONS.niveaux, "PAUSE": "important"})
+    resultat = resoudre(instantane, reglages)
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"PAUSE": 1}
+    assert resultat.statistiques["entorses_regles"] == {}
+    anomalies = verifier(instantane, resultat.placements, niveaux_regles=resultat.niveaux_regles)
+    assert [a.code for a in anomalies if a.code is CodeContrainte.PAUSE] == [CodeContrainte.PAUSE]
+
+
+def test_verrou_et_regles_de_salle():
+    """Scénarios de la revue : une salle verrouillée que la règle interdit, un campus imposé, un
+    verrou sans salle dont la règle impose une salle indisponible ; vérificateur et solveur d'accord."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle("S1")
+    f.salle("S2")
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.regle(
+        TypeRegle.SALLES, NaturePortee.GROUPE, classe, "necessaire", mode="interdire", salles=["S1"]
+    )
+    f.verrou("1-1", LUNDI, C1, 1)
+    instantane = f.instantane()
+    (anomalie,) = [a for a in pre_verifier(instantane) if a.bloquante]
+    assert anomalie.code is REGLE and anomalie.regle_code == "R001" and "S1" in anomalie.message
+    refuse(instantane, "R001")
+    placement = Placement("1-1", LUNDI, C1, C1 + 2 * H, 1)
+    anomalies = verifier(instantane, [placement], niveaux_regles={1: Niveau.NECESSAIRE})
+    assert [a.regle_code for a in anomalies if a.bloquante] == ["R001"]  # même verdict
+    # Souple : le verrou tient, l'entorse est comptée des deux côtés.
+    resultat = souple(instantane, 1)
+    assert verifier_solution(instantane, resultat)["1-1"].salle_id == 1
+    assert resultat.statistiques["entorses_regles"] == {"R001": 1}
+    assert entorses_verifiees(instantane, resultat) == 1
+
+    g = Fabrique(creneaux=LUNDI_SEUL)
+    c1, c2 = g.campus("C1"), g.campus("C2")
+    g.salle("S1", campus=c1)
+    g.salle("S2", campus=c2)
+    classe = g.groupe("A1")
+    g.besoin([classe], [g.enseignant()])
+    g.regle(
+        TypeRegle.CAMPUS, NaturePortee.GROUPE, classe, "necessaire", mode="imposer", campus=["C2"]
+    )
+    g.verrou("1-1", LUNDI, C1, 1)
+    refuse(g.instantane(), "R001", "campus")
+    resultat = souple(g.instantane(), 1)
+    assert resultat.statistiques["entorses_regles"] == {"R001": 1}
+    assert entorses_verifiees(g.instantane(), resultat) == 1
+
+    h = Fabrique(creneaux=LUNDI_SEUL)
+    h.salle("S1")
+    h.salle("S2")
+    classe = h.groupe("A1")
+    h.besoin([classe], [h.enseignant()])
+    h.regle(
+        TypeRegle.SALLES, NaturePortee.GROUPE, classe, "necessaire", mode="imposer", salles=["S2"]
+    )
+    h.verrou("1-1", LUNDI, C1)
+    instantane = h.instantane()
+    assert verifier_solution(instantane, resoudre(instantane, OPTIONS))["1-1"].salle_id == 2
+    h.indisponibilite(CibleIndisponibilite.SALLE, 2, jour=LUNDI)
+    refuse(h.instantane(), "indisponibles")
+
+
+def test_replacement_juge_le_jour_avec_le_campus_de_la_salle():
+    """Scénario de la revue : le vendredi est fermé sur C2 ; S1 (C1) est indisponible ce jour-là :
+    rien ne convient en dur, et la règle souple fait payer la salle de C2."""
+
+    def etablissement(niveau: str):
+        f = Fabrique(nb_semaines=2)
+        c1, c2 = f.campus("C1"), f.campus("C2")
+        f.salle("S1", campus=c1)
+        f.salle("S2", campus=c2)
+        classe = f.groupe("A1")
+        f.besoin([classe], [f.enseignant()])
+        for jour in (MARDI, MERCREDI, 3):
+            f.indisponibilite(CibleIndisponibilite.GROUPE, classe, jour=jour)
+        f.indisponibilite(CibleIndisponibilite.SALLE, 1, jour=4)
+        f.jour_ferme(RENTREE + SEMAINE)
+        f.regle(
+            TypeRegle.JOURS_TRAVAILLES,
+            NaturePortee.CAMPUS,
+            c2,
+            niveau,
+            jours=["lundi", "mardi", "mercredi", "jeudi"],
+        )
+        return f.instantane()
+
+    placements = [place("1-1", LUNDI, C1, 1)]
+    instantane = etablissement("necessaire")
+    instancie = instancier(instantane, placements)
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    nouvelle = replacement.occurrence
+    # Pas le vendredi sur C2 : la place va au lundi de l'autre semaine, en S1.
+    assert (nouvelle.date.weekday(), nouvelle.salle_id) != (4, 2)
+    assert nouvelle.date == RENTREE and nouvelle.salle_id == 1
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, nouvelle],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles={1: Niveau.NECESSAIRE},
+    )
+
+    instantane = etablissement("facultatif")
+    instancie = instancier(instantane, placements)
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    assert (replacement.occurrence.date, replacement.occurrence.salle_id) == (
+        RENTREE + SEMAINE + dt.timedelta(days=4),
+        2,
+    )
+    assert replacement.cout == 4 * 10 + 20  # quatre jours d'éloignement, une entorse facultative
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, replacement.occurrence],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles={1: Niveau.FACULTATIF},
+    )
+
+
+def _lundi_mardi(**parametres) -> Fabrique:
+    """Deux semaines, grille du lundi et du mardi, une salle ; le lundi de la 2e semaine est fermé."""
+    f = Fabrique(nb_semaines=2, creneaux=grille(jours=[LUNDI, MARDI], samedi=False), **parametres)
+    f.salle("S1")
+    f.jour_ferme(RENTREE + SEMAINE)
+    return f
+
+
+def _replacer(instantane, placements, niveau: Niveau | None = None):
+    """Instancie, replace la séance du lundi fermé et vérifie les séances datées aux mêmes niveaux."""
+    niveaux_regles = None if niveau is None else {1: niveau}
+    instancie = instancier(instantane, placements, niveaux_regles=niveaux_regles)
+    resultat = replacer(
+        instantane,
+        instancie.occurrences,
+        [r.occurrence for r in instancie.a_replacer],
+        OptionsReplacement(niveaux_regles=niveaux_regles),
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, replacement.occurrence],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles=niveaux_regles,
+    )
+    return replacement
+
+
+def test_replacement_respecte_le_maximum_par_jour():
+    """Scénario de la revue : le mardi de la 2e semaine a déjà 4 h ; en dur, la séance du lundi
+    fermé va au lundi de l'autre semaine ; en facultatif, le mardi au prix d'une entorse."""
+    f = _lundi_mardi()
+    classe = f.groupe("A1")
+    for _ in range(3):
+        f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire", maximum=240)
+    instantane = f.instantane()
+    placements = [
+        place("1-1", LUNDI, C1, 1),
+        place("2-1", MARDI, C1, 1),
+        place("3-1", MARDI, C2, 1),
+    ]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    assert (replacement.occurrence.date, replacement.occurrence.debut) == (RENTREE, C2)
+
+    replacement = _replacer(instantane, placements, Niveau.FACULTATIF)
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert replacement.cout == 10 + 1 + 20  # un jour, une autre heure, une entorse facultative
+
+
+def test_replacement_choisit_la_salle_du_campus_du_jour():
+    """CAMPUS_PAR_JOUR : la séance replacée le mardi rejoint le campus où la classe a déjà cours."""
+    f = Fabrique(nb_semaines=2, creneaux=grille(jours=[LUNDI, MARDI], samedi=False))
+    c1, c2 = f.campus("C1"), f.campus("C2")
+    f.trajet(c1, c2, 0)
+    f.salle("S1", campus=c1)
+    f.salle("S2", campus=c2)
+    f.jour_ferme(RENTREE + SEMAINE)
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.CAMPUS_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1), place("2-1", MARDI, C1, 2)]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    nouvelle = replacement.occurrence
+    assert nouvelle.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert nouvelle.salle_id == 2  # S2, sur le campus du cours déjà en place ce mardi-là
+
+
+def test_replacement_respecte_l_ordre_dans_la_semaine():
+    """ORDRE_SEMAINE : le CM du lundi fermé ne peut pas passer après le TD du mardi."""
+    f = _lundi_mardi()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], type_seance="CM")
+    f.besoin([classe], [f.enseignant()], type_seance="TD", matiere_id=1)
+    f.regle(TypeRegle.ORDRE_SEMAINE, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1), place("2-1", MARDI, C1, 1)]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    assert replacement.occurrence.date == RENTREE  # l'autre semaine, avant son TD
+
+    replacement = _replacer(instantane, placements, Niveau.FACULTATIF)
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert replacement.cout == 10 + 1 + 20
