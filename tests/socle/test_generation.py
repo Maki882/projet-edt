@@ -12,6 +12,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul, ModeVolume
 from edt.erreurs import ErreurCalculEnCours, ErreurInfaisable, ErreurIntrouvable
+from edt.journal import configurer_journalisation
 from edt.services import generation
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import reinitialiser_parametres
@@ -21,6 +22,13 @@ DELAI = 20  # secondes : garde-fou pour qu'un test bloqué échoue au lieu d'att
 SANS_AMELIORATION = OptionsSolveur(temps_limite_s=30.0, optimiser=False)
 """Réglages explicites des tests à qui il suffit d'un calcul réussi (les réglages par
 défaut de l'application, eux, améliorent l'emploi du temps trouvé)."""
+
+
+@pytest.fixture(autouse=True)
+def journalisation_configuree(environnement):
+    """Le journal dédié d'un calcul suppose la journalisation configurée, comme dans
+    l'application : sans cela, le niveau par défaut du processus (WARNING) le laisse vide."""
+    configurer_journalisation()
 
 
 def _reglages_par_defaut_de_l_application() -> None:

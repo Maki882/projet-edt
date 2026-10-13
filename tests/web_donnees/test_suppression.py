@@ -205,6 +205,7 @@ def test_consequences_expliquent_la_suite(ids):
 
 def test_parcours_reel_sur_le_jeu_moyen(client):
     recharger_jeu_fictif("moyen", 0, enregistrer_reference=True)
+    salles_au_depart = _nb_salles()  # le jeu évolue : on compte ce qui est supprimé, pas un total
     with session_base() as session:
         stan = session.scalar(select(Campus.id).where(Campus.code == "STAN"))
         placee = session.scalar(
@@ -244,4 +245,4 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
     refus = client.get(f"/salles/{placee}/ligne/suppression", headers=_depuis("/salles")).text
     lien = re.search(r'<a href="([^"]+)">Voir ces 2 besoins</a>', refus).group(1)
     assert "2 besoins correspondant" in client.get(lien.replace("&amp;", "&")).text
-    assert _nb_salles() == 30
+    assert _nb_salles() == salles_au_depart - 2
