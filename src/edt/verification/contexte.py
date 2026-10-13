@@ -340,20 +340,17 @@ class Contexte:
         """Sources (standard ou règles) enfreintes par le jour de la séance placée.
 
         Les jours permis viennent de `Instantane.reglages` (standard et règles
-        retenues par axe, campus de la salle compris). Une séance datée sans
-        séance hebdomadaire n'a que le standard : jours travaillés, plus le
-        samedi si son type de séance l'autorise.
+        retenues par axe, campus de la salle compris). Pour une séance datée,
+        `jours_de(seance, date)` ne retient que les règles de jours qui
+        couvrent la date : hors de leur période, le standard reprend sa place,
+        case « samedi autorisé » comprise. Une séance datée sans séance
+        hebdomadaire n'a que le standard : jours travaillés, plus le samedi si
+        son type de séance l'autorise.
         """
         campus = None if element.salle_id is None else self.salle(element.salle_id).campus_id
         if element.seance_id is not None and element.seance_id in self.instantane.reglages.jours:
-            sources = self.instantane.reglages.jours_de(element.seance_id).entorses(
-                element.jour, campus
-            )
-            if element.date is None:
-                return sources
-            return tuple(
-                s for s in sources if s.regle is None or self.couvre_date(s.regle, element.date)
-            )
+            jours = self.instantane.reglages.jours_de(element.seance_id, element.date)
+            return jours.entorses(element.jour, campus)
         standard = set(self.instantane.jours_travailles)
         if element.besoin.samedi_autorise:
             standard.add(SAMEDI)

@@ -502,6 +502,15 @@ de sorte séance concernent un besoin entier, ce qui
 couvre aussi une séance datée sans séance hebdomadaire ; une portée campus ne
 vaut que pour les séances placées sur ce campus.
 
+Jours d'une séance datée : ils viennent de `Instantane.reglages.jours_de(séance,
+date)`, qui ne retient que les règles `JOURS_TRAVAILLES` couvrant la date ;
+hors de la période d'une règle, le standard reprend sa place (case « samedi
+autorisé » comprise) et une entorse relève alors de `JOURS`. Les réglages de
+personne (`PAUSE_DEJEUNER`, `PAUSE_MINIMALE`) ne sont pas datables
+(`DefinitionType.periode_datable` faux : toute l'année ou un semestre, une
+règle datée est refusée à la validation) : ils valent tout le semestre et
+leur vérification ne restreint aucune période.
+
 **Niveaux d'une version** (`edt.services.niveaux`) :
 `niveaux_regles_de_version(session, version_id)` prend les règles
 **actuelles** (actives de l'année) et `niveaux_regles_du_calcul` (pur) leur

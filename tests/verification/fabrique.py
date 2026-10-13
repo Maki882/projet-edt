@@ -64,6 +64,7 @@ from edt.domaine.regles import (
     TypeRegle,
     resoudre_regle,
     valider_parametres,
+    valider_regle,
 )
 
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI, SAMEDI, DIMANCHE = range(7)
@@ -345,6 +346,8 @@ class Fabrique:
             date_debut=date_debut,
             date_fin=date_fin,
         )
+        # Revalidée entière (portée, paramètres, période), comme au chargement de l'instantané.
+        regle = valider_regle(regle, self.parametres, self._codes_connus())
         self.regles.append(regle)
         return regle
 

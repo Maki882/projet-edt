@@ -43,7 +43,7 @@ from dataclasses import dataclass
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.domaine.heures import se_chevauchent
-from edt.domaine.regles import NaturePersonne, Personne, RegleResolue
+from edt.domaine.regles import NaturePersonne, Personne
 from edt.verification.contexte import Contexte, Element, cle_chronologique
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import duree, enumerer, heure, plage
@@ -107,23 +107,18 @@ def par_personne(
     personnes: Iterable[Personne],
     x: int,
     y: int,
-    regle: RegleResolue | None = None,
 ) -> dict[Personne, list[Element]]:
-    """Séances de chaque personne qui recoupent `[x, y]` (et, si donnée, la période de `regle`).
+    """Séances de chaque personne qui recoupent `[x, y]`.
 
-    `regle` : sur la semaine type, les semaines actives des séances sont
-    restreintes à celles de la règle ; sur la couche datée, une séance hors de
-    sa période est écartée (`Contexte.restreindre`).
+    Pas de restriction de période : un réglage de déjeuner (standard ou règle
+    `PAUSE_DEJEUNER`) vaut tout le semestre, une règle de réglage de personne
+    n'étant pas datable (`DefinitionType.periode_datable`).
     """
     voulues = set(personnes)
     resultat: dict[Personne, list[Element]] = defaultdict(list)
     for element in elements:
         if not se_chevauchent(element.debut, element.fin, x, y):
             continue
-        if regle is not None:
-            element = ctx.restreindre(element, regle)
-            if element is None:
-                continue
         for personne in ctx.personnes_de(element):
             if personne in voulues:
                 resultat[personne].append(element)
