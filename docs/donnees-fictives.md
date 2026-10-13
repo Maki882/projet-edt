@@ -191,17 +191,20 @@ d'horaires d'un enseignant lui sont posées comme des interdits du vivier
 des vacataires dont les indisponibilités récurrentes laissent au plus deux
 jours de présence, sans samedi.
 
-**Prudence sur les jours** : tant que le vérificateur lit encore la case
-« samedi autorisé » (`JOURS` historique), le témoin n'utilise pas un jour
-qu'une règle seule ouvre. La règle « A3-APP1 a aussi cours le samedi » est
-donc permise mais inutilisée, sauf pour les TP, que la case autorise déjà.
+**Jours** : le témoin suit la même précédence que le vérificateur et le
+solveur (`Instantane.reglages`) : standard des jours travaillés (plus le
+samedi pour un type de séance qui l'autorise, sauf règle visant ce type),
+sinon l'intersection des règles retenues. Un jour ouvert par une règle seule
+lui est donc permis : le samedi d'A3-APP1 peut accueillir ses TD et ses CM.
+Le témoin le garde en dernier recours (le samedi passe après les jours de
+semaine dans son ordre de préférence) : selon la graine, il l'utilise ou non.
 
-**Contrôle** : `tests/synthese/controle_temoin.py` (`violations_regles`)
-vérifie chaque règle active sur le témoin à partir de `Instantane.regles`,
-`reglages` et `emplois`, indépendamment du générateur. Le vérificateur
-officiel ne vérifie pas encore les règles sur cette branche : le test
-« le témoin ne provoque aucune erreur de règle » sera à confirmer quand ses
-vérificateurs de règles seront fusionnés.
+**Contrôle** : le vérificateur et le solveur vérifient et posent les
+quatorze types de règle. `tests/synthese/test_verificateur.py` vérifie que
+le témoin des jeux petit, moyen et grand ne provoque **aucune anomalie
+`REGLE`**, à aucun niveau ; `tests/synthese/controle_temoin.py`
+(`violations_regles`) en fait un second contrôle, direct et indépendant,
+à partir de `Instantane.regles`, `reglages` et `emplois`.
 
 ## Méthode du témoin
 
@@ -243,8 +246,9 @@ Règles respectées (sémantique de `docs/architecture.md` et
 conflit jamais en même temps ; 15 minutes au moins (le temps de trajet entre
 deux sites) entre deux séances d'une même personne qui coexistent, appliqué
 aussi aux salles par prudence ; début sur un créneau de la grille, dans la
-plage d'ouverture et dans la demi-journée, hors déjeuner, du lundi au
-vendredi (samedi matin pour les TP), sauf créneau imposé ; capacité, type,
+plage d'ouverture et dans la demi-journée, hors déjeuner, un jour permis
+(jours travaillés, samedi matin pour les TP ou ouvert par une règle), sauf
+créneau imposé ; capacité, type,
 équipements, site et salle imposés, accessibilité (groupe drapeauté ou en
 conflit avec un groupe drapeauté ; « inconnu » vaut « non ») ;
 indisponibilités récurrentes des enseignants, des salles et des groupes liés.
