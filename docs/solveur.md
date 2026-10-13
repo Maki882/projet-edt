@@ -226,7 +226,7 @@ semaine commune rend le problème impossible.
 | `GROUPE_UNIQUE` | phase 1 | unités de groupes et cliques d'unités en conflit |
 | `PAUSE` | phase 1 | chaque séance est allongée de `pause_min` dans les contraintes de personnes |
 | `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
-| `DEJEUNER` | domaines | débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; rien n'est retiré quand le déjeuner n'a pas d'horaires déterminés (`dejeuner_horaires_determines` faux) |
+| `DEJEUNER` | domaines, phase 1 | mode fixe : débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; mode libre : une position de pause libre par personne et par jour (voir « Pause déjeuner ») ; mode « aucun » : rien |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
 | `JOURS` | domaines | jours avec créneau ; samedi si `samedi_autorise` |
 | `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE`, `EQUIPEMENT` | domaines | salles qui ne conviennent pas retirées (salle et campus imposés compris) |
@@ -296,7 +296,7 @@ Six contraintes définissent le problème et restent toujours nécessaires
 |---|---|---|
 | `HORAIRES` | une séance placée hors de sa demi-journée ou des heures d'ouverture (les débuts restent ceux de la grille) | phase 1, étiquette du début |
 | `JOURS` | une séance placée un jour non permis (samedi non autorisé, jour sans créneau si `HORAIRES` est ignorée) | phase 1, étiquette du début |
-| `DEJEUNER` | une séance qui recoupe la plage du déjeuner | phase 1, étiquette du début |
+| `DEJEUNER` | mode fixe : une séance qui recoupe la plage du déjeuner ; mode libre : une personne (groupe ou enseignant), un jour et un ensemble de semaines sans N minutes libres d'un seul tenant dans la fenêtre | phase 1, étiquette du début (fixe) ou littéral par personne et jour (libre) |
 | `DISPO_ENSEIGNANT`, `DISPO_GROUPE` | une séance placée pendant une indisponibilité récurrente (une séance verrouillée là compte aussi) | phase 1, étiquette du début |
 | `PAUSE` | une paire de séances d'une même personne, le même jour, séparées de moins que la pause (une entorse par paire, quel que soit le nombre de semaines) | phase 1, littéral par paire |
 | `CAMPUS_TRAJET` | une paire de séances d'une même personne, le même jour, sur deux campus, séparées de moins que le trajet | phase 1, littéral par paire |
@@ -340,6 +340,73 @@ paire ne s'applique entre deux séances verrouillées. En pratique les séances
 verrouillées qui se contredisent, et celles dont la salle reste à choisir,
 sont « isolées » : elles ne sont réunies qu'aux séances libres. Sans cette
 option, des verrous contradictoires font refuser le calcul avec la liste.
+
+### Pause déjeuner
+
+`Parametres.dejeuner_mode` choisit l'un de trois modes (contrat dans
+`docs/architecture.md`) ; la règle `DEJEUNER` les traduit tous les trois.
+
+| Mode | Règle | Traduction |
+|---|---|---|
+| **fixe** | aucune séance ne recoupe la plage `[dejeuner_debut_min, dejeuner_fin_min[` (`plage_dejeuner`) | domaines : les débuts qui la recoupent sont retirés (dure) ou étiquetés (souple), par `Regles.violations_horaire` |
+| **libre** | pour chaque groupe et chaque enseignant, chaque jour où une séance recoupe la fenêtre `[X, Y[` (`fenetre_dejeuner` = `(X, Y, N)`), il reste un intervalle libre d'au moins N minutes d'un seul tenant dans `[X, Y[` ; un jour sans séance dans la fenêtre est satisfait | phase 1, `ModeleHoraires._pause_dejeuner_libre` (ci-dessous) ; couche datée, `Regles.pause_dejeuner_tenue` |
+| **aucun** | rien | rien |
+
+**Les personnes.** Un enseignant : ses séances (enseignants fictifs
+exclus). Un groupe : les séances qui occupent **tous** ses étudiants, c'est-à-
+dire celles de ses groupes liés **moins ses sous-groupes** (`Regles.occupants`,
+par `Groupe.parent_id`). Un sous-groupe ne mobilise qu'une partie des
+étudiants : compter ses séances priverait à tort la classe de pause quand
+ses demi-groupes déjeunent en décalé (TD de A-1 de 12 h à 13 h, TD de A-2 de
+13 h à 14 h : la classe a bien sa pause, et chaque demi-groupe aussi, avec
+les séances de la classe). Chaque sous-groupe porte sa propre règle. C'est
+la lecture du vérificateur (`docs/verification.md`). Les groupes qui se
+chevauchent sans se contenir (chevauchement déclaré, étudiant commun)
+comptent l'un pour l'autre, comme pour `GROUPE_UNIQUE` : c'est une
+approximation prudente, faute de connaître les étudiants communs.
+
+**Discrétisation (exacte).** Pour une personne, un jour et un ensemble de
+semaines actives (`Preparation.ensembles_par_semaines`), le modèle énumère
+les **positions de pause** `[p, p + N[` avec `p` = X ou la fin possible
+d'une de ses séances, pour `X < p ≤ Y − N`. C'est exact : un intervalle libre
+d'au moins N minutes commence toujours à X ou à la fin d'une séance. Pour
+chaque séance et chaque position, un littéral « la séance recoupe la
+position » (`_au_moins_un` de ses choix qui la recoupent : une implication
+par choix), partagé entre toutes les personnes de la séance et entre les
+positions aux mêmes choix ; pour chaque personne, jour et position, un
+littéral « occupée » (`_au_moins_un` de ces littéraux : une implication par
+séance). Règle dure : clause « une position non occupée » ; règle souple :
+un littéral d'entorse vrai si toutes les positions sont occupées
+(`_sauf_si`), pesant `POIDS_NIVEAU` dans l'objectif. Un jour sans séance
+dans la fenêtre n'occupe aucune position : la règle y est satisfaite
+d'elle-même, sans condition supplémentaire. Rien n'est posé pour une journée
+où aucune séance ne peut recouper la fenêtre, ni quand une position ne peut
+être recoupée par aucun choix (une grille qui ménage la pause, comme la
+grille par défaut avec 12 h 45-13 h 45, ne coûte donc rien). Les personnes
+au même emploi du temps (un groupe et
+son unique enseignant, par exemple) partagent la contrainte mais comptent
+chacune pour une entorse. Une séance qui, à elle seule, ne laisserait pas N
+minutes dans la fenêtre est écartée dès la préparation quand la règle est
+dure (`Regles.violations_horaire`, message « la pause déjeuner » des
+pré-vérifications) ; souple, elle n'est pas étiquetée pour ne pas compter
+deux fois : l'entorse est celle de la journée.
+
+**Unité d'entorse** : une personne, un jour, un ensemble de semaines sans
+pause suffisante, exactement l'anomalie du vérificateur (une par personne et
+par jour). `statistiques["entorses"]["DEJEUNER"]` les additionne aux
+entorses du mode fixe (il n'y a jamais les deux à la fois).
+
+**Couche datée.** `instancier` ne regarde pas la pause libre (la semaine
+type l'a arbitrée). `replacer` refuse une place qui priverait un groupe
+(ceux que la séance occupe, `Regles.groupes_occupes`) ou un enseignant de
+sa pause ce jour-là, compte tenu des occurrences en place (règle dure,
+raison « la pause déjeuner de ses groupes ou de ses enseignants ») ; souple,
+la place coûte `POIDS_NIVEAU` par personne privée.
+
+**Taille.** Le pas de la grille n'intervient pas : seules comptent les fins
+de séance possibles dans la fenêtre. Sur le jeu grand S1 (595 séances,
+fenêtre 12 h-14 h, N = 60, grille par défaut), voir « Mesures : pause
+déjeuner libre ».
 
 ## Objectif (mode optimisé)
 
@@ -652,9 +719,10 @@ maintenues, et les `OccurrenceARevoir(occurrence, code, raison)`.
 cherche pour chaque occurrence à replacer une date, une heure et une salle
 qui respectent toutes les contraintes actives, date par date, face aux
 occurrences en place : calendrier, grille, indisponibilités récurrentes et
-datées, unicité, pause, trajets, maxima par jour et par semaine réelle,
-salle compatible et libre. Le jour et l'heure imposés par le besoin sont
-gardés ; une séance ponctuelle ne change pas de date.
+datées, unicité, pause, trajets, pause déjeuner (plage fixe ou pause libre
+de chaque groupe et enseignant ce jour-là), maxima par jour et par semaine
+réelle, salle compatible et libre. Le jour et l'heure imposés par le besoin
+sont gardés ; une séance ponctuelle ne change pas de date.
 
 `OptionsReplacement` : contraintes désactivées, fenêtre de dates
 (`date_debut`, `date_fin`), coût d'éloignement (`cout_semaine` = 100 par
@@ -1253,6 +1321,11 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 - **Semaines modifiées par un replacement.** Une séance déplacée dans une
   semaine voisine s'ajoute au volume de cette semaine ; `max_par_semaine`
   d'un besoin en mode « total » n'est pas recontrôlé à cet endroit.
+- **Pause déjeuner libre et groupes qui se chevauchent.** Deux groupes
+  déclarés chevauchants (ou avec un étudiant commun) comptent chacun les
+  séances de l'autre : un étudiant qui n'est que dans l'un des deux peut
+  avoir sa pause alors que la règle dit le contraire. Les sous-groupes d'une
+  hiérarchie, eux, sont traités exactement.
 
 ## Comment ajouter une contrainte
 
