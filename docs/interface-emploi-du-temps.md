@@ -317,8 +317,12 @@ niveaux de règles) : la vérification
 porte sur toutes les règles, mais les écarts aux règles décochées sont
 listés à part (« Écarts aux règles décochées lors du calcul ») et ne
 comptent ni comme conflits ni comme points à traiter. Une retouche applique
-les mêmes règles que le calcul (`raccords.contraintes_actives_de`, passées
-au vérificateur), comme l'instanciation des séances datées.
+les mêmes règles, aux mêmes niveaux, que le calcul de la version : le
+vérificateur est appelé sans liste de contraintes et prend les niveaux de
+ce calcul (`niveaux_de_version`, règles ignorées exclues). Une entorse à
+une règle importante ou facultative revient en avertissement ou en
+information et n'empêche pas la retouche ; seule une règle nécessaire la
+refuse.
 
 **Séances datées importées** (origine « import », version de référence) :
 elles ne se recalculent jamais depuis la semaine type, ce qui les

@@ -28,10 +28,11 @@
   <p class="edt-regles-calcul"><strong>Règles :</strong> {{ r.regles|join(" ; ") }}</p>
   {%- endif %}
   {%- if r.contraintes_desactivees %}
-  {{ ui.message("Règles ignorées pour ce calcul (lancé avant les niveaux de règles) :", "attention", r.contraintes_desactivees) }}
+  {{ ui.message("Règles ignorées pour ce calcul :", "attention", r.contraintes_desactivees) }}
   {%- endif %}
   {%- if r.entorses %}
   <p class="edt-entorses"><strong>Entorses :</strong> {{ r.entorses|join(" ; ") }}</p>
+  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; « À traiter » liste les anomalies correspondantes.</p>
   {%- endif %}
 
   {%- if r.issue == "refuse" %}

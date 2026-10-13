@@ -186,8 +186,8 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
             session, identifiant, jour=jour, debut=autre_debut, salle_id=salle
         )
     assert resultat.enregistree  # la règle décochée au calcul ne bloque pas la retouche
-    actives = faux_verificateur.contraintes_modification
-    assert actives is not None and "CAPACITE" not in actives and "SALLE_UNIQUE" in actives
+    # Aucune liste en dur : le vérificateur applique les niveaux du calcul de la version.
+    assert faux_verificateur.contraintes_modification is None
 
     with session_base() as session:
         controle = raccords.controler_version(session, version)
