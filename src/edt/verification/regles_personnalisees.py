@@ -25,9 +25,10 @@ déjeuner, comme `JOURS`, `HORAIRES` et `DEJEUNER` ; le niveau de la règle
 plafonne ensuite cette gravité.
 
 Période : sur la semaine type, une règle vaut pour les semaines actives de la
-séance qu'elle couvre (`RegleResolue.semaines`) ; sur les séances datées, pour
-une date dont la semaine est couverte (la résolution ne garde que les
-semaines : une règle datée au jour près s'applique à toute la semaine).
+séance qu'elle couvre (`RegleResolue.semaines`) ; sur les séances datées, au
+jour près (`RegleResolue.couvre`). Les réglages de personne (`PAUSE_DEJEUNER`,
+`PAUSE_MINIMALE`) ne sont pas datables (`DefinitionType.periode_datable`) : ils
+valent tout le semestre, sans restriction de période.
 
 Une règle dont le type n'a pas encore de vérificateur donne un avertissement
 explicite (jamais de silence).
@@ -336,7 +337,7 @@ def verifier_pause_dejeuner(
 
     defauts = [
         (personne, defaut)
-        for personne, seances in par_personne(ctx, elements, personnes, x, y, regle).items()
+        for personne, seances in par_personne(ctx, elements, personnes, x, y).items()
         for defaut in jours_en_defaut(seances, examiner)
     ]
     for defaut, groupes, enseignants in situations(defauts):
@@ -389,9 +390,6 @@ def verifier_pause_minimale(
     par_jour: dict[Personne, dict[object, list[Element]]] = defaultdict(lambda: defaultdict(list))
     voulues = set(personnes)
     for element in elements:
-        semaines = ctx.semaines_regle(regle, element)
-        if semaines is not None and not semaines:
-            continue
         for personne in ctx.personnes_de(element):
             if personne in voulues:
                 par_jour[personne][element.cle_jour].append(element)
@@ -403,7 +401,7 @@ def verifier_pause_minimale(
             seances.sort(key=cle_chronologique)
             for i, a in enumerate(seances):
                 for b in seances[i + 1 :]:
-                    communes = _semaines_communes(ctx, regle, a, b)
+                    communes = _semaines_communes(a, b)
                     if communes is not None and not communes:
                         continue
                     if se_chevauchent(a.debut, a.fin, b.debut, b.fin):
@@ -445,13 +443,11 @@ def minuscule_article(texte: str) -> str:
     return texte
 
 
-def _semaines_communes(
-    ctx: Contexte, regle: RegleResolue, a: Element, b: Element
-) -> frozenset[int] | None:
-    """Semaines où les deux séances ont lieu ensemble et que la règle couvre (`None` : daté)."""
+def _semaines_communes(a: Element, b: Element) -> frozenset[int] | None:
+    """Semaines où les deux séances ont lieu ensemble (`None` : couche datée)."""
     if a.semaines is None or b.semaines is None:
         return None
-    return a.semaines & b.semaines & regle.semaines
+    return a.semaines & b.semaines
 
 
 # Vérificateurs du temps B (emploi du temps et relations) : importés ici pour que le

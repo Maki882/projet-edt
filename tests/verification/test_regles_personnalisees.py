@@ -13,7 +13,7 @@ import pytest
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
-from edt.domaine.regles import REGISTRES, TypeRegle, types_non_couverts
+from edt.domaine.regles import REGISTRES, ErreurSaisie, TypeRegle, types_non_couverts
 from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
 
 from .fabrique import (
@@ -183,6 +183,35 @@ def test_couche_datee_et_periode_de_la_regle():
     assert [(a.regle_code, a.occurrences, a.date) for a in anomalies] == [
         ("R001", (1,), dt.date(2026, 9, 15))
     ]
+
+
+def test_ouverture_datee_du_samedi_au_jour_pres_sur_les_seances_datees():
+    # A1-G1 a aussi cours le samedi, du 7 au 27 septembre 2026 seulement.
+    f, (n204, _), (_, g1, _, _) = promotion()
+    f.regle(
+        "JOURS_TRAVAILLES",
+        "groupe",
+        g1,
+        "important",
+        jours=[*EN_SEMAINE, "samedi"],
+        date_debut=dt.date(2026, 9, 7),
+        date_fin=dt.date(2026, 9, 27),
+    )
+    td = f.cours("TD", [g1])
+    instantane = f.construire()
+    dans = occurrence(td, dt.date(2026, 9, 19), "8h30", n204, identifiant=1)
+    hors = occurrence(td, dt.date(2026, 10, 10), "8h30", n204, identifiant=2)
+    assert verifier_occurrences(instantane, [dans], ["JOURS", "REGLE"]) == []
+    anomalies = verifier_occurrences(instantane, [hors], ["JOURS", "REGLE"])
+    assert [(str(a.code), a.occurrences, a.regle_id) for a in anomalies] == [("JOURS", (2,), None)]
+    assert "le type de séance TD n'est pas autorisé le samedi" in anomalies[0].message
+
+
+@pytest.mark.parametrize("type_regle", ["PAUSE_DEJEUNER", "PAUSE_MINIMALE"])
+def test_reglage_de_personne_date_refuse(type_regle):
+    f, _, (_, g1, _, _) = promotion()
+    with pytest.raises(ErreurSaisie, match="un réglage de personne n'a qu'une valeur"):
+        f.regle(type_regle, "groupe", g1, date_debut=dt.date(2026, 9, 7))
 
 
 # --------------------------------------------------------------------------- #
