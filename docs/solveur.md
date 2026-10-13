@@ -409,9 +409,13 @@ raison « la pause déjeuner de ses groupes ou de ses enseignants ») ; souple,
 la place coûte `POIDS_NIVEAU` par personne privée.
 
 **Taille.** Le pas de la grille n'intervient pas : seules comptent les fins
-de séance possibles dans la fenêtre. Sur le jeu grand S1 (595 séances,
-fenêtre 12 h-14 h, N = 60, grille par défaut), voir « Mesures : pause
-déjeuner libre ».
+de séance possibles dans la fenêtre. Sur la grille par défaut (créneaux de
+8 h 30, 10 h 45, 13 h 45 et 16 h), la position 12 h 45-13 h 45 ne peut être
+recoupée par aucune séance : rien n'est posé, le modèle est identique au
+mode fixe. Sur une grille serrée (créneaux de 12 h et 13 h en plus), le jeu
+grand S1 pose 3 300 littéraux d'entorse et 5 900 littéraux de séance : le
+modèle passe de 489 000 à 754 000 contraintes (voir « Mesures : pause
+déjeuner libre »).
 
 ## Objectif (mode optimisé)
 
@@ -1160,6 +1164,50 @@ l'amélioration ne commence qu'après la solution valide et que son
 prétraitement est allégé. À 120 s l'écart se resserre (grand S1 : 3 256
 contre 3 371 ; grand S2 : 3 836 contre 3 195), et le nouveau moteur garantit
 un résultat dès que la première solution existe.
+
+### Mesures : pause déjeuner libre
+
+Mode libre : fenêtre 12 h-14 h, pause de 60 min ; mode fixe : plage
+12 h 45-13 h 45 (défaut). Réglages par défaut (sans « optimiser », fils
+choisis par le moteur, niveaux par défaut : `DEJEUNER` importante), temps
+limite 120 s, graine 1, un processus neuf par mesure, poste de développement
+chargé par trois autres agents (le jeu grand y trouve sa première solution
+en 35 à 45 s au calme). Jeux fictifs `moyen` S1 (111 séances) et `grand` S1
+(595 séances). « Grille serrée » : les créneaux par défaut plus 12 h-14 h et
+13 h-15 h chaque jour, pour que la pause soit vraiment en jeu.
+
+| Jeu | Grille | Mode | Variables / contraintes | Construction | 1re solution (entorses au départ) | Durée, arrêt | Entorses finales | Trous |
+|---|---|---|---|---|---|---|---|---|
+| moyen S1 | défaut | fixe | 5 400 / 43 365 | 0,16 s | 1,4 s (0) | 1,4 s, première solution | 0 | 350 |
+| moyen S1 | défaut | libre | 5 400 / 43 365 | 0,20 s | 1,5 s (0) | 1,5 s, première solution | 0 | 350 |
+| grand S1 | défaut | fixe | 41 732 / 352 951 | 1,3 s | 42,5 s (MAX_ENSEIGNANT 2) | 59,0 s, optimum prouvé | 0 | 1 640 |
+| grand S1 | défaut | libre | 41 732 / 352 951 | 1,5 s | 43,4 s (MAX_ENSEIGNANT 2) | 59,9 s, optimum prouvé | 0 | 1 640 |
+| moyen S1 | serrée | fixe | 8 440 / 61 087 | 0,24 s | 2,4 s (DEJEUNER 6) | 6,8 s, optimum prouvé | 0 | 690 |
+| moyen S1 | serrée | libre | 12 061 / 114 255 | 0,43 s | 3,2 s (DEJEUNER 56) | 8,0 s, optimum prouvé | 0 | 436 |
+| grand S1 | serrée | fixe | 61 247 / 489 074 | 1,9 s | 82,9 s (DEJEUNER 16, MAX 2) | 119,5 s, temps limite | DEJEUNER 5, MAX 2 | 4 790 |
+| grand S1 | serrée | libre | 78 252 / 753 917 | 5,7 s | 89,3 s (DEJEUNER 407, MAX 2) | 119,6 s, temps limite | DEJEUNER 389 | 2 703 |
+
+Lecture :
+
+- sur la grille par défaut, le mode libre ne pose rien (3 504 journées
+  examinées sur le jeu grand, 0 contrainte) : même modèle, mêmes temps, même
+  solution que le mode fixe. Le budget « première solution du jeu grand en
+  moins de 45 s » est tenu dans les deux modes, machine chargée ;
+- sur la grille serrée, la pause est en jeu : la première solution, trouvée
+  sans objectif, viole beaucoup de pauses (une par groupe, enseignant et
+  jour), et c'est l'amélioration qui les retire. Le jeu moyen y arrive en
+  8 s (optimum prouvé, 0 entorse) ; le jeu grand, dont la première solution
+  prend déjà 83 s en mode fixe sur cette grille, n'a que 30 s d'amélioration
+  avant le temps limite de 120 s : il en reste 389. Un temps limite de
+  plusieurs minutes est nécessaire sur ce jeu et cette grille, en mode fixe
+  comme en mode libre ;
+- les trous ne sont pas comparables entre les lignes : sans « optimiser »,
+  ils ne sont pas minimisés ;
+- la première écriture (un littéral « occupée » par personne, jour et
+  position, défini directement sur les choix de chaque séance, soit une
+  implication par choix et par personne) donnait sur le jeu grand serré
+  2 621 988 contraintes, 29 s de construction et aucune solution en 120 s.
+  Le partage par séance (`seance_sur`) divise ces contraintes par 3,5.
 
 ### Couche datée
 
