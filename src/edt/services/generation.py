@@ -69,6 +69,7 @@ from edt.domaine.contraintes import (
     Niveau,
     Niveaux,
     niveaux_depuis_desactivees,
+    niveaux_par_defaut,
     normaliser_codes,
 )
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion
@@ -829,4 +830,12 @@ def _niveaux_du_calcul(calcul_id: int, parametres: dict, desactivees: Iterable[s
             calcul_id,
             erreur,
         )
-        return niveaux_depuis_desactivees(normaliser_codes(desactivees))
+        try:
+            return niveaux_depuis_desactivees(normaliser_codes(desactivees))
+        except ErreurEDT as erreur_codes:
+            journal.warning(
+                "Calcul %d : contraintes désactivées illisibles aussi (%s), niveaux par défaut",
+                calcul_id,
+                erreur_codes,
+            )
+            return niveaux_par_defaut()
