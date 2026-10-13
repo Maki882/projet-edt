@@ -11,11 +11,16 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+from collections.abc import Mapping
+from typing import Any
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
+from sqlalchemy.orm import Session
 
 from edt.domaine.calendrier import annee_scolaire_de
+from edt.domaine.regles import EtatRegle
 from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services.parametres import reinitialiser_parametres
 from edt.services.referentiels.calendrier import (
@@ -33,8 +38,9 @@ from edt.services.referentiels.reglages import (
     enregistrer_parametres_saisis,
     parametres_affichables,
 )
+from edt.services.regles import lister as lister_regles
 from edt.web.dependances import SessionRequete
-from edt.web.donnees.ecrans import Ecran, Formulaire, routeur_ecran
+from edt.web.donnees.ecrans import Ecran, Formulaire, SuiteCreation, routeur_ecran
 from edt.web.gabarits import rediriger, rendre
 from edt.web.menu import SECTION_CONFIGURATION, EntreeMenu
 
@@ -42,11 +48,34 @@ journal = logging.getLogger(__name__)
 
 PARENT_CALENDRIER = ("Retour au calendrier", "/calendrier")
 
+
+def suite_creation_annee(session: Session, annee: Mapping[str, Any]) -> SuiteCreation | None:
+    """Une année créée par le formulaire a reçu ses règles proposées : le dire, y mener.
+
+    La création les propose (crochet `apres_creation` du service) ; on compte ici
+    les règles proposées de l'année, qui vient de naître : ce sont exactement
+    celles-là. On arrive sur leur liste, où les confirmer ou les écarter.
+    """
+    nombre = len(lister_regles(session, annee["id"], etat=EtatRegle.PROPOSEE))
+    if nombre == 0:
+        return None
+    adresse = "/regles?" + urlencode({"annee": annee["id"], "etat": EtatRegle.PROPOSEE.value})
+    texte = (
+        "1 règle personnalisée proposée pour cette année, ci-dessous : sans effet tant "
+        "qu'elle n'est pas confirmée."
+        if nombre == 1
+        else f"{nombre} règles personnalisées proposées pour cette année, ci-dessous : sans "
+        "effet tant qu'elles ne sont pas confirmées."
+    )
+    return SuiteCreation(texte, adresse)
+
+
 ECRAN_ANNEES = Ecran(
     ANNEE_SCOLAIRE,
     "/calendrier/annees",
     introduction="Les années scolaires. Supprimer une année supprime tout ce qui lui appartient.",
     parent=PARENT_CALENDRIER,
+    suite_creation=suite_creation_annee,
 )
 ECRAN_SEMESTRES = Ecran(
     SEMESTRE,
@@ -79,6 +108,7 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
     (
         "Journée",
         (
+            "jours_travailles",
             "ouverture_min",
             "fermeture_min",
             "pause_min",
@@ -149,8 +179,18 @@ def ajouter_annee(request: Request, session: SessionRequete, formulaire: Formula
     return rediriger(
         request,
         "/calendrier",
-        f"Année scolaire {annee['libelle']} créée avec ses deux semestres et ses jours fériés.",
+        f"Année scolaire {annee['libelle']} créée avec ses deux semestres et ses jours fériés. "
+        + texte_regles_proposees(annee["regles_proposees"]),
     )
+
+
+def texte_regles_proposees(nombre: int) -> str:
+    """« 2 règles proposées, à revoir dans Règles personnalisées. » (ou rien à revoir)."""
+    if nombre == 0:
+        return "Aucune règle personnalisée à proposer."
+    if nombre == 1:
+        return "1 règle proposée, à revoir dans Règles personnalisées."
+    return f"{nombre} règles proposées, à revoir dans Règles personnalisées."
 
 
 @routeur.post("/calendrier/annees/{ident:int}/feries", name="annee_feries")
@@ -222,6 +262,9 @@ def enregistrer_parametres(
     for parametre in parametres_affichables(session):
         if parametre.type == "bool":
             saisies[parametre.cle] = "oui" if parametre.cle in formulaire else "non"
+        elif parametre.est_jours:
+            # Cases décochées : absentes de l'envoi ; aucune case = ensemble vide, refusé.
+            saisies[parametre.cle] = ",".join(formulaire.getlist(parametre.cle))
         elif parametre.cle in formulaire:
             saisies[parametre.cle] = str(formulaire[parametre.cle])
     try:

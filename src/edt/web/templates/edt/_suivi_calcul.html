@@ -30,8 +30,19 @@
   {%- if r.contraintes_desactivees %}
   {{ ui.message("Règles ignorées pour ce calcul :", "attention", r.contraintes_desactivees) }}
   {%- endif %}
+  {%- if r.regles_personnalisees %}
+  <p class="edt-regles-calcul"><strong>Règles personnalisées :</strong> {{ r.regles_personnalisees|join(" ; ") }}</p>
+  {%- if r.remarque_regles %}
+  <p class="discret">{{ r.remarque_regles }}</p>
+  {%- endif %}
+  {%- endif %}
   {%- if r.entorses %}
   <p class="edt-entorses"><strong>Entorses :</strong> {{ r.entorses|join(" ; ") }}</p>
+  {%- endif %}
+  {%- if r.entorses_regles %}
+  <p class="edt-entorses"><strong>Entorses aux règles personnalisées :</strong> {{ r.entorses_regles|join(" ; ") }}</p>
+  {%- endif %}
+  {%- if r.entorses or r.entorses_regles %}
   <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; « À traiter » liste les anomalies correspondantes.</p>
   {%- endif %}
 

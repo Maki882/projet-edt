@@ -18,7 +18,9 @@ Règles
 - `GROUPE_UNIQUE` : chevauchement et besoins en conflit de groupes ;
 - `PAUSE` : coexistence, personne partagée, pas de chevauchement et écart
   entre la fin de la première et le début de la seconde inférieur à
-  `pause_min` (les salles ne comptent pas) ;
+  `pause_min` (les salles ne comptent pas) ; seulement pour les personnes
+  dont la pause vient du standard (une règle `PAUSE_MINIMALE` vérifie les
+  siennes, à son niveau) ;
 - `CAMPUS_TRAJET` : idem, avec deux salles sur deux campus différents et un
   écart inférieur au temps de trajet entre ces campus.
 
@@ -42,6 +44,7 @@ from collections.abc import Iterator, Sequence
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.domaine.heures import ecart, se_chevauchent
+from edt.domaine.regles import NaturePersonne, Personne
 from edt.verification.contexte import Contexte, Element, cle_chronologique
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import duree, enumerer, heure, plage
@@ -173,6 +176,38 @@ def _chevauchement(
         )
 
 
+def _personnes_au_standard(
+    ctx: Contexte,
+    a: Element,
+    b: Element,
+    enseignants: frozenset[int],
+    groupes: tuple[int, ...],
+) -> tuple[frozenset[int], tuple[int, ...]]:
+    """Enseignants et groupes de la paire dont la pause vient du standard (`PAUSE`).
+
+    La pause de chaque personne est résolue par `Instantane.reglages` : une
+    personne dont la pause vient d'une règle `PAUSE_MINIMALE` est vérifiée par
+    la règle, à son niveau. Pour les groupes en conflit, ce sont les groupes
+    feuilles communs aux deux séances qui comptent ; s'il n'y en a pas (conflit
+    par chevauchement déclaré ou étudiant commun, hors lignée), le standard vaut.
+    """
+
+    def au_standard(personne: Personne) -> bool:
+        reglage = ctx.pause_de(personne)
+        return reglage is None or reglage.source.est_standard
+
+    ens_std = frozenset(
+        e for e in enseignants if au_standard(Personne(NaturePersonne.ENSEIGNANT, e))
+    )
+    if not groupes:
+        return ens_std, ()
+    communes = set(ctx.personnes_de(a)) & set(ctx.personnes_de(b))
+    feuilles = [p for p in communes if p.nature is NaturePersonne.GROUPE]
+    if not feuilles or any(au_standard(p) for p in feuilles):
+        return ens_std, groupes
+    return ens_std, ()
+
+
 def _enchainement(
     ctx: Contexte, a: Element, b: Element, codes: frozenset[CodeContrainte]
 ) -> Iterator[Anomalie]:
@@ -189,22 +224,25 @@ def _enchainement(
 
     pause = ctx.parametres.pause_min
     if CodeContrainte.PAUSE in codes and libre < pause:
-        negation = "n'ont" if pluriel else "n'a"
-        if libre == 0:
-            constat = f"{sujet} {negation} aucune pause"
-        else:
-            constat = f"{sujet} {negation} que {duree(libre)} de pause"
-        yield ctx.anomalie(
-            CodeContrainte.PAUSE,
-            Gravite.ERREUR,
-            f"{constat} {quand} entre {ctx.libelle(a)}, qui finit à {heure(a.fin)}, et "
-            f"{ctx.libelle(b)}, qui commence à {heure(b.debut)} ; il faut au moins "
-            f"{duree(pause)}.",
-            (a, b),
-            enseignants=enseignants,
-            groupes=groupes,
-            **reperes,
-        )
+        ens_std, groupes_std = _personnes_au_standard(ctx, a, b, enseignants, groupes)
+        if ens_std or groupes_std:
+            sujet_std, pluriel_std = ctx.personnes(ens_std, groupes_std)
+            negation = "n'ont" if pluriel_std else "n'a"
+            if libre == 0:
+                constat = f"{sujet_std} {negation} aucune pause"
+            else:
+                constat = f"{sujet_std} {negation} que {duree(libre)} de pause"
+            yield ctx.anomalie(
+                CodeContrainte.PAUSE,
+                Gravite.ERREUR,
+                f"{constat} {quand} entre {ctx.libelle(a)}, qui finit à {heure(a.fin)}, et "
+                f"{ctx.libelle(b)}, qui commence à {heure(b.debut)} ; il faut au moins "
+                f"{duree(pause)}.",
+                (a, b),
+                enseignants=ens_std,
+                groupes=groupes_std,
+                **reperes,
+            )
 
     if CodeContrainte.CAMPUS_TRAJET not in codes or a.salle_id is None or b.salle_id is None:
         return

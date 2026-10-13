@@ -31,7 +31,9 @@ Des séances datées à la semaine type
    devient un besoin.
 2. Volume : une seule séance datée -> `ponctuel` à sa date ; même nombre de
    séances chaque semaine ouverte du semestre (une semaine sans la séance est
-   tolérée si elle contient un jour fermé pour ses groupes) -> `par_semaine` ;
+   tolérée si l'un de ses jours travaillés est fermé pour ses groupes) ->
+   `par_semaine` ; les semaines ouvertes sont celles du dépliage, d'après les
+   jours travaillés de l'établissement (`Parametres.jours_travailles`) ;
    sinon -> `total` (nombre observé, maximum hebdomadaire observé, période du
    premier au dernier jour).
 3. Semaine type : par promotion (racine de l'arbre des groupes), la semaine
@@ -306,7 +308,10 @@ class Resolveur:
             return [retenue(seance.date, datee=True)]
 
         ouvertes = semaines_ouvertes(
-            _besoin_domaine(ids), self.instantane.semaines, self.instantane.jours_fermes
+            _besoin_domaine(ids),
+            self.instantane.semaines,
+            self.instantane.jours_fermes,
+            self.instantane.parametres.jours_travailles,
         )
         jours = [
             semaine.date_du(seance.jour)
@@ -407,7 +412,15 @@ def _racine(groupe: m.Groupe) -> m.Groupe:
 
 
 def _besoin_domaine(groupes: frozenset[int]) -> BesoinDomaine:
-    """Besoin minimal du domaine, pour demander au dépliage les semaines ouvertes de ces groupes."""
+    """Besoin minimal du domaine, pour demander au dépliage les semaines ouvertes de ces groupes.
+
+    Seuls comptent les groupes : le dépliage juge une semaine ouverte d'après les
+    jours travaillés de l'établissement (`Parametres.jours_travailles`, passés à
+    `semaines_ouvertes`) et les jours fermés, sans lire `samedi_autorise` ni les
+    règles personnalisées. La reconstitution s'aligne ainsi exactement sur le
+    dépliage du semestre ; une séance importée qui enfreint une règle de jours
+    entre telle quelle, et le vérificateur la signale.
+    """
     return BesoinDomaine(
         id=0,
         libelle="",
@@ -583,7 +596,10 @@ def _prevoir_cours(seances: list[SeanceRetenue], instantane: Instantane) -> Beso
     ouvertes = {
         s.numero
         for s in semaines_ouvertes(
-            _besoin_domaine(ids), instantane.semaines, instantane.jours_fermes
+            _besoin_domaine(ids),
+            instantane.semaines,
+            instantane.jours_fermes,
+            instantane.parametres.jours_travailles,
         )
     }
     manquantes = ouvertes - set(par_semaine)
@@ -592,7 +608,7 @@ def _prevoir_cours(seances: list[SeanceRetenue], instantane: Instantane) -> Beso
         semaine = instantane.semaine(numero)
         return any(
             f.concerne(semaine.date_du(jour), ids)
-            for jour in range(5)
+            for jour in instantane.parametres.jours_travailles
             for f in instantane.jours_fermes
         )
 

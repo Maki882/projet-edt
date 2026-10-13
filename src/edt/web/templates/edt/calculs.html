@@ -79,6 +79,63 @@
       </table>
     </div>
   </fieldset>
+  {#- Règles personnalisées actives du semestre : un niveau par règle pour ce calcul (champs
+      niveau_regle_<id>) ou « ignorer » (ignorer_regle_<id>) ; regroupées par type, repliées,
+      au-delà de vingt. #}
+  {%- macro tableau_regles(liste) %}
+  <div class="tableau-defilant">
+    <table class="tableau edt-regles edt-regles-perso">
+      <thead>
+        <tr><th scope="col">Règle</th><th scope="col">Type</th><th scope="col">Portée</th><th scope="col">Période</th><th scope="col">Niveau pour ce calcul</th></tr>
+      </thead>
+      <tbody>
+        {%- for r in liste %}
+        <tr>
+          <th scope="row"><a href="{{ r.lien }}">{{ r.code }}</a> {{ r.phrase }}</th>
+          <td>{{ r.type_libelle }}</td>
+          <td>{{ r.portee }}</td>
+          <td>{{ r.periode }}</td>
+          <td>
+            <div class="edt-niveaux" role="radiogroup" aria-label="Niveau de la règle {{ r.code }} pour ce calcul">
+              {%- for niveau in niveaux_proposes %}
+              <label title="{{ niveau.description }}"><input type="radio" name="{{ r.champ_niveau }}" value="{{ niveau.value }}"{% if niveau == r.niveau %} checked{% endif %}> {{ niveau.libelle }}{% if niveau == r.niveau_regle %} <small class="edt-niveau-defaut">(niveau de la règle)</small>{% endif %}</label>
+              {%- endfor %}
+            </div>
+            <label class="edt-ignorer"><input type="checkbox" name="{{ r.champ_ignorer }}" value="1"{% if r.ignoree %} checked{% endif %}> Ignorer pour ce calcul</label>
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- endmacro %}
+  <fieldset hx-get="/calculs/verifications" hx-trigger="change" hx-include="#formulaire-calcul" hx-target="#pre-verifications" hx-swap="innerHTML">
+    <legend>Règles personnalisées</legend>
+    {%- if bloc_regles.erreur %}
+    {{ ui.message("Les règles personnalisées n'ont pas pu être lues : " ~ bloc_regles.erreur, "erreur") }}
+    {%- elif not bloc_regles.regles %}
+    <p class="vide">Aucune règle personnalisée active pour ce semestre.</p>
+    {%- else %}
+    <p class="aide">Chaque règle porte son propre niveau, prérempli avec celui du dernier calcul. Le changer, ou ignorer la règle, ne vaut que pour ce calcul : la règle elle-même ne change pas.</p>
+    {%- if bloc_regles.replie %}
+    {%- for libelle, liste in bloc_regles.par_type %}
+    <details class="edt-groupe-regles">
+      <summary>{{ libelle }} ({{ liste|length }})</summary>
+      {{ tableau_regles(liste) }}
+    </details>
+    {%- endfor %}
+    {%- else %}
+    {{ tableau_regles(bloc_regles.regles) }}
+    {%- endif %}
+    {%- endif %}
+    {%- if bloc_regles.rappel_proposees %}
+    {{ ui.message(bloc_regles.rappel_proposees, "info") }}
+    {%- endif %}
+    <p class="edt-boutons">
+      <a class="bouton" href="{{ adresse_regles }}">Voir les règles personnalisées</a>
+      <a class="bouton" href="{{ adresse_ajout_regle }}">Ajouter une règle</a>
+    </p>
+  </fieldset>
   {#- Pause déjeuner à trois modes : préremplie depuis les paramètres, enregistrée au lancement si
       elle change. Les heures ne sont visibles (et envoyées) qu'en « Horaires déterminés » et
       « Pause libre bornée », la durée minimale qu'en pause libre (static/js/app.js) ; sans

@@ -17,6 +17,7 @@ from edt.db.modeles import (
     Groupe,
     JourFerme,
     Matiere,
+    Regle,
     Semestre,
     VersionEdt,
     besoin_groupe,
@@ -43,6 +44,7 @@ from edt.services.referentiels.description import (
 )
 from edt.services.referentiels.operations import identifiant_possible, lire
 from edt.services.referentiels.personnes import REF_ANNEE, REF_GROUPE, annee_par_defaut
+from edt.services.regles import proposer_pour_annee
 
 journal = logging.getLogger(__name__)
 
@@ -158,6 +160,16 @@ ANNEE_SCOLAIRE = Entite(
     uniques=(Unicite(("libelle",), "Une année porte déjà ce libellé.", "libelle"),),
     valider=lambda session, v, actuel: _dates_ordonnees(v),
     analyser=_analyser_annee,
+    apres_creation=lambda session, annee: proposer_regles(session, annee.id),
+    consequences=(
+        Decompte(
+            par_colonne(Regle.annee_scolaire_id),
+            "Sa règle personnalisée sera supprimée avec elle",
+            "Ses {n} règles personnalisées seront supprimées avec elle",
+            lien="/regles?annee={id}&etat=",
+            objets=("cette règle", "ces {n} règles"),
+        ),
+    ),
 )
 
 
@@ -173,8 +185,22 @@ def creer_annee_par_defaut(session: Session, annee_debut: int) -> dict:
     if session.scalar(select(AnneeScolaire.id).where(AnneeScolaire.libelle == libelle)):
         raise ErreurRegleMetier(f"L'année scolaire {libelle} existe déjà.")
     annee = assurer_annee_scolaire(session, annee_debut)
-    journal.info("Année scolaire %s créée depuis l'interface", libelle)
-    return lire(session, ANNEE_SCOLAIRE, annee.id)
+    proposees = proposer_regles(session, annee.id)
+    journal.info(
+        "Année scolaire %s créée depuis l'interface (%d règle(s) proposée(s))",
+        libelle,
+        proposees,
+    )
+    return {**lire(session, ANNEE_SCOLAIRE, annee.id), "regles_proposees": proposees}
+
+
+def proposer_regles(session: Session, annee_scolaire_id: int) -> int:
+    """Propose à une année ses règles de base et la reprise de l'année précédente.
+
+    Les règles sont créées à l'état « proposée », sans effet tant qu'on ne les
+    confirme pas (écran Règles personnalisées). Renvoie leur nombre.
+    """
+    return len(proposer_pour_annee(session, annee_scolaire_id).creees)
 
 
 def preremplir_jours_feries(session: Session, annee_scolaire_id: int) -> int:
@@ -236,6 +262,11 @@ SEMESTRE = Entite(
         **_dates_ordonnees(v),
     },
     consequences=(
+        Decompte(
+            par_colonne(Regle.semestre_id),
+            "1 règle personnalisée limitée à ce semestre sera supprimée",
+            "{n} règles personnalisées limitées à ce semestre seront supprimées",
+        ),
         Decompte(
             par_colonne(Besoin.semestre_id),
             "1 besoin sera supprimé",

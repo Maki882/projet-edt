@@ -93,7 +93,7 @@ fonctionne (`.sans-js` masque alors ce qui ne sert que sans lui).
 | `ui.tableau(colonnes, lignes, vide)` | tableau simple ; avec `{% call(ligne) %}` : colonne d'actions |
 | `ui.cellule(valeur)` | contenu de cellule : tiret si vide, Oui / Non pour un booléen |
 | `ui.formulaire(action, ...)` | formulaire simple |
-| `ui.champ(nom, libelle, valeur, type, requis, aide, erreur, options, attributs, unite, conteneur, large)` | champ complet : libellé, aide, erreur liée par `aria-describedby` ; `type` `multiple` = liste de cases filtrable |
+| `ui.champ(nom, libelle, valeur, type, requis, aide, erreur, options, attributs, unite, conteneur, large)` | champ complet : libellé, aide, erreur liée par `aria-describedby` ; `type` `multiple` = liste de cases filtrable, `cases` = quelques cases sur une ligne (jours de la semaine, campus) |
 | `ui.bouton_suppression(action)` / `ui.bouton_action(action, libelle, classe, confirmation, champs)` | bouton qui envoie un POST, confirmation facultative |
 | `ui.pagination(page, nb_pages, url_page, cible)` | pagination ; `cible` : zone remplacée par HTMX |
 | `ui.couleur(code)` | petit carré de couleur |
@@ -119,6 +119,8 @@ Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
 | `barre-liste`, `barre-liste-resume` | recherche et filtres d'une liste |
 | `message-*`, `etiquette-*`, `compteurs`, `definitions` | états et chiffres |
 | `arbre`, `arbre-noeud`, `matrice` | arbre (groupes), matrice de saisie (trajets) |
+| `cases-en-ligne` | cases à cocher côte à côte (contrôle `cases`) |
+| `tableau-regles` (avec `cellule-empilee`), `ligne-proposee`, `apercu-regle`, `apercu-phrase`, `cartes-types`, `carte-type`, `exemples-regle`, `liste-regles-touchees` | règles personnalisées : liste, règle proposée surlignée, aperçu de la phrase, choix du type, règles touchées par une suppression |
 | `ligne-boutons`, `colonnes`, `liste-simple`, `discret`, `pre-ligne` | utilitaires |
 
 ### Comportements communs (`static/js/app.js`)
@@ -126,7 +128,7 @@ Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
 | Attribut ou classe | Effet |
 |---|---|
 | `data-confirmation="..."` sur un formulaire | confirmation avant l'envoi |
-| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 |
+| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 ; plusieurs conditions séparées par `;` doivent toutes tenir |
 | `data-attente="..."` sur un formulaire | boutons désactivés et texte d'attente pendant l'envoi (opérations longues) |
 | `.choix-multiple` | filtre au clavier d'une liste de cases à cocher |
 | `<details id="...">` dans une zone remplacée par HTMX | reste ouvert après le remplacement |
@@ -233,8 +235,10 @@ Possibilités de la description :
   salle et équipements demandés par un besoin) n'ont pas de filtre
   correspondant : le refus reste sans lien ;
 - crochets `valider` (contrôles entre champs), `preparer`,
-  `apres_ecriture`, `analyser` (refus et conséquences calculés, en textes ou
-  en `operations.Raison` avec un lien).
+  `apres_ecriture`, `apres_creation` (après un ajout seulement, dans la même
+  transaction : une année scolaire créée reçoit ses règles proposées),
+  `analyser` (refus et conséquences calculés, en textes ou en
+  `operations.Raison` avec un lien).
 
 ### Écran générique (`edt.web.donnees.ecrans.Ecran`)
 
@@ -255,7 +259,9 @@ supprime puis rafraîchit la zone de liste (compte et page à jour) et affiche
 le message dans `#messages` (échange HTMX « hors bande »). Sans JavaScript, le
 même lien ouvre la page de confirmation, qui fait la même chose.
 `AnalyseSuppression` porte des `Raison(texte, lien, libelle_lien)` : `blocages`
-et `effets` (`refus` et `consequences` en donnent les textes).
+et `effets` (`refus` et `consequences` en donnent les textes), et `regles` :
+les règles personnalisées touchées (voir « Supprimer une cible visée par des
+règles » au § 4).
 
 - Un filtre qui a une valeur par défaut (l'année ou le semestre en cours) est
   rappelé dans le résumé (« 0 groupe (Année : 2026-2027) ») mais ne compte pas
@@ -284,7 +290,9 @@ et `effets` (`refus` et `consequences` en donnent les textes).
   `contexte_liste`, `edition_en_ligne`, `actions_ligne` (« Dupliquer »),
   `liens`, `parent`, `titre_page`, `complement_zone` (gabarit ajouté au bas
   de la zone de liste, donc rafraîchi avec elle : la charge hebdomadaire des
-  besoins).
+  besoins), `suite_creation(session, cree)` (ce qu'une création a entraîné :
+  `SuiteCreation(texte, adresse)`, phrase ajoutée au message et page où aller
+  ensuite à la place de la liste).
 - Mesures de référence (jeu grand, 1 280 px de large) : une ligne de liste
   fait 37 px (une ligne de texte) ou 58 px (deux lignes).
 
@@ -301,9 +309,10 @@ et `effets` (`refus` et `consequences` en donnent les textes).
 | | `/matieres` | matières, code module, promotion |
 | Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, groupe (et ses sous-groupes), matière, type, enseignant, salle imposée, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
-| Règles et calendrier | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`) ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
+| Règles et calendrier | `/regles` | règles personnalisées de l'année : voir ci-dessous |
+| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; une année créée par le formulaire générique (`POST /calendrier/annees`) mène à ses règles proposées (`/regles?annee=<n>&etat=proposee`, « 4 règles personnalisées proposées pour cette année, ci-dessous ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
 | | `/grille` | créneaux de la grille (édition sur place) |
-| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` |
+| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un ensemble de jours (`type == "jours"` : les jours travaillés de l'établissement) sept cases du lundi au dimanche, envoyées « 0,1,2,3,4 » au service (aucune case cochée : « au moins un jour est attendu » sous le champ), un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` |
 | Jeux de données | `/jeux` | établissement fictif petit / moyen / grand (`edt.services.jeux`), graine, version de référence ; remise à zéro |
 
 Page `/jeux` : la base n'est touchée qu'au travers de
@@ -318,6 +327,96 @@ de ces opérations tourne à la fois : une seconde demande pendant la première
 base ; une page demandée pendant ce temps reçoit « base de données occupée,
 réessayer », jamais le conseil d'initialiser la base.
 
+### Règles personnalisées (`/regles`)
+
+Données › Règles et calendrier › « Règles personnalisées »
+(`edt/web/routes/donnees_regles_personnalisees.py`). L'écran ne parle qu'au
+contrat `edt.services.regles` (`lister`, `lire_par_id`, `valider`, `creer`,
+`modifier`, `supprimer`, `changer_etat`, `activer`, `proposer_pour_annee`) ;
+le formulaire est construit par `edt.web.donnees.regles` depuis
+`CATALOGUE_TYPES`. Rien n'est propre à un type dans la couche web : un type
+ajouté au catalogue a son formulaire sans autre code.
+
+**Liste.** Une année scolaire à la fois (`annee`, par défaut l'année en
+cours). Filtres `etat`, `type`, `niveau`, `origine`, `portee` (nature de la
+cible) et `groupe` (les règles d'un groupe **et** celles qu'il hérite de ses
+ancêtres) ; recherche `q`, sans tenir compte des accents ni de la casse, sur
+le code, la phrase, la cible et le commentaire ; 50 règles par page. Chaque
+ligne donne le code, la phrase (deux lignes au plus, entière au survol), le
+type et l'origine, la portée et la période, le niveau, l'état et les
+actions ; le tableau tient dans 1 280 px. Une règle **proposée** a son fond
+surligné, l'état « Proposée » et deux boutons : « Activer » et « Écarter »
+(elle devient inactive) ; une règle active a « Désactiver », une inactive
+« Activer ». Un bandeau compte les règles proposées de l'année (« sans effet
+tant qu'elles ne sont pas confirmées »), avec « Les voir » (toutes les
+proposées de l'année, sans les autres filtres ni la recherche) et « Tout
+confirmer » (`POST /regles/confirmer` : celles qui feraient doublon avec une
+règle active restent proposées et le message dit pourquoi). « Proposer les
+règles de base » (`POST /regles/proposer`) appelle `proposer_pour_annee` :
+règles de base et reprise de l'année précédente, en état proposé ; le
+message compte les créées, celles déjà présentes et celles à revoir (cible
+absente cette année). La liste fonctionne sans JavaScript ; avec HTMX,
+recherche, filtres et pagination remplacent `#zone-liste`.
+
+**Ajout guidé.** `GET /regles/nouveau` : étape 1, une carte par type
+(libellé, description, exemples de phrases, portées admises).
+`GET /regles/nouveau?type=PAUSE_DEJEUNER` : étape 2, le formulaire.
+
+| Rubrique | Champs |
+|---|---|
+| Portée | `portee` (natures admises par le type ; « l'établissement » seulement si le type l'admet) puis une liste par nature, `cible_<nature>`, affichée selon la nature choisie (`data-visible-si`) ; groupes en arbre (promotion, └ classe, └ demi-groupe), groupes à part ensuite |
+| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») ; un paramètre réservé à certaines portées (`ChampRegle.portees` : « Personnes concernées », établissement seulement) n'est affiché que pour elles et retiré du brouillon pour une autre portée, son bloc entier masqué s'il n'a que de tels paramètres |
+| Application | `niveau` (nécessaire, important, facultatif), `periode` (`annee` ; `semestre` avec `semestre` ; `dates` avec `date_debut` et `date_fin`, absent pour un type non datable : `periode_datable` faux, comme les pauses ; forcé, il est refusé avec le message du domaine sous la période), `commentaire` |
+
+L'aperçu (`POST /regles/apercu`) part à chaque changement : il passe le
+brouillon à `valider` et affiche la phrase telle qu'elle sera enregistrée,
+avec le niveau et la période, ou la liste de ce qui reste à corriger. Il est
+porté par la section `apercu-regle` (`hx-include="closest form"`,
+`from:closest form`), **pas** par le formulaire : HTMX valide un formulaire
+avant de l'envoyer et, tant qu'un champ requis est vide ou hors bornes,
+n'enverrait rien, sans rien dire. Un formulaire neuf commence par « La phrase
+de la règle s'affiche ici dès qu'elle est complète » ; une saisie refusée
+redemande l'aperçu au chargement.
+
+À l'enregistrement (`POST /regles/nouveau`, `POST /regles/<n>/modifier`),
+`ErreurSaisie.erreurs` (clés `portee.cible`, `parametres.duree`,
+`periode.semestre`...) est ramenée sous les champs par `erreurs_par_champ`
+(`parametres.X` → `p_X`, `portee.cible` → `cible_<nature>`) ; les erreurs
+globales d'un brouillon mal formé vont sous leur bloc (`portee` et `periode`
+sous leur choix, `parametres` ou un paramètre inconnu sous le titre du bloc
+« Paramètres ») et le reste (`origine`, doublon d'une règle active...) dans le
+bandeau : aucune n'est perdue. Statut
+422, saisie conservée, jamais d'erreur 500. La modification réutilise le même
+formulaire, prérempli (`valeurs_de_regle`) ; son aperçu est calculé comme si
+la règle était inactive, pour qu'elle ne fasse pas doublon avec elle-même
+(le contrôle complet a lieu à l'enregistrement).
+
+**Suppression d'une règle.** Comme les autres listes : confirmation dans la
+ligne (`GET /regles/<n>/ligne/suppression`, `POST /regles/<n>/ligne/supprimer`)
+ou page de confirmation sans JavaScript (`GET`/`POST /regles/<n>/supprimer`),
+avec le conseil de la désactiver pour la garder sans effet.
+
+**Supprimer une cible visée par des règles.** Supprimer un groupe, un
+enseignant, un campus, une salle, un type de séance, une matière, un besoin
+ou un semestre liste d'abord les règles touchées, chacune avec « Modifier » et
+« Supprimer » (retour vers la confirmation), et ce qu'il lui arrivera :
+« sera supprimée », ou « L115 sera retiré de ses salles » pour une règle qui
+cite l'élément dans ses paramètres (salles d'une règle de salles, campus
+d'une règle de campus) ; une règle qui ne vaudrait plus rien sans lui (seule
+salle citée, ordre « CM avant TD » sans CM) est supprimée. Le bouton devient
+« Supprimer cet enseignant et ses 2 règles » : une seule transaction, une ligne de
+journal par règle (« Règle R005 (2026-2027) supprimée avec enseignant
+« Mme Roux » »). Le formulaire envoie les identifiants vus (`_regles`) :
+si la liste a changé entre l'affichage et la confirmation, rien n'est
+supprimé et la page le dit. Un groupe vise aussi les règles de ses
+sous-groupes et de ses matières ; un semestre, celles de ses besoins.
+
+`services/regles` ne donne ni les règles touchées par la suppression d'un
+élément quelconque ni le retrait d'un code des paramètres d'une règle : c'est
+fait côté référentiels, dans `edt.services.referentiels.regles_cibles`
+(`regles_touchees`, `appliquer`, table `PARAMETRES_CITANT`), avec
+`regles_visant`, `lire_par_id`, `modifier` et `supprimer` du contrat.
+
 ## 5. Services (`edt.services.referentiels`)
 
 Fonctions typées, sans validation de transaction, aux retours
@@ -329,8 +428,10 @@ lister(session, code, *, recherche="", tri=None, descendant=False, page=1, taill
 lire(session, code, ident) -> dict              # valeurs canoniques + id + nom_affiche
 creer(session, code, valeurs) -> dict
 modifier(session, code, ident, valeurs, *, partiel=False) -> dict
-analyser_suppression(session, code, ident) -> AnalyseSuppression   # refus, conséquences
-supprimer(session, code, ident) -> str          # ErreurRegleMetier si encore utilisé
+analyser_suppression(session, code, ident) -> AnalyseSuppression   # refus, conséquences, règles
+supprimer(session, code, ident, *, regles_confirmees=None) -> str
+    # ErreurRegleMetier si encore utilisé, ou si des règles personnalisées sont touchées
+    # et que regles_confirmees (leurs id) ne correspond pas exactement
 options(session, code, nom_champ) -> list[tuple[str, str]]
 decrire(code) -> dict                           # champs, types, choix, filtres, tris
 ```
@@ -344,7 +445,9 @@ donne tous les éléments retenus (toutes pages).
 `matrice_trajets`, `enregistrer_trajets`, `arbre_groupes`, `sous_arbre`,
 `dupliquer_besoin`, `charges_hebdomadaires`, `creer_annee_par_defaut`,
 `preremplir_jours_feries`, `apercu_calendrier`, `parametres_affichables`,
-`enregistrer_parametres_saisis`. Une saisie refusée lève `ErreurSaisie`
+`enregistrer_parametres_saisis`, `proposer_regles` (règles proposées à une année,
+renvoie leur nombre ; `creer_annee_par_defaut` le donne dans `regles_proposees`),
+`regles_touchees` et `appliquer_aux_regles` (règles touchées par une suppression). Une saisie refusée lève `ErreurSaisie`
 (sous-classe d'`ErreurDonneesInvalides`), dont `champs` donne le message de
 chaque champ fautif.
 

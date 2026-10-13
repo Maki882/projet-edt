@@ -18,7 +18,7 @@ from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, DEJEUNER_LIBRE
 from edt.services import generation
 from edt.services.parametres import ecrire_parametres, lire_parametres
 
-from .conftest import DELAI
+from .conftest import DELAI, identifiant_groupe
 
 H = 60
 PLAGE_PAR_DEFAUT = (12 * H + 45, 13 * H + 45)
@@ -190,7 +190,10 @@ def test_mode_inconnu_refuse(jeu_minimal, client):
 
 
 def test_la_grille_dessine_la_bande_selon_le_mode(version_generee, client):
-    adresse = f"/emploi-du-temps?version_id={version_generee.version_id}"
+    # La promotion A1 suit la pause de l'établissement (sa classe A1-G1 a sa propre règle).
+    with session_base() as session:
+        promotion = identifiant_groupe(session, "A1")
+    adresse = f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id={promotion}"
 
     fixe = client.get(adresse).text
     assert '<div class="edt-dejeuner" style=' in fixe

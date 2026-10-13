@@ -20,10 +20,12 @@ avec ses ascendants) ; `conflit(a, b)` en déclare d'autres.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 from collections.abc import Iterable
 
 from edt.domaine.calendrier import semaines_entre
+from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import (
     Accessibilite,
     CibleIndisponibilite,
@@ -54,6 +56,16 @@ from edt.domaine.instantane import (
     id_seance,
 )
 from edt.domaine.parametres import Parametres
+from edt.domaine.regles import (
+    CATALOGUE_TYPES,
+    NaturePortee,
+    Portee,
+    Regle,
+    TypeRegle,
+    resoudre_regle,
+    valider_parametres,
+    valider_regle,
+)
 
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI, SAMEDI, DIMANCHE = range(7)
 DEBUT_SEMESTRE = dt.date(2026, 9, 7)
@@ -118,6 +130,9 @@ class Fabrique:
         self.problemes: list[ProblemeDepliage] = []
         self.types_salle = list(TYPES_SALLE)
         self.equipements = list(EQUIPEMENTS)
+        self.regles: list[Regle] = []
+        self.types_seance: dict[str, int] = {}
+        self.matieres: dict[str, int] = {}
 
     # -- référentiels -----------------------------------------------------------
 
@@ -241,9 +256,14 @@ class Fabrique:
         enseignants: Iterable[int] = (),
         duree: int = 120,
         type_seance: str = "TD",
+        matiere: str | None = None,
         **options: object,
     ) -> Besoin:
+        """Un besoin ; `matiere` (code) partage une matière entre besoins, sinon une par besoin."""
         groupes = frozenset(groupes)
+        type_id = self.types_seance.setdefault(type_seance, len(self.types_seance) + 1)
+        code_matiere = matiere or f"M{len(self.besoins) + 1}"
+        matiere_id = self.matieres.setdefault(code_matiere, len(self.matieres) + 1)
         effectif = sum(self.groupes[g - 1].effectif for g in groupes)
         accessibilite = any(self.groupes[g - 1].accessibilite_requise for g in groupes)
         valeurs: dict[str, object] = {
@@ -255,9 +275,9 @@ class Fabrique:
         besoin = Besoin(
             id=len(self.besoins) + 1,
             libelle=libelle,
-            matiere_id=len(self.besoins) + 1,
-            matiere_code=f"M{len(self.besoins) + 1}",
-            type_seance_id=1,
+            matiere_id=matiere_id,
+            matiere_code=code_matiere,
+            type_seance_id=type_id,
             type_seance_code=type_seance,
             duree=duree,
             groupes=groupes,
@@ -293,10 +313,103 @@ class Fabrique:
         """Un besoin et sa séance unique (rang 1)."""
         return self.seance(self.besoin(libelle, groupes, enseignants, **options), 1, semaines)
 
+    def regle(
+        self,
+        type_regle: TypeRegle | str,
+        portee: NaturePortee | str,
+        cible: int | None = None,
+        niveau: Niveau | str | None = None,
+        *,
+        date_debut: dt.date | None = None,
+        date_fin: dt.date | None = None,
+        **parametres: object,
+    ) -> Regle:
+        """Une règle personnalisée active, aux paramètres validés (valeurs canoniques).
+
+        `cible` : identifiant du groupe, de l'enseignant, du campus, de la
+        matière ou du besoin ; pour un type de séance, son identifiant dans
+        `types_seance` (voir `type_seance`). Code « R001 », « R002 »...
+        """
+        type_regle = TypeRegle(type_regle)
+        nature = NaturePortee(portee)
+        portee_regle = self._portee(nature, cible)
+        canoniques = valider_parametres(
+            type_regle, parametres, self.parametres, self._codes_connus(), nature
+        )
+        regle = Regle(
+            type=type_regle,
+            portee=portee_regle,
+            parametres=canoniques,
+            niveau=CATALOGUE_TYPES[type_regle].niveau_defaut if niveau is None else Niveau(niveau),
+            id=len(self.regles) + 1,
+            code=f"R{len(self.regles) + 1:03d}",
+            date_debut=date_debut,
+            date_fin=date_fin,
+        )
+        # Revalidée entière (portée, paramètres, période), comme au chargement de l'instantané.
+        regle = valider_regle(regle, self.parametres, self._codes_connus())
+        self.regles.append(regle)
+        return regle
+
+    def type_seance(self, code: str) -> int:
+        """Identifiant du type de séance `code` (créé au besoin)."""
+        return self.types_seance.setdefault(code, len(self.types_seance) + 1)
+
+    def _portee(self, nature: NaturePortee, cible: int | None) -> Portee:
+        if nature is NaturePortee.GROUPE:
+            groupe = self.groupes[cible - 1]
+            return Portee(nature, cible, groupe.code, groupe.libelle, groupe.nature)
+        if nature is NaturePortee.ENSEIGNANT:
+            enseignant = self.enseignants[cible - 1]
+            return Portee(nature, cible, enseignant.identifiant, enseignant.nom)
+        if nature is NaturePortee.CAMPUS:
+            campus = self.campus[cible - 1]
+            return Portee(nature, cible, campus.code, campus.nom)
+        if nature is NaturePortee.TYPE_SEANCE:
+            code = {i: c for c, i in self.types_seance.items()}[cible]
+            return Portee(nature, cible, code, code)
+        if nature is NaturePortee.MATIERE:
+            code = {i: c for c, i in self.matieres.items()}[cible]
+            return Portee(nature, cible, code, code)
+        if nature is NaturePortee.BESOIN:
+            return Portee(nature, cible, str(cible), self.besoins[cible - 1].libelle)
+        return Portee(nature)
+
+    def _codes_connus(self) -> dict[str, set[str]]:
+        return {
+            "campus": {c.code for c in self.campus},
+            "salle": {s.code for s in self.salles},
+            "type_seance": set(self.types_seance) | {"CM", "TD", "TP"},
+        }
+
+    def _identifiants(self) -> dict[str, dict[str, int]]:
+        types = dict(self.types_seance)
+        for code in ("CM", "TD", "TP"):
+            types.setdefault(code, len(types) + 1)
+        return {
+            "campus": {c.code: c.id for c in self.campus},
+            "salle": {s.code: s.id for s in self.salles},
+            "type_seance": types,
+        }
+
     def probleme(self, besoin: Besoin, code, message: str) -> None:
         self.problemes.append(ProblemeDepliage(besoin.id, code, message))
 
     def construire(self) -> Instantane:
+        """L'instantané, avec ses règles actives résolues (comme `charger_instantane`)."""
+        sans_regles = self._sans_regles()
+        if not self.regles:
+            return sans_regles
+        resolues = tuple(
+            resolue
+            for resolue in (
+                resoudre_regle(regle, sans_regles, self._identifiants()) for regle in self.regles
+            )
+            if resolue.semaines
+        )
+        return dataclasses.replace(sans_regles, regles=resolues)
+
+    def _sans_regles(self) -> Instantane:
         return Instantane(
             semestre_id=1,
             libelle="Semestre de test",

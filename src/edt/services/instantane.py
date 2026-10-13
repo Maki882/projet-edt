@@ -185,7 +185,8 @@ def _regles_resolues(
 
     Une règle active devenue invalide (paramètre hors bornes, cible hors de
     l'année, code de salle ou de campus disparu) fait échouer le chargement
-    en la nommant : rien ne s'applique en silence.
+    en la nommant : rien ne s'applique en silence. Une règle sur un besoin
+    d'un autre semestre est simplement hors périmètre.
     """
     codes_connus = {
         "campus": {c.code for c in instantane.campus},
@@ -203,8 +204,15 @@ def _regles_resolues(
         NaturePortee.CAMPUS: {c.id for c in instantane.campus},
         NaturePortee.TYPE_SEANCE: set(identifiants["type_seance"].values()),
         NaturePortee.MATIERE: {b.matiere_id for b in instantane.besoins},
-        NaturePortee.BESOIN: {b.id for b in instantane.besoins},
+        NaturePortee.BESOIN: set(
+            session.scalars(
+                select(m.Besoin.id)
+                .join(m.Semestre, m.Besoin.semestre_id == m.Semestre.id)
+                .where(m.Semestre.annee_scolaire_id == semestre.annee_scolaire_id)
+            )
+        ),
     }
+    besoins_du_semestre = {b.id for b in instantane.besoins}
     resolues = []
     for regle in charger_regles_actives(session, semestre.annee_scolaire_id):
         if regle.semestre_id is not None and regle.semestre_id != semestre.id:
@@ -224,6 +232,8 @@ def _regles_resolues(
                 f"{nom} vise une cible qui n'existe plus dans l'année du semestre : la corriger "
                 "ou la désactiver."
             )
+        if nature is NaturePortee.BESOIN and regle.portee.cible_id not in besoins_du_semestre:
+            continue  # le besoin est dans l'autre semestre : hors périmètre, sans effet ici
         try:
             resolue = resoudre_regle(regle, instantane, identifiants)
         except ErreurDonneesInvalides as erreur:

@@ -57,3 +57,19 @@ def test_temoin_du_grand_jeu_accepte_par_le_verificateur(jeu_grand):
     assert all(
         compte.get("information", 0) > 0 for compte in jeu_grand.rapport.anomalies_temoin.values()
     )
+
+
+@pytest.mark.parametrize("nom_jeu", ["jeu_petit", "jeu_moyen", "jeu_grand"])
+def test_temoin_sans_anomalie_de_regle(request, nom_jeu):
+    """Le vérificateur réel ne relève aucune anomalie `REGLE` sur le témoin, à aucun niveau."""
+    jeu = request.getfixturevalue(nom_jeu)
+    with jeu.session() as session:
+        for code, semestre_id in jeu.rapport.semestres.items():
+            instantane = charger_instantane(session, semestre_id)
+            assert instantane.regles, code
+            anomalies = [
+                f"[{code}] {a.gravite} : {a.message}"
+                for a in verifier(instantane, jeu.rapport.placements(code))
+                if a.code is CodeContrainte.REGLE
+            ]
+            assert anomalies == []

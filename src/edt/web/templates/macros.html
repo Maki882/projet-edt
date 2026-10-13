@@ -124,9 +124,10 @@ Non
 {%- endmacro %}
 
 {#
-  type : text, number, date, time, email, color, select, textarea, checkbox, multiple...
-  options (types select et multiple) : liste de couples (valeur, libellé).
-  valeur (type multiple) : liste des valeurs cochées.
+  type : text, number, date, time, email, color, select, textarea, checkbox, multiple, cases...
+  options (types select, multiple et cases) : liste de couples (valeur, libellé).
+  valeur (types multiple et cases) : liste des valeurs cochées.
+  « cases » : cases à cocher sur une ligne (jours de la semaine...), sans liste défilante.
   attributs : attributs HTML supplémentaires du contrôle (min, max, step, hx-get...).
   unite : texte affiché après le contrôle (« min », « places »).
   conteneur : attributs HTML du bloc du champ (par exemple data-visible-si).
@@ -143,6 +144,14 @@ Non
     <input type="checkbox" id="champ-{{ nom }}" name="{{ nom }}" value="1"{% if valeur %} checked{% endif %}{{ attributs|xmlattr }}{{ aria|xmlattr }}>
     {{ libelle }}
   </label>
+  {%- elif type == "cases" %}
+  {%- set choisis = (valeur or [])|map("string")|list %}
+  <span class="libelle" id="libelle-{{ nom }}">{{ libelle }}{% if requis %} <span class="requis" title="Obligatoire">*</span>{% endif %}</span>
+  <div class="cases-en-ligne" role="group" aria-labelledby="libelle-{{ nom }}"{{ aria|xmlattr }}>
+    {%- for valeur_option, libelle_option in options %}
+    <label><input type="checkbox" name="{{ nom }}" value="{{ valeur_option }}"{% if valeur_option|string in choisis %} checked{% endif %}> {{ libelle_option }}</label>
+    {%- endfor %}
+  </div>
   {%- elif type == "multiple" %}
   {%- set choisis = (valeur or [])|map("string")|list %}
   <span class="libelle" id="libelle-{{ nom }}">{{ libelle }}{% if requis %} <span class="requis" title="Obligatoire">*</span>{% endif %}</span>

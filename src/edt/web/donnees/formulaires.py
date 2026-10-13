@@ -55,10 +55,16 @@ class ChampAffiche:
 
 @dataclass(frozen=True)
 class RubriqueChamps:
-    """Champs d'une même rubrique du formulaire (`titre` vide : sans titre)."""
+    """Champs d'une même rubrique du formulaire (`titre` vide : sans titre).
+
+    `erreur` : message pour la rubrique entière, affiché sous son titre ;
+    `conteneur` : attributs du `fieldset` (par exemple `data-visible-si`).
+    """
 
     titre: str
     champs: tuple[ChampAffiche, ...]
+    erreur: str | None = None
+    conteneur: dict[str, Any] = field(default_factory=dict)
 
 
 def saisies_formulaire(entite: Entite, formulaire: FormData) -> dict[str, Any]:

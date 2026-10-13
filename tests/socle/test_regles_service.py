@@ -368,3 +368,179 @@ def test_cycle_de_vie_sans_journal_perdu(jeu_minimal, session, caplog):
     assert f"Règle {detail.code} supprimée" in caplog.text
     assert detail.regle.date_debut is None and detail.regle.periode_texte() == "toute l'année"
     assert dt.date.today()  # le brouillon sans année prend l'année en cours (2026-2027 ici)
+
+
+# --------------------------------------------------------------------------- #
+# Corrections de la revue
+# --------------------------------------------------------------------------- #
+
+
+def test_un_reglage_de_personne_date_est_refuse(jeu_minimal, session):
+    brouillon = {
+        "type": "PAUSE_DEJEUNER",
+        "portee": {"nature": "groupe", "cible": "A1-G2"},
+        "parametres": {"mode": "fixe", "debut": "12:00", "fin": "13:00"},
+        "periode": {"date_debut": "2026-09-07", "date_fin": "2026-09-13"},
+    }
+    validation = service.valider(session, brouillon)
+    assert not validation.valide and "sans dates" in validation.erreurs["periode"]
+    with pytest.raises(ErreurSaisie) as capture:
+        service.creer(session, {**brouillon, "type": "PAUSE_MINIMALE", "parametres": {"duree": 30}})
+    assert set(capture.value.erreurs) == {"periode"}
+    # Au semestre : une seule valeur par personne et par semestre.
+    assert service.valider(session, {**brouillon, "periode": {"semestre": "S2"}}).valide
+    detail = service.creer(session, {**brouillon, "periode": {"semestre": "S2"}})
+    toute_l_annee = service.valider(session, {**brouillon, "periode": {}})
+    assert not toute_l_annee.valide and detail.code in toute_l_annee.erreurs["portee"]
+    assert service.valider(session, {**brouillon, "periode": {"semestre": "S1"}}).valide
+
+
+def test_une_regle_sur_un_besoin_concerne_le_semestre_du_besoin(jeu_minimal, session):
+    annee, s1 = jeu_minimal.annee_scolaire_id, jeu_minimal.semestre_id
+    s2 = session.scalar(select(m.Semestre.id).where(m.Semestre.code == "S2"))
+    detail = service.creer(
+        session,
+        {
+            "type": "PLAGE_HORAIRE",
+            "portee": {"nature": "besoin", "cible": "IM.1101 / CM / A1"},
+            "parametres": {"fin": "12:45"},
+        },
+    )
+    assert detail.regle.semestre_code == "S1"  # période déduite du besoin
+    assert detail.vers_dict()["periode"] == {"semestre": "S1"}
+    assert detail.code in {r.code for r in charger_instantane(session, s1).regles}
+    assert detail.code not in {
+        r.code for r in charger_instantane(session, s2).regles
+    }  # hors périmètre
+    explication = service.expliquer(session, annee, detail.code)
+    assert [e.semestre_code for e in explication.effets] == ["S1"]
+    # Un autre semestre explicite est contradictoire ; des dates restent possibles.
+    brouillon = {
+        "type": "CRENEAUX_INTERDITS",
+        "portee": {"nature": "besoin", "cible": detail.regle.portee.cible_id},
+        "parametres": {"jours": ["lundi"]},
+    }
+    validation = service.valider(session, {**brouillon, "periode": {"semestre": "S2"}})
+    assert not validation.valide and "S1" in validation.erreurs["periode.semestre"]
+    datee = service.creer(
+        session, {**brouillon, "periode": {"date_debut": "2026-10-01", "date_fin": "2026-10-20"}}
+    )
+    assert datee.regle.semestre_code is None and datee.regle.date_fin == dt.date(2026, 10, 20)
+    assert datee.code not in {r.code for r in charger_instantane(session, s2).regles}
+    assert [e.semestre_code for e in service.expliquer(session, annee, datee.code).effets] == ["S1"]
+    assert {r.code for r in service.lister(session, annee)} >= {detail.code, datee.code}
+
+
+def test_cible_besoin_ambigue_departagee_par_le_semestre_et_sans_casse(jeu_minimal, session):
+    brouillon = {
+        "type": "CRENEAUX_INTERDITS",
+        "portee": {"nature": "besoin", "cible": "im.1101 / cm / a1"},
+        "parametres": {"jours": ["lundi"]},
+    }
+    validation = service.valider(session, brouillon)
+    assert validation.valide, validation.erreurs  # sans casse
+    modele = session.get(m.Besoin, validation.regle.portee.cible_id)
+    s2 = session.scalar(select(m.Semestre).where(m.Semestre.code == "S2"))
+    session.add(
+        m.Besoin(
+            semestre_id=s2.id,
+            matiere_id=modele.matiere_id,
+            type_seance_id=modele.type_seance_id,
+            groupes=list(modele.groupes),
+            enseignants=list(modele.enseignants),
+            libelle="CM Mathématiques - A1 (S2)",
+        )
+    )
+    session.flush()
+    validation = service.valider(session, brouillon)
+    assert not validation.valide and "ambigu" in validation.erreurs["portee.cible"]
+    assert "inconnu" not in validation.erreurs["portee.cible"]
+    pour_s2 = service.valider(session, {**brouillon, "periode": {"semestre": "S2"}})
+    assert pour_s2.valide and pour_s2.regle.semestre_code == "S2"
+    assert pour_s2.regle.portee.cible_id != modele.id
+    inconnu = service.valider(
+        session, {**brouillon, "portee": {"nature": "besoin", "cible": "IM.1101 / TP / A1"}}
+    )
+    assert "inconnu" in inconnu.erreurs["portee.cible"]
+
+
+def test_matiere_d_une_autre_annee_refusee_par_identifiant(jeu_minimal, session):
+    suivante = assurer_annee_scolaire(session, 2027)
+    promo = m.Groupe(
+        annee_scolaire_id=suivante.id, code="A1", libelle="1re année", nature="promotion"
+    )
+    session.add(promo)
+    session.flush()
+    matiere = m.Matiere(code="IM.2101", libelle="Analyse", promotion_id=promo.id)
+    session.add(matiere)
+    session.flush()
+    brouillon = {
+        "type": "SALLES",
+        "portee": {"nature": "matiere", "cible": matiere.id},
+        "parametres": {"mode": "interdire", "salles": ["N016"]},
+    }
+    validation = service.valider(session, {**brouillon, "annee": "2026-2027"})
+    assert not validation.valide and "autre année" in validation.erreurs["portee.cible"]
+    assert service.valider(session, {**brouillon, "annee": "2027-2028"}).valide
+
+
+def test_activer_revalide_la_regle(jeu_minimal, session):
+    annee = jeu_minimal.annee_scolaire_id
+    proposee = service.creer(
+        session,
+        {
+            "type": "SALLES",
+            "portee": {"nature": "enseignant", "cible": "ENS004"},
+            "parametres": {"mode": "interdire", "salles": ["L012"]},
+        },
+        etat="proposee",
+    )
+    salle = session.scalar(select(m.Salle).where(m.Salle.code == "L012"))
+    salle.code = "L013"
+    session.flush()
+    with pytest.raises(ErreurSaisie) as capture:
+        service.activer(session, annee, proposee.code)
+    assert "parametres.salles" in capture.value.erreurs
+    assert service.lire(session, annee, proposee.code).etat is EtatRegle.PROPOSEE  # inchangée
+    salle.code = "L012"
+    session.flush()
+    active = service.activer(session, annee, proposee.code)
+    assert active.etat is EtatRegle.ACTIVE and active.phrase == proposee.phrase
+
+
+def test_brouillon_mal_forme_renvoie_des_erreurs_par_champ(jeu_minimal, session):
+    validation = service.valider(
+        session,
+        {
+            "type": "SANS_TROU",
+            "portee": 42,
+            "parametres": "maximum = 2",
+            "periode": "S1",
+            "origine": "chat",
+        },
+    )
+    assert not validation.valide
+    assert set(validation.erreurs) >= {"portee", "parametres", "periode", "origine"}
+    assert validation.erreurs["origine"].startswith("Origine inconnue")
+    with pytest.raises(ErreurSaisie) as capture:
+        service.modifier(session, jeu_minimal.annee_scolaire_id, "R001", {"origine": "x"})
+    assert set(capture.value.erreurs) == {"origine"}
+
+
+def test_proposer_ne_double_pas_une_regle_de_base_confirmee_ni_reimportee(jeu_minimal, session):
+    annee = jeu_minimal.annee_scolaire_id
+    # Réimport : les règles de base reviennent en origine « import » ; rien n'est reproposé.
+    for code in ("R003", "R004"):
+        session.scalar(select(m.Regle).where(m.Regle.code == code)).origine = OrigineRegle.IMPORT
+    session.flush()
+    proposition = service.proposer_pour_annee(session, annee)
+    assert (len(proposition.creees), proposition.deja_presentes) == (0, 2)
+    # Année suivante : la règle de base confirmée en 2026-2027 n'est proposée qu'une fois.
+    service.activer(session, annee, "R003")
+    suivante = assurer_annee_scolaire(session, 2027)
+    proposition = service.proposer_pour_annee(session, suivante.id)
+    phrases = [r.phrase for r in proposition.creees]
+    assert phrases.count("Dans chaque matière, le CM précède les TD de la semaine.") == 1
+    assert [r.regle.origine for r in proposition.creees] == [OrigineRegle.BASE, OrigineRegle.BASE]
+    assert proposition.deja_presentes == 1  # la reprise de R003, déjà là comme règle de base
+    assert len(proposition.a_revoir) == 2  # R001 et R002 : pas de groupe A1 ni A1-G1 en 2027-2028

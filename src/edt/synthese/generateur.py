@@ -20,15 +20,21 @@ décidées avant et respectées par le témoin ; les autres (indisponibilités
 datées, salles réservées aux partiels, maxima horaires) sont posées après,
 là où le témoin laisse la place.
 
+Règles personnalisées : le jeu reçoit quelques règles réalistes et les
+règles de base, proposées (`edt.synthese.regles`). Les règles actives que
+le vérificateur sait vérifier sont posées dans le témoin ; les autres sont
+choisies pour être respectées par construction.
+
 Étapes (chacune journalisée) : lieux, groupes et étudiants, calendrier,
 indisponibilités des groupes, matières et besoins en projet, vivier
-d'enseignants, témoin semestre par semestre, enseignants, besoins,
-contrôle du dépliage, indisponibilités posées après coup, version de
-référence (en option), rapport.
+d'enseignants, règles prévues, témoin semestre par semestre, enseignants,
+besoins, règles écrites, contrôle du dépliage, indisponibilités posées
+après coup, version de référence (en option), rapport.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import logging
 import math
@@ -63,14 +69,28 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
 from edt.services.conflits_groupes import calculer_conflits_groupes
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
+from edt.services.regles import lister as lister_regles
 from edt.synthese import catalogue as cat
 from edt.synthese.configuration import ConfigurationJeu, configuration_nommee
 from edt.synthese.rapport import (
     BesoinEcarte,
     PlaceTemoin,
     RapportJeu,
+    RegleJeu,
     SeancePlacee,
     calculer_charge,
+)
+from edt.synthese.regles import (
+    ExigencesRegles,
+    ReglePrevue,
+    Reperes,
+    ecrire_regles,
+    normaliser,
+    plages_interdites_enseignant,
+    prevoir_regles,
+    regle_horaire_enseignant,
+    regle_presence_vacataire,
+    regles_de_base,
 )
 from edt.synthese.temoin import (
     CreneauGrille,
@@ -248,6 +268,9 @@ class _Generateur:
         self.specs: list[_Spec] = []
         self.ecartes: list[BesoinEcarte] = []
         self.resultats: dict[int, Resultat] = {}
+        self.regles: list[ReglePrevue] = []
+        self.regles_ecrites: list[tuple[m.Regle, ReglePrevue]] = []
+        self.matieres_par_libelle: dict[tuple[int, str, str], m.Matiere] = {}
 
     # -- orchestration ---------------------------------------------------------
 
@@ -263,10 +286,12 @@ class _Generateur:
         self._creer_indisponibilites_groupes()
         self._preparer_besoins()
         self._constituer_vivier()
+        self._prevoir_regles()
         for code in self.config.semestres:
             self._placer_semestre(code)
         self._creer_enseignants()
         self._creer_besoins()
+        self._ecrire_regles()
         self._controler_depliage()
         self._poser_indisponibilites_apres_temoin()
         versions = self._enregistrer_references() if enregistrer_reference else {}
@@ -644,6 +669,17 @@ class _Generateur:
             if parent is not None:
                 enfants.setdefault(parent, []).append(g)
         self.enfants = enfants
+        self.lignees: dict[int, tuple[int, ...]] = {}
+        for g in self.parents:
+            lignee, courant = [g], self.parents[g]
+            while courant is not None:
+                lignee.append(courant)
+                courant = self.parents[courant]
+            self.lignees[g] = tuple(lignee)
+        self.feuilles: dict[int, tuple[int, ...]] = {
+            g: tuple(sorted(d for d in self._descendants(g) if d not in enfants))
+            for g in self.parents
+        }
         journal.info("Conflits entre groupes calculés : %d paires", len(conflits))
 
     def _descendants(self, racine: int) -> frozenset[int]:
@@ -758,11 +794,16 @@ class _Generateur:
             )
         )
 
+    @property
+    def jours_travailles(self) -> tuple[int, ...]:
+        """Jours travaillés de l'établissement (paramètre `jours_travailles`), triés."""
+        return tuple(sorted(self.parametres.jours_travailles))
+
     def _semaine_fermee(self, semaine: Semaine) -> bool:
-        """Vrai si une fermeture globale couvre les cinq jours ouvrés de la semaine."""
+        """Vrai si une fermeture globale couvre tous les jours travaillés de la semaine."""
         return all(
             any(f.groupes is None and f.concerne(semaine.date_du(j), ()) for f in self.fermetures)
-            for j in range(5)
+            for j in self.jours_travailles
         )
 
     def _date_ouverte(self, jour: dt.date, groupes: Sequence[int]) -> bool:
@@ -812,6 +853,7 @@ class _Generateur:
             promotion=promotion.groupe,
         )
         self.matieres.append(matiere)
+        self.matieres_par_libelle[(promotion.annee, f"S{s}", libelle)] = matiere
         return matiere
 
     def _ajouter(self, **champs) -> _Spec:
@@ -944,7 +986,10 @@ class _Generateur:
             )
             if spec.mode is ModeVolume.TOTAL:
                 ouvertes = semaines_ouvertes(
-                    self._domaine(spec, spec.cle), semaines, self.fermetures
+                    self._domaine(spec, spec.cle),
+                    semaines,
+                    self.fermetures,
+                    self.parametres.jours_travailles,
                 )
                 spec.nombre = min(spec.nombre, len(ouvertes) * spec.max_par_semaine)
                 if spec.nombre == 0:
@@ -955,21 +1000,21 @@ class _Generateur:
     def _priorite(ens: cat.Enseignement, groupes: tuple, barrette: str | None) -> int:
         """Ordre de placement : les besoins les plus contraints d'abord.
 
-        Imposés (0), barrettes (1), séances de promotion (2), séances longues
-        de classe (3), autres séances de classe (4), séances longues de
-        demi-groupe (5), TP (6), séances des matières courtes (7) ; les
-        épreuves ponctuelles (8) et les événements à date libre (9) viennent
-        en dernier. Les TP passent après les classes : deux demi-groupes
-        peuvent être en TP en même temps, et le samedi matin leur reste ouvert.
+        Imposés (0), barrettes (1), séances de promotion (2), séances de 4 h
+        (3 : il leur faut une demi-journée entière), autres séances de classe
+        (4), TP (6), séances des matières courtes (7) ; les épreuves
+        ponctuelles (8) et les événements à date libre (9) viennent en
+        dernier. Les TP passent après les classes : deux demi-groupes peuvent
+        être en TP en même temps, et le samedi matin leur reste parfois ouvert.
         """
         if barrette:
             return 1
         if ens.cible in ("promotion", "option") or len(groupes) > 1:
             return 2
-        if ens.cible == "classe" and not ens.total:
-            return 3 if ens.duree >= 4 * H else 4
         if ens.duree >= 4 * H:
-            return 5
+            return 3
+        if ens.cible == "classe" and not ens.total:
+            return 4
         if ens.type_seance == "TP" and not ens.total:
             return 6
         return 7
@@ -1006,7 +1051,7 @@ class _Generateur:
         groupes_promo = [promotion.groupe.id]
         creneaux = [
             (semaine.date_du(j), debut, duree)
-            for j in range(5)
+            for j in self.jours_travailles
             if self._date_ouverte(semaine.date_du(j), groupes_promo)
             for debut, duree in cat.EPREUVES_PARTIEL
         ]
@@ -1084,7 +1129,7 @@ class _Generateur:
         dates = tuple(
             semaines[n - 1].date_du(j)
             for n in _semaines_bornees(SEMAINES_CONFERENCE, len(semaines))
-            for j in range(5)
+            for j in self.jours_travailles
             if self._date_ouverte(semaines[n - 1].date_du(j), [promotion.groupe.id])
         )
         if dates:
@@ -1241,6 +1286,14 @@ class _Generateur:
         types, equipements = self._exigences(spec)
         effectif = spec.effectif
         campus_id = self.campus[spec.campus_impose].id if spec.campus_impose else None
+        type_id = self.types_seance[spec.type_seance].id
+        exigences = self.exigences
+        campus_regles, campus_refuses = exigences.campus(
+            groupes, type_id, spec.matiere.id, {c: x.id for c, x in self.campus.items()}
+        )
+        salles_regles, salles_refusees = exigences.salles(
+            groupes, type_id, spec.matiere.id, {x.code: x.id for x in self.salles}
+        )
         ordre = cat.ORDRE_SITES.get(spec.promotion.site, self.config.sites)
         rang_site = {self.campus[c].id: i for i, c in enumerate(ordre) if c in self.campus}
         salles = sorted(
@@ -1253,6 +1306,10 @@ class _Generateur:
                 and (x.accessible or not accessible)
                 and (campus_id is None or x.campus_id == campus_id)
                 and (spec.salle_imposee is None or x.id == spec.salle_imposee.id)
+                and (campus_regles is None or x.campus_id in campus_regles)
+                and x.campus_id not in campus_refuses
+                and (salles_regles is None or x.id in salles_regles)
+                and x.id not in salles_refusees
             ),
             key=lambda x: (
                 rang_site.get(x.campus_id, 9),
@@ -1270,7 +1327,12 @@ class _Generateur:
             )
             seances: tuple[tuple[int, int], ...] = ((1, 0),)
         else:
-            depliage = deplier([self._domaine(spec, spec.cle)], semaines, self.fermetures)
+            depliage = deplier(
+                [self._domaine(spec, spec.cle)],
+                semaines,
+                self.fermetures,
+                self.parametres.jours_travailles,
+            )
             if depliage.problemes:
                 return "; ".join(p.message for p in depliage.problemes)
             seances = tuple((s.rang, sum(1 << n for n in s.semaines)) for s in depliage.seances)
@@ -1285,7 +1347,15 @@ class _Generateur:
             salles=tuple(salles),
             duree=spec.duree,
             seances=seances,
-            samedi=self.types_seance[spec.type_seance].samedi_autorise,
+            jours=exigences.jours(
+                groupes,
+                type_id,
+                spec.matiere.id,
+                self.types_seance[spec.type_seance].samedi_autorise,
+            ),
+            interdits=exigences.interdits(groupes, type_id, spec.matiere.id),
+            pause=exigences.pause(groupes),
+            personnes=exigences.feuilles_de(groupes),
             jour_impose=jour_impose,
             debut_impose=spec.debut_impose,
             options=options,
@@ -1318,9 +1388,53 @@ class _Generateur:
         }
         return tuple(sorted(freres - set(groupes)))
 
+    def _prevoir_regles(self) -> None:
+        """Choisit les règles du jeu ; celles d'un enseignant sont posées dans le vivier."""
+        reperes = Reperes(
+            groupes={g.code: g for g in self.groupes},
+            matieres=self.matieres_par_libelle,
+            types_seance=self.types_seance,
+            campus=self.campus,
+            salles=self.salles,
+            site_promotion={p.annee: p.site for p in self.promotions},
+            semestres=self.config.semestres,
+        )
+        self.regles = prevoir_regles(reperes)
+        maths = [
+            e
+            for e in self.vivier.de("mathematiques")
+            if e.statut is StatutEnseignant.PERMANENT and not e.fictif
+        ]
+        if maths:
+            regle = regle_horaire_enseignant(maths[0], self.parametres.fermeture_min)
+            normaliser([regle], self.parametres)
+            enseignant = dataclasses.replace(
+                maths[0], interdits=plages_interdites_enseignant(regle)
+            )
+            self.vivier.remplacer(enseignant)
+            regle.cible = enseignant
+            self.regles.append(regle)
+        normaliser(self.regles, self.parametres)
+        journal.info(
+            "Règles prévues : %d (%d actives)",
+            len(self.regles),
+            sum(1 for r in self.regles if r.active),
+        )
+
     def _placer_semestre(self, code: str) -> None:
         specs = [spec for spec in self.specs if spec.semestre == code]
-        temoin = Temoin(self.grille, self.trajets, self.vivier, self.rng, self.indispos_groupes)
+        self.exigences = ExigencesRegles(
+            self.regles, code, self.parametres, self.lignees, self.feuilles, self.lies
+        )
+        temoin = Temoin(
+            self.grille,
+            self.trajets,
+            self.vivier,
+            self.rng,
+            self.indispos_groupes,
+            dejeuners=self.exigences.dejeuners(),
+            maxima_jour=self.exigences.maxima(),
+        )
         demandes: dict[int, Demande] = {}
         for spec in specs:
             demande = self._demande(spec)
@@ -1408,6 +1522,35 @@ class _Generateur:
             len(self.enseignants_orm),
             self.vivier.nb_recrutes,
             len(self.vivier.enseignants) - len(self.enseignants_orm),
+        )
+
+    def _ecrire_regles(self) -> None:
+        """Écrit les règles prévues, la présence de deux vacataires, puis les règles de base."""
+        par_cle = {e.cle: e for e in self.vivier.enseignants}
+        presences = []
+        for cle in sorted(c for c in self.enseignants_orm if c >= 0):
+            source = par_cle[cle]
+            if source.statut is not StatutEnseignant.VACATAIRE:
+                continue
+            absents = {j for j, d, f in source.indispos if (d, f) == (0, 24 * H)}
+            if 5 not in absents:
+                continue  # présent le samedi : sa présence ne se lit pas sur cinq jours
+            presents = 5 - len(absents & set(range(5)))
+            if presents in (1, 2):
+                presences.append((-presents, cle, presents))
+        nouvelles = [
+            regle_presence_vacataire(par_cle[cle], presents)
+            for _, cle, presents in sorted(presences)[:2]
+        ]
+        base = regles_de_base()
+        normaliser(nouvelles + base, self.parametres)
+        self.regles_ecrites = ecrire_regles(
+            self.session,
+            self.annee,
+            [*self.regles, *nouvelles, *base],
+            self.semestres,
+            self.enseignants_orm,
+            self.parametres,
         )
 
     def _poser_maxima(self) -> None:
@@ -1502,6 +1645,7 @@ class _Generateur:
                 [self._domaine(spec, self.besoins_orm[spec.cle].id) for spec in specs],
                 self.semaines[code],
                 self.fermetures,
+                self.parametres.jours_travailles,
             )
             obtenu = {s.id: sum(1 << n for n in s.semaines) for s in depliage.seances}
             if depliage.problemes or obtenu != attendu:
@@ -1777,6 +1921,19 @@ class _Generateur:
         for table in (m.inscription, m.groupe_chevauchement):
             compteurs[table.name] = s.scalar(select(func.count()).select_from(table))
         crees = [spec for spec in self.specs if spec.cle in self.besoins_orm]
+        phrases = {d.code: d.phrase for d in lister_regles(s, self.annee.id)}
+        regles = tuple(
+            RegleJeu(
+                code=ligne.code,
+                type=ligne.type.value,
+                niveau=ligne.niveau.value,
+                etat=ligne.etat.value,
+                origine=ligne.origine.value,
+                phrase=phrases[ligne.code],
+                temoin=prevue.respect,
+            )
+            for ligne, prevue in self.regles_ecrites
+        )
         suivis = {d.id: d.code for p in self.promotions for c in p.classes for d in c.demi_groupes}
         salles = {x.id: (x.code, x.type_salle.code) for x in self.salles}
         charges = tuple(
@@ -1808,6 +1965,7 @@ class _Generateur:
             anomalies_temoin=anomalies,
             indicateurs=indicateurs,
             duree_s=round(duree, 3),
+            regles=regles,
         )
 
 

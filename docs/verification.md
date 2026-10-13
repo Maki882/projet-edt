@@ -420,6 +420,111 @@ pour une version produite avant les niveaux sans contrainte désactivée : les
 contraintes importantes par défaut (`PAUSE`, `DEJEUNER`, `EQUIPEMENT`,
 `MAX_ENSEIGNANT`) y sont désormais des avertissements, plus des erreurs.
 
+## Règles personnalisées (code `REGLE`)
+
+Conception : `docs/regles-personnalisees.md` (§ 2.2 et § 4.4). Les règles
+actives de l'année (`Instantane.regles`, déjà résolues) sont vérifiées par
+un vérificateur par type, déclaré dans le registre du domaine
+(`@enregistrer("verificateur", TypeRegle.X)`, vue `VERIFICATEURS`) :
+`edt.verification.regles_personnalisees` pour les types de sorte séance et
+les réglages de déjeuner et de pause, `edt.verification.regles_emploi` pour
+les autres types d'emploi du temps et les relations. Les quatorze types sont
+couverts (`types_non_couverts("verificateur")` est vide). Garde-fou : une
+règle d'un type ajouté sans vérificateur donnerait un **avertissement** « pas
+encore vérifié automatiquement » (jamais de silence, jamais bloquant).
+
+**Quelles règles, à quel niveau.** Les règles sont vérifiées si `REGLE` l'est
+(clé de `niveaux`, ou code de `contraintes_actives`, ou contraintes par
+défaut). `niveaux_regles` (`dict[int, Niveau]`, argument nommé de `verifier`,
+`verifier_occurrences`, `calculer_indicateurs` et des services) dit
+lesquelles et à quel niveau ; sans lui, chaque règle à son niveau. **Une règle
+absente est ignorée, comme si elle n'existait pas** : pour une règle de
+réglage (jours, déjeuner, pause), le standard reprend sa place pour sa portée
+(le vérificateur travaille alors sur un instantané sans elle). La gravité
+d'une anomalie `REGLE` suit **toujours** le niveau de sa règle (nécessaire :
+erreur, important : avertissement, facultatif : information), avec le même
+plafond et le même début de message que les contraintes du catalogue ; ses
+champs `regle_id`, `regle_code` et `regle_phrase` nomment la règle.
+
+**Message** : « Règle R007 (phrase de la règle) : l'écart. » Unité d'une
+anomalie (une par entorse, au sens du § 2.2 de la conception) : une par
+séance (types de sorte séance), une par personne et par jour, une par
+personne et par semaine, ou une par paire, selon le type (tableau
+ci-dessous). Des personnes dans la même situation (mêmes séances, mêmes
+semaines, même constat) sont réunies en une anomalie ; le message nomme alors
+un ascendant dont toutes les feuilles sont concernées (« le groupe A1 »), et
+le champ `groupes` les liste toutes. Une séance imposée (début imposé,
+ponctuelle, verrou resté à sa place) qui s'écarte d'une règle de jours,
+d'horaires ou de déjeuner donne une information.
+
+**Pas de double signalement** : les jours, le déjeuner et la pause de chaque
+séance ou personne sont lus dans `Instantane.reglages`, avec leur source.
+`JOURS`, `DEJEUNER` et `PAUSE` ne relèvent que les entorses au **standard** ;
+quand la valeur vient d'une règle, c'est la règle qui relève l'entorse, à son
+niveau. Les emplois du temps (déjeuner libre, pause, indicateurs) sont ceux de
+`Instantane.emplois` : un groupe feuille suit ses séances et celles de ses
+ascendants, un enseignant non fictif les siennes.
+
+| Type | Entorse vérifiée (unité de l'anomalie) |
+|---|---|
+| `JOURS_TRAVAILLES` | séance placée un jour qu'exclut la règle **retenue** pour elle par la précédence (`ReglesJours.entorses`, campus de la salle compris) |
+| `PLAGE_HORAIRE` | séance qui commence avant `debut` ou finit après `fin`, les jours visés (tous si vide) |
+| `CRENEAUX_INTERDITS` | séance qui recoupe `[debut, fin[` un jour visé |
+| `CAMPUS` | séance sur un campus non imposé (ou interdit) ; séance sans salle : non vérifiée |
+| `SALLES` | séance hors des salles imposées (ou dans une salle interdite) ; sans salle : non vérifiée |
+| `PAUSE_DEJEUNER` | personne dont le déjeuner vient de la règle, un jour sans pause conforme : mode fixe, une séance recoupe la plage ; mode libre, pas `duree` minutes libres d'affilée dans la fenêtre un jour où elle a cours dans la fenêtre |
+| `PAUSE_MINIMALE` | paire de séances d'une personne réglée par la règle, sans chevauchement, séparées de moins de `duree` |
+| `MAX_PAR_JOUR` | jour où une personne a plus de `maximum` minutes de cours (ou séances) ; par personne et par jour, semaines détaillées |
+| `CAMPUS_PAR_JOUR` | jour où une personne a cours sur au moins deux campus (séances avec salle) ; par personne et par jour |
+| `MATIERES_PAR_JOUR` | jour où un groupe a plus de `maximum` matières différentes ; par personne et par jour |
+| `JOURNEES_LIBRES` | semaine où une personne a moins de `nombre` demi-journées (ou journées) libres parmi les candidates : les moments de `parmi`, sinon les jours travaillés de l'établissement (matin et après-midi de chacun) ; par personne et par semaine |
+| `SANS_TROU` | semaine où une personne a plus de `maximum` créneaux de trou (définition de l'indicateur `trous_creneaux`) ; par personne et par semaine |
+| `ORDRE_SEMAINE` | paire d'une même matière, la même semaine, où la séance « après » ne commence pas strictement après la séance « avant » (jour puis heure) ; par paire |
+| `REPARTITION_MATIERE` | même jour : séances d'une matière d'un groupe sur plus d'un jour dans la semaine (par groupe, matière et semaine) ; jours différents : plus d'une séance de la matière le même jour (par jour) |
+
+Définitions communes au solveur : le **matin** va jusqu'au début de la plage
+du déjeuner (`dejeuner_debut_min`), l'**après-midi** commence là, et une
+séance occupe chaque demi-journée qu'elle recoupe ; les **jours travaillés**
+de `JOURNEES_LIBRES` sans `parmi` sont le standard de l'établissement ; un
+moment de `parmi` sans demi-journée (« lundi ») vaut ses deux demi-journées.
+Semaines : sur la semaine type, chaque séance est ramenée aux semaines de la
+règle, puis les semaines sont regroupées par ensemble de séances actives
+ensemble (deux séances aux semaines disjointes ne se gênent pas) ; les
+règles par semaine donnent une anomalie par personne qui détaille les
+semaines en défaut (« 1 libre les semaines 1 à 15 »). Sur les séances
+datées : par date pour les règles par jour, par semaine réelle (lundi au
+dimanche, repère : son lundi) pour les règles par semaine et les relations.
+
+Période : sur la semaine type, une règle vaut pour les semaines actives de la
+séance qu'elle couvre (précisées dans le message) ; sur les séances datées,
+au jour près (`RegleResolue.couvre`, dans une semaine couverte). Les règles
+de sorte séance concernent un besoin entier, ce qui
+couvre aussi une séance datée sans séance hebdomadaire ; une portée campus ne
+vaut que pour les séances placées sur ce campus.
+
+Jours d'une séance datée : ils viennent de `Instantane.reglages.jours_de(séance,
+date)`, qui ne retient que les règles `JOURS_TRAVAILLES` couvrant la date ;
+hors de la période d'une règle, le standard reprend sa place (case « samedi
+autorisé » comprise) et une entorse relève alors de `JOURS`. Les réglages de
+personne (`PAUSE_DEJEUNER`, `PAUSE_MINIMALE`) ne sont pas datables
+(`DefinitionType.periode_datable` faux : toute l'année ou un semestre, une
+règle datée est refusée à la validation) : ils valent tout le semestre et
+leur vérification ne restreint aucune période.
+
+**Niveaux d'une version** (`edt.services.niveaux`) :
+`niveaux_regles_de_version(session, version_id)` prend les règles
+**actuelles** (actives de l'année) et `niveaux_regles_du_calcul` (pur) leur
+donne un niveau d'après `calcul.parametres["regles"]` (liste `{id, code,
+type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
+
+- calcul sans cette copie, ou version de référence : chaque règle à son niveau ;
+- règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
+- règle absente de la copie : à son niveau si elle a été créée ou modifiée
+  (activation comprise) après le début du calcul, sinon ignorée (elle
+  existait et n'a pas été appliquée).
+
+Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
+
 ## Service (`edt.services.verification`)
 
 Fonctions typées, appelées par la commande et par l'interface. Elles lisent

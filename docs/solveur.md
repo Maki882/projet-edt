@@ -224,11 +224,11 @@ semaine commune rend le problème impossible.
 | `SALLE_UNIQUE` | phase 1 (capacité), phase 2 | condition nécessaire par classes de salles, puis « au plus une séance par salle et par instant » |
 | `ENSEIGNANT_UNIQUE` | phase 1 | unités d'enseignant : au plus une séance en cours par instant |
 | `GROUPE_UNIQUE` | phase 1 | unités de groupes et cliques d'unités en conflit |
-| `PAUSE` | phase 1 | chaque séance est allongée de `pause_min` dans les contraintes de personnes |
+| `PAUSE` | phase 1 | les plages des contraintes de personnes sont allongées de la plus petite pause dure en vigueur ; toute pause plus longue (règle `PAUSE_MINIMALE` d'une personne) passe par des couples de choix interdits ou pénalisés, par paire et par source |
 | `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
 | `DEJEUNER` | domaines, phase 1 | mode fixe : débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; mode libre : une position de pause libre par personne et par jour (voir « Pause déjeuner ») ; mode « aucun » : rien |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
-| `JOURS` | domaines | jours avec créneau ; samedi si `samedi_autorise` |
+| `JOURS` | domaines | jours de la grille parmi les jours permis de la séance (`Instantane.reglages` : standard `jours_travailles`, plus le samedi si le type de séance l'autorise, et règles `JOURS_TRAVAILLES` retenues, campus compris) |
 | `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE`, `EQUIPEMENT` | domaines | salles qui ne conviennent pas retirées (salle et campus imposés compris) |
 | `DISPO_ENSEIGNANT`, `DISPO_GROUPE` | domaines | débuts qui recoupent une indisponibilité récurrente retirés (groupes liés compris) |
 | `DISPO_SALLE` | domaines | salle retirée si elle est indisponible à tous les débuts ; sinon elle manque seulement aux choix concernés |
@@ -416,6 +416,115 @@ mode fixe. Sur une grille serrée (créneaux de 12 h et 13 h en plus), le jeu
 grand S1 pose 3 300 littéraux d'entorse et 5 900 littéraux de séance : le
 modèle passe de 489 000 à 754 000 contraintes (voir « Mesures : pause
 déjeuner libre »).
+
+### Règles personnalisées
+
+Les règles personnalisées (`docs/regles-personnalisees.md`, `edt.domaine.regles`)
+arrivent résolues dans l'instantané (`Instantane.regles`), avec les emplois du
+temps des personnes (`Instantane.emplois` : un groupe feuille et les séances
+de sa lignée, un enseignant non fictif et les siennes) et les réglages
+(`Instantane.reglages` : jours permis de chaque séance, pause déjeuner et
+pause minimale de chaque personne, chaque valeur avec sa **source**, une
+règle ou le paramètre global). Le solveur ne lit plus directement
+`Besoin.samedi_autorise`, `plage_dejeuner`, `fenetre_dejeuner` ni `pause_min`.
+
+**Niveaux du calcul.** `OptionsSolveur.niveaux_regles` (identifiant de règle →
+niveau) dit, pour ce calcul, le niveau de chaque règle retenue ; une règle
+active absente du dictionnaire est **ignorée** : traitée comme si elle
+n'existait pas, le standard reprenant sa place pour un réglage (jours,
+déjeuner, pause). `None` (défaut) garde chaque règle active à son propre
+niveau. `edt.solveur.personnalisees.appliquer_niveaux` construit
+l'instantané du calcul (les seules règles retenues, à leur niveau retenu) :
+`Regles`, la préparation, le modèle et la couche datée lisent celui-là. Le
+service copie chaque règle du semestre dans `calcul.parametres["regles"]`
+(code, type, portée, paramètres, phrase et niveau retenu, `null` pour une
+règle ignorée) et enregistre `niveaux_regles` ; le vérificateur contrôle la
+solution aux mêmes niveaux (`SuiviCalcul.regles`, `SuiviCalcul.niveaux_regles`).
+En ligne de commande : `--regle CODE=niveau` et `--sans-regle CODE`
+(`generer`, `pre-verifier`).
+
+**Imputation.** Toute violation est une `Regles.Violation` : le code du
+catalogue (`REGLE` pour une règle) et la règle enfreinte, s'il y en a une.
+Dur ou souple se décide au niveau de la **source** ; une entorse souple coûte
+`POIDS_NIVEAU[niveau de la source]` et compte sous `statistiques["entorses"]`
+(contraintes du catalogue) ou `statistiques["entorses_regles"]` (par code de
+règle). Le message les dit : « 2 entorses à la règle R007 (Le groupe A1 ne
+travaille pas le samedi). ».
+
+**Poseurs** (`edt.solveur.personnalisees` pour les types de sorte « séance »
+et les réglages de personne, `edt.solveur.regles_emploi` pour les types
+d'emploi du temps et de relation ; registre `enregistrer("solveur", type)`,
+`types_non_couverts("solveur")` est vide). Garde-fou : une règle active d'un
+type ajouté sans poseur fait refuser le calcul en la nommant.
+
+| Type | Où | Dur | Souple | Unité d'entorse |
+|---|---|---|---|---|
+| `JOURS_TRAVAILLES` | domaines (préparation) | les jours fermés à la séance sont retirés ; quand une règle vise un campus, jour par jour et campus par campus : fermé partout, le jour est retiré ; fermé sur un campus, les salles de ce campus perdent ces débuts | pénalité sur chaque choix (début, ou début et campus), sans variable | une séance placée un jour que la règle retenue exclut |
+| `PLAGE_HORAIRE`, `CRENEAUX_INTERDITS` | domaines | les débuts qui débordent ou recoupent la plage sont retirés | pénalité par début | une séance qui déborde ou recoupe |
+| `CAMPUS` | domaines | les salles des campus refusés sont retirées | pénalité par choix (début, campus) dans la phase des horaires | une séance sur un campus refusé |
+| `SALLES` | domaines (dur), phase des salles (souple) | les salles refusées sont retirées | coût de la salle dans l'objectif de la phase des salles (`SeancePreparee.entorses_salles`) | une séance dans une salle refusée |
+| `PAUSE_DEJEUNER` | réglage de la personne : domaines (fixe) ou `_pause_dejeuner` (libre) | comme le déjeuner de l'établissement, avec les bornes de la règle | de même, l'entorse imputée à la règle | fixe : une séance qui recoupe la plage ; libre : une personne, un jour, un ensemble de semaines sans pause |
+| `PAUSE_MINIMALE` | réglage de la personne : `_pauses_et_trajets` | couples de choix interdits au-delà de la pause garantie par l'allongement des plages | un littéral par paire de séances et par source | une paire de séances de la personne trop rapprochées |
+| `MAX_PAR_JOUR` | `_regles_personnalisees` | par personne, jour et configuration de semaines : Σ durée (ou nombre) des choix du jour ≤ maximum | un booléen par inégalité relâchée (`_depasse`), un par (personne, jour) | une personne et un jour en défaut |
+| `CAMPUS_PAR_JOUR` | idem | booléens de présence par campus du jour ; « pas deux campus » par paire de campus | Σ présences ≤ 1 relâchée | une personne et un jour sur deux campus |
+| `MATIERES_PAR_JOUR` | idem | booléens de présence par matière du jour ; Σ ≤ maximum | relâchée | un groupe et un jour avec trop de matières |
+| `JOURNEES_LIBRES` | idem | booléens « occupée » par candidate (demi-journée ou journée) ; Σ occupées ≤ candidates − nombre, par configuration | relâchée, un par personne | une personne sans assez de demi-journées (ou journées) libres une semaine au moins |
+| `SANS_TROU` | idem | booléens de trou de l'objectif (`ModeleHoraires.trous`, partagés avec le confort) ; Σ ≤ maximum par configuration | relâchée, un par personne | une personne avec trop de créneaux de trou une semaine au moins |
+| `ORDRE_SEMAINE` | idem | par paire (avant, après) d'une même matière aux semaines communes : début(avant) − début(après) ≤ −1 sur les débuts codés (jour puis heure) | relâchée | une paire dans le mauvais ordre |
+| `REPARTITION_MATIERE` | idem | même jour : Σ jours présents ≤ 1 par (groupe, matière, configuration) ; jours différents : au plus un choix de la matière par jour | relâchée | un couple (groupe, matière, semaines) sur plusieurs jours ; un jour avec plus d'une séance |
+
+Pour ces sept types, `_depasse` pose « constante + Σ coef × choix ≤ maximum »
+en dur, ou la relâche en souple par un booléen d'entorse `e` et une marge
+(`≤ maximum + marge × e`), dont `bilan` recalcule la valeur (nature
+« depasse »). Les semaines suivent la définition du vérificateur : chaque
+séance est ramenée aux semaines de la règle, puis les semaines sont regroupées
+par ensemble de séances actives ensemble (`_configurations`) ; une entorse
+par jour ou par personne réunit les configurations (« une semaine au moins »),
+comme l'anomalie du vérificateur qui détaille les semaines. Définitions
+communes : le matin va jusqu'au début de la plage du déjeuner, une séance
+occupe chaque demi-journée qu'elle recoupe ; les jours travaillés de
+`JOURNEES_LIBRES` sans `parmi` sont le standard, un jour vaut ses deux
+demi-journées ; un créneau de trou est celui de l'indicateur `trous_creneaux` ;
+« après » commence strictement plus tard dans la semaine.
+
+Les domaines d'une séance dépendent de son besoin **et** des règles qui la
+concernent (une règle datée ne vise que les séances dont les semaines
+croisent sa période) : deux séances d'un même besoin aux mêmes règles
+partagent leurs domaines. Un domaine vidé par une règle est une
+impossibilité certaine qui nomme la règle (« aucun horaire possible : ... 4
+par la règle R007 (...) ») ; une infaisabilité qui ne tient qu'à la
+combinaison de plusieurs séances reste prouvée par CP-SAT sans nommer la
+règle.
+
+**Personnes.** Les pauses (déjeuner, minimale) sont celles de chaque
+personne de `Instantane.emplois` : un groupe feuille suit ses séances et
+celles de ses ascendants, un enseignant les siennes. Entre deux séances, la
+pause exigée est celle de chaque personne commune (`Regles.exigences_de_pause`) ;
+deux personnes au même réglage et à la même source n'en font qu'une, et un
+groupe et son enseignant au même standard ne comptent qu'une entorse par
+paire. L'allongement des plages des contraintes d'unicité garantit la plus
+petite pause **dure** en vigueur (`Regles.pause_garantie`) ; le reste passe
+par des couples de choix. Comme pour le vérificateur, deux groupes seulement
+chevauchants (sans personne commune) n'exigent plus de pause entre eux.
+
+**Couche datée.** `instancier` et `replacer` reçoivent `niveaux_regles`
+(ceux de la version : `edt.services.niveaux.niveaux_regles_de_version`) ; le
+replacement juge chaque candidate selon les règles de la séance (jours,
+campus de la salle compris, horaires, campus et salle) et la pause déjeuner
+de chaque personne, en dur (refus) ou en souple (coût) ; les sept types
+d'emploi du temps et de relation sont évalués, salle choisie, par les
+vérificateurs datés sur la semaine réelle de la candidate
+(`_Planning.regles_emploi_enfreintes`), avec leurs définitions ; une règle
+à période datée ne compte que les jours qu'elle couvre
+(`RegleResolue.couvre`). Les règles de jours sont résolues à la date de chaque candidate
+(`Reglages.jours_de(seance_id, date)`) : hors de la période d'une ouverture
+datée, le standard reprend sa place. Les réglages de personne (déjeuner,
+pause) ne sont pas datables (contrat) : rien à filtrer.
+
+**Écart avec le vérificateur.** Une entorse par personne : deux personnes au
+même emploi du temps (deux demi-groupes sans séance propre) comptent deux
+entorses là où le vérificateur réunit les personnes dans la même situation en
+une seule anomalie (`entorses_par_regle` compte les anomalies).
 
 ## Objectif (mode optimisé)
 
@@ -733,8 +842,13 @@ qui respectent toutes les contraintes actives, date par date, face aux
 occurrences en place : calendrier, grille, indisponibilités récurrentes et
 datées, unicité, pause, trajets, pause déjeuner (plage fixe ou pause libre
 de chaque groupe et enseignant ce jour-là), maxima par jour et par semaine
-réelle, salle compatible et libre. Le jour et l'heure imposés par le besoin
-sont gardés ; une séance ponctuelle ne change pas de date.
+réelle, salle compatible et libre, règles personnalisées (jours, horaires,
+campus et salles de la séance ; règles d'emploi du temps et de relation :
+la candidate, salle choisie, est soumise avec les occurrences en place de
+la même semaine réelle aux vérificateurs datés de `edt.verification`, une
+anomalie qui la cite valant refus en dur ou coût en souple ; le choix de la
+salle tient compte de `CAMPUS_PAR_JOUR`). Le jour et l'heure imposés par le
+besoin sont gardés ; une séance ponctuelle ne change pas de date.
 
 `OptionsReplacement` : contraintes désactivées, fenêtre de dates
 (`date_debut`, `date_fin`), coût d'éloignement (`cout_semaine` = 100 par
@@ -1209,6 +1323,40 @@ Lecture :
   2 621 988 contraintes, 29 s de construction et aucune solution en 120 s.
   Le partage par séance (`seance_sur`) divise ces contraintes par 3,5.
 
+### Règles personnalisées
+
+Jeux fictifs `moyen` S1 (111 séances, 11 règles actives) et `grand` S1 (602
+séances, 13 règles actives, des quatorze types : jours, horaires, créneaux
+interdits, campus, salles, déjeuner, pause, campus par jour, maximum par
+jour, journées libres, répartition), réglages par défaut (sans « optimiser »,
+fils choisis par le moteur, niveaux par défaut), temps limite 120 s, graine 1,
+un processus neuf par mesure, poste de développement au calme. « Sans » :
+toutes les règles ignorées (`niveaux_regles={}`) ; « toutes » : chaque règle
+active à son niveau. Le vérificateur, aux mêmes niveaux, ne relève aucune
+erreur ni aucune entorse à une règle sur les quatre solutions.
+
+| Jeu | Règles | Variables / contraintes | Construction | 1re solution (entorses au départ) | Durée, arrêt | Entorses finales | Objectif, trous |
+|---|---|---|---|---|---|---|---|
+| moyen S1 | sans | 5 562 / 44 628 | 0,21 s | 1,8 s | 1,8 s, première solution | 0 | 7 513, 458 |
+| moyen S1 | toutes (11) | 2 861 / 7 274 | 0,09 s | 0,5 s | 0,5 s, première solution | 0 | 4 407, 355 |
+| grand S1 | sans | 37 444 / 369 039 | 1,6 s | 17,3 s (MAX_ENSEIGNANT 2) | 21,6 s, optimum prouvé | 0 | 43 924, 2 489 |
+| grand S1 | toutes (13) | 33 143 / 305 949 | 1,4 s | 16,2 s (R010 `MAX_PAR_JOUR` 2) | 20,2 s, optimum prouvé | 0 | 26 384, 1 327 |
+
+Lecture : les types de sorte « séance » ne coûtent rien et réduisent même le
+modèle (les règles `CAMPUS` et `PLAGE_HORAIRE` nécessaires retirent des choix :
+sur le jeu moyen, un seul campus reste en jeu et les couples de trajet
+disparaissent) ; les réglages par personne et les règles d'emploi du temps
+(`PAUSE_DEJEUNER` libre d'une classe, `PAUSE_MINIMALE`, `CAMPUS_PAR_JOUR`
+d'une promotion, `MAX_PAR_JOUR`, `JOURNEES_LIBRES` de deux vacataires,
+`REPARTITION_MATIERE`) ajoutent quelques centaines de variables (sur le jeu
+grand : 33 143 variables avec toutes les règles contre 32 946 avec les seuls
+types de sorte séance et de réglage). La première solution, trouvée sans
+objectif, peut enfreindre une règle souple (deux jours au-delà du maximum de
+la promotion A5) ; l'amélioration la retire en quelques secondes. Le budget
+« première solution du jeu grand en moins de 45 s » est tenu avec toutes les
+règles (16 s). Les trous et l'objectif ne sont pas comparables entre les
+lignes (sans « optimiser », ils ne sont pas minimisés).
+
 ### Couche datée
 
 Instanciation puis replacement de la solution du mode faisable (les nombres
@@ -1382,6 +1530,18 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 - **Semaines modifiées par un replacement.** Une séance déplacée dans une
   semaine voisine s'ajoute au volume de cette semaine ; `max_par_semaine`
   d'un besoin en mode « total » n'est pas recontrôlé à cet endroit.
+- **Replacement et règles d'emploi du temps.** La salle d'une candidate est
+  choisie avant l'évaluation des règles d'emploi du temps (sauf
+  `CAMPUS_PAR_JOUR`, vue au choix de la salle) : une place refusée par une
+  règle nécessaire l'est pour cette salle, sans essayer les autres salles de
+  la même heure. Chaque candidate coûte une vérification datée des
+  occurrences de la semaine qui partagent une personne avec elle, seulement
+  quand une règle de ces types concerne la séance.
+- **Règles personnalisées et pré-vérifications.** Les bornes de charge des
+  pré-vérifications ne retirent pas le temps fermé par une règle d'horaires
+  ou de jours : une impossibilité qui tient à plusieurs séances (quatre
+  séances pour trois créneaux après 10 h) est prouvée par CP-SAT, sans
+  nommer la règle.
 - **Pause déjeuner libre et groupes qui se chevauchent.** Deux groupes
   déclarés chevauchants (ou avec un étudiant commun) comptent chacun les
   séances de l'autre : un étudiant qui n'est que dans l'un des deux peut

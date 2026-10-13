@@ -50,7 +50,17 @@ from edt.domaine.instantane import (
     Trajet,
 )
 from edt.domaine.parametres import Parametres
+from edt.domaine.regles import (
+    EtatRegle,
+    NaturePortee,
+    Portee,
+    Regle,
+    TypeRegle,
+    resoudre_regle,
+    valider_parametres,
+)
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
+from edt.solveur.personnalisees import POSEURS
 from edt.verification import verifier, verifier_occurrences
 
 H = 60
@@ -65,6 +75,9 @@ C1, C2, C3, C4 = (creneau[0] for creneau in CRENEAUX_JOUR)
 """Débuts des quatre créneaux standard : 8 h 30, 10 h 45, 13 h 45 et 16 h."""
 
 RENTREE = dt.date(2026, 9, 7)
+
+TYPES_SEANCE = {"TD": 1, "CM": 2, "TP": 3}
+"""Types de séance des besoins fabriqués : code → identifiant."""
 """Un lundi : premier jour du semestre des instantanés fabriqués."""
 
 
@@ -100,6 +113,7 @@ class Fabrique:
         self._besoins: list[Besoin] = []
         self._verrous: dict[str, Placement] = {}
         self._indices: dict[str, Placement] = {}
+        self._regles: list[Regle] = []
 
     # -- référentiels -----------------------------------------------------------
 
@@ -248,9 +262,14 @@ class Fabrique:
         nombre: int = 1,
         libelle: str | None = None,
         samedi_autorise: bool = False,
+        type_seance: str = "TD",
         **champs,
     ) -> int:
         """Ajoute un besoin ; `champs` passe tels quels les autres champs de `Besoin`.
+
+        `type_seance` : « TD » (1), « CM » (2) ou « TP » (3), comme
+        `TYPES_SEANCE` ; `matiere_id` et `matiere_code` se donnent dans `champs`
+        (défaut : un par besoin).
 
         L'effectif est la somme des effectifs des groupes ; l'accessibilité
         est requise si un groupe du besoin, ou un groupe en conflit avec l'un
@@ -258,14 +277,15 @@ class Fabrique:
         """
         identifiant = len(self._besoins) + 1
         groupes = frozenset(groupes)
+        matiere_id = champs.pop("matiere_id", identifiant)
         self._besoins.append(
             Besoin(
                 id=identifiant,
                 libelle=libelle or f"Cours {identifiant}",
-                matiere_id=identifiant,
-                matiere_code=f"M{identifiant}",
-                type_seance_id=1,
-                type_seance_code="TD",
+                matiere_id=matiere_id,
+                matiere_code=champs.pop("matiere_code", f"M{matiere_id}"),
+                type_seance_id=TYPES_SEANCE[type_seance],
+                type_seance_code=type_seance,
                 samedi_autorise=samedi_autorise,
                 duree=duree,
                 groupes=groupes,
@@ -287,6 +307,71 @@ class Fabrique:
     def indice(self, seance_id: str, jour: int, debut: int, salle: int | None = None) -> None:
         """Donne le placement précédent d'une séance."""
         self._indices[seance_id] = Placement(seance_id, jour, debut, -1, salle)
+
+    # -- règles personnalisées --------------------------------------------------
+
+    def portee(self, nature: NaturePortee | str, cible: int | None = None) -> Portee:
+        """Portée d'une règle, avec le code et le libellé de la cible (pour la phrase)."""
+        nature = NaturePortee(nature)
+        if nature is NaturePortee.ETABLISSEMENT:
+            return Portee(nature)
+        assert cible is not None
+        if nature is NaturePortee.GROUPE:
+            groupe = self._groupes[cible - 1]
+            return Portee(nature, cible, groupe.code, groupe.libelle, groupe.nature)
+        if nature is NaturePortee.ENSEIGNANT:
+            enseignant = self._enseignants[cible - 1]
+            return Portee(nature, cible, enseignant.identifiant, enseignant.nom)
+        if nature is NaturePortee.CAMPUS:
+            campus = self._campus[cible - 1]
+            return Portee(nature, cible, campus.code, campus.nom)
+        if nature is NaturePortee.TYPE_SEANCE:
+            code = next(code for code, numero in TYPES_SEANCE.items() if numero == cible)
+            return Portee(nature, cible, code, code)
+        if nature is NaturePortee.MATIERE:
+            besoin = next(b for b in self._besoins if b.matiere_id == cible)
+            return Portee(nature, cible, besoin.matiere_code, besoin.matiere_code)
+        besoin = self._besoins[cible - 1]
+        return Portee(nature, cible, str(cible), besoin.libelle)
+
+    def regle(
+        self,
+        type_regle: TypeRegle | str,
+        nature: NaturePortee | str,
+        cible: int | None = None,
+        niveau: Niveau | str | None = None,
+        etat: EtatRegle = EtatRegle.ACTIVE,
+        **parametres,
+    ) -> int:
+        """Ajoute une règle personnalisée active et renvoie son identifiant.
+
+        Les paramètres sont donnés sous leur forme lisible (jours en noms,
+        heures « HH:MM », durées en minutes, codes des campus ou des salles)
+        et validés par le catalogue ; `niveau` : celui du type par défaut.
+        Les champs de période (`semestre_id`, `date_debut`, `date_fin`) se
+        passent aussi en paramètres nommés.
+        """
+        type_regle = TypeRegle(type_regle)
+        periode = {
+            cle: parametres.pop(cle)
+            for cle in ("semestre_id", "date_debut", "date_fin", "commentaire")
+            if cle in parametres
+        }
+        portee = self.portee(nature, cible)
+        identifiant = len(self._regles) + 1
+        self._regles.append(
+            Regle(
+                type_regle,
+                portee,
+                valider_parametres(type_regle, parametres, self.parametres, portee=portee.nature),
+                Niveau(niveau) if niveau else definition_niveau(type_regle),
+                etat,
+                id=identifiant,
+                code=f"R{identifiant:03d}",
+                **periode,
+            )
+        )
+        return identifiant
 
     # -- résultat ---------------------------------------------------------------
 
@@ -316,7 +401,7 @@ class Fabrique:
                     place = source[seance.id]
                     changements[champ] = dataclasses.replace(place, fin=place.debut + seance.duree)
             seances.append(dataclasses.replace(seance, **changements) if changements else seance)
-        return Instantane(
+        instantane = Instantane(
             semestre_id=1,
             libelle="Semestre de test",
             date_debut=self.date_debut,
@@ -336,11 +421,45 @@ class Fabrique:
             seances=tuple(seances),
             problemes_depliage=depliage.problemes,
         )
+        if not self._regles:
+            return instantane
+        identifiants = {
+            "campus": {campus.code: campus.id for campus in self._campus},
+            "salle": {salle.code: salle.id for salle in self._salles},
+            "type_seance": dict(TYPES_SEANCE),
+        }
+        resolues = tuple(
+            resolue
+            for resolue in (
+                resoudre_regle(regle, instantane, identifiants)
+                for regle in self._regles
+                if regle.active
+            )
+            if resolue.semaines
+        )
+        return dataclasses.replace(instantane, regles=resolues)
 
 
 # --------------------------------------------------------------------------- #
 # Aides de test
 # --------------------------------------------------------------------------- #
+
+
+def definition_niveau(type_regle: TypeRegle) -> Niveau:
+    """Niveau par défaut d'un type de règle."""
+    from edt.domaine.regles import CATALOGUE_TYPES
+
+    return CATALOGUE_TYPES[type_regle].niveau_defaut
+
+
+def niveaux_regles_posables(instantane: Instantane) -> dict[int, Niveau]:
+    """Niveaux des règles de l'instantané que le moteur sait poser (les autres sont ignorées).
+
+    Pour les jeux fictifs, qui portent des règles de tous les types, tant que
+    le moteur ne couvre pas le catalogue entier.
+    """
+    return {regle.id: regle.niveau for regle in instantane.regles if regle.type in POSEURS}
+
 
 NIVEAUX_DURS = {code: Niveau.NECESSAIRE for code in CATALOGUE}
 """Toutes les contraintes nécessaires : les tests parlent de règles dures, sauf demande contraire."""
@@ -384,7 +503,11 @@ def verifier_solution(
     codes = codes_actifs(contraintes_desactivees)
     if resultat.niveaux:
         codes &= frozenset(c for c, n in resultat.niveaux.items() if n is Niveau.NECESSAIRE)
-    anomalies = verifier(instantane, resultat.placements, codes)
+    # Les règles personnalisées sont vérifiées aux niveaux retenus par le moteur : une règle
+    # nécessaire enfreinte est une erreur, une règle souple un avertissement.
+    anomalies = verifier(
+        instantane, resultat.placements, codes, niveaux_regles=resultat.niveaux_regles
+    )
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)
     return par_seance(resultat)
@@ -396,17 +519,24 @@ def verifier_dates(
     contraintes_desactivees: Iterable[str] = (),
     *,
     niveaux=None,
+    niveaux_regles=None,
 ) -> None:
     """ORACLE de la couche datée : aucune erreur du vérificateur sur ces occurrences.
 
     Avec `niveaux`, le vérificateur applique les mêmes niveaux que le replacement :
     une entorse à une règle souple est un avertissement, pas une erreur.
+    `niveaux_regles` : de même pour les règles personnalisées.
     """
     if niveaux is not None:
-        anomalies = verifier_occurrences(instantane, occurrences, niveaux=niveaux)
+        anomalies = verifier_occurrences(
+            instantane, occurrences, niveaux=niveaux, niveaux_regles=niveaux_regles
+        )
     else:
         anomalies = verifier_occurrences(
-            instantane, occurrences, codes_actifs(contraintes_desactivees)
+            instantane,
+            occurrences,
+            codes_actifs(contraintes_desactivees),
+            niveaux_regles=niveaux_regles,
         )
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)

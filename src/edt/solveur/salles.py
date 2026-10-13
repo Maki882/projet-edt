@@ -40,6 +40,7 @@ from ortools.sat.python import cp_model
 from edt.domaine.contraintes import CodeContrainte
 from edt.solveur.modele import Litteral, Option, limiter_par_instant
 from edt.solveur.preparation import Preparation
+from edt.solveur.regles import Violation
 
 journal = logging.getLogger(__name__)
 
@@ -55,13 +56,15 @@ class AffectationSalles:
       prouvé) ;
     - `prouve` : faux si la recherche a été interrompue par le temps limite ;
     - `entorses` : nombre d'exigences de salle souples non satisfaites, par
-      contrainte, pour les salles retenues.
+      contrainte, pour les salles retenues ;
+    - `entorses_regles` : de même par règle `SALLES` souple (identifiant).
     """
 
     salles: tuple[int, ...] | None
     conflit: tuple[int, ...] = ()
     prouve: bool = True
     entorses: dict[CodeContrainte, int] = field(default_factory=dict)
+    entorses_regles: dict[int, int] = field(default_factory=dict)
 
 
 def affecter_salles(
@@ -80,7 +83,8 @@ def affecter_salles(
     if not preparation.regles.active(CodeContrainte.SALLE_UNIQUE):
         # Sans unicité des salles, toute salle admissible convient : la moins coûteuse.
         choisies = tuple(_preferee(preparation, i, h) for i, h in enumerate(horaires))
-        return AffectationSalles(choisies, entorses=_entorses(preparation, horaires, choisies))
+        entorses, regles = _entorses(preparation, horaires, choisies)
+        return AffectationSalles(choisies, entorses=entorses, entorses_regles=regles)
 
     cp, presences, _ = _construire(preparation, horaires, avec_hypotheses=False)
     solveur = _solveur(graine, temps_limite_s)
@@ -94,13 +98,15 @@ def affecter_salles(
             )
             for presence in presences
         )
-        entorses = _entorses(preparation, horaires, choisies)
-        if entorses and code != cp_model.OPTIMAL:
+        entorses, regles = _entorses(preparation, horaires, choisies)
+        if (entorses or regles) and code != cp_model.OPTIMAL:
             journal.info(
                 "Affectation des salles rendue avant la preuve d'optimalité : %s",
-                ", ".join(f"{c.value} {n}" for c, n in sorted(entorses.items())),
+                ", ".join(
+                    f"{c.value} {n}" for c, n in sorted({**entorses, **regles}.items(), key=str)
+                ),
             )
-        return AffectationSalles(choisies, entorses=entorses)
+        return AffectationSalles(choisies, entorses=entorses, entorses_regles=regles)
     if code != cp_model.INFEASIBLE:
         journal.warning(
             "Affectation des salles interrompue (%s) pour %d séance(s)",
@@ -133,29 +139,45 @@ def affecter_salles(
 
 def entorses_de_salle(
     preparation: Preparation, index: int, debut: int, salle: int
-) -> tuple[CodeContrainte, ...]:
-    """Exigences souples que `salle` ne satisfait pas pour la séance `index` commençant à `debut`."""
+) -> tuple[Violation, ...]:
+    """Exigences et règles souples que `salle` enfreint pour la séance `index` commençant à `debut`.
+
+    Les exigences du besoin (`Regles.salles_compatibles`), l'indisponibilité
+    de la salle (`DISPO_SALLE` souple) et les règles `SALLES` souples de la
+    séance (`SeancePreparee.entorses_salles`).
+    """
     seance = preparation.seances[index]
-    codes = list(preparation.regles.salles_compatibles(seance.besoin).entorses.get(salle, ()))
+    violations = [
+        Violation(code)
+        for code in preparation.regles.salles_compatibles(seance.besoin).entorses.get(salle, ())
+    ]
     if debut in seance.debuts_genants.get(salle, ()):
-        codes.append(CodeContrainte.DISPO_SALLE)
-    return tuple(codes)
+        violations.append(Violation(CodeContrainte.DISPO_SALLE))
+    violations.extend(seance.entorses_salles.get(salle, ()))
+    return tuple(violations)
 
 
 def _penalite(preparation: Preparation, index: int, debut: int, salle: int) -> int:
     regles = preparation.regles
-    return sum(regles.poids(code) for code in entorses_de_salle(preparation, index, debut, salle))
+    return sum(
+        regles.poids_violation(violation)
+        for violation in entorses_de_salle(preparation, index, debut, salle)
+    )
 
 
 def _entorses(
     preparation: Preparation, horaires: Sequence[Option], salles: Sequence[int]
-) -> dict[CodeContrainte, int]:
-    """Entorses aux exigences de salle souples, par contrainte, pour les salles `salles`."""
+) -> tuple[dict[CodeContrainte, int], dict[int, int]]:
+    """Entorses de salle pour les salles `salles` : par contrainte, puis par règle."""
     comptes: dict[CodeContrainte, int] = defaultdict(int)
+    regles: dict[int, int] = defaultdict(int)
     for index, (horaire, salle) in enumerate(zip(horaires, salles, strict=True)):
-        for code in entorses_de_salle(preparation, index, horaire.debut, salle):
-            comptes[code] += 1
-    return dict(sorted(comptes.items()))
+        for violation in entorses_de_salle(preparation, index, horaire.debut, salle):
+            if violation.regle_id is None:
+                comptes[violation.code] += 1
+            else:
+                regles[violation.regle_id] += 1
+    return dict(sorted(comptes.items())), dict(sorted(regles.items()))
 
 
 def _preferee(preparation: Preparation, index: int, horaire: Option) -> int:

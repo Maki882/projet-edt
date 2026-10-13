@@ -23,11 +23,11 @@ Contraintes
 - **trajets** (`CAMPUS_TRAJET`) et pause sans unicité : les couples de choix
   trop rapprochés de deux séances d'une même personne sont interdits ;
 - **maxima journaliers** (`MAX_ENSEIGNANT`) ;
-- **pause déjeuner libre bornée** (`DEJEUNER`, `Parametres.fenetre_dejeuner`) :
-  pour chaque groupe (avec les séances des groupes qui le contiennent ou le
-  chevauchent, `Regles.occupants`) et chaque enseignant, chaque jour où une
-  séance recoupe la fenêtre `[X, Y[`, l'une des positions de pause possibles
-  reste libre de toute séance (voir `_pause_dejeuner_libre`) ;
+- **pause déjeuner libre bornée** (`DEJEUNER` ou règle `PAUSE_DEJEUNER`,
+  réglage de chaque personne dans `Instantane.reglages`) : pour chaque
+  personne (groupe feuille avec les séances de sa lignée, enseignant :
+  `Instantane.emplois`), chaque jour, l'une des positions de pause possibles
+  de sa fenêtre `[X, Y[` reste libre de toute séance (voir `_pause_dejeuner`) ;
 - **capacité des salles** (`SALLE_UNIQUE`, condition nécessaire) : à chaque
   instant, les séances en cours se répartissent entre des classes de salles
   interchangeables sans dépasser le nombre de salles libres de chaque classe.
@@ -59,6 +59,18 @@ modèle, qui coûte `Regles.poids` dans l'objectif. Unités d'entorse :
   jour et un ensemble de semaines sans N minutes libres d'un seul tenant
   dans la fenêtre.
 
+Règles personnalisées (`edt.solveur.personnalisees`) : les types de sorte
+« séance » sont réglés dans les domaines par la préparation (entorse par choix,
+sans variable : `_creer_variables` la note) ; la pause déjeuner et la pause
+minimale de chaque personne viennent de `Instantane.reglages` avec leur
+source ; les types d'emploi du temps et de relation (maximum par jour,
+journées libres, trous, campus par jour, matières par jour, ordre dans la
+semaine, répartition d'une matière) ont chacun leur poseur
+(`edt.solveur.regles_emploi`, étape `_regles_personnalisees`). Chaque entorse
+est imputée à sa source (`Regles.Imputation` : un code du catalogue ou
+l'identifiant d'une règle), au poids du niveau de la source ;
+`Bilan.entorses_regles` les compte par règle.
+
 Les entorses aux exigences de salle (`EQUIPEMENT`, `CAPACITE`, `TYPE_SALLE`,
 `ACCESSIBILITE`, `DISPO_SALLE`) relèvent de la seconde phase
 (`edt.solveur.salles`). `bilan` compte les entorses de ce modèle à partir des
@@ -89,9 +101,12 @@ from ortools.sat.python import cp_model
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite
 from edt.domaine.heures import se_chevauchent
+from edt.domaine.regles import NaturePersonne
 from edt.erreurs import ErreurEDT
 from edt.solveur.contrat import OptionsSolveur
 from edt.solveur.preparation import Preparation
+from edt.solveur.regles import ExigencePause, Imputation
+from edt.solveur.regles_emploi import PAR_MODELE
 
 journal = logging.getLogger(__name__)
 
@@ -126,13 +141,16 @@ class Bilan:
       poids des trous est nul ou si le confort n'est pas posé) ;
     - `samedis` : séances placées le samedi (`None` dans les mêmes cas) ;
     - `entorses` : nombre d'entorses par contrainte souple de ce modèle ;
-    - `penalite` : coût de ces entorses dans l'objectif.
+    - `entorses_regles` : nombre d'entorses par règle personnalisée souple
+      (identifiant de la règle) ;
+    - `penalite` : coût de toutes ces entorses dans l'objectif.
     """
 
     objectif: int
     trous: int | None
     samedis: int | None
     entorses: dict[CodeContrainte, int] = field(default_factory=dict)
+    entorses_regles: dict[int, int] = field(default_factory=dict)
     penalite: int = 0
 
     @property
@@ -258,7 +276,9 @@ class ModeleHoraires:
         self._termes_entorses: list[tuple[int, Litteral]] = []
         self._compteurs: dict[str, list[tuple[int, Litteral]] | None] = {}
         # Entorses aux contraintes souples : par code, (unités, variable qui vaut l'entorse).
-        self._entorses: dict[CodeContrainte, list[tuple[int, Litteral]]] = defaultdict(list)
+        self._entorses: dict[Imputation, list[tuple[int, Litteral]]] = defaultdict(list)
+        self._cache_trous: dict[tuple[int, ...], list[cp_model.IntVar]] = {}
+        self.index_de: dict[str, int] = {}
         self._campus_de = {salle.id: salle.campus_id for salle in self.instantane.salles}
 
         etapes = [
@@ -266,7 +286,8 @@ class ModeleHoraires:
             self._separer_les_personnes,
             self._pauses_et_trajets,
             self._maxima_journaliers,
-            self._pause_dejeuner_libre,
+            self._pause_dejeuner,
+            self._regles_personnalisees,
             self._capacite_des_salles,
             self._briser_les_symetries,
         ]
@@ -357,6 +378,25 @@ class ModeleHoraires:
         self._definitions.append((penalite, "aucun", exceptions))
         return penalite
 
+    def au_moins_un(self, litteraux: Sequence[Litteral]) -> Litteral:
+        """`_au_moins_un`, pour les poseurs de `edt.solveur.regles_emploi`."""
+        return self._au_moins_un(litteraux)
+
+    def definir(self, variable: cp_model.IntVar, nature: str, donnees: object) -> None:
+        """Enregistre la définition d'une variable auxiliaire (pour `bilan`, voir `_completer`)."""
+        self._definitions.append((variable, nature, donnees))
+
+    def noter_entorse(self, imputation: Imputation, unites: int, litteral: Litteral) -> None:
+        """Compte `unites` entorses imputées à `imputation` quand `litteral` est vrai."""
+        self._entorses[imputation].append((unites, litteral))
+
+    def trous(self, emploi: Sequence[int]) -> list[cp_model.IntVar]:
+        """Booléens de trou d'un emploi du temps (`_trous`), partagés entre l'objectif et les règles."""
+        cle = tuple(emploi)
+        if cle not in self._cache_trous:
+            self._cache_trous[cle] = self._trous(emploi, self._creneaux_par_jour())
+        return self._cache_trous[cle]
+
     def _ensemble(self, litteraux: Sequence[Litteral]) -> Litteral:
         """Littéral impliqué par la conjonction des `litteraux` (vrai dès qu'ils le sont tous)."""
         restants = [litteral for litteral in litteraux if litteral is not True]
@@ -386,6 +426,7 @@ class ModeleHoraires:
 
     def _creer_variables(self) -> None:
         cache: dict[tuple[int, int, int], tuple[Option, ...]] = {}
+        self.index_de = {seance.seance.id: seance.index for seance in self.seances}
         for seance in self.seances:
             # Les séances d'un même besoin partagent leurs domaines (mêmes objets).
             cle = (id(seance.debuts), id(seance.salles), id(seance.debuts_interdits))
@@ -415,10 +456,15 @@ class ModeleHoraires:
                 self.cp.add_exactly_one(litteraux)
             self.options.append(options)
             self.litteraux.append(litteraux)
-            # Débuts qui enfreignent une contrainte souple : une entorse par séance placée là.
+            # Choix qui enfreignent une contrainte ou une règle souple : une entorse par séance
+            # placée là, imputée à la source.
             for option, litteral in zip(options, litteraux, strict=True):
-                for code in seance.entorses.get(option.debut, ()):
-                    self._entorses[code].append((1, litteral))
+                violations = [
+                    *seance.entorses.get(option.debut, ()),
+                    *seance.entorses_campus.get((option.debut, option.campus), ()),
+                ]
+                for violation in violations:
+                    self._entorses[violation.imputation].append((1, litteral))
 
     # -- personnes --------------------------------------------------------------
 
@@ -439,7 +485,9 @@ class ModeleHoraires:
         avec_enseignants = regles.active(C.ENSEIGNANT_UNIQUE)
         avec_groupes = regles.active(C.GROUPE_UNIQUE)
         # Une pause souple n'allonge pas les plages : ses entorses sont comptées par paire.
-        pause = self.instantane.parametres.pause_min if regles.dure(C.PAUSE) else 0
+        # La plus petite pause dure en vigueur vaut pour tout le monde ; le reste passe par des
+        # couples de choix (`_pauses_et_trajets`).
+        pause = regles.pause_garantie()
 
         # Unités : ("g", groupes, semaines) et ("e", enseignant, semaines). Avec les
         # violations héritées tolérées, chaque séance verrouillée forme sa propre unité.
@@ -518,32 +566,36 @@ class ModeleHoraires:
         options_j: tuple[Option, ...],
         duree_j: int,
         separees: bool,
-    ) -> dict[CodeContrainte | None, list[tuple[tuple[int, ...], tuple[int, ...]]]]:
+        pauses: tuple[ExigencePause, ...],
+    ) -> dict[Imputation | None, list[tuple[tuple[int, ...], tuple[int, ...]]]]:
         """Couples de choix de deux séances d'une même personne à interdire ou à pénaliser.
 
         Renvoie, par nature, des couples `(rangs de la première, rangs de la
         seconde)` : aucun choix du premier groupe n'est compatible avec un
         choix du second. La nature `None` est l'interdiction (une contrainte
-        dure est enfreinte) ; une nature `PAUSE` ou `CAMPUS_TRAJET` est une
-        entorse à cette contrainte souple.
+        ou une règle dure est enfreinte) ; une autre nature est une entorse à
+        cette contrainte souple (`CAMPUS_TRAJET`) ou à cette source de pause
+        (`PAUSE`, ou l'identifiant d'une règle `PAUSE_MINIMALE`).
 
-        `separees` : une contrainte d'unicité active interdit déjà le
-        chevauchement et, si la pause est dure, l'allongement des plages la
-        garantit : il ne reste alors que les trajets. Sinon les deux séances
-        peuvent se chevaucher ; si elles ne se chevauchent pas, elles
-        respectent la pause et, sur deux campus, le temps de trajet. Comme
-        pour le vérificateur, pause et trajet ne concernent que deux séances
-        qui se suivent.
+        `pauses` : les pauses exigées entre les deux séances
+        (`Regles.exigences_de_pause`). `separees` : une contrainte d'unicité
+        active interdit déjà le chevauchement et l'allongement des plages
+        garantit `Regles.pause_garantie()` : il ne reste alors que les pauses
+        plus longues et les trajets. Sinon les deux séances peuvent se
+        chevaucher ; si elles ne se chevauchent pas, elles respectent les
+        pauses et, sur deux campus, le temps de trajet. Comme pour le
+        vérificateur, pause et trajet ne concernent que deux séances qui se
+        suivent.
         """
-        regles, parametres = self.regles, self.instantane.parametres
-        pause = parametres.pause_min if regles.active(C.PAUSE) else 0
-        pause_garantie = separees and regles.dure(C.PAUSE)
+        regles = self.regles
+        garantie = regles.pause_garantie() if separees else 0
         trajets = regles.active(C.CAMPUS_TRAJET)
         pas = self.preparation.pas
+        a_regler = [pause for pause in pauses if pause.duree > garantie]
         par_jour: dict[int, list[tuple[int, Option]]] = defaultdict(list)
         for rang, option in enumerate(options_j):
             par_jour[option.debut // pas].append((rang, option))
-        par_nature: dict[CodeContrainte | None, dict[int, list[int]]] = defaultdict(
+        par_nature: dict[Imputation | None, dict[int, list[int]]] = defaultdict(
             lambda: defaultdict(list)
         )
         for rang_i, a in enumerate(options_i):
@@ -557,17 +609,17 @@ class ModeleHoraires:
                     and a.campus != b.campus
                     and ecart < self.instantane.trajet(a.campus, b.campus)
                 )
-                sans_pause = pause > 0 and ecart < pause and not pause_garantie
-                if (sans_pause and regles.dure(C.PAUSE)) or (
+                sans_pause = [pause for pause in a_regler if ecart < pause.duree]
+                if any(pause.dure for pause in sans_pause) or (
                     trop_pres and regles.dure(C.CAMPUS_TRAJET)
                 ):
                     par_nature[None][rang_i].append(rang_j)
                     continue
-                if sans_pause:
-                    par_nature[C.PAUSE][rang_i].append(rang_j)
+                for pause in sans_pause:
+                    par_nature[pause.violation.imputation][rang_i].append(rang_j)
                 if trop_pres:
                     par_nature[C.CAMPUS_TRAJET][rang_i].append(rang_j)
-        resultat: dict[CodeContrainte | None, list[tuple[tuple[int, ...], tuple[int, ...]]]] = {}
+        resultat: dict[Imputation | None, list[tuple[tuple[int, ...], tuple[int, ...]]]] = {}
         for nature, par_rang in par_nature.items():
             groupes: dict[tuple[int, ...], list[int]] = defaultdict(list)
             for rang_i, rangs_j in par_rang.items():
@@ -576,33 +628,29 @@ class ModeleHoraires:
         return resultat
 
     def _pauses_et_trajets(self) -> None:
-        """`CAMPUS_TRAJET`, et `PAUSE` pour les paires que l'unicité ne sépare pas.
+        """`CAMPUS_TRAJET`, et les pauses que l'allongement des plages ne garantit pas.
 
-        Une contrainte dure interdit les couples de choix ; une contrainte
+        Une contrainte ou une règle dure interdit les couples de choix ; une
         souple les pénalise : un littéral d'entorse par paire de séances et
-        par contrainte, vrai dès qu'un couple fautif est retenu.
+        par source, vrai dès qu'un couple fautif est retenu. La pause exigée
+        entre deux séances est celle de chacune de leurs personnes communes
+        (`Regles.exigences_de_pause`), standard ou règle `PAUSE_MINIMALE`.
         """
-        regles, parametres = self.regles, self.instantane.parametres
+        regles = self.regles
         trajets = regles.active(C.CAMPUS_TRAJET)
-        pause = parametres.pause_min if regles.active(C.PAUSE) else 0
         unicite_enseignant = regles.active(C.ENSEIGNANT_UNIQUE)
         unicite_groupe = regles.active(C.GROUPE_UNIQUE)
-        tout_separe = unicite_enseignant and unicite_groupe
         campus = [frozenset(option.campus for option in options) for options in self.options]
         tous = sorted(frozenset().union(*campus)) if campus else []
-        # Trajets qui dépassent la séparation déjà garantie entre deux séances séparées (la
-        # pause, si elle est dure).
-        garantie = pause if regles.dure(C.PAUSE) else 0
+        # Trajets qui dépassent la séparation déjà garantie entre deux séances séparées.
+        garantie = regles.pause_garantie()
         eloignes = trajets and any(
             self.instantane.trajet(a, b) > garantie for a, b in combinations(tous, 2)
         )
-        pause_a_poser = pause > 0 and not (tout_separe and regles.dure(C.PAUSE))
-        if not eloignes and not pause_a_poser:
-            return
-        # Les couples à régler ne dépendent que des débuts, des campus et des durées : deux
-        # séances aux mêmes choix (à la salle près) partagent le calcul. Les signatures sont
-        # numérotées pour que la clé du cache reste petite : il y a des dizaines de milliers
-        # de paires sur un grand établissement.
+        # Les couples à régler ne dépendent que des débuts, des campus, des durées et des
+        # pauses exigées : deux paires aux mêmes choix (à la salle près) partagent le calcul.
+        # Les signatures sont numérotées pour que la clé du cache reste petite : il y a des
+        # dizaines de milliers de paires sur un grand établissement.
         numeros: dict[tuple, int] = {}
         signatures = [
             numeros.setdefault(tuple((o.debut, o.campus) for o in options), len(numeros))
@@ -610,19 +658,20 @@ class ModeleHoraires:
         ]
         cache: dict[tuple, dict] = {}
         nb_contraintes = nb_entorses = 0
-        pause_dure = regles.dure(C.PAUSE)
         for i, j, enseignant, groupe in self.preparation.paires_de_personnes():
             separees = (enseignant and unicite_enseignant) or (groupe and unicite_groupe)
             trajets_concernes = eloignes and not (len(campus[i]) == 1 and campus[i] == campus[j])
-            pause_concernee = pause > 0 and not (separees and pause_dure)
-            if not trajets_concernes and not pause_concernee:
+            pauses = regles.exigences_de_pause(self.seances[i].besoin, self.seances[j].besoin)
+            seuil = garantie if separees else 0
+            pauses_concernees = tuple(pause for pause in pauses if pause.duree > seuil)
+            if not trajets_concernes and not pauses_concernees:
                 continue
             duree_i, duree_j = self.seances[i].duree, self.seances[j].duree
-            cle = (signatures[i], signatures[j], duree_i, duree_j, separees)
+            cle = (signatures[i], signatures[j], duree_i, duree_j, separees, pauses_concernees)
             couples = cache.get(cle)
             if couples is None:
                 couples = self._couples_a_regler(
-                    self.options[i], duree_i, self.options[j], duree_j, separees
+                    self.options[i], duree_i, self.options[j], duree_j, separees, pauses_concernees
                 )
                 cache[cle] = couples
             if not couples:
@@ -710,40 +759,46 @@ class ModeleHoraires:
 
     # -- pause déjeuner libre bornée -----------------------------------------------
 
-    def _emplois_du_temps_des_personnes(self) -> dict[tuple[int, ...], list[str]]:
-        """Séances de chaque groupe (celles qui occupent tous ses étudiants :
-        `Regles.occupants`) et de chaque enseignant : `{indices triés: désignations}`.
+    def _indices_des_emplois(self) -> dict[tuple[int, ...], list[tuple]]:
+        """Pour chaque emploi du temps distinct (indices triés), les personnes qui le suivent.
 
-        Les personnes au même emploi du temps sont réunies : une seule
-        contrainte, mais une entorse par personne.
+        `Instantane.emplois` : un groupe feuille suit ses séances et celles de
+        sa lignée, un enseignant les siennes. Deux personnes au même emploi du
+        temps (deux demi-groupes sans séance propre) le partagent.
         """
-        par_enseignant, par_groupe = self._par_personne()
-        emplois: dict[tuple[int, ...], list[str]] = defaultdict(list)
-        for groupe in self.instantane.groupes:
-            indices = {
-                index
-                for lie in self.regles.occupants(groupe.id)
-                for index in par_groupe.get(lie, ())
-            }
+        index_de = self.index_de
+        emplois: dict[tuple[int, ...], list[tuple]] = defaultdict(list)
+        for emploi in self.instantane.emplois:
+            indices = tuple(sorted(index_de[s] for s in emploi.seances if s in index_de))
             if indices:
-                emplois[tuple(sorted(indices))].append(f"le groupe {groupe.code}")
-        for enseignant_id in sorted(par_enseignant):
-            nom = self.instantane.enseignant(enseignant_id).nom
-            emplois[tuple(sorted(par_enseignant[enseignant_id]))].append(nom)
+                emplois[indices].append(emploi.personne)
         return emplois
 
-    def _pause_dejeuner_libre(self) -> None:
-        """`DEJEUNER` en pause libre bornée (`Parametres.fenetre_dejeuner`).
+    def _designation(self, personne) -> str:
+        """« le groupe A1 » ou « Mme Martin », pour le journal."""
+        if personne.nature is NaturePersonne.GROUPE:
+            return f"le groupe {self.instantane.groupe(personne.id).code}"
+        return self.instantane.enseignant(personne.id).nom
+
+    def _pause_dejeuner(self) -> None:
+        """Pause déjeuner libre bornée de chaque personne (`DEJEUNER` ou règle `PAUSE_DEJEUNER`).
 
         Pour une personne, un jour et un ensemble de semaines : l'une des
-        **positions de pause** `[p, p + N[` est libre de toute séance. Les
-        positions examinées sont X et les fins possibles de ses séances dans
-        `]X, Y - N]` : un intervalle libre d'au moins N minutes commence
-        toujours à X ou à la fin d'une séance, l'énumération est donc exacte.
-        Un jour sans séance dans la fenêtre n'occupe aucune position : la
-        règle y est satisfaite d'elle-même, sans condition supplémentaire. Une
-        position qu'aucune séance ne peut recouper la satisfait d'avance :
-        rien n'est posé (c'est le cas d'une grille qui ménage déjà la pause).
+        **positions de pause** `[p, p + N[` de sa fenêtre `[X, Y[` est libre de
+        toute séance. Les positions examinées sont X et les fins possibles de
+        ses séances dans `]X, Y - N]` : un intervalle libre d'au moins N
+        minutes commence toujours à X ou à la fin d'une séance, l'énumération
+        est donc exacte. Un jour sans séance dans la fenêtre n'occupe aucune
+        position : la règle y est satisfaite d'elle-même, sans condition
+        supplémentaire. Une position qu'aucune séance ne peut recouper la
+        satisfait d'avance : rien n'est posé (c'est le cas d'une grille qui
+        ménage déjà la pause).
+
+        Chaque personne a son réglage (`Instantane.reglages.dejeuner`) : les
+        personnes au même emploi du temps, à la même fenêtre et à la même
+        source partagent la contrainte mais comptent chacune pour une
+        entorse, imputée à la source (la contrainte `DEJEUNER` ou la règle).
+        Le mode fixe est réglé dans les domaines (`Regles.violations_horaire`).
 
         Taille : un littéral « la séance recoupe la position » par séance et
         ensemble de choix (une implication par choix), partagé entre toutes
@@ -753,21 +808,38 @@ class ModeleHoraires:
         semaines), vrai si toutes sont occupées.
         """
         regles = self.regles
-        fenetre = self.instantane.parametres.fenetre_dejeuner
-        if fenetre is None or not regles.active(C.DEJEUNER):
+        reglages = self.instantane.reglages
+        # Groupes de personnes : même emploi du temps, même fenêtre, même source.
+        groupes: dict[tuple, list] = defaultdict(list)
+        for indices, personnes in self._indices_des_emplois().items():
+            for personne in personnes:
+                reglage = reglages.dejeuner[personne]
+                if reglage.fenetre is None:
+                    continue
+                if reglage.source.regle is None and not regles.active(C.DEJEUNER):
+                    continue
+                violation = regles.violation_de_source(
+                    reglage.source, C.DEJEUNER, "la pause déjeuner"
+                )
+                groupes[(indices, reglage.fenetre, violation)].append(personne)
+        if not groupes:
             return
-        debut_f, fin_f, duree_pause = fenetre
-        souple = regles.souple(C.DEJEUNER)
         pas = self.preparation.pas
-        # Choix de chaque séance qui recoupent la fenêtre, par jour : (début, fin, rang du choix).
-        dans_la_fenetre: dict[tuple[int, int], list[tuple[int, int, int]]] = defaultdict(list)
-        jours_de: dict[int, set[int]] = defaultdict(set)
+        # Choix de chaque séance qui recoupent une fenêtre, par jour : (début, fin, rang du choix).
+        fenetres = sorted({fenetre[:2] for _, fenetre, _ in groupes})
+        dans_la_fenetre: dict[tuple[int, int, tuple[int, int]], list[tuple[int, int, int]]] = (
+            defaultdict(list)
+        )
+        jours_de: dict[tuple[int, tuple[int, int]], set[int]] = defaultdict(set)
         for index, seance in enumerate(self.seances):
             for rang, option in enumerate(self.options[index]):
                 jour, minute = divmod(option.debut, pas)
-                if se_chevauchent(minute, minute + seance.duree, debut_f, fin_f):
-                    dans_la_fenetre[(index, jour)].append((minute, minute + seance.duree, rang))
-                    jours_de[index].add(jour)
+                for fenetre in fenetres:
+                    if se_chevauchent(minute, minute + seance.duree, *fenetre):
+                        dans_la_fenetre[(index, jour, fenetre)].append(
+                            (minute, minute + seance.duree, rang)
+                        )
+                        jours_de[(index, fenetre)].add(jour)
         recoupe: dict[tuple[int, tuple[int, ...]], Litteral] = {}
 
         def seance_sur(index: int, rangs: tuple[int, ...]) -> Litteral:
@@ -778,15 +850,20 @@ class ModeleHoraires:
             return recoupe[cle]
 
         nb_contraintes = nb_entorses = nb_examines = 0
-        for indices, personnes in self._emplois_du_temps_des_personnes().items():
+        for (indices, fenetre, violation), personnes in groupes.items():
+            debut_f, fin_f, duree_pause = fenetre
+            bornes = (debut_f, fin_f)
+            souple = regles.souple_violation(violation)
             for ensemble in self.preparation.ensembles_par_semaines(indices, isoler=False):
                 par_jour: dict[int, list[int]] = defaultdict(list)
                 for index in ensemble:
-                    for jour in jours_de.get(index, ()):
+                    for jour in jours_de.get((index, bornes), ()):
                         par_jour[jour].append(index)
                 for jour in sorted(par_jour):
                     nb_examines += 1
-                    choix = {index: dans_la_fenetre[(index, jour)] for index in par_jour[jour]}
+                    choix = {
+                        index: dans_la_fenetre[(index, jour, bornes)] for index in par_jour[jour]
+                    }
                     positions = sorted(
                         {debut_f}
                         | {
@@ -818,14 +895,14 @@ class ModeleHoraires:
                     exceptions = [occupee.negated() for occupee in occupees if occupee is not True]
                     if souple:
                         penalite = self._sauf_si(exceptions)
-                        self._entorses[C.DEJEUNER].append((len(personnes), penalite))
+                        self._entorses[violation.imputation].append((len(personnes), penalite))
                         nb_entorses += len(personnes)
                     else:
                         self.cp.add_bool_or(exceptions)  # clause vide : impossible, prouvé
                         nb_contraintes += 1
                     journal.debug(
                         "Pause déjeuner libre : %s, jour %d, %d position(s) de pause possibles",
-                        ", ".join(personnes),
+                        ", ".join(self._designation(p) for p in personnes),
                         jour,
                         len(positions),
                     )
@@ -837,6 +914,27 @@ class ModeleHoraires:
             nb_entorses,
             len(recoupe),
         )
+
+    # -- règles personnalisées d'emploi du temps et de relation ----------------------
+
+    def _regles_personnalisees(self) -> None:
+        """Un poseur par type (`edt.solveur.regles_emploi.PAR_MODELE`) ; les types de sorte
+        « séance » et les réglages de personne sont déjà réglés ailleurs."""
+        for regle in sorted(self.instantane.regles, key=lambda r: r.id):
+            poseur = PAR_MODELE.get(regle.type)
+            if poseur is None:
+                continue
+            avant_contraintes = self.nb_contraintes
+            avant_entorses = sum(len(liste) for liste in self._entorses.values())
+            poseur(self, regle)
+            journal.debug(
+                "Règle %s (%s, %s) : %d contrainte(s), %d littéral(aux) d'entorse",
+                regle.code,
+                regle.type.value,
+                regle.niveau.value,
+                self.nb_contraintes - avant_contraintes,
+                sum(len(liste) for liste in self._entorses.values()) - avant_entorses,
+            )
 
     # -- salles (condition nécessaire) --------------------------------------------
 
@@ -1041,8 +1139,8 @@ class ModeleHoraires:
         écarts dans `docs/solveur.md`).
         """
         self._termes_entorses = [
-            (self.regles.poids(code) * unites, variable)
-            for code, liste in self._entorses.items()
+            (self.regles.poids_imputation(imputation) * unites, variable)
+            for imputation, liste in self._entorses.items()
             for unites, variable in liste
         ]
         if confort:
@@ -1092,13 +1190,13 @@ class ModeleHoraires:
                 if poids:
                     self._termes.append((poids, litteral))
 
-        par_enseignant, par_groupe = self._par_personne()
-        emplois_groupes = self._emplois_du_temps_des_groupes(par_groupe)
+        par_enseignant, _ = self._par_personne()
+        emplois_groupes = self._emplois_du_temps_des_groupes()
         if parametres.poids_trous:
             for emploi, nb_groupes in emplois_groupes:
                 for actives, nb_semaines in self._configurations(emploi):
                     fois = nb_groupes * nb_semaines
-                    for trou in self._trous(actives, creneaux):
+                    for trou in self.trous(actives):
                         trous.append((fois, trou))
                         self._termes.append((parametres.poids_trous * fois, trou))
         if parametres.poids_changement_campus:
@@ -1129,7 +1227,8 @@ class ModeleHoraires:
         Chaque variable auxiliaire reçoit sa plus petite valeur permise : « ou »
         vaut vrai si l'un de ses littéraux est vrai, « et » s'ils le sont tous,
         « aucun » si aucun ne l'est ; un « surplus » vaut le nombre d'unités
-        entamées au-delà du maximum. Les définitions sont dans l'ordre de
+        entamées au-delà du maximum ; un « depasse » vaut vrai si la somme
+        pondérée dépasse le maximum. Les définitions sont dans l'ordre de
         création : leurs littéraux sont toujours déjà connus.
         """
 
@@ -1146,6 +1245,11 @@ class ModeleHoraires:
                 termes, acquis, maximum, unite = donnees
                 charge = acquis + sum(duree for duree, litteral in termes if vrai(litteral))
                 valeurs[variable.index] = max(0, -(-(charge - maximum) // unite))
+                continue
+            if nature == "depasse":
+                termes, acquis, maximum = donnees
+                total = acquis + sum(coef for coef, litteral in termes if vrai(litteral))
+                valeurs[variable.index] = int(total > maximum)
                 continue
             un_vrai = any(vrai(litteral) for litteral in donnees)
             if nature == "ou":
@@ -1176,21 +1280,24 @@ class ModeleHoraires:
                 return None
             return sum(poids * valeur(variable) for poids, variable in termes)
 
-        entorses = {
-            code: nombre
-            for code, liste in self._entorses.items()
+        comptes = {
+            imputation: nombre
+            for imputation, liste in self._entorses.items()
             if (nombre := sum(unites * valeur(variable) for unites, variable in liste)) > 0
         }
         penalite = sum(
-            self.regles.poids(code) * unites * valeur(variable)
-            for code, liste in self._entorses.items()
+            self.regles.poids_imputation(imputation) * unites * valeur(variable)
+            for imputation, liste in self._entorses.items()
             for unites, variable in liste
         )
         return Bilan(
             objectif=total(self._termes) or 0,
             trous=total(self._compteurs.get("trous")),
             samedis=total(self._compteurs.get("samedis")),
-            entorses=entorses,
+            entorses={code: n for code, n in comptes.items() if isinstance(code, CodeContrainte)},
+            entorses_regles={
+                regle_id: n for regle_id, n in comptes.items() if isinstance(regle_id, int)
+            },
             penalite=penalite,
         )
 
@@ -1216,31 +1323,21 @@ class ModeleHoraires:
             par_jour[creneau.jour].append((creneau.debut, creneau.fin))
         return {jour: sorted(creneaux) for jour, creneaux in par_jour.items()}
 
-    def _emplois_du_temps_des_groupes(
-        self, par_groupe: dict[int, list[int]]
-    ) -> list[tuple[list[int], int]]:
+    def _emplois_du_temps_des_groupes(self) -> list[tuple[list[int], int]]:
         """Emplois du temps des groupes feuilles : `(séances, nombre de groupes qui les suivent)`.
 
-        Un groupe feuille n'est le parent d'aucun autre groupe (même
-        définition que le vérificateur) ; il suit ses séances et celles de
-        ses ascendants. Deux demi-groupes sans séance propre ont le même
-        emploi du temps, celui de leur classe : il est modélisé une fois et
-        compte pour deux, comme dans les indicateurs du vérificateur.
+        Définition unique de `Instantane.emplois` : un groupe feuille suit ses
+        séances et celles de ses ascendants. Deux demi-groupes sans séance
+        propre ont le même emploi du temps, celui de leur classe : il est
+        modélisé une fois et compte pour deux, comme dans les indicateurs du
+        vérificateur. Seuls les emplois d'au moins deux séances comptent.
         """
-        parents = {groupe.id: groupe.parent_id for groupe in self.instantane.groupes}
-        avec_enfants = set(parents.values())
-        emplois: dict[tuple[int, ...], int] = defaultdict(int)
-        for groupe_id in sorted(parents):
-            if groupe_id in avec_enfants:
-                continue
-            lignee, courant = [groupe_id], parents[groupe_id]
-            while courant is not None and courant not in lignee:
-                lignee.append(courant)
-                courant = parents.get(courant)
-            emploi = tuple(sorted({i for g in lignee for i in par_groupe.get(g, ())}))
-            if len(emploi) >= 2:
-                emplois[emploi] += 1
-        return [(list(emploi), nombre) for emploi, nombre in sorted(emplois.items())]
+        emplois = [
+            (list(indices), sum(1 for p in personnes if p.nature is NaturePersonne.GROUPE))
+            for indices, personnes in sorted(self._indices_des_emplois().items())
+            if len(indices) >= 2
+        ]
+        return [(emploi, nombre) for emploi, nombre in emplois if nombre]
 
     def _configurations(self, emploi: Sequence[int]) -> list[tuple[list[int], int]]:
         """Regroupe les semaines du semestre par ensemble de séances actives.

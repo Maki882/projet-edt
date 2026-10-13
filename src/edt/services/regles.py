@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import json
 import logging
 import re
 from collections.abc import Mapping
@@ -32,7 +33,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
 from edt.domaine.calendrier import annee_scolaire_de
@@ -53,6 +54,7 @@ from edt.domaine.regles import (
     TypeRegle,
     decrire_catalogue,
     definition_type,
+    erreurs_periode,
     phrase,
     resoudre_regle,
     valider_parametres,
@@ -349,13 +351,7 @@ def modifier(
     """Modification partielle d'une règle, revalidée en entier."""
     ligne = _ligne(session, annee_scolaire_id, code)
     detail = _detail(session, ligne, lire_parametres(session))
-    brouillon = detail.vers_dict()
-    brouillon.pop("phrase")
-    brouillon.pop("id")
-    brouillon["portee"] = {
-        "nature": brouillon["portee"]["nature"],
-        "cible": brouillon["portee"]["cible"],
-    }
+    brouillon = _brouillon_depuis_detail(detail)
     for cle, valeur in changements.items():
         if cle == "parametres" and isinstance(valeur, Mapping):
             brouillon["parametres"] = {**brouillon["parametres"], **valeur}
@@ -363,7 +359,6 @@ def modifier(
             brouillon["portee"] = {**brouillon["portee"], **valeur}
         else:
             brouillon[cle] = valeur
-    brouillon["annee"] = detail.annee_libelle
     regle, _ = _construire(session, brouillon, existante=ligne)
     _vers_orm(ligne, regle)
     session.flush()
@@ -384,13 +379,21 @@ def supprimer(session: Session, annee_scolaire_id: int, code: str) -> None:
 def changer_etat(
     session: Session, annee_scolaire_id: int, code: str, etat: EtatRegle | str
 ) -> RegleDetail:
-    """Change l'état d'une règle (proposée, active, inactive) ; une activation est revalidée."""
+    """Change l'état d'une règle (proposée, active, inactive).
+
+    Une activation revalide la règle en entier (portée, codes cités, période,
+    doublons) : une règle devenue invalide reste à son état, avec les erreurs
+    par champ (`ErreurSaisie`).
+    """
     ligne = _ligne(session, annee_scolaire_id, code)
     nouvel_etat = EtatRegle(etat)
     if nouvel_etat is EtatRegle.ACTIVE:
-        regle = _depuis_orm(ligne)
-        _refuser_doublon(session, dataclasses.replace(regle, etat=EtatRegle.ACTIVE), ligne)
-    ligne.etat = nouvel_etat
+        detail = _detail(session, ligne, lire_parametres(session))
+        brouillon = {**_brouillon_depuis_detail(detail), "etat": EtatRegle.ACTIVE.value}
+        regle, _ = _construire(session, brouillon, existante=ligne)
+        _vers_orm(ligne, regle)
+    else:
+        ligne.etat = nouvel_etat
     session.flush()
     detail = _detail(session, ligne, lire_parametres(session))
     journal.info("Règle %s : état « %s » : %s", code, nouvel_etat.value, detail.phrase)
@@ -411,7 +414,10 @@ def proposer_pour_annee(session: Session, annee_scolaire_id: int) -> Proposition
     """Propose à une année les règles de base et la reprise de l'année précédente.
 
     Tout est créé à l'état « proposée » (sans effet) ; rien n'est reproposé
-    deux fois (règle de base déjà présente, règle déjà reprise). Une règle de
+    deux fois : une règle de même contenu (type, cible, paramètres, période)
+    déjà présente dans l'année, quelle que soit son origine (règle de base
+    confirmée l'année précédente et reprise, règle réimportée), ou une règle
+    déjà reprise (`reprise_de_id`), compte « déjà présente ». Une règle de
     l'année précédente dont la cible n'existe pas dans l'année est listée
     « à revoir ».
     """
@@ -422,26 +428,38 @@ def proposer_pour_annee(session: Session, annee_scolaire_id: int) -> Proposition
     a_revoir: list[str] = []
 
     presentes = session.scalars(select(m.Regle).where(m.Regle.annee_scolaire_id == annee.id)).all()
+    signatures = {_signature(_depuis_orm(ligne)) for ligne in presentes}
     types_de_base = {ligne.type for ligne in presentes if ligne.origine == OrigineRegle.BASE}
+
+    def proposer(brouillon: dict[str, Any], origine: OrigineRegle) -> RegleDetail | None:
+        """Crée la proposition, sauf si une règle de même contenu existe déjà (`None`)."""
+        complet = {**brouillon, "etat": EtatRegle.PROPOSEE.value, "origine": origine.value}
+        regle, _ = _construire(session, complet, existante=None)
+        if _signature(regle) in signatures:
+            return None
+        detail = creer(session, brouillon, origine=origine, etat=EtatRegle.PROPOSEE)
+        signatures.add(_signature(detail.regle))
+        return detail
+
     for base in REGLES_DE_BASE:
         if base.type in types_de_base:
             deja += 1
             continue
-        creees.append(
-            creer(
-                session,
-                {
-                    "type": base.type.value,
-                    "portee": {"nature": NaturePortee.ETABLISSEMENT.value},
-                    "parametres": base.parametres,
-                    "niveau": base.niveau.value,
-                    "annee": annee.libelle,
-                    "commentaire": base.commentaire,
-                },
-                origine=OrigineRegle.BASE,
-                etat=EtatRegle.PROPOSEE,
-            )
+        detail = proposer(
+            {
+                "type": base.type.value,
+                "portee": {"nature": NaturePortee.ETABLISSEMENT.value},
+                "parametres": base.parametres,
+                "niveau": base.niveau.value,
+                "annee": annee.libelle,
+                "commentaire": base.commentaire,
+            },
+            OrigineRegle.BASE,
         )
+        if detail is None:
+            deja += 1
+        else:
+            creees.append(detail)
 
     precedente = session.scalar(
         select(m.AnneeScolaire)
@@ -466,14 +484,15 @@ def proposer_pour_annee(session: Session, annee_scolaire_id: int) -> Proposition
                 a_revoir.append(f"{ancienne.code} ({precedente.libelle}) : {detail_ancien.phrase}")
                 continue
             try:
-                detail = creer(
-                    session, brouillon, origine=OrigineRegle.REPRISE, etat=EtatRegle.PROPOSEE
-                )
+                detail = proposer(brouillon, OrigineRegle.REPRISE)
             except ErreurSaisie as erreur:
                 journal.warning(
                     "Règle %s de %s non reprise : %s", ancienne.code, precedente.libelle, erreur
                 )
                 a_revoir.append(f"{ancienne.code} ({precedente.libelle}) : {detail_ancien.phrase}")
+                continue
+            if detail is None:
+                deja += 1
                 continue
             ligne = _ligne(session, annee.id, detail.code)
             ligne.reprise_de_id = ancienne.id
@@ -498,9 +517,16 @@ def expliquer(session: Session, annee_scolaire_id: int, code: str) -> Explicatio
     annee = _annee_par_id(session, annee_scolaire_id)
     effets: list[EffetSemestre] = []
     identifiants = _identifiants(session)
+    besoin = (
+        session.get(m.Besoin, regle.portee.cible_id)
+        if regle.portee.nature is NaturePortee.BESOIN
+        else None
+    )
     for semestre in annee.semestres:
         if regle.semestre_id is not None and regle.semestre_id != semestre.id:
             continue
+        if besoin is not None and besoin.semestre_id != semestre.id:
+            continue  # une règle sur un besoin ne concerne que le semestre du besoin
         instantane = charger_instantane(session, semestre.id)
         resolue = resoudre_regle(regle, instantane, identifiants)
         if not resolue.semaines:
@@ -565,6 +591,9 @@ def _construire(
     brouillon_portee = brouillon.get("portee") or {}
     if isinstance(brouillon_portee, str):
         brouillon_portee = {"nature": brouillon_portee}
+    if not isinstance(brouillon_portee, Mapping):
+        erreurs["portee"] = "Un objet { nature, cible } est attendu."
+        brouillon_portee = {}
     try:
         nature = NaturePortee(str(brouillon_portee.get("nature") or ""))
     except ValueError:
@@ -577,19 +606,37 @@ def _construire(
             valider_portee(definition.code, nature)
         except ErreurSaisie as erreur:
             erreurs.update(erreur.erreurs)
-    if nature is not None and annee is not None and "portee.nature" not in erreurs:
-        try:
-            portee = _resoudre_cible(session, annee, nature, brouillon_portee.get("cible"))
-        except ErreurSaisie as erreur:
-            erreurs.update(erreur.erreurs)
 
     semestre_id = semestre_code = date_debut = date_fin = None
     periode = brouillon.get("periode") or {}
+    if not isinstance(periode, Mapping):
+        erreurs["periode"] = "Un objet { semestre } ou { date_debut, date_fin } est attendu."
+        periode = {}
     if annee is not None:
         try:
-            semestre_id, semestre_code, date_debut, date_fin = _periode(session, annee, periode)
+            semestre_id, semestre_code, date_debut, date_fin = _periode(
+                session, annee, periode, definition.code if definition is not None else None
+            )
         except ErreurSaisie as erreur:
             erreurs.update(erreur.erreurs)
+
+    if nature is not None and annee is not None and "portee.nature" not in erreurs:
+        try:
+            portee = _resoudre_cible(
+                session, annee, nature, brouillon_portee.get("cible"), semestre_code
+            )
+        except ErreurSaisie as erreur:
+            erreurs.update(erreur.erreurs)
+    if portee is not None and nature is NaturePortee.BESOIN:
+        # Une règle sur un besoin concerne le semestre du besoin : la période le dit.
+        besoin = session.get(m.Besoin, portee.cible_id)
+        if besoin is not None and semestre_id is not None and semestre_id != besoin.semestre_id:
+            erreurs["periode.semestre"] = (
+                f"Le besoin « {portee.cible_libelle} » est au semestre {besoin.semestre.code} : "
+                "choisir ce semestre, ou aucun."
+            )
+        elif besoin is not None and semestre_id is None and not (date_debut or date_fin):
+            semestre_id, semestre_code = besoin.semestre_id, besoin.semestre.code
 
     niveau = definition.niveau_defaut if definition is not None else Niveau.NECESSAIRE
     if brouillon.get("niveau"):
@@ -603,13 +650,25 @@ def _construire(
             etat = EtatRegle(str(brouillon["etat"]))
         except ValueError:
             erreurs["etat"] = "État inconnu ; attendu : " + ", ".join(e.value for e in EtatRegle)
+    origine = OrigineRegle.SAISIE
+    if brouillon.get("origine"):
+        try:
+            origine = OrigineRegle(str(brouillon["origine"]))
+        except ValueError:
+            erreurs["origine"] = "Origine inconnue ; attendu : " + ", ".join(
+                o.value for o in OrigineRegle
+            )
 
     parametres: dict[str, Any] = {}
+    brouillon_parametres = brouillon.get("parametres") or {}
+    if not isinstance(brouillon_parametres, Mapping):
+        erreurs["parametres"] = "Un objet { nom: valeur } est attendu."
+        brouillon_parametres = {}
     if definition is not None:
         try:
             parametres = valider_parametres(
                 definition.code,
-                brouillon.get("parametres") or {},
+                brouillon_parametres,
                 lire_parametres(session),
                 _codes_connus(session),
                 nature,
@@ -637,7 +696,7 @@ def _construire(
         semestre_code=semestre_code,
         date_debut=date_debut,
         date_fin=date_fin,
-        origine=OrigineRegle(brouillon.get("origine") or OrigineRegle.SAISIE),
+        origine=origine,
         commentaire=str(brouillon.get("commentaire") or ""),
         reprise_de_id=existante.reprise_de_id if existante is not None else None,
     )
@@ -674,9 +733,18 @@ def _annee_par_id(session: Session, annee_scolaire_id: int) -> m.AnneeScolaire:
 
 
 def _resoudre_cible(
-    session: Session, annee: m.AnneeScolaire, nature: NaturePortee, cible: object
+    session: Session,
+    annee: m.AnneeScolaire,
+    nature: NaturePortee,
+    cible: object,
+    semestre_code: str | None = None,
 ) -> Portee:
-    """Portée complète (identifiant, code, libellé) depuis la nature et le code de la cible."""
+    """Portée complète (identifiant, code, libellé) depuis la nature et le code de la cible.
+
+    `semestre_code` (période du brouillon) départage un besoin décrit par
+    « matière / type / groupes » quand le même enseignement existe dans
+    plusieurs semestres.
+    """
     if nature is NaturePortee.ETABLISSEMENT:
         return Portee(nature)
     if cible is None or cible == "":
@@ -726,6 +794,17 @@ def _resoudre_cible(
     if nature is NaturePortee.MATIERE:
         if par_id:
             matiere = session.get(m.Matiere, cible)
+            if (
+                matiere is not None
+                and matiere.promotion_id is not None
+                and matiere.promotion.annee_scolaire_id != annee.id
+            ):
+                raise ErreurSaisie(
+                    {
+                        "portee.cible": f"La matière « {matiere.code} » appartient à une autre "
+                        f"année que {annee.libelle}."
+                    }
+                )
         else:
             candidates = session.scalars(select(m.Matiere).where(m.Matiere.code == texte)).all()
             de_l_annee = [
@@ -745,9 +824,18 @@ def _resoudre_cible(
                 {"portee.cible": f"Matière « {texte} » inconnue en {annee.libelle}."}
             )
         return Portee(nature, matiere.id, matiere.code, matiere.libelle)
-    besoin = (
-        session.get(m.Besoin, cible) if par_id else _besoin_par_description(session, annee, texte)
-    )
+    if par_id:
+        besoin, ambigu = session.get(m.Besoin, cible), False
+    else:
+        besoin, ambigu = _besoin_par_description(session, annee, texte, semestre_code)
+    if ambigu:
+        raise ErreurSaisie(
+            {
+                "portee.cible": f"Besoin « {texte} » ambigu : le même enseignement existe dans "
+                f"plusieurs semestres de {annee.libelle} ; préciser le semestre "
+                "(periode.semestre) ou donner son identifiant."
+            }
+        )
     if besoin is None or besoin.semestre.annee_scolaire_id != annee.id:
         raise ErreurSaisie(
             {
@@ -762,31 +850,46 @@ def _resoudre_cible(
 
 
 def _besoin_par_description(
-    session: Session, annee: m.AnneeScolaire, texte: str
-) -> m.Besoin | None:
-    """Un besoin désigné par « code matière / code type / codes des groupes »."""
+    session: Session, annee: m.AnneeScolaire, texte: str, semestre_code: str | None = None
+) -> tuple[m.Besoin | None, bool]:
+    """Un besoin désigné par « code matière / code type / codes des groupes », sans casse.
+
+    Renvoie `(besoin, ambigu)` : `ambigu` est vrai quand plusieurs besoins de
+    l'année répondent à la description (le même enseignement dans les deux
+    semestres) et que `semestre_code` ne tranche pas.
+    """
     morceaux = [p.strip() for p in texte.split("/")]
     if len(morceaux) != 3:
-        return texte.isdigit() and session.get(m.Besoin, int(texte)) or None
-    code_matiere, code_type, groupes = morceaux
+        return (session.get(m.Besoin, int(texte)) if texte.isdigit() else None), False
+    code_matiere, code_type, groupes = (p.casefold() for p in morceaux)
     codes_groupes = {g.strip() for g in groupes.split(",") if g.strip()}
-    semestres = [s.id for s in annee.semestres]
+    semestres = [s.id for s in annee.semestres if semestre_code is None or s.code == semestre_code]
     candidats = session.scalars(
         select(m.Besoin)
-        .join(m.Matiere, m.Besoin.matiere_id == m.Matiere.id)
-        .join(m.TypeSeance, m.Besoin.type_seance_id == m.TypeSeance.id)
-        .where(
-            m.Besoin.semestre_id.in_(semestres),
-            m.Matiere.code == code_matiere,
-            m.TypeSeance.code == code_type,
+        .where(m.Besoin.semestre_id.in_(semestres))
+        .options(
+            selectinload(m.Besoin.matiere),
+            selectinload(m.Besoin.type_seance),
+            selectinload(m.Besoin.groupes),
         )
     ).all()
-    retenus = [b for b in candidats if {g.code for g in b.groupes} == codes_groupes]
-    return retenus[0] if len(retenus) == 1 else None
+    retenus = [
+        b
+        for b in candidats
+        if b.matiere.code.casefold() == code_matiere
+        and b.type_seance.code.casefold() == code_type
+        and {g.code.casefold() for g in b.groupes} == codes_groupes
+    ]
+    if len(retenus) == 1:
+        return retenus[0], False
+    return None, len(retenus) > 1
 
 
 def _periode(
-    session: Session, annee: m.AnneeScolaire, periode: Mapping[str, Any]
+    session: Session,
+    annee: m.AnneeScolaire,
+    periode: Mapping[str, Any],
+    type_regle: TypeRegle | None = None,
 ) -> tuple[int | None, str | None, dt.date | None, dt.date | None]:
     erreurs: dict[str, str] = {}
     semestre_id = semestre_code = None
@@ -817,14 +920,9 @@ def _periode(
                 f"La date {date:%d/%m/%Y} est hors de l'année {annee.libelle}."
             )
         dates[cle] = date
-    if semestre_id is not None and (dates.get("date_debut") or dates.get("date_fin")):
-        erreurs["periode"] = "Choisir un semestre ou des dates, pas les deux."
-    if (
-        dates.get("date_debut")
-        and dates.get("date_fin")
-        and dates["date_fin"] < dates["date_debut"]
-    ):
-        erreurs["periode.date_fin"] = "La date de fin précède la date de début."
+    erreurs.update(
+        erreurs_periode(type_regle, semestre_id, dates.get("date_debut"), dates.get("date_fin"))
+    )
     if erreurs:
         raise ErreurSaisie(erreurs)
     return semestre_id, semestre_code, dates.get("date_debut"), dates.get("date_fin")
@@ -848,7 +946,11 @@ def _identifiants(session: Session) -> dict[str, dict[str, int]]:
 
 
 def _refuser_doublon(session: Session, regle: Regle, existante: m.Regle | None) -> None:
-    """Deux règles actives d'un même type de réglage, même cible, périodes qui se recoupent."""
+    """Deux règles actives d'un même type de réglage, même cible, périodes qui se recoupent.
+
+    Un réglage de personne (déjeuner, pause) n'étant jamais daté, deux tels
+    réglages sont refusés dès qu'ils touchent un même semestre.
+    """
     if regle.etat is not EtatRegle.ACTIVE or regle.definition.famille is not FamilleRegle.REGLAGE:
         return
     requete = select(m.Regle).where(
@@ -893,6 +995,32 @@ def _prochain_code(session: Session, annee_scolaire_id: int) -> str:
     )
     numeros = [int(lu.group(1)) for code in codes if (lu := _MOTIF_CODE.match(code))]
     return f"R{(max(numeros, default=0) + 1):03d}"
+
+
+def _signature(regle: Regle) -> tuple[Any, ...]:
+    """Ce qui fait qu'une règle en répète une autre : type, cible, paramètres, période."""
+    return (
+        regle.type,
+        regle.portee.nature,
+        regle.portee.cible_id,
+        json.dumps(regle.parametres, sort_keys=True, ensure_ascii=False, default=str),
+        regle.semestre_code,
+        regle.date_debut,
+        regle.date_fin,
+    )
+
+
+def _brouillon_depuis_detail(detail: RegleDetail) -> dict[str, Any]:
+    """Brouillon complet d'une règle enregistrée, pour la modifier ou la revalider."""
+    brouillon = detail.vers_dict()
+    brouillon.pop("phrase")
+    brouillon.pop("id")
+    brouillon["portee"] = {
+        "nature": detail.regle.portee.nature.value,
+        "cible": detail.regle.portee.cible_id,
+    }
+    brouillon["annee"] = detail.annee_libelle
+    return brouillon
 
 
 def _cle_tri(code: str) -> tuple[int, str]:

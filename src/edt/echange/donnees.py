@@ -46,11 +46,23 @@ from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
-from edt.domaine.heures import MINUTES_PAR_JOUR
+from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte
+from edt.domaine.regles import (
+    CATALOGUE_TYPES,
+    ErreurSaisie,
+    EtatRegle,
+    NaturePortee,
+    OrigineRegle,
+    Regle,
+    SorteChamp,
+    TypeRegle,
+)
 from edt.echange.format import FEUILLES, Feuille, identifier_feuille
 from edt.echange.lecture import LigneTypee, Tableau, comparable, preparer_tableau
 from edt.echange.rapport import Bilan, Signalement
-from edt.echange.valeurs import cle_code
+from edt.echange.valeurs import cle_code, cle_mot
+from edt.erreurs import ErreurDonneesInvalides
+from edt.services import regles as service_regles
 
 journal = logging.getLogger(__name__)
 
@@ -64,6 +76,7 @@ FEUILLES_AVEC_PROVENANCE = frozenset(
         "matieres",
         "besoins",
         "indisponibilites",
+        "regles",
     }
 )
 """Feuilles dont la table garde la provenance (fichier, ligne) et les colonnes inconnues."""
@@ -82,10 +95,14 @@ class Action(StrEnum):
 class Rejet(Exception):  # noqa: N818 - c'est un refus de ligne, pas une erreur de programme
     """Refus d'une ligne pendant l'import : interne au moteur, toujours converti en signalement."""
 
-    def __init__(self, colonne: str, message: str) -> None:
+    def __init__(
+        self, colonne: str, message: str, autres: tuple[tuple[str, str], ...] = ()
+    ) -> None:
         super().__init__(message)
         self.colonne = colonne
         self.message = message
+        self.details: tuple[tuple[str, str], ...] = ((colonne, message), *autres)
+        """Toutes les erreurs de la ligne, (colonne, message) : un signalement chacune."""
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +221,17 @@ class Contexte:
             return index
 
         return self._obtenir("matieres", fabrique)
+
+    @property
+    def regles(self) -> dict[tuple[int, str], m.Regle]:
+        """Règles par (année, code sans casse)."""
+        return self._obtenir(
+            "regles",
+            lambda: {
+                (r.annee_scolaire_id, cle_code(r.code)): r
+                for r in self.session.scalars(select(m.Regle))
+            },
+        )
 
     def _liste(self, modele: type) -> dict[str, Any]:
         return self._obtenir(
@@ -798,6 +826,213 @@ def _importer_indisponibilite(ctx: Contexte, ligne: LigneTypee) -> Action:
     return _resultat(existants[0], ligne, _ecrire(existants[0], ligne, champs))
 
 
+# --------------------------------------------------------------------------- #
+# Règles personnalisées
+# --------------------------------------------------------------------------- #
+
+_SORTES_LISTE = (SorteChamp.JOURS, SorteChamp.CODES, SorteChamp.MOMENTS)
+
+
+def lire_parametres_regle(type_regle: TypeRegle, texte: str | None) -> dict[str, Any]:
+    """Cellule « clé = valeur ; clé = valeur » -> brouillon de paramètres (non validé).
+
+    Les listes s'écrivent séparées par des virgules ; une liste vide (« jours = »)
+    reste une liste vide. Une clé inconnue est transmise telle quelle : la
+    validation du service la refuse avec la liste des clés attendues.
+    """
+    if not texte:
+        return {}
+    sortes = {champ.nom: champ.sorte for champ in CATALOGUE_TYPES[type_regle].champs}
+    valeurs: dict[str, Any] = {}
+    for morceau in texte.split(";"):
+        if not morceau.strip():
+            continue
+        cle, egal, valeur = morceau.partition("=")
+        nom = cle_mot(cle)
+        if not egal or not nom:
+            attendues = ", ".join(sortes) or "aucune"
+            raise ErreurDonneesInvalides(
+                f"« {morceau.strip()} » : écrire « clé = valeur » (clés de ce type : {attendues})."
+            )
+        if nom in valeurs:
+            raise ErreurDonneesInvalides(f"La clé « {nom} » est donnée deux fois.")
+        valeur = valeur.strip()
+        if sortes.get(nom) in _SORTES_LISTE:
+            valeurs[nom] = [v.strip() for v in valeur.split(",") if v.strip()]
+        else:
+            valeurs[nom] = valeur
+    return valeurs
+
+
+def ecrire_parametres_regle(type_regle: TypeRegle, parametres: Mapping[str, Any]) -> str:
+    """Paramètres canoniques -> « mode = libre ; debut = 11:45 ; duree = 1 h 15 » (relisible)."""
+    champs = {champ.nom: champ for champ in CATALOGUE_TYPES[type_regle].champs}
+    ordre = [nom for nom in champs if nom in parametres]
+    ordre += [nom for nom in parametres if nom not in champs]  # jamais perdu, même inattendu
+    morceaux = []
+    for nom in ordre:
+        valeur = parametres[nom]
+        champ = champs.get(nom)
+        if isinstance(valeur, (list, tuple)):
+            texte = ", ".join(str(x) for x in valeur)
+        elif champ is not None and champ.sorte is SorteChamp.DUREE and isinstance(valeur, int):
+            texte = duree_vers_texte(valeur)
+        else:
+            texte = "" if valeur is None else str(valeur)
+        morceaux.append(f"{nom} = {texte}".rstrip())
+    return " ; ".join(morceaux)
+
+
+def _cible_regle(
+    ctx: Contexte, annee: m.AnneeScolaire, nature: NaturePortee, texte: str | None
+) -> str | None:
+    """Code de la cible tel que la base l'écrit (casse et espaces normalisés), sinon tel quel.
+
+    Un besoin (« matière / type / groupes ») passe tel quel : le service le
+    cherche sans tenir compte de la casse, dans le semestre de la colonne
+    `semestre` (`periode.semestre` du brouillon) quand elle est remplie, ce qui
+    départage un enseignement présent dans les deux semestres.
+    """
+    if texte is None or nature is NaturePortee.BESOIN:
+        return texte
+    cle = cle_code(texte)
+    if nature is NaturePortee.GROUPE:
+        groupe = ctx.groupes.get((annee.id, cle))
+        return groupe.code if groupe else texte
+    if nature is NaturePortee.ENSEIGNANT:
+        enseignant = ctx.enseignants.get(cle)
+        return enseignant.identifiant if enseignant else texte
+    if nature is NaturePortee.CAMPUS:
+        campus = ctx.campus_par_code.get(cle)
+        return campus.code if campus else texte
+    if nature is NaturePortee.TYPE_SEANCE:
+        type_seance = ctx._liste(m.TypeSeance).get(cle)
+        return type_seance.code if type_seance else texte
+    if nature is NaturePortee.MATIERE:
+        candidates = ctx.matieres.get(cle, [])
+        return candidates[0].code if candidates else texte
+    return texte
+
+
+def _colonne_regle(cle: str, message: str) -> tuple[str, str]:
+    """Erreur du service (clé = chemin JSON) -> (colonne de la feuille, message)."""
+    if cle.startswith("parametres."):
+        return "parametres", f"{cle.split('.', 1)[1]} : {message}"
+    if cle == "portee.cible":
+        return "cible", message
+    if cle.startswith("portee"):
+        return "portee", message
+    if cle.startswith("periode."):
+        return cle.split(".", 1)[1], message
+    if cle == "periode":
+        # « Semestre ou dates, pas les deux », ou un réglage qui refuse des dates : la
+        # colonne des dates porte l'erreur.
+        return "date_debut", message
+    return (cle if cle in ("annee", "code", "type", "niveau", "etat") else ""), message
+
+
+def _meme_regle(avant: Regle, apres: Regle) -> bool:
+    """Vrai si deux règles ont le même contenu (hors état, origine et provenance)."""
+    return (
+        avant.type is apres.type
+        and avant.portee.nature is apres.portee.nature
+        and avant.portee.cible_id == apres.portee.cible_id
+        and dict(avant.parametres) == dict(apres.parametres)
+        and avant.niveau == apres.niveau
+        and avant.semestre_id == apres.semestre_id
+        and avant.date_debut == apres.date_debut
+        and avant.date_fin == apres.date_fin
+        and (avant.commentaire or "") == (apres.commentaire or "")
+    )
+
+
+def _importer_regle(ctx: Contexte, ligne: LigneTypee) -> Action:
+    """Crée la règle (origine « import ») ou met à jour celle de même année et code.
+
+    La validation est celle du service des règles (`edt.services.regles`) :
+    chacune de ses erreurs devient un signalement de la ligne, sur la colonne
+    concernée. Un code existant garde son type.
+    """
+    annee = ctx.annee(ligne["annee"])
+    type_regle: TypeRegle = ligne["type"]
+    nature: NaturePortee = ligne["portee"]
+    erreurs: list[tuple[str, str]] = []
+    parametres: dict[str, Any] = {}
+    try:
+        parametres = lire_parametres_regle(type_regle, ligne["parametres"])
+    except ErreurDonneesInvalides as erreur:
+        erreurs.append(("parametres", erreur.message))
+    if nature is NaturePortee.ETABLISSEMENT and ligne["cible"]:
+        erreurs.append(
+            ("cible", "Pas de cible pour la portée établissement : laisser la colonne vide.")
+        )
+    existante = ctx.regles.get((annee.id, cle_code(ligne["code"]))) if ligne["code"] else None
+    if existante is not None and TypeRegle(existante.type) is not type_regle:
+        erreurs.append(
+            (
+                "type",
+                f"La règle {existante.code} existe déjà en {annee.libelle} avec le type "
+                f"{TypeRegle(existante.type).value} : un code garde son type ; choisir un autre "
+                "code ou laisser la colonne code vide.",
+            )
+        )
+    if erreurs:
+        raise Rejet(*erreurs[0], tuple(erreurs[1:]))
+
+    semestre = ligne["semestre"]
+    if semestre:
+        trouve = ctx.semestres.get((annee.id, cle_code(semestre)))
+        semestre = trouve.code if trouve else semestre
+    brouillon: dict[str, Any] = {
+        "type": type_regle.value,
+        "annee": annee.libelle,
+        "portee": {
+            "nature": nature.value,
+            "cible": _cible_regle(ctx, annee, nature, ligne["cible"]),
+        },
+        "parametres": parametres,
+        "niveau": ligne["niveau"].value if ligne["niveau"] else None,
+        "etat": ligne["etat"].value,
+        "periode": {
+            "semestre": semestre,
+            "date_debut": ligne["date_debut"],
+            "date_fin": ligne["date_fin"],
+        },
+        "commentaire": ligne["commentaire"] or "",
+    }
+    try:
+        if existante is None:
+            if ligne["code"]:
+                brouillon["code"] = ligne["code"]
+            detail = service_regles.creer(
+                ctx.session, brouillon, OrigineRegle.IMPORT, ligne["etat"]
+            )
+            regle = ctx.session.get(m.Regle, detail.id)
+            _provenance(regle, ligne, creation=True, change=True)
+            ctx.regles[(annee.id, cle_code(regle.code))] = regle
+            return Action.CREE
+        avant = service_regles.lire_par_id(ctx.session, existante.id).regle
+        # Validation pour comparer seulement : à l'état inactif, le service ne cherche pas
+        # de doublon de réglage (la règle se trouverait elle-même) ; `modifier` le fait.
+        verification = service_regles.valider(
+            ctx.session, {**brouillon, "code": existante.code, "etat": EtatRegle.INACTIVE.value}
+        )
+        if not verification.valide:
+            raise ErreurSaisie(verification.erreurs)
+        change = not _meme_regle(avant, verification.regle) or avant.etat is not ligne["etat"]
+        if change:
+            # Une cellule décrit tous les paramètres : un paramètre absent reprend son défaut.
+            complets = {champ.nom: None for champ in CATALOGUE_TYPES[type_regle].champs}
+            brouillon["parametres"] = {**complets, **parametres}
+            changements = {cle: valeur for cle, valeur in brouillon.items() if cle != "annee"}
+            service_regles.modifier(ctx.session, annee.id, existante.code, changements)
+        return _resultat(existante, ligne, change)
+    except ErreurSaisie as erreur:
+        details = [_colonne_regle(cle, message) for cle, message in erreur.erreurs.items()]
+        details = details or [("", erreur.message)]
+        raise Rejet(*details[0], tuple(details[1:])) from None
+
+
 IMPORTEURS: dict[str, Callable[[Contexte, LigneTypee], Action]] = {
     "annees": _importer_annee,
     "semestres": _importer_semestre,
@@ -811,6 +1046,7 @@ IMPORTEURS: dict[str, Callable[[Contexte, LigneTypee], Action]] = {
     "matieres": _importer_matiere,
     "besoins": _importer_besoin,
     "indisponibilites": _importer_indisponibilite,
+    "regles": _importer_regle,
 }
 """Fonction d'import d'une ligne, par feuille (les groupes ont leur propre traitement)."""
 
@@ -1024,6 +1260,8 @@ def cle_ligne(feuille: Feuille, ligne: LigneTypee) -> tuple:
         return (frozenset({cle_code(ligne["campus_a"]), cle_code(ligne["campus_b"])}),)
     if feuille.nom == "matieres" and ligne["promotion"] is None:
         return (cle_code(ligne["code"]), None, None)
+    if feuille.nom == "regles" and ligne["code"] is None:
+        return ("sans code", id(ligne))  # code attribué à l'import : jamais un doublon
     return tuple(comparable(feuille.colonne(nom), ligne[nom]) for nom in feuille.identifiant)
 
 
@@ -1084,6 +1322,8 @@ def _appliquer_ligne(
             ctx.session.flush()
     except Rejet as rejet:
         _rejeter(ligne, rejet.colonne, rejet.message, bilan, signalements)
+        for colonne, message in rejet.details[1:]:
+            signalements.append(_signalement(Gravite.ERREUR, ligne, colonne, message))
         return False
     except IntegrityError as erreur:
         journal.exception(
@@ -1251,6 +1491,7 @@ def exporter_donnees(session: Session) -> list[tuple[Feuille, list[dict[str, Any
         "indisponibilites": lambda: _exporter_indisponibilites(
             session, reference_salle, groupes_par_id
         ),
+        "regles": lambda: _exporter_regles(session),
     }
     return [(feuille, list(exportateurs[feuille.nom]())) for feuille in FEUILLES]
 
@@ -1502,3 +1743,35 @@ def _exporter_indisponibilites(
             x["debut"],
         ),
     )
+
+
+def description_besoin(besoin: m.Besoin) -> str:
+    """Un besoin désigné par « matière / type / groupes » (cible d'une règle)."""
+    groupes = ", ".join(sorted(g.code for g in besoin.groupes))
+    return f"{besoin.matiere.code} / {besoin.type_seance.code} / {groupes}"
+
+
+def _exporter_regles(session: Session) -> Iterable[dict[str, Any]]:
+    """Règles de toutes les années, tous états confondus, avec leur phrase."""
+    for annee in session.scalars(select(m.AnneeScolaire).order_by(m.AnneeScolaire.date_debut)):
+        for detail in service_regles.lister(session, annee.id):
+            regle = detail.regle
+            cible = regle.portee.cible_code
+            if regle.portee.nature is NaturePortee.BESOIN and regle.portee.cible_id is not None:
+                cible = description_besoin(session.get(m.Besoin, regle.portee.cible_id))
+            yield {
+                "annee": detail.annee_libelle,
+                "code": regle.code,
+                "type": regle.type,
+                "portee": regle.portee.nature,
+                "cible": cible,
+                "parametres": ecrire_parametres_regle(regle.type, regle.parametres) or None,
+                "niveau": regle.niveau,
+                "etat": regle.etat,
+                "semestre": regle.semestre_code,
+                "date_debut": regle.date_debut,
+                "date_fin": regle.date_fin,
+                "commentaire": regle.commentaire or None,
+                "origine": regle.origine.value,
+                "phrase": detail.phrase,
+            }

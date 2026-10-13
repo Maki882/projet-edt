@@ -224,6 +224,8 @@ class Entite:
       attributs ORM (champs virtuels, valeurs propres à un mode) ;
     - `apres_ecriture(session, objet, valeurs)` : écritures annexes une fois
       l'objet enregistré (tables d'association sans relation ORM) ;
+    - `apres_creation(session, objet)` : suite d'une création seulement (une
+      année scolaire reçoit ses règles personnalisées proposées) ;
     - `analyser(session, objet)` : refus et conséquences de suppression
       calculés (en plus de `usages` et `consequences`), en textes ou en
       `operations.Raison` (texte et lien vers les éléments concernés).
@@ -251,6 +253,7 @@ class Entite:
     valider: Callable[[Session, Valeurs, Any], dict[str, str]] | None = None
     preparer: Callable[[Session, Valeurs], Valeurs] | None = None
     apres_ecriture: Callable[[Session, Any, Valeurs], None] | None = None
+    apres_creation: Callable[[Session, Any], None] | None = None
     analyser: Callable[[Session, Any], tuple[list[Any], list[Any]]] | None = None
     _index: dict[str, Champ] = field(default_factory=dict, init=False, repr=False, compare=False)
 

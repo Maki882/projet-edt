@@ -15,6 +15,12 @@ ce module ajoute ce que l'écran doit dire :
   les niveaux du dernier calcul du semestre (`niveaux_proposes`), lus dans
   les champs `niveau_<CODE>` (`lire_niveaux`). L'écran ne propose plus
   d'ignorer une règle ; un ancien calcul qui en ignorait reste lisible ;
+- les **règles personnalisées** actives du semestre
+  (`bloc_regles_du_semestre`, voir `regles_personnalisees`) : un niveau par
+  règle pour ce calcul ou « ignorer pour ce calcul », champs
+  `niveau_regle_<id>` et `ignorer_regle_<id>`, transmis aux
+  pré-vérifications et au moteur (`OptionsSolveur.niveaux_regles`) ; une
+  relance reprend ceux du calcul d'origine (`SuiviCalcul.niveaux_regles`) ;
 - la **pause déjeuner** à trois modes (`dejeuner_mode`) : horaires
   déterminés (plage réservée de X à Y), pause libre bornée (au moins N
   minutes d'un seul tenant entre X et Y) ou pas de pause ; un choix qui
@@ -74,8 +80,17 @@ from edt.erreurs import (
     ErreurRegleMetier,
 )
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire, presentation, raccords
-from edt.services.emploi_du_temps.versions import ResumeSemestre, exiger_semestre
+from edt.services.emploi_du_temps import (
+    memoire,
+    presentation,
+    raccords,
+    regles_personnalisees,
+)
+from edt.services.emploi_du_temps.versions import (
+    ResumeSemestre,
+    annee_du_semestre,
+    exiger_semestre,
+)
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.solveur.contrat import OptionsSolveur
@@ -362,6 +377,12 @@ class ResultatCalcul:
       (`presentation.libelles_niveaux`), vide si tout est par défaut ;
     - `entorses` : entorses aux règles importantes ou facultatives, une
       phrase par niveau (`statistiques["entorses"]`, fourni par le moteur) ;
+    - `regles_personnalisees` : règles personnalisées prises à un autre niveau
+      que celui qu'elles avaient au calcul, ou ignorées (`SuiviCalcul.regles`) ;
+      `remarque_regles` dit quand la comparaison n'a pu se faire qu'au niveau
+      actuel des règles ;
+    - `entorses_regles` : entorses par règle personnalisée
+      (`statistiques["entorses_regles"]`) ;
     - `qualite` : bilan de qualité du moteur, en phrases (trous, samedis,
       amélioration possible), sans ce que les compteurs disent déjà ;
     - `arrete_avec_solution` : l'utilisateur a arrêté le calcul et la
@@ -392,6 +413,9 @@ class ResultatCalcul:
     arrete_avec_solution: bool = False
     regles: tuple[str, ...] = ()
     entorses: tuple[str, ...] = ()
+    regles_personnalisees: tuple[str, ...] = ()
+    remarque_regles: str | None = None
+    entorses_regles: tuple[str, ...] = ()
 
     @property
     def en_cours(self) -> bool:
@@ -487,7 +511,42 @@ def niveaux_saisis(champs: Iterable[tuple[str, str]]) -> dict[str, str]:
         nom[len(PREFIXE_NIVEAU) :]: str(valeur).strip()
         for nom, valeur in champs
         if nom.startswith(PREFIXE_NIVEAU)
+        and not nom.startswith(regles_personnalisees.PREFIXE_NIVEAU_REGLE)
     }
+
+
+def bloc_regles_du_semestre(
+    session: Session,
+    semestre_id: int,
+    *,
+    choix: Mapping[int, Niveau | None] | None = None,
+    dernier: generation.SuiviCalcul | None = None,
+) -> regles_personnalisees.BlocRegles:
+    """Le tableau des règles personnalisées du semestre pour la page Générer.
+
+    `choix` : saisie à réafficher ; sinon les niveaux du dernier calcul
+    (`SuiviCalcul.niveaux_regles`), sinon ceux des règles.
+    """
+    semestre = exiger_semestre(session, semestre_id)
+    precedents = dernier.niveaux_regles if choix is None and dernier is not None else None
+    return regles_personnalisees.bloc_regles(
+        session,
+        semestre,
+        annee_du_semestre(session, semestre_id),
+        choix=choix,
+        precedents=precedents,
+    )
+
+
+def lire_choix_regles(
+    session: Session, semestre_id: int, champs: Mapping[str, str]
+) -> tuple[dict[int, Niveau | None], regles_personnalisees.BlocRegles]:
+    """Choix reçus pour les règles personnalisées du semestre, et le tableau qui les valide.
+
+    Lève `regles_personnalisees.ErreurSaisieRegles` pour un choix illisible.
+    """
+    bloc = bloc_regles_du_semestre(session, semestre_id)
+    return regles_personnalisees.lire_choix_regles(champs, bloc.regles), bloc
 
 
 def lire_niveaux(saisis: Mapping[str, str]) -> Niveaux:
@@ -502,6 +561,15 @@ def lire_niveaux(saisis: Mapping[str, str]) -> Niveaux:
     except ErreurDonneesInvalides as erreur:
         journal.info("Niveaux de règles refusés : %s", erreur.message)
         raise ErreurSaisieNiveaux(erreur.message, _niveaux_valides(saisis)) from erreur
+
+
+def lire_niveaux_lisibles(saisis: Mapping[str, str]) -> Niveaux:
+    """Les niveaux à réafficher quand le lancement est refusé pour une autre raison.
+
+    Comme `lire_niveaux`, sans lever : un choix refusé reprend son niveau par
+    défaut (il sera dit au lancement suivant).
+    """
+    return _niveaux_valides(saisis)
 
 
 def _niveaux_valides(saisis: Mapping[str, str]) -> Niveaux:
@@ -521,12 +589,14 @@ def pre_verifier(
     semestre_id: int,
     niveaux: Mapping[CodeContrainte, Niveau] | None = None,
     recap: Recapitulatif | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> PreVerification:
     """Vérifications préalables pour un calcul avec ces niveaux de règles (défaut : par défaut).
 
     Les niveaux sont transmis tels quels aux pré-vérifications du solveur
     (clé absente : règle ignorée, seulement pour la relance d'un ancien
-    calcul). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
+    calcul), avec ceux des règles personnalisées (`None` : chacune à son
+    niveau ; absente : ignorée). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
     récapitulatif ne servent que si elles manquaient.
     """
     niveaux = dict(niveaux) if niveaux is not None else niveaux_par_defaut()
@@ -536,12 +606,15 @@ def pre_verifier(
     if not recap.erreur and not recap.nb_besoins:
         problemes += (MESSAGE_AUCUN_BESOIN,)
     cle = tuple(sorted((str(code), str(retenu)) for code, retenu in niveaux.items()))
+    cle_regles = regles_personnalisees.cle_niveaux_regles(niveaux_regles)
     try:
         anomalies = memoire.memoriser(
             session,
             "pre_verifier_semestre",
-            (semestre_id, cle),
-            lambda: raccords.pre_verifier_semestre(session, semestre_id, niveaux=niveaux),
+            (semestre_id, cle, cle_regles),
+            lambda: raccords.pre_verifier_semestre(
+                session, semestre_id, niveaux=niveaux, niveaux_regles=niveaux_regles
+            ),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         problemes += tuple(message for code, message in recap.problemes if code not in ignorees)
@@ -715,11 +788,14 @@ def demarrer_calcul(
     optimiser: bool | None = None,
     autre_solution: bool = False,
     dejeuner: ChoixDejeuner | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> int:
     """Règle la pause déjeuner, vérifie, puis lance un calcul en arrière-plan ; renvoie son id.
 
     `niveaux` : niveaux des règles, validés (`lire_niveaux`) ; défaut : les
-    niveaux par défaut. `dejeuner` (bloc du formulaire) est d'abord enregistré dans les
+    niveaux par défaut. `niveaux_regles` : niveau de chaque règle
+    personnalisée pour ce calcul (une règle absente est ignorée) ; `None` :
+    chacune à son niveau. `dejeuner` (bloc du formulaire) est d'abord enregistré dans les
     paramètres s'il en diffère (`appliquer_dejeuner`) : les vérifications
     préalables et le calcul en tiennent compte, et le réglage reste même si
     le calcul est ensuite refusé. `None` laisse la pause déjeuner telle quelle.
@@ -732,7 +808,7 @@ def demarrer_calcul(
     if dejeuner is not None:
         appliquer_dejeuner(session, dejeuner)
     niveaux = niveaux if niveaux is not None else niveaux_par_defaut()
-    verification = pre_verifier(session, semestre_id, niveaux)
+    verification = pre_verifier(session, semestre_id, niveaux, niveaux_regles=niveaux_regles)
     if verification.bloquante:
         journal.info("Calcul du semestre %d refusé par les vérifications préalables", semestre_id)
         raise ErreurPreVerification(verification)
@@ -749,17 +825,33 @@ def demarrer_calcul(
         optimiser=optimiser,
         graine=_nouvelle_graine() if autre_solution else 0,
         utiliser_indices=not autre_solution,
+        niveaux_regles=niveaux_regles,
     )
     return generation.lancer_calcul(semestre_id, options)
 
 
+@dataclass(frozen=True)
+class Relance:
+    """Un calcul relancé, et les règles personnalisées que le calcul d'origine ne connaissait pas.
+
+    `regles_nouvelles` : codes des règles créées ou activées depuis, appliquées
+    à leur propre niveau (à dire à l'utilisateur).
+    """
+
+    calcul_id: int
+    regles_nouvelles: tuple[str, ...] = ()
+
+
 def relancer_calcul(
     session: Session, calcul_id: int, *, longue: bool | None = None, autre_solution: bool = False
-) -> int:
+) -> Relance:
     """Relance un calcul avec les mêmes règles ; plus longtemps et/ou avec une autre graine.
 
     Les niveaux sont ceux du calcul d'origine (`SuiviCalcul.niveaux` ; un
-    ancien calcul garde ses règles ignorées). `longue=None` garde la durée
+    ancien calcul garde ses règles ignorées), de même que ceux des règles
+    personnalisées ; une règle créée ou activée depuis s'applique à son
+    propre niveau, jamais ignorée en silence
+    (`regles_personnalisees.niveaux_pour_la_relance`). `longue=None` garde la durée
     du calcul d'origine. `autre_solution` tire
     une nouvelle graine **et** ne part pas des placements de la version
     active (sinon le moteur, guidé par eux, peut redonner le même emploi du
@@ -769,8 +861,21 @@ def relancer_calcul(
     if calcul is None:
         raise ErreurIntrouvable(f"Le calcul n° {calcul_id} n'existe pas.")
     parametres = dict(calcul.parametres or {})
-    niveaux = dict(generation.etat_calcul(calcul_id).niveaux)
-    verification = pre_verifier(session, calcul.semestre_id, niveaux)
+    origine = generation.etat_calcul(calcul_id)
+    niveaux = dict(origine.niveaux)
+    niveaux_regles, nouvelles = regles_personnalisees.niveaux_pour_la_relance(
+        session,
+        origine,
+        exiger_semestre(session, calcul.semestre_id),
+        annee_du_semestre(session, calcul.semestre_id),
+    )
+    if nouvelles:
+        journal.info(
+            "Relance du calcul %d : règles nouvelles appliquées à leur niveau : %s",
+            calcul_id,
+            ", ".join(nouvelles),
+        )
+    verification = pre_verifier(session, calcul.semestre_id, niveaux, niveaux_regles=niveaux_regles)
     if verification.bloquante:
         raise ErreurPreVerification(verification)
     if longue is None:
@@ -783,11 +888,12 @@ def relancer_calcul(
         optimiser=bool(parametres.get("optimiser", False)),
         graine=graine,
         utiliser_indices=not autre_solution and bool(parametres.get("utiliser_indices", True)),
+        niveaux_regles=niveaux_regles,
     )
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
     )
-    return generation.lancer_calcul(calcul.semestre_id, options)
+    return Relance(generation.lancer_calcul(calcul.semestre_id, options), nouvelles)
 
 
 # --------------------------------------------------------------------------- #
@@ -838,6 +944,7 @@ def resultat_calcul(
     arrete_avec_solution = issue == Issue.REUSSI and bool(
         statistiques.get("arrete_par_utilisateur")
     )
+    ecarts_regles, remarque_regles = regles_personnalisees.libelles_regles_du_calcul(session, suivi)
     titre, phrase, precision = _phrases(
         suivi, issue, semestre, temps, limite_texte, version_active, arrete_avec_solution
     )
@@ -872,6 +979,11 @@ def resultat_calcul(
             suivi.niveaux, dejeuner_actif=dejeuner_actif_du_calcul(session, suivi)
         ),
         entorses=_entorses(calcul_id, statistiques, suivi.niveaux),
+        regles_personnalisees=ecarts_regles,
+        remarque_regles=remarque_regles,
+        entorses_regles=regles_personnalisees.libelles_entorses_regles(
+            session, suivi, statistiques, annee_du_semestre(session, semestre.id)
+        ),
     )
 
 
@@ -1054,10 +1166,12 @@ def _options(
     optimiser: bool | None,
     graine: int,
     utiliser_indices: bool = True,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> OptionsSolveur:
     options = OptionsSolveur.depuis_parametres(
         lire_parametres(session),
         niveaux=niveaux,
+        niveaux_regles=niveaux_regles,
         relance_longue=longue,
         graine=graine,
     )

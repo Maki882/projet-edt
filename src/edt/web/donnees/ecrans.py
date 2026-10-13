@@ -78,6 +78,14 @@ class ActionLigne:
 
 
 @dataclass(frozen=True)
+class SuiteCreation:
+    """Ce qu'une création a entraîné : phrase ajoutée au message, page où aller ensuite."""
+
+    texte: str
+    adresse: str | None = None
+
+
+@dataclass(frozen=True)
 class Ecran:
     """Écran d'une entité.
 
@@ -90,7 +98,10 @@ class Ecran:
     - `edition_en_ligne` : le bouton « Modifier » d'une ligne l'édite sur place ;
     - `actions_ligne` : boutons supplémentaires de chaque ligne ;
     - `liens` : liens en tête de page (libellé, adresse) ;
-    - `parent` : (libellé, adresse) de la page parente, affichée en retour.
+    - `parent` : (libellé, adresse) de la page parente, affichée en retour ;
+    - `suite_creation(session, cree)` : ce qu'une création a entraîné (une
+      année reçoit ses règles proposées), dit dans le message ; son adresse,
+      s'il y en a une, remplace le retour à la liste.
     """
 
     entite: Entite
@@ -104,6 +115,7 @@ class Ecran:
     liens: tuple[tuple[str, str], ...] = ()
     parent: tuple[str, str] | None = None
     titre_page: str = ""
+    suite_creation: Callable[[Session, Mapping[str, Any]], SuiteCreation | None] | None = None
 
     @property
     def titre(self) -> str:
@@ -325,6 +337,26 @@ def _prerempli(request: Request, ecran: Ecran) -> dict[str, Any]:
     return valeurs
 
 
+def regles_confirmees(formulaire: FormData) -> list[int] | None:
+    """Identifiants des règles personnalisées dont l'utilisateur a confirmé la suppression.
+
+    Champ `_regles` : identifiants séparés par des virgules ; absent = aucune
+    confirmation (une suppression qui toucherait des règles est alors refusée).
+    """
+    brut = formulaire.get("_regles")
+    if brut is None:
+        return None
+    return [int(v) for v in str(brut).split(",") if v.strip().isascii() and v.strip().isdigit()]
+
+
+def _texte_regles(nombre: int) -> str:
+    if not nombre:
+        return ""
+    if nombre == 1:
+        return " 1 règle personnalisée supprimée ou modifiée avec."
+    return f" {nombre} règles personnalisées supprimées ou modifiées avec."
+
+
 def _suffixe_retour(adresse: str) -> str:
     return "?" + urlencode({"retour": adresse})
 
@@ -423,6 +455,7 @@ def _rendre_ligne_suppression(
             "analyse": operations.analyser_suppression(session, ecran.entite, ident),
             "url_element": ecran.url_element(ident),
             "url_page": f"{ecran.url_element(ident)}/supprimer{_suffixe_retour(retour)}",
+            "retour_regles": f"{ecran.url_element(ident)}/supprimer{_suffixe_retour(retour)}",
             "nb_colonnes": _nb_colonnes(request, session, ecran),
         },
     )
@@ -434,10 +467,12 @@ def _contexte_confirmation(
     retour = ecran.adresse_retour(request.query_params.get("retour"))
     depuis_fiche = request.query_params.get("depuis") == "fiche"
     url_fiche = ecran.url_element(ident) + _suffixe_retour(retour)
+    page = request.url.path + (f"?{request.url.query}" if request.url.query else "")
     return {
         "ecran": ecran,
         "entite": ecran.entite,
         "analyse": operations.analyser_suppression(session, ecran.entite, ident),
+        "retour_regles": page,
         "retour": retour,
         "depuis_fiche": depuis_fiche,
         "url_fiche": url_fiche,
@@ -476,7 +511,12 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         except ErreurDonneesInvalides as erreur:
             session.rollback()
             return rendre_formulaire(request, session, ecran, saisies, erreur=erreur, retour=retour)
-        return rediriger(request, retour, _message(ecran, cree["nom_affiche"], "créé"))
+        message = _message(ecran, cree["nom_affiche"], "créé")
+        suite = ecran.suite_creation(session, cree) if ecran.suite_creation else None
+        if suite is not None:
+            message = f"{message} {suite.texte}"
+            retour = suite.adresse or retour
+        return rediriger(request, retour, message)
 
     @routeur.get("/{ident:int}", name=f"{entite.code}_modifier")
     def element(request: Request, session: SessionRequete, ident: int) -> Response:
@@ -527,8 +567,9 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
     ) -> Response:
         retour = ecran.adresse_retour(formulaire.get("_retour"))
+        confirmees = regles_confirmees(formulaire)
         try:
-            nom = operations.supprimer(session, entite, ident)
+            nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
         except ErreurRegleMetier as refus:
             parametres = {"retour": retour}
             if formulaire.get("_depuis") == "fiche":
@@ -542,7 +583,7 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         return rediriger(
             request,
             _retour_apres_suppression(session, ecran, retour),
-            _message(ecran, nom, "supprimé"),
+            _message(ecran, nom, "supprimé") + _texte_regles(len(confirmees or ())),
         )
 
     @routeur.get("/{ident:int}/ligne/suppression", name=f"{entite.code}_ligne_suppression")
@@ -550,11 +591,15 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         return _rendre_ligne_suppression(request, session, ecran, ident)
 
     @routeur.post("/{ident:int}/ligne/supprimer", name=f"{entite.code}_ligne_supprimer")
-    def ligne_supprimer(request: Request, session: SessionRequete, ident: int) -> Response:
+    def ligne_supprimer(
+        request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
+    ) -> Response:
         """Supprime depuis la ligne et renvoie la zone de liste à jour, avec le message."""
+        confirmees = regles_confirmees(formulaire)
         try:
-            nom = operations.supprimer(session, entite, ident)
-            message = Message(_message(ecran, nom, "supprimé"), "succes")
+            nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
+            texte = _message(ecran, nom, "supprimé") + _texte_regles(len(confirmees or ()))
+            message = Message(texte, "succes")
         except ErreurRegleMetier as refus:
             message = Message(refus.message, "erreur")
         if not est_htmx(request):

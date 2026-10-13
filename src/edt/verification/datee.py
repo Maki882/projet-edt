@@ -34,9 +34,9 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
-from edt.domaine.contraintes import CodeContrainte, Niveaux
+from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import Besoin, Instantane, Occurrence, SeanceAPlacer
 from edt.erreurs import ErreurDonneesInvalides
@@ -49,10 +49,11 @@ from edt.verification.contexte import (
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import date_texte, plage
-from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes
+from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes, choisir_regles
 from edt.verification.regles_dejeuner import verifier_dejeuner_libre
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
+from edt.verification.regles_personnalisees import verifier_regles
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
 from edt.verification.semaine_type import CAUSES_SEANCE_RETIREE, CONSEIL_RECALCUL
 
@@ -65,6 +66,7 @@ def verifier_occurrences(
     contraintes_actives: Iterable[str] | None = None,
     *,
     niveaux: Niveaux | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> list[Anomalie]:
     """Liste les anomalies d'un ensemble de séances datées (liste vide : valide).
 
@@ -74,14 +76,21 @@ def verifier_occurrences(
     contraintes sont vérifiées, la gravité de chaque anomalie suit le niveau
     de sa contrainte sans dépasser celle de la règle, et `contraintes_actives`
     est ignoré. Sans `niveaux`, tout est vérifié en dur.
+
+    `niveaux_regles` (facultatif) : identifiant de règle personnalisée →
+    niveau retenu ; une règle absente est ignorée, comme si elle n'existait
+    pas (défaut : toutes les règles actives de l'instantané, à leur niveau).
+    Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
+    suivent toujours le niveau de leur règle.
     Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
     une occurrence est mal formée.
     """
     chrono = time.perf_counter()
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
+    instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     occurrences = tuple(occurrences)
     valider_occurrences(instantane, occurrences)
-    ctx = Contexte(instantane, codes, datee=True)
+    ctx = Contexte(instantane, codes, datee=True, niveaux_regles=regles_retenues)
     besoins = {besoin.id: besoin for besoin in instantane.besoins}
     seances = {seance.id: seance for seance in instantane.seances}
 
@@ -110,8 +119,8 @@ def verifier_occurrences(
     anomalies.extend(verifier_dejeuner_libre(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
     anomalies.extend(verifier_maxima(ctx, elements))
-    if niveaux_appliques is not None:
-        anomalies = appliquer_niveaux(anomalies, niveaux_appliques)
+    anomalies.extend(verifier_regles(ctx, elements))
+    anomalies = appliquer_niveaux(anomalies, niveaux_appliques, regles_retenues)
     anomalies.sort(key=cle_tri)
 
     journal.info(

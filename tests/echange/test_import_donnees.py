@@ -12,6 +12,7 @@ from edt.db import modeles as m
 from edt.db.initialisation import initialiser_base
 from edt.db.moteur import fabrique_sessions, session_base
 from edt.domaine.enumerations import Accessibilite, EtatCalcul, Gravite
+from edt.echange.format import FEUILLES
 from edt.echange.transaction import simulation_possible
 from edt.erreurs import ErreurCalculEnCours, ErreurRegleMetier
 from edt.services import echange as service
@@ -53,7 +54,13 @@ def test_aller_retour_dans_une_base_vide(
     rapport = importer(FichierEnvoye(fichier.nom, fichier.contenu), url=vide)
 
     assert not rapport.a_des_rejets, rapport.signalements
-    assert exporter(vide) == exporter()
+    apres, avant = exporter(vide), exporter()
+    # Une règle créée par import a l'origine « import » : la colonne origine est informative.
+    for regle in apres["regles"]:
+        assert regle.pop("origine") == "import"
+    for regle in avant["regles"]:
+        regle.pop("origine")
+    assert apres == avant
     assert rapport.bilan("besoins").nombre("crees") == jeu_minimal.nb_besoins
     assert rapport.bilan("groupes").nombre("crees") == jeu_minimal.nb_groupes
 
@@ -64,7 +71,7 @@ def test_reimporter_son_export_ne_change_rien(jeu_minimal, importer):
 
     rapport = importer(FichierEnvoye(fichier.nom, fichier.contenu), simuler=True)
 
-    assert len(rapport.bilans) == 13
+    assert len(rapport.bilans) == len(FEUILLES)
     assert all(set(b.compteurs) == {"inchanges"} for b in rapport.bilans), [
         b.texte for b in rapport.bilans
     ]

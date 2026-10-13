@@ -1,7 +1,9 @@
 """Règles portant sur une seule séance placée.
 
 - `DEJEUNER`, mode **fixe** (`Parametres.plage_dejeuner` renseignée) : la
-  plage de la séance recoupe la plage réservée au déjeuner. Le mode **libre**
+  plage de la séance recoupe la plage réservée au déjeuner ; rien si le
+  déjeuner de chacune de ses personnes est réglé par une règle
+  `PAUSE_DEJEUNER` (la règle le vérifie, à son niveau). Le mode **libre**
   (`fenetre_dejeuner`), qui porte sur la journée d'une personne et non sur
   une séance, est vérifié par `regles_dejeuner` ; le mode **aucun** ne
   vérifie rien ;
@@ -9,8 +11,11 @@
   créneau de la grille du jour, (c) pas de débordement de la demi-journée
   du créneau de début, (d) durée placée égale à la durée du besoin,
   (e) jour, début et date imposés respectés ;
-- `JOURS` : jour avec au moins un créneau dans la grille, samedi réservé aux
-  types de séance qui l'autorisent ;
+- `JOURS` : jour avec au moins un créneau dans la grille, et jour permis par
+  le **standard** (jours travaillés de l'établissement, plus le samedi pour un
+  type de séance qui l'autorise : `Instantane.reglages`). Quand les jours
+  d'une séance viennent d'une règle `JOURS_TRAVAILLES`, c'est la règle qui
+  relève l'entorse (`REGLE`), pas `JOURS` ;
 - salle : `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE` (type accepté, salle
   imposée, campus imposé), `EQUIPEMENT` ; une séance sans salle donne un
   avertissement `VOLUME` (« salle à définir ») et échappe aux règles de salle ;
@@ -92,6 +97,14 @@ def _dejeuner(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
         return
     debut, fin = plage_dejeuner
     if not se_chevauchent(element.debut, element.fin, debut, fin):
+        return
+    # Le standard ne vaut que pour les personnes dont le déjeuner n'est pas réglé par une
+    # règle `PAUSE_DEJEUNER` : celle-ci le vérifie elle-même, à son niveau.
+    personnes = ctx.personnes_de(element)
+    if personnes and all(
+        (reglage := ctx.dejeuner_de(p)) is not None and not reglage.source.est_standard
+        for p in personnes
+    ):
         return
     message = (
         f"La séance {ctx.libelle(element)} {ctx.moment(element)} empiète sur la pause "
@@ -177,10 +190,19 @@ def _jours(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
     raisons: list[str] = []
     if not ctx.instantane.debuts_de_creneau(element.jour):
         raisons.append(f"la grille horaire n'a aucun créneau le {jour}")
-    if element.jour == SAMEDI and not element.besoin.samedi_autorise:
-        raisons.append(
-            f"le type de séance {element.besoin.type_seance_code} n'est pas autorisé le samedi"
-        )
+    # Jours permis : `Instantane.reglages` (standard et règles par axe). Seule l'entorse au
+    # standard relève de `JOURS` ; une règle enfreinte relève de `REGLE`, à son niveau.
+    if any(source.est_standard for source in ctx.entorses_jours(element)):
+        if (
+            element.jour == SAMEDI
+            and not element.besoin.samedi_autorise
+            and SAMEDI not in ctx.instantane.jours_travailles
+        ):
+            raisons.append(
+                f"le type de séance {element.besoin.type_seance_code} n'est pas autorisé le samedi"
+            )
+        else:
+            raisons.append(f"le {jour} ne fait pas partie des jours travaillés de l'établissement")
     if not raisons:
         return
     yield ctx.anomalie(

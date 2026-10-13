@@ -1,0 +1,17 @@
+{# Confirmation de la suppression d'une règle (sans JavaScript, ou depuis la suppression d'une cible). #}
+{% extends "base.html" %}
+
+{% block titre %}Supprimer la règle {{ regle.code }}{% endblock %}
+
+{% block contenu %}
+<section class="carte carte-attention">
+  <h2>Confirmer la suppression</h2>
+  <p>{{ regle.phrase }} <span class="discret">({{ regle.code }}, {{ regle.annee_libelle }})</span></p>
+  <p>La règle sera supprimée définitivement. Pour la garder sans effet, la désactiver plutôt.</p>
+  <form method="post" action="/regles/{{ regle.id }}/supprimer" class="ligne-boutons">
+    <input type="hidden" name="_retour" value="{{ retour }}">
+    <button type="submit" class="bouton bouton-danger-plein">Supprimer définitivement</button>
+    <a class="bouton" href="{{ retour }}">Annuler</a>
+  </form>
+</section>
+{% endblock %}

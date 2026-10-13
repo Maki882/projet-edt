@@ -24,9 +24,9 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 
-from edt.domaine.contraintes import CodeContrainte, Niveaux
+from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import Gravite
 from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurDonneesInvalides
@@ -40,10 +40,11 @@ from edt.verification.contexte import (
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import enumerer, nom_jour, plage
-from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes
+from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes, choisir_regles
 from edt.verification.regles_dejeuner import verifier_dejeuner_libre
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
+from edt.verification.regles_personnalisees import verifier_regles
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
 
 journal = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ def verifier(
     contraintes_actives: Iterable[str] | None = None,
     *,
     niveaux: Niveaux | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> list[Anomalie]:
     """Liste les anomalies d'une semaine type (liste vide : emploi du temps valide).
 
@@ -69,15 +71,22 @@ def verifier(
     de sa contrainte sans dépasser celle de la règle, et `contraintes_actives`
     est ignoré. Sans `niveaux`, tout est vérifié en dur.
 
+    `niveaux_regles` (facultatif) : identifiant de règle personnalisée →
+    niveau retenu ; une règle absente est ignorée, comme si elle n'existait
+    pas (défaut : toutes les règles actives de l'instantané, à leur niveau).
+    Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
+    suivent toujours le niveau de leur règle.
+
     Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
     un placement est mal formé ; `ErreurIntrouvable` si l'instantané
     lui-même est incohérent (enseignant ou groupe d'un besoin absent...).
     """
     chrono = time.perf_counter()
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
+    instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     placements = tuple(placements)
     valider_placements(instantane, placements)
-    ctx = Contexte(instantane, codes, datee=False)
+    ctx = Contexte(instantane, codes, datee=False, niveaux_regles=regles_retenues)
     elements, inconnus = construire_elements(instantane, placements)
 
     anomalies: list[Anomalie] = []
@@ -88,8 +97,8 @@ def verifier(
     anomalies.extend(verifier_dejeuner_libre(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
     anomalies.extend(verifier_maxima(ctx, elements))
-    if niveaux_appliques is not None:
-        anomalies = appliquer_niveaux(anomalies, niveaux_appliques)
+    anomalies.extend(verifier_regles(ctx, elements))
+    anomalies = appliquer_niveaux(anomalies, niveaux_appliques, regles_retenues)
     anomalies.sort(key=cle_tri)
 
     journal.info(

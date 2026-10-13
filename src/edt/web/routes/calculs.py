@@ -9,7 +9,8 @@ Adresses :
   second ;
 - `GET /calculs/verifications` : fragment des vérifications préalables,
   recalculé quand on change le niveau d'une règle (champs `niveau_<CODE>`) ;
-- `POST /calculs` : lit les niveaux (`niveau_<CODE>`), enregistre la pause
+- `POST /calculs` : lit les niveaux (`niveau_<CODE>`) et les choix sur les
+  règles personnalisées (`niveau_regle_<id>`, `ignorer_regle_<id>`), enregistre la pause
   déjeuner choisie (mode, heures, durée minimale) si elle diffère des paramètres, lance un calcul puis mène
   à son suivi ; un niveau illisible ou interdit, ou une pause déjeuner mal
   saisie, réaffiche la page (422) avec le message ;
@@ -32,7 +33,13 @@ from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
 from edt.erreurs import ErreurCalculEnCours
 from edt.services import generation
-from edt.services.emploi_du_temps import calculs, prechauffage, presentation, versions
+from edt.services.emploi_du_temps import (
+    calculs,
+    prechauffage,
+    presentation,
+    regles_personnalisees,
+    versions,
+)
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rediriger, rendre
 from edt.web.menu import EntreeMenu
@@ -55,12 +62,22 @@ async def _niveaux_saisis(request: Request) -> dict[str, str]:
 NiveauxSaisis = Annotated[dict[str, str], Depends(_niveaux_saisis)]
 
 
+async def _champs_regles(request: Request) -> dict[str, str]:
+    """Les champs des règles personnalisées reçus (`niveau_regle_<id>`, `ignorer_regle_<id>`)."""
+    champs = (await request.form()) if request.method == "POST" else request.query_params
+    return regles_personnalisees.champs_regles(champs.multi_items())
+
+
+ChampsRegles = Annotated[dict[str, str], Depends(_champs_regles)]
+
+
 def _page_calculs(
     request: Request,
     session,
     semestre_id: int | None,
     *,
     niveaux: Niveaux | None = None,
+    choix_regles: dict | None = None,
     choix: dict | None = None,
     pre: calculs.PreVerification | None = None,
     dejeuner: calculs.ChoixDejeuner | None = None,
@@ -79,11 +96,22 @@ def _page_calculs(
             niveaux = calculs.niveaux_proposes(dernier)
         recap = calculs.recapitulatif(session, semestre.id)
         options = calculs.options_formulaire(session)
+        bloc = calculs.bloc_regles_du_semestre(
+            session, semestre.id, choix=choix_regles, dernier=dernier
+        )
+        niveaux_regles = regles_personnalisees.niveaux_pour_le_calcul(bloc.choix, bloc)
         contexte.update(
             recap=recap,
-            pre=pre or calculs.pre_verifier(session, semestre.id, niveaux, recap),
+            pre=pre
+            or calculs.pre_verifier(
+                session, semestre.id, niveaux, recap, niveaux_regles=niveaux_regles
+            ),
             regles=calculs.regles_proposees(niveaux),
             niveaux_proposes=calculs.NIVEAUX_PROPOSES,
+            bloc_regles=bloc,
+            annee_regles=versions.annee_du_semestre(session, semestre.id),
+            adresse_regles=regles_personnalisees.ADRESSE_REGLES,
+            adresse_ajout_regle=regles_personnalisees.ADRESSE_AJOUT_REGLE,
             options=options,
             choix=choix
             or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False},
@@ -113,16 +141,32 @@ def page_calculs(request: Request, session: SessionRequete, semestre_id: int | N
 
 @routeur.get("/calculs/verifications", name="calculs_verifications")
 def fragment_verifications(
-    request: Request, session: SessionRequete, semestre_id: int, saisis: NiveauxSaisis
+    request: Request,
+    session: SessionRequete,
+    semestre_id: int,
+    saisis: NiveauxSaisis,
+    champs_regles: ChampsRegles,
 ):
     """Vérifications préalables avec les niveaux actuellement choisis (fragment HTMX).
 
-    Un niveau illisible lève `ErreurSaisieNiveaux`, rendue comme toute erreur
-    métier (message, pas de trace).
+    Niveaux des contraintes et des règles personnalisées (règles ignorées
+    comprises). Un choix illisible lève `ErreurSaisieNiveaux` ou
+    `ErreurSaisieRegles`, rendues comme toute erreur métier (message, pas de trace).
     """
     versions.exiger_semestre(session, semestre_id)
-    pre = calculs.pre_verifier(session, semestre_id, calculs.lire_niveaux(saisis))
-    return rendre(request, "edt/_pre_verifications.html", {"pre": pre, "fmt": presentation})
+    choix_regles, bloc = calculs.lire_choix_regles(session, semestre_id, champs_regles)
+    pre = calculs.pre_verifier(
+        session,
+        semestre_id,
+        calculs.lire_niveaux(saisis),
+        niveaux_regles=regles_personnalisees.niveaux_pour_le_calcul(choix_regles, bloc),
+    )
+    contexte = {
+        "pre": pre,
+        "fmt": presentation,
+        "annee_regles": versions.annee_du_semestre(session, semestre_id),
+    }
+    return rendre(request, "edt/_pre_verifications.html", contexte)
 
 
 @routeur.post("/calculs", name="lancer_calcul")
@@ -131,6 +175,7 @@ def lancer(
     session: SessionRequete,
     semestre_id: Annotated[int, Form()],
     saisis: NiveauxSaisis,
+    champs_regles: ChampsRegles,
     duree: Annotated[str, Form()] = "court",
     optimiser: Annotated[bool, Form()] = False,
     autre_solution: Annotated[bool, Form()] = False,
@@ -141,11 +186,29 @@ def lancer(
 ):
     """Lit les niveaux des règles, règle la pause déjeuner puis lance un calcul ; refus expliqué sinon.
 
-    Une règle sans champ `niveau_<CODE>` garde son niveau par défaut. Sans le
-    bloc « Pause déjeuner » (`dejeuner` absent), la pause déjeuner
-    enregistrée reste telle quelle.
+    Une règle sans champ `niveau_<CODE>` garde son niveau par défaut, une
+    règle personnalisée sans champ le sien. Sans le bloc « Pause déjeuner »
+    (`dejeuner` absent), la pause déjeuner enregistrée reste telle quelle.
     """
     choix = {"duree": duree, "optimiser": optimiser, "autre_solution": autre_solution}
+    try:
+        choix_regles, bloc = calculs.lire_choix_regles(session, semestre_id, champs_regles)
+    except regles_personnalisees.ErreurSaisieRegles as erreur:
+        saisie, erreurs_dejeuner = calculs.relire_saisie_dejeuner(
+            session, dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
+        )
+        return _page_calculs(
+            request,
+            session,
+            semestre_id,
+            niveaux=calculs.lire_niveaux_lisibles(saisis),
+            choix_regles=erreur.choix,
+            choix=choix,
+            dejeuner=saisie,
+            erreurs_dejeuner=erreurs_dejeuner,
+            statut=422,
+            messages=[Message(erreur.message, "erreur")],
+        )
     try:
         niveaux = calculs.lire_niveaux(saisis)
     except calculs.ErreurSaisieNiveaux as erreur:
@@ -158,12 +221,15 @@ def lancer(
             session,
             semestre_id,
             niveaux=erreur.niveaux,
+            choix_regles=choix_regles,
             choix=choix,
             dejeuner=saisie,
             erreurs_dejeuner=erreurs_dejeuner,
             statut=422,
             messages=[Message(erreur.message, "erreur")],
         )
+    # Règles illisibles (déjà dit sur la page) : rien à transmettre, le moteur lit les mêmes.
+    niveaux_regles = regles_personnalisees.niveaux_pour_le_calcul(choix_regles, bloc)
     try:
         calcul_id = calculs.demarrer_calcul(
             session,
@@ -175,6 +241,7 @@ def lancer(
             dejeuner=calculs.lire_saisie_dejeuner(
                 dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
             ),
+            niveaux_regles=niveaux_regles,
         )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
@@ -188,6 +255,7 @@ def lancer(
             session,
             semestre_id,
             niveaux=niveaux,
+            choix_regles=choix_regles,
             choix=choix,
             dejeuner=erreur.saisie,
             erreurs_dejeuner=erreur.champs,
@@ -200,6 +268,7 @@ def lancer(
             session,
             semestre_id,
             niveaux=niveaux,
+            choix_regles=choix_regles,
             choix=choix,
             pre=erreur.pre_verification,
             statut=409,
@@ -250,7 +319,7 @@ def relancer(
 ):
     """Relance un calcul avec les mêmes règles (plus longtemps, ou pour une autre solution)."""
     try:
-        nouveau = calculs.relancer_calcul(
+        relance = calculs.relancer_calcul(
             session, calcul_id, longue=longue, autre_solution=autre_solution
         )
     except ErreurCalculEnCours:
@@ -262,7 +331,15 @@ def relancer(
     except calculs.ErreurPreVerification as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
         return rediriger(request, f"/calculs?semestre_id={semestre_id}", erreur.message, "erreur")
-    return rediriger(request, f"/calculs/{nouveau}", "Calcul relancé.")
+    if relance.regles_nouvelles:
+        return rediriger(
+            request,
+            f"/calculs/{relance.calcul_id}",
+            "Calcul relancé. Règles créées ou activées depuis le calcul d'origine, appliquées à "
+            f"leur propre niveau : {', '.join(relance.regles_nouvelles)}.",
+            "info",
+        )
+    return rediriger(request, f"/calculs/{relance.calcul_id}", "Calcul relancé.")
 
 
 @routeur.get("/versions", name="versions")

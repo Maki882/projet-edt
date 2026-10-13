@@ -41,21 +41,22 @@ semestres, jours fériés) ; il ajoute seulement les types de salle
 ## Contenu des trois tailles
 
 Chiffres de la graine 0, année 2026-2027 (la génération du jeu grand prend
-environ 6 s ; le seuil du test `perf` est de 60 s).
+environ 1,5 s ; le seuil du test `perf` est de 60 s).
 
 | | petit | moyen | grand |
 |---|---|---|---|
 | Promotions | A1 (2 classes) | A3 (6 classes + 2 d'apprentis) | A1 à A5 (40 classes dont 6 d'apprentis) |
 | Semestres garnis | S1 | S1, S2 | S1, S2 |
-| Sites / salles | 2 / 14 | 3 / 32 | 3 / 99 |
-| Groupes / étudiants / inscriptions | 13 / 65 / 195 | 39 / 246 / 646 | 229 / 1 471 / 4 105 |
-| Enseignants (dont recrutés pendant le témoin) | 7 (1) | 34 (5) | 136 (6) |
-| Matières | 7 | 30 | 148 |
-| Besoins (par semaine / total / ponctuel) | 23 (15 / 4 / 4) | 221 (119 / 50 / 52) | 1 164 (694 / 301 / 169) |
-| Séances hebdomadaires S1 / S2 | 23 / - | 111 / 110 | 595 / 569 |
-| Fermetures / indisponibilités | 22 / 4 | 60 / 26 | 152 / 171 |
-| Charge des demi-groupes S1 (moyenne / max) | 40 % / 48 % | 59 % / 80 % | 56 % / 80 % |
-| Charge des enseignants S1 (moyenne / max) | 11 % / 25 % | 14 % / 30 % | 18 % / 35 % |
+| Sites / salles | 2 / 14 | 3 / 34 | 3 / 99 |
+| Groupes / étudiants / inscriptions | 13 / 65 / 195 | 39 / 246 / 646 | 232 / 1 471 / 4 105 |
+| Enseignants (dont recrutés pendant le témoin) | 7 (1) | 34 (5) | 141 (9) |
+| Matières | 7 | 30 | 154 |
+| Besoins (par semaine / total / ponctuel) | 23 (15 / 4 / 4) | 221 (119 / 50 / 52) | 1 177 (707 / 301 / 169) |
+| Séances hebdomadaires S1 / S2 | 23 / - | 111 / 110 | 602 / 575 |
+| Fermetures / indisponibilités | 22 / 4 | 60 / 26 | 160 / 168 |
+| Charge des demi-groupes S1 (moyenne / max) | 40 % / 52 % | 59 % / 80 % | 55 % / 75 % |
+| Charge des enseignants S1 (moyenne / max) | 14 % / 25 % | 14 % / 30 % | 18 % / 35 % |
+| Règles personnalisées (actives / inactives / proposées) | 9 (6 / 1 / 2) | 14 (11 / 1 / 2) | 16 (13 / 1 / 2) |
 | Besoins écartés | 0 | 0 | 0 |
 | Vérificateur sur le témoin | 0 erreur, 1 information | 0 erreur, 9 informations par semestre | 0 erreur, 51 / 41 informations |
 
@@ -92,7 +93,7 @@ chaque site étant accessible.
 30 à 36 étudiants (22 à 28 pour les apprentis) > deux demi-groupes. Groupes
 transverses de la filière classique, alimentés par des inscriptions
 d'étudiants : anglais par niveau (`A1-ANG3`), LV2 en années 1-3 (espagnol,
-allemand, chinois), parcours en années 4-5 (`A4-P-CYB`...). Une option
+allemand, chinois), parcours en années 4-5 (`A4-P-CYB`... ; huit parcours au catalogue, un par groupe de 34 étudiants environ). Une option
 « entrepreneuriat » en 5e année sans liste d'étudiants, déclarée
 chevauchante avec la promotion. Un groupe tiers-temps par promotion
 (`A1-TT`, environ 3 % de l'effectif). Un demi-groupe (deux dans le jeu
@@ -147,6 +148,64 @@ grand, A3 dans le moyen), partiels du S2 de cette promotion la semaine
 d'avant ; mercredi après-midi libéré pour le sport en années 1-2
 (indisponibilité récurrente de la promotion).
 
+## Règles personnalisées
+
+Chaque jeu reçoit des règles personnalisées (`docs/regles-personnalisees.md`,
+§ 4.7), choisies selon les groupes, matières et sites présents
+(`edt.synthese.regles`) : le jeu grand les a toutes, le moyen celles de la
+3e année, le petit celles de la 1re année. Codes `R001`... dans l'ordre du
+tableau ; origine « saisie », sauf les deux règles de base du catalogue
+(origine « base », laissées **proposées**, donc sans effet). Dates de
+création fixes : le jeu reste déterministe.
+
+| Règle (jeu grand) | Type | Niveau | État | Témoin | Jeux |
+|---|---|---|---|---|---|
+| La promotion A1 ne travaille que du lundi au vendredi (pas même ses TP le samedi). | `JOURS_TRAVAILLES` | nécessaire | active | posée | petit, grand |
+| La classe A3-APP1 a aussi cours le samedi. | `JOURS_TRAVAILLES` | important | active | posée | moyen, grand |
+| La classe A2-G3 a une pause déjeuner libre d'au moins 1 h 15 entre 11 h 45 et 14 h 15 (semestre 1 ; A3-G2 en moyen, A1-G1 en petit). | `PAUSE_DEJEUNER` | important | active | posée | tous |
+| La classe A4-APP1 a au moins 30 min entre deux séances (A3-APP2 en moyen). | `PAUSE_MINIMALE` | important | active | posée | moyen, grand |
+| Les CM n'ont pas lieu le vendredi de 13 h 45 à 18 h. | `CRENEAUX_INTERDITS` | important | active | posée | tous |
+| Les séances de la promotion A3 ont lieu sur le campus d'Issy. | `CAMPUS` | nécessaire | active | posée | moyen, grand |
+| Les séances d'Algorithmique et programmation 1 ont lieu sur le campus NDC. | `CAMPUS` | nécessaire | active | posée | petit, grand |
+| Les séances d'Électronique embarquée ont lieu dans quatre laboratoires nommés (Électronique numérique 1 et deux laboratoires en petit). | `SALLES` | important | active | posée | tous |
+| La promotion A3 ne change pas de campus dans la journée. | `CAMPUS_PAR_JOUR` | important | active | par construction | moyen, grand |
+| La promotion A5 n'a pas plus de 6 h de cours par jour (A3-APP2 en moyen). | `MAX_PAR_JOUR` | important | active | posée | moyen, grand |
+| Les séances d'Analyse 1 ont lieu des jours différents (Traitement du signal en moyen). | `REPARTITION_MATIERE` | facultatif | inactive | sans effet | tous |
+| Un permanent de mathématiques commence à 9 h au plus tôt. | `PLAGE_HORAIRE` | nécessaire | active | posée | tous |
+| Deux vacataires viennent au plus deux jours par semaine. | `JOURNEES_LIBRES` | important | active | par construction | moyen, grand |
+| Dans chaque matière, le CM précède les TD de la semaine. | `ORDRE_SEMAINE` | facultatif | proposée | sans effet | tous |
+| Chaque enseignant a au moins une demi-journée libre par semaine. | `JOURNEES_LIBRES` | facultatif | proposée | sans effet | tous |
+
+**Posées dans le témoin** (quel que soit leur niveau) : les jours permis de
+chaque séance (précédence du contrat : règle la plus précise de chaque
+lignée, intersection entre axes), les plages interdites, les campus et
+salles filtrés, la pause minimale de chaque personne (la plus grande des
+pauses des personnes d'une paire de séances), la pause déjeuner libre et
+le maximum par jour de chaque groupe feuille, mesurés prudemment sur
+l'union des séances du jour qui ont une semaine en commun. Les plages
+d'horaires d'un enseignant lui sont posées comme des interdits du vivier
+(pas comme des indisponibilités).
+
+**Par construction** : `CAMPUS_PAR_JOUR` sur A3 découle de la règle
+`CAMPUS` (toutes les séances de la promotion à Issy) ; `JOURNEES_LIBRES` vise
+des vacataires dont les indisponibilités récurrentes laissent au plus deux
+jours de présence, sans samedi.
+
+**Jours** : le témoin suit la même précédence que le vérificateur et le
+solveur (`Instantane.reglages`) : standard des jours travaillés (plus le
+samedi pour un type de séance qui l'autorise, sauf règle visant ce type),
+sinon l'intersection des règles retenues. Un jour ouvert par une règle seule
+lui est donc permis : le samedi d'A3-APP1 peut accueillir ses TD et ses CM.
+Le témoin le garde en dernier recours (le samedi passe après les jours de
+semaine dans son ordre de préférence) : selon la graine, il l'utilise ou non.
+
+**Contrôle** : le vérificateur et le solveur vérifient et posent les
+quatorze types de règle. `tests/synthese/test_verificateur.py` vérifie que
+le témoin des jeux petit, moyen et grand ne provoque **aucune anomalie
+`REGLE`**, à aucun niveau ; `tests/synthese/controle_temoin.py`
+(`violations_regles`) en fait un second contrôle, direct et indépendant,
+à partir de `Instantane.regles`, `reglages` et `emplois`.
+
 ## Méthode du témoin
 
 Le générateur prépare d'abord les besoins « en projet », puis les place un
@@ -161,8 +220,9 @@ base que ceux dont **toutes** les séances ont trouvé une place.
    interne, erreur sinon).
 2. **Ordre de placement**, du plus contraint au moins contraint : créneaux
    imposés, barrettes de langues et de parcours, séances de promotion,
-   séances de classe (4 h puis 2 h), TP longs, TP, matières courtes,
-   épreuves, événements.
+   séances de 4 h (classe ou demi-groupe : il leur faut une demi-journée
+   entière), autres séances de classe, TP, matières courtes, épreuves,
+   événements.
 3. **Barrettes.** Les groupes d'anglais d'une promotion (deux vagues en 3e
    année), de LV2 ou de parcours sont placés au même créneau, chacun avec sa
    salle et son enseignant ; sans créneau commun, ils sont placés séparément.
@@ -170,8 +230,10 @@ base que ceux dont **toutes** les séances ont trouvé une place.
    chaque groupe transverse est en conflit avec presque toutes les classes.
 4. **Choix d'un créneau** : jours de semaine avant le samedi, jours sans autre
    séance du même besoin, créneaux déjà utilisés par un groupe frère ou par
-   les mêmes groupes sur d'autres semaines, jours les moins chargés, puis un
-   tirage déterministe.
+   les mêmes groupes sur d'autres semaines, demi-journées déjà entamées (les
+   demi-journées entières restent libres pour les séances de 4 h), jours les
+   moins chargés, puis un tirage déterministe. Les jours permis et les plages
+   interdites par les règles personnalisées sont filtrés avant.
 5. **Choix d'une salle** : la plus petite salle compatible du site préféré de
    la promotion (puis du site voisin, puis de l'autre campus).
 6. **Choix des enseignants** dans le vivier de la discipline, le moins chargé
@@ -184,8 +246,9 @@ Règles respectées (sémantique de `docs/architecture.md` et
 conflit jamais en même temps ; 15 minutes au moins (le temps de trajet entre
 deux sites) entre deux séances d'une même personne qui coexistent, appliqué
 aussi aux salles par prudence ; début sur un créneau de la grille, dans la
-plage d'ouverture et dans la demi-journée, hors déjeuner, du lundi au
-vendredi (samedi matin pour les TP), sauf créneau imposé ; capacité, type,
+plage d'ouverture et dans la demi-journée, hors déjeuner, un jour permis
+(jours travaillés, samedi matin pour les TP ou ouvert par une règle), sauf
+créneau imposé ; capacité, type,
 équipements, site et salle imposés, accessibilité (groupe drapeauté ou en
 conflit avec un groupe drapeauté ; « inconnu » vaut « non ») ;
 indisponibilités récurrentes des enseignants, des salles et des groupes liés.

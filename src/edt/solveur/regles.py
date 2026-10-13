@@ -24,6 +24,19 @@ Définitions
 (`edt.domaine.contraintes.Niveau`) et met en cache les recherches répétées
 (personnes partagées, salles compatibles, indisponibilités).
 
+Règles personnalisées et réglages par personne
+-----------------------------------------------
+`Regles` reçoit aussi les niveaux des **règles personnalisées** du calcul
+(`niveaux_regles`, voir `edt.solveur.personnalisees.appliquer_niveaux`) et
+lit `Instantane.reglages` : les jours permis de chaque séance (standard
+`jours_travailles` et règles `JOURS_TRAVAILLES` retenues, campus compris), la
+pause déjeuner et la pause minimale de chaque **personne** (groupe feuille ou
+enseignant, `Instantane.emplois`), chaque valeur avec sa **source** (une règle
+ou le paramètre global). Toute violation est rendue comme une `Violation`,
+imputée à sa source : au code du catalogue pour le standard, à la règle pour
+une règle (code `REGLE`). Le niveau qui décide « dur ou souple » est celui de
+la source (`dure_violation`, `poids_violation`).
+
 Niveaux
 -------
 Une contrainte **présente** dans les niveaux est examinée (`active`). Elle est
@@ -60,9 +73,52 @@ from edt.domaine.heures import (
     se_chevauchent,
 )
 from edt.domaine.instantane import Besoin, Indisponibilite, Instantane, Salle, SeanceAPlacer
+from edt.domaine.regles import (
+    FamilleRegle,
+    NaturePersonne,
+    Personne,
+    ReglageDejeuner,
+    RegleResolue,
+    ReglesJours,
+    SorteRegle,
+    Source,
+)
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
+from edt.solveur.personnalisees import Choix, appliquer_niveaux, enfreint, regles_de_seance
 
 C = CodeContrainte
+
+Imputation = CodeContrainte | int
+"""À qui une entorse est imputée : une contrainte du catalogue, ou une règle (son identifiant)."""
+
+
+@dataclass(frozen=True)
+class Violation:
+    """Une contrainte enfreinte : le code du catalogue et, pour une règle personnalisée, la règle.
+
+    `code` vaut `REGLE` quand `regle_id` est renseigné. `raison` sert aux
+    messages (« la pause déjeuner », « la règle R007 (Le groupe A1 ne
+    travaille pas le samedi) »).
+    """
+
+    code: CodeContrainte
+    raison: str = ""
+    regle_id: int | None = None
+
+    @property
+    def imputation(self) -> Imputation:
+        """La clé d'imputation de l'entorse : la règle, sinon le code."""
+        return self.regle_id if self.regle_id is not None else self.code
+
+
+@dataclass(frozen=True)
+class ExigencePause:
+    """Une pause minimale exigée entre deux séances d'une paire, et à qui l'imputer."""
+
+    duree: int
+    violation: Violation
+    dure: bool
+
 
 TestSalle = Callable[[Salle], bool]
 
@@ -106,8 +162,13 @@ class Regles:
         instantane: Instantane,
         contraintes_desactivees: Iterable[str] = (),
         niveaux: Niveaux | None = None,
+        niveaux_regles: dict[int, Niveau] | None = None,
     ) -> None:
-        self.instantane = instantane
+        self.instantane = appliquer_niveaux(instantane, niveaux_regles)
+        self.niveaux_regles: dict[int, Niveau] = {
+            regle.id: regle.niveau for regle in self.instantane.regles
+        }
+        instantane = self.instantane
         retirees = normaliser_codes(contraintes_desactivees)
         if niveaux is None:
             niveaux = niveaux_depuis_desactivees(retirees)
@@ -121,9 +182,11 @@ class Regles:
         self._salles: dict[int, SallesCompatibles] = {}
         self._reels: dict[int, frozenset[int]] = {}
         self._lies: dict[int, frozenset[int]] = {}
-        self._occupants: dict[int, frozenset[int]] = {}
-        self._occupes: dict[int, frozenset[int]] = {}
-        self._parents = {groupe.id: groupe.parent_id for groupe in instantane.groupes}
+        self._personnes: dict[int, tuple[Personne, ...]] = {}
+        self._dejeuners: dict[int, tuple[ReglageDejeuner, ...]] = {}
+        self._pauses: dict[tuple[int, int], tuple[ExigencePause, ...]] = {}
+        self._regles_seance: dict[str, tuple[RegleResolue, ...]] | None = None
+        self._regles_emploi: dict[tuple[int, str | None], tuple[RegleResolue, ...]] = {}
         self._limites = limites_demi_journee(instantane)
 
     def active(self, code: CodeContrainte) -> bool:
@@ -148,13 +211,196 @@ class Regles:
         """Les codes souples parmi `codes`, sans doublon."""
         return list(dict.fromkeys(code for code in codes if self.souple(code)))
 
+    # -- règles personnalisées : niveaux, sources, imputations ---------------------
+
+    def regle(self, regle_id: int) -> RegleResolue:
+        """La règle personnalisée retenue pour ce calcul, d'identifiant `regle_id`."""
+        return self.instantane.regle(regle_id)
+
+    def niveau_imputation(self, imputation: Imputation) -> Niveau | None:
+        """Niveau d'une contrainte du catalogue ou d'une règle (`None` si elle est ignorée)."""
+        if isinstance(imputation, CodeContrainte):
+            return self.niveaux.get(imputation)
+        return self.niveaux_regles.get(imputation)
+
+    def dure_imputation(self, imputation: Imputation) -> bool:
+        """Vrai si la contrainte ou la règle est présente et nécessaire."""
+        return self.niveau_imputation(imputation) is Niveau.NECESSAIRE
+
+    def souple_imputation(self, imputation: Imputation) -> bool:
+        """Vrai si la contrainte ou la règle est présente et peut être enfreinte contre un coût."""
+        niveau = self.niveau_imputation(imputation)
+        return niveau is not None and niveau is not Niveau.NECESSAIRE
+
+    def poids_imputation(self, imputation: Imputation) -> int:
+        """Coût d'une entorse à la contrainte ou à la règle (0 si elle est dure ou ignorée)."""
+        return POIDS_NIVEAU.get(self.niveau_imputation(imputation), 0)
+
+    def dure_violation(self, violation: Violation) -> bool:
+        """Vrai si la violation enfreint une contrainte ou une règle nécessaire."""
+        return self.dure_imputation(violation.imputation)
+
+    def souple_violation(self, violation: Violation) -> bool:
+        """Vrai si la violation enfreint une contrainte ou une règle souple."""
+        return self.souple_imputation(violation.imputation)
+
+    def poids_violation(self, violation: Violation) -> int:
+        """Coût de la violation dans l'objectif ou au replacement."""
+        return self.poids_imputation(violation.imputation)
+
+    def souples_violations(self, violations: Iterable[Violation]) -> tuple[Violation, ...]:
+        """Les violations souples parmi `violations`, sans doublon d'imputation."""
+        vues: dict[Imputation, Violation] = {}
+        for violation in violations:
+            if self.souple_violation(violation) and violation.imputation not in vues:
+                vues[violation.imputation] = violation
+        return tuple(vues.values())
+
+    @staticmethod
+    def violation_de_source(source: Source, code: CodeContrainte, raison: str) -> Violation:
+        """La violation d'une valeur réglée : imputée à sa règle, sinon à la contrainte `code`."""
+        if source.regle is None:
+            return Violation(code, raison)
+        return Violation(
+            C.REGLE, f"la règle {source.regle.code} ({source.regle.phrase})", source.regle.id
+        )
+
+    def violation_de_regle(self, regle: RegleResolue) -> Violation:
+        """La violation d'une règle personnalisée."""
+        return Violation(C.REGLE, f"la règle {regle.code} ({regle.phrase})", regle.id)
+
+    def texte_violation(self, violation: Violation) -> str:
+        """« Pause entre deux séances » ou « règle R007 », pour un message."""
+        if violation.regle_id is None:
+            return f"« {CATALOGUE[violation.code].libelle} »"
+        return f"la règle {self.regle(violation.regle_id).code}"
+
+    def regles_de_seance(self, seance_id: str) -> tuple[RegleResolue, ...]:
+        """Règles d'exigence de sorte « séance » qui concernent la séance (hors jours travaillés)."""
+        if self._regles_seance is None:
+            self._regles_seance = regles_de_seance(self.instantane)
+        return self._regles_seance.get(seance_id, ())
+
+    def regles_emploi_de(self, besoin: Besoin, seance_id: str | None) -> tuple[RegleResolue, ...]:
+        """Règles d'emploi du temps (exigences) et de relation qui concernent la séance.
+
+        Une règle d'emploi du temps concerne le besoin si l'une de ses
+        personnes (`RegleResolue.personnes`) suit ses séances ; une relation,
+        si la séance est parmi les siennes (`RegleResolue.seances`), ou l'une
+        de ses personnes pour une occurrence sans séance hebdomadaire. Les
+        réglages (déjeuner, pause) n'en font pas partie.
+        """
+        cle = (besoin.id, seance_id)
+        regles = self._regles_emploi.get(cle)
+        if regles is None:
+            personnes = set(self.personnes(besoin))
+            retenues = []
+            for regle in self.instantane.regles:
+                if regle.sorte is SorteRegle.RELATION:
+                    concernee = (
+                        seance_id in regle.seances
+                        if seance_id is not None
+                        else not personnes.isdisjoint(regle.personnes)
+                    )
+                elif regle.sorte is SorteRegle.EMPLOI_DU_TEMPS:
+                    concernee = regle.famille is FamilleRegle.EXIGENCE and not personnes.isdisjoint(
+                        regle.personnes
+                    )
+                else:
+                    concernee = False
+                if concernee:
+                    retenues.append(regle)
+            regles = tuple(retenues)
+            self._regles_emploi[cle] = regles
+        return regles
+
+    def signature_regles(self, seance_id: str) -> tuple:
+        """Ce qui, dans les règles, distingue les domaines de deux séances d'un même besoin."""
+        jours = self.jours_de(seance_id)
+        return (
+            tuple(regle.id for regle in self.regles_de_seance(seance_id)),
+            jours.standard,
+            tuple(regle.id for regle in jours.retenues),
+            tuple(sorted((campus, regle.id) for campus, regle in jours.par_campus.items())),
+        )
+
+    def violations_du_choix(
+        self, seance_id: str, choix: Choix, date: dt.date | None = None
+    ) -> list[Violation]:
+        """Règles de sorte « séance » (hors jours) que ce choix enfreint.
+
+        Avec `date` (couche datée), une règle à période datée ne compte que si
+        elle couvre ce jour (`RegleResolue.couvre`).
+        """
+        return [
+            self.violation_de_regle(regle)
+            for regle in self.regles_de_seance(seance_id)
+            if (date is None or regle.couvre(date)) and enfreint(regle, choix)
+        ]
+
+    def couvre(self, violation: Violation, date: dt.date | None) -> bool:
+        """Vrai si la violation vaut ce jour-là : toujours pour le standard, selon sa période
+        pour une règle (`None` : semaine type, toute règle retenue compte)."""
+        if date is None or violation.regle_id is None:
+            return True
+        return self.regle(violation.regle_id).couvre(date)
+
     # -- jours et horaires --------------------------------------------------------
 
-    def jour_permis(self, jour: int, besoin: Besoin) -> bool:
-        """Règle `JOURS` : un jour de la grille, et le samedi seulement s'il est autorisé."""
+    def jours_de(self, seance_id: str, date: dt.date | None = None) -> ReglesJours:
+        """Jours permis d'une séance : standard et règles retenues (`Instantane.reglages`).
+
+        Avec `date` (couche datée), seules les règles de jours dont la période
+        couvre la date comptent : hors de la période d'une ouverture datée, le
+        standard reprend sa place.
+        """
+        return self.instantane.reglages.jours_de(seance_id, date)
+
+    def violations_de_jour(
+        self,
+        seance_id: str | None,
+        jour: int,
+        campus_id: int | None = None,
+        besoin: Besoin | None = None,
+        date: dt.date | None = None,
+    ) -> list[Violation]:
+        """Ce qu'enfreint la séance placée le `jour` (sur `campus_id`) : règles de jours, standard.
+
+        Le standard est la contrainte `JOURS` (les jours travaillés de
+        l'établissement, plus le samedi si le type de séance l'autorise) ; une
+        règle `JOURS_TRAVAILLES` retenue l'emporte sur lui (précédence des
+        axes, `edt.domaine.regles`). `JOURS` ignorée : le standard ne compte
+        pas, les règles restent. Avec `date` (couche datée), les règles
+        résolues à cette date (`jours_de`). Une séance inconnue de la semaine
+        type (occurrence saisie à la main, `seance_id` absent) n'a que le
+        standard de son `besoin`.
+        """
+        reglages = self.instantane.reglages.jours
+        if seance_id is None or seance_id not in reglages:
+            if not self.active(C.JOURS) or jour in self.instantane.jours_travailles:
+                return []
+            if jour == SAMEDI and besoin is not None and besoin.samedi_autorise:
+                return []
+            return [Violation(C.JOURS, f"le {JOURS[jour]} n'est pas un jour de cours permis")]
+        violations = []
+        for source in self.jours_de(seance_id, date).entorses(jour, campus_id):
+            if source.regle is None and not self.active(C.JOURS):
+                continue
+            violations.append(
+                self.violation_de_source(
+                    source, C.JOURS, f"le {JOURS[jour]} n'est pas un jour de cours permis"
+                )
+            )
+        return violations
+
+    def jour_permis(self, jour: int, seance_id: str, campus_id: int | None = None) -> bool:
+        """Vrai si le jour est permis à la séance : un jour de la grille, qu'aucune règle de jours
+        nécessaire ni le standard (`JOURS` nécessaire) n'interdit."""
         if not self.instantane.debuts_de_creneau(jour):
             return False
-        return jour != SAMEDI or besoin.samedi_autorise
+        return not any(
+            self.dure_violation(v) for v in self.violations_de_jour(seance_id, jour, campus_id)
+        )
 
     def debuts_a_examiner(self, besoin: Besoin, jour: int) -> tuple[int, ...]:
         """Heures de début envisageables ce jour-là, avant toute règle.
@@ -171,17 +417,28 @@ class Regles:
         return tuple(sorted(set(range(0, MINUTES_PAR_JOUR, PAS_HORS_GRILLE)) | set(grille)))
 
     def violations_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int
-    ) -> list[tuple[CodeContrainte, str]]:
-        """Règles d'horaire présentes que cette heure de début enfreint : `(code, raison)`.
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
+    ) -> list[Violation]:
+        """Règles d'horaire présentes que cette heure de début enfreint.
 
-        Règles `HORAIRES` (ouverture, fermeture, demi-journée du créneau de
-        début) et `DEJEUNER` : à horaires déterminés (`Parametres.plage_dejeuner`),
-        la séance ne doit pas recouper la plage ; en pause libre bornée
-        (`Parametres.fenetre_dejeuner`), la séance ne doit pas, à elle seule,
-        priver ses groupes et ses enseignants de leur pause — seulement quand la
-        règle est dure : souple, l'entorse est comptée à l'échelle de la journée
-        d'une personne par le modèle (`pause_dejeuner_tenue`), pas par séance.
+        - `HORAIRES` : ouverture, fermeture, demi-journée du créneau de début ;
+        - `DEJEUNER`, pour chaque personne de la séance selon son réglage
+          (`Regles.dejeuners`) : à horaires déterminés, la séance ne doit pas
+          recouper la plage ; en pause libre bornée, elle ne doit pas, à elle
+          seule, priver la personne de sa pause — seulement quand la source
+          est dure : souple, l'entorse est comptée à l'échelle de la journée
+          d'une personne par le modèle (`pause_dejeuner_tenue`), pas par
+          séance. Une valeur réglée par une règle `PAUSE_DEJEUNER` est imputée
+          à cette règle ;
+        - avec `seance_id`, les règles `PLAGE_HORAIRE` et `CRENEAUX_INTERDITS`
+          qui concernent la séance (`edt.solveur.personnalisees`).
+
         Une heure imposée par le besoin en dispense : la séance peut alors
         sortir de la grille.
         """
@@ -189,38 +446,42 @@ class Regles:
         fin = minute + duree
         if besoin.debut_impose is not None:
             return []
-        violations: list[tuple[CodeContrainte, str]] = []
+        violations: list[Violation] = []
         if self.active(C.HORAIRES) and (
             minute < parametres.ouverture_min
             or fin > parametres.fermeture_min
             or fin > self._limites.get((jour, minute), 0)
         ):
             violations.append(
-                (
+                Violation(
                     C.HORAIRES,
                     f"la séance de {duree_vers_texte(duree)} ne tient pas dans la demi-journée "
                     "ou dans les heures d'ouverture",
                 )
             )
-        dejeuner = parametres.plage_dejeuner
-        if (
-            self.active(C.DEJEUNER)
-            and dejeuner is not None
-            and se_chevauchent(minute, fin, *dejeuner)
-        ):
-            violations.append((C.DEJEUNER, "la pause déjeuner"))
-        fenetre = parametres.fenetre_dejeuner
-        if (
-            fenetre is not None
-            and self.dure(C.DEJEUNER)
-            and not pause_dejeuner_tenue([(minute, fin)], fenetre)
-        ):
-            violations.append((C.DEJEUNER, "la pause déjeuner"))
+        for dejeuner in self.dejeuners(besoin):
+            violation = self.violation_de_source(dejeuner.source, C.DEJEUNER, "la pause déjeuner")
+            if dejeuner.plage is not None and se_chevauchent(minute, fin, *dejeuner.plage):
+                violations.append(violation)
+            elif (
+                dejeuner.fenetre is not None
+                and self.dure_violation(violation)
+                and not pause_dejeuner_tenue([(minute, fin)], dejeuner.fenetre)
+            ):
+                violations.append(violation)
+        if seance_id is not None:
+            violations.extend(self.violations_du_choix(seance_id, Choix(jour, minute, fin), date))
         return violations
 
     def refus_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int
-    ) -> tuple[CodeContrainte, str] | None:
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
+    ) -> Violation | None:
         """Raison **dure** pour laquelle la séance ne peut pas commencer à cette heure, sinon `None`.
 
         Aucune séance ne passe minuit ; ensuite, la première règle d'horaire
@@ -228,25 +489,31 @@ class Regles:
         enfreintes sont dans `entorses_horaire`.
         """
         if minute + duree > MINUTES_PAR_JOUR:
-            return C.HORAIRES, "la séance finirait après minuit"
+            return Violation(C.HORAIRES, "la séance finirait après minuit")
         return next(
             (
-                (code, raison)
-                for code, raison in self.violations_horaire(besoin, duree, jour, minute)
-                if self.dure(code)
+                violation
+                for violation in self.violations_horaire(
+                    besoin, duree, jour, minute, seance_id, date
+                )
+                if self.dure_violation(violation)
             ),
             None,
         )
 
     def entorses_horaire(
-        self, besoin: Besoin, duree: int, jour: int, minute: int
-    ) -> list[tuple[CodeContrainte, str]]:
+        self,
+        besoin: Besoin,
+        duree: int,
+        jour: int,
+        minute: int,
+        seance_id: str | None = None,
+        date: dt.date | None = None,
+    ) -> tuple[Violation, ...]:
         """Règles d'horaire **souples** que cette heure de début enfreint."""
-        return [
-            (code, raison)
-            for code, raison in self.violations_horaire(besoin, duree, jour, minute)
-            if self.souple(code)
-        ]
+        return self.souples_violations(
+            self.violations_horaire(besoin, duree, jour, minute, seance_id, date)
+        )
 
     # -- personnes ------------------------------------------------------------
 
@@ -268,50 +535,133 @@ class Regles:
             self._lies[besoin.id] = lies
         return lies
 
-    def _ascendants(self, groupe_id: int) -> frozenset[int]:
-        """Groupes qui contiennent `groupe_id` : sa lignée de parents (`Groupe.parent_id`)."""
-        lignee: set[int] = set()
-        parent = self._parents.get(groupe_id)
-        while parent is not None and parent not in lignee:
-            lignee.add(parent)
-            parent = self._parents.get(parent)
-        return frozenset(lignee)
+    def personnes(self, besoin: Besoin) -> tuple[Personne, ...]:
+        """Personnes dont l'emploi du temps contient les séances du besoin (`Instantane.emplois`).
 
-    def occupants(self, groupe_id: int) -> frozenset[int]:
-        """Groupes dont les séances occupent **tous** les étudiants de `groupe_id`.
-
-        Ses groupes liés (lui-même, ceux qui le contiennent, ceux qui le
-        chevauchent), sauf ses sous-groupes : une séance d'un sous-groupe ne
-        mobilise qu'une partie de ses étudiants, et le sous-groupe porte sa
-        propre règle. C'est l'emploi du temps d'un groupe vu comme une
-        personne (pause déjeuner).
+        Les groupes feuilles dont la lignée croise les groupes du besoin, et
+        ses enseignants non fictifs.
         """
-        occupants = self._occupants.get(groupe_id)
-        if occupants is None:
-            occupants = frozenset(
-                lie
-                for lie in self.instantane.groupes_lies(groupe_id)
-                if groupe_id not in self._ascendants(lie)
+        personnes = self._personnes.get(besoin.id)
+        if personnes is None:
+            personnes = tuple(
+                emploi.personne
+                for emploi in self.instantane.emplois
+                if (
+                    emploi.personne.nature is NaturePersonne.GROUPE
+                    and not besoin.groupes.isdisjoint(emploi.lignee)
+                )
+                or (
+                    emploi.personne.nature is NaturePersonne.ENSEIGNANT
+                    and emploi.personne.id in besoin.enseignants
+                )
             )
-            self._occupants[groupe_id] = occupants
-        return occupants
+            self._personnes[besoin.id] = personnes
+        return personnes
 
-    def groupes_occupes(self, besoin: Besoin) -> frozenset[int]:
-        """Groupes dont tous les étudiants sont pris par une séance du besoin.
+    def dejeuners(self, besoin: Besoin) -> tuple[ReglageDejeuner, ...]:
+        """Réglages de pause déjeuner distincts des personnes du besoin (`Instantane.reglages`).
 
-        Réciproque de `occupants` : ses groupes, leurs sous-groupes et les
-        groupes qui les chevauchent, mais pas les groupes qui les contiennent.
+        Le standard n'est retenu que si `DEJEUNER` est active ; une règle,
+        toujours (elle est retenue pour ce calcul). Un réglage sans pause
+        (mode « aucun ») est omis.
         """
-        occupes = self._occupes.get(besoin.id)
-        if occupes is None:
-            occupes = frozenset(
-                lie
-                for groupe in besoin.groupes
-                for lie in self.instantane.groupes_lies(groupe)
-                if lie not in self._ascendants(groupe)
-            )
-            self._occupes[besoin.id] = occupes
-        return occupes
+        dejeuners = self._dejeuners.get(besoin.id)
+        if dejeuners is None:
+            vus: dict[tuple, ReglageDejeuner] = {}
+            for personne in self.personnes(besoin):
+                reglage = self.instantane.reglages.dejeuner[personne]
+                if not reglage.actif:
+                    continue
+                if reglage.source.regle is None and not self.active(C.DEJEUNER):
+                    continue
+                cle = (
+                    reglage.mode,
+                    reglage.debut,
+                    reglage.fin,
+                    reglage.duree,
+                    reglage.source.regle.id if reglage.source.regle else None,
+                )
+                vus.setdefault(cle, reglage)
+            dejeuners = tuple(vus.values())
+            self._dejeuners[besoin.id] = dejeuners
+        return dejeuners
+
+    def exigences_de_pause(self, a: Besoin, b: Besoin) -> tuple[ExigencePause, ...]:
+        """Pauses minimales exigées entre une séance de `a` et une de `b` qui se suivent.
+
+        Une exigence par personne commune (`personnes`), selon son réglage
+        (`Instantane.reglages`) ; deux personnes au même réglage et à la même
+        source n'en font qu'une. Les personnes sont celles de
+        `Instantane.emplois` (lignée) ; deux besoins en conflit de groupes
+        sans groupe feuille commun (groupes seulement chevauchants) gardent
+        le **standard** entre eux, comme chez le vérificateur : un réglage
+        par personne ne remplace que la pause de cette personne. Le standard
+        ne compte que si `PAUSE` est active ; une pause nulle n'exige rien.
+        """
+        cle = (a.id, b.id) if a.id <= b.id else (b.id, a.id)
+        exigences = self._pauses.get(cle)
+        if exigences is None:
+            communes = set(self.personnes(a)) & set(self.personnes(b))
+            standard = Violation(C.PAUSE, "la pause entre deux séances")
+            vues: dict[tuple[int, Imputation], ExigencePause] = {}
+            for personne in sorted(communes, key=lambda p: (p.nature, p.id)):
+                reglage = self.instantane.reglages.pause[personne]
+                if reglage.source.regle is None:
+                    if not self.active(C.PAUSE) or reglage.duree <= 0:
+                        continue
+                    violation = standard
+                else:
+                    if reglage.duree <= 0:
+                        continue
+                    violation = self.violation_de_regle(reglage.source.regle)
+                vues.setdefault(
+                    (reglage.duree, violation.imputation),
+                    ExigencePause(reglage.duree, violation, self.dure_violation(violation)),
+                )
+            _, groupes_en_conflit = self.partage(a, b)
+            if (
+                groupes_en_conflit
+                and self.active(C.PAUSE)
+                and not any(p.nature is NaturePersonne.GROUPE for p in communes)
+            ):
+                duree = self.instantane.parametres.pause_min
+                if duree > 0:
+                    vues.setdefault(
+                        (duree, C.PAUSE), ExigencePause(duree, standard, self.dure(C.PAUSE))
+                    )
+            exigences = tuple(vues.values())
+            self._pauses[cle] = exigences
+        return exigences
+
+    def pause_garantie(self) -> int:
+        """Pause que les contraintes d'unicité peuvent garantir à tout le monde en allongeant les
+        plages : la plus petite pause en vigueur, si toutes sont dures ; sinon 0.
+
+        Une pause souple n'allonge rien (ses entorses sont comptées par
+        paire) ; une personne au standard sans `PAUSE` active n'a pas de
+        pause. Le reste des exigences passe par des couples de choix.
+        """
+        durees = []
+        for reglage in self.instantane.reglages.pause.values():
+            if reglage.source.regle is None:
+                if not self.active(C.PAUSE):
+                    return 0
+                if not self.dure(C.PAUSE):
+                    return 0
+                durees.append(self.instantane.parametres.pause_min)
+            else:
+                if reglage.source.regle.niveau is not Niveau.NECESSAIRE:
+                    return 0
+                durees.append(reglage.duree)
+        if not self.instantane.reglages.pause:
+            return self.instantane.parametres.pause_min if self.dure(C.PAUSE) else 0
+        return min(durees)
+
+    def pause_la_plus_longue(self) -> int:
+        """La plus longue pause minimale en vigueur (standard ou règle), pour le pas du codage."""
+        durees = [self.instantane.parametres.pause_min]
+        durees.extend(reglage.duree for reglage in self.instantane.reglages.pause.values())
+        return max(durees)
 
     def partage(self, a: Besoin, b: Besoin) -> tuple[bool, bool]:
         """`(enseignant commun non fictif, groupes en conflit)` pour deux besoins."""
@@ -510,7 +860,7 @@ class Regles:
 
     # -- paires -----------------------------------------------------------------
 
-    def codes_violes(
+    def violations_de_paire(
         self,
         besoin_a: Besoin,
         debut_a: int,
@@ -520,16 +870,18 @@ class Regles:
         debut_b: int,
         fin_b: int,
         salle_b: int | None,
-    ) -> list[CodeContrainte]:
+    ) -> list[Violation]:
         """Contraintes de paire violées par deux séances qui coexistent.
 
         Les appelants garantissent la coexistence (même jour et semaines
         communes, ou même date). Sans salle connue, les règles de salle et de
         trajet ne sont pas évaluées. Comme dans le vérificateur, la pause et
         le trajet ne concernent que deux séances qui ne se chevauchent pas :
-        un chevauchement relève des contraintes d'unicité.
+        un chevauchement relève des contraintes d'unicité. La pause exigée est
+        celle de chaque personne commune (`exigences_de_pause`), imputée à sa
+        source.
         """
-        violes: list[CodeContrainte] = []
+        violes: list[Violation] = []
         chevauchement = se_chevauchent(debut_a, fin_a, debut_b, fin_b)
         if (
             chevauchement
@@ -537,24 +889,25 @@ class Regles:
             and salle_a == salle_b
             and self.active(C.SALLE_UNIQUE)
         ):
-            violes.append(C.SALLE_UNIQUE)
+            violes.append(Violation(C.SALLE_UNIQUE))
         enseignant, groupe = self.partage(besoin_a, besoin_b)
         if not (enseignant or groupe):
             return violes
         if chevauchement:
             if enseignant and self.active(C.ENSEIGNANT_UNIQUE):
-                violes.append(C.ENSEIGNANT_UNIQUE)
+                violes.append(Violation(C.ENSEIGNANT_UNIQUE))
             if groupe and self.active(C.GROUPE_UNIQUE):
-                violes.append(C.GROUPE_UNIQUE)
+                violes.append(Violation(C.GROUPE_UNIQUE))
             return violes
         libre = ecart(debut_a, fin_a, debut_b, fin_b)
-        if self.active(C.PAUSE) and libre < self.instantane.parametres.pause_min:
-            violes.append(C.PAUSE)
+        for exigence in self.exigences_de_pause(besoin_a, besoin_b):
+            if libre < exigence.duree and exigence.violation not in violes:
+                violes.append(exigence.violation)
         if self.active(C.CAMPUS_TRAJET) and salle_a is not None and salle_b is not None:
             campus_a = self.instantane.salle(salle_a).campus_id
             campus_b = self.instantane.salle(salle_b).campus_id
             if campus_a != campus_b and libre < self.instantane.trajet(campus_a, campus_b):
-                violes.append(C.CAMPUS_TRAJET)
+                violes.append(Violation(C.CAMPUS_TRAJET))
         return violes
 
 
