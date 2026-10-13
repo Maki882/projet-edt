@@ -128,7 +128,7 @@ Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
 | Attribut ou classe | Effet |
 |---|---|
 | `data-confirmation="..."` sur un formulaire | confirmation avant l'envoi |
-| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 |
+| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 ; plusieurs conditions séparées par `;` doivent toutes tenir |
 | `data-attente="..."` sur un formulaire | boutons désactivés et texte d'attente pendant l'envoi (opérations longues) |
 | `.choix-multiple` | filtre au clavier d'une liste de cases à cocher |
 | `<details id="...">` dans une zone remplacée par HTMX | reste ouvert après le remplacement |
@@ -365,8 +365,8 @@ recherche, filtres et pagination remplacent `#zone-liste`.
 | Rubrique | Champs |
 |---|---|
 | Portée | `portee` (natures admises par le type ; « l'établissement » seulement si le type l'admet) puis une liste par nature, `cible_<nature>`, affichée selon la nature choisie (`data-visible-si`) ; groupes en arbre (promotion, └ classe, └ demi-groupe), groupes à part ensuite |
-| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») ; « Personnes concernées » (`CHAMPS_ETABLISSEMENT`) affiché pour la portée établissement seulement, et retiré du brouillon pour une autre portée |
-| Application | `niveau` (nécessaire, important, facultatif), `periode` (`annee` ; `semestre` avec `semestre` ; `dates` avec `date_debut` et `date_fin`), `commentaire` |
+| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») ; un paramètre réservé à certaines portées (`ChampRegle.portees` : « Personnes concernées », établissement seulement) n'est affiché que pour elles et retiré du brouillon pour une autre portée, son bloc entier masqué s'il n'a que de tels paramètres |
+| Application | `niveau` (nécessaire, important, facultatif), `periode` (`annee` ; `semestre` avec `semestre` ; `dates` avec `date_debut` et `date_fin`, absent pour un type non datable : `periode_datable` faux, comme les pauses ; forcé, il est refusé avec le message du domaine sous la période), `commentaire` |
 
 L'aperçu (`POST /regles/apercu`) part à chaque changement : il passe le
 brouillon à `valider` et affiche la phrase telle qu'elle sera enregistrée,
@@ -381,8 +381,11 @@ redemande l'aperçu au chargement.
 À l'enregistrement (`POST /regles/nouveau`, `POST /regles/<n>/modifier`),
 `ErreurSaisie.erreurs` (clés `portee.cible`, `parametres.duree`,
 `periode.semestre`...) est ramenée sous les champs par `erreurs_par_champ`
-(`parametres.X` → `p_X`, `portee.cible` → `cible_<nature>`) ; un message sans
-champ (doublon d'une règle active, par exemple) va dans le bandeau. Statut
+(`parametres.X` → `p_X`, `portee.cible` → `cible_<nature>`) ; les erreurs
+globales d'un brouillon mal formé vont sous leur bloc (`portee` et `periode`
+sous leur choix, `parametres` ou un paramètre inconnu sous le titre du bloc
+« Paramètres ») et le reste (`origine`, doublon d'une règle active...) dans le
+bandeau : aucune n'est perdue. Statut
 422, saisie conservée, jamais d'erreur 500. La modification réutilise le même
 formulaire, prérempli (`valeurs_de_regle`) ; son aperçu est calculé comme si
 la règle était inactive, pour qu'elle ne fasse pas doublon avec elle-même

@@ -21,9 +21,12 @@
 
 {% macro rubriques(liste) -%}
 {%- for rubrique in liste %}
-<fieldset>
+<fieldset{% for cle, valeur in rubrique.conteneur.items() %} {{ cle }}="{{ valeur }}"{% endfor %}>
   {%- if rubrique.titre %}
   <legend>{{ rubrique.titre }}</legend>
+  {%- endif %}
+  {%- if rubrique.erreur %}
+  <p class="erreur-champ" role="alert">{{ rubrique.erreur }}</p>
   {%- endif %}
   <div class="grille-champs">
     {%- for c in rubrique.champs %}

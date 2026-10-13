@@ -17,7 +17,12 @@ from edt.services import regles as service_regles
 from edt.services.jeux import recharger_jeu_fictif
 from edt.services.parametres import lire_parametres
 from edt.services.referentiels import operations
-from edt.web.donnees.regles import brouillon_depuis_formulaire
+from edt.web.donnees.regles import (
+    CLE_BLOC_PARAMETRES,
+    brouillon_depuis_formulaire,
+    erreurs_par_champ,
+    rubriques_regle,
+)
 
 HTMX = {"HX-Request": "true"}
 
@@ -135,8 +140,83 @@ def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):
     )
     cree = site.post("/regles/nouveau", data=donnees, follow_redirects=True)
     assert "créée" in cree.text
-    regle = _regle(ids.annee, "R005")
-    assert regle.regle.parametres.get("personnes") != "enseignants"
+    assert "personnes" not in _regle(ids.annee, "R005").regle.parametres
+
+    # « Personnes concernées » seul paramètre du type : tout le bloc suit la portée.
+    page = site.get(f"/regles/nouveau?annee={ids.annee}&type=CAMPUS_PAR_JOUR").text
+    assert '<fieldset data-visible-si="portee:etablissement">\n  <legend>Paramètres' in page
+
+
+def test_type_non_datable_sans_mode_dates_et_dates_refusees(site, ids):
+    datable = site.get(f"/regles/nouveau?annee={ids.annee}&type=JOURS_TRAVAILLES").text
+    assert '<option value="dates">' in datable and 'name="date_debut"' in datable
+    page = site.get(f"/regles/nouveau?annee={ids.annee}&type=PAUSE_DEJEUNER").text
+    assert '<option value="dates"' not in page and 'name="date_debut"' not in page
+    assert "sans dates" in page  # l'aide de la période le dit
+
+    classe = _id(m.Groupe, m.Groupe.code, "A1-G2")
+    donnees = _nouvelle(
+        ids.annee,
+        "PAUSE_DEJEUNER",
+        portee="groupe",
+        cible_groupe=str(classe),
+        p_mode="fixe",
+        p_debut="12:00",
+        p_fin="13:00",
+        niveau="important",
+        periode="dates",
+    )
+    attendu = "Pause déjeuner vaut toute l&#39;année ou un semestre entier, sans dates"
+    for dates in ({"date_debut": "2026-11-02", "date_fin": "2026-12-18"}, {}):
+        refus = site.post("/regles/nouveau", data={**donnees, **dates})
+        assert refus.status_code == 422
+        erreur = re.search(r'id="erreur-periode">([^<]+)<', refus.text).group(1)
+        assert erreur.startswith(attendu), dates  # erreur globale « periode » sous la période
+        assert '<option value="dates" selected>' in refus.text  # la saisie reste visible
+        apercu = site.post("/regles/apercu", data={**donnees, **dates}, headers=HTMX).text
+        assert apercu.count("sans dates") == 1
+    with session_base() as session:
+        assert len(service_regles.lister(session, ids.annee)) == 4  # rien n'a été créé
+
+
+def test_erreurs_globales_du_service_sous_leur_bloc(site, ids):
+    definition = CATALOGUE_TYPES[TypeRegle.MAX_PAR_JOUR]
+    reparties = erreurs_par_champ(
+        {
+            "portee": "Portée mal formée.",
+            "portee.cible": "Cible inconnue.",
+            "periode": "Période mal formée.",
+            "parametres": "Paramètres mal formés.",
+            "parametres.inconnu": "Paramètre inconnu.",
+            "parametres.maximum": "Trop grand.",
+            "origine": "Origine inconnue.",
+        },
+        "etablissement",
+        definition,
+    )
+    assert reparties.champs == {
+        "portee": "Portée mal formée. Cible inconnue.",  # pas de liste de cibles ici
+        "periode": "Période mal formée.",
+        CLE_BLOC_PARAMETRES: "Paramètres mal formés. Paramètre inconnu.",
+        "p_maximum": "Trop grand.",
+    }
+    assert reparties.generales == ["Origine inconnue."]
+
+    with session_base() as session:
+        annee = session.get(m.AnneeScolaire, ids.annee)
+        rubriques = rubriques_regle(
+            session,
+            definition,
+            annee,
+            {"portee": "etablissement", "periode": "annee"},
+            reparties.champs,
+            lire_parametres(session),
+        )
+    bloc = next(r for r in rubriques if r.titre == "Paramètres")
+    assert bloc.erreur == "Paramètres mal formés. Paramètre inconnu."
+    assert bloc.conteneur == {}  # un bloc en erreur n'est jamais masqué
+    periode = next(c for r in rubriques for c in r.champs if c.nom == "periode")
+    assert periode.erreur == "Période mal formée."
 
 
 def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
