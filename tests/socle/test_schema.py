@@ -254,7 +254,7 @@ def test_verifier_schema_avant_la_premiere_initialisation(lanceur, environnement
     resultat = lanceur.invoke(cli.app, ["verifier-schema"])
 
     assert resultat.exit_code == 0  # rien à comparer : init-db créera les tables
-    assert resultat.stdout.startswith("schéma à jour pour les tables existantes ; 28 table(s)")
+    assert resultat.stdout.startswith("schéma à jour pour les tables existantes ; 29 table(s)")
     assert "init-db" in resultat.stdout
 
 

@@ -51,6 +51,7 @@ from sqlalchemy import Enum as EnumSQL
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from edt.db.base import Base
+from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import (
     Accessibilite,
     CibleIndisponibilite,
@@ -64,6 +65,7 @@ from edt.domaine.enumerations import (
     StatutEnseignant,
     StatutOccurrence,
 )
+from edt.domaine.regles import EtatRegle, NaturePortee, OrigineRegle, TypeRegle
 from edt.erreurs import ErreurDonneesInvalides
 
 
@@ -918,6 +920,157 @@ class Occurrence(Provenance, Base):
 # --------------------------------------------------------------------------- #
 
 
+class Regle(Provenance, Base):
+    """Règle personnalisée (voir `edt.domaine.regles` et `docs/regles-personnalisees.md`).
+
+    Une règle appartient à une année scolaire, vise une portée (établissement
+    ou une cible : une seule colonne de cible renseignée), porte des paramètres
+    canoniques validés par le schéma de son type, un niveau, un état (seule une
+    règle active est posée et vérifiée) et une période (un semestre ou des
+    dates, sinon toute l'année).
+    """
+
+    __tablename__ = "regle"
+    __table_args__ = (
+        UniqueConstraint("annee_scolaire_id", "code"),
+        CheckConstraint(
+            "(portee = 'etablissement' AND groupe_id IS NULL AND enseignant_id IS NULL"
+            " AND campus_id IS NULL AND type_seance_id IS NULL AND matiere_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'groupe' AND groupe_id IS NOT NULL AND enseignant_id IS NULL"
+            " AND campus_id IS NULL AND type_seance_id IS NULL AND matiere_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'enseignant' AND enseignant_id IS NOT NULL AND groupe_id IS NULL"
+            " AND campus_id IS NULL AND type_seance_id IS NULL AND matiere_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'campus' AND campus_id IS NOT NULL AND groupe_id IS NULL"
+            " AND enseignant_id IS NULL AND type_seance_id IS NULL AND matiere_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'type_seance' AND type_seance_id IS NOT NULL AND groupe_id IS NULL"
+            " AND enseignant_id IS NULL AND campus_id IS NULL AND matiere_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'matiere' AND matiere_id IS NOT NULL AND groupe_id IS NULL"
+            " AND enseignant_id IS NULL AND campus_id IS NULL AND type_seance_id IS NULL"
+            " AND besoin_id IS NULL)"
+            " OR (portee = 'besoin' AND besoin_id IS NOT NULL AND groupe_id IS NULL"
+            " AND enseignant_id IS NULL AND campus_id IS NULL AND type_seance_id IS NULL"
+            " AND matiere_id IS NULL)",
+            name="une_seule_cible",
+        ),
+        CheckConstraint(
+            "date_debut IS NULL OR date_fin IS NULL OR date_debut <= date_fin",
+            name="periode_ordonnee",
+        ),
+        Index("ix_regle_groupe_id", "groupe_id"),
+        Index("ix_regle_enseignant_id", "enseignant_id"),
+        Index("ix_regle_campus_id", "campus_id"),
+        Index("ix_regle_type_seance_id", "type_seance_id"),
+        Index("ix_regle_matiere_id", "matiere_id"),
+        Index("ix_regle_besoin_id", "besoin_id"),
+        Index("ix_regle_annee_etat_type", "annee_scolaire_id", "etat", "type"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    annee_scolaire_id: Mapped[int] = mapped_column(
+        ForeignKey("annee_scolaire.id", ondelete="CASCADE"), comment="Année du paramétrage"
+    )
+    code: Mapped[str] = mapped_column(
+        String(16), comment="Identifiant métier stable dans l'année, ex. « R007 »"
+    )
+    type: Mapped[TypeRegle] = mapped_column(
+        type_enum(TypeRegle, "type"), comment="Type de règle (edt.domaine.regles.TypeRegle)"
+    )
+    portee: Mapped[NaturePortee] = mapped_column(
+        type_enum(NaturePortee, "portee"), comment="Nature de la portée"
+    )
+    groupe_id: Mapped[int | None] = mapped_column(
+        ForeignKey("groupe.id", ondelete="NO ACTION"), default=None, comment="Cible : groupe"
+    )
+    enseignant_id: Mapped[int | None] = mapped_column(
+        ForeignKey("enseignant.id", ondelete="NO ACTION"),
+        default=None,
+        comment="Cible : enseignant",
+    )
+    campus_id: Mapped[int | None] = mapped_column(
+        ForeignKey("campus.id", ondelete="NO ACTION"), default=None, comment="Cible : campus"
+    )
+    type_seance_id: Mapped[int | None] = mapped_column(
+        ForeignKey("type_seance.id", ondelete="NO ACTION"),
+        default=None,
+        comment="Cible : type de séance",
+    )
+    matiere_id: Mapped[int | None] = mapped_column(
+        ForeignKey("matiere.id", ondelete="NO ACTION"), default=None, comment="Cible : matière"
+    )
+    besoin_id: Mapped[int | None] = mapped_column(
+        ForeignKey("besoin.id", ondelete="NO ACTION"), default=None, comment="Cible : besoin"
+    )
+    parametres: Mapped[dict] = mapped_column(
+        JSON, default=dict, comment="Paramètres canoniques, validés par le schéma du type"
+    )
+    niveau: Mapped[Niveau] = mapped_column(
+        type_enum(Niveau, "niveau"), comment="Nécessaire, important ou facultatif"
+    )
+    etat: Mapped[EtatRegle] = mapped_column(
+        type_enum(EtatRegle, "etat"),
+        default=EtatRegle.ACTIVE,
+        comment="Proposée (sans effet), active ou inactive",
+    )
+    semestre_id: Mapped[int | None] = mapped_column(
+        ForeignKey("semestre.id", ondelete="CASCADE"),
+        default=None,
+        comment="Semestre de l'année visé (vide = toute l'année, sauf dates)",
+    )
+    date_debut: Mapped[dt.date | None] = mapped_column(
+        Date, default=None, comment="Période datée : premier jour"
+    )
+    date_fin: Mapped[dt.date | None] = mapped_column(
+        Date, default=None, comment="Période datée : dernier jour (inclus)"
+    )
+    origine: Mapped[OrigineRegle] = mapped_column(
+        type_enum(OrigineRegle, "origine"),
+        default=OrigineRegle.SAISIE,
+        comment="Saisie, import, assistant, règle de base ou reprise",
+    )
+    reprise_de_id: Mapped[int | None] = mapped_column(
+        ForeignKey("regle.id", ondelete="SET NULL"),
+        default=None,
+        comment="Règle de l'année précédente dont celle-ci est la reprise",
+    )
+    commentaire: Mapped[str | None] = mapped_column(Text, default=None, comment="Note libre")
+    cree_le: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.now, comment="Date de création (heure locale)"
+    )
+    modifie_le: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.now, onupdate=dt.datetime.now, comment="Dernière modification"
+    )
+
+    annee: Mapped[AnneeScolaire] = relationship()
+    semestre: Mapped[Semestre | None] = relationship()
+    groupe: Mapped[Groupe | None] = relationship()
+    enseignant: Mapped[Enseignant | None] = relationship()
+    campus: Mapped[Campus | None] = relationship()
+    type_seance: Mapped[TypeSeance | None] = relationship()
+    matiere: Mapped[Matiere | None] = relationship()
+    besoin: Mapped[Besoin | None] = relationship()
+
+    @property
+    def cible_id(self) -> int | None:
+        """Identifiant de la cible, quelle que soit la portée (vide pour l'établissement)."""
+        return {
+            NaturePortee.ETABLISSEMENT: None,
+            NaturePortee.GROUPE: self.groupe_id,
+            NaturePortee.ENSEIGNANT: self.enseignant_id,
+            NaturePortee.CAMPUS: self.campus_id,
+            NaturePortee.TYPE_SEANCE: self.type_seance_id,
+            NaturePortee.MATIERE: self.matiere_id,
+            NaturePortee.BESOIN: self.besoin_id,
+        }[NaturePortee(self.portee)]
+
+    def __repr__(self) -> str:
+        return f"<Regle {self.code} {self.type}>"
+
+
 class Parametre(Base):
     """Paramètre global (clé / valeur JSON). Voir `edt.domaine.parametres`."""
 
@@ -953,6 +1106,7 @@ MODELES: tuple[type[Base], ...] = (
     VersionEdt,
     SeanceHebdo,
     Occurrence,
+    Regle,
     Parametre,
 )
 """Tous les modèles à table propre (les tables d'association sont dans `Base.metadata`)."""

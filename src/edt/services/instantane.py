@@ -5,7 +5,8 @@ représentation figée (`edt.domaine.instantane`) lue par le vérificateur et
 le solveur. Elle résout au passage tout ce qui se calcule une fois pour
 toutes : relation de conflit entre groupes, effectif et besoin
 d'accessibilité de chaque besoin, types de salle acceptés, dépliage en
-séances hebdomadaires, verrous et indices tirés de la version de base.
+séances hebdomadaires, verrous et indices tirés de la version de base,
+règles personnalisées actives résolues (`Instantane.regles`).
 
 `charger_placements` et `charger_occurrences` donnent, dans le même
 vocabulaire, le contenu d'une version enregistrée (pour la vérifier ou
@@ -14,6 +15,7 @@ l'afficher).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from sqlalchemy import select
@@ -40,9 +42,17 @@ from edt.domaine.instantane import (
     Trajet,
     id_seance,
 )
+from edt.domaine.regles import (
+    ErreurSaisie,
+    NaturePortee,
+    RegleResolue,
+    resoudre_regle,
+    valider_regle,
+)
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.parametres import lire_parametres
+from edt.services.regles import charger_regles_actives
 
 journal = logging.getLogger(__name__)
 
@@ -59,7 +69,8 @@ def charger_instantane(
 
     Lève `ErreurIntrouvable` si le semestre ou la version n'existe pas,
     `ErreurRegleMetier` si la version appartient à un autre semestre,
-    `ErreurDonneesInvalides` si un besoin vise un groupe d'une autre année.
+    `ErreurDonneesInvalides` si un besoin vise un groupe d'une autre année ou
+    si une règle personnalisée active est devenue invalide (elle est nommée).
     Les besoins impossibles à déplier ne lèvent rien : ils sont listés dans
     `Instantane.problemes_depliage`.
     """
@@ -104,7 +115,8 @@ def charger_instantane(
         )
     )
     jours_fermes = _jours_fermes(session, semestre, groupes)
-    depliage = deplier(besoins, semaines, jours_fermes)
+    parametres = lire_parametres(session)
+    depliage = deplier(besoins, semaines, jours_fermes, parametres.jours_travailles)
 
     version_base = _version_base(session, semestre, version_base_id)
     seances = _attacher_version(session, depliage.seances, version_base)
@@ -135,7 +147,7 @@ def charger_instantane(
         conflits_groupes=conflits,
         indisponibilites=_indisponibilites(session, {g.id for g in groupes}),
         jours_fermes=jours_fermes,
-        parametres=lire_parametres(session),
+        parametres=parametres,
         besoins=besoins,
         seances=seances,
         problemes_depliage=depliage.problemes,
@@ -149,17 +161,78 @@ def charger_instantane(
             for e in session.scalars(select(m.Equipement).order_by(m.Equipement.code))
         ),
     )
+    instantane = dataclasses.replace(
+        instantane, regles=_regles_resolues(session, semestre, instantane)
+    )
     journal.info(
         "Instantané du semestre %s chargé : %d besoins, %d séances à placer, %d salles, "
-        "%d problème(s) de dépliage, version de base %s",
+        "%d règle(s) personnalisée(s), %d problème(s) de dépliage, version de base %s",
         semestre.libelle,
         len(besoins),
         len(seances),
         len(instantane.salles),
+        len(instantane.regles),
         len(depliage.problemes),
         instantane.version_base_id,
     )
     return instantane
+
+
+def _regles_resolues(
+    session: Session, semestre: m.Semestre, instantane: Instantane
+) -> tuple[RegleResolue, ...]:
+    """Règles actives de l'année dont la période recoupe le semestre, résolues.
+
+    Une règle active devenue invalide (paramètre hors bornes, cible hors de
+    l'année, code de salle ou de campus disparu) fait échouer le chargement
+    en la nommant : rien ne s'applique en silence.
+    """
+    codes_connus = {
+        "campus": {c.code for c in instantane.campus},
+        "salle": {s.code for s in instantane.salles},
+        "type_seance": set(session.scalars(select(m.TypeSeance.code))),
+    }
+    identifiants = {
+        "campus": {c.code: c.id for c in instantane.campus},
+        "salle": {s.code: s.id for s in instantane.salles},
+        "type_seance": dict(session.execute(select(m.TypeSeance.code, m.TypeSeance.id)).all()),
+    }
+    connues = {
+        NaturePortee.GROUPE: {g.id for g in instantane.groupes},
+        NaturePortee.ENSEIGNANT: {e.id for e in instantane.enseignants},
+        NaturePortee.CAMPUS: {c.id for c in instantane.campus},
+        NaturePortee.TYPE_SEANCE: set(identifiants["type_seance"].values()),
+        NaturePortee.MATIERE: {b.matiere_id for b in instantane.besoins},
+        NaturePortee.BESOIN: {b.id for b in instantane.besoins},
+    }
+    resolues = []
+    for regle in charger_regles_actives(session, semestre.annee_scolaire_id):
+        if regle.semestre_id is not None and regle.semestre_id != semestre.id:
+            continue
+        nom = f"La règle {regle.code} (« {regle.type.libelle} », {regle.portee.designation})"
+        try:
+            regle = valider_regle(regle, instantane.parametres, codes_connus)
+        except ErreurSaisie as erreur:
+            raise ErreurDonneesInvalides(
+                f"{nom} est devenue invalide : la corriger ou la désactiver.", erreur.details
+            ) from erreur
+        nature = regle.portee.nature
+        if nature is not NaturePortee.ETABLISSEMENT and (
+            regle.portee.cible_id not in connues[nature] and nature is not NaturePortee.MATIERE
+        ):
+            raise ErreurDonneesInvalides(
+                f"{nom} vise une cible qui n'existe plus dans l'année du semestre : la corriger "
+                "ou la désactiver."
+            )
+        try:
+            resolue = resoudre_regle(regle, instantane, identifiants)
+        except ErreurDonneesInvalides as erreur:
+            raise ErreurDonneesInvalides(
+                f"{nom} est devenue invalide : la corriger ou la désactiver.", [erreur.message]
+            ) from erreur
+        if resolue.semaines:
+            resolues.append(resolue)
+    return tuple(resolues)
 
 
 def charger_placements(session: Session, version_id: int) -> tuple[Placement, ...]:
