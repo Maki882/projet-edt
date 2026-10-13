@@ -347,9 +347,14 @@ class Regles:
 
     # -- jours et horaires --------------------------------------------------------
 
-    def jours_de(self, seance_id: str) -> ReglesJours:
-        """Jours permis d'une séance : standard et règles retenues (`Instantane.reglages`)."""
-        return self.instantane.reglages.jours_de(seance_id)
+    def jours_de(self, seance_id: str, date: dt.date | None = None) -> ReglesJours:
+        """Jours permis d'une séance : standard et règles retenues (`Instantane.reglages`).
+
+        Avec `date` (couche datée), seules les règles de jours dont la période
+        couvre la date comptent : hors de la période d'une ouverture datée, le
+        standard reprend sa place.
+        """
+        return self.instantane.reglages.jours_de(seance_id, date)
 
     def violations_de_jour(
         self,
@@ -357,6 +362,7 @@ class Regles:
         jour: int,
         campus_id: int | None = None,
         besoin: Besoin | None = None,
+        date: dt.date | None = None,
     ) -> list[Violation]:
         """Ce qu'enfreint la séance placée le `jour` (sur `campus_id`) : règles de jours, standard.
 
@@ -364,9 +370,10 @@ class Regles:
         l'établissement, plus le samedi si le type de séance l'autorise) ; une
         règle `JOURS_TRAVAILLES` retenue l'emporte sur lui (précédence des
         axes, `edt.domaine.regles`). `JOURS` ignorée : le standard ne compte
-        pas, les règles restent. Une séance inconnue de la semaine type
-        (occurrence saisie à la main, `seance_id` absent) n'a que le standard
-        de son `besoin`.
+        pas, les règles restent. Avec `date` (couche datée), les règles
+        résolues à cette date (`jours_de`). Une séance inconnue de la semaine
+        type (occurrence saisie à la main, `seance_id` absent) n'a que le
+        standard de son `besoin`.
         """
         reglages = self.instantane.reglages.jours
         if seance_id is None or seance_id not in reglages:
@@ -376,7 +383,7 @@ class Regles:
                 return []
             return [Violation(C.JOURS, f"le {JOURS[jour]} n'est pas un jour de cours permis")]
         violations = []
-        for source in reglages[seance_id].entorses(jour, campus_id):
+        for source in self.jours_de(seance_id, date).entorses(jour, campus_id):
             if source.regle is None and not self.active(C.JOURS):
                 continue
             violations.append(

@@ -17,8 +17,8 @@ date par date)
 - calendrier : dans le semestre et dans la fenêtre, jour non fermé pour les
   groupes (`JOUR_FERME`), jour de cours permis (`JOURS`), jour et heure
   imposés par le besoin respectés (une séance ponctuelle ne change pas de date) ;
-- jours permis de la séance (`JOURS`, règles `JOURS_TRAVAILLES` retenues :
-  `Regles.violations_de_jour`) ;
+- jours permis de la séance à sa date (`JOURS`, règles `JOURS_TRAVAILLES`
+  retenues dont la période couvre la date : `Regles.violations_de_jour`) ;
 - horaires : début de créneau, demi-journée, ouverture (`HORAIRES`), déjeuner
   à horaires déterminés de chacune de ses personnes (`DEJEUNER` ou règle
   `PAUSE_DEJEUNER`), règles `PLAGE_HORAIRE` et `CRENEAUX_INTERDITS`, par
@@ -404,13 +404,9 @@ class _Planning:
                 continue
             cout += sum(regles.poids_violation(v) for v in changement)
             if besoin_jour is not None:
-                du_jour = [
-                    v
-                    for v in regles.violations_de_jour(
-                        seance_id, date.weekday(), campus_de.get(salle_id), besoin_jour
-                    )
-                    if regles.couvre(v, date)
-                ]
+                du_jour = regles.violations_de_jour(
+                    seance_id, date.weekday(), campus_de.get(salle_id), besoin_jour, date
+                )
                 if any(regles.dure_violation(v) for v in du_jour):
                     continue
                 cout += sum(regles.poids_violation(v) for v in regles.souples_violations(du_jour))
@@ -615,8 +611,9 @@ def _candidates(
             fermes = [
                 any(
                     regles.dure_violation(v)
-                    for v in regles.violations_de_jour(origine.seance_id, jour, campus, besoin)
-                    if regles.couvre(v, date)
+                    for v in regles.violations_de_jour(
+                        origine.seance_id, jour, campus, besoin, date
+                    )
                 )
                 for campus in campus_possibles
             ]
@@ -624,11 +621,9 @@ def _candidates(
                 continue
             violations_jour = []
         else:
-            violations_jour = [
-                v
-                for v in regles.violations_de_jour(origine.seance_id, jour, None, besoin)
-                if regles.couvre(v, date)
-            ]
+            # Les règles de jours sont résolues à la date : hors de la période d'une
+            # ouverture datée, le standard reprend sa place.
+            violations_jour = regles.violations_de_jour(origine.seance_id, jour, None, besoin, date)
         if any(regles.dure_violation(v) for v in violations_jour):
             continue
         entorses_jour = sum(
