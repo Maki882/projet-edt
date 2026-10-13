@@ -228,29 +228,34 @@ def test_les_ecarts_se_mesurent_au_niveau_que_la_regle_avait_au_calcul(jeu_minim
     r001 = regles["R001"]  # nécessaire
     suivi = _lancer(client, jeu_minimal.semestre_id, **_r001_facultative_r002_ignoree(regles))
 
-    # La copie ne porte pas le niveau propre de la règle au calcul : comparé au niveau
-    # actuel, et la page le dit.
+    # Le moteur copie le niveau propre de chaque règle au calcul (`niveau_regle`) : la
+    # comparaison ne bouge plus quand la règle change ensuite, et la page ne prévient pas.
     page = client.get(f"/calculs/{suivi.id}").text
     assert "R001 (" in page and ") : facultatif" in page
-    assert "Comparés au niveau actuel de chaque règle" in page
-
-    # Avec le niveau d'alors dans la copie (`niveau_regle`), la comparaison ne bouge plus
-    # quand la règle change ensuite.
+    assert "Comparés au niveau actuel de chaque règle" not in page
     with session_base() as session:
         calcul = session.get(m.Calcul, suivi.id)
-        calcul.parametres = {
-            **calcul.parametres,
-            "regles": [
-                {**entree, "niveau_regle": regles[entree["code"]].niveau.value}
-                for entree in calcul.parametres["regles"]
-            ],
-        }
+        assert all("niveau_regle" in entree for entree in calcul.parametres["regles"])
         session.get(m.Regle, r001.id).niveau = Niveau.FACULTATIF  # modifiée après le calcul
     page = client.get(f"/calculs/{suivi.id}").text.replace("&#39;", "'")
     assert f"R001 ({r001.phrase.rstrip('.')}) : facultatif" in page
     assert "Comparés au niveau actuel" not in page
     historique = client.get(f"/versions?semestre_id={jeu_minimal.semestre_id}").text
     assert "R001 : facultatif ; R002 : ignorée" in historique
+
+    # Un calcul d'avant cette copie (sans `niveau_regle`) est comparé au niveau actuel,
+    # et la page le dit.
+    with session_base() as session:
+        calcul = session.get(m.Calcul, suivi.id)
+        calcul.parametres = {
+            **calcul.parametres,
+            "regles": [
+                {cle: valeur for cle, valeur in entree.items() if cle != "niveau_regle"}
+                for entree in calcul.parametres["regles"]
+            ],
+        }
+    page = client.get(f"/calculs/{suivi.id}").text
+    assert "Comparés au niveau actuel de chaque règle" in page
 
 
 def test_une_relance_applique_les_regles_creees_depuis_et_le_dit(jeu_minimal, client):
