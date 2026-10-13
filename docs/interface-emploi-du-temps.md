@@ -203,28 +203,30 @@ Ces écrans les montrent ainsi (`regles_personnalisees`) :
   période ; trois boutons radio « Nécessaire / Important / Facultatif »
   (champ `niveau_regle_<id>`, « (niveau de la règle) » à côté du sien) et
   une case « Ignorer pour ce calcul » (`ignorer_regle_<id>`). Préremplis
-  avec le niveau du dernier calcul du semestre s'il l'a enregistré, sinon
+  avec le niveau du dernier calcul du semestre (`SuiviCalcul.niveaux_regles`), sinon
   celui de la règle ; « ignorer » n'est jamais prérempli : le choix vaut
   pour un calcul. Au-delà de vingt règles, regroupées par type, repliées.
   Un rappel compte les règles **proposées** (sans effet tant qu'elles ne
   sont pas confirmées) ; liens vers `/regles` et `/regles/ajouter`. Un
   choix illisible (niveau inconnu, règle qui n'est plus active) réaffiche
   la page en 422 avec le message.
-- **Lancement** : `OptionsSolveur.niveaux_regles` (id de la règle →
-  niveau ; une règle ignorée en est absente, convention des niveaux).
-  Relance plus longue et « autre solution » reprennent les niveaux du
-  calcul d'origine (`calcul.parametres["regles"]`). Tant que le moteur ne
-  lit pas `niveaux_regles`, les options partent sans eux, la page le dit
-  sous le tableau et, si un choix s'écartait des niveaux des règles, au
-  lancement.
+- **Lancement** : `OptionsSolveur.niveaux_regles`
+  (`regles_personnalisees.niveaux_pour_le_calcul`) : `None` si chaque
+  règle garde son niveau ; sinon toutes les règles actives de l'année à
+  leur niveau, corrigées des choix, une règle ignorée en étant absente
+  (convention des niveaux) ; une règle d'un autre semestre n'est donc
+  jamais ignorée par mégarde. Les mêmes niveaux vont aux pré-vérifications
+  (`pre_verifier_semestre(..., niveaux_regles=)`), à l'affichage comme au
+  changement d'un choix (fragment HTMX). Relance plus longue et « autre
+  solution » reprennent `SuiviCalcul.niveaux_regles` du calcul d'origine.
 - **Suivi et historique** : « Règles personnalisées : R002 (phrase) :
-  facultatif ; R001 (phrase) : ignorée pour ce calcul » (règles prises à
-  un autre niveau que le leur, ou actives et déjà créées au lancement mais
-  absentes de la copie du calcul) ; « Entorses aux règles personnalisées :
-  2 entorses à R007 (phrase) » (`statistiques["entorses_regles"]`, code →
-  nombre ; un décompte illisible est dit). L'historique résume : « R002 :
-  facultatif ». Rien n'est affiché pour un calcul qui n'a pas enregistré
-  ses règles.
+  facultatif ; R001 (phrase) : ignorée pour ce calcul », d'après la copie
+  des règles du calcul (`SuiviCalcul.regles`, niveau `None` pour une règle
+  ignorée) comparée au niveau actuel de chaque règle ; « Entorses aux
+  règles personnalisées : 2 entorses à R007 (phrase) »
+  (`statistiques["entorses_regles"]`, code → nombre ; un décompte illisible
+  est dit). L'historique résume : « R002 : facultatif ; R001 : ignorée ».
+  Rien n'est affiché quand chaque règle a gardé son niveau.
 - **À traiter, panneau d'une séance et toute liste d'anomalies** : une
   anomalie qui cite une règle (`Anomalie.regle_id`, `regle_code`,
   `regle_phrase`, lus par `presentation.regle_citee`) porte son code en

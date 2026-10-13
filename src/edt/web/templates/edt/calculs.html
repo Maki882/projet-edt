@@ -127,9 +127,6 @@
     {%- else %}
     {{ tableau_regles(bloc_regles.regles) }}
     {%- endif %}
-    {%- if not moteur_lit_niveaux_regles %}
-    <p class="discret">Le moteur ne lit pas encore ces choix : chaque règle garde son niveau tant que ce raccord n'est pas livré.</p>
-    {%- endif %}
     {%- endif %}
     {%- if bloc_regles.nb_proposees %}
     {%- set n = bloc_regles.nb_proposees %}

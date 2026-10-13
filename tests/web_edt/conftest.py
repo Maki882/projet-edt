@@ -99,6 +99,7 @@ class FauxVerificateur:
     appels: list[tuple] = field(default_factory=list)
     contraintes_modification: object = None
     niveaux_pre_verifies: dict | None = None
+    niveaux_regles_pre_verifies: dict | None = None
 
     def __setattr__(self, nom, valeur) -> None:
         # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
@@ -140,7 +141,7 @@ class FauxVerificateur:
         return module
 
     def pre_verifier_semestre(
-        self, session, semestre_id, contraintes_desactivees=(), *, niveaux=None
+        self, session, semestre_id, contraintes_desactivees=(), *, niveaux=None, niveaux_regles=None
     ):
         """Renvoie les anomalies des règles examinées : comme le vrai, celles qui ont un niveau.
 
@@ -150,6 +151,11 @@ class FauxVerificateur:
             contraintes_desactivees = {str(c) for c in CATALOGUE} - {str(c) for c in niveaux}
         # Un relevé, pas un réglage : ne pas vider la mémoire des écrans (voir __setattr__).
         object.__setattr__(self, "niveaux_pre_verifies", None if niveaux is None else dict(niveaux))
+        object.__setattr__(
+            self,
+            "niveaux_regles_pre_verifies",
+            None if niveaux_regles is None else dict(niveaux_regles),
+        )
         self.appels.append(("pre", semestre_id, tuple(sorted(contraintes_desactivees))))
         return [a for a in self.pre_verifications if str(a.code) not in contraintes_desactivees]
 

@@ -191,6 +191,7 @@ def pre_verifier_semestre(
     contraintes_desactivees: Iterable[str] = (),
     *,
     niveaux: Mapping[str, str] | None = None,
+    niveaux_regles: Mapping[int, object] | None = None,
 ) -> tuple[Anomalie, ...]:
     """Pré-vérifications d'un semestre avant un calcul (charges, salles accessibles, verrous...).
 
@@ -200,6 +201,8 @@ def pre_verifier_semestre(
     arguments: dict[str, object] = {"contraintes_desactivees": tuple(contraintes_desactivees)}
     if niveaux is not None:
         arguments = {"niveaux": dict(niveaux)}
+    if niveaux_regles is not None:
+        arguments["niveaux_regles"] = dict(niveaux_regles)
     anomalies = _appeler(
         MODULE_GENERATION,
         "pre_verifier_semestre",

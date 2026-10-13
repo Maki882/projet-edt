@@ -18,9 +18,9 @@ ce module ajoute ce que l'écran doit dire :
 - les **règles personnalisées** actives du semestre
   (`bloc_regles_du_semestre`, voir `regles_personnalisees`) : un niveau par
   règle pour ce calcul ou « ignorer pour ce calcul », champs
-  `niveau_regle_<id>` et `ignorer_regle_<id>`, transmis au moteur
-  (`OptionsSolveur.niveaux_regles`) ; une relance reprend ceux du calcul
-  d'origine ;
+  `niveau_regle_<id>` et `ignorer_regle_<id>`, transmis aux
+  pré-vérifications et au moteur (`OptionsSolveur.niveaux_regles`) ; une
+  relance reprend ceux du calcul d'origine (`SuiviCalcul.niveaux_regles`) ;
 - la **pause déjeuner** à trois modes (`dejeuner_mode`) : horaires
   déterminés (plage réservée de X à Y), pause libre bornée (au moins N
   minutes d'un seul tenant entre X et Y) ou pas de pause ; un choix qui
@@ -522,14 +522,10 @@ def bloc_regles_du_semestre(
     """Le tableau des règles personnalisées du semestre pour la page Générer.
 
     `choix` : saisie à réafficher ; sinon les niveaux du dernier calcul
-    (`dernier`, s'il les a enregistrés), sinon ceux des règles.
+    (`SuiviCalcul.niveaux_regles`), sinon ceux des règles.
     """
     semestre = exiger_semestre(session, semestre_id)
-    precedents = None
-    if choix is None and dernier is not None:
-        calcul = session.get(m.Calcul, dernier.id)
-        parametres = dict(calcul.parametres or {}) if calcul is not None else None
-        precedents = regles_personnalisees.niveaux_regles_du_calcul(dernier, parametres)
+    precedents = dernier.niveaux_regles if choix is None and dernier is not None else None
     return regles_personnalisees.bloc_regles(
         session,
         semestre,
@@ -590,12 +586,14 @@ def pre_verifier(
     semestre_id: int,
     niveaux: Mapping[CodeContrainte, Niveau] | None = None,
     recap: Recapitulatif | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> PreVerification:
     """Vérifications préalables pour un calcul avec ces niveaux de règles (défaut : par défaut).
 
     Les niveaux sont transmis tels quels aux pré-vérifications du solveur
     (clé absente : règle ignorée, seulement pour la relance d'un ancien
-    calcul). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
+    calcul), avec ceux des règles personnalisées (`None` : chacune à son
+    niveau ; absente : ignorée). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
     récapitulatif ne servent que si elles manquaient.
     """
     niveaux = dict(niveaux) if niveaux is not None else niveaux_par_defaut()
@@ -605,12 +603,15 @@ def pre_verifier(
     if not recap.erreur and not recap.nb_besoins:
         problemes += (MESSAGE_AUCUN_BESOIN,)
     cle = tuple(sorted((str(code), str(retenu)) for code, retenu in niveaux.items()))
+    cle_regles = regles_personnalisees.cle_niveaux_regles(niveaux_regles)
     try:
         anomalies = memoire.memoriser(
             session,
             "pre_verifier_semestre",
-            (semestre_id, cle),
-            lambda: raccords.pre_verifier_semestre(session, semestre_id, niveaux=niveaux),
+            (semestre_id, cle, cle_regles),
+            lambda: raccords.pre_verifier_semestre(
+                session, semestre_id, niveaux=niveaux, niveaux_regles=niveaux_regles
+            ),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         problemes += tuple(message for code, message in recap.problemes if code not in ignorees)
@@ -804,7 +805,7 @@ def demarrer_calcul(
     if dejeuner is not None:
         appliquer_dejeuner(session, dejeuner)
     niveaux = niveaux if niveaux is not None else niveaux_par_defaut()
-    verification = pre_verifier(session, semestre_id, niveaux)
+    verification = pre_verifier(session, semestre_id, niveaux, niveaux_regles=niveaux_regles)
     if verification.bloquante:
         journal.info("Calcul du semestre %d refusé par les vérifications préalables", semestre_id)
         raise ErreurPreVerification(verification)
@@ -821,8 +822,8 @@ def demarrer_calcul(
         optimiser=optimiser,
         graine=_nouvelle_graine() if autre_solution else 0,
         utiliser_indices=not autre_solution,
+        niveaux_regles=niveaux_regles,
     )
-    options = regles_personnalisees.avec_niveaux_regles(options, niveaux_regles)
     return generation.lancer_calcul(semestre_id, options)
 
 
@@ -844,8 +845,8 @@ def relancer_calcul(
     parametres = dict(calcul.parametres or {})
     origine = generation.etat_calcul(calcul_id)
     niveaux = dict(origine.niveaux)
-    niveaux_regles = regles_personnalisees.niveaux_regles_du_calcul(origine, parametres)
-    verification = pre_verifier(session, calcul.semestre_id, niveaux)
+    niveaux_regles = origine.niveaux_regles
+    verification = pre_verifier(session, calcul.semestre_id, niveaux, niveaux_regles=niveaux_regles)
     if verification.bloquante:
         raise ErreurPreVerification(verification)
     if longue is None:
@@ -858,8 +859,8 @@ def relancer_calcul(
         optimiser=bool(parametres.get("optimiser", False)),
         graine=graine,
         utiliser_indices=not autre_solution and bool(parametres.get("utiliser_indices", True)),
+        niveaux_regles=niveaux_regles,
     )
-    options = regles_personnalisees.avec_niveaux_regles(options, niveaux_regles)
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
     )
@@ -948,11 +949,9 @@ def resultat_calcul(
             suivi.niveaux, dejeuner_actif=dejeuner_actif_du_calcul(session, suivi)
         ),
         entorses=_entorses(calcul_id, statistiques, suivi.niveaux),
-        regles_personnalisees=regles_personnalisees.libelles_regles_du_calcul(
-            session, suivi, parametres, semestre, annee_du_semestre(session, semestre.id)
-        ),
+        regles_personnalisees=regles_personnalisees.libelles_regles_du_calcul(session, suivi),
         entorses_regles=regles_personnalisees.libelles_entorses_regles(
-            session, suivi, statistiques, parametres, annee_du_semestre(session, semestre.id)
+            session, suivi, statistiques, annee_du_semestre(session, semestre.id)
         ),
     )
 
@@ -1136,10 +1135,12 @@ def _options(
     optimiser: bool | None,
     graine: int,
     utiliser_indices: bool = True,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> OptionsSolveur:
     options = OptionsSolveur.depuis_parametres(
         lire_parametres(session),
         niveaux=niveaux,
+        niveaux_regles=niveaux_regles,
         relance_longue=longue,
         graine=graine,
     )

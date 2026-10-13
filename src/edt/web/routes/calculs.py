@@ -96,15 +96,19 @@ def _page_calculs(
             niveaux = calculs.niveaux_proposes(dernier)
         recap = calculs.recapitulatif(session, semestre.id)
         options = calculs.options_formulaire(session)
+        bloc = calculs.bloc_regles_du_semestre(
+            session, semestre.id, choix=choix_regles, dernier=dernier
+        )
+        niveaux_regles = regles_personnalisees.niveaux_pour_le_calcul(bloc.choix, bloc)
         contexte.update(
             recap=recap,
-            pre=pre or calculs.pre_verifier(session, semestre.id, niveaux, recap),
+            pre=pre
+            or calculs.pre_verifier(
+                session, semestre.id, niveaux, recap, niveaux_regles=niveaux_regles
+            ),
             regles=calculs.regles_proposees(niveaux),
             niveaux_proposes=calculs.NIVEAUX_PROPOSES,
-            bloc_regles=calculs.bloc_regles_du_semestre(
-                session, semestre.id, choix=choix_regles, dernier=dernier
-            ),
-            moteur_lit_niveaux_regles=regles_personnalisees.moteur_lit_les_niveaux_regles(),
+            bloc_regles=bloc,
             adresse_regles=regles_personnalisees.ADRESSE_REGLES,
             adresse_ajout_regle=regles_personnalisees.ADRESSE_AJOUT_REGLE,
             options=options,
@@ -136,15 +140,26 @@ def page_calculs(request: Request, session: SessionRequete, semestre_id: int | N
 
 @routeur.get("/calculs/verifications", name="calculs_verifications")
 def fragment_verifications(
-    request: Request, session: SessionRequete, semestre_id: int, saisis: NiveauxSaisis
+    request: Request,
+    session: SessionRequete,
+    semestre_id: int,
+    saisis: NiveauxSaisis,
+    champs_regles: ChampsRegles,
 ):
     """Vérifications préalables avec les niveaux actuellement choisis (fragment HTMX).
 
-    Un niveau illisible lève `ErreurSaisieNiveaux`, rendue comme toute erreur
-    métier (message, pas de trace).
+    Niveaux des contraintes et des règles personnalisées (règles ignorées
+    comprises). Un choix illisible lève `ErreurSaisieNiveaux` ou
+    `ErreurSaisieRegles`, rendues comme toute erreur métier (message, pas de trace).
     """
     versions.exiger_semestre(session, semestre_id)
-    pre = calculs.pre_verifier(session, semestre_id, calculs.lire_niveaux(saisis))
+    choix_regles, bloc = calculs.lire_choix_regles(session, semestre_id, champs_regles)
+    pre = calculs.pre_verifier(
+        session,
+        semestre_id,
+        calculs.lire_niveaux(saisis),
+        niveaux_regles=regles_personnalisees.niveaux_pour_le_calcul(choix_regles, bloc),
+    )
     return rendre(request, "edt/_pre_verifications.html", {"pre": pre, "fmt": presentation})
 
 
@@ -208,9 +223,7 @@ def lancer(
             messages=[Message(erreur.message, "erreur")],
         )
     # Règles illisibles (déjà dit sur la page) : rien à transmettre, le moteur lit les mêmes.
-    niveaux_regles = (
-        None if bloc.erreur else regles_personnalisees.niveaux_pour_le_calcul(choix_regles)
-    )
+    niveaux_regles = regles_personnalisees.niveaux_pour_le_calcul(choix_regles, bloc)
     try:
         calcul_id = calculs.demarrer_calcul(
             session,
@@ -254,16 +267,6 @@ def lancer(
             pre=erreur.pre_verification,
             statut=409,
             messages=[Message(erreur.message, "erreur")],
-        )
-    if not regles_personnalisees.moteur_lit_les_niveaux_regles() and (
-        regles_personnalisees.choix_modifies(choix_regles, bloc.regles)
-    ):
-        return rediriger(
-            request,
-            f"/calculs/{calcul_id}",
-            "Calcul lancé. Vos choix sur les règles personnalisées (niveau, règle ignorée) ne "
-            "sont pas encore transmis : le moteur ne les lit pas encore.",
-            "attention",
         )
     return rediriger(request, f"/calculs/{calcul_id}", "Calcul lancé.")
 
