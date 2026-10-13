@@ -14,12 +14,25 @@ Pour chaque séance de l'instantané, on calcule ici, en Python pur :
 
 Seules les contraintes **dures** (niveau « nécessaire ») éliminent un début ou
 une salle. Une contrainte souple laisse la possibilité ouverte et l'étiquette
-d'une **entorse** : `SeancePreparee.entorses` (par début, les règles souples
-enfreintes : `HORAIRES`, `JOURS`, `DEJEUNER`, `DISPO_ENSEIGNANT`,
-`DISPO_GROUPE`), `SeancePreparee.debuts_genants` (par salle, les débuts où elle
-est indisponible quand `DISPO_SALLE` est souple) et
+d'une **entorse** (`Regles.Violation`, imputée à une contrainte du catalogue ou
+à une règle personnalisée) : `SeancePreparee.entorses` (par début : `HORAIRES`,
+`JOURS`, `DEJEUNER`, `DISPO_ENSEIGNANT`, `DISPO_GROUPE`, règles d'horaires),
+`SeancePreparee.entorses_campus` (par début et campus : règles de jours visant
+un campus, règles `CAMPUS`), `SeancePreparee.entorses_salles` (par salle :
+règles `SALLES`), `SeancePreparee.debuts_genants` (par salle, les débuts où
+elle est indisponible quand `DISPO_SALLE` est souple) et
 `Regles.salles_compatibles(...).entorses` (exigences de salle souples). Le
 modèle des horaires et l'affectation des salles les pénalisent.
+
+Règles personnalisées de sorte « séance » (`edt.solveur.personnalisees`) :
+les jours permis d'une séance viennent de `Instantane.reglages` (standard et
+règles `JOURS_TRAVAILLES` retenues, campus compris) ; `PLAGE_HORAIRE` et
+`CRENEAUX_INTERDITS` s'appliquent à chaque début, `CAMPUS` à chaque campus,
+`SALLES` à chaque salle. En dur, le choix est retiré ; en souple, il porte
+l'entorse de la règle. Les domaines d'une séance dépendent du besoin et des
+règles qui la concernent (une règle datée ne vise que les séances dont les
+semaines croisent sa période). Une règle d'un type sans poseur fait refuser le
+calcul en la nommant.
 
 Un domaine vide est une impossibilité certaine : elle est rapportée ici, en
 nommant la séance et ce qui élimine ses possibilités, au lieu d'être
@@ -51,12 +64,14 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveaux
+from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import JOURS, CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Placement, SeanceAPlacer
+from edt.domaine.regles import TypeRegle
 from edt.erreurs import ErreurIntrouvable
-from edt.solveur.regles import Regles, enumerer, nom_creneau, nom_seance
+from edt.solveur.personnalisees import Choix, enfreint, types_sans_poseur
+from edt.solveur.regles import Regles, Violation, enumerer, nom_creneau, nom_seance
 from edt.verification import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -73,9 +88,11 @@ class SeancePreparee:
     - `semaines` : semaines actives, en masque de bits (bit n = semaine n) ;
     - `debuts` : débuts admissibles codés `jour * pas + minute`, triés ;
     - `salles` : identifiants des salles admissibles (capacité croissante) ;
-    - `debuts_interdits` : par salle, les débuts où elle est indisponible
-      (`DISPO_SALLE` dure) ;
-    - `entorses` : par début, les contraintes souples qu'il enfreint ;
+    - `debuts_interdits` : par salle, les débuts où elle n'est pas permise
+      (`DISPO_SALLE` dure, règle de jours dure visant son campus) ;
+    - `entorses` : par début, les contraintes et règles souples qu'il enfreint ;
+    - `entorses_campus` : par (début, campus), celles qu'enfreint ce campus-là ;
+    - `entorses_salles` : par salle, les règles `SALLES` souples qu'elle enfreint ;
     - `debuts_genants` : par salle, les débuts où elle est indisponible quand
       `DISPO_SALLE` est souple (une entorse si la salle y est choisie).
     """
@@ -88,7 +105,9 @@ class SeancePreparee:
     debuts: tuple[int, ...] = ()
     salles: tuple[int, ...] = ()
     debuts_interdits: dict[int, frozenset[int]] = field(default_factory=dict)
-    entorses: dict[int, tuple[CodeContrainte, ...]] = field(default_factory=dict)
+    entorses: dict[int, tuple[Violation, ...]] = field(default_factory=dict)
+    entorses_campus: dict[tuple[int, int], tuple[Violation, ...]] = field(default_factory=dict)
+    entorses_salles: dict[int, tuple[Violation, ...]] = field(default_factory=dict)
     debuts_genants: dict[int, frozenset[int]] = field(default_factory=dict)
 
     @property
@@ -104,12 +123,14 @@ class SeancePreparee:
 
 @dataclass
 class _Domaine:
-    """Domaines communs à toutes les séances sans verrou d'un même besoin."""
+    """Domaines communs aux séances sans verrou d'un même besoin soumises aux mêmes règles."""
 
     debuts: tuple[int, ...] = ()
     salles: tuple[int, ...] = ()
     debuts_interdits: dict[int, frozenset[int]] = field(default_factory=dict)
-    entorses: dict[int, tuple[CodeContrainte, ...]] = field(default_factory=dict)
+    entorses: dict[int, tuple[Violation, ...]] = field(default_factory=dict)
+    entorses_campus: dict[tuple[int, int], tuple[Violation, ...]] = field(default_factory=dict)
+    entorses_salles: dict[int, tuple[Violation, ...]] = field(default_factory=dict)
     debuts_genants: dict[int, frozenset[int]] = field(default_factory=dict)
     probleme: tuple[CodeContrainte, str] | None = None
     seances: list[str] = field(default_factory=list)
@@ -129,7 +150,10 @@ class Preparation:
       du placement (dépassement du maximum hebdomadaire d'un enseignant),
       relevées par les pré-vérifications.
 
-    `niveaux` prime sur `contraintes_desactivees` (voir `Regles`).
+    `niveaux` prime sur `contraintes_desactivees` (voir `Regles`) ;
+    `niveaux_regles` : niveau de chaque règle personnalisée retenue pour ce
+    calcul (`edt.solveur.personnalisees.appliquer_niveaux`). `instantane` est
+    l'instantané du calcul, avec ces seules règles.
     """
 
     def __init__(
@@ -138,24 +162,41 @@ class Preparation:
         contraintes_desactivees: Iterable[str] = (),
         tolerer_violations_heritees: bool = False,
         niveaux: Niveaux | None = None,
+        niveaux_regles: dict[int, Niveau] | None = None,
     ) -> None:
-        self.instantane = instantane
-        self.regles = Regles(instantane, contraintes_desactivees, niveaux)
+        self.regles = Regles(instantane, contraintes_desactivees, niveaux, niveaux_regles)
+        self.instantane = instantane = self.regles.instantane
         self.tolerer = tolerer_violations_heritees
         self.entorses_fixes: dict[CodeContrainte, int] = defaultdict(int)
         parametres = instantane.parametres
         marge = max(
-            [parametres.pause_min, parametres.trajet_defaut_min]
+            [self.regles.pause_la_plus_longue(), parametres.trajet_defaut_min]
             + [trajet.duree for trajet in instantane.trajets]
         )
         self.pas = MINUTES_PAR_JOUR + marge + 1
         self.anomalies: list[Anomalie] = []
         self.conflits_verrous: list[Anomalie] = []
-        self._domaines: dict[int, _Domaine] = {}
+        self._campus_de = {salle.id: salle.campus_id for salle in instantane.salles}
+        if instantane.regles:
+            journal.info(
+                "Règles personnalisées du calcul : %s",
+                ", ".join(f"{r.code} ({r.niveau.value})" for r in instantane.regles),
+            )
+        for regle in types_sans_poseur(instantane):
+            self.anomalies.append(
+                Anomalie(
+                    C.REGLE,
+                    Gravite.ERREUR,
+                    f"La règle {regle.code} ({regle.phrase}) est d'un type que le moteur ne sait "
+                    f"pas encore poser (« {regle.type.libelle} ») : ne pas l'appliquer à ce "
+                    "calcul, ou la désactiver.",
+                )
+            )
+        self._domaines: dict[tuple, _Domaine] = {}
         self.seances = [
             self._preparer(index, seance) for index, seance in enumerate(instantane.seances)
         ]
-        for besoin_id, domaine in self._domaines.items():
+        for (besoin_id, _), domaine in self._domaines.items():
             if domaine.probleme is not None:
                 code, message = domaine.probleme
                 besoin = instantane.besoin(besoin_id)
@@ -190,10 +231,11 @@ class Preparation:
         semaines = sum(1 << numero for numero in seance.semaines)
         if seance.verrou is not None and self.regles.active(C.VERROU):
             return self._preparer_verrouillee(index, seance, seance.verrou, semaines)
-        domaine = self._domaines.get(seance.besoin.id)
+        cle = (seance.besoin.id, self.regles.signature_regles(seance.id))
+        domaine = self._domaines.get(cle)
         if domaine is None:
             domaine = self._domaine_libre(seance)
-            self._domaines[seance.besoin.id] = domaine
+            self._domaines[cle] = domaine
         domaine.seances.append(seance.id)
         return SeancePreparee(
             index=index,
@@ -205,25 +247,48 @@ class Preparation:
             salles=domaine.salles,
             debuts_interdits=domaine.debuts_interdits,
             entorses=domaine.entorses,
+            entorses_campus=domaine.entorses_campus,
+            entorses_salles=domaine.entorses_salles,
             debuts_genants=domaine.debuts_genants,
         )
 
     def _domaine_libre(self, seance: SeanceAPlacer) -> _Domaine:
         """Domaines d'une séance sans verrou (voir les règles en tête de module).
 
-        Ils ne dépendent que du besoin : les indisponibilités récurrentes
-        valent toutes les semaines, quelles que soient les semaines actives.
+        Ils ne dépendent que du besoin et des règles qui concernent la
+        séance : les indisponibilités récurrentes valent toutes les semaines,
+        quelles que soient les semaines actives.
         """
-        besoin = seance.besoin
-        debuts, entorses, elimines, examines = self._debuts_libres(seance)
+        besoin, regles = seance.besoin, self.regles
+        compatibles = regles.salles_compatibles(besoin)
+        salles, entorses_salles, refus = self._salles_selon_les_regles(
+            seance, [salle.id for salle in compatibles.salles]
+        )
+        # Les débuts se jugent sur les campus des salles possibles ; sans salle, sur tous.
+        campus_possibles = sorted(
+            {self._campus_de[salle] for salle in salles}
+            or {campus.id for campus in self.instantane.campus}
+        )
+        debuts, entorses, entorses_campus, interdits_campus, elimines, examines = (
+            self._debuts_libres(seance, campus_possibles)
+        )
         if not debuts:
             return _Domaine(probleme=self._probleme_de_debuts(seance, elimines, examines))
-
-        compatibles = self.regles.salles_compatibles(besoin)
         if not compatibles.salles:
             return _Domaine(debuts=debuts, probleme=self._probleme_de_salles(besoin))
+        if not salles:
+            assert refus is not None
+            return _Domaine(
+                debuts=debuts,
+                probleme=(
+                    C.REGLE,
+                    f"aucune salle ne convient : {refus.raison} écarte toutes les salles qui "
+                    "conviennent au besoin.",
+                ),
+            )
+
         salles, interdits, genants = self._filtrer_salles_disponibles(
-            besoin.duree, debuts, [salle.id for salle in compatibles.salles]
+            besoin.duree, debuts, list(salles)
         )
         if not salles:
             return _Domaine(
@@ -234,53 +299,128 @@ class Preparation:
                     "conviennent sont indisponibles à tous les horaires possibles de la séance.",
                 ),
             )
+        if interdits_campus:
+            # Une règle de jours dure visant un campus : ses salles perdent ces débuts.
+            interdits = dict(interdits)
+            for salle in salles:
+                bloques = interdits_campus.get(self._campus_de[salle])
+                if bloques:
+                    interdits[salle] = interdits.get(salle, frozenset()) | bloques
+            if all(debut in interdits.get(salle, ()) for salle in salles for debut in debuts):
+                violation = next(iter(entorses_campus.values()), (None,))[0]
+                raison = violation.raison if violation else "une règle de jours par campus"
+                return _Domaine(
+                    debuts=debuts,
+                    probleme=(
+                        C.REGLE,
+                        f"aucun horaire possible sur un campus permis : {raison} ferme chaque "
+                        "jour possible sur le campus de chaque salle qui convient.",
+                    ),
+                )
         if len(salles) == 1 and interdits:
             # Une seule salle : ses indisponibilités réduisent directement les débuts.
             debuts = tuple(d for d in debuts if d not in interdits[salles[0]])
             entorses = {debut: codes for debut, codes in entorses.items() if debut in debuts}
+            entorses_campus = {
+                cle: codes for cle, codes in entorses_campus.items() if cle[0] in debuts
+            }
             interdits = {}
+            if not debuts:
+                return _Domaine(
+                    probleme=(
+                        C.DISPO_SALLE,
+                        "aucun horaire possible : la seule salle qui convient est indisponible "
+                        "ou interdite à tous les horaires possibles de la séance.",
+                    )
+                )
         return _Domaine(
             debuts=debuts,
             salles=salles,
             debuts_interdits=interdits,
             entorses=entorses,
+            entorses_campus=entorses_campus,
+            entorses_salles=entorses_salles,
             debuts_genants=genants,
         )
 
+    def _salles_selon_les_regles(
+        self, seance: SeanceAPlacer, salles: list[int]
+    ) -> tuple[list[int], dict[int, tuple[Violation, ...]], Violation | None]:
+        """Salles permises par les règles `SALLES` et `CAMPUS` dures de la séance.
+
+        Renvoie `(salles gardées, entorses par salle aux règles SALLES souples,
+        dernière violation dure)`. Une règle `CAMPUS` souple ne se règle pas
+        ici mais par choix (début, campus), dans le modèle des horaires.
+        """
+        regles = self.regles
+        concernantes = [
+            regle
+            for regle in regles.regles_de_seance(seance.id)
+            if regle.type in (TypeRegle.SALLES, TypeRegle.CAMPUS)
+        ]
+        if not concernantes:
+            return salles, {}, None
+        gardees: list[int] = []
+        entorses: dict[int, tuple[Violation, ...]] = {}
+        derniere: Violation | None = None
+        for salle_id in salles:
+            choix = Choix(0, 0, 0, campus_id=self._campus_de[salle_id], salle_id=salle_id)
+            violations = [
+                (regle, regles.violation_de_regle(regle))
+                for regle in concernantes
+                if enfreint(regle, choix)
+            ]
+            dures = [v for _, v in violations if regles.dure_violation(v)]
+            if dures:
+                derniere = dures[0]
+                continue
+            gardees.append(salle_id)
+            souples = regles.souples_violations(
+                v for regle, v in violations if regle.type is TypeRegle.SALLES
+            )
+            if souples:
+                entorses[salle_id] = souples
+        return gardees, entorses, derniere
+
     def _debuts_libres(
-        self, seance: SeanceAPlacer
+        self, seance: SeanceAPlacer, campus_possibles: list[int]
     ) -> tuple[
         tuple[int, ...],
-        dict[int, tuple[CodeContrainte, ...]],
+        dict[int, tuple[Violation, ...]],
+        dict[tuple[int, int], tuple[Violation, ...]],
+        dict[int, frozenset[int]],
         dict[tuple[CodeContrainte, str], int],
         int,
     ]:
         """Débuts admissibles d'une séance sans verrou.
 
-        Renvoie `(débuts codés, entorses par début, éliminations, nombre de
-        débuts examinés)`. Seules les contraintes dures éliminent un début ;
+        Renvoie `(débuts codés, entorses par début, entorses par début et
+        campus, débuts interdits par campus, éliminations, nombre de débuts
+        examinés)`. Seules les contraintes et règles dures éliminent un début ;
         les éliminations comptent les débuts écartés par chaque raison. Un
-        début gardé qui enfreint des contraintes souples porte leurs codes.
+        début gardé qui enfreint des contraintes souples porte leurs
+        violations.
+
+        Jours : le standard et les règles de jours retenues pour la séance
+        (`Regles.violations_de_jour`). Quand une règle de jours vise un campus
+        possible, les jours se jugent campus par campus : un jour fermé sur
+        tous les campus est éliminé ; fermé sur certains seulement, il
+        interdit leurs salles ce jour-là (dur) ou pénalise le choix de ce
+        campus (souple). Une règle `CAMPUS` souple pénalise de même chaque
+        début sur un campus refusé.
         """
         regles, besoin = self.regles, seance.besoin
         imposee = besoin.debut_impose is not None or besoin.ponctuel
         elimines: dict[tuple[CodeContrainte, str], int] = defaultdict(int)
-        entorses: dict[int, tuple[CodeContrainte, ...]] = {}
+        entorses: dict[int, tuple[Violation, ...]] = {}
+        entorses_campus: dict[tuple[int, int], list[Violation]] = defaultdict(list)
+        interdits_campus: dict[int, set[int]] = defaultdict(set)
+        par_campus = bool(set(regles.jours_de(seance.id).campus_regles) & set(campus_possibles))
+        campus_refuses = self._campus_refuses(seance, campus_possibles)
 
         jour_impose = seance.jour_impose
-        if jour_impose is not None:
-            jours = [jour_impose]
-            if not imposee and regles.dure(C.JOURS) and not regles.jour_permis(jour_impose, besoin):
-                elimines[
-                    (C.JOURS, f"le {JOURS[jour_impose]} imposé n'est pas un jour de cours permis")
-                ] += 1
-                return (), entorses, elimines, 1
-        else:
-            jours = [
-                jour
-                for jour in range(7)
-                if not regles.dure(C.JOURS) or regles.jour_permis(jour, besoin)
-            ]
+        jours = [jour_impose] if jour_impose is not None else list(range(7))
+        dispensee_des_jours = imposee and jour_impose is not None
 
         plages_par_jour = defaultdict(list)
         for code, nom, plage in regles.recurrentes_des_personnes(besoin):
@@ -289,17 +429,41 @@ class Preparation:
         debuts: list[int] = []
         examines = 0
         for jour in jours:
-            jour_en_entorse = (
-                not imposee and regles.souple(C.JOURS) and not regles.jour_permis(jour, besoin)
-            )
+            # Jours permis : sans considérer le campus, ou campus par campus.
+            if dispensee_des_jours:
+                violations_jour: dict[int | None, list[Violation]] = {}
+            elif par_campus:
+                violations_jour = {
+                    campus: regles.violations_de_jour(seance.id, jour, campus)
+                    for campus in campus_possibles
+                }
+            else:
+                violations_jour = {None: regles.violations_de_jour(seance.id, jour, None)}
+            dures_jour = {
+                campus: [v for v in violations if regles.dure_violation(v)]
+                for campus, violations in violations_jour.items()
+            }
+            if violations_jour and all(dures_jour.values()):
+                violation = next(iter(dures_jour.values()))[0]
+                nb_debuts = len(regles.debuts_a_examiner(besoin, jour))
+                if jour_impose is not None:
+                    elimines[(violation.code, f"le {JOURS[jour]} imposé : {violation.raison}")] += (
+                        max(nb_debuts, 1)
+                    )
+                    return (), {}, {}, {}, elimines, max(nb_debuts, 1)
+                if violation.regle_id is not None:
+                    # Une règle ferme ce jour : dit dans le message ; le standard reste muet.
+                    elimines[(violation.code, violation.raison)] += nb_debuts
+                    examines += nb_debuts
+                continue
             for minute in regles.debuts_a_examiner(besoin, jour):
                 examines += 1
                 fin = minute + besoin.duree
-                refus = regles.refus_horaire(besoin, besoin.duree, jour, minute)
+                refus = regles.refus_horaire(besoin, besoin.duree, jour, minute, seance.id)
                 if refus is None:
                     refus = next(
                         (
-                            (code, f"une indisponibilité de {nom}")
+                            Violation(code, f"une indisponibilité de {nom}")
                             for code, nom, plage in plages_par_jour.get(jour, ())
                             if regles.dure(code)
                             and se_chevauchent(minute, fin, plage.debut, plage.fin)
@@ -307,23 +471,65 @@ class Preparation:
                         None,
                     )
                 if refus is not None:
-                    elimines[refus] += 1
+                    elimines[(refus.code, refus.raison)] += 1
                     continue
-                codes = [
-                    code for code, _ in regles.entorses_horaire(besoin, besoin.duree, jour, minute)
-                ]
-                if jour_en_entorse:
-                    codes.append(C.JOURS)
-                codes.extend(
-                    code
-                    for code, _, plage in plages_par_jour.get(jour, ())
+                violations = list(
+                    regles.entorses_horaire(besoin, besoin.duree, jour, minute, seance.id)
+                )
+                violations.extend(
+                    Violation(code, f"une indisponibilité de {nom}")
+                    for code, nom, plage in plages_par_jour.get(jour, ())
                     if regles.souple(code) and se_chevauchent(minute, fin, plage.debut, plage.fin)
                 )
                 debut = self.coder(jour, minute)
                 debuts.append(debut)
-                if codes:
-                    entorses[debut] = tuple(regles.souples(codes))
-        return tuple(sorted(debuts)), entorses, elimines, examines
+                if not par_campus:
+                    violations.extend(violations_jour.get(None, ()))
+                else:
+                    for campus, par_jour in violations_jour.items():
+                        if dures_jour[campus]:
+                            interdits_campus[campus].add(debut)
+                        else:
+                            entorses_campus[(debut, campus)].extend(par_jour)
+                for campus, refus_campus in campus_refuses.items():
+                    entorses_campus[(debut, campus)].extend(refus_campus)
+                souples = regles.souples_violations(violations)
+                if souples:
+                    entorses[debut] = souples
+        retenues_campus = {
+            cle: regles.souples_violations(liste)
+            for cle, liste in entorses_campus.items()
+            if cle[0] in debuts
+        }
+        return (
+            tuple(sorted(debuts)),
+            entorses,
+            {cle: liste for cle, liste in retenues_campus.items() if liste},
+            {campus: frozenset(codes) for campus, codes in interdits_campus.items()},
+            elimines,
+            examines,
+        )
+
+    def _campus_refuses(
+        self, seance: SeanceAPlacer, campus_possibles: list[int]
+    ) -> dict[int, tuple[Violation, ...]]:
+        """Par campus possible, les règles `CAMPUS` souples qu'un choix sur ce campus enfreint."""
+        regles = self.regles
+        concernantes = [
+            regle for regle in regles.regles_de_seance(seance.id) if regle.type is TypeRegle.CAMPUS
+        ]
+        if not concernantes:
+            return {}
+        refuses = {}
+        for campus in campus_possibles:
+            souples = regles.souples_violations(
+                regles.violation_de_regle(regle)
+                for regle in concernantes
+                if enfreint(regle, Choix(0, 0, 0, campus_id=campus))
+            )
+            if souples:
+                refuses[campus] = souples
+        return refuses
 
     def _probleme_de_debuts(
         self,
@@ -472,13 +678,14 @@ class Preparation:
                     "Corriger le verrou ou le besoin.",
                     jour=verrou.jour,
                 )
-        entorses: list[CodeContrainte] = []
+        entorses: list[Violation] = []
         for code, nom, plage in regles.recurrentes_des_personnes(besoin):
             if plage.jour == verrou.jour and se_chevauchent(
                 verrou.debut, verrou.fin, plage.debut, plage.fin
             ):
                 if regles.souple(code):
-                    entorses.append(code)  # le verrou tient ; l'entorse est comptée
+                    # Le verrou tient ; l'entorse est comptée.
+                    entorses.append(Violation(code, f"une indisponibilité de {nom}"))
                     continue
                 valide = False
                 refuser(
@@ -490,7 +697,7 @@ class Preparation:
             return preparee
         preparee.debuts = (self.coder(verrou.jour, verrou.debut),)
         if entorses:
-            preparee.entorses = {preparee.debuts[0]: tuple(regles.souples(entorses))}
+            preparee.entorses = {preparee.debuts[0]: regles.souples_violations(entorses)}
 
         if verrou.salle_id is None:
             compatibles = [salle.id for salle in regles.salles_compatibles(besoin).salles]
@@ -583,16 +790,17 @@ class Preparation:
                 for b, (_, debut_b, fin_b, salle_b) in groupe[position + 1 :]:
                     if not a.semaines & b.semaines:
                         continue
-                    codes = [
-                        code
-                        for code in self.regles.codes_violes(
+                    violations = [
+                        violation
+                        for violation in self.regles.violations_de_paire(
                             a.besoin, debut_a, fin_a, salle_a, b.besoin, debut_b, fin_b, salle_b
                         )
-                        if self.regles.dure(code)
+                        if self.regles.dure_violation(violation)
                     ]
-                    if not codes:
+                    if not violations:
                         continue
-                    violees = enumerer(f"« {CATALOGUE[code].libelle} »" for code in codes)
+                    codes = [violation.code for violation in violations]
+                    violees = enumerer(self.regles.texte_violation(v) for v in violations)
                     cibles = {
                         "seances": (a.seance.id, b.seance.id),
                         "jour": jour,

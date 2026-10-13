@@ -83,7 +83,11 @@ class OptionsSolveur:
     - `arret_sur_stagnation` : avec `optimiser`, laisser l'amélioration
       s'arrêter d'elle-même quand elle ne progresse plus, sans attendre le
       temps limite. Ce critère lit l'horloge : le désactiver quand on veut un
-      résultat strictement reproductible d'une exécution à l'autre.
+      résultat strictement reproductible d'une exécution à l'autre ;
+    - `niveaux_regles` : niveau retenu pour chaque règle personnalisée
+      (identifiant de règle → niveau) ; une règle active absente du
+      dictionnaire est ignorée pour ce calcul. `None` (défaut) : chaque règle
+      active à son propre niveau.
     """
 
     temps_limite_s: float = 60.0
@@ -95,10 +99,13 @@ class OptionsSolveur:
     tolerer_violations_heritees: bool = False
     arret_sur_stagnation: bool = True
     niveaux: Niveaux = field(default_factory=niveaux_par_defaut)
+    niveaux_regles: dict[int, Niveau] | None = None
 
     def __post_init__(self) -> None:
         desactivees = normaliser_codes(self.contraintes_desactivees)
         niveaux = _niveaux_types(self.niveaux)
+        if self.niveaux_regles is not None:
+            object.__setattr__(self, "niveaux_regles", _niveaux_regles_types(self.niveaux_regles))
         if desactivees and niveaux == niveaux_par_defaut():
             niveaux = niveaux_depuis_desactivees(desactivees)
         elif desactivees:
@@ -121,6 +128,7 @@ class OptionsSolveur:
         relance_longue: bool = False,
         graine: int = 0,
         tolerer_violations_heritees: bool = False,
+        niveaux_regles: Mapping[int, str | Niveau] | None = None,
     ) -> OptionsSolveur:
         """Options par défaut d'un calcul, tirées des paramètres globaux.
 
@@ -136,6 +144,7 @@ class OptionsSolveur:
             graine=graine,
             nb_workers=parametres.nb_workers,
             tolerer_violations_heritees=tolerer_violations_heritees,
+            niveaux_regles=dict(niveaux_regles) if niveaux_regles is not None else None,
         )
 
     @staticmethod
@@ -165,6 +174,25 @@ class OptionsSolveur:
         niveaux = {**niveaux_par_defaut(), **_niveaux_types(choix)}
         return {code: n for code, n in niveaux.items() if code not in retirees}
 
+    @staticmethod
+    def lire_niveaux_regles(parametres: Mapping[str, object]) -> dict[int, Niveau] | None:
+        """Niveaux des règles personnalisées d'un calcul enregistré, inverse de `vers_dict`.
+
+        `parametres["niveaux_regles"]` : dictionnaire « identifiant : niveau »
+        (clés enregistrées en texte par le JSON) ; absent ou `None`, chaque
+        règle active vaut à son niveau. Lève `ErreurDonneesInvalides` si la
+        valeur est illisible.
+        """
+        choix = parametres.get("niveaux_regles")
+        if choix is None:
+            return None
+        if not isinstance(choix, Mapping):
+            raise ErreurDonneesInvalides(
+                "Les niveaux des règles enregistrés avec le calcul sont illisibles : un "
+                f"dictionnaire « identifiant : niveau » est attendu (lu : {type(choix).__name__})."
+            )
+        return _niveaux_regles_types(choix)
+
     def vers_dict(self) -> dict[str, object]:
         """Représentation JSON des options (enregistrée avec le calcul)."""
         return {
@@ -177,7 +205,30 @@ class OptionsSolveur:
             "tolerer_violations_heritees": self.tolerer_violations_heritees,
             "arret_sur_stagnation": self.arret_sur_stagnation,
             "niveaux": {code.value: n.value for code, n in sorted(self.niveaux.items())},
+            "niveaux_regles": (
+                None
+                if self.niveaux_regles is None
+                else {str(i): n.value for i, n in sorted(self.niveaux_regles.items())}
+            ),
         }
+
+
+def _niveaux_regles_types(choix: Mapping[object, object]) -> dict[int, Niveau]:
+    """Niveaux de règles validés et typés : `{identifiant: Niveau}`.
+
+    Lève `ErreurDonneesInvalides` pour un identifiant qui n'est pas un entier
+    ou un niveau inconnu.
+    """
+    niveaux: dict[int, Niveau] = {}
+    for cle, valeur in choix.items():
+        try:
+            identifiant = int(cle)
+        except (TypeError, ValueError) as erreur:
+            raise ErreurDonneesInvalides(
+                f"Identifiant de règle invalide dans les niveaux des règles : {cle!r}."
+            ) from erreur
+        niveaux[identifiant] = valeur if isinstance(valeur, Niveau) else niveau(valeur)
+    return niveaux
 
 
 def _niveaux_types(choix: Mapping[str, str | Niveau]) -> Niveaux:
@@ -221,6 +272,7 @@ class ResultatSolveur:
     contraintes_desactivees: frozenset[CodeContrainte] = frozenset()
     message: str = ""
     niveaux: Niveaux = field(default_factory=dict)
+    niveaux_regles: dict[int, Niveau] = field(default_factory=dict)
     avertissements: tuple[str, ...] = ()
     statistiques: Mapping[str, int | float | str | bool] = field(default_factory=dict)
 
