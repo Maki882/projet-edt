@@ -81,7 +81,10 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
     assert "Jours travaillés" in bloc and "Pause déjeuner" in bloc  # types
     assert "S1" in bloc and "toute l&#39;année" in bloc  # périodes
     # Les règles de base proposées sont rappelées, sans effet ; liens vers l'écran des règles.
-    assert "2 règles proposées ne sont pas encore activées" in bloc
+    assert (
+        "2 règles proposées ne sont pas encore activées : elles n&#39;ont aucun effet sur le "
+        "calcul tant qu&#39;elles ne sont pas confirmées." in bloc
+    )
     assert 'href="/regles"' in bloc and 'href="/regles/ajouter"' in bloc
     assert "pas encore transmis" not in page and "ne lit pas encore" not in page
     # REGLE n'est pas dans le tableau des niveaux du catalogue.

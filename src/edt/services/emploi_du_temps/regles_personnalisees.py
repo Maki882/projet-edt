@@ -255,6 +255,22 @@ class BlocRegles:
         return {regle.id: None if regle.ignoree else regle.niveau for regle in self.regles}
 
     @property
+    def rappel_proposees(self) -> str | None:
+        """Le rappel des règles proposées, sans effet tant qu'elles ne sont pas confirmées."""
+        n = self.nb_proposees
+        if not n:
+            return None
+        if n == 1:
+            return (
+                "1 règle proposée n'est pas encore activée : elle n'a aucun effet sur le calcul "
+                "tant qu'elle n'est pas confirmée."
+            )
+        return (
+            f"{n} règles proposées ne sont pas encore activées : elles n'ont aucun effet sur le "
+            "calcul tant qu'elles ne sont pas confirmées."
+        )
+
+    @property
     def replie(self) -> bool:
         """Vrai au-delà de `SEUIL_REPLI` règles : regroupées par type, repliées."""
         return len(self.regles) > SEUIL_REPLI
