@@ -230,13 +230,13 @@ def libelles_entorses(
 ADRESSE_REGLES = "/regles"
 """Écran Données › Règles personnalisées (lot web données)."""
 
-ADRESSE_AJOUT_REGLE = "/regles/ajouter"
+ADRESSE_AJOUT_REGLE = "/regles/nouveau"
 """Ajout guidé d'une règle (lot web données ; adresse à confirmer avec lui)."""
 
 
 def adresse_regle(code: str) -> str:
     """Adresse d'une règle sur l'écran des règles personnalisées (année en cours par défaut)."""
-    return f"{ADRESSE_REGLES}?code={code}"
+    return f"{ADRESSE_REGLES}?q={code}"  # la liste filtre par recherche (code, phrase, cible)
 
 
 @dataclass(frozen=True)

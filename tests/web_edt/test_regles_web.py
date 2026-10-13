@@ -71,7 +71,7 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
     assert "<legend>Règles personnalisées</legend>" in page
     bloc = page.split("<legend>Règles personnalisées</legend>", 1)[1].split("</fieldset>", 1)[0]
     for detail in (r001, r002):
-        assert f'<a href="/regles?code={detail.code}">{detail.code}</a>' in bloc
+        assert f'<a href="/regles?q={detail.code}">{detail.code}</a>' in bloc
         assert detail.phrase.replace("'", "&#39;") in bloc
         for niveau in Niveau:
             assert f'name="niveau_regle_{detail.id}" value="{niveau.value}"' in bloc
@@ -85,7 +85,7 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
         "2 règles proposées ne sont pas encore activées : elles n&#39;ont aucun effet sur le "
         "calcul tant qu&#39;elles ne sont pas confirmées." in bloc
     )
-    assert 'href="/regles"' in bloc and 'href="/regles/ajouter"' in bloc
+    assert 'href="/regles"' in bloc and 'href="/regles/nouveau"' in bloc
     assert "pas encore transmis" not in page and "ne lit pas encore" not in page
     # REGLE n'est pas dans le tableau des niveaux du catalogue.
     assert 'name="niveau_REGLE"' not in page
@@ -240,11 +240,11 @@ def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, fa
 
     page = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
     assert "Règle personnalisée (1)" in page
-    assert '<a href="/regles?code=R002">R002</a>' in page
+    assert '<a href="/regles?q=R002">R002</a>' in page
     assert r002.phrase.replace("'", "&#39;") in page
 
     panneau = client.get(f"/emploi-du-temps/seances/{identifiant}/panneau", headers=HX).text
-    assert '<a href="/regles?code=R002">R002</a>' in panneau
+    assert '<a href="/regles?q=R002">R002</a>' in panneau
     assert "n&#39;a que 30 min de libre" in panneau
 
 
