@@ -173,9 +173,31 @@ def test_verifier_version_niveaux_ou_contraintes_explicites(version_maximum_depa
     )
     assert [a.gravite for a in explicites.anomalies] == [Gravite.ERREUR]
     assert explicites.niveaux == {MAX: Niveau.NECESSAIRE}
-    en_dur = verifier_version(session, version_maximum_depasse, ["MAX_ENSEIGNANT"])
-    assert [(a.gravite, a.niveau) for a in en_dur.anomalies] == [(Gravite.ERREUR, None)]
-    assert en_dur.niveaux is None
+
+
+def test_contraintes_choisies_gardent_les_gravites_de_la_version(version_maximum_depasse, session):
+    # Revue : `-c CODE` ne doit pas transformer les entorses importantes en erreurs.
+    sans = verifier_version(session, version_maximum_depasse)  # référence : niveaux par défaut
+    avec = verifier_version(session, version_maximum_depasse, ["MAX_ENSEIGNANT", "PAUSE"])
+    gravites = [(a.code, a.gravite, a.niveau) for a in sans.anomalies]
+    assert gravites == [(MAX, Gravite.AVERTISSEMENT, Niveau.IMPORTANT)]
+    assert [(a.code, a.gravite, a.niveau) for a in avec.anomalies] == gravites
+    assert avec.valide
+    assert avec.niveaux == {MAX: Niveau.IMPORTANT, PAUSE: Niveau.IMPORTANT}
+    assert avec.contraintes == ("MAX_ENSEIGNANT", "PAUSE")
+
+
+def test_code_demande_mais_ignore_par_le_calcul_niveau_par_defaut(
+    version_maximum_depasse, session, caplog
+):
+    attacher_calcul(session, version_maximum_depasse, {}, ["MAX_ENSEIGNANT"])
+    assert verifier_version(session, version_maximum_depasse).anomalies == ()
+    with caplog.at_level("INFO", logger="edt.services.verification"):
+        rapport = verifier_version(session, version_maximum_depasse, ["MAX_ENSEIGNANT"])
+    assert [(a.gravite, a.niveau) for a in rapport.anomalies] == [
+        (Gravite.AVERTISSEMENT, Niveau.IMPORTANT)
+    ]
+    assert "ignorée(s) par son calcul" in caplog.text
 
 
 def test_modification_entorse_nouvelle_a_une_regle_importante(jeu_minimal, session):
@@ -205,7 +227,7 @@ def test_modification_entorse_nouvelle_a_une_regle_importante(jeu_minimal, sessi
     assert anomalie.message.startswith("Entorse à une règle importante : Mme Martin dépasse")
     assert rapport.valide
 
-    en_dur = verifier_modification(
+    restreinte = verifier_modification(
         session,
         version_id,
         seance,
@@ -215,4 +237,7 @@ def test_modification_entorse_nouvelle_a_une_regle_importante(jeu_minimal, sessi
         td.salle_id,
         contraintes_actives=["MAX_ENSEIGNANT"],
     )
-    assert not en_dur.valide
+    assert [(a.gravite, a.niveau) for a in restreinte.anomalies] == [
+        (Gravite.AVERTISSEMENT, Niveau.IMPORTANT)
+    ]
+    assert restreinte.valide

@@ -20,10 +20,13 @@ base : les verrous sont ceux de la version vérifiée. Le résultat est un
 Niveaux des contraintes : sans `niveaux` ni `contraintes_actives`, chaque
 fonction applique les niveaux du calcul qui a produit la version
 (`edt.services.niveaux.niveaux_de_version` ; niveaux par défaut pour une
-version de référence). Avec `niveaux`, ce sont eux ; avec seulement
-`contraintes_actives`, ces contraintes sont vérifiées en dur (comportement
-d'origine). Une entorse à une règle importante est un avertissement, à une
-règle facultative une information (voir `edt.verification.niveaux`).
+version de référence). Avec `niveaux`, ce sont eux. Avec seulement
+`contraintes_actives`, les niveaux de la version sont **restreints** à ces
+codes (les autres contraintes ne sont pas vérifiées) : restreindre la
+vérification ne change pas la gravité d'une entorse ; un code demandé que le
+calcul avait ignoré est vérifié à son niveau par défaut du catalogue. Une
+entorse à une règle importante est un avertissement, à une règle facultative
+une information (voir `edt.verification.niveaux`).
 """
 
 from __future__ import annotations
@@ -39,7 +42,13 @@ from sqlalchemy.orm import Session
 
 from edt.db.modeles import Semestre, VersionEdt
 from edt.domaine.calendrier import lundi_de
-from edt.domaine.contraintes import CodeContrainte, Niveaux, codes_par_defaut, normaliser_codes
+from edt.domaine.contraintes import (
+    CodeContrainte,
+    Niveaux,
+    codes_par_defaut,
+    niveaux_par_defaut,
+    normaliser_codes,
+)
 from edt.domaine.enumerations import Gravite
 from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
@@ -81,9 +90,11 @@ class RapportVerification:
       (placements ou séances datées examinés), `periode` (bornes des séances
       datées vérifiées, si elles ont été bornées) ;
     - `niveaux` : niveaux appliqués (code → niveau ; une contrainte absente
-      n'a pas été vérifiée), ou `None` si les contraintes ont été vérifiées
-      en dur. Un avertissement est alors une entorse à une règle importante,
-      une information une entorse à une règle facultative (ou un écart admis).
+      n'a pas été vérifiée) ; toujours renseignés par les services de ce
+      module (`None` reste possible pour un rapport construit ailleurs, et
+      signifie une vérification en dur). Un avertissement est une entorse à une
+      règle importante, une information une entorse à une règle facultative
+      (ou un écart admis).
     """
 
     anomalies: tuple[Anomalie, ...]
@@ -273,7 +284,7 @@ def verifier_modification(
     donne une anomalie `VERROU` si on la déplace.
 
     Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
-    de la version ; `contraintes_actives` seul vérifie ces codes en dur).
+    de la version ; `contraintes_actives` seul les restreint à ces codes).
 
     Lève `ErreurIntrouvable` si la version ou la séance n'existe pas,
     `ErreurDonneesInvalides` si le placement proposé est mal formé ou si un
@@ -399,15 +410,33 @@ def _choisir(
     contraintes_actives: Iterable[str] | None,
     niveaux: Niveaux | None,
 ) -> tuple[Niveaux | None, tuple[str, ...]]:
-    """Niveaux à appliquer (ou `None` : vérification en dur) et codes vérifiés, triés.
+    """Niveaux à appliquer et codes vérifiés, triés.
 
-    `niveaux` s'il est donné ; sinon, si `contraintes_actives` est donné, ces
-    codes en dur ; sinon les niveaux du calcul de la version.
+    - `niveaux` s'il est donné (`contraintes_actives` est alors ignoré) ;
+    - sinon les niveaux du calcul de la version (`niveaux_de_version`),
+      restreints aux codes de `contraintes_actives` s'il est donné (clé absente
+      pour les autres : contraintes non vérifiées). Un code demandé que le
+      calcul avait ignoré est vérifié à son niveau par défaut du catalogue,
+      ce qui est journalisé en INFO.
     """
-    if niveaux is None and contraintes_actives is not None:
-        return None, _codes(contraintes_actives)
-    retenus = niveaux_de_version(session, version.id) if niveaux is None else niveaux
-    retenus = valider_niveaux(retenus)
+    if niveaux is not None:
+        retenus = valider_niveaux(niveaux)
+        return retenus, tuple(sorted(retenus))
+    de_version = niveaux_de_version(session, version.id)
+    if contraintes_actives is None:
+        retenus = valider_niveaux(de_version)
+        return retenus, tuple(sorted(retenus))
+    defauts = niveaux_par_defaut()
+    demandes = [CodeContrainte(code) for code in _codes(contraintes_actives)]
+    ignores = [code for code in demandes if code not in de_version]
+    if ignores:
+        journal.info(
+            "Version %d : contrainte(s) demandée(s) mais ignorée(s) par son calcul, vérifiée(s) "
+            "à leur niveau par défaut : %s",
+            version.id,
+            ", ".join(f"{code} ({defauts[code]})" for code in ignores),
+        )
+    retenus = valider_niveaux({code: de_version.get(code, defauts[code]) for code in demandes})
     return retenus, tuple(sorted(retenus))
 
 
