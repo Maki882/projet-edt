@@ -173,6 +173,8 @@ PARCOURS: tuple[Parcours, ...] = (
     Parcours("RT", "Réseaux et télécommunications", "IR"),
     Parcours("LOG", "Ingénierie logicielle", "II"),
     Parcours("SAN", "Numérique et santé", "IS"),
+    Parcours("DAT", "Science des données", "II"),
+    Parcours("ROB", "Robotique et systèmes autonomes", "IE"),
 )
 ANNEES_PARCOURS = (4, 5)
 TAILLE_GROUPE_TRANSVERSE = 34

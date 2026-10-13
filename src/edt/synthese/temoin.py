@@ -25,6 +25,24 @@ Règles respectées (sémantique exacte du projet, voir `docs/decisions.md`) :
 - aucune séance pendant une indisponibilité récurrente d'un enseignant,
   d'une salle ou d'un groupe lié à l'un de ses groupes.
 
+Règles personnalisées (`docs/regles-personnalisees.md`) : l'appelant les
+traduit en exigences simples que le moteur respecte sans connaître les
+règles elles-mêmes :
+
+- jours permis de chaque demande (`Demande.jours`, standard
+  `Parametres.jours_travailles` et règles `JOURS_TRAVAILLES`) et plages
+  interdites (`Demande.interdits` : `PLAGE_HORAIRE`, `CRENEAUX_INTERDITS`) ;
+- salles déjà filtrées pour `CAMPUS` et `SALLES` ; plages interdites d'un
+  enseignant (`EnseignantTemoin.interdits`) ;
+- pause minimale de la demande (`Demande.pause`, la plus grande des pauses
+  de ses personnes, `PAUSE_MINIMALE`) : deux séances qui partagent une
+  personne sont séparées de la plus grande des deux pauses ;
+- pour les groupes feuilles suivis (`Demande.personnes`) : pause déjeuner
+  libre (`PAUSE_DEJEUNER`, ou le paramètre global en mode libre) et
+  maximum de minutes par jour (`MAX_PAR_JOUR`), mesurés prudemment sur
+  l'union des séances du jour qui ont au moins une semaine en commun avec
+  la séance examinée.
+
 Les enseignants sont choisis pendant le placement dans un **vivier** par
 discipline (le moins chargé d'abord, sous un plafond hebdomadaire). Quand
 aucun enseignant du vivier ne peut prendre un besoin, un enseignant
@@ -48,12 +66,12 @@ from edt.domaine.parametres import Parametres
 journal = logging.getLogger(__name__)
 
 NB_JOURS = 7
-JOURS_OUVRES = (0, 1, 2, 3, 4)
 ESSAIS_BARRETTE = 4
 """Recrutements tentés au plus pour qu'une barrette trouve un créneau commun."""
 
-Occupation = tuple[int, int, int, int, int]
-"""Place occupée dans une ressource : (début, fin, masque des semaines, site, numéro unique)."""
+Occupation = tuple[int, int, int, int, int, int]
+"""Place occupée dans une ressource : (début, fin, masque des semaines, site, numéro unique,
+pause minimale exigée autour d'elle)."""
 
 RAISONS: dict[str, str] = {
     "salle": "aucune salle compatible n'est libre aux créneaux où les groupes le sont",
@@ -97,12 +115,14 @@ class Grille:
         """Débuts de créneau du `jour` où une séance de `duree` minutes respecte la grille.
 
         La séance doit tenir dans la plage d'ouverture et dans la demi-journée
-        de son créneau de départ, sans recouper la plage de déjeuner.
+        de son créneau de départ, sans recouper la plage de déjeuner quand elle
+        est fixe (en mode libre, la pause se vérifie personne par personne).
         """
         cle = (jour, duree)
         if cle not in self._debuts:
             p = self.parametres
-            dejeuner = p.dejeuner_debut_min < p.dejeuner_fin_min
+            plage = p.plage_dejeuner
+            dejeuner = plage is not None and plage[0] < plage[1]
             possibles = []
             for creneau in self._par_jour.get(jour, ()):
                 fin = creneau.debut + duree
@@ -116,12 +136,21 @@ class Grille:
             self._debuts[cle] = tuple(possibles)
         return self._debuts[cle]
 
+    def demi_journee(self, jour: int, debut: int) -> int:
+        """0 pour une séance qui commence le matin, 1 l'après-midi (créneau de la grille,
+        ou, pour un début hors grille, avant ou après la fin du déjeuner)."""
+        for creneau in self._par_jour.get(jour, ()):
+            if creneau.debut == debut:
+                return 0 if creneau.demi_journee is DemiJournee.MATIN else 1
+        return 0 if debut < self.parametres.dejeuner_fin_min else 1
+
     def minutes_ouvrees(self) -> int:
-        """Minutes de créneaux du lundi au vendredi : la capacité hebdomadaire d'un groupe."""
+        """Minutes de créneaux des jours travaillés : la capacité hebdomadaire d'un groupe."""
+        travailles = set(self.parametres.jours_travailles)
         return sum(
             creneau.fin - creneau.debut
             for jour, liste in self._par_jour.items()
-            if jour in JOURS_OUVRES
+            if jour in travailles
             for creneau in liste
         )
 
@@ -149,8 +178,11 @@ class EnseignantTemoin:
     """Enseignant du vivier : identité fictive, discipline, disponibilités, plafond.
 
     `indispos` : plages récurrentes `(jour, début, fin)` où il ne peut pas
-    enseigner. `plafond` : minutes hebdomadaires au plus (mesure prudente :
-    toutes les séances de la semaine type, quelles que soient leurs semaines).
+    enseigner (écrites en base comme indisponibilités). `interdits` : plages
+    `(jour, début, fin)` exclues par une règle personnalisée (`PLAGE_HORAIRE`,
+    `CRENEAUX_INTERDITS`), qui ne sont pas des indisponibilités. `plafond` :
+    minutes hebdomadaires au plus (mesure prudente : toutes les séances de la
+    semaine type, quelles que soient leurs semaines).
     """
 
     cle: int
@@ -162,10 +194,13 @@ class EnseignantTemoin:
     indispos: tuple[tuple[int, int, int], ...] = ()
     plafond: int = 15 * 60
     fictif: bool = False
+    interdits: tuple[tuple[int, int, int], ...] = ()
 
     def disponible(self, jour: int, debut: int, fin: int) -> bool:
-        """Vrai si aucune indisponibilité récurrente ne recoupe la plage."""
-        return not any(j == jour and debut < f and d < fin for j, d, f in self.indispos)
+        """Vrai si aucune indisponibilité récurrente ni plage interdite ne recoupe la plage."""
+        return not any(
+            j == jour and debut < f and d < fin for j, d, f in self.indispos + self.interdits
+        )
 
 
 class Vivier:
@@ -188,6 +223,13 @@ class Vivier:
         """Ajoute un enseignant déjà construit (enseignant fictif, par exemple)."""
         self.enseignants.append(enseignant)
 
+    def remplacer(self, enseignant: EnseignantTemoin) -> None:
+        """Remplace l'enseignant de même clé (par exemple pour lui ajouter des plages interdites)."""
+        for liste in (self.enseignants, self._par_discipline.get(enseignant.discipline, [])):
+            for rang, existant in enumerate(liste):
+                if existant.cle == enseignant.cle:
+                    liste[rang] = enseignant
+
     def de(self, discipline: str) -> list[EnseignantTemoin]:
         """Enseignants de la discipline (liste vide si aucun)."""
         return self._par_discipline.get(discipline, [])
@@ -209,6 +251,11 @@ class Demande:
     - `seances` : `(rang, masque des semaines actives)` de chaque séance ;
     - `lies` : groupes de la séance et tous les groupes en conflit avec eux ;
     - `salles` : salles compatibles, dans l'ordre de préférence ;
+    - `jours` : jours permis (standard et règles de jours déjà résolus) ;
+    - `interdits` : plages `(jour, début, fin)` que la séance ne doit pas recouper ;
+    - `pause` : pause minimale exigée autour de la séance (`None` = paramètre global) ;
+    - `personnes` : groupes feuilles dont l'emploi du temps contient la séance
+      (le moteur ne suit que ceux qui ont un déjeuner libre ou un maximum par jour) ;
     - `jour_impose`, `debut_impose` : créneau imposé (peut sortir de la grille) ;
     - `options` : pour une séance ponctuelle dont la date reste à choisir,
       les `(jour, masque)` possibles ; le résultat dit laquelle est retenue ;
@@ -229,7 +276,10 @@ class Demande:
     salles: tuple[SalleTemoin, ...]
     duree: int
     seances: tuple[tuple[int, int], ...]
-    samedi: bool = False
+    jours: tuple[int, ...] = (0, 1, 2, 3, 4)
+    interdits: tuple[tuple[int, int, int], ...] = ()
+    pause: int | None = None
+    personnes: tuple[int, ...] = ()
     jour_impose: int | None = None
     debut_impose: int | None = None
     options: tuple[tuple[int, int], ...] = ()
@@ -278,6 +328,8 @@ class _Jeton:
     jour: int
     duree: int
     enseignants: tuple[int, ...] = field(default_factory=tuple)
+    emplois: list[list[tuple[int, int, int, int]]] = field(default_factory=list)
+    plage: tuple[int, int, int, int] = (0, 0, 0, 0)
 
 
 # --------------------------------------------------------------------------- #
@@ -300,7 +352,12 @@ class Temoin:
         rng: random.Random,
         indispos_groupes: Mapping[int, Sequence[tuple[int, int, int]]] | None = None,
         indispos_salles: Mapping[int, Sequence[tuple[int, int, int]]] | None = None,
+        dejeuners: Mapping[int, tuple[int, int, int]] | None = None,
+        maxima_jour: Mapping[int, int] | None = None,
     ) -> None:
+        """`dejeuners` : groupe feuille -> (début, fin, durée) d'une pause déjeuner libre ;
+        `maxima_jour` : groupe feuille -> minutes de cours par jour au plus. Avec un
+        déjeuner global en mode libre, chaque enseignant a aussi sa pause libre."""
         self.grille = grille
         self._pause = grille.parametres.pause_min
         self._trajet_defaut = grille.parametres.trajet_defaut_min
@@ -313,8 +370,15 @@ class Temoin:
         self._occ_groupe: dict[int, list[list[Occupation]]] = {}
         self._occ_enseignant: dict[int, list[list[Occupation]]] = {}
         self._charge_jour: dict[int, list[int]] = {}
+        self._charge_demi: dict[int, list[int]] = {}
         self._charge_enseignant: dict[int, int] = {}
         self._numero = 0
+        self._dejeuners = dict(dejeuners or {})
+        self._maxima = dict(maxima_jour or {})
+        self._emploi: dict[int, list[list[tuple[int, int, int, int]]]] = {
+            feuille: [[] for _ in range(NB_JOURS)] for feuille in {*self._dejeuners, *self._maxima}
+        }
+        self._dejeuner_enseignants = grille.parametres.fenetre_dejeuner
 
     # -- API ------------------------------------------------------------------
 
@@ -466,8 +530,10 @@ class Temoin:
 
         Ordre : jours de semaine avant le samedi, jours sans autre séance du
         même besoin d'abord, créneaux déjà utilisés par un groupe frère ou par
-        les mêmes groupes sur d'autres semaines, jours où les groupes sont le
-        moins chargés, puis un tirage (déterministe) pour départager.
+        les mêmes groupes sur d'autres semaines, demi-journées déjà entamées
+        pour les groupes (les demi-journées entières restent libres pour les
+        séances de 4 h), jours où les groupes sont le moins chargés, puis un
+        tirage (déterministe) pour départager.
         """
         bruts: list[tuple[int, int, int, int]] = []
         if demande.options:
@@ -478,10 +544,19 @@ class Temoin:
             if demande.jour_impose is not None:
                 jours: Iterable[int] = (demande.jour_impose,)
             else:
-                jours = JOURS_OUVRES + ((SAMEDI,) if demande.samedi else ())
+                jours = demande.jours
             for jour in jours:
                 for debut in self._debuts(demande, jour):
                     bruts.append((jour, debut, masque, -1))
+        bruts = [
+            (jour, debut, m, option)
+            for jour, debut, m, option in bruts
+            if jour in demande.jours
+            and not any(
+                j == jour and debut < f and d < debut + demande.duree
+                for j, d, f in demande.interdits
+            )
+        ]
         tries = []
         for jour, debut, masque_candidat, option in bruts:
             charge = max(
@@ -490,7 +565,16 @@ class Temoin:
             seul = not self._creneau_partage(
                 demande, jour, debut, debut + demande.duree, masque_candidat
             )
-            cle = (jour == SAMEDI, jour in jours_pris, seul, charge, self._rng.random())
+            demi = 2 * jour + self.grille.demi_journee(jour, debut)
+            entamee = any(self._charge_demi[g][demi] for g in groupes if g in self._charge_demi)
+            cle = (
+                jour == SAMEDI,
+                jour in jours_pris,
+                seul,
+                not entamee,
+                charge,
+                self._rng.random(),
+            )
             tries.append((cle, (jour, debut, debut + demande.duree, masque_candidat, option)))
         tries.sort(key=lambda element: element[0])
         return [candidat for _, candidat in tries]
@@ -502,12 +586,12 @@ class Temoin:
         semaines) ou par un groupe proche sur des semaines disjointes."""
         for frere in demande.freres:
             jours = self._occ_groupe.get(frere)
-            if jours and any(d < fin and debut < f for d, f, _, _, _ in jours[jour]):
+            if jours and any(d < fin and debut < f for d, f, _, _, _, _ in jours[jour]):
                 return True
         for groupe in demande.proches:
             jours = self._occ_groupe.get(groupe)
             if jours and any(
-                not m & masque and d < fin and debut < f for d, f, m, _, _ in jours[jour]
+                not m & masque and d < fin and debut < f for d, f, m, _, _, _ in jours[jour]
             ):
                 return True
         return False
@@ -529,6 +613,9 @@ class Temoin:
         compteur: Counter[str],
     ) -> tuple[SalleTemoin, tuple[EnseignantTemoin, ...]] | None:
         """Première salle libre (dans l'ordre de préférence) où groupes et enseignants le sont aussi."""
+        if not self._personnes_ok(demande, jour, debut, fin, masque):
+            compteur["groupes"] += 1
+            return None
         groupes_ok: dict[int, bool] = {}
         enseignants_ok: dict[int, tuple[EnseignantTemoin, ...] | None] = {}
         salle_libre = False
@@ -567,14 +654,23 @@ class Temoin:
         )
 
     def _libre(
-        self, occupations: list[Occupation], debut: int, fin: int, masque: int, campus: int
+        self,
+        occupations: list[Occupation],
+        debut: int,
+        fin: int,
+        masque: int,
+        campus: int,
+        pause: int,
     ) -> bool:
-        """Vrai si la plage respecte pause et trajet avec toutes les occupations qui coexistent."""
-        pause = self._pause
-        for d, f, m, c, _ in occupations:
+        """Vrai si la plage respecte pause et trajet avec toutes les occupations qui coexistent.
+
+        La pause retenue entre deux séances est la plus grande des deux pauses exigées.
+        """
+        for d, f, m, c, _, pause_occupation in occupations:
             if not m & masque:
                 continue
-            ecart = pause if c == campus else max(pause, self._trajet(c, campus))
+            requise = max(pause, pause_occupation)
+            ecart = requise if c == campus else max(requise, self._trajet(c, campus))
             if debut < f + ecart and d < fin + ecart:
                 return False
         return True
@@ -585,16 +681,39 @@ class Temoin:
         if _bloque(self._indispo_salle, salle.id, jour, debut, fin):
             return False
         jours = self._occ_salle.get(salle.id)
-        return jours is None or self._libre(jours[jour], debut, fin, masque, salle.campus_id)
+        return jours is None or self._libre(
+            jours[jour], debut, fin, masque, salle.campus_id, self._pause
+        )
 
     def _groupes_libres(
         self, demande: Demande, jour: int, debut: int, fin: int, masque: int, campus: int
     ) -> bool:
+        pause = self._pause_de(demande)
         for groupe in demande.lies:
             if _bloque(self._indispo_groupe, groupe, jour, debut, fin):
                 return False
             jours = self._occ_groupe.get(groupe)
-            if jours is not None and not self._libre(jours[jour], debut, fin, masque, campus):
+            if jours is not None and not self._libre(
+                jours[jour], debut, fin, masque, campus, pause
+            ):
+                return False
+        return True
+
+    def _pause_de(self, demande: Demande) -> int:
+        return self._pause if demande.pause is None else max(self._pause, demande.pause)
+
+    def _personnes_ok(self, demande: Demande, jour: int, debut: int, fin: int, masque: int) -> bool:
+        """Déjeuner libre et maximum par jour des groupes feuilles suivis de la demande."""
+        for feuille in demande.personnes:
+            jours = self._emploi.get(feuille)
+            if jours is None:
+                continue
+            plages = [(d, f) for d, f, _, m in jours[jour] if m & masque] + [(debut, fin)]
+            maximum = self._maxima.get(feuille)
+            if maximum is not None and _duree_union(plages) > maximum:
+                return False
+            fenetre = self._dejeuners.get(feuille)
+            if fenetre is not None and not dejeuner_libre_respecte(plages, fenetre):
                 return False
         return True
 
@@ -606,13 +725,23 @@ class Temoin:
         fin: int,
         masque: int,
         campus: int,
+        pause: int | None = None,
     ) -> bool:
         if enseignant.fictif:
             return True
         if not enseignant.disponible(jour, debut, fin):
             return False
         jours = self._occ_enseignant.get(enseignant.cle)
-        return jours is None or self._libre(jours[jour], debut, fin, masque, campus)
+        if jours is None:
+            return True
+        if self._dejeuner_enseignants is not None and not dejeuner_libre_respecte(
+            [(d, f) for d, f, m, *_ in jours[jour] if m & masque] + [(debut, fin)],
+            self._dejeuner_enseignants,
+        ):
+            return False
+        return self._libre(
+            jours[jour], debut, fin, masque, campus, self._pause if pause is None else pause
+        )
 
     def _choisir_enseignants(
         self,
@@ -625,8 +754,11 @@ class Temoin:
         fixes: tuple[EnseignantTemoin, ...] | None,
         pool: list[EnseignantTemoin] | None,
     ) -> tuple[EnseignantTemoin, ...] | None:
+        pause = self._pause_de(demande)
         if fixes is not None:
-            libres = all(self._enseignant_libre(e, jour, debut, fin, masque, campus) for e in fixes)
+            libres = all(
+                self._enseignant_libre(e, jour, debut, fin, masque, campus, pause) for e in fixes
+            )
             return fixes if libres else None
         if pool is None:
             return ()
@@ -635,7 +767,7 @@ class Temoin:
         for enseignant in pool:
             if self._charge_enseignant.get(enseignant.cle, 0) + total > enseignant.plafond:
                 continue
-            if self._enseignant_libre(enseignant, jour, debut, fin, masque, campus):
+            if self._enseignant_libre(enseignant, jour, debut, fin, masque, campus, pause):
                 choisis.append(enseignant)
                 if len(choisis) == demande.nb_enseignants:
                     return tuple(choisis)
@@ -654,7 +786,14 @@ class Temoin:
         enseignants: tuple[EnseignantTemoin, ...],
     ) -> _Jeton:
         self._numero += 1
-        occupation: Occupation = (debut, fin, masque, salle.campus_id, self._numero)
+        occupation: Occupation = (
+            debut,
+            fin,
+            masque,
+            salle.campus_id,
+            self._numero,
+            self._pause_de(demande),
+        )
         listes = [_jours(self._occ_salle, salle.id)[jour]]
         listes += [_jours(self._occ_groupe, g)[jour] for g in demande.groupes]
         reels = tuple(e.cle for e in enseignants if not e.fictif)
@@ -662,19 +801,62 @@ class Temoin:
         for liste in listes:
             liste.append(occupation)
         duree = fin - debut
+        demi = 2 * jour + self.grille.demi_journee(jour, debut)
         for groupe in demande.lies:
             self._charge_jour.setdefault(groupe, [0] * NB_JOURS)[jour] += duree
+            self._charge_demi.setdefault(groupe, [0] * (2 * NB_JOURS))[demi] += duree
         for cle in reels:
             self._charge_enseignant[cle] = self._charge_enseignant.get(cle, 0) + duree
-        return _Jeton(occupation, listes, demande.lies, jour, duree, reels)
+        plage = (debut, fin, self._numero, masque)
+        emplois = [self._emploi[f][jour] for f in demande.personnes if f in self._emploi]
+        for emploi in emplois:
+            emploi.append(plage)
+        return _Jeton(occupation, listes, demande.lies, jour, duree, reels, emplois, plage)
 
     def _liberer(self, jeton: _Jeton) -> None:
         for liste in jeton.listes:
             liste.remove(jeton.occupation)
+        for emploi in jeton.emplois:
+            emploi.remove(jeton.plage)
+        demi = 2 * jeton.jour + self.grille.demi_journee(jeton.jour, jeton.occupation[0])
         for groupe in jeton.lies:
             self._charge_jour[groupe][jeton.jour] -= jeton.duree
+            self._charge_demi[groupe][demi] -= jeton.duree
         for cle in jeton.enseignants:
             self._charge_enseignant[cle] -= jeton.duree
+
+
+def dejeuner_libre_respecte(
+    plages: Iterable[tuple[int, int]], fenetre: tuple[int, int, int]
+) -> bool:
+    """Vrai si les plages d'une journée laissent `durée` minutes libres d'un seul tenant
+    dans `[début, fin]` de la fenêtre (toujours vrai sans séance dans la fenêtre)."""
+    debut_fenetre, fin_fenetre, duree = fenetre
+    dedans = sorted(
+        (max(d, debut_fenetre), min(f, fin_fenetre))
+        for d, f in plages
+        if d < fin_fenetre and debut_fenetre < f
+    )
+    if not dedans:
+        return True
+    curseur, plus_long = debut_fenetre, 0
+    for d, f in dedans:
+        plus_long = max(plus_long, d - curseur)
+        curseur = max(curseur, f)
+    return max(plus_long, fin_fenetre - curseur) >= duree
+
+
+def _duree_union(plages: Iterable[tuple[int, int]]) -> int:
+    """Minutes couvertes par l'union des plages (deux plages superposées comptent une fois)."""
+    total, fin_courante = 0, -1
+    for debut, fin in sorted(plages):
+        if debut >= fin_courante:
+            total += fin - debut
+            fin_courante = fin
+        elif fin > fin_courante:
+            total += fin - fin_courante
+            fin_courante = fin
+    return total
 
 
 def _jours(index: dict[int, list[list[Occupation]]], cle: int) -> list[list[Occupation]]:
