@@ -35,7 +35,7 @@ import time
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite, Gravite
 from edt.domaine.heures import duree_vers_texte
 from edt.domaine.instantane import Indisponibilite, Instantane
@@ -62,11 +62,14 @@ def pre_verifier(
     contraintes_desactivees: Iterable[str] = (),
     *,
     tolerer_violations_heritees: bool = False,
+    niveaux: Niveaux | None = None,
 ) -> list[Anomalie]:
     """Liste les impossibilités certaines et les situations tendues d'un calcul.
 
-    `contraintes_desactivees` : codes que l'utilisateur a décochés ; les
-    vérifications qui en dépendent sont sautées. Avec
+    `niveaux` : niveaux retenus (prime sur `contraintes_desactivees`, codes
+    que l'utilisateur a décochés). Seule une contrainte nécessaire peut
+    rendre un calcul impossible ; une contrainte souple enfreinte à coup sûr
+    (maximum hebdomadaire d'un enseignant) donne un avertissement. Avec
     `tolerer_violations_heritees`, les contradictions entre verrous sont
     rapportées comme avertissements et non comme erreurs.
 
@@ -74,7 +77,9 @@ def pre_verifier(
     être lancé, pas qu'il réussira.
     """
     debut = time.perf_counter()
-    preparation = Preparation(instantane, contraintes_desactivees, tolerer_violations_heritees)
+    preparation = Preparation(
+        instantane, contraintes_desactivees, tolerer_violations_heritees, niveaux
+    )
     anomalies = diagnostiquer(preparation)
     journal.info(
         "Pré-vérifications : %d erreur(s), %d avertissement(s) en %.3f s",
@@ -110,9 +115,10 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
                 besoins=conflit.besoins,
             )
         anomalies.append(conflit)
-    # Les charges se mesurent au temps ouvert par la grille : sans `HORAIRES`, les séances
-    # peuvent en sortir et seuls les maxima des enseignants restent certains.
-    blocs = blocs_de_la_grille(instantane) if regles.active(C.HORAIRES) else []
+    # Les charges se mesurent au temps ouvert par la grille : si `HORAIRES` n'est pas dure
+    # (ignorée ou souple), les séances peuvent en sortir et seuls les maxima des enseignants
+    # restent certains.
+    blocs = blocs_de_la_grille(instantane) if regles.dure(C.HORAIRES) else []
     if blocs and regles.active(C.GROUPE_UNIQUE):
         anomalies.extend(_charges_des_groupes(preparation, blocs))
     anomalies.extend(_charges_des_enseignants(preparation, blocs))
@@ -298,7 +304,7 @@ def _charges_des_groupes(preparation: Preparation, blocs: Sequence[Plage]) -> li
         seances = list({s.index: s for g in chaine for s in par_groupe.get(g, ())}.values())
         indisponibilites = (
             [i for g in chaine for i in regles.recurrentes(CibleIndisponibilite.GROUPE, g)]
-            if regles.active(C.DISPO_GROUPE)
+            if regles.dure(C.DISPO_GROUPE)
             else []
         )
         for sous_ensemble, blocs_utiles in _decoupes_par_jours(preparation, seances, blocs):
@@ -339,19 +345,40 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
             }
             numero, total = max(totaux.items(), key=lambda item: (item[1], -item[0]))
             if total > enseignant.max_minutes_semaine:
+                chiffres = (
+                    f"{enseignant.nom} doit assurer {duree_vers_texte(total)} de cours "
+                    f"{_quand(numero, len(set(totaux.values())) == 1)} pour un maximum de "
+                    f"{duree_vers_texte(enseignant.max_minutes_semaine)} par semaine"
+                )
+                if regles.dure(C.MAX_ENSEIGNANT):
+                    anomalies.append(
+                        Anomalie(
+                            C.MAX_ENSEIGNANT,
+                            Gravite.ERREUR,
+                            f"{chiffres} : c'est impossible.",
+                            enseignants=(enseignant_id,),
+                        )
+                    )
+                    continue
+                # Contrainte souple : l'entorse est certaine, elle est comptée d'avance.
+                heures = -(-(total - enseignant.max_minutes_semaine) // 60)
+                heures_par_semaine = sum(
+                    -(-(minutes - enseignant.max_minutes_semaine) // 60)
+                    for minutes in totaux.values()
+                    if minutes > enseignant.max_minutes_semaine
+                )
+                preparation.entorses_fixes[C.MAX_ENSEIGNANT] += heures_par_semaine
                 anomalies.append(
                     Anomalie(
                         C.MAX_ENSEIGNANT,
-                        Gravite.ERREUR,
-                        f"{enseignant.nom} doit assurer {duree_vers_texte(total)} de cours "
-                        f"{_quand(numero, len(set(totaux.values())) == 1)} pour un maximum de "
-                        f"{duree_vers_texte(enseignant.max_minutes_semaine)} par semaine : "
-                        "c'est impossible.",
+                        Gravite.AVERTISSEMENT,
+                        f"{chiffres} : ce maximum sera dépassé de {heures} h (règle de niveau "
+                        f"« {regles.niveaux[C.MAX_ENSEIGNANT].libelle.lower()} » : entorse "
+                        "comptée).",
                         enseignants=(enseignant_id,),
                     )
                 )
-                continue
-        if maxima and enseignant.max_minutes_jour is not None:
+        if maxima and regles.dure(C.MAX_ENSEIGNANT) and enseignant.max_minutes_jour is not None:
             depassement = _fixes_au_dela_du_maximum(
                 preparation, seances, enseignant.max_minutes_jour
             )
@@ -374,10 +401,10 @@ def _charges_des_enseignants(preparation: Preparation, blocs: Sequence[Plage]) -
             continue
         indisponibilites = (
             regles.recurrentes(CibleIndisponibilite.ENSEIGNANT, enseignant_id)
-            if regles.active(C.DISPO_ENSEIGNANT)
+            if regles.dure(C.DISPO_ENSEIGNANT)
             else ()
         )
-        plafond = enseignant.max_minutes_jour if maxima else None
+        plafond = enseignant.max_minutes_jour if regles.dure(C.MAX_ENSEIGNANT) else None
         deductions = [
             texte
             for texte, present in (
@@ -443,7 +470,7 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Plage]) -> lis
     for salle in instantane.salles:
         indisponibilites = (
             regles.recurrentes(CibleIndisponibilite.SALLE, salle.id)
-            if regles.active(C.DISPO_SALLE)
+            if regles.dure(C.DISPO_SALLE)
             else ()
         )
         offre_par_salle[salle.id] = (

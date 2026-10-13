@@ -4,9 +4,10 @@ Point d'entrée stable pour tout le projet :
 
     from edt.verification import Anomalie, verifier, verifier_occurrences
 
-- `verifier(instantane, placements, contraintes_actives=None)` : semaine type ;
-- `verifier_occurrences(instantane, occurrences, contraintes_actives=None)` :
-  séances datées ;
+- `verifier(instantane, placements, contraintes_actives=None, *, niveaux=None)` :
+  semaine type ;
+- `verifier_occurrences(instantane, occurrences, contraintes_actives=None, *,
+  niveaux=None)` : séances datées ;
 - `calculer_indicateurs(instantane, placements, anomalies=None)` :
   indicateurs de qualité d'une semaine type.
 
@@ -17,18 +18,26 @@ Organisation du paquet :
   verrous, assemblage des règles, tri) ;
 - `contexte` : vue uniforme des séances placées (`Element`) et outils communs ;
 - `regles_seance`, `regles_paires`, `regles_enseignants` : les règles ;
+- `niveaux` : niveaux des contraintes (nécessaire, important, facultatif)
+  appliqués aux anomalies ;
 - `messages` : mise en forme des textes ;
 - `indicateurs` : indicateurs de qualité.
 
 Les règles sont décrites dans `docs/verification.md`.
 """
 
-from edt.verification.contrat import Anomalie, FonctionVerification, FonctionVerificationDatee
+from edt.verification.contrat import (
+    PREFIXES_ENTORSE,
+    Anomalie,
+    FonctionVerification,
+    FonctionVerificationDatee,
+)
 from edt.verification.datee import verifier_occurrences
 from edt.verification.indicateurs import Indicateurs, calculer_indicateurs
 from edt.verification.semaine_type import verifier
 
 __all__ = [
+    "PREFIXES_ENTORSE",
     "Anomalie",
     "FonctionVerification",
     "FonctionVerificationDatee",

@@ -333,6 +333,13 @@
   justify-content: center;
 }
 
+/* Pause libre bornée : fenêtre où chacun prend sa pause, rien n'y est réservé (plus légère). */
+.edt-dejeuner-libre {
+  background: repeating-linear-gradient(45deg, transparent, transparent 6px, #f4f6f9 6px, #f4f6f9 12px);
+  border-top: 1px dotted #dde2ea;
+  border-bottom: 1px dotted #dde2ea;
+}
+
 .edt-colonne-fermee {
   background: repeating-linear-gradient(-45deg, #f1f2f5, #f1f2f5 8px, #e7e9ee 8px, #e7e9ee 16px);
 }
@@ -514,28 +521,48 @@
 
 /* ----- Calcul : formulaire, suivi, résultat --------------------------------------- */
 
-.edt-contraintes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
-  gap: 0.35rem 1rem;
+/* Tableau « Règles » de l'écran « Générer » : une règle par ligne, son niveau en boutons radio. */
+.edt-regles {
   margin: 0.5rem 0 0.75rem;
 }
 
-.edt-contraintes label {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-  font-weight: 400;
+.edt-regles th[scope="row"] {
+  text-align: left;
+  font-weight: 600;
 }
 
-.edt-contraintes input {
-  margin-top: 0.3rem;
-}
-
-.edt-contraintes small {
+.edt-regles th[scope="row"] small {
   display: block;
   color: var(--texte-discret);
   font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.edt-regles .edt-regle-note {
+  font-style: italic;
+}
+
+.edt-niveaux {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.edt-niveaux label {
+  display: inline-flex;
+  gap: 0.3rem;
+  align-items: center;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.edt-niveau-defaut,
+.edt-toujours-necessaire {
+  color: var(--texte-discret);
+}
+
+.edt-niveau-defaut {
+  font-size: 0.75rem;
 }
 
 .edt-formulaire-calcul {

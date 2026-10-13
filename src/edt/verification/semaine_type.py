@@ -26,7 +26,7 @@ import time
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Sequence
 
-from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import Gravite
 from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurDonneesInvalides
@@ -37,10 +37,11 @@ from edt.verification.contexte import (
     cle_tri,
     creneau_impose,
     defauts_de_plage,
-    resoudre_codes,
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import enumerer, nom_jour, plage
+from edt.verification.niveaux import appliquer_niveaux, choisir_contraintes
+from edt.verification.regles_dejeuner import verifier_dejeuner_libre
 from edt.verification.regles_enseignants import verifier_maxima
 from edt.verification.regles_paires import verifier_paires
 from edt.verification.regles_seance import ecart_au_verrou, verifier_seances
@@ -52,6 +53,8 @@ def verifier(
     instantane: Instantane,
     placements: Sequence[Placement],
     contraintes_actives: Iterable[str] | None = None,
+    *,
+    niveaux: Niveaux | None = None,
 ) -> list[Anomalie]:
     """Liste les anomalies d'une semaine type (liste vide : emploi du temps valide).
 
@@ -61,12 +64,17 @@ def verifier(
     défaut). Les jours fermés relèvent de la couche datée
     (`verifier_occurrences`), sauf les problèmes de dépliage de l'instantané.
 
+    `niveaux` (facultatif, voir `edt.verification.niveaux`) : seules ses
+    contraintes sont vérifiées, la gravité de chaque anomalie suit le niveau
+    de sa contrainte sans dépasser celle de la règle, et `contraintes_actives`
+    est ignoré. Sans `niveaux`, tout est vérifié en dur.
+
     Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
     un placement est mal formé ; `ErreurIntrouvable` si l'instantané
     lui-même est incohérent (enseignant ou groupe d'un besoin absent...).
     """
     chrono = time.perf_counter()
-    codes = resoudre_codes(contraintes_actives)
+    niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     placements = tuple(placements)
     valider_placements(instantane, placements)
     ctx = Contexte(instantane, codes, datee=False)
@@ -77,8 +85,11 @@ def verifier(
     anomalies.extend(_volume(ctx, elements, inconnus))
     anomalies.extend(_verrous(ctx, elements))
     anomalies.extend(verifier_seances(ctx, elements))
+    anomalies.extend(verifier_dejeuner_libre(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
     anomalies.extend(verifier_maxima(ctx, elements))
+    if niveaux_appliques is not None:
+        anomalies = appliquer_niveaux(anomalies, niveaux_appliques)
     anomalies.sort(key=cle_tri)
 
     journal.info(

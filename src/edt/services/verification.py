@@ -16,6 +16,17 @@ délèguent au vérificateur pur (`edt.verification`) ; elles n'écrivent rien.
 L'instantané d'une version est chargé avec cette version comme version de
 base : les verrous sont ceux de la version vérifiée. Le résultat est un
 `RapportVerification` figé, sérialisable en JSON par `vers_dict()`.
+
+Niveaux des contraintes : sans `niveaux` ni `contraintes_actives`, chaque
+fonction applique les niveaux du calcul qui a produit la version
+(`edt.services.niveaux.niveaux_de_version` ; niveaux par défaut pour une
+version de référence). Avec `niveaux`, ce sont eux. Avec seulement
+`contraintes_actives`, les niveaux de la version sont **restreints** à ces
+codes (les autres contraintes ne sont pas vérifiées) : restreindre la
+vérification ne change pas la gravité d'une entorse ; un code demandé que le
+calcul avait ignoré est vérifié à son niveau par défaut du catalogue. Une
+entorse à une règle importante est un avertissement, à une règle facultative
+une information (voir `edt.verification.niveaux`).
 """
 
 from __future__ import annotations
@@ -31,12 +42,19 @@ from sqlalchemy.orm import Session
 
 from edt.db.modeles import Semestre, VersionEdt
 from edt.domaine.calendrier import lundi_de
-from edt.domaine.contraintes import CodeContrainte, codes_par_defaut, normaliser_codes
+from edt.domaine.contraintes import (
+    CodeContrainte,
+    Niveaux,
+    codes_par_defaut,
+    niveaux_par_defaut,
+    normaliser_codes,
+)
 from edt.domaine.enumerations import Gravite
 from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
+from edt.services.niveaux import niveaux_de_version
 from edt.verification import (
     Anomalie,
     Indicateurs,
@@ -44,6 +62,7 @@ from edt.verification import (
     verifier,
     verifier_occurrences,
 )
+from edt.verification.niveaux import valider_niveaux
 
 journal = logging.getLogger(__name__)
 
@@ -69,7 +88,13 @@ class RapportVerification:
       (libellé), `objet` (`"semaine_type"`, `"seances_datees"` ou
       `"modification"`), `contraintes` (codes vérifiés), `nb_examines`
       (placements ou séances datées examinés), `periode` (bornes des séances
-      datées vérifiées, si elles ont été bornées).
+      datées vérifiées, si elles ont été bornées) ;
+    - `niveaux` : niveaux appliqués (code → niveau ; une contrainte absente
+      n'a pas été vérifiée) ; toujours renseignés par les services de ce
+      module (`None` reste possible pour un rapport construit ailleurs, et
+      signifie une vérification en dur). Un avertissement est une entorse à une
+      règle importante, une information une entorse à une règle facultative
+      (ou un écart admis).
     """
 
     anomalies: tuple[Anomalie, ...]
@@ -86,6 +111,7 @@ class RapportVerification:
     contraintes: tuple[str, ...] = ()
     nb_examines: int = 0
     periode: tuple[dt.date | None, dt.date | None] = (None, None)
+    niveaux: Niveaux | None = None
 
     @property
     def valide(self) -> bool:
@@ -112,6 +138,9 @@ class RapportVerification:
             "nb_avertissements": self.nb_avertissements,
             "nb_informations": self.nb_informations,
             "par_code": dict(self.par_code),
+            "niveaux": None
+            if self.niveaux is None
+            else {str(code): str(niveau) for code, niveau in self.niveaux.items()},
             "anomalies": [anomalie_vers_dict(anomalie) for anomalie in self.anomalies],
             "indicateurs": None if self.indicateurs is None else self.indicateurs.vers_dict(),
         }
@@ -132,6 +161,7 @@ def anomalie_vers_dict(anomalie: Anomalie) -> dict[str, object]:
         "groupes": list(anomalie.groupes),
         "jour": anomalie.jour,
         "date": None if anomalie.date is None else anomalie.date.isoformat(),
+        "niveau": None if anomalie.niveau is None else str(anomalie.niveau),
     }
 
 
@@ -141,18 +171,24 @@ def anomalie_vers_dict(anomalie: Anomalie) -> dict[str, object]:
 
 
 def verifier_version(
-    session: Session, version_id: int, contraintes_actives: Iterable[str] | None = None
+    session: Session,
+    version_id: int,
+    contraintes_actives: Iterable[str] | None = None,
+    *,
+    niveaux: Niveaux | None = None,
 ) -> RapportVerification:
     """Vérifie la semaine type de la version `version_id` et calcule ses indicateurs.
 
-    Lève `ErreurIntrouvable` si la version n'existe pas, `ErreurDonneesInvalides`
-    si un code de contrainte est inconnu ou si un placement enregistré est mal formé.
+    Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
+    de la version). Lève `ErreurIntrouvable` si la version n'existe pas,
+    `ErreurDonneesInvalides` si un code ou un niveau est inconnu ou si un
+    placement enregistré est mal formé.
     """
     version = _version(session, version_id)
-    codes = _codes(contraintes_actives)
+    retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
     placements = charger_placements(session, version.id)
-    anomalies = verifier(instantane, placements, codes)
+    anomalies = verifier(instantane, placements, codes, niveaux=retenus)
     indicateurs = calculer_indicateurs(instantane, placements, anomalies)
     return _rapport(
         anomalies,
@@ -162,6 +198,7 @@ def verifier_version(
         objet=SEMAINE_TYPE,
         codes=codes,
         nb_examines=len(placements),
+        niveaux=retenus,
     )
 
 
@@ -171,8 +208,13 @@ def verifier_occurrences_version(
     date_debut: dt.date | None = None,
     date_fin: dt.date | None = None,
     contraintes_actives: Iterable[str] | None = None,
+    *,
+    niveaux: Niveaux | None = None,
 ) -> RapportVerification:
     """Vérifie les séances datées de la version `version_id`, éventuellement sur une période.
+
+    Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
+    de la version).
 
     Avec une période `[date_debut, date_fin]` (bornes incluses, chacune
     facultative), la vérification porte sur les semaines entières qui la
@@ -185,7 +227,7 @@ def verifier_occurrences_version(
             f"Période invalide : le {date_fin:%d/%m/%Y} précède le {date_debut:%d/%m/%Y}."
         )
     version = _version(session, version_id)
-    codes = _codes(contraintes_actives)
+    retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
     toutes = charger_occurrences(session, version.id)
 
@@ -198,7 +240,7 @@ def verifier_occurrences_version(
     periode = {o.id for o in examinees if dans(o.date, date_debut, date_fin)}
     anomalies = [
         anomalie
-        for anomalie in verifier_occurrences(instantane, examinees, codes)
+        for anomalie in verifier_occurrences(instantane, examinees, codes, niveaux=retenus)
         if not anomalie.occurrences or not periode.isdisjoint(anomalie.occurrences)
     ]
     return _rapport(
@@ -210,6 +252,7 @@ def verifier_occurrences_version(
         codes=codes,
         nb_examines=len(periode),
         periode=(date_debut, date_fin),
+        niveaux=retenus,
     )
 
 
@@ -223,6 +266,7 @@ def verifier_modification(
     salle_id: int | None,
     *,
     contraintes_actives: Iterable[str] | None = None,
+    niveaux: Niveaux | None = None,
 ) -> RapportVerification:
     """Anomalies que le déplacement de la séance `seance_id` **introduit** dans la version.
 
@@ -234,18 +278,20 @@ def verifier_modification(
     déjà présente avant le déplacement (maximum hebdomadaire d'un enseignant,
     contrainte décochée au calcul...) ne fige pas la séance, elle reste
     signalée par `verifier_version`. Un rapport valide signifie donc que la
-    modification n'introduit aucune erreur. Une séance verrouillée dans la
-    version donne une anomalie `VERROU` si on la déplace.
+    modification n'introduit aucune erreur : une entorse nouvelle à une règle
+    importante ou facultative est renvoyée comme avertissement ou information,
+    sans rendre le rapport invalide. Une séance verrouillée dans la version
+    donne une anomalie `VERROU` si on la déplace.
 
-    `contraintes_actives` : codes à vérifier (par défaut, ceux actifs par
-    défaut du catalogue), par exemple ceux du calcul qui a produit la version.
+    Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
+    de la version ; `contraintes_actives` seul les restreint à ces codes).
 
     Lève `ErreurIntrouvable` si la version ou la séance n'existe pas,
     `ErreurDonneesInvalides` si le placement proposé est mal formé ou si un
     code de contrainte est inconnu.
     """
     version = _version(session, version_id)
-    codes = _codes(contraintes_actives)
+    retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
     if seance_id not in {seance.id for seance in instantane.seances}:
         raise ErreurIntrouvable(
@@ -256,7 +302,9 @@ def verifier_modification(
     apres = [p for p in enregistres if p.seance_id != seance_id]
     apres.append(propose)
     anomalies = anomalies_introduites(
-        verifier(instantane, enregistres, codes), verifier(instantane, apres, codes), seance_id
+        verifier(instantane, enregistres, codes, niveaux=retenus),
+        verifier(instantane, apres, codes, niveaux=retenus),
+        seance_id,
     )
     journal.debug("Modification envisagée de la séance %s : %s", seance_id, propose)
     return _rapport(
@@ -267,6 +315,7 @@ def verifier_modification(
         objet=MODIFICATION,
         codes=codes,
         nb_examines=1,
+        niveaux=retenus,
     )
 
 
@@ -355,6 +404,42 @@ def _version(session: Session, version_id: int) -> VersionEdt:
     return version
 
 
+def _choisir(
+    session: Session,
+    version: VersionEdt,
+    contraintes_actives: Iterable[str] | None,
+    niveaux: Niveaux | None,
+) -> tuple[Niveaux | None, tuple[str, ...]]:
+    """Niveaux à appliquer et codes vérifiés, triés.
+
+    - `niveaux` s'il est donné (`contraintes_actives` est alors ignoré) ;
+    - sinon les niveaux du calcul de la version (`niveaux_de_version`),
+      restreints aux codes de `contraintes_actives` s'il est donné (clé absente
+      pour les autres : contraintes non vérifiées). Un code demandé que le
+      calcul avait ignoré est vérifié à son niveau par défaut du catalogue,
+      ce qui est journalisé en INFO.
+    """
+    if niveaux is not None:
+        retenus = valider_niveaux(niveaux)
+        return retenus, tuple(sorted(retenus))
+    de_version = niveaux_de_version(session, version.id)
+    if contraintes_actives is None:
+        retenus = valider_niveaux(de_version)
+        return retenus, tuple(sorted(retenus))
+    defauts = niveaux_par_defaut()
+    demandes = [CodeContrainte(code) for code in _codes(contraintes_actives)]
+    ignores = [code for code in demandes if code not in de_version]
+    if ignores:
+        journal.info(
+            "Version %d : contrainte(s) demandée(s) mais ignorée(s) par son calcul, vérifiée(s) "
+            "à leur niveau par défaut : %s",
+            version.id,
+            ", ".join(f"{code} ({defauts[code]})" for code in ignores),
+        )
+    retenus = valider_niveaux({code: de_version.get(code, defauts[code]) for code in demandes})
+    return retenus, tuple(sorted(retenus))
+
+
 def _codes(contraintes_actives: Iterable[str] | None) -> tuple[str, ...]:
     """Codes à vérifier, validés et triés (ceux actifs par défaut si `None`)."""
     if contraintes_actives is None:
@@ -377,6 +462,7 @@ def _rapport(
     codes: tuple[str, ...],
     nb_examines: int,
     periode: tuple[dt.date | None, dt.date | None] = (None, None),
+    niveaux: Niveaux | None = None,
 ) -> RapportVerification:
     gravites = Counter(anomalie.gravite for anomalie in anomalies)
     par_code = Counter(anomalie.code for anomalie in anomalies)
@@ -395,11 +481,13 @@ def _rapport(
         contraintes=codes,
         nb_examines=nb_examines,
         periode=periode,
+        niveaux=niveaux,
     )
     journal.info(
-        "Vérification (%s) de la version %d « %s » : %d élément(s) examiné(s), %d erreur(s), "
-        "%d avertissement(s), %d information(s).",
+        "Vérification (%s, %s) de la version %d « %s » : %d élément(s) examiné(s), "
+        "%d erreur(s), %d avertissement(s), %d information(s).",
         objet,
+        "contraintes en dur" if niveaux is None else f"{len(niveaux)} contrainte(s) à niveaux",
         version.id,
         version.libelle,
         nb_examines,

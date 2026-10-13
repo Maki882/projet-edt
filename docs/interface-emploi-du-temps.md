@@ -47,9 +47,9 @@ Section de menu `"Générer"` (ordre 250 et 260).
 
 | Adresse | Rôle |
 |---|---|
-| `GET /calculs?semestre_id=` | semestre, récapitulatif, vérifications préalables, contraintes, pause déjeuner, options, lancement |
-| `GET /calculs/verifications` | fragment des vérifications, recalculé quand on coche ou décoche une contrainte |
-| `POST /calculs` | enregistre la pause déjeuner si elle a changé, lance le calcul puis redirige vers son suivi |
+| `GET /calculs?semestre_id=` | semestre, récapitulatif, vérifications préalables, règles et niveaux, pause déjeuner, options, lancement |
+| `GET /calculs/verifications` | fragment des vérifications, recalculé quand on change le niveau d'une règle (`niveau_<CODE>` dans l'adresse) |
+| `POST /calculs` | lit les niveaux (`niveau_<CODE>`), enregistre la pause déjeuner si elle a changé, lance le calcul puis redirige vers son suivi |
 | `GET /calculs/{id}` | suivi puis résultat |
 | `GET /calculs/{id}/etat` | fragment interrogé **chaque seconde** par HTMX tant que le calcul tourne |
 | `POST /calculs/{id}/arreter` | demande l'arrêt |
@@ -66,30 +66,38 @@ Section de menu `"Générer"` (ordre 250 et 260).
   à déplier), groupées par gravité et chiffrées. Une **erreur** empêche de
   lancer (`ErreurPreVerification`, la page est réaffichée en 409 avec les
   choix de l'utilisateur) ; les avertissements (situations tendues) sont
-  comptés et dépliables. Les pré-vérifications sont relancées au lancement
-  avec les contraintes réellement cochées.
-- **Contraintes** : le catalogue (`CATALOGUE`), libellé et description,
-  tout coché par défaut, sauf `DEJEUNER` qui n'a pas de case
-  (`calculs.CONTRAINTES_HORS_LISTE`) : le bloc « Pause déjeuner » la
-  remplace ; ce qui est décoché est rappelé dans le suivi, le résultat et
-  l'historique. Un ancien calcul enregistré avec `DEJEUNER` désactivée se
-  relance tel quel.
-- **Pause déjeuner** (avant la durée) : deux boutons radio, « Horaires
-  déterminés : de [HH:MM] à [HH:MM], libres pour tous les groupes et
-  enseignants » et « Pas d'horaires déterminés », préremplis depuis les
-  paramètres (`calculs.choix_dejeuner`) ; les deux heures ne sont visibles
-  et envoyées qu'avec le premier choix (`data-visible-si`, visibles sans
-  JavaScript). Au lancement, `calculs.appliquer_dejeuner` enregistre le
-  choix dans les paramètres s'il en diffère (`dejeuner_horaires_determines`,
-  `dejeuner_debut_min`, `dejeuner_fin_min`, journal « Paramètre … réglé
-  sur … »), dans sa propre transaction validée aussitôt : les
-  vérifications préalables, le calcul (qui lit la base dans son propre
-  fil), le vérificateur et les calculs suivants le voient. Sans horaires
-  déterminés, les heures enregistrées sont gardées mais ignorées. Une
-  saisie refusée (heure illisible ou manquante, fin avant le début, plage
-  hors des heures d'ouverture) réaffiche la page en 422 avec le message
-  sous le champ, sans rien enregistrer ni lancer. Un `POST` sans le bloc
-  laisse la pause déjeuner telle quelle.
+  comptés et dépliables. Les pré-vérifications reçoivent les niveaux
+  choisis et sont relancées au lancement avec eux.
+- **Règles** : un tableau, une ligne par règle du catalogue avec son niveau
+  (voir « Règles et niveaux » ci-dessous).
+- **Pause déjeuner** (avant la durée) : trois boutons radio (champ
+  `dejeuner`, libellés du paramètre `dejeuner_mode`), préremplis depuis
+  les paramètres (`calculs.choix_dejeuner`) :
+  - « Horaires déterminés » (`fixe`) : la plage de X à Y reste libre pour
+    tous les groupes et enseignants ;
+  - « Pause libre bornée » (`libre`) : au moins N minutes d'un seul tenant
+    dans la plage de X à Y, placées par le calcul pour chaque groupe et
+    chaque enseignant (`dejeuner_duree_min`, 15 à 180 minutes) ;
+  - « Pas de pause » (`aucun`) : rien n'est réservé.
+
+  Les heures X et Y (« Plage du déjeuner : de … à … ») ne sont visibles
+  et envoyées qu'en `fixe` et `libre`, la durée N qu'en `libre`
+  (`data-visible-si` ; sans JavaScript tout est visible et le serveur ne
+  lit que les champs du mode choisi). Au lancement,
+  `calculs.appliquer_dejeuner` enregistre le choix dans les paramètres
+  s'il en diffère (`dejeuner_mode`, `dejeuner_debut_min`,
+  `dejeuner_fin_min`, et `dejeuner_duree_min` en pause libre ; journal
+  « Paramètre … réglé sur … »), dans sa propre transaction validée
+  aussitôt : les vérifications préalables, le calcul (qui lit la base dans
+  son propre fil), le vérificateur et les calculs suivants le voient. Les
+  réglages sans objet pour le mode choisi sont gardés mais ignorés. Une
+  saisie refusée (mode inconnu, heure illisible ou manquante, fin avant le
+  début, plage hors des heures d'ouverture, durée illisible, hors bornes
+  ou plus longue que la fenêtre : messages de `defauts_dejeuner(mode=,
+  duree=)`) réaffiche la page en 422 avec le message sous le champ, sans
+  rien enregistrer ni lancer. Un `POST` sans le bloc laisse la pause
+  déjeuner telle quelle. Le suivi d'un calcul n'en dit pas plus : une
+  entorse à la règle `DEJEUNER` passe par les entorses générales.
 - **Options** : « rechercher jusqu'à 5 minutes » (`temps_limite_s`, 300 s
   par défaut) ou « 15 minutes » (`temps_limite_long_s`, 900 s) : les durées
   affichées sont lues dans les paramètres, jamais écrites dans l'écran ni
@@ -138,6 +146,50 @@ Section de menu `"Générer"` (ordre 250 et 260).
   - dans tous les cas terminés, les **avertissements** du calcul
     (`SuiviCalcul.avertissements`), comptés et dépliables.
 
+## Règles et niveaux
+
+Avant un calcul, chaque règle du catalogue (`edt.domaine.contraintes`) a un
+**niveau** :
+
+| Niveau | Pour le moteur | Une entorse constatée est |
+|---|---|---|
+| nécessaire | jamais enfreinte | une erreur |
+| important | enfreinte seulement faute de choix | un avertissement (« À traiter ») |
+| facultatif | un souhait | une information |
+
+- **Tableau « Règles »** de l'écran « Générer »
+  (`calculs.regles_proposees`) : une ligne par règle, libellé et
+  description ; pour une règle modifiable, trois boutons radio en ligne
+  « Nécessaire / Important / Facultatif » (champ `niveau_<CODE>`, la
+  description du niveau en infobulle, « (par défaut) » à côté du niveau du
+  catalogue). Les six règles qui définissent le problème (une séance par
+  salle, par enseignant, par groupe, séances verrouillées, jours fermés,
+  volume demandé) affichent « Toujours nécessaire », sans contrôle.
+  `DEJEUNER` a son niveau comme les autres, avec la note « ne s'applique
+  pas sans pause déjeuner » ; le bloc « Pause déjeuner » choisit le mode.
+- **Plus aucune règle ne s'ignore depuis l'interface** : la case
+  « décocher » a disparu. Un calcul ancien qui ignorait des règles reste
+  lisible (« Règles ignorées pour ce calcul », colonne « Règles » de
+  l'historique : « ignorées : … ») et sa relance les ignore encore.
+- **Préremplissage** (`calculs.niveaux_proposes`) : les niveaux du dernier
+  calcul du semestre (`SuiviCalcul.niveaux`), sinon ceux du catalogue ; une
+  règle qu'un ancien calcul ignorait reprend son niveau par défaut.
+- **Lancement** : `calculs.lire_niveaux` complète le choix
+  (`normaliser_niveaux` : une règle non envoyée garde son défaut), puis
+  `OptionsSolveur.depuis_parametres(niveaux=…)`. Un niveau inconnu, une
+  règle inconnue ou un niveau autre que « nécessaire » sur une règle qui
+  définit le problème réaffichent la page en 422 avec le message
+  (`ErreurSaisieNiveaux`), sans rien lancer ni enregistrer, les choix
+  valides gardés. Relance plus longue et « autre solution » reprennent les
+  niveaux du calcul d'origine.
+- **Résultat et historique** : seules les règles dont le niveau s'écarte du
+  défaut sont rappelées (`presentation.libelles_niveaux` : « Règles : Pause
+  entre deux séances : facultatif ») ; rien si tout est par défaut. Quand
+  le moteur compte des entorses (`statistiques["entorses"]`, code → nombre),
+  elles sont dites par niveau (`presentation.libelles_entorses` :
+  « 2 entorses à des règles importantes : Pause entre deux séances (2) ») ;
+  un décompte illisible est signalé, pas tu.
+
 ## Onglet « Emploi du temps »
 
 Section de menu `SECTION_EMPLOI_DU_TEMPS` (ordre 300).
@@ -161,6 +213,12 @@ panneau, `etendu` (`1` ou `0`) pour la vue d'un groupe (voir plus bas).
 - **Sélecteurs** : semestre, version, « pour qui » (groupes par nature,
   enseignants, salles par campus) avec une **recherche rapide** qui filtre
   la liste sans tenir compte des accents (`edt.js`).
+- **Bande du déjeuner** (`vues.bande_dejeuner`) : en horaires
+  déterminés, une bande « Déjeuner » sur la plage réservée ; en pause
+  libre bornée, une bande plus légère (`edt-dejeuner-libre`) sur la
+  fenêtre, « Pause libre (N min) », infobulle « Pause libre : au moins N
+  min dans cette fenêtre » (la pause de chacun n'y est pas dessinée : le
+  calcul la place où il veut) ; sans pause, aucune bande.
 - **Trois affichages** : semaine type ; semaine datée (flèches, saut à une
   date, numéro de semaine du semestre et de l'année, jours fermés et
   vacances grisés avec leur libellé, séances annulées barrées, déplacées en
@@ -249,12 +307,22 @@ la semaine type et sur les séances datées, et chaque séance « à programmer 
 **une fois** (l'avertissement « reste à programmer » que le vérificateur
 émet pour elle n'est pas ajouté).
 
-**Contraintes décochées lors du calcul** de la version : la vérification
+**Niveau de la règle** : quand le vérificateur le donne
+(`Anomalie.niveau`, lu par `getattr` : les anomalies plus anciennes ne
+l'ont pas), la ligne porte l'étiquette « règle importante » ou « règle
+facultative » ; rien pour une règle nécessaire ni sans niveau.
+
+**Contraintes décochées lors du calcul** de la version (calculs d'avant les
+niveaux de règles) : la vérification
 porte sur toutes les règles, mais les écarts aux règles décochées sont
 listés à part (« Écarts aux règles décochées lors du calcul ») et ne
 comptent ni comme conflits ni comme points à traiter. Une retouche applique
-les mêmes règles que le calcul (`raccords.contraintes_actives_de`, passées
-au vérificateur), comme l'instanciation des séances datées.
+les mêmes règles, aux mêmes niveaux, que le calcul de la version : le
+vérificateur est appelé sans liste de contraintes et prend les niveaux de
+ce calcul (`niveaux_de_version`, règles ignorées exclues). Une entorse à
+une règle importante ou facultative revient en avertissement ou en
+information et n'empêche pas la retouche ; seule une règle nécessaire la
+refuse.
 
 **Séances datées importées** (origine « import », version de référence) :
 elles ne se recalculent jamais depuis la semaine type, ce qui les
@@ -408,7 +476,7 @@ mécanisme reste comme garde-fou.
 
 | Raccord | Fonction attendue | Utilisée par |
 |---|---|---|
-| `pre_verifier_semestre` | `edt.services.generation.pre_verifier_semestre(session, semestre_id, contraintes_desactivees=(), *, version_base_id=None, tolerer_violations_heritees=False) -> list[Anomalie]` | Générer |
+| `pre_verifier_semestre` | `edt.services.generation.pre_verifier_semestre(session, semestre_id, contraintes_desactivees=(), *, niveaux=None, version_base_id=None, tolerer_violations_heritees=False) -> list[Anomalie]` (l'écran passe `niveaux`) | Générer |
 | `verifier_version` | `edt.services.verification.verifier_version(session, version_id, contraintes_actives=None) -> RapportVerification` | grille, panneau, À traiter, résultat, accueil |
 | `verifier_occurrences_version` | `edt.services.verification.verifier_occurrences_version(session, version_id, date_debut=None, date_fin=None, contraintes_actives=None)` | semaine datée, déplacement d'une occurrence, À traiter |
 | `verifier_modification` | `edt.services.verification.verifier_modification(session, version_id, seance_id, jour, debut, fin, salle_id)` | déplacement dans la semaine type |

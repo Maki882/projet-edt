@@ -24,8 +24,15 @@
   </div>
   {%- endif %}
 
+  {%- if r.regles %}
+  <p class="edt-regles-calcul"><strong>Règles :</strong> {{ r.regles|join(" ; ") }}</p>
+  {%- endif %}
   {%- if r.contraintes_desactivees %}
-  {{ ui.message("Contraintes volontairement non respectées pour ce calcul (décochées au lancement) :", "attention", r.contraintes_desactivees) }}
+  {{ ui.message("Règles ignorées pour ce calcul :", "attention", r.contraintes_desactivees) }}
+  {%- endif %}
+  {%- if r.entorses %}
+  <p class="edt-entorses"><strong>Entorses :</strong> {{ r.entorses|join(" ; ") }}</p>
+  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; « À traiter » liste les anomalies correspondantes.</p>
   {%- endif %}
 
   {%- if r.issue == "refuse" %}
@@ -84,11 +91,11 @@
       <input type="hidden" name="longue" value="1">
       <button type="submit" class="bouton bouton-principal">Relancer en cherchant jusqu'à {{ r.relance_texte }}</button>
     </form>
-    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les contraintes</a>
+    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les règles</a>
   </div>
   {%- elif r.issue in ("impossible", "refuse") %}
   <div class="edt-boutons">
-    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les vérifications et les contraintes</a>
+    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revoir les vérifications et les règles</a>
   </div>
   {%- elif r.issue == "arrete" %}
   <div class="edt-boutons">

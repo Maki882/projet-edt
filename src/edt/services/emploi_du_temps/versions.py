@@ -19,6 +19,8 @@ from edt.db import modeles as m
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion, StatutOccurrence
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.calendrier import semestre_par_defaut
+from edt.services.emploi_du_temps import presentation
+from edt.services.parametres import lire_parametres
 
 journal = logging.getLogger(__name__)
 
@@ -58,7 +60,12 @@ class ResumeVersion:
 
 @dataclass(frozen=True)
 class LigneCalcul:
-    """Un calcul de l'historique."""
+    """Un calcul de l'historique.
+
+    `niveaux_modifies` : règles dont le niveau s'écartait du défaut, en
+    phrases ; `contraintes_desactivees` : règles ignorées (calculs d'avant
+    les niveaux de règles).
+    """
 
     id: int
     etat: EtatCalcul
@@ -68,6 +75,7 @@ class LigneCalcul:
     contraintes_desactivees: tuple[str, ...]
     version_id: int | None
     version_numero: int | None
+    niveaux_modifies: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,6 +199,8 @@ def historique(session: Session, semestre_id: int) -> Historique:
             )
         ).all()
     )
+    # La pause déjeuner n'est pas enregistrée avec le calcul : celle d'aujourd'hui fait foi.
+    dejeuner_actif = lire_parametres(session).dejeuner_actif
     lignes = tuple(
         LigneCalcul(
             id=c.id,
@@ -201,6 +211,7 @@ def historique(session: Session, semestre_id: int) -> Historique:
             contraintes_desactivees=tuple(c.contraintes_desactivees or ()),
             version_id=produites.get(c.id),
             version_numero=numeros.get(produites.get(c.id)),
+            niveaux_modifies=_niveaux_modifies(c, dejeuner_actif),
         )
         for c in calculs
     )
@@ -210,6 +221,20 @@ def historique(session: Session, semestre_id: int) -> Historique:
         versions=lister_versions(session, semestre_id),
         calculs_tronques=tronques,
     )
+
+
+def _niveaux_modifies(calcul: m.Calcul, dejeuner_actif: bool) -> tuple[str, ...]:
+    """Règles dont le niveau s'écartait du défaut pour ce calcul (rien pour un calcul ancien).
+
+    `DEJEUNER` n'est pas citée sans pause déjeuner (`presentation.libelles_niveaux`).
+    """
+    niveaux = (calcul.parametres or {}).get("niveaux")
+    if niveaux is None:
+        return ()
+    if not isinstance(niveaux, dict):
+        journal.warning("Calcul %d : niveaux enregistrés illisibles (%r)", calcul.id, niveaux)
+        return ("niveaux illisibles",)
+    return presentation.libelles_niveaux(niveaux, dejeuner_actif=dejeuner_actif)
 
 
 def activer_version(session: Session, version_id: int) -> ResumeVersion:

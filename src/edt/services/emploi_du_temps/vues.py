@@ -48,10 +48,11 @@ from edt.domaine.enumerations import (
     StatutOccurrence,
 )
 from edt.domaine.instantane import id_seance
+from edt.domaine.parametres import Parametres
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import presentation, raccords
-from edt.services.emploi_du_temps.disposition import Disposition, Plage, disposer
+from edt.services.emploi_du_temps.disposition import Axe, Disposition, Plage, disposer
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
@@ -285,6 +286,47 @@ class Perimetre:
 
 
 @dataclass(frozen=True)
+class BandeDejeuner:
+    """Bande du déjeuner sur la grille : position en pourcentage de l'axe, libellé, infobulle.
+
+    `libre` : fenêtre d'une pause libre bornée (bande plus légère : chacun y
+    prend sa pause, rien n'y est réservé) ; sinon plage réservée à tous.
+    """
+
+    haut: float
+    hauteur: float
+    libelle: str
+    titre: str
+    libre: bool = False
+
+
+def bande_dejeuner(parametres: Parametres, axe: Axe) -> BandeDejeuner | None:
+    """La bande du déjeuner selon le mode : plage réservée, fenêtre de la pause libre ou rien.
+
+    Horaires déterminés : bande « Déjeuner » sur la plage. Pause libre bornée :
+    bande plus légère sur la fenêtre, « Pause libre : au moins N min dans
+    cette fenêtre ». Pas de pause : aucune bande. La bande est rognée aux
+    bornes de l'axe ; rien si elle n'y tient pas.
+    """
+    plage, fenetre = parametres.plage_dejeuner, parametres.fenetre_dejeuner
+    if plage is not None:
+        debut, fin = plage
+        libelle = "Déjeuner"
+        titre = f"Déjeuner : {presentation.plage_horaire(debut, fin)}, libre pour tous"
+    elif fenetre is not None:
+        debut, fin, duree = fenetre
+        libelle = f"Pause libre ({duree} min)"
+        titre = f"Pause libre : au moins {duree} min dans cette fenêtre"
+    else:
+        return None
+    haut = axe.position(max(debut, axe.debut))
+    bas = axe.position(min(fin, axe.fin))
+    if bas <= haut:
+        return None
+    return BandeDejeuner(haut, round(bas - haut, 4), libelle, titre, libre=fenetre is not None)
+
+
+@dataclass(frozen=True)
 class VueEmploiDuTemps:
     """Tout ce qu'il faut pour afficher une grille."""
 
@@ -300,7 +342,7 @@ class VueEmploiDuTemps:
     blocs: tuple[Bloc, ...]
     a_programmer: tuple[Bloc, ...]
     disposition: Disposition
-    dejeuner: tuple[float, float] | None
+    dejeuner: BandeDejeuner | None
     navigation: Navigation | None
     controle: raccords.Controle | None
     anomalies: tuple[Anomalie, ...]
@@ -502,14 +544,7 @@ def construire_vue(
         parametres.ouverture_min,
         parametres.fermeture_min,
     )
-    dejeuner = None
-    plage = parametres.plage_dejeuner  # None sans horaires déterminés : pas de bande
-    if plage is not None and plage[0] < plage[1]:
-        axe = disposition.axe
-        haut = axe.position(max(plage[0], axe.debut))
-        bas = axe.position(min(plage[1], axe.fin))
-        if bas > haut:
-            dejeuner = (haut, round(bas - haut, 4))
+    dejeuner = bande_dejeuner(parametres, disposition.axe)
 
     return VueEmploiDuTemps(
         semestre=semestre,

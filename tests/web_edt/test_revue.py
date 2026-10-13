@@ -20,7 +20,7 @@ from edt.services.emploi_du_temps import (
 )
 from edt.verification.contrat import Anomalie
 
-from .conftest import date_avec_seances, seance_du_besoin
+from .conftest import autre_place, seance_du_besoin
 
 HX = {"HX-Request": "true"}
 
@@ -133,20 +133,24 @@ def test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois(
     apres = _trois_nombres(client)
     assert apres[0] == apres[1] == apres[2] == depart[0] + 1  # une fois, pas deux
 
-    # Une indisponibilité datée d'un enseignant pendant ses cours : erreurs datées seulement.
+    # Une indisponibilité datée d'un enseignant réel pendant l'un de ses cours, lu dans la
+    # version (la solution change d'un système à l'autre) : erreurs datées seulement.
     with session_base() as session:
-        jour = date_avec_seances(session, version)
-        enseignant = session.scalar(
-            select(m.besoin_enseignant.c.enseignant_id)
-            .join(m.Occurrence, m.Occurrence.besoin_id == m.besoin_enseignant.c.besoin_id)
+        trouve = session.execute(
+            select(m.Occurrence.date, m.besoin_enseignant.c.enseignant_id)
+            .join(m.besoin_enseignant, m.besoin_enseignant.c.besoin_id == m.Occurrence.besoin_id)
+            .join(m.Enseignant, m.Enseignant.id == m.besoin_enseignant.c.enseignant_id)
             .where(
                 m.Occurrence.version_id == version,
-                m.Occurrence.date == jour,
                 # pas la séance passée « à programmer » : elle n'a plus lieu ce jour-là
                 m.Occurrence.statut.in_([StatutOccurrence.PLANIFIEE, StatutOccurrence.DEPLACEE]),
+                m.Enseignant.fictif.is_(False),
             )
+            .order_by(m.Occurrence.date, m.Occurrence.debut_min, m.Occurrence.id)
             .limit(1)
-        )
+        ).first()
+        assert trouve is not None, "aucune séance datée qui a lieu avec un enseignant réel"
+        jour, enseignant = trouve
         session.add(
             m.Indisponibilite(
                 cible="enseignant",
@@ -176,18 +180,18 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
         calcul.contraintes_desactivees = ["CAPACITE"]
         seance = seance_du_besoin(session, version, "Mathématiques", "CM", "A1")
         identifiant, jour, debut, salle = seance.id, seance.jour, seance.debut_min, seance.salle_id
+        autre_jour, autre_debut = autre_place(session, seance)  # tirée de la version
     capacite = Anomalie(CodeContrainte.CAPACITE, Gravite.ERREUR, "La salle est trop petite.")
     faux_verificateur.modification = [capacite]
     faux_verificateur.hebdo = [capacite]
 
     with session_base() as session:
-        autre_debut = 10 * 60 + 45 if debut != 10 * 60 + 45 else 8 * 60 + 30
         resultat = modifications.modifier_placement(
-            session, identifiant, jour=jour, debut=autre_debut, salle_id=salle
+            session, identifiant, jour=autre_jour, debut=autre_debut, salle_id=salle
         )
     assert resultat.enregistree  # la règle décochée au calcul ne bloque pas la retouche
-    actives = faux_verificateur.contraintes_modification
-    assert actives is not None and "CAPACITE" not in actives and "SALLE_UNIQUE" in actives
+    # Aucune liste en dur : le vérificateur applique les niveaux du calcul de la version.
+    assert faux_verificateur.contraintes_modification is None
 
     with session_base() as session:
         controle = raccords.controler_version(session, version)
@@ -204,7 +208,11 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
     ]
     with session_base() as session:
         refus = modifications.modifier_placement(
-            session, identifiant, jour=(jour + 1) % 5, debut=debut, salle_id=salle
+            session,
+            identifiant,
+            jour=jour,
+            debut=debut,
+            salle_id=salle,  # retour à sa place
         )
     assert not refus.enregistree
 
@@ -332,11 +340,11 @@ def test_refus_reel_de_l_instanciation_sans_erreur_500(
 
     with session_base() as session:
         seance = seance_du_besoin(session, version, "Mathématiques", "CM", "A1")
-        identifiant, jour, debut, salle = seance.id, seance.jour, seance.debut_min, seance.salle_id
-    autre_debut = 10 * 60 + 45 if debut != 10 * 60 + 45 else 8 * 60 + 30
+        identifiant, salle = seance.id, seance.salle_id
+        jour, debut = autre_place(session, seance)
     deplacement = client.post(
         f"/emploi-du-temps/seances/{identifiant}/modifier",
-        data={"jour": jour, "debut": autre_debut, "salle_id": str(salle), "retour": adresse},
+        data={"jour": jour, "debut": debut, "salle_id": str(salle), "retour": adresse},
         headers=HX,
     )
     assert deplacement.status_code == 204  # enregistré malgré le refus

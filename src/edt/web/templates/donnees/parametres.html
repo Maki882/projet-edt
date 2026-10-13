@@ -1,4 +1,4 @@
-{# Paramètres globaux : formulaire construit depuis edt.domaine.parametres (libellé, aide, bornes, unité). #}
+{# Paramètres globaux : formulaire construit depuis edt.domaine.parametres (libellé, aide, bornes, unité, choix). #}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
@@ -26,13 +26,16 @@
       {%- set bornes = [] %}
       {%- if p.minimum is not none and not p.est_heure %}{% set bornes = bornes + ["minimum " ~ p.minimum] %}{% endif %}
       {%- if p.maximum is not none and not p.est_heure %}{% set bornes = bornes + ["maximum " ~ p.maximum] %}{% endif %}
-      {%- set aide = p.description ~ " Par défaut : " ~ (("oui" if p.defaut else "non") if p.type == "bool" else p.en_texte(p.defaut)) ~ "." ~ ((" (" ~ bornes|join(", ") ~ ")") if bornes else "") %}
+      {%- set aide = p.description ~ " Par défaut : " ~ p.texte_lisible(p.defaut) ~ "." ~ ((" (" ~ bornes|join(", ") ~ ")") if bornes else "") %}
+      {%- set conteneur = {"data-visible-si": p.visible_si[0] ~ ":" ~ p.visible_si[1]|join(",")} if p.visible_si else {} %}
       {%- if p.type == "bool" %}
-      {{ ui.champ(p.cle, p.libelle, valeur=(saisie in ("oui", "True", "1", true)), type="checkbox", aide=aide, erreur=erreurs.get(p.cle)) }}
+      {{ ui.champ(p.cle, p.libelle, valeur=(saisie in ("oui", "True", "1", true)), type="checkbox", aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur) }}
+      {%- elif p.est_choix %}
+      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="select", requis=true, options=p.choix, aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur, large=true) }}
       {%- elif p.est_heure %}
-      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="time", requis=true, aide=aide, erreur=erreurs.get(p.cle)) }}
+      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="time", requis=true, aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur) }}
       {%- else %}
-      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="number", requis=true, aide=aide, erreur=erreurs.get(p.cle), attributs={"min": p.minimum, "max": p.maximum, "step": 1}, unite=unites.get(p.unite, p.unite) or None) }}
+      {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="number", requis=true, aide=aide, erreur=erreurs.get(p.cle), attributs={"min": p.minimum, "max": p.maximum, "step": 1}, unite=unites.get(p.unite, p.unite) or None, conteneur=conteneur) }}
       {%- endif %}
       {%- endfor %}
     </div>

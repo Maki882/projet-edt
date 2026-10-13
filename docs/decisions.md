@@ -168,10 +168,21 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
 
 ## 6. Catalogue des contraintes
 
-Les codes sont stables et **communs au vérificateur et au solveur**. Toutes
-sont dures en V1, chacune est activable ou désactivable par l'utilisateur
-avant un calcul, et toute désactivation est tracée dans le résultat. Aucune
-contrainte n'est jamais abandonnée automatiquement.
+Les codes sont stables et **communs au vérificateur et au solveur**. Depuis le
+6 octobre 2026, chaque règle porte un **niveau** choisi à chaque calcul
+(`edt.domaine.contraintes.Niveau`) : **nécessaire** (jamais enfreinte, une
+entorse est une erreur), **important** (le moteur ne l'enfreint que faute de
+choix, chaque entorse pèse 1 000 dans l'objectif et est signalée comme
+avertissement), **facultatif** (souhait, une entorse pèse 20 et n'est qu'une
+information). Six règles définissent le problème et restent toujours
+nécessaires : `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `VERROU`,
+`JOUR_FERME`, `VOLUME`. Par défaut, `PAUSE`, `DEJEUNER`, `EQUIPEMENT` et
+`MAX_ENSEIGNANT` sont importantes, les autres nécessaires. Les niveaux sont
+enregistrés avec le calcul et appliqués ensuite à la vérification de la version
+produite. L'interface ne permet plus d'ignorer une règle ; les calculs anciens
+ou lancés en ligne de commande avec `-d` gardent leurs règles ignorées (clé
+absente), tracées dans le résultat. Aucune contrainte n'est jamais abandonnée
+automatiquement.
 
 | Code | Règle |
 |---|---|

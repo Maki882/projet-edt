@@ -29,9 +29,10 @@ from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
+from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire, prechauffage
+from edt.services.emploi_du_temps import memoire, modifications, prechauffage, raccords
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -97,6 +98,7 @@ class FauxVerificateur:
     indicateurs: dict | None = field(default_factory=lambda: dict(INDICATEURS))
     appels: list[tuple] = field(default_factory=list)
     contraintes_modification: object = None
+    niveaux_pre_verifies: dict | None = None
 
     def __setattr__(self, nom, valeur) -> None:
         # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
@@ -122,20 +124,33 @@ class FauxVerificateur:
         ):
             self.appels.append(("modification", seance_id, jour, debut, fin, salle_id))
             self.contraintes_modification = contraintes_actives
-            # Comme le vrai : seules les contraintes actives sont vérifiées.
-            actives = None if contraintes_actives is None else set(contraintes_actives)
-            return FauxRapport(
-                tuple(a for a in self.modification if actives is None or str(a.code) in actives)
-            )
+            # Comme le vrai : codes donnés vérifiés en dur ; sans eux, les niveaux du calcul
+            # de la version, qui excluent les règles ignorées lors de ce calcul.
+            if contraintes_actives is None:
+                ignorees = raccords.contraintes_desactivees_de(session, version_id)
+                gardees = [a for a in self.modification if str(a.code) not in ignorees]
+            else:
+                actives = set(contraintes_actives)
+                gardees = [a for a in self.modification if str(a.code) in actives]
+            return FauxRapport(tuple(gardees))
 
         module.verifier_version = verifier_version
         module.verifier_occurrences_version = verifier_occurrences_version
         module.verifier_modification = verifier_modification
         return module
 
-    def pre_verifier_semestre(self, session, semestre_id, contraintes_desactivees=()):
-        """Renvoie les anomalies dont la contrainte n'est pas décochée (comme le vrai)."""
-        self.appels.append(("pre", semestre_id, tuple(contraintes_desactivees)))
+    def pre_verifier_semestre(
+        self, session, semestre_id, contraintes_desactivees=(), *, niveaux=None
+    ):
+        """Renvoie les anomalies des règles examinées : comme le vrai, celles qui ont un niveau.
+
+        `niveaux` (clé absente : règle ignorée) prime sur `contraintes_desactivees`.
+        """
+        if niveaux is not None:
+            contraintes_desactivees = {str(c) for c in CATALOGUE} - {str(c) for c in niveaux}
+        # Un relevé, pas un réglage : ne pas vider la mémoire des écrans (voir __setattr__).
+        object.__setattr__(self, "niveaux_pre_verifies", None if niveaux is None else dict(niveaux))
+        self.appels.append(("pre", semestre_id, tuple(sorted(contraintes_desactivees))))
         return [a for a in self.pre_verifications if str(a.code) not in contraintes_desactivees]
 
 
@@ -226,6 +241,23 @@ def seance_du_besoin(session, version_id: int, matiere: str, type_code: str, gro
         ):
             return seance
     raise AssertionError(f"Aucune séance {type_code} {matiere} pour {groupe}")
+
+
+def autre_place(session, seance) -> tuple[int, int]:
+    """Une place `(jour, début)` proposée pour la séance, différente de sa place dans la version.
+
+    Lue au moment du test dans le formulaire de la séance, jamais écrite en
+    dur : la solution de CP-SAT, donc la place actuelle, change d'un système
+    à l'autre. Un autre jour d'abord, sinon un autre début du même jour.
+    """
+    actuelle = (seance.jour, seance.debut_min)
+    jours = [j for j, _ in modifications.formulaire_seance(session, seance.id).jours]
+    for jour in sorted(jours, key=lambda j: j == seance.jour):  # le jour actuel en dernier
+        proposes = modifications.formulaire_seance(session, seance.id, jour=jour).debuts
+        for debut, _ in proposes:
+            if (jour, debut) != actuelle:
+                return jour, debut
+    raise AssertionError(f"Aucune autre place proposée pour la séance {seance.id} ({actuelle}).")
 
 
 def identifiant_groupe(session, code: str) -> int:

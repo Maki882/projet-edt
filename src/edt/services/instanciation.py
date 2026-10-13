@@ -62,11 +62,13 @@ from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
 from edt.domaine.calendrier import lundi_de
+from edt.domaine.contraintes import Niveaux, niveaux_depuis_desactivees
 from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
 from edt.domaine.heures import plage_vers_texte
 from edt.domaine.instantane import Instantane, Occurrence, decomposer_id_seance
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
+from edt.solveur.contrat import OptionsSolveur
 from edt.solveur.instanciation import instancier
 from edt.solveur.replacement import OptionsReplacement, Replacement, replacer
 
@@ -163,7 +165,7 @@ def instancier_version(
     doublerait).
     """
     debut = time.perf_counter()
-    version, instantane, desactivees = _contexte(session, version_id, contraintes_desactivees)
+    version, instantane, niveaux = _contexte(session, version_id, contraintes_desactivees)
 
     placements = charger_placements(session, version_id)
     connues = {seance.id for seance in instantane.seances}
@@ -208,7 +210,7 @@ def instancier_version(
         )
     ).rowcount
 
-    instancie = instancier(instantane, placements, desactivees, en_place=conservees)
+    instancie = instancier(instantane, placements, en_place=conservees, niveaux=niveaux)
 
     def a_creer(occurrence: Occurrence) -> bool:
         return (occurrence.seance_id, lundi_de(occurrence.date)) not in couvertes
@@ -220,7 +222,7 @@ def instancier_version(
         instantane,
         [*conservees, *planifiees],
         [revoir.occurrence for revoir in a_replacer],
-        OptionsReplacement(contraintes_desactivees=frozenset(desactivees)),
+        OptionsReplacement(niveaux=niveaux),
     )
     motifs = {id(revoir.occurrence): revoir.raison for revoir in a_replacer}
 
@@ -296,7 +298,7 @@ def replacer_occurrences(
     à la version.
     """
     debut = time.perf_counter()
-    _, instantane, desactivees = _contexte(session, version_id, contraintes_desactivees)
+    _, instantane, niveaux = _contexte(session, version_id, contraintes_desactivees)
     demandees = list(dict.fromkeys(occurrence_ids))
     toutes = {occurrence.id: occurrence for occurrence in charger_occurrences(session, version_id)}
     inconnues = [identifiant for identifiant in demandees if identifiant not in toutes]
@@ -315,9 +317,7 @@ def replacer_occurrences(
         instantane,
         fixes,
         a_replacer,
-        OptionsReplacement(
-            contraintes_desactivees=frozenset(desactivees), date_debut=date_debut, date_fin=date_fin
-        ),
+        OptionsReplacement(niveaux=niveaux, date_debut=date_debut, date_fin=date_fin),
     )
 
     motif = "replacement demandé"
@@ -364,16 +364,27 @@ def replacer_occurrences(
 
 def _contexte(
     session: Session, version_id: int, contraintes_desactivees: Iterable[str] | None
-) -> tuple[m.VersionEdt, Instantane, tuple[str, ...]]:
-    """La version, l'instantané de son semestre (avec ses verrous) et les contraintes ignorées."""
+) -> tuple[m.VersionEdt, Instantane, Niveaux]:
+    """La version, l'instantané de son semestre (avec ses verrous) et les niveaux des contraintes.
+
+    Les niveaux sont ceux du calcul qui a produit la version (ses options
+    enregistrées) ; `contraintes_desactivees`, s'il est donné, les remplace
+    par les niveaux par défaut sans ces codes.
+    """
     version = session.get(m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
-    if contraintes_desactivees is None:
+    if contraintes_desactivees is not None:
+        niveaux = niveaux_depuis_desactivees(contraintes_desactivees)
+    elif version.calcul is not None:
         calcul = version.calcul
-        contraintes_desactivees = (calcul.contraintes_desactivees or ()) if calcul else ()
+        niveaux = OptionsSolveur.lire_niveaux(
+            calcul.parametres or {}, calcul.contraintes_desactivees or ()
+        )
+    else:
+        niveaux = niveaux_depuis_desactivees()
     instantane = charger_instantane(session, version.semestre_id, version_id)
-    return version, instantane, tuple(contraintes_desactivees)
+    return version, instantane, niveaux
 
 
 def _occurrences_enregistrees(

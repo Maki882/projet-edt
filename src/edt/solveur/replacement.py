@@ -18,7 +18,10 @@ date par date)
   groupes (`JOUR_FERME`), jour de cours permis (`JOURS`), jour et heure
   imposés par le besoin respectés (une séance ponctuelle ne change pas de date) ;
 - horaires : début de créneau, demi-journée, ouverture (`HORAIRES`), déjeuner
-  (`DEJEUNER`, si ses horaires sont déterminés), par `Regles.refus_horaire` ;
+  à horaires déterminés (`DEJEUNER`), par `Regles.refus_horaire` ; déjeuner
+  en pause libre bornée : la séance replacée ne doit pas priver un de ses
+  groupes (liés) ou enseignants de sa pause ce jour-là
+  (`Regles.pause_dejeuner_tenue`) ;
 - indisponibilités récurrentes et datées des enseignants, des groupes liés
   et de la salle (`DISPO_*`) ;
 - personnes : unicité, pause et trajet face aux occurrences du même jour
@@ -26,14 +29,21 @@ date par date)
 - maxima des enseignants par jour et par semaine (`MAX_ENSEIGNANT`) ;
 - salle : compatible avec le besoin et libre (`SALLE_UNIQUE`, `CAPACITE`...).
 
+Contraintes souples (niveau « important » ou « facultatif ») : une place qui
+les enfreint reste permise, mais chaque entorse ajoute `Regles.poids` au
+coût de la place (1000 pour une règle importante, soit dix semaines
+d'éloignement ; 20 pour une règle facultative, soit deux jours). Les
+contraintes nécessaires restent des interdictions.
+
 Méthode
 -------
 Les occurrences sont traitées une par une, les plus contraintes d'abord
 (moins de salles compatibles, puis les plus longues). Chacune prend la place
-valide la moins coûteuse : d'abord la même semaine, puis les semaines
-voisines. Une occurrence replacée devient fixe pour les suivantes. Ce qui ne
-trouve aucune place sort avec le statut « à programmer » et la raison :
-jamais d'échec global, jamais de perte silencieuse.
+valide la moins coûteuse, éloignement et entorses compris : d'abord la même
+semaine, puis les semaines voisines. Une occurrence replacée devient fixe
+pour les suivantes. Ce qui ne trouve aucune place sort avec le statut « à
+programmer » et la raison : jamais d'échec global, jamais de perte
+silencieuse.
 
 Limite connue : le choix est glouton. Chaque occurrence est placée au mieux
 pour elle, sans remettre en cause les précédentes ; le coût total n'est pas
@@ -52,13 +62,13 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 
 from edt.domaine.calendrier import lundi_de
-from edt.domaine.contraintes import CodeContrainte, normaliser_codes
+from edt.domaine.contraintes import CodeContrainte, Niveaux, normaliser_codes
 from edt.domaine.enumerations import CibleIndisponibilite, StatutOccurrence
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Occurrence
 from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur.instanciation import empechement
-from edt.solveur.regles import Regles
+from edt.solveur.regles import Regles, pause_dejeuner_tenue
 
 journal = logging.getLogger(__name__)
 
@@ -70,6 +80,8 @@ class OptionsReplacement:
     """Réglages d'un replacement.
 
     - `contraintes_desactivees` : codes du catalogue à ignorer ;
+    - `niveaux` : niveau de chaque contrainte présente (voir `Regles`) ; à
+      défaut, les niveaux par défaut sans les codes ignorés ;
     - `date_debut`, `date_fin` : fenêtre des dates permises (bornes incluses ;
       par défaut tout le semestre) ;
     - coût d'éloignement d'une place : `cout_semaine` par semaine d'écart avec
@@ -79,6 +91,7 @@ class OptionsReplacement:
     """
 
     contraintes_desactivees: frozenset[CodeContrainte] = frozenset()
+    niveaux: Niveaux | None = None
     date_debut: dt.date | None = None
     date_fin: dt.date | None = None
     cout_semaine: int = 100
@@ -204,30 +217,77 @@ class _Planning:
                 return True
         return False
 
+    def pauses_dejeuner_supprimees(
+        self, besoin: Besoin, date: dt.date, debut: int, fin: int
+    ) -> int:
+        """Nombre de personnes qui perdraient leur pause libre ce jour-là si la séance s'y mettait.
+
+        Les enseignants du besoin et les groupes que la séance occupe
+        (`Regles.groupes_occupes`), chacun avec son emploi du temps de la
+        journée (`Regles.occupants`). Pause déjeuner libre bornée seulement ;
+        0 si la séance ne recoupe pas la fenêtre.
+        """
+        regles = self.regles
+        fenetre = regles.instantane.parametres.fenetre_dejeuner
+        if fenetre is None or not regles.active(C.DEJEUNER):
+            return 0
+        if not se_chevauchent(debut, fin, fenetre[0], fenetre[1]):
+            return 0
+        journees: list[list[tuple[int, int]]] = []
+        for enseignant in regles.enseignants_reels(besoin):
+            places = self.par_enseignant.get((date, enseignant), ())
+            journees.append([(p.debut, p.fin) for p in places])
+        for groupe in regles.groupes_occupes(besoin):
+            places = [
+                p for lie in regles.occupants(groupe) for p in self.par_groupe.get((date, lie), ())
+            ]
+            journees.append([(p.debut, p.fin) for p in places])
+        return sum(
+            1 for journee in journees if not pause_dejeuner_tenue([*journee, (debut, fin)], fenetre)
+        )
+
     def salle_libre(
         self, besoin: Besoin, date: dt.date, debut: int, fin: int, voisins: Sequence[_Place], ordre
-    ) -> int | None:
-        """Première salle de `ordre` compatible, disponible, libre et à portée de trajet."""
+    ) -> tuple[int, int] | None:
+        """`(salle, coût des entorses)` : la salle de `ordre` la moins coûteuse, libre et permise.
+
+        Une salle indisponible (`DISPO_SALLE`), déjà prise (`SALLE_UNIQUE`) ou
+        hors de portée de trajet (`CAMPUS_TRAJET`) est écartée si la
+        contrainte est dure, pénalisée si elle est souple. Le coût des
+        exigences de salle souples que la salle ne satisfait pas s'ajoute.
+        """
         regles = self.regles
+        compatibles = regles.salles_compatibles(besoin)
+        meilleure: tuple[int, int] | None = None
         for salle_id in ordre:
+            cout = sum(regles.poids(code) for code in compatibles.entorses.get(salle_id, ()))
             if regles.active(C.DISPO_SALLE) and regles.indisponible_le(
                 CibleIndisponibilite.SALLE, salle_id, date, debut, fin
             ):
-                continue
+                if regles.dure(C.DISPO_SALLE):
+                    continue
+                cout += regles.poids(C.DISPO_SALLE)
             if regles.active(C.SALLE_UNIQUE) and any(
                 se_chevauchent(debut, fin, place.debut, place.fin)
                 for place in self.par_salle.get((date, salle_id), ())
             ):
                 continue
-            if any(
-                regles.codes_violes(
+            codes = [
+                code
+                for v in voisins
+                for code in regles.codes_violes(
                     besoin, debut, fin, salle_id, v.besoin, v.debut, v.fin, v.salle_id
                 )
-                for v in voisins
-            ):
+                if code is C.CAMPUS_TRAJET  # les autres règles de paire sont vues avant la salle
+            ]
+            if any(regles.dure(code) for code in codes):
                 continue
-            return salle_id
-        return None
+            cout += sum(regles.poids(code) for code in codes)
+            if meilleure is None or cout < meilleure[1]:
+                meilleure = (salle_id, cout)
+            if cout == 0:
+                break
+        return meilleure
 
 
 def replacer(
@@ -246,7 +306,7 @@ def replacer(
     """
     options = options or OptionsReplacement()
     debut_calcul = time.perf_counter()
-    regles = Regles(instantane, options.contraintes_desactivees)
+    regles = Regles(instantane, options.contraintes_desactivees, options.niveaux)
     planning = _Planning(regles)
     for occurrence in occurrences_fixes:
         if occurrence.statut.occupe_les_ressources:
@@ -333,7 +393,11 @@ def _candidates(
     dernier: dt.date,
     options: OptionsReplacement,
 ) -> Iterator[tuple[int, dt.date, int]]:
-    """Places `(coût, date, début)` permises par le calendrier et la grille, par coût croissant."""
+    """Places `(coût, date, début)` permises par le calendrier et la grille, par coût croissant.
+
+    Le coût est l'éloignement de la date d'origine, plus les entorses aux
+    règles souples de jour et d'horaire (`JOURS`, `HORAIRES`, `DEJEUNER`).
+    """
     duree = origine.fin - origine.debut
     if besoin.date_debut is not None:
         premier = max(premier, besoin.date_debut)
@@ -357,17 +421,25 @@ def _candidates(
         impose = besoin.ponctuel or (
             besoin.jour_impose is not None and besoin.debut_impose is not None
         )
-        if not impose and regles.active(C.JOURS) and not regles.jour_permis(jour, besoin):
+        jour_permis = impose or not regles.active(C.JOURS) or regles.jour_permis(jour, besoin)
+        if not jour_permis and regles.dure(C.JOURS):
             continue
         semaines = abs((lundi_de(date) - lundi_origine).days) // 7
         jours = abs((date - origine.date).days)
         for debut in regles.debuts_a_examiner(besoin, jour):
             if regles.refus_horaire(besoin, duree, jour, debut) is not None:
                 continue
+            entorses = sum(
+                regles.poids(code)
+                for code, _ in regles.entorses_horaire(besoin, duree, jour, debut)
+            )
+            if not jour_permis:
+                entorses += regles.poids(C.JOURS)
             cout = (
                 options.cout_semaine * semaines
                 + options.cout_jour * jours
                 + options.cout_horaire * (debut != origine.debut)
+                + entorses
             )
             places.append((cout, date, debut))
     return iter(sorted(places))
@@ -390,26 +462,51 @@ def _placer(
         salles = [origine.salle_id] + [salle for salle in salles if salle != origine.salle_id]
     refus: dict[str, int] = defaultdict(int)
     nb_examinees = 0
+    # La place retenue minimise éloignement et entorses : les candidates arrivent par
+    # éloignement croissant, on s'arrête dès qu'aucune ne peut plus battre la meilleure.
+    meilleure: tuple[int, Occurrence] | None = None
     for cout, date, debut in _candidates(regles, besoin, origine, premier, dernier, options):
+        if meilleure is not None and cout >= meilleure[0]:
+            break
         nb_examinees += 1
         fin = debut + duree
         candidate = dataclasses.replace(origine, date=date, debut=debut, fin=fin, salle_id=None)
-        if empechement(regles, besoin, candidate) is not None:
-            refus["un jour fermé ou une indisponibilité"] += 1
-            continue
+        obstacle = empechement(regles, besoin, candidate, toutes_les_souples=True)
+        if obstacle is not None:
+            if regles.dure(obstacle[0]):
+                refus["un jour fermé ou une indisponibilité"] += 1
+                continue
+            cout += regles.poids(obstacle[0])  # indisponibilité sous une règle souple : une entorse
         if planning.maximum_depasse(besoin, date, duree):
-            refus["le maximum horaire d'un enseignant"] += 1
-            continue
+            if regles.dure(C.MAX_ENSEIGNANT):
+                refus["le maximum horaire d'un enseignant"] += 1
+                continue
+            cout += regles.poids(C.MAX_ENSEIGNANT)
         voisins = planning.voisins(besoin, date)
-        if any(
-            regles.codes_violes(besoin, debut, fin, None, v.besoin, v.debut, v.fin, v.salle_id)
+        codes = [
+            code
             for v in voisins
-        ):
+            for code in regles.codes_violes(
+                besoin, debut, fin, None, v.besoin, v.debut, v.fin, v.salle_id
+            )
+        ]
+        if any(regles.dure(code) for code in codes):
             refus["l'emploi du temps de ses groupes ou de ses enseignants"] += 1
             continue
-        salle_id = planning.salle_libre(besoin, date, debut, fin, voisins, salles)
-        if salle_id is None:
+        cout += sum(regles.poids(code) for code in codes)
+        sans_pause = planning.pauses_dejeuner_supprimees(besoin, date, debut, fin)
+        if sans_pause:
+            if regles.dure(C.DEJEUNER):
+                refus["la pause déjeuner de ses groupes ou de ses enseignants"] += 1
+                continue
+            cout += sans_pause * regles.poids(C.DEJEUNER)
+        salle = planning.salle_libre(besoin, date, debut, fin, voisins, salles)
+        if salle is None:
             refus["l'absence de salle libre"] += 1
+            continue
+        salle_id, cout_salle = salle
+        cout += cout_salle
+        if meilleure is not None and cout >= meilleure[0]:
             continue
         inchangee = (date, debut, salle_id) == (origine.date, origine.debut, origine.salle_id)
         occurrence = dataclasses.replace(
@@ -420,7 +517,9 @@ def _placer(
             salle_id=salle_id,
             statut=StatutOccurrence.PLANIFIEE if inchangee else StatutOccurrence.DEPLACEE,
         )
-        return Replacement(origine, occurrence, cout)
+        meilleure = (cout, occurrence)
+    if meilleure is not None:
+        return Replacement(origine, meilleure[1], meilleure[0])
 
     if not salles:
         return _a_programmer(origine, "aucune salle ne convient à cette séance")

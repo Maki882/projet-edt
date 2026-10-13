@@ -48,36 +48,65 @@
 <form id="formulaire-calcul" class="formulaire edt-formulaire-calcul" method="post" action="/calculs">
   <h2>Lancer le calcul</h2>
   <input type="hidden" name="semestre_id" value="{{ semestre.id }}">
-  <input type="hidden" name="contraintes_envoyees" value="1">
+  {#- Règles : un niveau par règle modifiable (champs niveau_<CODE>), préremplis avec ceux du
+      dernier calcul du semestre ; changer un niveau recalcule les vérifications (HTMX). #}
   <fieldset hx-get="/calculs/verifications" hx-trigger="change" hx-include="#formulaire-calcul" hx-target="#pre-verifications" hx-swap="innerHTML">
-    <legend>Règles à respecter</legend>
-    <p class="aide">Toutes les règles sont cochées par défaut. Décocher une règle permet de comprendre ce qui bloque ; ce choix est rappelé dans le résultat.</p>
-    <div class="edt-contraintes">
-      {%- for c in contraintes %}
-      <label>
-        <input type="checkbox" name="contraintes" value="{{ c.code }}"{% if c.active %} checked{% endif %}>
-        <span>{{ c.libelle }}<small>{{ c.description }}</small></span>
-      </label>
-      {%- endfor %}
+    <legend>Règles</legend>
+    <p class="aide">Pour chaque règle, choisir son niveau : <strong>nécessaire</strong>, elle est toujours respectée ; <strong>important</strong>, elle n'est enfreinte que faute de choix et l'entorse est signalée comme avertissement ; <strong>facultatif</strong>, c'est un souhait et l'entorse est signalée pour information. Les règles qui définissent le problème restent toujours nécessaires. Les niveaux choisis sont rappelés dans le résultat.</p>
+    <div class="tableau-defilant">
+      <table class="tableau edt-regles">
+        <thead>
+          <tr><th scope="col">Règle</th><th scope="col">Niveau</th></tr>
+        </thead>
+        <tbody>
+          {%- for regle in regles %}
+          <tr>
+            <th scope="row">{{ regle.libelle }}<small>{{ regle.description }}</small>{% if regle.note %}<small class="edt-regle-note">{{ regle.note }}</small>{% endif %}</th>
+            <td>
+              {%- if regle.modifiable %}
+              <div class="edt-niveaux" role="radiogroup" aria-label="Niveau de la règle « {{ regle.libelle }} »">
+                {%- for niveau in niveaux_proposes %}
+                <label title="{{ niveau.description }}"><input type="radio" name="{{ regle.champ }}" value="{{ niveau.value }}"{% if niveau == regle.niveau %} checked{% endif %}> {{ niveau.libelle }}{% if niveau == regle.niveau_defaut %} <small class="edt-niveau-defaut">(par défaut)</small>{% endif %}</label>
+                {%- endfor %}
+              </div>
+              {%- else %}
+              <span class="edt-toujours-necessaire" title="Cette règle définit le problème : son niveau ne se choisit pas.">Toujours nécessaire</span>
+              {%- endif %}
+            </td>
+          </tr>
+          {%- endfor %}
+        </tbody>
+      </table>
     </div>
   </fieldset>
-  {#- Pause déjeuner : préremplie depuis les paramètres, enregistrée au lancement si elle change.
-      Les heures ne sont visibles (et envoyées) qu'avec « Horaires déterminés » (static/js/app.js). #}
+  {#- Pause déjeuner à trois modes : préremplie depuis les paramètres, enregistrée au lancement si
+      elle change. Les heures ne sont visibles (et envoyées) qu'en « Horaires déterminés » et
+      « Pause libre bornée », la durée minimale qu'en pause libre (static/js/app.js) ; sans
+      JavaScript tout est visible et le serveur ne lit que les champs du mode choisi. #}
   <fieldset>
     <legend>Pause déjeuner</legend>
+    {%- macro champ_dejeuner(nom, valeur, libelle, avant="", type="time", attributs="") %}
+    {%- set erreur = erreurs_dejeuner.get(nom) %}
+    <label{% if erreur %} class="champ-en-erreur"{% endif %}>{{ avant }} <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur }}" required aria-label="{{ libelle }}"{{ attributs|safe }}{% if erreur %} aria-invalid="true" aria-describedby="erreur-{{ nom }}"{% endif %}></label>
+    {%- endmacro %}
     <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="dejeuner" value="{{ dejeuner_determine }}"{% if dejeuner.determines %} checked{% endif %}> Horaires déterminés</label>
-      <span data-visible-si="dejeuner:{{ dejeuner_determine }}">
-        {%- for nom, mot, libelle in [("dejeuner_debut", "de", "Début de la pause déjeuner"), ("dejeuner_fin", "à", "Fin de la pause déjeuner")] %}
-        {%- set erreur = erreurs_dejeuner.get(nom) %}
-        <label{% if erreur %} class="champ-en-erreur"{% endif %}>{{ mot }} <input type="time" id="champ-{{ nom }}" name="{{ nom }}" value="{{ dejeuner.debut if nom == "dejeuner_debut" else dejeuner.fin }}" required aria-label="{{ libelle }}"{% if erreur %} aria-invalid="true" aria-describedby="erreur-{{ nom }}"{% endif %}></label>
-        {%- endfor %}, libres pour tous les groupes et enseignants
-      </span>
+      <label><input type="radio" name="dejeuner" value="{{ dejeuner_fixe }}"{% if dejeuner.mode == dejeuner_fixe %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_fixe] }}</label>
+      <span class="discret">la plage du déjeuner reste libre pour tous les groupes et enseignants</span>
     </div>
     <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="dejeuner" value="{{ dejeuner_aucun }}"{% if not dejeuner.determines %} checked{% endif %}> Pas d'horaires déterminés</label>
+      <label><input type="radio" name="dejeuner" value="{{ dejeuner_libre }}"{% if dejeuner.mode == dejeuner_libre %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_libre] }}</label>
+      <span data-visible-si="dejeuner:{{ dejeuner_libre }}">{{ champ_dejeuner("dejeuner_duree", dejeuner.duree, "Durée minimale de la pause libre, en minutes", "au moins", "number", ' min="' ~ bornes_duree_dejeuner[0] ~ '" max="' ~ bornes_duree_dejeuner[1] ~ '" step="1" inputmode="numeric"') }} minutes d'un seul tenant dans la plage du déjeuner, placées par le calcul pour chaque groupe et chaque enseignant</span>
     </div>
-    {%- for nom in ("dejeuner", "dejeuner_debut", "dejeuner_fin") if erreurs_dejeuner.get(nom) %}
+    <div class="edt-choix-en-ligne">
+      <label><input type="radio" name="dejeuner" value="{{ dejeuner_aucun }}"{% if dejeuner.mode == dejeuner_aucun %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_aucun] }}</label>
+      <span class="discret">aucune plage réservée</span>
+    </div>
+    <div class="edt-choix-en-ligne" data-visible-si="dejeuner:{{ dejeuner_fixe }},{{ dejeuner_libre }}">
+      <span>Plage du déjeuner :</span>
+      {{ champ_dejeuner("dejeuner_debut", dejeuner.debut, "Début de la plage du déjeuner", "de") }}
+      {{ champ_dejeuner("dejeuner_fin", dejeuner.fin, "Fin de la plage du déjeuner", "à") }}
+    </div>
+    {%- for nom in ("dejeuner", "dejeuner_debut", "dejeuner_fin", "dejeuner_duree") if erreurs_dejeuner.get(nom) %}
     <p class="erreur-champ" id="erreur-{{ nom }}">{{ erreurs_dejeuner[nom] }}</p>
     {%- endfor %}
     <p class="aide">Ce choix est enregistré dans les paramètres au lancement du calcul : la vérification de l'emploi du temps et les calculs suivants l'appliquent aussi.</p>

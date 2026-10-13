@@ -303,7 +303,7 @@ et `effets` (`refus` et `consequences` en donnent les textes).
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
 | Règles et calendrier | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`) ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
 | | `/grille` | créneaux de la grille (édition sur place) |
-| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) ; `POST /parametres/defaut` |
+| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` |
 | Jeux de données | `/jeux` | établissement fictif petit / moyen / grand (`edt.services.jeux`), graine, version de référence ; remise à zéro |
 
 Page `/jeux` : la base n'est touchée qu'au travers de

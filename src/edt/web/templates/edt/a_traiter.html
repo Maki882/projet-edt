@@ -13,6 +13,7 @@
   <ul class="edt-anomalies">
     {%- for ligne in c.lignes %}
     <li><span>{{ ligne.message }}</span>
+      {%- if ligne.niveau %} {{ ui.etiquette(ligne.niveau, "info") }}{% endif %}
       {%- if ligne.lien %} <a href="/emploi-du-temps?{{ ligne.lien|urlencode }}">Voir dans l'emploi du temps</a>{% endif %}</li>
     {%- endfor %}
   </ul>

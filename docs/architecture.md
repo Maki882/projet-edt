@@ -728,6 +728,28 @@ def reinitialiser_parametres(session: Session) -> Parametres:
 Les paramètres, leurs bornes et leurs valeurs par défaut sont les champs de
 `edt.domaine.parametres.Parametres` ; `definitions()` les décrit pour l'écran
 de configuration et `convertir_texte(cle, texte)` convertit une saisie.
+Un paramètre **à choix** (`DefinitionParametre.type == "choix"`, `choix` =
+couples valeur/libellé) est une chaîne parmi une liste fermée ; la table
+`parametre` la stocke en JSON comme les entiers et les booléens.
+
+#### Pause déjeuner
+
+`dejeuner_mode` choisit l'un des trois modes ; `dejeuner_debut_min` (X) et
+`dejeuner_fin_min` (Y) bornent la pause dans les deux premiers. Le
+vérificateur, le solveur et les indicateurs ne lisent que les propriétés
+`plage_dejeuner`, `fenetre_dejeuner` et `dejeuner_actif`.
+
+| Mode | Règle | Propriétés |
+|---|---|---|
+| `fixe`, horaires déterminés | la plage `[X, Y[` est réservée pour tous : aucune séance ne la recoupe | `plage_dejeuner = (X, Y)` |
+| `libre`, pause libre bornée | pour chaque groupe et chaque enseignant, chaque jour où il a au moins une séance qui recoupe la fenêtre `[X, Y]`, il existe un intervalle libre d'au moins N = `dejeuner_duree_min` minutes consécutives inclus dans `[X, Y]` ; un jour sans séance dans la fenêtre est satisfait ; le moteur place cette pause où il veut | `fenetre_dejeuner = (X, Y, N)` |
+| `aucun`, pas de pause | rien n'est réservé ; X, Y et N sont conservés mais ignorés | `dejeuner_actif` faux, les deux autres `None` |
+
+Validation (`defauts_dejeuner`, un message par champ fautif) : en mode fixe,
+X < Y dans les heures d'ouverture ; en mode libre, X + N ≤ Y dans les heures
+d'ouverture ; en mode aucun, rien. Une ancienne base qui porte le booléen
+`dejeuner_horaires_determines` sans `dejeuner_mode` est lue vrai → `fixe`,
+faux → `aucun`, sans être modifiée.
 
 ### Sémantique des contraintes
 

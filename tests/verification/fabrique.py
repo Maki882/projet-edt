@@ -97,7 +97,7 @@ def grille_isep() -> tuple[Creneau, ...]:
 class Fabrique:
     """Construit un `Instantane` pas à pas ; chaque méthode renvoie l'objet créé."""
 
-    def __init__(self, nb_semaines: int = 15, **parametres: int | bool) -> None:
+    def __init__(self, nb_semaines: int = 15, **parametres: int | bool | str) -> None:
         self.parametres = Parametres().avec(**parametres)
         fin = DEBUT_SEMESTRE + dt.timedelta(weeks=nb_semaines) - dt.timedelta(days=3)
         self.semaines = semaines_entre(DEBUT_SEMESTRE, fin)

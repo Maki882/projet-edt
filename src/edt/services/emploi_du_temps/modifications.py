@@ -33,14 +33,16 @@ tout le semestre. Le recalcul est refusé avant l'instanciation
 (`ErreurRegleMetier`), et un déplacement dans la semaine type d'une telle
 version est enregistré en le disant.
 
-Contraintes décochées
----------------------
-Une retouche applique les mêmes règles que le calcul qui a produit la
-version (`raccords.contraintes_actives_de`, passées au vérificateur), comme
-l'instanciation des séances datées : une contrainte décochée lors de ce
-calcul ne bloque pas la retouche. Le vérificateur ne renvoie que les
-anomalies que le déplacement introduit ou aggrave : une violation déjà
-présente ne fige pas la séance.
+Niveaux des règles
+------------------
+Une retouche applique les mêmes règles, aux mêmes niveaux, que le calcul qui
+a produit la version : le vérificateur, appelé sans liste de contraintes,
+prend les niveaux de ce calcul (`niveaux_de_version`), qui excluent les
+règles ignorées. Une entorse à une règle importante ou facultative revient
+donc en avertissement ou en information et n'empêche pas la retouche ; une
+règle ignorée lors du calcul ne la bloque pas ; seule une règle nécessaire
+la refuse. Le vérificateur ne renvoie que les anomalies que le déplacement
+introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
@@ -329,7 +331,6 @@ def modifier_placement(
             debut,
             fin,
             salle_id,
-            contraintes_actives=raccords.contraintes_actives_de(session, seance.version_id),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         return ResultatModification(
@@ -518,7 +519,6 @@ def deplacer_occurrence(
             occurrence.version_id,
             date_debut=date,
             date_fin=date,
-            contraintes_actives=raccords.contraintes_actives_de(session, occurrence.version_id),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
         remettre()

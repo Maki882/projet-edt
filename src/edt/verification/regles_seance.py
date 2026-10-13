@@ -1,9 +1,10 @@
 """Règles portant sur une seule séance placée.
 
-- `DEJEUNER` : la plage de la séance recoupe la plage réservée au déjeuner
-  (`Parametres.plage_dejeuner`) ; sans horaires déterminés pour le déjeuner
-  (`dejeuner_horaires_determines` faux), la règle ne s'applique pas et ne
-  relève rien ;
+- `DEJEUNER`, mode **fixe** (`Parametres.plage_dejeuner` renseignée) : la
+  plage de la séance recoupe la plage réservée au déjeuner. Le mode **libre**
+  (`fenetre_dejeuner`), qui porte sur la journée d'une personne et non sur
+  une séance, est vérifié par `regles_dejeuner` ; le mode **aucun** ne
+  vérifie rien ;
 - `HORAIRES` : (a) ouverture et fermeture, (b) début sur un début de
   créneau de la grille du jour, (c) pas de débordement de la demi-journée
   du créneau de début, (d) durée placée égale à la durée du besoin,

@@ -9,11 +9,17 @@ ce module ajoute ce que l'écran doit dire :
   (`raccords.pre_verifier_semestre` : charges, salles, séances sans place
   possible, verrous contradictoires, besoins impossibles à déplier),
   groupées par gravité : une erreur empêche de lancer, un avertissement non ;
-- les **contraintes à cocher** : le catalogue, sauf `DEJEUNER`, remplacée
-  par le bloc « Pause déjeuner » ;
-- la **pause déjeuner** : horaires déterminés (de quelle heure à quelle
-  heure) ou non ; un choix qui diffère des paramètres y est enregistré au
-  lancement, avant le calcul (`appliquer_dejeuner`) ;
+- les **règles** et leur **niveau** (`regles_proposees`) : nécessaire,
+  important ou facultatif pour chaque règle modifiable, les six règles qui
+  définissent le problème restant toujours nécessaires ; préremplis avec
+  les niveaux du dernier calcul du semestre (`niveaux_proposes`), lus dans
+  les champs `niveau_<CODE>` (`lire_niveaux`). L'écran ne propose plus
+  d'ignorer une règle ; un ancien calcul qui en ignorait reste lisible ;
+- la **pause déjeuner** à trois modes (`dejeuner_mode`) : horaires
+  déterminés (plage réservée de X à Y), pause libre bornée (au moins N
+  minutes d'un seul tenant entre X et Y) ou pas de pause ; un choix qui
+  diffère des paramètres y est enregistré au lancement, avant le calcul
+  (`appliquer_dejeuner`) ;
 - les **options** : temps limite court ou long, recherche d'un emploi du
   temps plus confortable (objectif), **autre solution** (nouvelle graine,
   sans partir des placements de la version active) ;
@@ -33,7 +39,7 @@ import datetime as dt
 import logging
 import random
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -41,10 +47,25 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.domaine.contraintes import CATALOGUE, CodeContrainte, normaliser_codes
+from edt.domaine.contraintes import (
+    CATALOGUE,
+    CodeContrainte,
+    Niveau,
+    Niveaux,
+    niveaux_par_defaut,
+    normaliser_niveaux,
+)
 from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
 from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
-from edt.domaine.parametres import ValeurParametre, defauts_dejeuner
+from edt.domaine.parametres import (
+    DEJEUNER_AUCUN,
+    DEJEUNER_FIXE,
+    DEJEUNER_LIBRE,
+    MODES_DEJEUNER,
+    ValeurParametre,
+    defauts_dejeuner,
+)
+from edt.domaine.parametres import definition as definition_parametre
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurDonneesInvalides,
@@ -88,31 +109,61 @@ _ISSUE_PAR_ETAT = {
 }
 
 
-CONTRAINTES_HORS_LISTE = frozenset({CodeContrainte.DEJEUNER})
-"""Contraintes sans case à cocher : la pause déjeuner a son propre bloc dans le formulaire.
+PREFIXE_NIVEAU = "niveau_"
+"""Préfixe des champs qui portent le niveau d'une règle : `niveau_PAUSE=facultatif`."""
 
-Le code reste au catalogue : la désactivation enregistrée sur un ancien
-calcul vaut toujours pour sa relance.
-"""
+NIVEAUX_PROPOSES = tuple(Niveau)
+"""Niveaux proposés pour une règle modifiable, du plus exigeant au moins exigeant."""
 
-DEJEUNER_DETERMINE = "determines"
-DEJEUNER_AUCUN = "aucun"
+NOTES_DES_REGLES = {
+    CodeContrainte.DEJEUNER: "Ne s'applique pas sans pause déjeuner (voir « Pause déjeuner »).",
+}
+"""Précision affichée sous certaines règles du tableau."""
+
+CHAMP_MODE_DEJEUNER = "dejeuner"
 CHAMP_DEBUT_DEJEUNER = "dejeuner_debut"
 CHAMP_FIN_DEJEUNER = "dejeuner_fin"
+CHAMP_DUREE_DEJEUNER = "dejeuner_duree"
 _CHAMP_DU_PARAMETRE = {
     "dejeuner_debut_min": CHAMP_DEBUT_DEJEUNER,
     "dejeuner_fin_min": CHAMP_FIN_DEJEUNER,
+    "dejeuner_duree_min": CHAMP_DUREE_DEJEUNER,
 }
+"""Champ du formulaire qui porte chaque paramètre du déjeuner (pour y afficher son message)."""
+
+LIBELLES_DEJEUNER = dict(MODES_DEJEUNER)
+"""Libellé de chaque mode, celui du paramètre `dejeuner_mode` (comme l'écran des paramètres)."""
+
+BORNES_DUREE_DEJEUNER = (
+    definition_parametre("dejeuner_duree_min").minimum,
+    definition_parametre("dejeuner_duree_min").maximum,
+)
+"""Durée minimale permise pour la pause libre (minutes), bornes du paramètre."""
 
 
 @dataclass(frozen=True)
-class ContrainteProposee:
-    """Une case à cocher : contrainte du catalogue, cochée si elle est active."""
+class RegleProposee:
+    """Une ligne du tableau « Règles » : une règle du catalogue et son niveau.
+
+    - `niveau` : niveau proposé (dernier calcul, saisie réaffichée ou défaut) ;
+    - `niveau_defaut` : niveau du catalogue, signalé discrètement ;
+    - `modifiable` : faux pour une règle qui définit le problème, toujours
+      nécessaire et sans choix ;
+    - `note` : précision sur la règle (la pause déjeuner).
+    """
 
     code: str
     libelle: str
     description: str
-    active: bool
+    niveau: Niveau
+    niveau_defaut: Niveau
+    modifiable: bool
+    note: str | None = None
+
+    @property
+    def champ(self) -> str:
+        """Nom du champ du formulaire : `niveau_<CODE>`."""
+        return PREFIXE_NIVEAU + self.code
 
 
 @dataclass(frozen=True)
@@ -175,7 +226,7 @@ class ErreurPreVerification(ErreurRegleMetier):
         details = [*pre_verification.problemes, *(a.message for a in pre_verification.erreurs)]
         super().__init__(
             "Le calcul n'a pas été lancé : des vérifications préalables empêchent de trouver un "
-            "emploi du temps. Corriger les points ci-dessous, ou décocher la contrainte concernée.",
+            "emploi du temps. Corriger les points ci-dessous, puis relancer.",
             details,
         )
         self.pre_verification = pre_verification
@@ -183,15 +234,17 @@ class ErreurPreVerification(ErreurRegleMetier):
 
 @dataclass(frozen=True)
 class ChoixDejeuner:
-    """Bloc « Pause déjeuner » du formulaire : horaires déterminés ou non, heures « HH:MM ».
+    """Bloc « Pause déjeuner » du formulaire : mode, heures « HH:MM », durée minimale.
 
-    Les heures sont des textes : celles des paramètres à l'affichage, celles
+    `mode` : `DEJEUNER_FIXE`, `DEJEUNER_LIBRE` ou `DEJEUNER_AUCUN`. Heures et
+    durée sont des textes : celles des paramètres à l'affichage, celles
     saisies à l'envoi (réaffichées telles quelles si elles sont refusées).
     """
 
-    determines: bool
+    mode: str
     debut: str
     fin: str
+    duree: str
 
 
 class ErreurSaisieDejeuner(ErreurDonneesInvalides):
@@ -209,6 +262,18 @@ class ErreurSaisieDejeuner(ErreurDonneesInvalides):
             "champs concernés).",
             tuple(self.champs.values()),
         )
+
+
+class ErreurSaisieNiveaux(ErreurDonneesInvalides):
+    """Niveaux de règles illisibles ou interdits : rien n'est lancé ni enregistré.
+
+    `niveaux` : niveaux complets à réafficher (les choix valides sont gardés,
+    les autres reviennent au niveau par défaut).
+    """
+
+    def __init__(self, message: str, niveaux: Niveaux) -> None:
+        super().__init__(f"Le calcul n'a pas été lancé : {message[:1].lower()}{message[1:]}")
+        self.niveaux = niveaux
 
 
 @dataclass(frozen=True)
@@ -291,6 +356,12 @@ class ResultatCalcul:
     - `impossibilites` : raisons d'un refus par les vérifications préalables ;
     - `nb_seances` : séances de la semaine type placées (succès) ;
     - `datees` : bilan des séances datées (succès) ;
+    - `contraintes_desactivees` : règles ignorées, possibles seulement pour un
+      calcul lancé avant les niveaux de règles ;
+    - `regles` : règles dont le niveau s'écarte du défaut, en phrases
+      (`presentation.libelles_niveaux`), vide si tout est par défaut ;
+    - `entorses` : entorses aux règles importantes ou facultatives, une
+      phrase par niveau (`statistiques["entorses"]`, fourni par le moteur) ;
     - `qualite` : bilan de qualité du moteur, en phrases (trous, samedis,
       amélioration possible), sans ce que les compteurs disent déjà ;
     - `arrete_avec_solution` : l'utilisateur a arrêté le calcul et la
@@ -319,6 +390,8 @@ class ResultatCalcul:
     datees: BilanDatees | None = None
     qualite: str | None = None
     arrete_avec_solution: bool = False
+    regles: tuple[str, ...] = ()
+    entorses: tuple[str, ...] = ()
 
     @property
     def en_cours(self) -> bool:
@@ -368,68 +441,109 @@ def _recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
     )
 
 
-def contraintes_proposees(desactivees: Iterable[str] = ()) -> tuple[ContrainteProposee, ...]:
-    """Les contraintes à cocher, dans l'ordre du catalogue, cochées sauf celles de `desactivees`.
+def niveaux_proposes(dernier: generation.SuiviCalcul | None) -> Niveaux:
+    """Niveaux à préremplir : ceux du dernier calcul du semestre, sinon les niveaux par défaut.
 
-    Les contraintes de `CONTRAINTES_HORS_LISTE` ne sont pas proposées.
+    Toujours complet. Une règle qu'un ancien calcul ignorait (clé absente)
+    reprend son niveau par défaut : l'écran ne propose plus d'ignorer une règle.
     """
-    eteintes = normaliser_codes(desactivees)
+    niveaux = niveaux_par_defaut()
+    if dernier is not None:
+        for code, retenu in dernier.niveaux.items():
+            if code in CATALOGUE and CATALOGUE[code].modifiable:
+                niveaux[CodeContrainte(code)] = Niveau(retenu)
+    return niveaux
+
+
+def regles_proposees(
+    niveaux: Mapping[CodeContrainte, Niveau] | None = None,
+) -> tuple[RegleProposee, ...]:
+    """Le tableau « Règles », dans l'ordre du catalogue, avec le niveau proposé de chaque règle.
+
+    Une règle absente de `niveaux` prend son niveau par défaut ; une règle
+    non modifiable est toujours nécessaire.
+    """
+    niveaux = niveaux or {}
     return tuple(
-        ContrainteProposee(
+        RegleProposee(
             code=str(code),
             libelle=entree.libelle,
             description=entree.description,
-            active=code not in eteintes and entree.active_par_defaut,
+            niveau=Niveau(niveaux.get(code, entree.niveau_defaut))
+            if entree.modifiable
+            else Niveau.NECESSAIRE,
+            niveau_defaut=entree.niveau_defaut,
+            modifiable=entree.modifiable,
+            note=NOTES_DES_REGLES.get(code),
         )
         for code, entree in CATALOGUE.items()
-        if code not in CONTRAINTES_HORS_LISTE
     )
 
 
-def desactivees_depuis_cochees(cochees: Iterable[str]) -> frozenset[str]:
-    """Contraintes décochées, à partir des codes cochés dans le formulaire (codes vérifiés).
+def niveaux_saisis(champs: Iterable[tuple[str, str]]) -> dict[str, str]:
+    """Les choix `niveau_<CODE>` d'un formulaire ou d'une adresse, `{code: valeur}`, non vérifiés."""
+    return {
+        nom[len(PREFIXE_NIVEAU) :]: str(valeur).strip()
+        for nom, valeur in champs
+        if nom.startswith(PREFIXE_NIVEAU)
+    }
 
-    Seules les contraintes proposées peuvent l'être : une contrainte de
-    `CONTRAINTES_HORS_LISTE`, absente des cases, n'est jamais désactivée ici.
+
+def lire_niveaux(saisis: Mapping[str, str]) -> Niveaux:
+    """Niveaux complets d'après les choix reçus : les règles non citées gardent leur défaut.
+
+    Lève `ErreurSaisieNiveaux` (avec les niveaux à réafficher) pour une règle
+    inconnue, un niveau inconnu, ou un niveau autre que « nécessaire » sur une
+    règle qui définit le problème (`normaliser_niveaux`).
     """
-    actives = normaliser_codes(cochees)
-    return frozenset(
-        str(code)
-        for code in CATALOGUE
-        if code not in CONTRAINTES_HORS_LISTE and code not in actives
-    )
+    try:
+        return normaliser_niveaux(saisis)
+    except ErreurDonneesInvalides as erreur:
+        journal.info("Niveaux de règles refusés : %s", erreur.message)
+        raise ErreurSaisieNiveaux(erreur.message, _niveaux_valides(saisis)) from erreur
+
+
+def _niveaux_valides(saisis: Mapping[str, str]) -> Niveaux:
+    """Les niveaux par défaut, complétés des seuls choix valides de `saisis` (pour réafficher)."""
+    niveaux = niveaux_par_defaut()
+    for code, valeur in saisis.items():
+        try:
+            retenus = normaliser_niveaux({code: valeur})
+        except ErreurDonneesInvalides:
+            continue  # choix refusé : déjà dit par le message de `lire_niveaux`
+        niveaux[CodeContrainte(code)] = retenus[CodeContrainte(code)]
+    return niveaux
 
 
 def pre_verifier(
     session: Session,
     semestre_id: int,
-    desactivees: Iterable[str] = (),
+    niveaux: Mapping[CodeContrainte, Niveau] | None = None,
     recap: Recapitulatif | None = None,
 ) -> PreVerification:
-    """Vérifications préalables pour un calcul avec ces contraintes décochées.
+    """Vérifications préalables pour un calcul avec ces niveaux de règles (défaut : par défaut).
 
-    Les pré-vérifications du solveur couvrent aussi les besoins impossibles à
-    déplier ; ceux du récapitulatif ne servent que si elles manquaient.
+    Les niveaux sont transmis tels quels aux pré-vérifications du solveur
+    (clé absente : règle ignorée, seulement pour la relance d'un ancien
+    calcul). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
+    récapitulatif ne servent que si elles manquaient.
     """
-    desactivees = normaliser_codes(desactivees)
+    niveaux = dict(niveaux) if niveaux is not None else niveaux_par_defaut()
+    ignorees = {str(code) for code in CATALOGUE if code not in niveaux}
     recap = recap or recapitulatif(session, semestre_id)
     problemes = (recap.erreur,) if recap.erreur else ()
     if not recap.erreur and not recap.nb_besoins:
         problemes += (MESSAGE_AUCUN_BESOIN,)
-    codes = tuple(sorted(str(code) for code in desactivees))
+    cle = tuple(sorted((str(code), str(retenu)) for code, retenu in niveaux.items()))
     try:
         anomalies = memoire.memoriser(
             session,
             "pre_verifier_semestre",
-            (semestre_id, codes),
-            lambda: raccords.pre_verifier_semestre(session, semestre_id, codes),
+            (semestre_id, cle),
+            lambda: raccords.pre_verifier_semestre(session, semestre_id, niveaux=niveaux),
         )
     except raccords.ErreurRaccordIndisponible as erreur:
-        problemes += tuple(
-            message
-            for code, message in recap.problemes
-            if code not in {str(c) for c in desactivees}
-        )
+        problemes += tuple(message for code, message in recap.problemes if code not in ignorees)
         return PreVerification(problemes=problemes, motif=erreur.message)
     except ErreurEDT as erreur:
         journal.warning("Pré-vérifications du semestre %d impossibles : %s", semestre_id, erreur)
@@ -461,43 +575,47 @@ def choix_dejeuner(session: Session) -> ChoixDejeuner:
     """Pause déjeuner enregistrée dans les paramètres, telle que le formulaire la préremplit."""
     parametres = lire_parametres(session)
     return ChoixDejeuner(
-        determines=parametres.dejeuner_horaires_determines,
+        mode=parametres.dejeuner_mode,
         debut=minutes_vers_hhmm(parametres.dejeuner_debut_min),
         fin=minutes_vers_hhmm(parametres.dejeuner_fin_min),
+        duree=str(parametres.dejeuner_duree_min),
     )
 
 
 def lire_saisie_dejeuner(
-    mode: str | None, debut: str | None, fin: str | None
+    mode: str | None, debut: str | None, fin: str | None, duree: str | None = None
 ) -> ChoixDejeuner | None:
     """Bloc « Pause déjeuner » reçu du formulaire, ou `None` s'il n'a pas été envoyé.
 
-    `mode` vaut `DEJEUNER_DETERMINE` ou `DEJEUNER_AUCUN` ; toute autre valeur
-    lève `ErreurSaisieDejeuner`. Les heures absentes (champs masqués, donc
-    non envoyés) deviennent des textes vides.
+    `mode` vaut `DEJEUNER_FIXE`, `DEJEUNER_LIBRE` ou `DEJEUNER_AUCUN` ; toute
+    autre valeur lève `ErreurSaisieDejeuner`. Les heures et la durée absentes
+    (champs masqués, donc non envoyés) deviennent des textes vides.
     """
     if mode is None:
         return None
-    if mode not in (DEJEUNER_DETERMINE, DEJEUNER_AUCUN):
+    if mode not in (DEJEUNER_FIXE, DEJEUNER_LIBRE, DEJEUNER_AUCUN):
         journal.info("Pause déjeuner refusée : choix « %s » inconnu", mode)
-        raise ErreurSaisieDejeuner(
-            {"dejeuner": "Choisir « Horaires déterminés » ou « Pas d'horaires déterminés »."},
-            None,
-        )
-    return ChoixDejeuner(mode == DEJEUNER_DETERMINE, (debut or "").strip(), (fin or "").strip())
+        libelles = " ou ".join(f"« {libelle} »" for _, libelle in MODES_DEJEUNER)
+        raise ErreurSaisieDejeuner({CHAMP_MODE_DEJEUNER: f"Choisir {libelles}."}, None)
+    return ChoixDejeuner(mode, (debut or "").strip(), (fin or "").strip(), (duree or "").strip())
 
 
 def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:
     """Paramètres à modifier pour appliquer `choix` : seulement ceux qui changent.
 
-    Sans horaires déterminés, les heures saisies sont ignorées et celles
-    enregistrées sont conservées. Avec, chaque heure doit être lisible
-    (« 12:45 », « 12 h 45 »), la plage non vide et dans les heures
-    d'ouverture : sinon `ErreurSaisieDejeuner`, un message par champ.
+    - « Pas de pause » : seul le mode change ; heures et durée enregistrées
+      sont conservées (ignorées tant que le mode reste « aucun ») ;
+    - « Horaires déterminés » : les deux heures, lisibles (« 12:45 »,
+      « 12 h 45 »), la plage non vide et dans les heures d'ouverture ;
+    - « Pause libre bornée » : en plus, la durée minimale (en minutes, dans
+      les bornes du paramètre) doit tenir dans la fenêtre.
+
+    Toute saisie fautive lève `ErreurSaisieDejeuner`, un message par champ
+    (ceux de `defauts_dejeuner` pour la cohérence des heures et de la durée).
     """
     courants = lire_parametres(session)
-    voulus: dict[str, ValeurParametre] = {"dejeuner_horaires_determines": choix.determines}
-    if choix.determines:
+    voulus: dict[str, ValeurParametre] = {"dejeuner_mode": choix.mode}
+    if choix.mode != DEJEUNER_AUCUN:
         erreurs: dict[str, str] = {}
         for cle, nom, exemple, texte in (
             ("dejeuner_debut_min", "de début", "12:45", choix.debut),
@@ -515,18 +633,41 @@ def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Va
                     f"Heure {nom} du déjeuner illisible (« {texte} ») : l'écrire par exemple "
                     f"{exemple}."
                 )
+        duree = courants.dejeuner_duree_min
+        if choix.mode == DEJEUNER_LIBRE:
+            lue = _duree_dejeuner(choix.duree)
+            if isinstance(lue, str):
+                erreurs[CHAMP_DUREE_DEJEUNER] = lue
+            else:
+                duree = voulus["dejeuner_duree_min"] = lue
         if not erreurs:
             defauts = defauts_dejeuner(
                 int(voulus["dejeuner_debut_min"]),
                 int(voulus["dejeuner_fin_min"]),
                 courants.ouverture_min,
                 courants.fermeture_min,
+                mode=choix.mode,
+                duree=duree,
             )
             erreurs = {_CHAMP_DU_PARAMETRE[cle]: message for cle, message in defauts.items()}
         if erreurs:
             journal.info("Pause déjeuner refusée : %s", " ".join(erreurs.values()))
             raise ErreurSaisieDejeuner(erreurs, choix)
     return {cle: valeur for cle, valeur in voulus.items() if getattr(courants, cle) != valeur}
+
+
+def _duree_dejeuner(texte: str) -> int | str:
+    """La durée minimale de la pause libre en minutes, ou le message qui dit quoi corriger."""
+    minimum, maximum = BORNES_DUREE_DEJEUNER
+    attendu = f"un nombre de minutes entre {minimum} et {maximum}, par exemple 60"
+    if not texte:
+        return f"Indiquer la durée minimale de la pause : {attendu}."
+    if not (texte.isascii() and texte.isdigit()):
+        return f"Durée minimale illisible (« {texte} ») : indiquer {attendu}."
+    duree = int(texte)
+    if not minimum <= duree <= maximum:
+        return f"Durée minimale de {duree} min hors bornes : indiquer {attendu}."
+    return duree
 
 
 def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, ValeurParametre]:
@@ -568,7 +709,7 @@ def demarrer_calcul(
     session: Session,
     semestre_id: int,
     *,
-    contraintes_cochees: Iterable[str],
+    niveaux: Niveaux | None = None,
     longue: bool = False,
     optimiser: bool | None = None,
     autre_solution: bool = False,
@@ -576,7 +717,8 @@ def demarrer_calcul(
 ) -> int:
     """Règle la pause déjeuner, vérifie, puis lance un calcul en arrière-plan ; renvoie son id.
 
-    `dejeuner` (bloc du formulaire) est d'abord enregistré dans les
+    `niveaux` : niveaux des règles, validés (`lire_niveaux`) ; défaut : les
+    niveaux par défaut. `dejeuner` (bloc du formulaire) est d'abord enregistré dans les
     paramètres s'il en diffère (`appliquer_dejeuner`) : les vérifications
     préalables et le calcul en tiennent compte, et le réglage reste même si
     le calcul est ensuite refusé. `None` laisse la pause déjeuner telle quelle.
@@ -588,8 +730,8 @@ def demarrer_calcul(
     exiger_semestre(session, semestre_id)
     if dejeuner is not None:
         appliquer_dejeuner(session, dejeuner)
-    desactivees = desactivees_depuis_cochees(contraintes_cochees)
-    verification = pre_verifier(session, semestre_id, desactivees)
+    niveaux = niveaux if niveaux is not None else niveaux_par_defaut()
+    verification = pre_verifier(session, semestre_id, niveaux)
     if verification.bloquante:
         journal.info("Calcul du semestre %d refusé par les vérifications préalables", semestre_id)
         raise ErreurPreVerification(verification)
@@ -601,7 +743,7 @@ def demarrer_calcul(
         )
     options = _options(
         session,
-        desactivees=desactivees,
+        niveaux=niveaux,
         longue=longue,
         optimiser=optimiser,
         graine=_nouvelle_graine() if autre_solution else 0,
@@ -613,9 +755,11 @@ def demarrer_calcul(
 def relancer_calcul(
     session: Session, calcul_id: int, *, longue: bool | None = None, autre_solution: bool = False
 ) -> int:
-    """Relance un calcul avec les mêmes contraintes ; plus longtemps et/ou avec une autre graine.
+    """Relance un calcul avec les mêmes règles ; plus longtemps et/ou avec une autre graine.
 
-    `longue=None` garde la durée du calcul d'origine. `autre_solution` tire
+    Les niveaux sont ceux du calcul d'origine (`SuiviCalcul.niveaux` ; un
+    ancien calcul garde ses règles ignorées). `longue=None` garde la durée
+    du calcul d'origine. `autre_solution` tire
     une nouvelle graine **et** ne part pas des placements de la version
     active (sinon le moteur, guidé par eux, peut redonner le même emploi du
     temps). Mêmes erreurs que `demarrer_calcul`.
@@ -624,8 +768,8 @@ def relancer_calcul(
     if calcul is None:
         raise ErreurIntrouvable(f"Le calcul n° {calcul_id} n'existe pas.")
     parametres = dict(calcul.parametres or {})
-    desactivees = frozenset(calcul.contraintes_desactivees or ())
-    verification = pre_verifier(session, calcul.semestre_id, desactivees)
+    niveaux = dict(generation.etat_calcul(calcul_id).niveaux)
+    verification = pre_verifier(session, calcul.semestre_id, niveaux)
     if verification.bloquante:
         raise ErreurPreVerification(verification)
     if longue is None:
@@ -633,7 +777,7 @@ def relancer_calcul(
     graine = _nouvelle_graine() if autre_solution else int(parametres.get("graine", 0))
     options = _options(
         session,
-        desactivees=desactivees,
+        niveaux=niveaux,
         longue=longue,
         optimiser=bool(parametres.get("optimiser", False)),
         graine=graine,
@@ -723,7 +867,70 @@ def resultat_calcul(
         else None,
         qualite=qualite_du_moteur(suivi.message) if issue == Issue.REUSSI else None,
         arrete_avec_solution=arrete_avec_solution,
+        regles=presentation.libelles_niveaux(
+            suivi.niveaux, dejeuner_actif=dejeuner_actif_du_calcul(session, suivi)
+        ),
+        entorses=_entorses(calcul_id, statistiques, suivi.niveaux),
     )
+
+
+def dejeuner_actif_du_calcul(session: Session, suivi: generation.SuiviCalcul) -> bool:
+    """Vrai si une pause déjeuner s'appliquait au calcul (pour citer ou non la règle `DEJEUNER`).
+
+    Lu dans ce qui est enregistré avec le calcul (`statistiques` ou options,
+    clé `dejeuner_actif`) quand il y figure ; à défaut, et c'est le cas
+    aujourd'hui (le calcul n'enregistre pas la pause déjeuner), dans les
+    paramètres courants, qui ont pu changer depuis.
+    """
+    for source in (suivi.statistiques or {}, _options_enregistrees(session, suivi.id)):
+        valeur = source.get("dejeuner_actif")
+        if isinstance(valeur, bool):
+            return valeur
+    return lire_parametres(session).dejeuner_actif
+
+
+def _options_enregistrees(session: Session, calcul_id: int) -> dict:
+    calcul = session.get(m.Calcul, calcul_id)
+    return dict(calcul.parametres or {}) if calcul is not None else {}
+
+
+def relire_saisie_dejeuner(
+    session: Session, mode: str | None, debut: str | None, fin: str | None, duree: str | None
+) -> tuple[ChoixDejeuner | None, dict[str, str]]:
+    """Le bloc « Pause déjeuner » reçu, à réafficher, et ses erreurs par champ, sans rien enregistrer.
+
+    Sert quand un autre champ fait refuser le lancement : la saisie n'est
+    pas perdue et ses propres fautes sont déjà dites. `(None, {})` si le
+    bloc n'a pas été envoyé.
+    """
+    try:
+        choix = lire_saisie_dejeuner(mode, debut, fin, duree)
+        if choix is not None:
+            changements_dejeuner(session, choix)
+    except ErreurSaisieDejeuner as erreur:
+        return erreur.saisie, erreur.champs
+    return choix, {}
+
+
+ENTORSES_ILLISIBLES = (
+    "Le décompte des entorses de ce calcul est illisible : le journal du calcul le détaille.",
+)
+
+
+def _entorses(calcul_id: int, statistiques: dict, niveaux: Niveaux) -> tuple[str, ...]:
+    """Entorses aux règles souples, en phrases, d'après `statistiques["entorses"]` (code → nombre).
+
+    Rien si le moteur n'en a pas compté ; un décompte illisible est dit, pas tu.
+    """
+    brut = statistiques.get("entorses")
+    if not brut:
+        return ()
+    try:
+        entorses = {str(code): int(nombre) for code, nombre in dict(brut).items()}
+    except (TypeError, ValueError) as erreur:
+        journal.warning("Calcul %d : entorses illisibles (%r) : %s", calcul_id, brut, erreur)
+        return ENTORSES_ILLISIBLES
+    return presentation.libelles_entorses(entorses, niveaux)
 
 
 PHRASES_DE_QUALITE = (
@@ -787,8 +994,7 @@ def _phrases(
             "Calcul non lancé : impossibilités relevées avant la recherche",
             "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
             "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
-            "enregistré. Corriger les points ci-dessous (ou décocher la contrainte concernée), "
-            "puis relancer.",
+            "enregistré. Corriger les points ci-dessous, puis relancer.",
             None,
         )
     if issue == Issue.IMPOSSIBLE:
@@ -797,7 +1003,7 @@ def _phrases(
             "Impossible avec ces contraintes",
             message
             or "Il est certain qu'aucun emploi du temps ne peut respecter toutes les "
-            "contraintes cochées avec les données actuelles. Aucun emploi du temps n'a été "
+            "règles nécessaires avec les données actuelles. Aucun emploi du temps n'a été "
             "enregistré.",
             None,
         )
@@ -842,7 +1048,7 @@ def _phrases(
 def _options(
     session: Session,
     *,
-    desactivees: Iterable[str],
+    niveaux: Mapping[CodeContrainte, Niveau],
     longue: bool,
     optimiser: bool | None,
     graine: int,
@@ -850,7 +1056,7 @@ def _options(
 ) -> OptionsSolveur:
     options = OptionsSolveur.depuis_parametres(
         lire_parametres(session),
-        contraintes_desactivees=desactivees,
+        niveaux=niveaux,
         relance_longue=longue,
         graine=graine,
     )

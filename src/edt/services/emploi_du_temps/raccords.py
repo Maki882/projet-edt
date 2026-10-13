@@ -4,8 +4,9 @@ Les pré-vérifications, le vérificateur et l'instanciation datée sont écrits
 par d'autres lots ; tous sont livrés. Leurs noms et signatures :
 
 - `edt.services.generation.pre_verifier_semestre(session, semestre_id,
-  contraintes_desactivees=(), *, version_base_id=None,
-  tolerer_violations_heritees=False) -> list[Anomalie]` ;
+  contraintes_desactivees=(), *, niveaux=None, version_base_id=None,
+  tolerer_violations_heritees=False) -> list[Anomalie]` (`niveaux` prime
+  sur `contraintes_desactivees`) ;
 - `edt.services.verification.verifier_version(session, version_id,
   contraintes_actives=None) -> RapportVerification` ;
 - `edt.services.verification.verifier_occurrences_version(session,
@@ -46,7 +47,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurEDT, ErreurNonLivre
 from edt.services.emploi_du_temps import memoire
@@ -186,16 +186,27 @@ class Controle:
 
 
 def pre_verifier_semestre(
-    session: Session, semestre_id: int, contraintes_desactivees: Iterable[str] = ()
+    session: Session,
+    semestre_id: int,
+    contraintes_desactivees: Iterable[str] = (),
+    *,
+    niveaux: Mapping[str, str] | None = None,
 ) -> tuple[Anomalie, ...]:
-    """Pré-vérifications d'un semestre avant un calcul (charges, salles accessibles, verrous...)."""
+    """Pré-vérifications d'un semestre avant un calcul (charges, salles accessibles, verrous...).
+
+    `niveaux` (niveau de chaque règle, clé absente : règle ignorée) prime sur
+    `contraintes_desactivees`.
+    """
+    arguments: dict[str, object] = {"contraintes_desactivees": tuple(contraintes_desactivees)}
+    if niveaux is not None:
+        arguments = {"niveaux": dict(niveaux)}
     anomalies = _appeler(
         MODULE_GENERATION,
         "pre_verifier_semestre",
         MESSAGE_PRE_VERIFICATION,
         session,
         semestre_id,
-        contraintes_desactivees=tuple(contraintes_desactivees),
+        **arguments,
     )
     return tuple(anomalies)
 
@@ -248,8 +259,9 @@ def verifier_modification(
 ) -> Verification:
     """Anomalies qu'introduirait la séance `seance_id` placée ainsi (rien n'est enregistré).
 
-    `contraintes_actives` : règles à appliquer (`None` : toutes, par défaut) ;
-    une retouche passe celles du calcul de la version (`contraintes_actives_de`).
+    `contraintes_actives` : codes à vérifier **en dur** (niveaux ignorés). Une
+    retouche n'en passe pas : `None` laisse le vérificateur appliquer les
+    niveaux du calcul de la version, règles ignorées exclues.
     """
     rapport = _appeler(
         MODULE_VERIFICATION,
@@ -307,18 +319,6 @@ def contraintes_desactivees_de(session: Session, version_id: int) -> frozenset[s
         .where(m.VersionEdt.id == version_id)
     )
     return frozenset(str(code) for code in codes or ())
-
-
-def contraintes_actives_de(session: Session, version_id: int) -> frozenset[str] | None:
-    """Contraintes que respecte la version : celles du calcul (`None` : toutes, par défaut).
-
-    C'est ce que reprend l'instanciation des séances datées ; une retouche à
-    la main applique les mêmes règles.
-    """
-    desactivees = contraintes_desactivees_de(session, version_id)
-    if not desactivees:
-        return None
-    return frozenset(str(code) for code in codes_actifs(desactivees))
 
 
 def controler_version(session: Session, version_id: int) -> Controle:

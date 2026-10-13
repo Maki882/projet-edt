@@ -3,14 +3,16 @@
 Adresses :
 
 - `GET /calculs` : choix du semestre, récapitulatif, vérifications
-  préalables, contraintes à cocher, pause déjeuner, options, lancement ; si
-  un calcul tourne déjà, la page le montre au lieu de proposer d'en lancer
-  un second ;
+  préalables, tableau des règles et de leur niveau (préremplis avec ceux du
+  dernier calcul du semestre), pause déjeuner, options, lancement ; si un
+  calcul tourne déjà, la page le montre au lieu de proposer d'en lancer un
+  second ;
 - `GET /calculs/verifications` : fragment des vérifications préalables,
-  recalculé quand on coche ou décoche une contrainte ;
-- `POST /calculs` : enregistre la pause déjeuner choisie si elle diffère
-  des paramètres, lance un calcul puis mène à son suivi ; une pause
-  déjeuner mal saisie réaffiche la page (422) avec le message sous le champ ;
+  recalculé quand on change le niveau d'une règle (champs `niveau_<CODE>`) ;
+- `POST /calculs` : lit les niveaux (`niveau_<CODE>`), enregistre la pause
+  déjeuner choisie (mode, heures, durée minimale) si elle diffère des paramètres, lance un calcul puis mène
+  à son suivi ; un niveau illisible ou interdit, ou une pause déjeuner mal
+  saisie, réaffiche la page (422) avec le message ;
 - `GET /calculs/{id}` et `GET /calculs/{id}/etat` (fragment interrogé
   chaque seconde) : suivi et résultat ;
 - `POST /calculs/{id}/arreter`, `POST /calculs/{id}/relancer` ;
@@ -24,9 +26,10 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Form, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 
 from edt.config import charger_configuration
+from edt.domaine.contraintes import Niveaux
 from edt.erreurs import ErreurCalculEnCours
 from edt.services import generation
 from edt.services.emploi_du_temps import calculs, prechauffage, presentation, versions
@@ -43,12 +46,21 @@ MENU = [
 ]
 
 
+async def _niveaux_saisis(request: Request) -> dict[str, str]:
+    """Les choix `niveau_<CODE>` reçus : formulaire envoyé (POST) ou adresse (GET), non vérifiés."""
+    champs = (await request.form()) if request.method == "POST" else request.query_params
+    return calculs.niveaux_saisis(champs.multi_items())
+
+
+NiveauxSaisis = Annotated[dict[str, str], Depends(_niveaux_saisis)]
+
+
 def _page_calculs(
     request: Request,
     session,
     semestre_id: int | None,
     *,
-    desactivees: frozenset[str] = frozenset(),
+    niveaux: Niveaux | None = None,
     choix: dict | None = None,
     pre: calculs.PreVerification | None = None,
     dejeuner: calculs.ChoixDejeuner | None = None,
@@ -63,19 +75,25 @@ def _page_calculs(
         suivi = generation.calcul_en_cours()
         en_cours = calculs.resultat_calcul(session, suivi.id, indicateurs=False) if suivi else None
         dernier = generation.dernier_calcul(semestre.id)
+        if niveaux is None:
+            niveaux = calculs.niveaux_proposes(dernier)
         recap = calculs.recapitulatif(session, semestre.id)
         options = calculs.options_formulaire(session)
         contexte.update(
             recap=recap,
-            pre=pre or calculs.pre_verifier(session, semestre.id, desactivees, recap),
-            contraintes=calculs.contraintes_proposees(desactivees),
+            pre=pre or calculs.pre_verifier(session, semestre.id, niveaux, recap),
+            regles=calculs.regles_proposees(niveaux),
+            niveaux_proposes=calculs.NIVEAUX_PROPOSES,
             options=options,
             choix=choix
             or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False},
             dejeuner=dejeuner or calculs.choix_dejeuner(session),
             erreurs_dejeuner=erreurs_dejeuner or {},
-            dejeuner_determine=calculs.DEJEUNER_DETERMINE,
+            dejeuner_fixe=calculs.DEJEUNER_FIXE,
+            dejeuner_libre=calculs.DEJEUNER_LIBRE,
             dejeuner_aucun=calculs.DEJEUNER_AUCUN,
+            libelles_dejeuner=calculs.LIBELLES_DEJEUNER,
+            bornes_duree_dejeuner=calculs.BORNES_DUREE_DEJEUNER,
             en_cours=en_cours,
             r=en_cours,
             dernier=(
@@ -95,20 +113,15 @@ def page_calculs(request: Request, session: SessionRequete, semestre_id: int | N
 
 @routeur.get("/calculs/verifications", name="calculs_verifications")
 def fragment_verifications(
-    request: Request,
-    session: SessionRequete,
-    semestre_id: int,
-    contraintes: Annotated[list[str] | None, Query()] = None,
-    contraintes_envoyees: bool = False,
+    request: Request, session: SessionRequete, semestre_id: int, saisis: NiveauxSaisis
 ):
-    """Vérifications préalables avec les contraintes actuellement cochées (fragment HTMX)."""
+    """Vérifications préalables avec les niveaux actuellement choisis (fragment HTMX).
+
+    Un niveau illisible lève `ErreurSaisieNiveaux`, rendue comme toute erreur
+    métier (message, pas de trace).
+    """
     versions.exiger_semestre(session, semestre_id)
-    desactivees = (
-        calculs.desactivees_depuis_cochees(contraintes or ())
-        if contraintes_envoyees
-        else frozenset()
-    )
-    pre = calculs.pre_verifier(session, semestre_id, desactivees)
+    pre = calculs.pre_verifier(session, semestre_id, calculs.lire_niveaux(saisis))
     return rendre(request, "edt/_pre_verifications.html", {"pre": pre, "fmt": presentation})
 
 
@@ -117,30 +130,51 @@ def lancer(
     request: Request,
     session: SessionRequete,
     semestre_id: Annotated[int, Form()],
-    contraintes: Annotated[list[str] | None, Form()] = None,
+    saisis: NiveauxSaisis,
     duree: Annotated[str, Form()] = "court",
     optimiser: Annotated[bool, Form()] = False,
     autre_solution: Annotated[bool, Form()] = False,
     dejeuner: Annotated[str | None, Form()] = None,
     dejeuner_debut: Annotated[str | None, Form()] = None,
     dejeuner_fin: Annotated[str | None, Form()] = None,
+    dejeuner_duree: Annotated[str | None, Form()] = None,
 ):
-    """Règle la pause déjeuner puis lance un calcul ; refus expliqué sinon.
+    """Lit les niveaux des règles, règle la pause déjeuner puis lance un calcul ; refus expliqué sinon.
 
-    Sans le bloc « Pause déjeuner » (`dejeuner` absent), la pause déjeuner
+    Une règle sans champ `niveau_<CODE>` garde son niveau par défaut. Sans le
+    bloc « Pause déjeuner » (`dejeuner` absent), la pause déjeuner
     enregistrée reste telle quelle.
     """
-    cochees = contraintes or ()
     choix = {"duree": duree, "optimiser": optimiser, "autre_solution": autre_solution}
+    try:
+        niveaux = calculs.lire_niveaux(saisis)
+    except calculs.ErreurSaisieNiveaux as erreur:
+        # La pause déjeuner saisie revient telle quelle, avec ses propres fautes s'il y en a.
+        saisie, erreurs_dejeuner = calculs.relire_saisie_dejeuner(
+            session, dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
+        )
+        return _page_calculs(
+            request,
+            session,
+            semestre_id,
+            niveaux=erreur.niveaux,
+            choix=choix,
+            dejeuner=saisie,
+            erreurs_dejeuner=erreurs_dejeuner,
+            statut=422,
+            messages=[Message(erreur.message, "erreur")],
+        )
     try:
         calcul_id = calculs.demarrer_calcul(
             session,
             semestre_id,
-            contraintes_cochees=cochees,
+            niveaux=niveaux,
             longue=duree == "long",
             optimiser=optimiser,
             autre_solution=autre_solution,
-            dejeuner=calculs.lire_saisie_dejeuner(dejeuner, dejeuner_debut, dejeuner_fin),
+            dejeuner=calculs.lire_saisie_dejeuner(
+                dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
+            ),
         )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
@@ -153,7 +187,7 @@ def lancer(
             request,
             session,
             semestre_id,
-            desactivees=calculs.desactivees_depuis_cochees(cochees),
+            niveaux=niveaux,
             choix=choix,
             dejeuner=erreur.saisie,
             erreurs_dejeuner=erreur.champs,
@@ -165,7 +199,7 @@ def lancer(
             request,
             session,
             semestre_id,
-            desactivees=calculs.desactivees_depuis_cochees(cochees),
+            niveaux=niveaux,
             choix=choix,
             pre=erreur.pre_verification,
             statut=409,
