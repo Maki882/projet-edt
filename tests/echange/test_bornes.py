@@ -21,6 +21,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import Gravite, OrigineVersion
 from edt.echange import ical, lecture
+from edt.echange.format import FEUILLES
 from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
 from edt.echange.rapport import ListeSignalements, RapportImport, Signalement, rapport_csv
 from edt.services import echange as service
@@ -98,7 +99,7 @@ def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
     with zipfile.ZipFile(io.BytesIO(gabarit.contenu)) as archive:
         assert len(archive.infolist()) <= lecture.MAX_MEMBRES_CLASSEUR
     lu, signalements = lire_fichier(FichierEnvoye(gabarit.nom, gabarit.contenu))
-    assert _erreurs(signalements) == [] and len(lu.tableaux) == 13
+    assert _erreurs(signalements) == [] and len(lu.tableaux) == len(FEUILLES)
 
 
 def test_import_web_d_une_archive_bombe(base, client):

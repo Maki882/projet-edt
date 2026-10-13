@@ -84,7 +84,8 @@
           <td>
             {%- if c.niveaux_modifies %}{{ c.niveaux_modifies|join(" ; ") }}{% endif %}
             {%- if c.contraintes_desactivees %}{% if c.niveaux_modifies %} ; {% endif %}ignorées : {{ fmt.libelles_contraintes(c.contraintes_desactivees)|join(", ") }}{% endif %}
-            {%- if not c.niveaux_modifies and not c.contraintes_desactivees %}<span class="discret">par défaut</span>{% endif %}</td>
+            {%- if c.regles_modifiees %}{% if c.niveaux_modifies or c.contraintes_desactivees %} ; {% endif %}{{ c.regles_modifiees|join(" ; ") }}{% endif %}
+            {%- if not c.niveaux_modifies and not c.contraintes_desactivees and not c.regles_modifiees %}<span class="discret">par défaut</span>{% endif %}</td>
           <td>{% if c.version_id %}<a href="/emploi-du-temps?version_id={{ c.version_id }}">Version {{ c.version_numero }}</a>{% else %}<span class="discret">aucune</span>{% endif %}</td>
         </tr>
         {%- endfor %}

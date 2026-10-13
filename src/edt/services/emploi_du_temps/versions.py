@@ -19,7 +19,7 @@ from edt.db import modeles as m
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion, StatutOccurrence
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.calendrier import semestre_par_defaut
-from edt.services.emploi_du_temps import presentation
+from edt.services.emploi_du_temps import presentation, regles_personnalisees
 from edt.services.parametres import lire_parametres
 
 journal = logging.getLogger(__name__)
@@ -64,7 +64,8 @@ class LigneCalcul:
 
     `niveaux_modifies` : règles dont le niveau s'écartait du défaut, en
     phrases ; `contraintes_desactivees` : règles ignorées (calculs d'avant
-    les niveaux de règles).
+    les niveaux de règles) ; `regles_modifiees` : règles personnalisées prises
+    à un autre niveau que le leur (« R002 : facultatif »).
     """
 
     id: int
@@ -76,6 +77,7 @@ class LigneCalcul:
     version_id: int | None
     version_numero: int | None
     niveaux_modifies: tuple[str, ...] = ()
+    regles_modifiees: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -212,6 +214,7 @@ def historique(session: Session, semestre_id: int) -> Historique:
             version_id=produites.get(c.id),
             version_numero=numeros.get(produites.get(c.id)),
             niveaux_modifies=_niveaux_modifies(c, dejeuner_actif),
+            regles_modifiees=regles_personnalisees.resume_regles_du_calcul(c),
         )
         for c in calculs
     )

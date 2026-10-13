@@ -116,6 +116,9 @@
 {%- endif %}
 
 {{ edt.perimetre(vue, url_vue) }}
+{%- if vue.alerte_regles %}
+{{ ui.message(vue.alerte_regles, "attention") }}
+{%- endif %}
 {{ edt.encart_controle(vue.controle) }}
 {%- if vue.couche.value == "date" and not vue.occurrences_disponibles %}
 <div class="message message-info" role="status">

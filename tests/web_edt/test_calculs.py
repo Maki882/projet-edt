@@ -61,7 +61,8 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
 
     assert '<span class="compteur-nombre">16</span><span class="compteur-libelle">besoins' in page
     assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
-    assert page.count('name="niveau_') == 3 * len(MODIFIABLES)  # trois niveaux par règle
+    catalogue = page.count('name="niveau_') - page.count('name="niveau_regle_')
+    assert catalogue == 3 * len(MODIFIABLES)  # trois niveaux par règle du catalogue
     assert 'name="contraintes"' not in page  # plus de case pour ignorer une règle
     assert all(
         entree.libelle in page
