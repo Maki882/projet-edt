@@ -170,6 +170,50 @@ def test_regles_invalides_rejetees_ligne_par_ligne_sans_rien_ecrire(jeu_minimal,
     assert _nombre_de_regles() == avant
 
 
+def test_reglage_de_personne_date_refuse_sur_la_colonne_des_dates(jeu_minimal, importer):
+    """Pause déjeuner et pause minimale valent l'année ou un semestre : des dates sont refusées."""
+    avant = _nombre_de_regles()
+    texte = ENTETE + (
+        "2026-2027;R030;PAUSE_DEJEUNER;groupe;A1-G2;mode = fixe;;;;01/10/2026;30/11/2026;\n"
+        "2026-2027;R031;PAUSE_MINIMALE;enseignant;ENS003;duree = 30;;;;05/10/2026;;\n"
+        "2026-2027;R032;PAUSE_MINIMALE;enseignant;ENS003;duree = 30;;;S1;;;\n"
+    )
+
+    rapport = importer(_csv(texte))
+
+    assert rapport.bilan("regles").compteurs == {"rejetes": 2, "crees": 1}
+    refus = [(s.ligne, s.colonne, s.message) for s in rapport.signalements]
+    assert [(ligne, colonne) for ligne, colonne, _ in refus] == [
+        (2, "date_debut"),
+        (3, "date_debut"),
+    ]
+    assert all("toute l'année ou un semestre entier" in message for _, _, message in refus)
+    assert _nombre_de_regles() == avant + 1  # seule la pause minimale du semestre S1 entre
+
+
+def test_besoin_present_dans_les_deux_semestres_departage_par_le_semestre(jeu_minimal, importer):
+    besoin_s2 = (
+        "annee;semestre;matiere;type;groupes;enseignants;duree\n"
+        "2026-2027;S2;IM.1101;TD;A1-G1;ENS001;2 h\n"
+    )
+    assert importer(_csv(besoin_s2, "besoins.csv")).bilan("besoins").compteurs == {"crees": 1}
+    texte = ENTETE + (
+        "2026-2027;R040;JOURS_TRAVAILLES;besoin;im.1101 / td / a1-g1;jours = lundi;;;;;;\n"
+        "2026-2027;R041;JOURS_TRAVAILLES;besoin;im.1101 / td / a1-g1;jours = mardi;;;s2;;;\n"
+    )
+
+    rapport = importer(_csv(texte))
+
+    assert rapport.bilan("regles").compteurs == {"rejetes": 1, "crees": 1}
+    (ambigu,) = rapport.signalements
+    assert (ambigu.ligne, ambigu.colonne) == (2, "cible") and "semestre" in ambigu.message
+    regle = _regles()["R041"]
+    assert regle.regle.semestre_code == "S2"
+    with session_base() as session:
+        besoin = session.get(m.Besoin, regle.portee.cible_id)
+        assert besoin.semestre.code == "S2"
+
+
 def test_simulation_n_ecrit_aucune_regle(jeu_minimal, importer):
     avant = _nombre_de_regles()
     rapport = importer(_csv(TROIS_REGLES), simuler=True)

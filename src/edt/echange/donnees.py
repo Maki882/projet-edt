@@ -886,7 +886,13 @@ def ecrire_parametres_regle(type_regle: TypeRegle, parametres: Mapping[str, Any]
 def _cible_regle(
     ctx: Contexte, annee: m.AnneeScolaire, nature: NaturePortee, texte: str | None
 ) -> str | None:
-    """Code de la cible tel que la base l'écrit (casse et espaces normalisés), sinon tel quel."""
+    """Code de la cible tel que la base l'écrit (casse et espaces normalisés), sinon tel quel.
+
+    Un besoin (« matière / type / groupes ») passe tel quel : le service le
+    cherche sans tenir compte de la casse, dans le semestre de la colonne
+    `semestre` (`periode.semestre` du brouillon) quand elle est remplie, ce qui
+    départage un enseignement présent dans les deux semestres.
+    """
     if texte is None or nature is NaturePortee.BESOIN:
         return texte
     cle = cle_code(texte)
@@ -919,7 +925,9 @@ def _colonne_regle(cle: str, message: str) -> tuple[str, str]:
     if cle.startswith("periode."):
         return cle.split(".", 1)[1], message
     if cle == "periode":
-        return "semestre", message
+        # « Semestre ou dates, pas les deux », ou un réglage qui refuse des dates : la
+        # colonne des dates porte l'erreur.
+        return "date_debut", message
     return (cle if cle in ("annee", "code", "type", "niveau", "etat") else ""), message
 
 

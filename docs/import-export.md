@@ -222,8 +222,11 @@ alors). Une ligne = une règle d'une année scolaire.
 - **Cible** : par son code, comme dans les autres feuilles (code du groupe
   dans l'année, identifiant de l'enseignant, code du campus, du type de
   séance ou de la matière), sans tenir compte de la casse ; un besoin
-  s'écrit « matière / type / groupes » (« IM.1101 / CM / A1 »), cherché dans
-  les semestres de l'année ; vide pour l'établissement (une cible donnée
+  s'écrit « matière / type / groupes » (« IM.1101 / CM / A1 »), sans
+  tenir compte de la casse, cherché dans le semestre de la colonne
+  `semestre` (indispensable si le même enseignement existe dans les deux
+  semestres ; vide, la règle prend le semestre du besoin) ; vide pour
+  l'établissement (une cible donnée
   pour l'établissement est refusée, pas ignorée).
 - **Paramètres** : une seule cellule « clé = valeur » séparées par des
   points-virgules, listes séparées par des virgules, aux formats de lecture
@@ -238,7 +241,9 @@ alors). Une ligne = une règle d'une année scolaire.
   font d'eux-mêmes).
 - **Niveau** et **état** : vides = niveau par défaut du type, règle active.
   **Période** : `semestre` (code) ou `date_debut` / `date_fin`, pas les deux ;
-  rien = toute l'année.
+  rien = toute l'année. Une pause déjeuner ou une pause minimale ne se date
+  pas (ces réglages valent l'année ou un semestre entier) : des dates sur une
+  telle ligne la font refuser, l'erreur portant sur la colonne `date_debut`.
 - **Validation** : celle du service des règles (`edt.services.regles`,
   bornes, portées admises, codes cités, doublons de réglage). Chacune de ses
   erreurs devient un signalement de la ligne, sur la colonne concernée
