@@ -40,7 +40,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import CibleIndisponibilite, DemiJournee, EtatCalcul
-from edt.domaine.instantane import Creneau
+from edt.domaine.instantane import Creneau, Placement
 from edt.domaine.regles import NaturePortee, TypeRegle, types_non_couverts
 from edt.services import generation
 from edt.services.regles import charger_regles_actives
@@ -893,3 +893,58 @@ def test_la_pause_standard_reste_entre_deux_groupes_chevauchants():
     assert resultat.statistiques["entorses_regles"] == {}
     anomalies = verifier(instantane, resultat.placements, niveaux_regles=resultat.niveaux_regles)
     assert [a.code for a in anomalies if a.code is CodeContrainte.PAUSE] == [CodeContrainte.PAUSE]
+
+
+def test_verrou_et_regles_de_salle():
+    """Scénarios de la revue : une salle verrouillée que la règle interdit, un campus imposé, un
+    verrou sans salle dont la règle impose une salle indisponible ; vérificateur et solveur d'accord."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle("S1")
+    f.salle("S2")
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.regle(
+        TypeRegle.SALLES, NaturePortee.GROUPE, classe, "necessaire", mode="interdire", salles=["S1"]
+    )
+    f.verrou("1-1", LUNDI, C1, 1)
+    instantane = f.instantane()
+    (anomalie,) = [a for a in pre_verifier(instantane) if a.bloquante]
+    assert anomalie.code is REGLE and anomalie.regle_code == "R001" and "S1" in anomalie.message
+    refuse(instantane, "R001")
+    placement = Placement("1-1", LUNDI, C1, C1 + 2 * H, 1)
+    anomalies = verifier(instantane, [placement], niveaux_regles={1: Niveau.NECESSAIRE})
+    assert [a.regle_code for a in anomalies if a.bloquante] == ["R001"]  # même verdict
+    # Souple : le verrou tient, l'entorse est comptée des deux côtés.
+    resultat = souple(instantane, 1)
+    assert verifier_solution(instantane, resultat)["1-1"].salle_id == 1
+    assert resultat.statistiques["entorses_regles"] == {"R001": 1}
+    assert entorses_verifiees(instantane, resultat) == 1
+
+    g = Fabrique(creneaux=LUNDI_SEUL)
+    c1, c2 = g.campus("C1"), g.campus("C2")
+    g.salle("S1", campus=c1)
+    g.salle("S2", campus=c2)
+    classe = g.groupe("A1")
+    g.besoin([classe], [g.enseignant()])
+    g.regle(
+        TypeRegle.CAMPUS, NaturePortee.GROUPE, classe, "necessaire", mode="imposer", campus=["C2"]
+    )
+    g.verrou("1-1", LUNDI, C1, 1)
+    refuse(g.instantane(), "R001", "campus")
+    resultat = souple(g.instantane(), 1)
+    assert resultat.statistiques["entorses_regles"] == {"R001": 1}
+    assert entorses_verifiees(g.instantane(), resultat) == 1
+
+    h = Fabrique(creneaux=LUNDI_SEUL)
+    h.salle("S1")
+    h.salle("S2")
+    classe = h.groupe("A1")
+    h.besoin([classe], [h.enseignant()])
+    h.regle(
+        TypeRegle.SALLES, NaturePortee.GROUPE, classe, "necessaire", mode="imposer", salles=["S2"]
+    )
+    h.verrou("1-1", LUNDI, C1)
+    instantane = h.instantane()
+    assert verifier_solution(instantane, resoudre(instantane, OPTIONS))["1-1"].salle_id == 2
+    h.indisponibilite(CibleIndisponibilite.SALLE, 2, jour=LUNDI)
+    refuse(h.instantane(), "indisponibles")

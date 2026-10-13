@@ -647,7 +647,13 @@ class Preparation:
     def _preparer_verrouillee(
         self, index: int, seance: SeanceAPlacer, verrou: Placement, semaines: int
     ) -> SeancePreparee:
-        """Séance fixée par son verrou : on vérifie que le verrou est tenable seul."""
+        """Séance fixée par son verrou : on vérifie que le verrou est tenable seul.
+
+        Horaires et jours ne sont pas opposés à un verrou (une séance imposée
+        qui s'en écarte n'est qu'une information) ; les indisponibilités, les
+        exigences de salle du catalogue et les règles `SALLES` et `CAMPUS`
+        nécessaires le sont, et les règles souples valent une entorse.
+        """
         regles, besoin = self.regles, seance.besoin
         preparee = SeancePreparee(
             index=index,
@@ -668,6 +674,27 @@ class Preparation:
                     **cibles,
                 )
             )
+
+        def refuser_regle(violation: Violation, message: str, **cibles) -> None:
+            regle = regles.regle(violation.regle_id)
+            refuser(
+                C.REGLE,
+                message,
+                regle_id=regle.id,
+                regle_code=regle.code,
+                regle_phrase=regle.phrase,
+                **cibles,
+            )
+
+        def entorses_campus(
+            salles: tuple[int, ...],
+        ) -> dict[tuple[int, int], tuple[Violation, ...]]:
+            """Règles CAMPUS souples : une entorse par campus refusé, au début du verrou."""
+            campus = sorted({self._campus_de[salle_id] for salle_id in salles})
+            return {
+                (preparee.debuts[0], campus_id): violations
+                for campus_id, violations in self._campus_refuses(seance, campus).items()
+            }
 
         if not (0 <= verrou.jour <= 6 and 0 <= verrou.debut < verrou.fin <= MINUTES_PAR_JOUR):
             refuser(
@@ -726,8 +753,19 @@ class Preparation:
                 code, message = self._probleme_de_salles(besoin)
                 refuser(code, f"{designation} n'a pas de salle : {message}")
                 return preparee
+            # Les règles SALLES et CAMPUS de la séance, comme pour une séance libre.
+            permises, entorses_salles, ecartee = self._salles_selon_les_regles(seance, compatibles)
+            if not permises:
+                assert ecartee is not None
+                refuser_regle(
+                    ecartee,
+                    f"{designation} n'a pas de salle : {ecartee.raison} écarte toutes les salles "
+                    "qui conviennent au besoin.",
+                    jour=verrou.jour,
+                )
+                return preparee
             salles, _, genants = self._filtrer_salles_disponibles(
-                preparee.duree, preparee.debuts, compatibles
+                preparee.duree, preparee.debuts, permises
             )
             if not salles:
                 refuser(
@@ -738,6 +776,8 @@ class Preparation:
                 )
             preparee.salles = salles
             preparee.debuts_genants = genants
+            preparee.entorses_salles = entorses_salles
+            preparee.entorses_campus = entorses_campus(salles)
             return preparee
 
         try:
@@ -763,6 +803,19 @@ class Preparation:
                 salles=(salle.id,),
                 jour=verrou.jour,
             )
+        # Les règles SALLES et CAMPUS de la séance : une salle verrouillée qu'une règle
+        # nécessaire écarte est refusée comme pour une exigence de salle du catalogue.
+        permises, entorses_salles, ecartee = self._salles_selon_les_regles(seance, [salle.id])
+        if not permises:
+            assert ecartee is not None
+            refuser_regle(
+                ecartee,
+                f"{designation} est verrouillée en salle {salle.code}, que {ecartee.raison} "
+                "écarte. Changer la salle du verrou, ou ne pas appliquer cette règle à ce calcul.",
+                salles=(salle.id,),
+                jour=verrou.jour,
+            )
+            defauts.append((C.REGLE, ecartee.raison))
         salles, _, genants = self._filtrer_salles_disponibles(
             preparee.duree, preparee.debuts, [salle.id]
         )
@@ -776,6 +829,8 @@ class Preparation:
         if not defauts:
             preparee.salles = salles
             preparee.debuts_genants = genants
+            preparee.entorses_salles = entorses_salles
+            preparee.entorses_campus = entorses_campus(salles)
         return preparee
 
     # -- contradictions entre séances à horaire fixe ----------------------------
