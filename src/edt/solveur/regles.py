@@ -74,11 +74,13 @@ from edt.domaine.heures import (
 )
 from edt.domaine.instantane import Besoin, Indisponibilite, Instantane, Salle, SeanceAPlacer
 from edt.domaine.regles import (
+    FamilleRegle,
     NaturePersonne,
     Personne,
     ReglageDejeuner,
     RegleResolue,
     ReglesJours,
+    SorteRegle,
     Source,
 )
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
@@ -184,6 +186,7 @@ class Regles:
         self._dejeuners: dict[int, tuple[ReglageDejeuner, ...]] = {}
         self._pauses: dict[tuple[int, int], tuple[ExigencePause, ...]] = {}
         self._regles_seance: dict[str, tuple[RegleResolue, ...]] | None = None
+        self._regles_emploi: dict[tuple[int, str | None], tuple[RegleResolue, ...]] = {}
         self._limites = limites_demi_journee(instantane)
 
     def active(self, code: CodeContrainte) -> bool:
@@ -277,6 +280,39 @@ class Regles:
         if self._regles_seance is None:
             self._regles_seance = regles_de_seance(self.instantane)
         return self._regles_seance.get(seance_id, ())
+
+    def regles_emploi_de(self, besoin: Besoin, seance_id: str | None) -> tuple[RegleResolue, ...]:
+        """Règles d'emploi du temps (exigences) et de relation qui concernent la séance.
+
+        Une règle d'emploi du temps concerne le besoin si l'une de ses
+        personnes (`RegleResolue.personnes`) suit ses séances ; une relation,
+        si la séance est parmi les siennes (`RegleResolue.seances`), ou l'une
+        de ses personnes pour une occurrence sans séance hebdomadaire. Les
+        réglages (déjeuner, pause) n'en font pas partie.
+        """
+        cle = (besoin.id, seance_id)
+        regles = self._regles_emploi.get(cle)
+        if regles is None:
+            personnes = set(self.personnes(besoin))
+            retenues = []
+            for regle in self.instantane.regles:
+                if regle.sorte is SorteRegle.RELATION:
+                    concernee = (
+                        seance_id in regle.seances
+                        if seance_id is not None
+                        else not personnes.isdisjoint(regle.personnes)
+                    )
+                elif regle.sorte is SorteRegle.EMPLOI_DU_TEMPS:
+                    concernee = regle.famille is FamilleRegle.EXIGENCE and not personnes.isdisjoint(
+                        regle.personnes
+                    )
+                else:
+                    concernee = False
+                if concernee:
+                    retenues.append(regle)
+            regles = tuple(retenues)
+            self._regles_emploi[cle] = regles
+        return regles
 
     def signature_regles(self, seance_id: str) -> tuple:
         """Ce qui, dans les règles, distingue les domaines de deux séances d'un même besoin."""

@@ -1012,3 +1012,91 @@ def test_replacement_juge_le_jour_avec_le_campus_de_la_salle():
         niveaux=OPTIONS.niveaux,
         niveaux_regles={1: Niveau.FACULTATIF},
     )
+
+
+def _lundi_mardi(**parametres) -> Fabrique:
+    """Deux semaines, grille du lundi et du mardi, une salle ; le lundi de la 2e semaine est fermé."""
+    f = Fabrique(nb_semaines=2, creneaux=grille(jours=[LUNDI, MARDI], samedi=False), **parametres)
+    f.salle("S1")
+    f.jour_ferme(RENTREE + SEMAINE)
+    return f
+
+
+def _replacer(instantane, placements, niveau: Niveau | None = None):
+    """Instancie, replace la séance du lundi fermé et vérifie les séances datées aux mêmes niveaux."""
+    niveaux_regles = None if niveau is None else {1: niveau}
+    instancie = instancier(instantane, placements, niveaux_regles=niveaux_regles)
+    resultat = replacer(
+        instantane,
+        instancie.occurrences,
+        [r.occurrence for r in instancie.a_replacer],
+        OptionsReplacement(niveaux_regles=niveaux_regles),
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    verifier_dates(
+        instantane,
+        [*instancie.occurrences, replacement.occurrence],
+        niveaux=OPTIONS.niveaux,
+        niveaux_regles=niveaux_regles,
+    )
+    return replacement
+
+
+def test_replacement_respecte_le_maximum_par_jour():
+    """Scénario de la revue : le mardi de la 2e semaine a déjà 4 h ; en dur, la séance du lundi
+    fermé va au lundi de l'autre semaine ; en facultatif, le mardi au prix d'une entorse."""
+    f = _lundi_mardi()
+    classe = f.groupe("A1")
+    for _ in range(3):
+        f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire", maximum=240)
+    instantane = f.instantane()
+    placements = [
+        place("1-1", LUNDI, C1, 1),
+        place("2-1", MARDI, C1, 1),
+        place("3-1", MARDI, C2, 1),
+    ]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    assert (replacement.occurrence.date, replacement.occurrence.debut) == (RENTREE, C2)
+
+    replacement = _replacer(instantane, placements, Niveau.FACULTATIF)
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert replacement.cout == 10 + 1 + 20  # un jour, une autre heure, une entorse facultative
+
+
+def test_replacement_choisit_la_salle_du_campus_du_jour():
+    """CAMPUS_PAR_JOUR : la séance replacée le mardi rejoint le campus où la classe a déjà cours."""
+    f = Fabrique(nb_semaines=2, creneaux=grille(jours=[LUNDI, MARDI], samedi=False))
+    c1, c2 = f.campus("C1"), f.campus("C2")
+    f.trajet(c1, c2, 0)
+    f.salle("S1", campus=c1)
+    f.salle("S2", campus=c2)
+    f.jour_ferme(RENTREE + SEMAINE)
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.CAMPUS_PAR_JOUR, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1), place("2-1", MARDI, C1, 2)]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    nouvelle = replacement.occurrence
+    assert nouvelle.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert nouvelle.salle_id == 2  # S2, sur le campus du cours déjà en place ce mardi-là
+
+
+def test_replacement_respecte_l_ordre_dans_la_semaine():
+    """ORDRE_SEMAINE : le CM du lundi fermé ne peut pas passer après le TD du mardi."""
+    f = _lundi_mardi()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()], type_seance="CM")
+    f.besoin([classe], [f.enseignant()], type_seance="TD", matiere_id=1)
+    f.regle(TypeRegle.ORDRE_SEMAINE, NaturePortee.GROUPE, classe, "necessaire")
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1), place("2-1", MARDI, C1, 1)]
+    replacement = _replacer(instantane, placements, Niveau.NECESSAIRE)
+    assert replacement.occurrence.date == RENTREE  # l'autre semaine, avant son TD
+
+    replacement = _replacer(instantane, placements, Niveau.FACULTATIF)
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=1)
+    assert replacement.cout == 10 + 1 + 20

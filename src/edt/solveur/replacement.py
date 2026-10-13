@@ -30,7 +30,15 @@ date par date)
 - personnes : unicité, pause et trajet face aux occurrences du même jour
   (`ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `PAUSE`, `CAMPUS_TRAJET`) ;
 - maxima des enseignants par jour et par semaine (`MAX_ENSEIGNANT`) ;
-- salle : compatible avec le besoin et libre (`SALLE_UNIQUE`, `CAPACITE`...).
+- salle : compatible avec le besoin et libre (`SALLE_UNIQUE`, `CAPACITE`...) ;
+- règles personnalisées d'emploi du temps et de relation (`MAX_PAR_JOUR`,
+  `CAMPUS_PAR_JOUR`, `MATIERES_PAR_JOUR`, `JOURNEES_LIBRES`, `SANS_TROU`,
+  `ORDRE_SEMAINE`, `REPARTITION_MATIERE`) : la candidate, salle choisie, est
+  soumise avec les occurrences en place de la même semaine réelle aux
+  vérificateurs datés de `edt.verification` (définitions communes) ; une
+  anomalie qui la cite refuse la place (règle nécessaire) ou s'ajoute au
+  coût (règle souple). Le choix de la salle tient compte de
+  `CAMPUS_PAR_JOUR` (campus déjà occupés ce jour-là par la personne).
 
 Contraintes souples (niveau « important » ou « facultatif ») : une place qui
 les enfreint reste permise, mais chaque entorse ajoute `Regles.poids` au
@@ -74,6 +82,7 @@ from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur.instanciation import empechement
 from edt.solveur.personnalisees import Choix, enfreint
 from edt.solveur.regles import Regles, Violation, pause_dejeuner_tenue
+from edt.verification import verifier_occurrences
 
 journal = logging.getLogger(__name__)
 
@@ -185,9 +194,21 @@ class _Planning:
         self.par_groupe: dict[tuple[dt.date, int], list[_Place]] = defaultdict(list)
         self.minutes_jour: dict[tuple[int, dt.date], int] = defaultdict(int)
         self.minutes_semaine: dict[tuple[int, dt.date], int] = defaultdict(int)
+        self.par_semaine: dict[dt.date, list[Occurrence]] = defaultdict(list)
+        self._campus_de = {salle.id: salle.campus_id for salle in regles.instantane.salles}
 
-    def ajouter(self, besoin: Besoin, date: dt.date, debut: int, fin: int, salle_id) -> None:
+    def ajouter(
+        self,
+        besoin: Besoin,
+        date: dt.date,
+        debut: int,
+        fin: int,
+        salle_id,
+        occurrence: Occurrence | None = None,
+    ) -> None:
         place = _Place(besoin, debut, fin, salle_id)
+        if occurrence is not None:
+            self.par_semaine[lundi_de(date)].append(occurrence)
         if salle_id is not None:
             self.par_salle[(date, salle_id)].append(place)
         for enseignant in self.regles.enseignants_reels(besoin):
@@ -261,6 +282,79 @@ class _Planning:
                 supprimees[violation] += 1
         return dict(supprimees)
 
+    def _places_des_personnes(
+        self, besoin: Besoin, date: dt.date, personnes: Iterable
+    ) -> list[_Place]:
+        """Occurrences du jour des personnes données (enseignants, groupes feuilles et leur lignée)."""
+        places: dict[int, _Place] = {}
+        for personne in personnes:
+            if personne.nature is NaturePersonne.ENSEIGNANT:
+                for place in self.par_enseignant.get((date, personne.id), ()):
+                    places[id(place)] = place
+            else:
+                lignee = self.regles.instantane.emploi(personne).lignee or (personne.id,)
+                for groupe in lignee:
+                    for place in self.par_groupe.get((date, groupe), ()):
+                        places[id(place)] = place
+        return list(places.values())
+
+    def campus_refuses_du_jour(
+        self, besoin: Besoin, date: dt.date, seance_id: str | None
+    ) -> list[tuple[frozenset[int], Violation]]:
+        """Règles `CAMPUS_PAR_JOUR` de la séance : par règle, les campus déjà occupés ce jour-là
+        par ses personnes (une salle d'un autre campus enfreindrait la règle)."""
+        regles = self.regles
+        resultat = []
+        personnes = set(regles.personnes(besoin))
+        for regle in regles.regles_emploi_de(besoin, seance_id):
+            if regle.type is not TypeRegle.CAMPUS_PAR_JOUR or not regle.couvre(date):
+                continue
+            places = self._places_des_personnes(besoin, date, personnes & set(regle.personnes))
+            campus = frozenset(
+                self._campus_de[p.salle_id] for p in places if p.salle_id is not None
+            )
+            if campus:
+                resultat.append((campus, regles.violation_de_regle(regle)))
+        return resultat
+
+    def regles_emploi_enfreintes(self, besoin: Besoin, candidate: Occurrence) -> list[Violation]:
+        """Règles d'emploi du temps et de relation qu'enfreindrait la candidate (salle choisie).
+
+        Les occurrences en place de la même semaine réelle qui partagent une
+        personne avec la candidate sont soumises avec elle aux vérificateurs
+        datés (`edt.verification.verifier_occurrences`, code `REGLE`, aux
+        niveaux des règles du calcul) ; une anomalie qui cite la candidate
+        compte pour une violation de sa règle. Rien n'est fait si aucune
+        règle de ces types ne concerne la séance.
+        """
+        regles = self.regles
+        concernantes = {
+            regle.id: regle for regle in regles.regles_emploi_de(besoin, candidate.seance_id)
+        }
+        if not concernantes:
+            return []
+        personnes = set(regles.personnes(besoin))
+        instantane = regles.instantane
+        semaine = [
+            occurrence
+            for occurrence in self.par_semaine.get(lundi_de(candidate.date), ())
+            if not personnes.isdisjoint(regles.personnes(instantane.besoin(occurrence.besoin_id)))
+        ]
+        temoin = dataclasses.replace(candidate, id=-1, statut=StatutOccurrence.DEPLACEE)
+        anomalies = verifier_occurrences(
+            instantane, [*semaine, temoin], [C.REGLE], niveaux_regles=regles.niveaux_regles
+        )
+        violations = []
+        for anomalie in anomalies:
+            if anomalie.regle_id not in concernantes:
+                continue
+            if -1 not in anomalie.occurrences and (
+                candidate.seance_id is None or candidate.seance_id not in anomalie.seances
+            ):
+                continue
+            violations.append(regles.violation_de_regle(concernantes[anomalie.regle_id]))
+        return violations
+
     def salle_libre(
         self,
         besoin: Besoin,
@@ -295,10 +389,20 @@ class _Planning:
                 or regle.portee is NaturePortee.CAMPUS
             )
         ]
-        campus_de = {salle.id: salle.campus_id for salle in regles.instantane.salles}
+        campus_de = self._campus_de
+        campus_du_jour = self.campus_refuses_du_jour(besoin, date, seance_id)
         meilleure: tuple[int, int] | None = None
         for salle_id in ordre:
             cout = sum(regles.poids(code) for code in compatibles.entorses.get(salle_id, ()))
+            # CAMPUS_PAR_JOUR : une salle sur un autre campus que ceux déjà occupés ce jour-là.
+            changement = [
+                violation
+                for campus, violation in campus_du_jour
+                if campus_de.get(salle_id) not in campus
+            ]
+            if any(regles.dure_violation(v) for v in changement):
+                continue
+            cout += sum(regles.poids_violation(v) for v in changement)
             if besoin_jour is not None:
                 du_jour = [
                     v
@@ -379,6 +483,7 @@ def replacer(
                 occurrence.debut,
                 occurrence.fin,
                 occurrence.salle_id,
+                occurrence,
             )
 
     premier = max(d for d in (instantane.date_debut, options.date_debut) if d is not None)
@@ -408,7 +513,9 @@ def replacer(
         place = sorts[position]
         if place.replacee:
             nouvelle = place.occurrence
-            planning.ajouter(besoin, nouvelle.date, nouvelle.debut, nouvelle.fin, nouvelle.salle_id)
+            planning.ajouter(
+                besoin, nouvelle.date, nouvelle.debut, nouvelle.fin, nouvelle.salle_id, nouvelle
+            )
 
     replacements = tuple(sorts[position] for position in range(len(occurrences_a_replacer)))
     nb_replacees = sum(1 for r in replacements if r.replacee)
@@ -621,6 +728,15 @@ def _placer(
             continue
         salle_id, cout_salle = salle
         cout += cout_salle
+        if meilleure is not None and cout >= meilleure[0]:
+            continue
+        enfreintes = planning.regles_emploi_enfreintes(
+            besoin, dataclasses.replace(candidate, salle_id=salle_id)
+        )
+        if any(regles.dure_violation(v) for v in enfreintes):
+            refus["une règle d'emploi du temps de ses groupes ou de ses enseignants"] += 1
+            continue
+        cout += sum(regles.poids_violation(v) for v in enfreintes)
         if meilleure is not None and cout >= meilleure[0]:
             continue
         inchangee = (date, debut, salle_id) == (origine.date, origine.debut, origine.salle_id)
