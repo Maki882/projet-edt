@@ -1286,6 +1286,33 @@ Lecture :
   2 621 988 contraintes, 29 s de construction et aucune solution en 120 s.
   Le partage par séance (`seance_sur`) divise ces contraintes par 3,5.
 
+### Règles personnalisées (temps A)
+
+Jeux fictifs `moyen` S1 (111 séances, 11 règles actives) et `grand` S1 (602
+séances, 13 règles actives), réglages par défaut (sans « optimiser », fils
+choisis par le moteur, niveaux par défaut), temps limite 120 s, graine 1, un
+processus neuf par mesure, poste de développement au calme. « Sans » : toutes
+les règles ignorées (`niveaux_regles={}`) ; « posables » : les règles des sept
+types du temps A à leur niveau, les autres (`CAMPUS_PAR_JOUR`, `MAX_PAR_JOUR`,
+`JOURNEES_LIBRES`) ignorées. Le vérificateur, aux mêmes niveaux, ne relève
+aucune erreur ni aucune entorse à une règle sur les quatre solutions.
+
+| Jeu | Règles | Variables / contraintes | Construction | 1re solution | Entorses | Objectif, trous |
+|---|---|---|---|---|---|---|
+| moyen S1 | sans | 5 562 / 44 628 | 0,25 s | 2,1 s | 0 | 7 513, 458 |
+| moyen S1 | 7 posables | 2 809 / 7 192 | 0,10 s | 0,5 s | 0 | 4 407, 355 |
+| grand S1 | sans | 37 444 / 369 039 | 1,9 s | 16,6 s (MAX_ENSEIGNANT 2, retirées en 20,9 s) | 0 | 43 924, 2 489 |
+| grand S1 | 9 posables | 32 946 / 305 463 | 1,7 s | 16,2 s | 0 | 27 447, 1 408 |
+
+Lecture : les types de sorte « séance » ne coûtent rien et réduisent même le
+modèle (les règles `CAMPUS` et `PLAGE_HORAIRE` nécessaires retirent des choix :
+sur le jeu moyen, un seul campus reste en jeu et les couples de trajet
+disparaissent) ; les réglages par personne (`PAUSE_DEJEUNER` libre d'une
+classe, `PAUSE_MINIMALE` d'un groupe) ajoutent quelques dizaines de littéraux
+d'entorse. Le budget « première solution du jeu grand en moins de 45 s » est
+tenu avec les règles (16 s). Les trous et l'objectif ne sont pas comparables
+entre les lignes (sans « optimiser », ils ne sont pas minimisés).
+
 ### Couche datée
 
 Instanciation puis replacement de la solution du mode faisable (les nombres
