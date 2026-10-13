@@ -220,6 +220,7 @@ class Contexte:
         self.datee = datee
         self.niveaux_regles: dict[int, Niveau] = dict(niveaux_regles or {})
         self._personnes: dict[int, tuple[Personne, ...]] = {}
+        self._besoins_vises: dict[int, frozenset[int]] = {}
         self._connues = frozenset(emploi.personne for emploi in instantane.emplois)
         self._feuilles = frozenset(instantane.groupes_feuilles)
         self.parametres = instantane.parametres
@@ -371,6 +372,22 @@ class Contexte:
         semaine = self.instantane.semaine_du(element.date)
         couverte = semaine is not None and semaine.numero in regle.semaines
         return None if couverte else frozenset()
+
+    def besoins_vises(self, regle: RegleResolue) -> frozenset[int]:
+        """Besoins dont les séances sont concernées par une règle de sorte séance.
+
+        Toutes les séances d'un besoin sont concernées ensemble (la portée
+        porte sur les groupes, l'enseignant, le type, la matière ou le besoin) ;
+        raisonner par besoin couvre aussi une séance datée sans séance
+        hebdomadaire. Pour une portée campus, toutes : le lieu se vérifie à part.
+        """
+        valeur = self._besoins_vises.get(regle.id)
+        if valeur is None:
+            valeur = frozenset(
+                seance.besoin.id for seance in self.instantane.seances if seance.id in regle.seances
+            )
+            self._besoins_vises[regle.id] = valeur
+        return valeur
 
     def campus_de(self, element: Element) -> int | None:
         """Campus de la salle de la séance placée, `None` sans salle."""

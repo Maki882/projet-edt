@@ -31,10 +31,10 @@ from __future__ import annotations
 
 import logging
 from collections import Counter, defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte, Niveaux
+from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import SAMEDI
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Creneau, Instantane, Placement
@@ -70,6 +70,8 @@ class Indicateurs:
     seances_samedi: int
     seances_creneaux_extremes: int
     valeur_objectif: int
+    entorses_par_regle: tuple[tuple[int, int], ...] = ()
+    """Nombre d'anomalies (toutes gravités) de chaque règle personnalisée : (id, nombre)."""
 
     def vers_dict(self) -> dict[str, object]:
         """Représentation JSON (clés en texte, codes de contrainte en texte)."""
@@ -94,6 +96,9 @@ class Indicateurs:
             "seances_samedi": self.seances_samedi,
             "seances_creneaux_extremes": self.seances_creneaux_extremes,
             "valeur_objectif": self.valeur_objectif,
+            "entorses_par_regle": {
+                str(regle_id): nombre for regle_id, nombre in self.entorses_par_regle
+            },
         }
 
 
@@ -103,6 +108,7 @@ def calculer_indicateurs(
     anomalies: Sequence[Anomalie] | None = None,
     *,
     niveaux: Niveaux | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> Indicateurs:
     """Calcule les indicateurs d'une semaine type.
 
@@ -118,7 +124,7 @@ def calculer_indicateurs(
     placements = tuple(placements)
     valider_placements(instantane, placements)
     if anomalies is None:
-        anomalies = verifier(instantane, placements, niveaux=niveaux)
+        anomalies = verifier(instantane, placements, niveaux=niveaux, niveaux_regles=niveaux_regles)
     elements, inconnus = construire_elements(instantane, placements)
     if inconnus:
         journal.debug("Indicateurs : %d placement(s) de séance inconnue ignoré(s).", len(inconnus))
@@ -150,6 +156,15 @@ def calculer_indicateurs(
         changements_campus_enseignants=campus_enseignants,
         seances_samedi=samedi,
         seances_creneaux_extremes=extremes,
+        entorses_par_regle=tuple(
+            sorted(
+                Counter(
+                    a.regle_id
+                    for a in anomalies
+                    if a.code is CodeContrainte.REGLE and a.regle_id is not None
+                ).items()
+            )
+        ),
         valeur_objectif=(
             parametres.poids_trous * trous_creneaux
             + parametres.poids_changement_campus * (campus_groupes + campus_enseignants)
