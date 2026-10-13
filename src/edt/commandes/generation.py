@@ -1,6 +1,7 @@
 """Commandes du lot « solveur » : `generer`, `pre-verifier`, `instancier`.
 
     python -m edt pre-verifier --semestre 1
+    python -m edt pre-verifier --niveau PAUSE=facultatif  # mêmes options de règles que generer
     python -m edt generer --semestre 1 --temps-limite 120 --optimiser --graine 3
     python -m edt generer -d EQUIPEMENT -d PAUSE          # contraintes ignorées
     python -m edt generer --niveau PAUSE=facultatif       # niveau d'une contrainte
@@ -122,12 +123,19 @@ def _semestre(session, semestre_id: int | None) -> Semestre:
 def pre_verifier(
     semestre: OptionSemestre = None,
     desactiver: OptionDesactiver = None,
+    niveau: OptionNiveau = None,
 ) -> None:
     """Dit, avant tout calcul, ce qui rend un emploi du temps impossible ou difficile."""
+    niveaux = niveaux_choisis(desactiver, niveau)
     with session_base() as session:
         cible = _semestre(session, semestre)
         libelle = cible.libelle
-        anomalies = generation.pre_verifier_semestre(session, cible.id, desactiver or ())
+        anomalies = generation.pre_verifier_semestre(
+            session, cible.id, desactiver or (), niveaux=niveaux
+        )
+    recapitulatif = _recapitulatif_des_niveaux(niveaux)
+    if recapitulatif:
+        typer.echo(recapitulatif)
     erreurs = [a for a in anomalies if a.gravite is Gravite.ERREUR]
     alertes = [a for a in anomalies if a.gravite is Gravite.AVERTISSEMENT]
     typer.echo(f"Pré-vérifications du semestre « {libelle} » :")

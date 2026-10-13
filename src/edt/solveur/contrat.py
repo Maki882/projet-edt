@@ -144,17 +144,26 @@ class OptionsSolveur:
     ) -> Niveaux:
         """Niveaux d'un calcul enregistré, inverse de `vers_dict` pour cette clé.
 
-        `parametres["niveaux"]` fait foi ; les contraintes ignorées en sont
-        absentes et sont aussi dans `contraintes_desactivees` (la colonne du
-        calcul). Un calcul enregistré avant les niveaux n'a que ses
-        contraintes désactivées : niveaux par défaut sans ces codes. Lève
-        `ErreurDonneesInvalides` sur un code ou un niveau inconnu.
+        `parametres["niveaux"]` fait foi, les codes qui en manquent prenant
+        leur niveau par défaut ; les contraintes ignorées sont celles de
+        `contraintes_desactivees` (la colonne du calcul), retirées. Un calcul
+        enregistré avant les niveaux n'a que ses contraintes désactivées :
+        niveaux par défaut sans ces codes. Même lecture que
+        `edt.services.niveaux.niveaux_du_calcul`. Lève `ErreurDonneesInvalides`
+        si les niveaux ne sont pas un dictionnaire, ou sur un code ou un
+        niveau inconnu.
         """
         retirees = normaliser_codes(contraintes_desactivees)
         choix = parametres.get("niveaux")
         if choix is None:
             return niveaux_depuis_desactivees(retirees)
-        return {code: n for code, n in _niveaux_types(choix).items() if code not in retirees}
+        if not isinstance(choix, Mapping):
+            raise ErreurDonneesInvalides(
+                "Les niveaux enregistrés avec le calcul sont illisibles : un dictionnaire "
+                f"« code : niveau » est attendu (lu : {type(choix).__name__})."
+            )
+        niveaux = {**niveaux_par_defaut(), **_niveaux_types(choix)}
+        return {code: n for code, n in niveaux.items() if code not in retirees}
 
     def vers_dict(self) -> dict[str, object]:
         """Représentation JSON des options (enregistrée avec le calcul)."""

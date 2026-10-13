@@ -53,6 +53,7 @@ from edt.domaine.heures import ecart
 from edt.domaine.instantane import Creneau
 from edt.erreurs import ErreurDonneesInvalides
 from edt.services import generation
+from edt.services.niveaux import niveaux_du_calcul
 from edt.solveur import OptionsSolveur, StatutSolveur, resoudre
 from edt.solveur.instanciation import instancier
 from edt.solveur.preverification import pre_verifier
@@ -212,6 +213,42 @@ def test_pre_verifier_semestre_ne_regarde_que_les_contraintes_presentes(jeu_mini
 # --------------------------------------------------------------------------- #
 # Ligne de commande
 # --------------------------------------------------------------------------- #
+
+
+def test_lire_niveaux_complete_les_codes_absents_et_exige_un_dictionnaire():
+    """Même lecture que `edt.services.niveaux.niveaux_du_calcul`."""
+    lus = OptionsSolveur.lire_niveaux({"niveaux": {"PAUSE": "facultatif"}}, ["EQUIPEMENT"])
+    attendus = niveaux_par_defaut()
+    attendus[C.PAUSE] = Niveau.FACULTATIF
+    del attendus[C.EQUIPEMENT]
+    assert lus == attendus
+    assert lus == niveaux_du_calcul({"niveaux": {"PAUSE": "facultatif"}}, ["EQUIPEMENT"])
+    with pytest.raises(ErreurDonneesInvalides, match="dictionnaire"):
+        OptionsSolveur.lire_niveaux({"niveaux": ["PAUSE"]})
+
+
+def test_commande_pre_verifier_niveau(jeu_minimal):
+    lanceur = CliRunner()
+    semestre = str(jeu_minimal.semestre_id)
+    resultat = lanceur.invoke(
+        cli.app,
+        [
+            "pre-verifier",
+            "--semestre",
+            semestre,
+            "--niveau",
+            "PAUSE=facultatif",
+            "-d",
+            "EQUIPEMENT",
+        ],
+    )
+    assert resultat.exit_code == 0, resultat.output
+    assert "Pause entre deux séances : facultatif" in resultat.output
+    assert "ignorée" in resultat.output and "Pré-vérifications du semestre" in resultat.output
+    refuse = lanceur.invoke(
+        cli.app, ["pre-verifier", "--semestre", semestre, "--niveau", "PAUSE=souhaitable"]
+    )
+    assert refuse.exit_code != 0 and "Niveau inconnu" in refuse.output
 
 
 def test_commande_generer_niveau(jeu_minimal):
