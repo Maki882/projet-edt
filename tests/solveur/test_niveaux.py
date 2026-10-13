@@ -15,6 +15,7 @@ from sqlalchemy import select
 from tests.solveur.fabrique import (
     C1,
     C2,
+    C3,
     LUNDI,
     MARDI,
     NIVEAUX_DURS,
@@ -548,6 +549,56 @@ def test_replacement_paie_une_indisponibilite_souple():
             assert replacement.cout == 10 + 20  # un jour, une entorse
         else:
             assert nouvelle.date.isocalendar()[1] != lundi_ferme.isocalendar()[1]
+
+
+def test_optimal_n_est_pas_affirme_tant_qu_il_reste_une_entorse_de_salle():
+    """Deux cours qui exigent le même matériel, forcés à la même heure : une salle nue pour l'un.
+    Les horaires sont les mieux notés possibles (prouvé), pas l'emploi du temps."""
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    f.salle("N101", equipements=[7])
+    f.salle("N102")
+    f.salle("N103")
+    for code in ("A1", "A2"):
+        enseignant = f.enseignant()
+        # Libre le matin seulement : la séance ne peut être qu'au premier créneau.
+        f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, enseignant, jour=LUNDI, debut=C1 + 2 * H)
+        f.besoin([f.groupe(code)], [enseignant], equipements_requis=frozenset({7}))
+    f.besoin([f.groupe("A3")], [f.enseignant()], nombre=2)  # de quoi noter (trous, extrémités)
+    instantane = f.instantane()
+    reglages = options(niveaux=niveaux_avec(EQUIPEMENT="important"), optimiser=True)
+    resultat = resoudre(instantane, reglages)
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {"EQUIPEMENT": 1}
+    assert resultat.statistiques["raison_arret"] == "optimum_prouve"
+    assert resultat.statistiques["optimal"] is False
+    assert "On ne peut pas faire mieux" not in resultat.message
+    assert "viennent des salles" in resultat.message
+
+
+def test_des_horaires_mieux_notes_sont_ecartes_si_leurs_salles_coutent_une_entorse():
+    """Sans séance aux extrémités de la journée, la note serait parfaite, mais il faudrait deux
+    cours à matériel à la même heure pour une seule salle équipée : l'entorse coûte plus que la
+    note, les horaires de départ (donnés en indices) sont gardés."""
+    f = Fabrique(
+        creneaux=grille(jours=[LUNDI], samedi=False), poids_trous=10, poids_creneaux_extremes=5
+    )
+    f.salle("N101", equipements=[7])
+    f.salle("N102")
+    f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2, equipements_requis=frozenset({7}))
+    f.besoin([f.groupe("A2")], [f.enseignant()], equipements_requis=frozenset({7}))
+    f.indice("1-1", LUNDI, C1, 1)
+    f.indice("1-2", LUNDI, C2, 1)
+    f.indice("2-1", LUNDI, C3, 1)
+    instantane = f.instantane()
+    reglages = options(niveaux=niveaux_avec(EQUIPEMENT="important"), optimiser=True)
+    resultat = resoudre(instantane, reglages)
+    places = verifier_solution(instantane, resultat)
+    assert resultat.statistiques["entorses"] == {}
+    assert len({places["1-1"].debut, places["1-2"].debut, places["2-1"].debut}) == 3
+    assert resultat.statistiques["raison_arret"] == "optimum_prouve"
+    assert resultat.statistiques["optimal"] is False
+    assert "coûteraient des entorses" in resultat.message
 
 
 def test_reproductible_a_un_fil_avec_des_entorses():

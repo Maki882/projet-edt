@@ -330,7 +330,12 @@ place proche.
 **Limites.** Les horaires sont choisis sans connaître le coût des salles :
 une entorse à `EQUIPEMENT` (ou `CAPACITE`, `TYPE_SALLE`, `ACCESSIBILITE`,
 `DISPO_SALLE`) peut être payée là où d'autres horaires l'auraient évitée ; la
-phase 2 l'évite seulement quand les horaires le permettent. Le maximum
+phase 2 l'évite seulement quand les horaires le permettent. Le moteur
+compare toutefois ses solutions au **coût complet** (objectif et entorses
+des horaires, plus `POIDS_NIVEAU` par entorse de salle) : l'amélioration est
+lancée dès qu'il y a une entorse, de salle comprise ; des horaires mieux
+notés dont les salles coûtent plus cher sont écartés au profit des
+précédents ; et `optimal` n'est affirmé que sans entorse de salle. Le maximum
 journalier souple est compté par ensemble de semaines : une séance active
 dans deux ensembles peut compter deux fois. Au replacement, un maximum
 d'enseignant souple dépassé coûte une entorse, pas une par heure.
@@ -507,9 +512,12 @@ faux, borne inférieure dans `borne_objectif`).
    optimisé) est ajouté au modèle et la recherche repart de la solution
    valide, jusqu'à la preuve d'optimalité, à la stagnation (plus de
    progrès), au temps limite ou à l'arrêt demandé.
-   Les horaires améliorés reçoivent des salles ; si elles ne suivent pas pour
-   les meilleurs horaires, les précédents sont essayés (20 gardés), et à
-   défaut la solution valide de l'étape 3 est rendue.
+   Les horaires améliorés reçoivent des salles, des mieux notés aux moins
+   bien (20 gardés), tant que leur note peut battre le coût complet de la
+   solution retenue (note des horaires plus entorses des salles) : des
+   horaires dont les salles ne suivent pas, ou coûtent plus d'entorses
+   qu'ils ne font gagner, sont écartés et les précédents essayés ; à défaut
+   la solution valide de l'étape 3 est rendue.
 5. **Résultat** : placements de toutes les séances, message, statistiques.
 
 ### Une solution trouvée n'est jamais perdue
@@ -522,7 +530,7 @@ ensuite.
 | le temps limite tombe avant l'étape 3 | `TEMPS_DEPASSE` | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » |
 | le temps limite tombe juste après l'étape 3 | `SOLUTION` (la solution valide) | « Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un emploi du temps plus confortable. » |
 | le temps limite tombe pendant l'amélioration | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut encore l'affiner. » |
-| l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » |
+| l'optimum est prouvé | `SOLUTION` | « On ne peut pas faire mieux avec les préférences actuelles. » ; s'il reste des entorses de salle : « Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent des salles. » ; si les horaires les mieux notés ont été écartés à cause de leurs salles : « Des horaires mieux notés existent, mais leurs salles coûteraient des entorses : ceux-ci sont gardés. » |
 | l'amélioration ne progresse plus | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée d'elle-même : plus de progrès depuis N s. » |
 | arrêt demandé avant l'étape 3 | `ARRETE` | « Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a été enregistré. » |
 | arrêt demandé après l'étape 3 | `SOLUTION` (la meilleure trouvée) | « Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée. » |
@@ -539,7 +547,7 @@ recherche s'est arrêtée là :
 | `raison_arret` | Sens |
 |---|---|
 | `premiere_solution` | pas d'amélioration demandée (mode faisable) |
-| `optimum_prouve` | on ne peut pas faire mieux |
+| `optimum_prouve` | les horaires les mieux notés sont prouvés ; `optimal` dit si l'emploi du temps l'est aussi, salles comprises |
 | `stagnation` | plus de progrès ; `duree_sans_progres_s` donne la durée du silence |
 | `temps_limite` | l'amélioration avançait encore au temps limite |
 | `temps_manquant` | le temps limite est tombé avant que l'amélioration commence |
@@ -1271,8 +1279,11 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   imparti », en mode optimisé comme en mode faisable. Au-delà, le mode
   optimisé rend au moins la solution valide.
 - **Contraintes souples et salles.** Les horaires sont choisis sans
-  connaître le coût des salles : une exigence de salle souple peut être
-  enfreinte là où d'autres horaires l'auraient évitée (voir « Niveaux des
+  connaître le coût des salles (le campus, lui, est fixé en phase 1) : une
+  exigence de salle souple peut être enfreinte là où d'autres horaires
+  l'auraient évitée. Le moteur compare ses solutions au coût complet et ne
+  dit jamais « optimal » tant qu'une entorse de salle subsiste, mais il ne
+  relance pas la recherche des horaires pour l'éviter (voir « Niveaux des
   contraintes »).
 - **Arrêt sur stagnation.** La règle ne voit que le temps passé sans
   progrès. Elle peut couper un petit problème avant une dernière
@@ -1288,10 +1299,12 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   exécutions identiques peuvent finir à 2 400 comme à 4 500 d'objectif en
   180 s (voir « Arrêt sur stagnation : règle retenue et mesures »).
 - **Amélioration et salles.** Les horaires améliorés reçoivent leurs salles
-  après coup. Si elles ne suivent pas, le moteur essaie les horaires
-  précédents (20 gardés) mais ne relance pas l'amélioration : au pire, c'est
-  la solution valide du départ qui est rendue. Le journal le dit (« Horaires
-  améliorés ... écartés : les salles ne suivent pas »).
+  après coup. Si elles ne suivent pas, ou coûtent plus d'entorses que les
+  horaires ne font gagner, le moteur essaie les horaires précédents (20
+  gardés) mais ne relance pas l'amélioration : au pire, c'est la solution
+  valide du départ qui est rendue. Le journal le dit (« Horaires améliorés
+  ... écartés : les salles ne suivent pas », « ... leurs salles coûtent ...
+  d'entorses »).
 - **Prétraitement allégé de l'amélioration.** Il fait gagner les premières
   dizaines de secondes, celles qui comptent avec un temps limite de quelques
   minutes. Sur un calcul très long, le prétraitement complet de CP-SAT
