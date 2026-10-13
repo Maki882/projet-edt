@@ -6,6 +6,7 @@ import time
 
 from tests.solveur.fabrique import C1, C2, LUNDI, MARDI, NIVEAUX_DURS, Fabrique, H, grille
 from tests.solveur.generateur import generer
+from tests.solveur.test_niveaux import niveaux_avec
 
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.contraintes import CodeContrainte as C
@@ -59,6 +60,21 @@ def test_charge_d_un_groupe():
         "c'est impossible."
     )
     assert erreur.groupes == (classe,)
+
+
+def test_charge_d_un_groupe_ne_vaut_que_si_la_grille_est_sure():
+    """`HORAIRES` souple : les séances peuvent sortir de la grille, la borne n'est plus certaine."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    for _ in range(3):
+        f.salle()
+    classe = f.groupe("A2-G1")
+    for _ in range(5):
+        f.besoin([classe], [f.enseignant()])
+    instantane = f.instantane()
+    assert erreurs(pre_verifier(instantane), C.GROUPE_UNIQUE)
+    souple = preverification.pre_verifier(instantane, niveaux=niveaux_avec(HORAIRES="important"))
+    assert not erreurs(souple), [a.message for a in erreurs(souple)]
+    assert not erreurs(preverification.pre_verifier(instantane, [C.HORAIRES]))
 
 
 def test_charge_d_un_groupe_tendue():
