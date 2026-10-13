@@ -394,8 +394,19 @@ def verifier_dates(
     instantane: Instantane,
     occurrences: Sequence[Occurrence],
     contraintes_desactivees: Iterable[str] = (),
+    *,
+    niveaux=None,
 ) -> None:
-    """ORACLE de la couche datée : aucune erreur du vérificateur sur ces occurrences."""
-    anomalies = verifier_occurrences(instantane, occurrences, codes_actifs(contraintes_desactivees))
+    """ORACLE de la couche datée : aucune erreur du vérificateur sur ces occurrences.
+
+    Avec `niveaux`, le vérificateur applique les mêmes niveaux que le replacement :
+    une entorse à une règle souple est un avertissement, pas une erreur.
+    """
+    if niveaux is not None:
+        anomalies = verifier_occurrences(instantane, occurrences, niveaux=niveaux)
+    else:
+        anomalies = verifier_occurrences(
+            instantane, occurrences, codes_actifs(contraintes_desactivees)
+        )
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     assert not erreurs, "\n".join(f"[{a.code}] {a.message}" for a in erreurs)

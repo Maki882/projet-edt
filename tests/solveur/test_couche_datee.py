@@ -22,6 +22,7 @@ from tests.solveur.fabrique import (
 from tests.solveur.test_contraintes import UN_CRENEAU
 
 from edt.domaine.contraintes import CodeContrainte as C
+from edt.domaine.contraintes import niveaux_par_defaut
 from edt.domaine.enumerations import CibleIndisponibilite, StatutOccurrence
 from edt.domaine.instantane import Placement
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
@@ -123,7 +124,8 @@ def instancier_et_replacer(f: Fabrique, placements, options=None, arret=None):
     )
     assert len(resultat.replacements) == len(instancie.a_replacer)
     placees = [r.occurrence for r in resultat.replacees]
-    verifier_dates(instantane, [*instancie.occurrences, *placees])
+    niveaux = options.niveaux if options is not None else niveaux_par_defaut()
+    verifier_dates(instantane, [*instancie.occurrences, *placees], niveaux=niveaux)
     return instantane, instancie, resultat
 
 
