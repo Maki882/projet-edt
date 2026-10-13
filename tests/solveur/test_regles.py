@@ -810,3 +810,47 @@ def test_reproductible_avec_des_regles_d_emploi_du_temps():
     assert premier.statistiques["entorses_regles"] == second.statistiques["entorses_regles"]
     assert premier.statistiques["entorses_regles"] == {"R001": 1, "R002": 1}
     verifier_solution(instantane, premier)
+
+
+# --------------------------------------------------------------------------- #
+# Revue adversariale : règles de portée campus, verrous, pauses, replacement
+# --------------------------------------------------------------------------- #
+
+
+def _deux_campus_matin_pris(avec_s1: bool = True):
+    """Campus C1 (S1) et C2 (S2), grille du lundi, classe A1 indisponible le lundi matin."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    c1, c2 = f.campus("C1"), f.campus("C2")
+    if avec_s1:
+        f.salle("S1", campus=c1)
+    f.salle("S2", campus=c2)
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.indisponibilite(CibleIndisponibilite.GROUPE, classe, jour=LUNDI, fin=12 * H + 45)
+    return f, c2
+
+
+@pytest.mark.parametrize(
+    ("type_regle", "parametres"),
+    [
+        (TypeRegle.PLAGE_HORAIRE, {"fin": "12:00"}),
+        (TypeRegle.CRENEAUX_INTERDITS, {"jours": ["lundi"], "debut": "13:00", "fin": "19:00"}),
+    ],
+    ids=["plage", "creneaux"],
+)
+def test_horaires_de_portee_campus_ne_jouent_que_sur_ce_campus(type_regle, parametres):
+    """Scénarios de la revue : la règle de C2 ne gêne pas une séance placée sur C1 (S1, 13 h 45),
+    en dur comme en souple, et le vérificateur ne relève rien ; sans salle sur C1, elle joue."""
+    for niveau in ("necessaire", "important"):
+        f, c2 = _deux_campus_matin_pris()
+        f.regle(type_regle, NaturePortee.CAMPUS, c2, niveau, **parametres)
+        instantane = f.instantane()
+        resultat = resoudre(instantane, OPTIONS)
+        places = verifier_solution(instantane, resultat)
+        assert (places["1-1"].salle_id, places["1-1"].debut) == (1, C3)
+        assert resultat.statistiques["entorses_regles"] == {}
+        assert entorses_verifiees(instantane, resultat) == 0
+
+    g, c2 = _deux_campus_matin_pris(avec_s1=False)
+    g.regle(type_regle, NaturePortee.CAMPUS, c2, "necessaire", **parametres)
+    dur_puis_souple(g.instantane())

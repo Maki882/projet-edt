@@ -69,7 +69,7 @@ from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux, normaliser_
 from edt.domaine.enumerations import CibleIndisponibilite, StatutOccurrence
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Occurrence
-from edt.domaine.regles import NaturePersonne, TypeRegle
+from edt.domaine.regles import NaturePersonne, NaturePortee, TypeRegle
 from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur.instanciation import empechement
 from edt.solveur.personnalisees import Choix, enfreint
@@ -275,23 +275,32 @@ class _Planning:
 
         Une salle indisponible (`DISPO_SALLE`), déjà prise (`SALLE_UNIQUE`),
         hors de portée de trajet (`CAMPUS_TRAJET`) ou refusée par une règle
-        `SALLES` ou `CAMPUS` de la séance est écartée si la contrainte est
-        dure, pénalisée si elle est souple. Le coût des exigences de salle
-        souples que la salle ne satisfait pas s'ajoute.
+        `SALLES`, `CAMPUS` ou d'horaires de portée campus de la séance est
+        écartée si la contrainte est dure, pénalisée si elle est souple. Le
+        coût des exigences de salle souples que la salle ne satisfait pas
+        s'ajoute.
         """
         regles = self.regles
         compatibles = regles.salles_compatibles(besoin)
+        # Règles jugées au choix de la salle : SALLES, CAMPUS, et les règles d'horaires de
+        # portée campus (elles ne jouent que sur le campus de la salle).
         regles_salle = [
             regle
             for regle in (regles.regles_de_seance(seance_id) if seance_id else ())
-            if regle.type in (TypeRegle.SALLES, TypeRegle.CAMPUS) and regle.couvre(date)
+            if regle.couvre(date)
+            and (
+                regle.type in (TypeRegle.SALLES, TypeRegle.CAMPUS)
+                or regle.portee is NaturePortee.CAMPUS
+            )
         ]
         campus_de = {salle.id: salle.campus_id for salle in regles.instantane.salles}
         meilleure: tuple[int, int] | None = None
         for salle_id in ordre:
             cout = sum(regles.poids(code) for code in compatibles.entorses.get(salle_id, ()))
             if regles_salle:
-                choix = Choix(0, 0, 0, campus_id=campus_de.get(salle_id), salle_id=salle_id)
+                choix = Choix(
+                    date.weekday(), debut, fin, campus_id=campus_de.get(salle_id), salle_id=salle_id
+                )
                 violations = [
                     regles.violation_de_regle(regle)
                     for regle in regles_salle

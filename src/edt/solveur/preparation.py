@@ -68,7 +68,7 @@ from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import JOURS, CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, se_chevauchent
 from edt.domaine.instantane import Besoin, Instantane, Placement, SeanceAPlacer
-from edt.domaine.regles import TypeRegle
+from edt.domaine.regles import NaturePortee, TypeRegle
 from edt.erreurs import ErreurIntrouvable
 from edt.solveur.personnalisees import Choix, enfreint, types_sans_poseur
 from edt.solveur.regles import Regles, Violation, enumerer, nom_creneau, nom_seance
@@ -303,21 +303,21 @@ class Preparation:
                 ),
             )
         if interdits_campus:
-            # Une règle de jours dure visant un campus : ses salles perdent ces débuts.
+            # Une règle dure de jours ou d'horaires visant un campus : ses salles perdent ces
+            # débuts.
             interdits = dict(interdits)
             for salle in salles:
                 bloques = interdits_campus.get(self._campus_de[salle])
                 if bloques:
                     interdits[salle] = interdits.get(salle, frozenset()) | bloques
             if all(debut in interdits.get(salle, ()) for salle in salles for debut in debuts):
-                violation = next(iter(entorses_campus.values()), (None,))[0]
-                raison = violation.raison if violation else "une règle de jours par campus"
                 return _Domaine(
                     debuts=debuts,
                     probleme=(
                         C.REGLE,
-                        f"aucun horaire possible sur un campus permis : {raison} ferme chaque "
-                        "jour possible sur le campus de chaque salle qui convient.",
+                        "aucun horaire possible sur un campus permis : une règle de jours ou "
+                        "d'horaires de portée campus ferme chaque horaire possible sur le "
+                        "campus de chaque salle qui convient.",
                     ),
                 )
         if len(salles) == 1 and interdits:
@@ -410,7 +410,9 @@ class Preparation:
         tous les campus est éliminé ; fermé sur certains seulement, il
         interdit leurs salles ce jour-là (dur) ou pénalise le choix de ce
         campus (souple). Une règle `CAMPUS` souple pénalise de même chaque
-        début sur un campus refusé.
+        début sur un campus refusé ; une règle d'horaires de portée campus
+        (`PLAGE_HORAIRE`, `CRENEAUX_INTERDITS`) interdit ou pénalise de même
+        les débuts qu'elle exclut, sur son campus seulement.
         """
         regles, besoin = self.regles, seance.besoin
         imposee = besoin.debut_impose is not None or besoin.ponctuel
@@ -420,6 +422,14 @@ class Preparation:
         interdits_campus: dict[int, set[int]] = defaultdict(set)
         par_campus = bool(set(regles.jours_de(seance.id).campus_regles) & set(campus_possibles))
         campus_refuses = self._campus_refuses(seance, campus_possibles)
+        # Règles d'horaires de portée campus : jugées par (début, campus de la règle).
+        horaires_campus = [
+            regle
+            for regle in regles.regles_de_seance(seance.id)
+            if regle.portee is NaturePortee.CAMPUS
+            and regle.type in (TypeRegle.PLAGE_HORAIRE, TypeRegle.CRENEAUX_INTERDITS)
+            and regle.cible_id in campus_possibles
+        ]
 
         jour_impose = seance.jour_impose
         jours = [jour_impose] if jour_impose is not None else list(range(7))
@@ -496,6 +506,14 @@ class Preparation:
                             entorses_campus[(debut, campus)].extend(par_jour)
                 for campus, refus_campus in campus_refuses.items():
                     entorses_campus[(debut, campus)].extend(refus_campus)
+                for regle in horaires_campus:
+                    if not enfreint(regle, Choix(jour, minute, fin, campus_id=regle.cible_id)):
+                        continue
+                    violation = regles.violation_de_regle(regle)
+                    if regles.dure_violation(violation):
+                        interdits_campus[regle.cible_id].add(debut)
+                    else:
+                        entorses_campus[(debut, regle.cible_id)].append(violation)
                 souples = regles.souples_violations(violations)
                 if souples:
                     entorses[debut] = souples
