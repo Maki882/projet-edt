@@ -11,12 +11,19 @@ from sqlalchemy import delete, func, select
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import JOURS, Gravite, OrigineOccurrence, StatutOccurrence
+from edt.domaine.heures import minutes_vers_texte
 from edt.domaine.instantane import id_seance
 from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCible
 from edt.verification.contrat import Anomalie
 
-from .conftest import date_avec_seances, identifiant_groupe, jour_avec_seance, seance_du_besoin
+from .conftest import (
+    autre_place,
+    date_avec_seances,
+    identifiant_groupe,
+    jour_avec_seance,
+    seance_du_besoin,
+)
 
 HX = {"HX-Request": "true"}
 
@@ -181,18 +188,24 @@ def test_les_retouches_survivent_au_recalcul_sans_doublon(
 ):
     version = seances_datees.version_id
     with session_base() as session:
-        date = date_avec_seances(session, version, minimum=2)
-        premiere, seconde = session.scalars(
+        # Deux séances datées d'un même jour, issues de la semaine type, lues dans la version.
+        par_date: dict[dt.date, list] = {}
+        for occurrence in session.scalars(
             select(m.Occurrence)
             .where(
                 m.Occurrence.version_id == version,
-                m.Occurrence.date == date,
+                m.Occurrence.statut == StatutOccurrence.PLANIFIEE,
                 m.Occurrence.seance_hebdo_id.is_not(None),
                 m.Occurrence.debut_min.in_(DEBUTS_DE_LA_GRILLE),
             )
-            .order_by(m.Occurrence.debut_min, m.Occurrence.id)
-            .limit(2)
-        ).all()
+            .order_by(m.Occurrence.date, m.Occurrence.debut_min, m.Occurrence.id)
+        ):
+            par_date.setdefault(occurrence.date, []).append(occurrence)
+        date, (premiere, seconde) = next(
+            ((jour, liste[:2]) for jour, liste in par_date.items() if len(liste) >= 2),
+            (None, (None, None)),
+        )
+        assert date is not None, "aucun jour avec deux séances datées issues de la semaine type"
         deplacee_id, annulee_id = premiere.id, seconde.id
         cles = {
             identifiant: (occurrence.seance_hebdo_id, date)
@@ -262,21 +275,24 @@ def test_modification_acceptee_puis_verrou(version_generee, client, faux_verific
     with session_base() as session:
         seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
         identifiant, salle = seance.id, seance.salle_id
+        duree = seance.fin_min - seance.debut_min
         attendu = id_seance(seance.besoin_id, seance.rang)
+        jour, debut = autre_place(session, seance)  # tirée de la version, pas en dur
 
     reponse = client.post(
         f"/emploi-du-temps/seances/{identifiant}/modifier",
-        data={"jour": 2, "debut": 16 * 60, "salle_id": str(salle), "retour": "/emploi-du-temps"},
+        data={"jour": jour, "debut": debut, "salle_id": str(salle), "retour": "/emploi-du-temps"},
         headers=HX,
     )
 
     assert reponse.status_code == 204 and reponse.headers["HX-Redirect"] == "/emploi-du-temps"
-    assert ("modification", attendu, 2, 960, 1080, salle) in faux_verificateur.appels
+    assert ("modification", attendu, jour, debut, debut + duree, salle) in faux_verificateur.appels
     with session_base() as session:
         modifiee = session.get(m.SeanceHebdo, identifiant)
-        assert (modifiee.jour, modifiee.debut_min, modifiee.fin_min) == (2, 960, 1080)
+        assert (modifiee.jour, modifiee.debut_min, modifiee.fin_min) == (jour, debut, debut + duree)
     message = client.get("/emploi-du-temps").text
-    assert "Séance déplacée au mercredi à 16 h 00" in message and "À noter" in message
+    assert f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" in message
+    assert "À noter" in message
 
     client.post(f"/emploi-du-temps/seances/{identifiant}/verrou", data={"verrou": "true"})
     with session_base() as session:
@@ -291,17 +307,23 @@ def test_modification_refusee_par_une_erreur_du_verificateur(
     version_generee, client, faux_verificateur
 ):
     faux_verificateur.modification = [
-        Anomalie(
-            "SALLE_UNIQUE", Gravite.ERREUR, "La salle N016 est déjà occupée le mercredi à 16 h."
-        )
+        Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "La salle N016 est déjà occupée à cette heure.")
     ]
     with session_base() as session:
         seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
         avant = (seance.id, seance.jour, seance.debut_min, seance.salle_id)
+        jour, debut = autre_place(
+            session, seance
+        )  # un vrai déplacement, que le vérificateur refuse
 
     reponse = client.post(
         f"/emploi-du-temps/seances/{avant[0]}/modifier",
-        data={"jour": 2, "debut": 960, "salle_id": str(avant[3]), "retour": "/emploi-du-temps"},
+        data={
+            "jour": jour,
+            "debut": debut,
+            "salle_id": str(avant[3]),
+            "retour": "/emploi-du-temps",
+        },
         headers=HX,
     )
 
@@ -316,8 +338,9 @@ def test_modification_refusee_par_une_erreur_du_verificateur(
 def test_sans_verificateur_aucune_seance_n_est_deplacee(version_generee, sans_verificateur):
     with session_base() as session:
         seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
+        jour, debut = autre_place(session, seance)  # sinon « déjà à cette place »
         resultat = modifications.modifier_placement(
-            session, seance.id, jour=2, debut=960, salle_id=seance.salle_id
+            session, seance.id, jour=jour, debut=debut, salle_id=seance.salle_id
         )
         assert not resultat.enregistree
         assert "pas encore disponibles" in resultat.message
