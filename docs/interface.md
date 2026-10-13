@@ -290,7 +290,9 @@ règles » au § 4).
   `contexte_liste`, `edition_en_ligne`, `actions_ligne` (« Dupliquer »),
   `liens`, `parent`, `titre_page`, `complement_zone` (gabarit ajouté au bas
   de la zone de liste, donc rafraîchi avec elle : la charge hebdomadaire des
-  besoins).
+  besoins), `suite_creation(session, cree)` (ce qu'une création a entraîné :
+  `SuiteCreation(texte, adresse)`, phrase ajoutée au message et page où aller
+  ensuite à la place de la liste).
 - Mesures de référence (jeu grand, 1 280 px de large) : une ligne de liste
   fait 37 px (une ligne de texte) ou 58 px (deux lignes).
 
@@ -308,7 +310,7 @@ règles » au § 4).
 | Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, groupe (et ses sous-groupes), matière, type, enseignant, salle imposée, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
 | Règles et calendrier | `/regles` | règles personnalisées de l'année : voir ci-dessous |
-| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
+| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; une année créée par le formulaire générique (`POST /calendrier/annees`) mène à ses règles proposées (`/regles?annee=<n>&etat=proposee`, « 4 règles personnalisées proposées pour cette année, ci-dessous ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
 | | `/grille` | créneaux de la grille (édition sur place) |
 | | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un ensemble de jours (`type == "jours"` : les jours travaillés de l'établissement) sept cases du lundi au dimanche, envoyées « 0,1,2,3,4 » au service (aucune case cochée : « au moins un jour est attendu » sous le champ), un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` |
 | Jeux de données | `/jeux` | établissement fictif petit / moyen / grand (`edt.services.jeux`), graine, version de référence ; remise à zéro |
@@ -346,7 +348,8 @@ actions ; le tableau tient dans 1 280 px. Une règle **proposée** a son fond
 surligné, l'état « Proposée » et deux boutons : « Activer » et « Écarter »
 (elle devient inactive) ; une règle active a « Désactiver », une inactive
 « Activer ». Un bandeau compte les règles proposées de l'année (« sans effet
-tant qu'elles ne sont pas confirmées »), avec « Les voir » et « Tout
+tant qu'elles ne sont pas confirmées »), avec « Les voir » (toutes les
+proposées de l'année, sans les autres filtres ni la recherche) et « Tout
 confirmer » (`POST /regles/confirmer` : celles qui feraient doublon avec une
 règle active restent proposées et le message dit pourquoi). « Proposer les
 règles de base » (`POST /regles/proposer`) appelle `proposer_pour_annee` :
@@ -362,7 +365,7 @@ recherche, filtres et pagination remplacent `#zone-liste`.
 | Rubrique | Champs |
 |---|---|
 | Portée | `portee` (natures admises par le type ; « l'établissement » seulement si le type l'admet) puis une liste par nature, `cible_<nature>`, affichée selon la nature choisie (`data-visible-si`) ; groupes en arbre (promotion, └ classe, └ demi-groupe), groupes à part ensuite |
-| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») |
+| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») ; « Personnes concernées » (`CHAMPS_ETABLISSEMENT`) affiché pour la portée établissement seulement, et retiré du brouillon pour une autre portée |
 | Application | `niveau` (nécessaire, important, facultatif), `periode` (`annee` ; `semestre` avec `semestre` ; `dates` avec `date_debut` et `date_fin`), `commentaire` |
 
 L'aperçu (`POST /regles/apercu`) part à chaque changement : il passe le

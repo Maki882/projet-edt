@@ -13,7 +13,9 @@ deux sens avec le brouillon de `edt.services.regles` :
 
 Les champs utiles à un seul choix (cible d'une nature, paramètre d'un mode,
 semestre ou dates) portent `data-visible-si` : masqués, ils ne sont pas
-envoyés. Les erreurs du service (clé = chemin JSON) reviennent sous le champ
+envoyés. Un paramètre propre à la portée établissement (`CHAMPS_ETABLISSEMENT`)
+n'est affiché que pour elle, et retiré du brouillon pour une autre portée
+(envoi sans JavaScript compris). Les erreurs du service (clé = chemin JSON) reviennent sous le champ
 correspondant (`erreurs_par_champ`).
 """
 
@@ -47,6 +49,14 @@ PREFIXE_PARAMETRE = "p_"
 NATURES_AVEC_CIBLE: tuple[NaturePortee, ...] = tuple(
     nature for nature in NaturePortee if nature is not NaturePortee.ETABLISSEMENT
 )
+CHAMPS_ETABLISSEMENT: frozenset[str] = frozenset({"personnes"})
+"""Paramètres qui n'ont de sens que pour la portée établissement.
+
+« Personnes concernées » (groupes, enseignants ou les deux) choisit qui vise
+une règle d'établissement ; pour un groupe ou un enseignant, la cible le dit
+déjà et le domaine ignore ce paramètre. Le schéma ne le marque que dans sa
+description : la liste est tenue ici.
+"""
 PERIODES = (("annee", "Toute l'année"), ("semestre", "Un semestre"), ("dates", "Entre deux dates"))
 DEMI_JOURNEES = ("matin", "après-midi")
 
@@ -238,6 +248,8 @@ def brouillon_depuis_formulaire(
     parametres: dict[str, Any] = {}
     for champ in definition.champs:
         nom = PREFIXE_PARAMETRE + champ.nom
+        if champ.nom in CHAMPS_ETABLISSEMENT and nature != NaturePortee.ETABLISSEMENT.value:
+            continue
         if champ.sorte in SORTES_LISTE:
             parametres[champ.nom] = formulaire.getlist(nom)
         elif nom in formulaire:
@@ -315,6 +327,10 @@ def _champ_parametre(
     if champ.condition is not None:
         autre, permises = champ.condition
         conteneur["data-visible-si"] = f"{PREFIXE_PARAMETRE}{autre}:{','.join(permises)}"
+    if champ.nom in CHAMPS_ETABLISSEMENT:
+        # Une seule condition par bloc : celle de la portée prime (aucun de ces
+        # paramètres n'a de condition de mode aujourd'hui) ; le brouillon le filtre aussi.
+        conteneur["data-visible-si"] = f"portee:{NaturePortee.ETABLISSEMENT.value}"
     attributs: dict[str, Any] = {}
     unite = champ.unite or None
     if champ.sorte is SorteChamp.JOURS or (

@@ -78,6 +78,14 @@ class ActionLigne:
 
 
 @dataclass(frozen=True)
+class SuiteCreation:
+    """Ce qu'une création a entraîné : phrase ajoutée au message, page où aller ensuite."""
+
+    texte: str
+    adresse: str | None = None
+
+
+@dataclass(frozen=True)
 class Ecran:
     """Écran d'une entité.
 
@@ -90,7 +98,10 @@ class Ecran:
     - `edition_en_ligne` : le bouton « Modifier » d'une ligne l'édite sur place ;
     - `actions_ligne` : boutons supplémentaires de chaque ligne ;
     - `liens` : liens en tête de page (libellé, adresse) ;
-    - `parent` : (libellé, adresse) de la page parente, affichée en retour.
+    - `parent` : (libellé, adresse) de la page parente, affichée en retour ;
+    - `suite_creation(session, cree)` : ce qu'une création a entraîné (une
+      année reçoit ses règles proposées), dit dans le message ; son adresse,
+      s'il y en a une, remplace le retour à la liste.
     """
 
     entite: Entite
@@ -104,6 +115,7 @@ class Ecran:
     liens: tuple[tuple[str, str], ...] = ()
     parent: tuple[str, str] | None = None
     titre_page: str = ""
+    suite_creation: Callable[[Session, Mapping[str, Any]], SuiteCreation | None] | None = None
 
     @property
     def titre(self) -> str:
@@ -499,7 +511,12 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         except ErreurDonneesInvalides as erreur:
             session.rollback()
             return rendre_formulaire(request, session, ecran, saisies, erreur=erreur, retour=retour)
-        return rediriger(request, retour, _message(ecran, cree["nom_affiche"], "créé"))
+        message = _message(ecran, cree["nom_affiche"], "créé")
+        suite = ecran.suite_creation(session, cree) if ecran.suite_creation else None
+        if suite is not None:
+            message = f"{message} {suite.texte}"
+            retour = suite.adresse or retour
+        return rediriger(request, retour, message)
 
     @routeur.get("/{ident:int}", name=f"{entite.code}_modifier")
     def element(request: Request, session: SessionRequete, ident: int) -> Response:

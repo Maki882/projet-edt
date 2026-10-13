@@ -7,15 +7,17 @@ import logging
 import re
 
 from sqlalchemy import func, select
+from starlette.datastructures import FormData
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.parametres import JOURS_TRAVAILLES_PAR_DEFAUT
-from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle
+from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, TypeRegle
 from edt.services import regles as service_regles
 from edt.services.jeux import recharger_jeu_fictif
 from edt.services.parametres import lire_parametres
 from edt.services.referentiels import operations
+from edt.web.donnees.regles import brouillon_depuis_formulaire
 
 HTMX = {"HX-Request": "true"}
 
@@ -68,6 +70,16 @@ def test_filtres_et_recherche(site, ids):
     assert site.get("/regles?annee=999").status_code == 404
 
 
+def test_bandeau_les_voir_ignore_les_filtres_en_cours(site, ids):
+    # Un filtre qui exclut les proposées : le bandeau les compte quand même (toute l'année),
+    # et « Les voir » mène à toutes, pas à une liste vide.
+    page = site.get(f"/regles?annee={ids.annee}&type=PAUSE_DEJEUNER&q=midi").text
+    assert "2 règles proposées à confirmer" in page
+    lien = re.search(r'<a href="([^"]+)">Les voir</a>', page).group(1)
+    assert lien == f"/regles?annee={ids.annee}&amp;etat=proposee"
+    assert _codes(site.get(lien.replace("&amp;", "&")).text) == ["R003", "R004"]
+
+
 # --------------------------------------------------------------------------- #
 # Ajout guidé
 # --------------------------------------------------------------------------- #
@@ -92,6 +104,39 @@ def test_choix_du_type_puis_formulaire_tire_du_schema(site, ids):
     section = re.search(r'<section class="apercu-regle"[^>]*>', page).group(0)
     assert 'hx-post="/regles/apercu"' in section and 'hx-include="closest form"' in section
     assert "from:closest form" in section and "load" not in section  # pas d'erreurs d'emblée
+
+
+def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):
+    page = site.get(f"/regles/nouveau?annee={ids.annee}&type=MAX_PAR_JOUR").text
+    bloc = re.search(r'<div class="champ[^"]*"[^>]*>\s*<label for="champ-p_personnes"', page)
+    assert 'data-visible-si="portee:etablissement"' in bloc.group(0)
+
+    definition = CATALOGUE_TYPES[TypeRegle.MAX_PAR_JOUR]
+    saisie = [("p_personnes", "enseignants"), ("p_unite", "minutes"), ("p_maximum", "300")]
+    pour_un_groupe = brouillon_depuis_formulaire(
+        definition, ids.annee, FormData([("portee", "groupe"), *saisie])
+    )
+    assert "personnes" not in pour_un_groupe["parametres"]  # même envoyé sans JavaScript
+    pour_tous = brouillon_depuis_formulaire(
+        definition, ids.annee, FormData([("portee", "etablissement"), *saisie])
+    )
+    assert pour_tous["parametres"]["personnes"] == "enseignants"
+
+    classe = _id(m.Groupe, m.Groupe.code, "A1-G2")
+    donnees = _nouvelle(
+        ids.annee,
+        "MAX_PAR_JOUR",
+        portee="groupe",
+        cible_groupe=str(classe),
+        p_personnes="enseignants",
+        p_unite="minutes",
+        p_maximum="300",
+        niveau="important",
+    )
+    cree = site.post("/regles/nouveau", data=donnees, follow_redirects=True)
+    assert "créée" in cree.text
+    regle = _regle(ids.annee, "R005")
+    assert regle.regle.parametres.get("personnes") != "enseignants"
 
 
 def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
@@ -387,6 +432,21 @@ def test_creation_d_une_annee_propose_les_regles(site, ids):
 
     encore = site.post("/regles/proposer", data={"annee": nouvelle}, follow_redirects=True)
     assert "0 règle proposée pour 2027-2028, 2 déjà présente(s)" in encore.text
+
+
+def test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees(site, ids):
+    reponse = site.post(
+        "/calendrier/annees",
+        data={"libelle": "2028-2029", "date_debut": "2028-09-01", "date_fin": "2029-08-31"},
+        follow_redirects=True,
+    )
+    nouvelle = _id(m.AnneeScolaire, m.AnneeScolaire.libelle, "2028-2029")
+    assert str(reponse.url).endswith(f"/regles?annee={nouvelle}&etat=proposee")
+    assert (
+        "Année scolaire « 2028-2029 » créée. 2 règles personnalisées proposées pour cette "
+        "année, ci-dessous : sans effet tant qu&#39;elles ne sont pas confirmées."
+    ) in reponse.text
+    assert _codes(reponse.text) == ["R001", "R002"]
 
 
 def test_proposer_pour_une_annee_existante_liste_les_regles_a_revoir(site, ids):

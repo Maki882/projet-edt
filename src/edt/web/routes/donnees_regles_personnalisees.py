@@ -206,7 +206,8 @@ def contexte_liste(request: Request, session: Session) -> dict[str, Any]:
         "url_page": lambda numero: url(page=numero),
         "url_liste": url(),
         "nb_proposees": len(proposees),
-        "url_proposees": url(etat=EtatRegle.PROPOSEE.value, page=1),
+        # Toutes les proposées de l'année, comme le compte du bandeau : sans les autres filtres.
+        "url_proposees": f"{PREFIXE}?{urlencode({'annee': annee.id, 'etat': EtatRegle.PROPOSEE.value})}",
     }
 
 
