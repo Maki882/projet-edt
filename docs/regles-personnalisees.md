@@ -542,3 +542,46 @@ des développements (16/11) si le contrat est fusionné avant le 20/10.
    les salles ». Conséquence : pas de portée salle ; `CAMPUS` et `SALLES` (salles imposées ou
    interdites pour un groupe, un enseignant, un type de séance ou une matière) restent dans la
    fournée (§ 1.4, § 2.4).
+
+## 8. Écarts à la conception
+
+Ce que le contrat livré (PR `feat/regles-contrat`) fait autrement que les sections
+précédentes, ou ne livre pas encore. Les sections ci-dessus restent la cible.
+
+- **Période d'une règle sur la semaine type** (§ 4.2) : une règle datée vaut pour toute
+  séance dont les semaines actives croisent sa période ; `RegleResolue.semaines` donne les
+  semaines couvertes et `Regle.couvre(date)` tranche au jour sur une séance datée. Une règle
+  dont la période ne croise aucune semaine du semestre est absente de l'instantané.
+- **Phrase de `JOURS_TRAVAILLES`** : calculée par rapport au standard (`jours_travailles`) :
+  « ne travaille pas le vendredi », « a aussi cours le samedi » ; quand les jours de la règle
+  égalent le standard, « ne travaille que du lundi au vendredi ».
+- **API** (§ 4.8) : `proposer` n'existe pas en tant que tel. `valider` renvoie la règle
+  canonique et sa phrase ; les effets (personnes, séances par semestre, ce qui est remplacé)
+  viennent d'`expliquer(session, annee, code)`, qui ne couvre qu'une règle (ni une ressource
+  ni une anomalie). Les doublons de réglage sont refusés à la validation (erreur `portee`) ;
+  pas de contradictions ni de risque de faisabilité calculés. `preparer_reprise`,
+  `reprendre`, `confirmer` et `ecarter` sont remplacés par `proposer_pour_annee(session,
+  annee)` (crée en une fois, à l'état proposée, les règles de base et la reprise de l'année
+  précédente ; sans doublon, et liste « à revoir ») puis `activer`, `desactiver`,
+  `changer_etat` et `supprimer` par code. `creer` prend l'état en argument (active par
+  défaut, proposée pour une proposition).
+- **Cible d'un besoin** dans un brouillon : son identifiant, ou « matière / type / groupes »
+  (codes, ex. « IM.1101 / CM / A1 »).
+- **Deux réglages de même cible aux périodes qui se recoupent** : refusés à l'écriture par le
+  service ; s'ils existent en base (import), `Instantane.reglages` échoue en les nommant.
+- **Axe du lieu** : `ReglesJours.jours_permis(campus_id)` ; sans campus (`None`), les axes
+  des personnes et de l'enseignement seuls. Le standard garde sa source (`Source.contrainte` =
+  `JOURS`, `DEJEUNER` ou `PAUSE`) ; une règle, la sienne (`Source.regle`).
+- **`MAX_PAR_JOUR` pour un enseignant** : seule l'unité « séances » est admise ; un maximum
+  en minutes relève de sa fiche (`MAX_ENSEIGNANT`).
+- **Suppression d'une cible visée** (§ 4.1, décision 3) : `analyser_suppression` n'est pas
+  livré ; `regles_visant(session, nature, cible_id)` donne la liste et la base refuse
+  (NO ACTION). Les paramètres qui citent une salle, un campus ou un type (`SALLES`,
+  `CAMPUS`, `ORDRE_SEMAINE`) ne sont pas encore inspectés.
+- **Création d'une année** (§ 1.5) : `init-db` et l'écran ne proposent pas encore les règles
+  (`proposer_pour_annee` à brancher) ; le jeu minimal pose les deux règles de base proposées.
+- **Hors contrat, lots suivants** : `OptionsSolveur.niveaux_regles` et le même argument du
+  vérificateur, `Anomalie.regle_id`, `calcul.parametres["regles"]`, les registres poseur et
+  vérificateur (vides : `types_non_couverts` liste les 14 types), l'import et l'export, les
+  écrans. Les appelants qui lisent encore `Besoin.samedi_autorise`, `plage_dejeuner`,
+  `fenetre_dejeuner`, `pause_min` ou `JOURS_OUVRES` sont listés dans le compte rendu de la PR.

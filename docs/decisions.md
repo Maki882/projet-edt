@@ -112,8 +112,9 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
   (paramètre `dejeuner_horaires_determines`, réglable dans l'écran
   « Générer » comme dans les paramètres).
 - **Indisponibilité** : pour un enseignant, une salle ou un groupe ; récurrente
-  (jour + plage horaire) ou datée (plage de dates) ; dure en V1, avec un champ
-  poids prévu pour les préférences.
+  (jour + plage horaire) ou datée (plage de dates) ; dure. Le champ `poids`
+  reste en base, inutilisé : une préférence horaire s'exprime par une règle
+  personnalisée `CRENEAUX_INTERDITS` facultative.
 - **Jour fermé** : férié, vacances, examens, semaine spéciale ; portée globale
   ou limitée à un groupe et ses descendants. Calendrier français prérempli,
   fériés mobiles compris.
@@ -137,7 +138,17 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
 - **Calcul** : suivi d'une génération (état, durée, paramètres, contraintes
   désactivées, message, fichier journal).
 - **Paramètre** : réglages globaux (temps limite, poids de l'objectif, pause
-  déjeuner à horaires déterminés ou non et sa plage, etc.).
+  déjeuner à horaires déterminés ou non et sa plage, etc.). Un paramètre peut
+  valoir un **ensemble de jours** : `jours_travailles`, les jours travaillés
+  de l'établissement (lundi à vendredi par défaut), standard des jours.
+- **Règle personnalisée** (`docs/regles-personnalisees.md`) : toute règle
+  appartient à une **année scolaire** (code unique dans l'année, « R007 ») ;
+  type du catalogue, portée (établissement, groupe, enseignant, campus, type
+  de séance, matière, besoin), paramètres canoniques, niveau, état
+  (**proposée** sans effet, active, inactive), période (semestre ou dates),
+  origine (saisie, import, assistant, base, reprise). La création d'une année
+  propose les règles de base et la reprise des règles actives de l'année
+  précédente ; rien n'est imposé.
 - Provenance des données importées (fichier, ligne, colonnes non reconnues).
 
 ## 5. Calendrier
@@ -174,9 +185,10 @@ Les codes sont stables et **communs au vérificateur et au solveur**. Depuis le
 entorse est une erreur), **important** (le moteur ne l'enfreint que faute de
 choix, chaque entorse pèse 1 000 dans l'objectif et est signalée comme
 avertissement), **facultatif** (souhait, une entorse pèse 20 et n'est qu'une
-information). Six règles définissent le problème et restent toujours
+information). Sept règles définissent le problème et restent toujours
 nécessaires : `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `VERROU`,
-`JOUR_FERME`, `VOLUME`. Par défaut, `PAUSE`, `DEJEUNER`, `EQUIPEMENT` et
+`JOUR_FERME`, `VOLUME` et `REGLE` (chaque règle personnalisée porte son propre
+niveau). Par défaut, `PAUSE`, `DEJEUNER`, `EQUIPEMENT` et
 `MAX_ENSEIGNANT` sont importantes, les autres nécessaires. Les niveaux sont
 enregistrés avec le calcul et appliqués ensuite à la vérification de la version
 produite. L'interface ne permet plus d'ignorer une règle ; les calculs anciens
@@ -192,7 +204,7 @@ automatiquement.
 | `CAMPUS_TRAJET` | Pour un groupe ou un enseignant, deux séances du même jour sur deux campus différents sont séparées d'au moins le temps de trajet (le déjeuner d'une heure suffit) |
 | `ACCESSIBILITE` | Une séance dont un groupe requiert l'accessibilité a lieu dans une salle accessible (« inconnu » vaut « non », réglable) |
 | `HORAIRES` | Séance dans la plage d'ouverture et sur un début de créneau de la grille, sauf créneau imposé |
-| `JOURS` | Lundi à vendredi ; le samedi matin est une permission réservée aux types de séance qui l'autorisent |
+| `JOURS` | Jours travaillés de l'établissement (paramètre `jours_travailles`, lundi à vendredi par défaut) : un **standard** dont une règle personnalisée `JOURS_TRAVAILLES` peut s'écarter dans les deux sens, pour sa portée. La case « samedi autorisé » d'un type de séance reste une exception implicite, qu'une règle explicite sur ce type remplace |
 | `PAUSE` | 15 minutes entre deux séances consécutives d'une même ressource |
 | `DEJEUNER` | La plage de déjeuner reste libre pour chaque groupe et chaque enseignant. Si la pause déjeuner est réglée « sans horaires déterminés », aucune plage n'est réservée : la règle est inapplicable (le vérificateur ne relève rien, le solveur ne la pose pas) ; c'est un réglage choisi par l'utilisateur, pas un abandon automatique |
 | `CAPACITE` | Capacité de la salle supérieure ou égale à la somme des effectifs |
@@ -203,6 +215,7 @@ automatiquement.
 | `VOLUME` | Toutes les séances demandées sont placées |
 | `VERROU` | Une séance verrouillée reste à sa place |
 | `JOUR_FERME` | Aucune occurrence un jour fermé pour les groupes concernés |
+| `REGLE` | Règle personnalisée (`docs/regles-personnalisees.md`) : chaque entorse porte ce code et le niveau de la règle. `JOURS`, `DEJEUNER` et `PAUSE` cèdent la place à la règle qui les surcharge, pour sa portée |
 
 Préférences (objectif à minimiser, activable, activé pour la démonstration) :
 10 × trous des groupes + 5 × changements de campus + 2 × samedi +
@@ -299,6 +312,9 @@ Préférences (objectif à minimiser, activable, activé pour la démonstration)
   navigation ; modification par formulaire dans un panneau latéral (créneau,
   salle parmi les salles compatibles), vérifiée par le vérificateur.
 - Panneau des anomalies et des séances « à programmer ».
+- Suppression d'un élément visé par des règles personnalisées : la
+  confirmation liste ces règles et propose de les supprimer avec lui (au lieu
+  d'un simple refus).
 
 ## 12. Confidentialité
 
@@ -310,7 +326,8 @@ Préférences (objectif à minimiser, activable, activé pour la démonstration)
 ## 13. Reporté
 
 Réaménagement sur imprévu (l'architecture et le moteur de replacement le
-préparent), requêtes en langage naturel, authentification et rôles,
+préparent), requêtes en langage naturel (leur service, `edt.services.regles`,
+est construit dès maintenant), authentification et rôles,
 glisser-déposer, alternance A / B, calendrier d'alternance des apprentis,
 diagnostic fin d'infaisabilité, sélection d'un périmètre de génération,
 migrations de schéma.

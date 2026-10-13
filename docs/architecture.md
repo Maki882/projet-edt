@@ -340,6 +340,7 @@ classDiagram
         +int version_base_id
         +tuple types_salle
         +tuple equipements
+        +tuple regles
         +salle(id) Salle
         +enseignant(id) Enseignant
         +groupe(id) Groupe
@@ -359,6 +360,17 @@ classDiagram
         +libelle_equipement(id) str
         +indisponibilites_recurrentes(cible, id) tuple
         +indisponibilites_de(cible, id) tuple
+        +jours_travailles frozenset
+        +lignee(groupe_id) tuple
+        +ascendants(groupe_id) tuple
+        +descendants(groupe_id) frozenset
+        +groupes_feuilles tuple
+        +feuilles(groupe_id) tuple
+        +emplois tuple
+        +emploi(personne) Emploi
+        +personnes_de(seance_id) tuple
+        +regle(id) RegleResolue
+        +reglages Reglages
     }
     class Besoin {
         +int id
@@ -438,22 +450,46 @@ Ce qu'il faut savoir pour l'utiliser :
 - **Libellés pour les messages** : `Groupe.libelle`, `Enseignant.nom`,
   `Salle.code`, `Besoin.libelle`, `Instantane.libelle_type_salle(id)` et
   `Instantane.libelle_equipement(id)`.
+- **Jours travaillés** : `Instantane.jours_travailles` (paramètre
+  `jours_travailles`, lundi à vendredi par défaut) est le standard des jours ;
+  rien ne code plus « lundi à vendredi » en dur.
+- **Emplois du temps** (`Instantane.emplois`, en cache) : la **définition
+  unique** de l'emploi du temps de chaque personne. Une `Personne` est un
+  groupe feuille (`NaturePersonne.GROUPE`, sans sous-groupe) ou un enseignant
+  non fictif ; `Emploi.seances` réunit ses séances et celles de sa lignée
+  (`Instantane.lignee(groupe_id)` : feuille → classe → promotion).
+  `personnes_de(seance_id)` fait le chemin inverse.
+- **Règles personnalisées** : `Instantane.regles` (règles actives de l'année
+  dont la période recoupe le semestre, résolues : séances, personnes,
+  valeurs en identifiants, semaines couvertes, phrase) et
+  `Instantane.reglages` (en cache) : pour chaque séance, ses jours permis par
+  campus avec le standard et les règles retenues (`ReglesJours`) ; pour
+  chaque personne, son déjeuner (`ReglageDejeuner`) et sa pause
+  (`ReglagePause`), chaque valeur avec sa `Source` (règle ou contrainte du
+  catalogue). Voir « Les règles personnalisées » plus bas.
 
 ### Le dépliage (`edt.domaine.depliage`)
 
 ```python
 def deplier(
-    besoins: Iterable[Besoin], semaines: Sequence[Semaine], jours_fermes: Iterable[JourFerme]
+    besoins: Iterable[Besoin],
+    semaines: Sequence[Semaine],
+    jours_fermes: Iterable[JourFerme],
+    jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
 ) -> Depliage:                       # Depliage(seances, problemes)
 def semaines_ouvertes(
-    besoin: Besoin, semaines: Sequence[Semaine], jours_fermes: Iterable[JourFerme]
+    besoin: Besoin,
+    semaines: Sequence[Semaine],
+    jours_fermes: Iterable[JourFerme],
+    jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
 ) -> tuple[Semaine, ...]:
 def repartition_reguliere(nombre: int, nb_semaines: int) -> list[int]:
 ```
 
 - Une semaine est **ouverte** pour un besoin si elle recoupe sa fenêtre et
-  si au moins un jour du lundi au vendredi n'est fermé ni globalement ni pour
-  l'un de ses groupes.
+  si au moins un jour travaillé (`jours_travailles`, le paramètre global ;
+  `JOURS_OUVRES_PAR_DEFAUT` = lundi à vendredi, `JOURS_OUVRES` en est l'alias
+  conservé) n'est fermé ni globalement ni pour l'un de ses groupes.
 - `par_semaine` : `nombre` séances, actives toutes les semaines ouvertes.
 - `total` : `nombre` séances réparties régulièrement sur les S semaines
   ouvertes ; la semaine d'indice i en reçoit
@@ -730,7 +766,11 @@ Les paramètres, leurs bornes et leurs valeurs par défaut sont les champs de
 de configuration et `convertir_texte(cle, texte)` convertit une saisie.
 Un paramètre **à choix** (`DefinitionParametre.type == "choix"`, `choix` =
 couples valeur/libellé) est une chaîne parmi une liste fermée ; la table
-`parametre` la stocke en JSON comme les entiers et les booléens.
+`parametre` la stocke en JSON comme les entiers et les booléens. Un paramètre
+**ensemble de jours** (`type == "jours"`) est un tuple trié de numéros de
+jour (0 = lundi), au moins un, stocké en liste JSON ; `convertir_texte`
+accepte « lundi, mardi » comme « 0,1 ». Le seul : `jours_travailles`, les
+jours travaillés de l'établissement (défaut lundi à vendredi).
 
 #### Pause déjeuner
 
@@ -751,6 +791,95 @@ d'ouverture ; en mode aucun, rien. Une ancienne base qui porte le booléen
 `dejeuner_horaires_determines` sans `dejeuner_mode` est lue vrai → `fixe`,
 faux → `aucun`, sans être modifiée.
 
+### Les règles personnalisées (`edt.domaine.regles`, `edt.services.regles`)
+
+Conception : `docs/regles-personnalisees.md`. La chaîne :
+
+1. **Domaine** (`edt.domaine.regles`, pur) : `TypeRegle` (14 types),
+   `NaturePortee`, `EtatRegle`, `OrigineRegle` ; `CATALOGUE_TYPES` donne pour
+   chaque type sa `DefinitionType` (libellé, sorte séance / emploi du temps /
+   relation, famille réglage / exigence, portées admises, `ChampRegle` des
+   paramètres, niveau par défaut, exemples) ; `REGLES_DE_BASE` ; la validation
+   ; la phrase ; la résolution.
+2. **Base** : table `regle` (`docs/modele-donnees.md`), une règle par ligne,
+   paramètres canoniques en JSON.
+3. **Service** (`edt.services.regles`) : lecture, écriture, propositions et
+   explications, retours sérialisables (format du brouillon : § 4.8 du
+   document de conception). Chaque écriture est journalisée avec la phrase.
+4. **Instantané** : `charger_instantane` valide chaque règle active de
+   l'année dont la période recoupe le semestre (`valider_regle`, cible dans
+   l'année) et la résout (`resoudre_regle`) ; une règle invalide fait échouer
+   le chargement avec une `ErreurDonneesInvalides` qui la nomme.
+   `Instantane.reglages` (`resoudre_reglages`) applique la précédence.
+
+```python
+# edt.domaine.regles
+def definition_type(code: str) -> DefinitionType:
+def valider_portee(type_regle: TypeRegle, nature: NaturePortee) -> None:
+def valider_parametres(
+    type_regle: TypeRegle, brouillon: Mapping[str, Any], parametres: Parametres | None = None,
+    codes_connus: Mapping[str, Collection[str]] | None = None, portee: NaturePortee | None = None,
+) -> dict[str, Any]:                 # valeurs canoniques, défauts du type et globaux complétés
+def valider_regle(regle: Regle, parametres=None, codes_connus=None) -> Regle:
+def phrase(type_regle, portee: Portee, valeurs: Mapping, parametres: Parametres | None = None) -> str:
+def resoudre_regle(regle: Regle, instantane: Instantane, identifiants=None) -> RegleResolue:
+def resoudre_reglages(instantane: Instantane) -> Reglages:
+def enregistrer(registre: str, type_regle: TypeRegle):          # décorateur, "solveur" | "verificateur"
+def types_non_couverts(registre: str) -> frozenset[TypeRegle]:
+def decrire_catalogue() -> dict[str, Any]:
+
+# edt.services.regles
+def decrire_types() -> dict[str, Any]:
+def lister(session, annee_scolaire_id, *, etat=None, type_regle=None, niveau=None,
+           origine=None, groupe_id=None, enseignant_id=None, matiere_id=None) -> list[RegleDetail]:
+def lire(session, annee_scolaire_id, code) -> RegleDetail:
+def lire_par_id(session, regle_id) -> RegleDetail:
+def regles_visant(session, nature, cible_id) -> list[RegleDetail]:
+def charger_regles_actives(session, annee_scolaire_id) -> list[Regle]:
+def valider(session, brouillon: Mapping) -> Validation:        # valide, regle, phrase, erreurs par champ
+def creer(session, brouillon, origine=OrigineRegle.SAISIE, etat=EtatRegle.ACTIVE) -> RegleDetail:
+def modifier(session, annee_scolaire_id, code, changements: Mapping) -> RegleDetail:
+def supprimer(session, annee_scolaire_id, code) -> None:
+def changer_etat(session, annee_scolaire_id, code, etat) -> RegleDetail:
+def activer(session, annee_scolaire_id, code) -> RegleDetail:
+def desactiver(session, annee_scolaire_id, code) -> RegleDetail:
+def proposer_pour_annee(session, annee_scolaire_id) -> Proposition:   # base + reprise, état proposée
+def expliquer(session, annee_scolaire_id, code) -> Explication:
+```
+
+Ce qu'il faut savoir :
+
+- **Erreurs par champ** : `ErreurSaisie.erreurs` est un dictionnaire chemin
+  JSON → message (`parametres.duree`, `portee.cible`, `periode.semestre`).
+  `valider` ne lève pas : elle renvoie `Validation(valide=False, erreurs=…)`.
+- **Valeurs canoniques** en base (jours en noms français, heures `HH:MM`,
+  durées en minutes, codes) ; **valeurs résolues** dans l'instantané
+  (`RegleResolue.valeurs` : numéros de jour, minutes, identifiants).
+- **Cibles** (`RegleResolue.seances`, `.personnes`) : pour un groupe, une
+  règle de sorte séance vaut pour les séances de ses groupes liés ; une règle
+  de sorte emploi du temps pour les feuilles de son sous-arbre ;
+  `JOURS_TRAVAILLES` vaut pour les séances du sous-arbre et des ascendants.
+- **Précédence des jours** (`Reglages.jours_de(seance_id)`) : le standard est
+  `jours_travailles`, plus le samedi si le type de séance l'autorise et
+  qu'aucune règle ne vise ce type ; chaque axe (groupes feuilles par lignée,
+  enseignants, besoin → matière → type, campus) retient sa règle la plus
+  précise ; jours permis = intersection des règles retenues, le standard
+  sans aucune règle ; un axe sans règle est neutre. `entorses(jour, campus_id)`
+  rend les sources enfreintes par un jour : le solveur pénalise chacune à son
+  niveau, le vérificateur impute l'anomalie à chacune (code `REGLE` et
+  `regle_id` pour une règle, `JOURS` pour le standard).
+- **Déjeuner et pause** (`Reglages.dejeuner[personne]`, `.pause[personne]`) :
+  chaque personne résout sa lignée, sinon la valeur de l'établissement ;
+  `ReglageDejeuner.plage` / `.fenetre` / `.actif` remplacent la lecture
+  directe de `plage_dejeuner`, `fenetre_dejeuner` et `dejeuner_actif`.
+- **Registres** : `enregistrer("solveur", type)` et
+  `enregistrer("verificateur", type)` déclarent le poseur et le vérificateur
+  d'un type ; `types_non_couverts` sert au test qui vérifie que le catalogue
+  est couvert.
+- **États** : une règle proposée ou inactive n'est ni posée, ni vérifiée, ni
+  chargée dans l'instantané. Le service refuse deux règles actives d'un même
+  type de réglage, de même cible, aux périodes qui se recoupent.
+
 ### Sémantique des contraintes
 
 Le catalogue (`edt.domaine.contraintes.CATALOGUE`) donne le code, le libellé
@@ -760,10 +889,10 @@ le vérificateur **et** le solveur.
 | Code | Précision |
 |---|---|
 | `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE` | Deux séances se gênent si elles ont lieu le même jour, que leurs plages se recoupent et que leurs semaines actives se croisent. Groupes : relation de conflit de l'instantané. Enseignants fictifs exclus. |
-| `PAUSE`, `CAMPUS_TRAJET` | Concernent les **personnes** (groupes en conflit, enseignants non fictifs), pas les salles. |
-| `DEJEUNER` | Quand la pause déjeuner est à horaires déterminés (`dejeuner_horaires_determines`), aucune séance ne recoupe la plage `dejeuner_debut_min`..`dejeuner_fin_min` ; sinon la règle est inapplicable. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), l'écart est une information. |
+| `PAUSE`, `CAMPUS_TRAJET` | Concernent les **personnes** (groupes en conflit, enseignants non fictifs), pas les salles. La durée de la pause d'une personne vient de `Instantane.reglages.pause[personne]` (règle `PAUSE_MINIMALE`, sinon `pause_min`). |
+| `DEJEUNER` | Selon le mode (`dejeuner_mode`, voir « Pause déjeuner ») : aucune séance ne recoupe la plage fixe, ou chaque personne garde une pause libre dans la fenêtre ; en mode aucun, la règle est inapplicable. Le réglage d'une personne vient de `Instantane.reglages.dejeuner[personne]` (règle `PAUSE_DEJEUNER`, sinon l'établissement). Pour une séance imposée (début imposé, ponctuelle ou verrouillée), l'écart est une information. |
 | `HORAIRES` | Début sur un début de créneau de la grille, séance dans la plage `ouverture_min`..`fermeture_min`, et séance qui ne déborde pas de sa demi-journée (sa fin ne dépasse pas la fin du dernier créneau de la même demi-journée). La durée placée égale la durée du besoin. Un **jour imposé ou un début imposé non respecté** relève aussi de ce code. Pour une séance imposée (début imposé, ponctuelle ou verrouillée), un écart à la grille est une anomalie de gravité « information », pas une erreur. |
-| `JOURS` | Jours qui ont des créneaux dans la grille (lundi à vendredi) ; samedi seulement si `Besoin.samedi_autorise`. Un samedi hors des créneaux de la grille relève de `HORAIRES`. Information au lieu d'erreur pour une séance imposée. |
+| `JOURS` | Le **standard** des jours : `jours_travailles` (lundi à vendredi par défaut), plus le samedi si `Besoin.samedi_autorise` et qu'aucune règle ne vise ce type de séance. Une règle `JOURS_TRAVAILLES` retenue l'emporte (`Instantane.reglages.jours_de(seance_id)`) ; une entorse à une règle porte le code `REGLE`. Un jour permis sans créneau dans la grille relève de `HORAIRES`. Information au lieu d'erreur pour une séance imposée. |
 | `CAPACITE` | Capacité de la salle ≥ `Besoin.effectif`. |
 | `TYPE_SALLE` | Type de la salle dans `types_salle_acceptes` (vide = tous). Une **salle imposée ou un campus imposé non respecté** relève aussi de ce code (famille « exigences de salle du besoin »). |
 | `EQUIPEMENT` | `equipements_requis` inclus dans les équipements de la salle. |
@@ -774,6 +903,7 @@ le vérificateur **et** le solveur.
 | `VOLUME` | Chaque séance de l'instantané a un placement. |
 | `VERROU` | Une séance dont `verrou` est renseigné garde ce jour, cette heure et cette salle. |
 | `JOUR_FERME` | Couche datée seulement : `Instantane.fermeture(date, besoin)`. Une fermeture de portée « groupe » vaut pour ce groupe et ses descendants (pas pour les groupes seulement liés). |
+| `REGLE` | Toute entorse à une règle personnalisée (`Instantane.regles`), au niveau de la règle (`RegleResolue.niveau`), imputée à la règle (`regle_id`) ; le catalogue des types est dans `edt.domaine.regles`. |
 
 Les jours fermés et les indisponibilités datées ne restreignent pas la
 semaine type : l'occurrence qui tombe dessus est replacée par la couche
@@ -791,9 +921,10 @@ parmi trois, du plus exigeant au moins exigeant (`Niveau`) :
 | important | souple à fort poids (`POIDS_NIVEAU`, 1000 par entorse), enfreinte seulement faute de choix | une entorse est un **avertissement** |
 | facultatif | souple à faible poids (20 par entorse) : un souhait | une entorse est une **information** |
 
-Six contraintes définissent le problème et restent toujours nécessaires
+Sept contraintes définissent le problème et restent toujours nécessaires
 (`Contrainte.modifiable` est faux) : `SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`,
-`GROUPE_UNIQUE`, `VERROU`, `JOUR_FERME`, `VOLUME`. Les autres ont un niveau
+`GROUPE_UNIQUE`, `VERROU`, `JOUR_FERME`, `VOLUME` et `REGLE` (chaque règle
+personnalisée porte son propre niveau, à la place). Les autres ont un niveau
 par défaut (`Contrainte.niveau_defaut`) : important pour `PAUSE`, `DEJEUNER`,
 `EQUIPEMENT` et `MAX_ENSEIGNANT`, nécessaire pour le reste.
 

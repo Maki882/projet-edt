@@ -172,6 +172,18 @@ classDiagram
         +str cle
         +json valeur
     }
+    class Regle {
+        +str code
+        +TypeRegle type
+        +NaturePortee portee
+        +json parametres
+        +Niveau niveau
+        +EtatRegle etat
+        +date date_debut
+        +date date_fin
+        +OrigineRegle origine
+        +str commentaire
+    }
 
     AnneeScolaire "1" *-- "1..*" Semestre : semestres
     AnneeScolaire "1" *-- "*" Groupe : groupes
@@ -213,10 +225,21 @@ classDiagram
     Occurrence "*" --> "1" Besoin : satisfait
     Occurrence "*" --> "0..1" SeanceHebdo : instancie
     Occurrence "*" --> "0..1" Salle : a lieu en
+
+    AnneeScolaire "1" *-- "*" Regle : règles
+    Regle "*" --> "0..1" Semestre : limitée à
+    Regle "*" --> "0..1" Groupe : vise
+    Regle "*" --> "0..1" Enseignant : vise
+    Regle "*" --> "0..1" Campus : vise
+    Regle "*" --> "0..1" TypeSeance : vise
+    Regle "*" --> "0..1" Matiere : vise
+    Regle "*" --> "0..1" Besoin : vise
+    Regle "*" --> "0..1" Regle : reprise de
 ```
 
 `Creneau` (grille horaire) et `Parametre` (réglages) n'ont pas de relation :
-ce sont des listes globales.
+ce sont des listes globales. Une `Regle` (règle personnalisée,
+`docs/regles-personnalisees.md`) vise une seule cible, ou l'établissement.
 
 ## Les trois étages du modèle
 
@@ -230,6 +253,10 @@ ce sont des listes globales.
    `seance_hebdo` (la semaine type) puis d'`occurrence` (les séances datées,
    obtenues en instanciant la semaine type sur le calendrier). Le `calcul`
    garde la trace de chaque génération.
+
+À côté, les **réglages** : les paramètres globaux (`parametre`) et les règles
+personnalisées (`regle`), exceptions à un paramètre ou exigences propres à
+une portée, rattachées à une année scolaire.
 
 ## Unicités
 
@@ -250,6 +277,7 @@ ce sont des listes globales.
 | `version_edt` | (`semestre_id`, `numero`) ; une seule version `active` par semestre |
 | `seance_hebdo` | (`version_id`, `besoin_id`, `rang`) |
 | `parametre` | `cle` |
+| `regle` | (`annee_scolaire_id`, `code`) |
 | tables d'association | la paire de clés étrangères |
 
 ## Règles de suppression
@@ -258,8 +286,9 @@ Le comportement à la suppression est porté par les clés étrangères (SQLite,
 `PRAGMA foreign_keys=ON`) :
 
 - **CASCADE** : ce qui appartient à son parent disparaît avec lui. Une année
-  emporte ses semestres, ses groupes et son calendrier ; un semestre emporte
-  ses besoins, ses calculs et ses versions ; un groupe emporte ses
+  emporte ses semestres, ses groupes, son calendrier et ses règles ; un
+  semestre emporte ses besoins, ses calculs, ses versions et les règles
+  limitées à lui ; un groupe emporte ses
   sous-groupes, ses inscriptions, ses indisponibilités et les matières de sa
   promotion ; un besoin emporte ses séances placées ; une version emporte
   ses séances et ses occurrences.
@@ -268,19 +297,23 @@ Le comportement à la suppression est porté par les clés étrangères (SQLite,
   séance, un type de salle, un équipement, une salle imposée ou un campus
   encore utilisés par un besoin (ou un campus qui a des salles) est refusé :
   l'interface affiche « opération refusée » et l'utilisateur corrige d'abord
-  les besoins. La vérification se fait en fin d'instruction : supprimer une
-  année entière reste possible, car ses besoins partent avec elle.
+  les besoins. Il en va de même d'un groupe, d'un enseignant, d'un campus,
+  d'un type de séance, d'une matière ou d'un besoin **visé par une règle
+  personnalisée** (`edt.services.regles.regles_visant` les liste). La
+  vérification se fait en fin d'instruction : supprimer une année entière
+  reste possible, car ses besoins et ses règles partent avec elle.
 - **SET NULL** : supprimer une salle laisse les séances déjà placées, sans
   salle (le vérificateur les signale) ; supprimer un type de salle retire le
   type par défaut d'un type de séance ; supprimer un calcul laisse la version
-  qu'il a produite.
+  qu'il a produite ; supprimer une règle laisse sa reprise de l'année
+  suivante, sans lien.
 
 ## Provenance des données importées
 
 Les tables importables (`salle`, `enseignant`, `groupe`, `etudiant`,
 `matiere`, `indisponibilite`, `jour_ferme`, `besoin`, `seance_hebdo`,
-`occurrence`) portent trois colonnes facultatives, vides pour une saisie
-manuelle :
+`occurrence`, `regle`) portent trois colonnes facultatives, vides pour une
+saisie manuelle :
 
 | Colonne | Type | Rôle |
 |---|---|---|
@@ -763,5 +796,45 @@ Paramètre global (clé / valeur JSON). Voir `edt.domaine.parametres`. Classe OR
 | Colonne | Type | Obligatoire | Description |
 |---|---|---|---|
 | `cle` | texte (64) | oui | Nom du paramètre |
-| `valeur` | JSON | oui | Valeur, typée selon le paramètre |
+| `valeur` | JSON | oui | Valeur, typée selon le paramètre (entier, booléen, choix, ensemble de jours en liste de numéros) |
 | `modifie_le` | date et heure | oui | Dernière modification |
+
+#### `regle`
+
+Règle personnalisée d'une année scolaire : exception à un paramètre global
+(réglage : jours travaillés, pause déjeuner, pause minimale) ou exigence
+propre à une portée. Les types, leurs paramètres et leur résolution sont dans
+`edt.domaine.regles` et `docs/regles-personnalisees.md`. Classe ORM : `Regle`.
+
+| Colonne | Type | Obligatoire | Description |
+|---|---|---|---|
+| `id` | entier | oui | Clé primaire |
+| `annee_scolaire_id` | entier | oui | → `annee_scolaire` (CASCADE) : année du paramétrage |
+| `code` | texte (16) | oui | Identifiant métier stable dans l'année (« R007 »), attribué par le service si vide |
+| `type` | énumération `TypeRegle` (14 codes) | oui | Type de règle |
+| `portee` | énumération : `etablissement`, `groupe`, `enseignant`, `campus`, `type_seance`, `matiere`, `besoin` | oui | Nature de la portée |
+| `groupe_id` | entier | non | → `groupe` (NO ACTION) : cible |
+| `enseignant_id` | entier | non | → `enseignant` (NO ACTION) : cible |
+| `campus_id` | entier | non | → `campus` (NO ACTION) : cible |
+| `type_seance_id` | entier | non | → `type_seance` (NO ACTION) : cible |
+| `matiere_id` | entier | non | → `matiere` (NO ACTION) : cible |
+| `besoin_id` | entier | non | → `besoin` (NO ACTION) : cible |
+| `parametres` | JSON | oui | Paramètres canoniques (jours en noms, heures `HH:MM`, durées en minutes, codes), validés par le schéma du type à chaque écriture |
+| `niveau` | énumération : `necessaire`, `important`, `facultatif` | oui | Niveau de la règle |
+| `etat` | énumération : `proposee`, `active`, `inactive` | oui | Seule une règle active est posée et vérifiée (défaut : `active`) |
+| `semestre_id` | entier | non | → `semestre` (CASCADE) : semestre visé ; vide = toute l'année, sauf dates |
+| `date_debut` | date | non | Période datée : premier jour |
+| `date_fin` | date | non | Période datée : dernier jour (inclus) |
+| `origine` | énumération : `saisie`, `import`, `assistant`, `base`, `reprise` | oui | D'où vient la règle (défaut : `saisie`) |
+| `reprise_de_id` | entier | non | → `regle` (SET NULL) : règle de l'année précédente dont celle-ci est la reprise |
+| `commentaire` | texte | non | Note libre |
+| `cree_le` | date et heure | oui | Création |
+| `modifie_le` | date et heure | oui | Dernière modification |
+| `source_fichier`, `source_ligne`, `extra` | texte, entier, JSON | non | Provenance d'une ligne importée (voir plus haut) |
+
+Contrôles : `une_seule_cible` (seule la colonne de cible de la portée est
+renseignée, aucune pour l'établissement, sur le modèle de `indisponibilite`) ;
+`periode_ordonnee` (`date_debut IS NULL OR date_fin IS NULL OR date_debut <=
+date_fin`). Index sur chaque clé de cible et sur (`annee_scolaire_id`,
+`etat`, `type`). Le service refuse en plus deux règles actives d'un même type
+de réglage, de même cible et de périodes qui se recoupent.
