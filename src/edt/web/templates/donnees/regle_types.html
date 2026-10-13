@@ -1,0 +1,43 @@
+{# Ajout d'une règle, étape 1 : choix du type (libellé, description, exemples, portées admises). #}
+{% extends "base.html" %}
+
+{% block titre %}Nouvelle règle : choisir le type{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="{{ retour }}">Retour aux règles</a>
+{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  Choisir ce que la règle demande ; on précisera ensuite à qui elle s'applique, ses valeurs, son
+  niveau et sa période.
+</p>
+<form class="barre-liste" method="get" action="/regles/nouveau">
+  <input type="hidden" name="retour" value="{{ retour }}">
+  <div class="champ">
+    <label for="choix-annee">Année scolaire</label>
+    <select id="choix-annee" name="annee" onchange="this.form.submit()">
+      {%- for valeur, libelle in annees %}
+      <option value="{{ valeur }}"{% if valeur == annee.id|string %} selected{% endif %}>{{ libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <button type="submit" class="bouton sans-js">Changer d'année</button>
+</form>
+<ul class="cartes-types">
+  {%- for definition in types %}
+  {%- set lien = "/regles/nouveau?" ~ {"annee": annee.id, "type": definition.code.value, "retour": retour}|urlencode %}
+  <li class="carte carte-type">
+    <h2><a href="{{ lien }}">{{ definition.libelle }}</a></h2>
+    <p>{{ definition.description }}</p>
+    <ul class="exemples-regle">
+      {%- for exemple in definition.exemples %}
+      <li>« {{ exemple }} »</li>
+      {%- endfor %}
+    </ul>
+    <p class="discret">Pour : {{ natures_admises(definition)|map(attribute="libelle")|map("lower")|join(", ") }}.</p>
+    <a class="bouton bouton-petit bouton-principal" href="{{ lien }}">Choisir</a>
+  </li>
+  {%- endfor %}
+</ul>
+{% endblock %}

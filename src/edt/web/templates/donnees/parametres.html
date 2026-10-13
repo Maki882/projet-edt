@@ -30,6 +30,8 @@
       {%- set conteneur = {"data-visible-si": p.visible_si[0] ~ ":" ~ p.visible_si[1]|join(",")} if p.visible_si else {} %}
       {%- if p.type == "bool" %}
       {{ ui.champ(p.cle, p.libelle, valeur=(saisie in ("oui", "True", "1", true)), type="checkbox", aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur) }}
+      {%- elif p.est_jours %}
+      {{ ui.champ(p.cle, p.libelle, valeur=p.jours_coches(saisie), type="cases", requis=true, options=p.options_jours, aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur, large=true) }}
       {%- elif p.est_choix %}
       {{ ui.champ(p.cle, p.libelle, valeur=saisie, type="select", requis=true, options=p.choix, aide=aide, erreur=erreurs.get(p.cle), conteneur=conteneur, large=true) }}
       {%- elif p.est_heure %}

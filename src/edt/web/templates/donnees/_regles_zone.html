@@ -1,0 +1,39 @@
+{# Zone remplacée par HTMX : résumé, tableau des règles, pagination. #}
+{% import "macros.html" as ui %}
+<p class="barre-liste-resume">
+  {{ total }} règle{{ "s" if total > 1 }} en {{ annee.libelle }}
+  {%- if filtre_actif %} correspondant à la recherche et aux filtres{% endif %}.
+</p>
+{%- if regles %}
+<div class="tableau-defilant">
+  <table class="tableau tableau-compact tableau-regles">
+    <thead>
+      <tr>
+        <th scope="col">Code</th>
+        <th scope="col" class="cellule-texte">Règle</th>
+        <th scope="col" class="cellule-empilee">Type <span class="discret">· origine</span></th>
+        <th scope="col" class="cellule-empilee">Portée <span class="discret">· période</span></th>
+        <th scope="col">Niveau</th>
+        <th scope="col">État</th>
+        <th scope="col" class="colonne-actions">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {%- for regle in regles %}
+      {% include "donnees/_regle_ligne.html" %}
+      {%- endfor %}
+    </tbody>
+  </table>
+</div>
+{{ ui.pagination(page, nb_pages, url_page, "zone-liste") }}
+{%- elif filtre_actif %}
+<p class="vide">
+  Aucune règle ne correspond à la recherche ou aux filtres.
+  <a href="/regles?annee={{ annee.id }}">Effacer la recherche et les filtres</a>.
+</p>
+{%- else %}
+<p class="vide">
+  Aucune règle en {{ annee.libelle }} : « Nouvelle règle » pour en créer une, ou « Proposer les
+  règles de base » pour partir des règles conseillées et de celles de l'année précédente.
+</p>
+{%- endif %}

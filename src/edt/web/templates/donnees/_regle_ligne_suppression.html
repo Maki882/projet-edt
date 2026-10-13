@@ -1,0 +1,15 @@
+{# Confirmation de la suppression d'une règle, à la place de sa ligne (HTMX). #}
+<tr id="regle-{{ regle.id }}" class="ligne-suppression">
+  <td colspan="7">
+    <div class="ligne-suppression-contenu" role="group" aria-label="Suppression de la règle {{ regle.code }}">
+      <p><strong>Supprimer définitivement la règle {{ regle.code }} ?</strong> {{ regle.phrase }}</p>
+      <p class="discret">Pour la garder sans effet, la désactiver plutôt.</p>
+      <div class="ligne-boutons">
+        <button type="button" class="bouton bouton-petit bouton-danger-plein"
+                hx-post="/regles/{{ regle.id }}/ligne/supprimer" hx-target="#zone-liste" hx-swap="innerHTML">Supprimer définitivement</button>
+        <button type="button" class="bouton bouton-petit" autofocus
+                hx-get="/regles/{{ regle.id }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Annuler</button>
+      </div>
+    </div>
+  </td>
+</tr>

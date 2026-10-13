@@ -1,0 +1,51 @@
+{#
+  Ajout (étape 2) ou modification d'une règle : formulaire tiré du schéma du type, aperçu de la
+  phrase mis à jour à chaque changement (HTMX, POST /regles/apercu), erreurs sous les champs.
+  L'aperçu est porté par sa section et non par le formulaire : HTMX valide un formulaire avant
+  de l'envoyer (champ requis vide, valeur hors bornes) et n'enverrait alors rien, sans rien dire ;
+  porté par la section, il part toujours et affiche les messages du service. Il n'est demandé
+  au chargement que pour une saisie refusée (a_corriger) : un formulaire neuf ne commence pas
+  par une liste d'erreurs.
+#}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "donnees/_ui.html" as d %}
+
+{% block titre %}{% if detail %}Règle {{ detail.code }}{% else %}Nouvelle règle{% endif %} : {{ definition.libelle|lower }}{% endblock %}
+
+{% block actions %}
+<a class="bouton" href="{{ retour }}">Retour</a>
+{%- if not detail %}
+<a class="bouton" href="/regles/nouveau?{{ {'annee': annee.id, 'retour': retour}|urlencode }}">Changer de type</a>
+{%- endif %}
+{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  {{ definition.description }}
+  <span class="discret">Année {{ annee.libelle }}{% if detail %} ; origine : {{ detail.regle.origine.libelle|lower }}, état : {{ detail.regle.etat.libelle|lower }}{% endif %}.</span>
+</p>
+<form class="formulaire formulaire-large" method="post" action="{{ action }}">
+  <input type="hidden" name="type" value="{{ definition.code.value }}">
+  <input type="hidden" name="annee" value="{{ annee.id }}">
+  <input type="hidden" name="_retour" value="{{ retour }}">
+  {%- if detail %}<input type="hidden" name="_id" value="{{ detail.id }}">{% endif %}
+  <section class="apercu-regle" hx-post="/regles/apercu" hx-include="closest form"
+           hx-trigger="{% if a_corriger %}load, {% endif %}change delay:300ms from:closest form, input delay:700ms from:closest form"
+           hx-target="#apercu-regle" hx-swap="innerHTML" hx-sync="this:replace">
+    <h2>Aperçu</h2>
+    <div id="apercu-regle" aria-live="polite">
+      {%- if detail %}
+      <p class="apercu-phrase">« {{ detail.phrase }} »</p>
+      {%- else %}
+      <p class="discret">La phrase de la règle s'affiche ici dès qu'elle est complète.</p>
+      {%- endif %}
+    </div>
+  </section>
+  {{ d.rubriques(rubriques) }}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">{% if detail %}Enregistrer{% else %}Créer la règle{% endif %}</button>
+    <a class="bouton" href="{{ retour }}">Annuler</a>
+  </div>
+</form>
+{% endblock %}

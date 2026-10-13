@@ -10,6 +10,8 @@
                                texte libre sur deux lignes au plus, détail au survol)
   - d.retour(ecran)            lien vers la page parente d'un écran
   - d.raisons(liste)           éléments de liste des raisons d'une suppression (texte et lien)
+  - d.regles_touchees(analyse, retour)  règles personnalisées que la suppression supprime ou modifie
+  - d.libelle_suppression(entite, analyse)  libellé du bouton (« ... et ses 2 règles »)
 #}
 {% import "macros.html" as ui %}
 
@@ -90,4 +92,32 @@
 {%- for raison in liste %}
 <li>{{ raison.texte }}{% if raison.lien %} <a href="{{ raison.lien }}">{{ raison.libelle_lien }}</a>{% endif %}</li>
 {%- endfor %}
+{%- endmacro %}
+
+{#
+  Règles personnalisées touchées par une suppression (décision 3) : chacune avec sa phrase,
+  ce qui lui arrivera, et des liens pour la modifier ou la supprimer d'abord. `retour` : la
+  page où revenir après l'avoir modifiée ou supprimée.
+#}
+{% macro regles_touchees(analyse, retour) -%}
+{%- if analyse.regles %}
+<p>Règles personnalisées concernées :</p>
+<ul class="liste-simple liste-regles-touchees">
+  {%- for regle in analyse.regles %}
+  {%- set suffixe = "?" ~ {"retour": retour}|urlencode %}
+  <li><strong>{{ regle.code }}</strong> <span class="discret">({{ regle.annee }})</span> : {{ regle.phrase }}
+    <em>{{ regle.effet[:1]|upper ~ regle.effet[1:] }}.</em>
+    <a href="/regles/{{ regle.id }}/modifier{{ suffixe }}">Modifier</a> ·
+    <a href="/regles/{{ regle.id }}/supprimer{{ suffixe }}">Supprimer</a></li>
+  {%- endfor %}
+</ul>
+{%- endif %}
+{%- endmacro %}
+
+{% macro libelle_suppression(entite, analyse) -%}
+{%- set n = analyse.regles|length -%}
+{%- if n == 0 -%}Supprimer définitivement
+{%- elif n == 1 -%}Supprimer {{ entite.demonstratif|lower }} et sa règle
+{%- else -%}Supprimer {{ entite.demonstratif|lower }} et ses {{ n }} règles
+{%- endif -%}
 {%- endmacro %}

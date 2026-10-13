@@ -1,0 +1,69 @@
+{# Règles personnalisées d'une année : proposées à confirmer, filtres, liste paginée. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Règles personnalisées{% endblock %}
+
+{% block actions %}
+{{ ui.bouton_action("/regles/proposer", "Proposer les règles de base", champs={"annee": annee.id}) }}
+<a class="bouton bouton-principal" href="/regles/nouveau?{{ {'annee': annee.id, 'retour': url_liste}|urlencode }}">Nouvelle règle</a>
+{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  Les exceptions et exigences propres à votre établissement : « le groupe A1 ne travaille pas le
+  samedi », « la classe A2-G3 a une pause déjeuner d'au moins 1 h 15 ». Chaque règle vaut pour une
+  année scolaire ; seules les règles actives s'appliquent aux calculs.
+</p>
+
+<form class="barre-liste" method="get" action="/regles">
+  <div class="champ">
+    <label for="choix-annee">Année scolaire</label>
+    <select id="choix-annee" name="annee" onchange="this.form.submit()">
+      {%- for valeur, libelle in annees %}
+      <option value="{{ valeur }}"{% if valeur == annee.id|string %} selected{% endif %}>{{ libelle }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  <button type="submit" class="bouton sans-js">Afficher</button>
+</form>
+
+{%- if nb_proposees %}
+{%- set pluriel = nb_proposees > 1 %}
+<div class="message message-attention bandeau-proposees">
+  <p>
+    <strong>{{ nb_proposees }} règle{{ "s" if pluriel }} proposée{{ "s" if pluriel }} à confirmer</strong> :
+    sans effet tant qu'{{ "elles ne sont pas confirmées" if pluriel else "elle n'est pas confirmée" }}.
+    <a href="{{ url_proposees }}">Les voir</a>
+    {{ ui.bouton_action("/regles/confirmer", "Tout confirmer", classe="bouton bouton-petit", champs={"annee": annee.id, "_retour": url_liste}, confirmation="Confirmer toutes les règles proposées ? Elles s'appliqueront aux prochains calculs.") }}
+  </p>
+</div>
+{%- endif %}
+
+<form class="barre-liste" method="get" action="/regles" role="search"
+      hx-get="/regles" hx-target="#zone-liste" hx-push-url="true"
+      hx-trigger="input delay:350ms, submit" hx-sync="this:replace">
+  <input type="hidden" name="annee" value="{{ annee.id }}">
+  <div class="champ champ-recherche">
+    <label for="recherche-regles">Rechercher</label>
+    <input type="search" id="recherche-regles" name="q" value="{{ recherche }}"
+           placeholder="Un mot de la règle, un code (R007, A2-G3)..." autocomplete="off">
+  </div>
+  {%- for nom, libelle, choix, valeur in filtres %}
+  <div class="champ">
+    <label for="filtre-{{ nom }}">{{ libelle }}</label>
+    <select id="filtre-{{ nom }}" name="{{ nom }}">
+      <option value="">Tous</option>
+      {%- for valeur_option, libelle_option in choix %}
+      <option value="{{ valeur_option }}"{% if valeur_option == valeur %} selected{% endif %}>{{ libelle_option }}</option>
+      {%- endfor %}
+    </select>
+  </div>
+  {%- endfor %}
+  <button type="submit" class="bouton sans-js">Filtrer</button>
+</form>
+
+<div id="zone-liste" aria-live="polite">
+  {% include "donnees/_regles_zone.html" %}
+</div>
+{% endblock %}
