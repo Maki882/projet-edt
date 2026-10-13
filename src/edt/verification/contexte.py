@@ -19,8 +19,8 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte, codes_par_defaut, normaliser_codes
-from edt.domaine.enumerations import CibleIndisponibilite, Gravite
+from edt.domaine.contraintes import CodeContrainte, Niveau, codes_par_defaut, normaliser_codes
+from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR
 from edt.domaine.instantane import (
     Besoin,
@@ -29,6 +29,14 @@ from edt.domaine.instantane import (
     Instantane,
     Placement,
     Salle,
+)
+from edt.domaine.regles import (
+    NaturePersonne,
+    Personne,
+    ReglageDejeuner,
+    ReglagePause,
+    RegleResolue,
+    Source,
 )
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.verification.contrat import Anomalie
@@ -183,6 +191,7 @@ def cle_tri(anomalie: Anomalie) -> tuple:
     return (
         ORDRE_GRAVITE[anomalie.gravite],
         ORDRE_CODES[anomalie.code],
+        -1 if anomalie.regle_id is None else anomalie.regle_id,
         anomalie.date or dt.date.min,
         -1 if anomalie.jour is None else anomalie.jour,
         tuple(cle_naturelle_seance(seance) for seance in anomalie.seances),
@@ -199,11 +208,20 @@ class Contexte:
     """Instantané, codes actifs et index partagés par les règles d'une vérification."""
 
     def __init__(
-        self, instantane: Instantane, codes: frozenset[CodeContrainte], *, datee: bool
+        self,
+        instantane: Instantane,
+        codes: frozenset[CodeContrainte],
+        *,
+        datee: bool,
+        niveaux_regles: dict[int, Niveau] | None = None,
     ) -> None:
         self.instantane = instantane
         self.codes = codes
         self.datee = datee
+        self.niveaux_regles: dict[int, Niveau] = dict(niveaux_regles or {})
+        self._personnes: dict[int, tuple[Personne, ...]] = {}
+        self._connues = frozenset(emploi.personne for emploi in instantane.emplois)
+        self._feuilles = frozenset(instantane.groupes_feuilles)
         self.parametres = instantane.parametres
         self.toutes_semaines = frozenset(semaine.numero for semaine in instantane.semaines)
         self._campus = {campus.id: campus for campus in instantane.campus}
@@ -278,6 +296,114 @@ class Contexte:
         groupes = {g for g in besoin_a.groupes if not lies(g).isdisjoint(besoin_b.groupes)}
         groupes |= {g for g in besoin_b.groupes if not lies(g).isdisjoint(besoin_a.groupes)}
         return tuple(sorted(groupes))
+
+    # -- personnes et réglages ---------------------------------------------------
+
+    def personnes_de(self, element: Element) -> tuple[Personne, ...]:
+        """Personnes (groupes feuilles, enseignants non fictifs) dont l'emploi du temps a la séance.
+
+        Même définition que `Instantane.emplois` (groupe feuille : séances de
+        sa lignée), calculée à partir du besoin pour couvrir aussi une séance
+        datée sans séance hebdomadaire. Seules les personnes qui ont un emploi
+        du temps dans l'instantané sont rendues.
+        """
+        besoin = element.besoin
+        valeur = self._personnes.get(besoin.id)
+        if valeur is None:
+            feuilles = sorted(
+                feuille for groupe in besoin.groupes for feuille in self._feuilles_de(groupe)
+            )
+            personnes = [Personne(NaturePersonne.GROUPE, f) for f in dict.fromkeys(feuilles)]
+            personnes += [
+                Personne(NaturePersonne.ENSEIGNANT, e)
+                for e in sorted(self.enseignants_reels(besoin))
+            ]
+            valeur = tuple(p for p in personnes if p in self._connues)
+            self._personnes[besoin.id] = valeur
+        return valeur
+
+    def _feuilles_de(self, groupe: int) -> tuple[int, ...]:
+        if groupe in self._feuilles:
+            return (groupe,)
+        return tuple(f for f in self.instantane.feuilles(groupe) if f in self._feuilles)
+
+    def dejeuner_de(self, personne: Personne) -> ReglageDejeuner | None:
+        """Réglage du déjeuner d'une personne (`None` si elle n'a pas d'emploi du temps)."""
+        return self.instantane.reglages.dejeuner.get(personne)
+
+    def pause_de(self, personne: Personne) -> ReglagePause | None:
+        """Réglage de la pause d'une personne (`None` si elle n'a pas d'emploi du temps)."""
+        return self.instantane.reglages.pause.get(personne)
+
+    def entorses_jours(self, element: Element) -> tuple[Source, ...]:
+        """Sources (standard ou règles) enfreintes par le jour de la séance placée.
+
+        Les jours permis viennent de `Instantane.reglages` (standard et règles
+        retenues par axe, campus de la salle compris). Une séance datée sans
+        séance hebdomadaire n'a que le standard : jours travaillés, plus le
+        samedi si son type de séance l'autorise.
+        """
+        campus = None if element.salle_id is None else self.salle(element.salle_id).campus_id
+        if element.seance_id is not None and element.seance_id in self.instantane.reglages.jours:
+            sources = self.instantane.reglages.jours_de(element.seance_id).entorses(
+                element.jour, campus
+            )
+            if element.date is None:
+                return sources
+            semaine = self.instantane.semaine_du(element.date)
+            numero = None if semaine is None else semaine.numero
+            return tuple(s for s in sources if s.regle is None or numero in s.regle.semaines)
+        standard = set(self.instantane.jours_travailles)
+        if element.besoin.samedi_autorise:
+            standard.add(SAMEDI)
+        if element.jour in standard:
+            return ()
+        return (Source(contrainte=CodeContrainte.JOURS),)
+
+    def semaines_regle(self, regle: RegleResolue, element: Element) -> frozenset[int] | None:
+        """Semaines où la règle vaut pour la séance placée ; vide si elle ne vaut jamais.
+
+        Semaine type : semaines actives de la séance couvertes par la règle.
+        Couche datée : `None` si la semaine de la date est couverte, vide sinon.
+        """
+        if element.date is None:
+            return (element.semaines or frozenset()) & regle.semaines
+        semaine = self.instantane.semaine_du(element.date)
+        couverte = semaine is not None and semaine.numero in regle.semaines
+        return None if couverte else frozenset()
+
+    def campus_de(self, element: Element) -> int | None:
+        """Campus de la salle de la séance placée, `None` sans salle."""
+        return None if element.salle_id is None else self.salle(element.salle_id).campus_id
+
+    def nom_personne(self, personne: Personne) -> str:
+        """« le groupe A1-G1 » ou le nom de l'enseignant."""
+        if personne.nature is NaturePersonne.ENSEIGNANT:
+            return self.nom_enseignant(personne.id)
+        return f"le groupe {self.code_groupe(personne.id)}"
+
+    def nommer_groupes(self, groupes: Iterable[int]) -> tuple[list[int], list[int]]:
+        """Groupes à nommer pour un ensemble de groupes feuilles, et tous les groupes en cause.
+
+        Un ascendant dont toutes les feuilles sont dans l'ensemble est nommé à
+        leur place (une séance de promotion sans pause : « le groupe A1 »).
+        Renvoie (groupes nommés, groupes en cause : feuilles et ascendants nommés).
+        """
+        feuilles = set(groupes)
+        couverts: set[int] = set()
+        nommes: list[int] = []
+        candidats = sorted(
+            {a for f in feuilles for a in self.instantane.ascendants(f)},
+            key=lambda g: len(self.instantane.lignee(g)),
+        )
+        for ascendant in candidats:
+            sous_feuilles = set(self._feuilles_de(ascendant))
+            if sous_feuilles and sous_feuilles <= feuilles and not sous_feuilles <= couverts:
+                if not any(a in nommes for a in self.instantane.ascendants(ascendant)):
+                    nommes.append(ascendant)
+                    couverts |= sous_feuilles
+        nommes += sorted(feuilles - couverts)
+        return nommes, sorted(feuilles | set(nommes))
 
     def ressources(self, element: Element) -> dict[str, tuple[int, ...]]:
         """Toutes les ressources d'une séance placée (champs `salles`, `enseignants`, `groupes`)."""
@@ -462,8 +588,13 @@ class Contexte:
         occurrences: Iterable[int] = (),
         jour: int | None = None,
         date: dt.date | None = None,
+        regle: RegleResolue | None = None,
     ) -> Anomalie:
-        """Construit une anomalie : identifiants triés et dédoublonnés, repris des éléments."""
+        """Construit une anomalie : identifiants triés et dédoublonnés, repris des éléments.
+
+        Avec `regle`, l'anomalie porte son identifiant, son code et sa phrase
+        (le code de l'anomalie est alors `REGLE`).
+        """
         elements = tuple(elements)
         seances_concernees = set(seances) | {e.seance_id for e in elements if e.seance_id}
         occurrences = set(occurrences) | {
@@ -481,4 +612,7 @@ class Contexte:
             jour=jour,
             date=date,
             besoins=tuple(sorted(set(besoins) | {e.besoin.id for e in elements})),
+            regle_id=None if regle is None else regle.id,
+            regle_code=None if regle is None else regle.code,
+            regle_phrase=None if regle is None else regle.phrase,
         )

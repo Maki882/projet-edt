@@ -38,7 +38,7 @@ from edt.domaine.contraintes import CodeContrainte, Niveaux
 from edt.domaine.enumerations import SAMEDI
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Creneau, Instantane, Placement
-from edt.erreurs import ErreurDonneesInvalides
+from edt.domaine.regles import NaturePersonne, Personne
 from edt.verification.contexte import Element
 from edt.verification.contrat import Anomalie
 from edt.verification.semaine_type import construire_elements, valider_placements, verifier
@@ -197,47 +197,33 @@ def _configurations(elements: list[Element]) -> dict[tuple[int, ...], int]:
     return dict(configurations)
 
 
-def _ascendants(instantane: Instantane, groupe_id: int) -> set[int]:
-    lignee: set[int] = set()
-    courant = instantane.groupe(groupe_id).parent_id
-    while courant is not None:
-        if courant == groupe_id or courant in lignee:
-            raise ErreurDonneesInvalides(
-                f"L'arbre des groupes contient une boucle autour du groupe {groupe_id}."
-            )
-        lignee.add(courant)
-        courant = instantane.groupe(courant).parent_id
-    return lignee
-
-
 def _journees_des_personnes(
     instantane: Instantane, elements: list[Element]
-) -> tuple[list[list[Element]], list[list[Element]]]:
-    """Séances de chaque (groupe feuille, jour) et de chaque (enseignant non fictif, jour)."""
-    parents = {groupe.parent_id for groupe in instantane.groupes if groupe.parent_id is not None}
-    par_groupe: dict[int, list[Element]] = defaultdict(list)
-    par_enseignant: dict[int, list[Element]] = defaultdict(list)
+) -> tuple[list[tuple[Personne, list[Element]]], list[tuple[Personne, list[Element]]]]:
+    """Journées de chaque groupe feuille et de chaque enseignant non fictif.
+
+    Emploi du temps de chaque personne : `Instantane.emplois` (définition
+    unique : un groupe feuille suit ses séances et celles de ses ascendants).
+    Renvoie, pour les groupes puis pour les enseignants, des couples
+    (personne, séances placées d'un jour), un par personne et par jour.
+    """
+    par_seance: dict[str, list[Element]] = defaultdict(list)
     for element in elements:
-        for groupe in element.besoin.groupes:
-            par_groupe[groupe].append(element)
-        for enseignant in element.besoin.enseignants:
-            if not instantane.enseignant(enseignant).fictif:
-                par_enseignant[enseignant].append(element)
-
-    def par_jour(seances: Iterable[Element]) -> list[list[Element]]:
+        if element.seance_id is not None:
+            par_seance[element.seance_id].append(element)
+    groupes: list[tuple[Personne, list[Element]]] = []
+    enseignants: list[tuple[Personne, list[Element]]] = []
+    for emploi in instantane.emplois:
         jours: dict[int, list[Element]] = defaultdict(list)
-        for element in sorted(set(seances), key=lambda e: e.position):
+        places = sorted(
+            (e for seance in emploi.seances for e in par_seance.get(seance, ())),
+            key=lambda e: e.position,
+        )
+        for element in places:
             jours[element.jour].append(element)
-        return [jours[jour] for jour in sorted(jours)]
-
-    journees_groupes: list[list[Element]] = []
-    for groupe in sorted(g.id for g in instantane.groupes if g.id not in parents):
-        lignee = {groupe} | _ascendants(instantane, groupe)
-        journees_groupes.extend(par_jour(e for g in lignee for e in par_groupe.get(g, ())))
-    journees_enseignants: list[list[Element]] = []
-    for enseignant in sorted(par_enseignant):
-        journees_enseignants.extend(par_jour(par_enseignant[enseignant]))
-    return journees_groupes, journees_enseignants
+        cible = groupes if emploi.personne.nature is NaturePersonne.GROUPE else enseignants
+        cible.extend((emploi.personne, jours[jour]) for jour in sorted(jours))
+    return groupes, enseignants
 
 
 # --------------------------------------------------------------------------- #
@@ -265,23 +251,30 @@ def _utilisation_salles(
 
 def _trous(instantane: Instantane, elements: list[Element]) -> tuple[int, int, int]:
     parametres = instantane.parametres
-    # Pause déjeuner retirée des trous en minutes : en mode fixe, la plage réservée ; en mode
-    # libre, les N premières minutes libres de la fenêtre (calculées par journée) ; en mode
-    # aucun, rien. La séparation matin / après-midi reste `dejeuner_debut_min` dans tous les cas.
-    dejeuner = [parametres.plage_dejeuner] if parametres.plage_dejeuner else []
-    fenetre = parametres.fenetre_dejeuner
+    # Pause déjeuner retirée des trous en minutes, selon le déjeuner de chaque groupe feuille
+    # (`Instantane.reglages` : standard ou règle `PAUSE_DEJEUNER`) : en mode fixe, la plage
+    # réservée ; en mode libre, les N premières minutes libres de la fenêtre (calculées par
+    # journée) ; en mode aucun, rien. La séparation matin / après-midi reste
+    # `dejeuner_debut_min` dans tous les cas.
+    reglages = instantane.reglages.dejeuner
     creneaux_par_jour: dict[int, list[Creneau]] = defaultdict(list)
     for creneau in instantane.creneaux:
         creneaux_par_jour[creneau.jour].append(creneau)
 
     demi_journees = journees = creneaux_libres = 0
     groupes, _ = _journees_des_personnes(instantane, elements)
-    for journee in groupes:
+    for personne, journee in groupes:
+        reglage = reglages.get(personne)
+        plage_fixe = None if reglage is None else reglage.plage
+        fenetre = None if reglage is None else reglage.fenetre
         for actifs, nb_semaines in _configurations(journee).items():
             seances = [journee[i] for i in actifs]
             plages = [(e.debut, e.fin) for e in seances]
             premier, dernier = min(p[0] for p in plages), max(p[1] for p in plages)
-            pause = dejeuner if fenetre is None else _pause_libre(fenetre, premier, dernier, plages)
+            if fenetre is not None:
+                pause = _pause_libre(fenetre, premier, dernier, plages)
+            else:
+                pause = [plage_fixe] if plage_fixe else []
             journees += nb_semaines * _minutes_libres(premier, dernier, [*plages, *pause])
             for moitie in (
                 [p for p in plages if p[0] < parametres.dejeuner_debut_min],
@@ -328,9 +321,9 @@ def _changements_campus(instantane: Instantane, elements: list[Element]) -> tupl
     campus_des_salles = {salle.id: salle.campus_id for salle in instantane.salles}
     groupes, enseignants = _journees_des_personnes(instantane, elements)
 
-    def compter(journees: list[list[Element]]) -> int:
+    def compter(journees: list[tuple[Personne, list[Element]]]) -> int:
         total = 0
-        for journee in journees:
+        for _, journee in journees:
             for actifs, nb_semaines in _configurations(journee).items():
                 suite = [
                     campus_des_salles[e.salle_id]
