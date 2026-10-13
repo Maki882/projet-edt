@@ -420,6 +420,75 @@ pour une version produite avant les niveaux sans contrainte désactivée : les
 contraintes importantes par défaut (`PAUSE`, `DEJEUNER`, `EQUIPEMENT`,
 `MAX_ENSEIGNANT`) y sont désormais des avertissements, plus des erreurs.
 
+## Règles personnalisées (code `REGLE`)
+
+Conception : `docs/regles-personnalisees.md` (§ 2.2 et § 4.4). Les règles
+actives de l'année (`Instantane.regles`, déjà résolues) sont vérifiées par
+`edt.verification.regles_personnalisees` : un vérificateur par type, déclaré
+dans le registre du domaine (`@enregistrer("verificateur", TypeRegle.X)`,
+vue `VERIFICATEURS`). `types_non_couverts("verificateur")` liste les types
+qui n'en ont pas encore ; une règle d'un tel type donne un **avertissement**
+« pas encore vérifié automatiquement » (jamais de silence, jamais bloquant).
+
+**Quelles règles, à quel niveau.** Les règles sont vérifiées si `REGLE` l'est
+(clé de `niveaux`, ou code de `contraintes_actives`, ou contraintes par
+défaut). `niveaux_regles` (`dict[int, Niveau]`, argument nommé de `verifier`,
+`verifier_occurrences`, `calculer_indicateurs` et des services) dit
+lesquelles et à quel niveau ; sans lui, chaque règle à son niveau. **Une règle
+absente est ignorée, comme si elle n'existait pas** : pour une règle de
+réglage (jours, déjeuner, pause), le standard reprend sa place pour sa portée
+(le vérificateur travaille alors sur un instantané sans elle). La gravité
+d'une anomalie `REGLE` suit **toujours** le niveau de sa règle (nécessaire :
+erreur, important : avertissement, facultatif : information), avec le même
+plafond et le même début de message que les contraintes du catalogue ; ses
+champs `regle_id`, `regle_code` et `regle_phrase` nomment la règle.
+
+**Message** : « Règle R007 (phrase de la règle) : l'écart. » Unité d'une
+anomalie : une par séance (types de sorte séance), une par personne et par
+jour (`PAUSE_DEJEUNER`, personnes dans la même situation réunies), une par
+paire (`PAUSE_MINIMALE`). Une séance imposée (début imposé, ponctuelle, verrou
+resté à sa place) qui s'écarte d'une règle de jours, d'horaires ou de
+déjeuner donne une information.
+
+**Pas de double signalement** : les jours, le déjeuner et la pause de chaque
+séance ou personne sont lus dans `Instantane.reglages`, avec leur source.
+`JOURS`, `DEJEUNER` et `PAUSE` ne relèvent que les entorses au **standard** ;
+quand la valeur vient d'une règle, c'est la règle qui relève l'entorse, à son
+niveau. Les emplois du temps (déjeuner libre, pause, indicateurs) sont ceux de
+`Instantane.emplois` : un groupe feuille suit ses séances et celles de ses
+ascendants, un enseignant non fictif les siennes.
+
+| Type | Vérification (temps A) |
+|---|---|
+| `JOURS_TRAVAILLES` | séance placée un jour qu'exclut la règle **retenue** pour elle par la précédence (`ReglesJours.entorses`, campus de la salle compris) |
+| `PLAGE_HORAIRE` | séance qui commence avant `debut` ou finit après `fin`, les jours visés (tous si vide) |
+| `CRENEAUX_INTERDITS` | séance qui recoupe `[debut, fin[` un jour visé |
+| `CAMPUS` | séance sur un campus non imposé (ou interdit) ; séance sans salle : non vérifiée |
+| `SALLES` | séance hors des salles imposées (ou dans une salle interdite) ; sans salle : non vérifiée |
+| `PAUSE_DEJEUNER` | personne dont le déjeuner vient de la règle, un jour sans pause conforme : mode fixe, une séance recoupe la plage ; mode libre, pas `duree` minutes libres d'affilée dans la fenêtre un jour où elle a cours dans la fenêtre |
+| `PAUSE_MINIMALE` | paire de séances d'une personne réglée par la règle, sans chevauchement, séparées de moins de `duree` |
+
+Période : sur la semaine type, une règle vaut pour les semaines actives de la
+séance qu'elle couvre (précisées dans le message) ; sur les séances datées,
+pour une date dont la semaine est couverte (`RegleResolue` ne garde que les
+semaines). Les règles de sorte séance concernent un besoin entier, ce qui
+couvre aussi une séance datée sans séance hebdomadaire ; une portée campus ne
+vaut que pour les séances placées sur ce campus.
+
+**Niveaux d'une version** (`edt.services.niveaux`) :
+`niveaux_regles_de_version(session, version_id)` prend les règles
+**actuelles** (actives de l'année) et `niveaux_regles_du_calcul` (pur) leur
+donne un niveau d'après `calcul.parametres["regles"]` (liste `{id, code,
+type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
+
+- calcul sans cette copie, ou version de référence : chaque règle à son niveau ;
+- règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
+- règle absente de la copie : à son niveau si elle a été créée ou modifiée
+  (activation comprise) après le début du calcul, sinon ignorée (elle
+  existait et n'a pas été appliquée).
+
+Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
+
 ## Service (`edt.services.verification`)
 
 Fonctions typées, appelées par la commande et par l'interface. Elles lisent
