@@ -379,15 +379,24 @@ class Regles:
         return entrees
 
     def indisponible_le(
-        self, cible: CibleIndisponibilite, ressource_id: int, date: dt.date, debut: int, fin: int
+        self,
+        cible: CibleIndisponibilite,
+        ressource_id: int,
+        date: dt.date,
+        debut: int,
+        fin: int,
+        datees_seulement: bool = False,
     ) -> Indisponibilite | None:
         """Première indisponibilité dure, récurrente ou datée, qui recoupe `[debut, fin[` ce jour-là.
 
-        C'est la règle de la couche datée.
+        C'est la règle de la couche datée. Avec `datees_seulement`, les
+        indisponibilités récurrentes sont passées (une règle `DISPO_*` souple
+        les a déjà arbitrées dans la semaine type).
         """
         for indisponibilite in self.instantane.indisponibilites_de(cible, ressource_id):
             if (
                 indisponibilite.dure
+                and not (datees_seulement and indisponibilite.recurrente)
                 and indisponibilite.concerne(date)
                 and se_chevauchent(debut, fin, indisponibilite.debut, indisponibilite.fin)
             ):

@@ -471,9 +471,12 @@ def _placer(
         nb_examinees += 1
         fin = debut + duree
         candidate = dataclasses.replace(origine, date=date, debut=debut, fin=fin, salle_id=None)
-        if empechement(regles, besoin, candidate) is not None:
-            refus["un jour fermé ou une indisponibilité"] += 1
-            continue
+        obstacle = empechement(regles, besoin, candidate, toutes_les_souples=True)
+        if obstacle is not None:
+            if regles.dure(obstacle[0]):
+                refus["un jour fermé ou une indisponibilité"] += 1
+                continue
+            cout += regles.poids(obstacle[0])  # indisponibilité sous une règle souple : une entorse
         if planning.maximum_depasse(besoin, date, duree):
             if regles.dure(C.MAX_ENSEIGNANT):
                 refus["le maximum horaire d'un enseignant"] += 1

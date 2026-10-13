@@ -478,6 +478,78 @@ def test_deux_verrous_sur_deux_campus_et_trajet_souple():
     assert resultat.statistiques["entorses"] == {"CAMPUS_TRAJET": 1}
 
 
+@pytest.mark.parametrize(
+    ("cible", "code"),
+    [
+        (CibleIndisponibilite.ENSEIGNANT, "DISPO_ENSEIGNANT"),
+        (CibleIndisponibilite.GROUPE, "DISPO_GROUPE"),
+    ],
+)
+def test_indisponibilite_datee_souple_fait_replacer_l_occurrence(cible, code):
+    """Souple, une indisponibilité récurrente n'empêche rien (la semaine type l'a arbitrée) ; une
+    indisponibilité datée, que la semaine type ignore, envoie l'occurrence au replacement, qui
+    préfère un autre jour à une entorse."""
+    f = Fabrique(nb_semaines=3)
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant("Mme Martin")])
+    f.indisponibilite(cible, 1, jour=LUNDI)  # récurrente : arbitrée par la semaine type
+    f.indisponibilite(cible, 1, date_debut=RENTREE + SEMAINE)  # datée : le lundi de la 2e semaine
+    f.indisponibilite(cible, 1, jour=MARDI)  # récurrente : le mardi coûtera une entorse
+    instantane = f.instantane()
+    niveaux = niveaux_avec(**{code: "important"})
+    placements = [place("1-1", LUNDI, C1, 1)]
+    instancie = instancier(instantane, placements, niveaux=niveaux)
+    assert [(r.occurrence.date, r.code.value) for r in instancie.a_replacer] == [
+        (RENTREE + SEMAINE, code)
+    ]
+    assert "est indisponible le 14/09/2026" in instancie.a_replacer[0].raison
+    assert [o.date for o in instancie.occurrences] == [RENTREE, RENTREE + 2 * SEMAINE]
+    resultat = replacer(
+        instantane,
+        instancie.occurrences,
+        [revoir.occurrence for revoir in instancie.a_replacer],
+        OptionsReplacement(niveaux=niveaux),
+    )
+    (replacement,) = resultat.replacements
+    assert replacement.replacee, replacement.raison
+    # Rester le lundi (datée) ou aller au mardi (récurrente) coûterait une entorse : le mercredi.
+    assert replacement.occurrence.date == RENTREE + SEMAINE + dt.timedelta(days=2)
+    assert replacement.cout == 20
+    # Règle nécessaire : l'indisponibilité récurrente aussi fait replacer, dès l'instanciation.
+    assert len(instancier(instantane, placements, niveaux=NIVEAUX_DURS).a_replacer) == 3
+
+
+def test_replacement_paie_une_indisponibilite_souple():
+    """La place de la même semaine tombe pendant une indisponibilité récurrente de l'enseignante :
+    prise si la règle est facultative (20 < une autre semaine), pas si elle est importante."""
+    f = Fabrique(nb_semaines=3, creneaux=grille(jours=[LUNDI, MARDI], samedi=False))
+    f.salle("N101")
+    martin = f.enseignant("Mme Martin")
+    f.besoin([f.groupe("A1")], [martin])
+    f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, martin, jour=MARDI)
+    lundi_ferme = RENTREE + SEMAINE
+    f.jour_ferme(lundi_ferme)
+    instantane = f.instantane()
+    placements = [place("1-1", LUNDI, C1, 1)]
+    for niveau, meme_semaine in (("facultatif", True), ("important", False), ("necessaire", False)):
+        niveaux = niveaux_avec(DISPO_ENSEIGNANT=niveau)
+        instancie = instancier(instantane, placements, niveaux=niveaux)
+        resultat = replacer(
+            instantane,
+            instancie.occurrences,
+            [revoir.occurrence for revoir in instancie.a_replacer],
+            OptionsReplacement(niveaux=niveaux),
+        )
+        (replacement,) = resultat.replacements
+        assert replacement.replacee, replacement.raison
+        nouvelle = replacement.occurrence
+        if meme_semaine:
+            assert (nouvelle.date, nouvelle.debut) == (lundi_ferme + dt.timedelta(days=1), C1)
+            assert replacement.cout == 10 + 20  # un jour, une entorse
+        else:
+            assert nouvelle.date.isocalendar()[1] != lundi_ferme.isocalendar()[1]
+
+
 def test_reproductible_a_un_fil_avec_des_entorses():
     instantane = _deux_seances_sans_pause().instantane()
     reglages = options(niveaux=niveaux_avec(PAUSE="important"), optimiser=True)
