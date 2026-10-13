@@ -28,7 +28,6 @@ from edt.domaine.instantane import (
 from edt.domaine.parametres import Parametres
 from edt.domaine.regles import (
     CATALOGUE_TYPES,
-    REGISTRES,
     REGLES_DE_BASE,
     ErreurSaisie,
     EtatRegle,
@@ -106,7 +105,11 @@ def test_regles_de_base_et_description_du_catalogue():
     assert "intersection" in description["precedence_des_jours"]
 
 
-def test_registre_des_implementations():
+def test_registre_des_implementations(monkeypatch):
+    # Registres vierges pour le test : les lots solveur et vérificateur remplissent les vrais.
+    import edt.domaine.regles as module_regles
+
+    monkeypatch.setattr(module_regles, "REGISTRES", {"solveur": {}, "verificateur": {}})
     assert types_non_couverts("solveur") == frozenset(TypeRegle)
     assert types_non_couverts("verificateur") == frozenset(TypeRegle)
 
@@ -114,15 +117,12 @@ def test_registre_des_implementations():
     def verifier_sans_trou():
         return "essai"
 
-    try:
-        assert TypeRegle.SANS_TROU not in types_non_couverts("verificateur")
-        assert REGISTRES["verificateur"][TypeRegle.SANS_TROU]() == "essai"
-        with pytest.raises(ErreurDonneesInvalides, match="déjà une implémentation"):
-            enregistrer("verificateur", TypeRegle.SANS_TROU)(verifier_sans_trou)
-        with pytest.raises(ErreurDonneesInvalides, match="Registre inconnu"):
-            enregistrer("interface", TypeRegle.SANS_TROU)
-    finally:
-        REGISTRES["verificateur"].pop(TypeRegle.SANS_TROU)
+    assert TypeRegle.SANS_TROU not in types_non_couverts("verificateur")
+    assert module_regles.REGISTRES["verificateur"][TypeRegle.SANS_TROU]() == "essai"
+    with pytest.raises(ErreurDonneesInvalides, match="déjà une implémentation"):
+        enregistrer("verificateur", TypeRegle.SANS_TROU)(verifier_sans_trou)
+    with pytest.raises(ErreurDonneesInvalides, match="Registre inconnu"):
+        enregistrer("interface", TypeRegle.SANS_TROU)
 
 
 # --------------------------------------------------------------------------- #
