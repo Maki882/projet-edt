@@ -378,7 +378,9 @@ class ResultatCalcul:
     - `entorses` : entorses aux règles importantes ou facultatives, une
       phrase par niveau (`statistiques["entorses"]`, fourni par le moteur) ;
     - `regles_personnalisees` : règles personnalisées prises à un autre niveau
-      que le leur, ou ignorées, pour ce calcul (`calcul.parametres["regles"]`) ;
+      que celui qu'elles avaient au calcul, ou ignorées (`SuiviCalcul.regles`) ;
+      `remarque_regles` dit quand la comparaison n'a pu se faire qu'au niveau
+      actuel des règles ;
     - `entorses_regles` : entorses par règle personnalisée
       (`statistiques["entorses_regles"]`) ;
     - `qualite` : bilan de qualité du moteur, en phrases (trous, samedis,
@@ -412,6 +414,7 @@ class ResultatCalcul:
     regles: tuple[str, ...] = ()
     entorses: tuple[str, ...] = ()
     regles_personnalisees: tuple[str, ...] = ()
+    remarque_regles: str | None = None
     entorses_regles: tuple[str, ...] = ()
 
     @property
@@ -827,13 +830,28 @@ def demarrer_calcul(
     return generation.lancer_calcul(semestre_id, options)
 
 
+@dataclass(frozen=True)
+class Relance:
+    """Un calcul relancé, et les règles personnalisées que le calcul d'origine ne connaissait pas.
+
+    `regles_nouvelles` : codes des règles créées ou activées depuis, appliquées
+    à leur propre niveau (à dire à l'utilisateur).
+    """
+
+    calcul_id: int
+    regles_nouvelles: tuple[str, ...] = ()
+
+
 def relancer_calcul(
     session: Session, calcul_id: int, *, longue: bool | None = None, autre_solution: bool = False
-) -> int:
+) -> Relance:
     """Relance un calcul avec les mêmes règles ; plus longtemps et/ou avec une autre graine.
 
     Les niveaux sont ceux du calcul d'origine (`SuiviCalcul.niveaux` ; un
-    ancien calcul garde ses règles ignorées). `longue=None` garde la durée
+    ancien calcul garde ses règles ignorées), de même que ceux des règles
+    personnalisées ; une règle créée ou activée depuis s'applique à son
+    propre niveau, jamais ignorée en silence
+    (`regles_personnalisees.niveaux_pour_la_relance`). `longue=None` garde la durée
     du calcul d'origine. `autre_solution` tire
     une nouvelle graine **et** ne part pas des placements de la version
     active (sinon le moteur, guidé par eux, peut redonner le même emploi du
@@ -845,7 +863,18 @@ def relancer_calcul(
     parametres = dict(calcul.parametres or {})
     origine = generation.etat_calcul(calcul_id)
     niveaux = dict(origine.niveaux)
-    niveaux_regles = origine.niveaux_regles
+    niveaux_regles, nouvelles = regles_personnalisees.niveaux_pour_la_relance(
+        session,
+        origine,
+        exiger_semestre(session, calcul.semestre_id),
+        annee_du_semestre(session, calcul.semestre_id),
+    )
+    if nouvelles:
+        journal.info(
+            "Relance du calcul %d : règles nouvelles appliquées à leur niveau : %s",
+            calcul_id,
+            ", ".join(nouvelles),
+        )
     verification = pre_verifier(session, calcul.semestre_id, niveaux, niveaux_regles=niveaux_regles)
     if verification.bloquante:
         raise ErreurPreVerification(verification)
@@ -864,7 +893,7 @@ def relancer_calcul(
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
     )
-    return generation.lancer_calcul(calcul.semestre_id, options)
+    return Relance(generation.lancer_calcul(calcul.semestre_id, options), nouvelles)
 
 
 # --------------------------------------------------------------------------- #
@@ -915,6 +944,7 @@ def resultat_calcul(
     arrete_avec_solution = issue == Issue.REUSSI and bool(
         statistiques.get("arrete_par_utilisateur")
     )
+    ecarts_regles, remarque_regles = regles_personnalisees.libelles_regles_du_calcul(session, suivi)
     titre, phrase, precision = _phrases(
         suivi, issue, semestre, temps, limite_texte, version_active, arrete_avec_solution
     )
@@ -949,7 +979,8 @@ def resultat_calcul(
             suivi.niveaux, dejeuner_actif=dejeuner_actif_du_calcul(session, suivi)
         ),
         entorses=_entorses(calcul_id, statistiques, suivi.niveaux),
-        regles_personnalisees=regles_personnalisees.libelles_regles_du_calcul(session, suivi),
+        regles_personnalisees=ecarts_regles,
+        remarque_regles=remarque_regles,
         entorses_regles=regles_personnalisees.libelles_entorses_regles(
             session, suivi, statistiques, annee_du_semestre(session, semestre.id)
         ),

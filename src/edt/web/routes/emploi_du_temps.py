@@ -285,6 +285,7 @@ def page(
         export=urlencode(export),
         JOURS=JOURS,
         origine_cible=origine,
+        annee_regles=annee_id,
     )
     reponse = rendre(request, "edt/emploi_du_temps.html", contexte, messages=messages)
     if vue.cible is not None:
@@ -317,6 +318,13 @@ def _panneau(session, seance: str, vue: vues.VueEmploiDuTemps) -> dict:
 # --------------------------------------------------------------------------- #
 
 
+def _annee_de_la_version(session, version_id: int) -> int:
+    """Année scolaire d'une version : les liens des règles citées ouvrent la liste de cette année."""
+    return versions.annee_du_semestre(
+        session, versions.lire_version(session, version_id).semestre_id
+    )
+
+
 def _rendre_panneau_seance(request, session, formulaire, retour, *, resultat=None, statut=200):
     detail = modifications.anomalies_seance(session, formulaire.bloc.seance_hebdo_id)
     return rendre(
@@ -324,6 +332,7 @@ def _rendre_panneau_seance(request, session, formulaire, retour, *, resultat=Non
         "edt/_panneau_seance.html",
         {
             "fmt": presentation,
+            "annee_regles": _annee_de_la_version(session, formulaire.version_id),
             "f": formulaire,
             "retour": retour,
             "resultat": resultat,
@@ -433,6 +442,7 @@ def _rendre_panneau_occurrence(request, session, formulaire, retour, *, resultat
         "edt/_panneau_occurrence.html",
         {
             "fmt": presentation,
+            "annee_regles": _annee_de_la_version(session, formulaire.version_id),
             "f": formulaire,
             "retour": retour,
             "resultat": resultat,

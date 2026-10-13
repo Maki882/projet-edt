@@ -33,6 +33,7 @@ from edt.services.emploi_du_temps import presentation, raccords
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
+    annee_du_semestre,
     lire_version,
     lister_semestres,
 )
@@ -184,7 +185,11 @@ def a_traiter_version(session: Session, semestre: ResumeSemestre, version_id: in
     datees = None
     if version.nb_occurrences:
         datees = raccords.controler_occurrences(session, version_id)
-    gravites_hebdo = _grouper(hebdo.verification.anomalies, liens) if hebdo.verification else ()
+    # Année du semestre : le lien d'une règle citée ouvre la liste de cette année.
+    annee_id = annee_du_semestre(session, semestre.id)
+    gravites_hebdo = (
+        _grouper(hebdo.verification.anomalies, liens, annee_id) if hebdo.verification else ()
+    )
     gravites_datees: tuple[GroupeGravite, ...] = ()
     decochees = list(hebdo.decochees)
     if datees is not None and datees.verification is not None:
@@ -192,7 +197,7 @@ def a_traiter_version(session: Session, semestre: ResumeSemestre, version_id: in
             session,
             (o for a in (*datees.verification.anomalies, *datees.decochees) for o in a.occurrences),
         )
-        gravites_datees = _grouper(datees.verification.anomalies, liens)
+        gravites_datees = _grouper(datees.verification.anomalies, liens, annee_id)
         decochees.extend(datees.decochees)
     return ATraiter(
         semestre=semestre,
@@ -203,7 +208,9 @@ def a_traiter_version(session: Session, semestre: ResumeSemestre, version_id: in
         gravites_datees=gravites_datees,
         a_programmer=_a_programmer(session, version_id, liens),
         decochees=tuple(
-            contrainte for groupe in _grouper(decochees, liens) for contrainte in groupe.contraintes
+            contrainte
+            for groupe in _grouper(decochees, liens, annee_id)
+            for contrainte in groupe.contraintes
         ),
         contraintes_decochees=presentation.libelles_contraintes(hebdo.contraintes_decochees),
     )
@@ -220,7 +227,9 @@ def _nb_a_traiter(controle: raccords.Controle) -> int:
 # --------------------------------------------------------------------------- #
 
 
-def _grouper(anomalies: Sequence[Anomalie], liens: _Liens) -> tuple[GroupeGravite, ...]:
+def _grouper(
+    anomalies: Sequence[Anomalie], liens: _Liens, annee_id: int | None = None
+) -> tuple[GroupeGravite, ...]:
     par_gravite: dict[Gravite, dict[str, list[Anomalie]]] = defaultdict(lambda: defaultdict(list))
     for anomalie in anomalies:
         par_gravite[anomalie.gravite][str(anomalie.code)].append(anomalie)
@@ -249,7 +258,7 @@ def _grouper(anomalies: Sequence[Anomalie], liens: _Liens) -> tuple[GroupeGravit
                             liens.lien(a),
                             # Livré par le lot vérificateur : absent des anomalies plus anciennes.
                             presentation.etiquette_niveau(getattr(a, "niveau", None)),
-                            presentation.regle_citee(a),
+                            presentation.regle_citee(a, annee_id),
                         )
                         for a in liste[:LIMITE_LIGNES]
                     ),

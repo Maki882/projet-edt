@@ -109,6 +109,7 @@ def _page_calculs(
             regles=calculs.regles_proposees(niveaux),
             niveaux_proposes=calculs.NIVEAUX_PROPOSES,
             bloc_regles=bloc,
+            annee_regles=versions.annee_du_semestre(session, semestre.id),
             adresse_regles=regles_personnalisees.ADRESSE_REGLES,
             adresse_ajout_regle=regles_personnalisees.ADRESSE_AJOUT_REGLE,
             options=options,
@@ -160,7 +161,12 @@ def fragment_verifications(
         calculs.lire_niveaux(saisis),
         niveaux_regles=regles_personnalisees.niveaux_pour_le_calcul(choix_regles, bloc),
     )
-    return rendre(request, "edt/_pre_verifications.html", {"pre": pre, "fmt": presentation})
+    contexte = {
+        "pre": pre,
+        "fmt": presentation,
+        "annee_regles": versions.annee_du_semestre(session, semestre_id),
+    }
+    return rendre(request, "edt/_pre_verifications.html", contexte)
 
 
 @routeur.post("/calculs", name="lancer_calcul")
@@ -313,7 +319,7 @@ def relancer(
 ):
     """Relance un calcul avec les mêmes règles (plus longtemps, ou pour une autre solution)."""
     try:
-        nouveau = calculs.relancer_calcul(
+        relance = calculs.relancer_calcul(
             session, calcul_id, longue=longue, autre_solution=autre_solution
         )
     except ErreurCalculEnCours:
@@ -325,7 +331,15 @@ def relancer(
     except calculs.ErreurPreVerification as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
         return rediriger(request, f"/calculs?semestre_id={semestre_id}", erreur.message, "erreur")
-    return rediriger(request, f"/calculs/{nouveau}", "Calcul relancé.")
+    if relance.regles_nouvelles:
+        return rediriger(
+            request,
+            f"/calculs/{relance.calcul_id}",
+            "Calcul relancé. Règles créées ou activées depuis le calcul d'origine, appliquées à "
+            f"leur propre niveau : {', '.join(relance.regles_nouvelles)}.",
+            "info",
+        )
+    return rediriger(request, f"/calculs/{relance.calcul_id}", "Calcul relancé.")
 
 
 @routeur.get("/versions", name="versions")
