@@ -47,7 +47,6 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.domaine.contraintes import codes_actifs
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurEDT, ErreurNonLivre
 from edt.services.emploi_du_temps import memoire
@@ -260,8 +259,9 @@ def verifier_modification(
 ) -> Verification:
     """Anomalies qu'introduirait la séance `seance_id` placée ainsi (rien n'est enregistré).
 
-    `contraintes_actives` : règles à appliquer (`None` : toutes, par défaut) ;
-    une retouche passe celles du calcul de la version (`contraintes_actives_de`).
+    `contraintes_actives` : codes à vérifier **en dur** (niveaux ignorés). Une
+    retouche n'en passe pas : `None` laisse le vérificateur appliquer les
+    niveaux du calcul de la version, règles ignorées exclues.
     """
     rapport = _appeler(
         MODULE_VERIFICATION,
@@ -319,18 +319,6 @@ def contraintes_desactivees_de(session: Session, version_id: int) -> frozenset[s
         .where(m.VersionEdt.id == version_id)
     )
     return frozenset(str(code) for code in codes or ())
-
-
-def contraintes_actives_de(session: Session, version_id: int) -> frozenset[str] | None:
-    """Contraintes que respecte la version : celles du calcul (`None` : toutes, par défaut).
-
-    C'est ce que reprend l'instanciation des séances datées ; une retouche à
-    la main applique les mêmes règles.
-    """
-    desactivees = contraintes_desactivees_de(session, version_id)
-    if not desactivees:
-        return None
-    return frozenset(str(code) for code in codes_actifs(desactivees))
 
 
 def controler_version(session: Session, version_id: int) -> Controle:

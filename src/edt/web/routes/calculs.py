@@ -149,12 +149,18 @@ def lancer(
     try:
         niveaux = calculs.lire_niveaux(saisis)
     except calculs.ErreurSaisieNiveaux as erreur:
+        # La pause déjeuner saisie revient telle quelle, avec ses propres fautes s'il y en a.
+        saisie, erreurs_dejeuner = calculs.relire_saisie_dejeuner(
+            session, dejeuner, dejeuner_debut, dejeuner_fin, dejeuner_duree
+        )
         return _page_calculs(
             request,
             session,
             semestre_id,
             niveaux=erreur.niveaux,
             choix=choix,
+            dejeuner=saisie,
+            erreurs_dejeuner=erreurs_dejeuner,
             statut=422,
             messages=[Message(erreur.message, "erreur")],
         )

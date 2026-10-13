@@ -145,17 +145,20 @@ def _niveau_lu(valeur: object) -> Niveau | None:
         return None
 
 
-def libelles_niveaux(niveaux: Mapping[str, object]) -> tuple[str, ...]:
+def libelles_niveaux(
+    niveaux: Mapping[str, object], *, dejeuner_actif: bool = True
+) -> tuple[str, ...]:
     """Les règles dont le niveau s'écarte du défaut : « Pause entre deux séances : facultatif ».
 
     Dans l'ordre du catalogue ; rien si tout est au niveau par défaut. Une
-    règle absente de `niveaux` (ignorée par un calcul d'avant les niveaux)
-    n'est pas citée ici, et un code inconnu du catalogue non plus. Un niveau
-    illisible est cité tel quel plutôt que tu.
+    règle absente de `niveaux` (ignorée) n'est pas citée ici, et un code
+    inconnu du catalogue non plus. Sans pause déjeuner (`dejeuner_actif`
+    faux), la règle `DEJEUNER` ne s'applique pas : son niveau n'est pas cité.
+    Un niveau illisible est cité tel quel plutôt que tu.
     """
     phrases = []
     for code, entree in CATALOGUE.items():
-        if code not in niveaux:
+        if code not in niveaux or (code is CodeContrainte.DEJEUNER and not dejeuner_actif):
             continue
         valeur = niveaux[code]
         retenu = _niveau_lu(valeur)

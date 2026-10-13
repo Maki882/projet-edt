@@ -867,9 +867,49 @@ def resultat_calcul(
         else None,
         qualite=qualite_du_moteur(suivi.message) if issue == Issue.REUSSI else None,
         arrete_avec_solution=arrete_avec_solution,
-        regles=presentation.libelles_niveaux(suivi.niveaux),
+        regles=presentation.libelles_niveaux(
+            suivi.niveaux, dejeuner_actif=dejeuner_actif_du_calcul(session, suivi)
+        ),
         entorses=_entorses(calcul_id, statistiques, suivi.niveaux),
     )
+
+
+def dejeuner_actif_du_calcul(session: Session, suivi: generation.SuiviCalcul) -> bool:
+    """Vrai si une pause déjeuner s'appliquait au calcul (pour citer ou non la règle `DEJEUNER`).
+
+    Lu dans ce qui est enregistré avec le calcul (`statistiques` ou options,
+    clé `dejeuner_actif`) quand il y figure ; à défaut, et c'est le cas
+    aujourd'hui (le calcul n'enregistre pas la pause déjeuner), dans les
+    paramètres courants, qui ont pu changer depuis.
+    """
+    for source in (suivi.statistiques or {}, _options_enregistrees(session, suivi.id)):
+        valeur = source.get("dejeuner_actif")
+        if isinstance(valeur, bool):
+            return valeur
+    return lire_parametres(session).dejeuner_actif
+
+
+def _options_enregistrees(session: Session, calcul_id: int) -> dict:
+    calcul = session.get(m.Calcul, calcul_id)
+    return dict(calcul.parametres or {}) if calcul is not None else {}
+
+
+def relire_saisie_dejeuner(
+    session: Session, mode: str | None, debut: str | None, fin: str | None, duree: str | None
+) -> tuple[ChoixDejeuner | None, dict[str, str]]:
+    """Le bloc « Pause déjeuner » reçu, à réafficher, et ses erreurs par champ, sans rien enregistrer.
+
+    Sert quand un autre champ fait refuser le lancement : la saisie n'est
+    pas perdue et ses propres fautes sont déjà dites. `(None, {})` si le
+    bloc n'a pas été envoyé.
+    """
+    try:
+        choix = lire_saisie_dejeuner(mode, debut, fin, duree)
+        if choix is not None:
+            changements_dejeuner(session, choix)
+    except ErreurSaisieDejeuner as erreur:
+        return erreur.saisie, erreur.champs
+    return choix, {}
 
 
 ENTORSES_ILLISIBLES = (

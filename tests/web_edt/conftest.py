@@ -32,7 +32,7 @@ from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire, prechauffage
+from edt.services.emploi_du_temps import memoire, prechauffage, raccords
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -124,11 +124,15 @@ class FauxVerificateur:
         ):
             self.appels.append(("modification", seance_id, jour, debut, fin, salle_id))
             self.contraintes_modification = contraintes_actives
-            # Comme le vrai : seules les contraintes actives sont vérifiées.
-            actives = None if contraintes_actives is None else set(contraintes_actives)
-            return FauxRapport(
-                tuple(a for a in self.modification if actives is None or str(a.code) in actives)
-            )
+            # Comme le vrai : codes donnés vérifiés en dur ; sans eux, les niveaux du calcul
+            # de la version, qui excluent les règles ignorées lors de ce calcul.
+            if contraintes_actives is None:
+                ignorees = raccords.contraintes_desactivees_de(session, version_id)
+                gardees = [a for a in self.modification if str(a.code) not in ignorees]
+            else:
+                actives = set(contraintes_actives)
+                gardees = [a for a in self.modification if str(a.code) in actives]
+            return FauxRapport(tuple(gardees))
 
         module.verifier_version = verifier_version
         module.verifier_occurrences_version = verifier_occurrences_version
