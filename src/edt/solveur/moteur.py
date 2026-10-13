@@ -82,9 +82,10 @@ from edt.domaine.instantane import Instantane, Placement
 from edt.erreurs import ErreurEDT
 from edt.journal import journal_calcul_courant
 from edt.solveur.contrat import OptionsSolveur, ResultatSolveur, StatutSolveur
-from edt.solveur.modele import ModeleHoraires, Option
+from edt.solveur.modele import Bilan, ModeleHoraires, Option
 from edt.solveur.preparation import Preparation
 from edt.solveur.preverification import diagnostiquer
+from edt.solveur.regles import Regles
 from edt.solveur.salles import affecter_salles
 
 journal = logging.getLogger(__name__)
@@ -144,13 +145,15 @@ class _Interruption(Exception):
 class _Solution:
     """Une solution complète : le choix de chaque séance, ses horaires, sa salle.
 
-    `entorses` : exigences de salle souples non satisfaites, par contrainte.
+    `entorses` : exigences de salle souples non satisfaites, par contrainte ;
+    `entorses_regles` : règles `SALLES` souples enfreintes, par règle.
     """
 
     choix: tuple[int, ...]
     horaires: list[Option]
     salles: tuple[int, ...]
     entorses: dict[CodeContrainte, int]
+    entorses_regles: dict[int, int]
 
 
 class _Suivi(cp_model.CpSolverSolutionCallback):
@@ -219,6 +222,7 @@ def resoudre(
         "refuse": False,
     }
     avertissements: list[str] = []
+    niveaux_regles: dict[int, Niveau] = {}
 
     def conclure(statut: StatutSolveur, message: str, placements=()) -> ResultatSolveur:
         stats["duree_s"] = round(time.perf_counter() - debut, 3)
@@ -231,6 +235,7 @@ def resoudre(
             avertissements=tuple(avertissements),
             statistiques=stats,
             niveaux=dict(options.niveaux),
+            niveaux_regles=dict(niveaux_regles),
         )
 
     def arret_demande() -> bool:
@@ -259,7 +264,9 @@ def resoudre(
         options.contraintes_desactivees,
         options.tolerer_violations_heritees,
         options.niveaux,
+        options.niveaux_regles,
     )
+    niveaux_regles.update(preparation.regles.niveaux_regles)
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     for anomalie in anomalies:
@@ -410,7 +417,13 @@ def resoudre(
             stats["duree_salles_s"] + time.perf_counter() - debut_salles, 3
         )
         if affectation.salles is not None:
-            return _Solution(choix, horaires, affectation.salles, affectation.entorses)
+            return _Solution(
+                choix,
+                horaires,
+                affectation.salles,
+                affectation.entorses,
+                affectation.entorses_regles,
+            )
         if affectation.conflit:
             modele.interdire(choix, affectation.conflit)
             stats["nb_coupes"] = modele.nb_coupes
@@ -444,17 +457,31 @@ def resoudre(
     del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
 
-    def cout_salles(entorses: dict[CodeContrainte, int]) -> int:
+    def cout_salles(essai: _Solution) -> int:
         """Pénalité des entorses de la phase des salles, au poids de l'objectif."""
-        return sum(preparation.regles.poids(code) * nombre for code, nombre in entorses.items())
+        regles = preparation.regles
+        return sum(regles.poids(code) * nombre for code, nombre in essai.entorses.items()) + sum(
+            regles.poids_imputation(regle_id) * nombre
+            for regle_id, nombre in essai.entorses_regles.items()
+        )
+
+    def toutes_les_entorses(essai: _Solution, bilan: Bilan) -> dict:
+        """Entorses des deux phases et entorses fixes, par contrainte puis par règle."""
+        return _cumul(
+            bilan.entorses,
+            essai.entorses,
+            preparation.entorses_fixes,
+            bilan.entorses_regles,
+            essai.entorses_regles,
+        )
 
     bilan = modele.bilan(solution.choix)
     # Coût complet de la solution retenue : objectif et entorses des horaires, entorses des salles.
-    cout = bilan.total + cout_salles(solution.entorses)
+    cout = bilan.total + cout_salles(solution)
     journal.info(
         "Emploi du temps valide trouvé après %.1f s%s",
         stats["duree_premiere_solution_s"],
-        _texte_entorses(_cumul(bilan.entorses, solution.entorses, preparation.entorses_fixes)),
+        _texte_entorses(toutes_les_entorses(solution, bilan)),
     )
 
     # 4. Amélioration : on repart de la solution valide, dans le temps qui reste. Sans
@@ -470,7 +497,7 @@ def resoudre(
             )
         elif modele.poser_objectif(confort=options.optimiser):
             bilan = modele.bilan(solution.choix)
-            cout = bilan.total + cout_salles(solution.entorses)
+            cout = bilan.total + cout_salles(solution)
             modele.partir_de(valeurs)
             stats["nb_variables"] = modele.nb_variables
             stats["nb_contraintes"] = modele.nb_contraintes
@@ -512,17 +539,20 @@ def resoudre(
                         candidat.total,
                     )
                     continue
-                cout_essai = candidat.total + cout_salles(essai.entorses)
+                cout_essai = candidat.total + cout_salles(essai)
                 if cout_essai < cout:
                     solution, bilan, cout = essai, candidat, cout_essai
-                if not essai.entorses:
+                if not essai.entorses and not essai.entorses_regles:
                     break
                 journal.info(
                     "Horaires améliorés (objectif %d) : leurs salles coûtent %d d'entorses (%s), "
                     "les horaires précédents sont essayés",
                     candidat.total,
-                    cout_salles(essai.entorses),
-                    ", ".join(f"{c.value} {n}" for c, n in sorted(essai.entorses.items())),
+                    cout_salles(essai),
+                    ", ".join(
+                        f"{c.value if isinstance(c, CodeContrainte) else c} {n}"
+                        for c, n in {**essai.entorses, **essai.entorses_regles}.items()
+                    ),
                 )
             stagnation_s = suivi.stagnation_s
             if suivi.solutions:
@@ -534,6 +564,7 @@ def resoudre(
                     optimum_horaires
                     and bilan.total <= round(solveur.objective_value)
                     and not solution.entorses
+                    and not solution.entorses_regles
                 )
             else:
                 journal.info(
@@ -549,11 +580,19 @@ def resoudre(
         jour, minute = preparation.decoder(horaire.debut)
         placements.append(Placement(seance.seance.id, jour, minute, minute + seance.duree, salle))
 
-    entorses = _cumul(bilan.entorses, solution.entorses, preparation.entorses_fixes)
+    cumul = toutes_les_entorses(solution, bilan)
+    entorses = {c: n for c, n in cumul.items() if isinstance(c, CodeContrainte)}
+    entorses_regles = {c: n for c, n in cumul.items() if isinstance(c, int)}
     stats["entorses"] = {code.value: nombre for code, nombre in entorses.items()}
+    stats["entorses_regles"] = {
+        preparation.regles.regle(regle_id).code: nombre
+        for regle_id, nombre in entorses_regles.items()
+    }
     message = f"Emploi du temps trouvé : {nb_seances} séance(s) placée(s)."
     if entorses:
         message += " " + _phrase_entorses(entorses, preparation.regles.niveaux)
+    if entorses_regles:
+        message += " " + _phrase_entorses_regles(entorses_regles, preparation.regles)
     if options.optimiser and amelioration_lancee:
         stats.update(objectif=bilan.objectif, optimal=optimal)
         mesures = []
@@ -578,7 +617,7 @@ def resoudre(
             pass
         elif optimal:
             message += " On ne peut pas faire mieux avec les préférences actuelles."
-        elif solution.entorses:
+        elif solution.entorses or solution.entorses_regles:
             message += (
                 " Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent "
                 "des salles."
@@ -618,22 +657,40 @@ def resoudre(
     return conclure(StatutSolveur.SOLUTION, message, placements)
 
 
-def _cumul(*comptes: dict[CodeContrainte, int]) -> dict[CodeContrainte, int]:
-    """Somme de plusieurs décomptes d'entorses par contrainte, codes triés, zéros omis."""
-    total: dict[CodeContrainte, int] = {}
+def _cumul(*comptes: dict) -> dict:
+    """Somme de plusieurs décomptes d'entorses (par contrainte ou par règle), zéros omis."""
+    total: dict = {}
     for compte in comptes:
-        for code, nombre in compte.items():
+        for cle, nombre in compte.items():
             if nombre:
-                total[code] = total.get(code, 0) + nombre
-    return dict(sorted(total.items()))
+                total[cle] = total.get(cle, 0) + nombre
+    return dict(sorted(total.items(), key=lambda item: (isinstance(item[0], int), str(item[0]))))
 
 
-def _texte_entorses(entorses: dict[CodeContrainte, int]) -> str:
-    """Complément de journal : « , 2 entorse(s) : PAUSE 2 » ou rien."""
+def _texte_entorses(entorses: dict) -> str:
+    """Complément de journal : « , 2 entorse(s) : PAUSE 2, règle 7 1 » ou rien."""
     if not entorses:
         return ""
-    detail = ", ".join(f"{code.value} {nombre}" for code, nombre in entorses.items())
+    detail = ", ".join(
+        f"{cle.value if isinstance(cle, CodeContrainte) else f'règle {cle}'} {nombre}"
+        for cle, nombre in entorses.items()
+    )
     return f", {sum(entorses.values())} entorse(s) : {detail}"
+
+
+def _phrase_entorses_regles(entorses: dict[int, int], regles: Regles) -> str:
+    """Phrase du message pour les entorses aux règles personnalisées.
+
+    « 2 entorses à la règle R007 (Le groupe A1 ne travaille pas le samedi),
+    1 entorse à la règle R009 (...). »
+    """
+    morceaux = []
+    for regle_id, nombre in entorses.items():
+        regle = regles.regle(regle_id)
+        morceaux.append(
+            f"{nombre} entorse{'s' if nombre > 1 else ''} à la règle {regle.code} ({regle.phrase})"
+        )
+    return ", ".join(morceaux) + "."
 
 
 def _phrase_entorses(entorses: dict[CodeContrainte, int], niveaux: dict) -> str:

@@ -38,7 +38,7 @@ from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from edt.domaine.contraintes import CodeContrainte, Niveaux
+from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import CibleIndisponibilite
 from edt.domaine.heures import plage_vers_texte
 from edt.domaine.instantane import Besoin, Instantane, Occurrence, Placement
@@ -154,9 +154,9 @@ def _heurt(
     """Contrainte dure violée face à une séance en place le même jour (code, raison), ou `None`."""
     for autre in en_place:
         besoin_autre = regles.instantane.besoin(autre.besoin_id)
-        codes = [
-            code
-            for code in regles.codes_violes(
+        violations = [
+            violation
+            for violation in regles.violations_de_paire(
                 besoin,
                 occurrence.debut,
                 occurrence.fin,
@@ -166,12 +166,12 @@ def _heurt(
                 autre.fin,
                 autre.salle_id,
             )
-            if regles.dure(code)
+            if regles.dure_violation(violation)
         ]
-        if codes:
+        if violations:
             horaire = plage_vers_texte(autre.debut, autre.fin)
             return (
-                codes[0],
+                violations[0].code,
                 f"place prise par une séance saisie à la main ({besoin_autre.libelle}, le "
                 f"{autre.date:%d/%m/%Y} {horaire})",
             )
@@ -184,6 +184,7 @@ def instancier(
     contraintes_desactivees: Iterable[str] = (),
     en_place: Sequence[Occurrence] = (),
     niveaux: Niveaux | None = None,
+    niveaux_regles: dict[int, Niveau] | None = None,
 ) -> ResultatInstanciation:
     """Produit les séances datées de la semaine type `placements`.
 
@@ -196,9 +197,10 @@ def instancier(
     heurte l'une d'elles est rendue « à replacer » : la semaine type, valide
     seule, ne doit pas créer de double réservation avec une retouche.
     `niveaux` : niveaux des contraintes (voir `Regles`) ; seules les dures
-    comptent ici.
+    comptent ici. `niveaux_regles` : niveaux des règles personnalisées
+    retenues pour le calcul (`edt.solveur.personnalisees`).
     """
-    regles = Regles(instantane, contraintes_desactivees, niveaux)
+    regles = Regles(instantane, contraintes_desactivees, niveaux, niveaux_regles)
     occupees: dict[dt.date, list[Occurrence]] = defaultdict(list)
     for autre in en_place:
         if autre.statut.occupe_les_ressources:

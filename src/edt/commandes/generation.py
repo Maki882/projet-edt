@@ -2,6 +2,7 @@
 
     python -m edt pre-verifier --semestre 1
     python -m edt pre-verifier --niveau PAUSE=facultatif  # mêmes options de règles que generer
+    python -m edt generer --regle R007=facultatif --sans-regle R009   # règles personnalisées
     python -m edt generer --semestre 1 --temps-limite 120 --optimiser --graine 3
     python -m edt generer -d EQUIPEMENT -d PAUSE          # contraintes ignorées
     python -m edt generer --niveau PAUSE=facultatif       # niveau d'une contrainte
@@ -35,8 +36,10 @@ from edt.db.modeles import Semestre
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import (
     CATALOGUE,
+    Niveau,
     Niveaux,
     contrainte,
+    niveau,
     niveaux_depuis_desactivees,
     normaliser_niveaux,
 )
@@ -46,6 +49,7 @@ from edt.services import generation
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.instanciation import RapportInstanciation, instancier_version
 from edt.services.parametres import lire_parametres
+from edt.services.regles import charger_regles_actives
 from edt.services.verification import version_a_verifier
 from edt.solveur.contrat import OptionsSolveur
 
@@ -74,6 +78,81 @@ OptionNiveau = Annotated[
         "par exemple PAUSE=facultatif (option répétable).",
     ),
 ]
+
+
+OptionRegle = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--regle",
+        help="Niveau d'une règle personnalisée pour ce calcul, CODE=niveau, par exemple "
+        "R007=facultatif (option répétable).",
+    ),
+]
+OptionSansRegle = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--sans-regle",
+        help="Code d'une règle personnalisée à ne pas appliquer à ce calcul (option répétable).",
+    ),
+]
+
+
+def niveaux_regles_choisis(
+    session, semestre: Semestre, regle: list[str] | None, sans_regle: list[str] | None
+) -> dict[int, Niveau] | None:
+    """Niveaux des règles personnalisées d'après la ligne de commande, ou `None` sans option.
+
+    Les règles actives de l'année du semestre, chacune à son niveau ; `--sans-regle`
+    en retire, `--regle CODE=niveau` en change le niveau.
+    """
+    if not regle and not sans_regle:
+        return None
+    actives = charger_regles_actives(session, semestre.annee_scolaire_id)
+    par_code = {r.code: r for r in actives if r.code and r.id is not None}
+    niveaux: dict[int, Niveau] = {r.id: r.niveau for r in par_code.values()}
+
+    def trouver(code: str):
+        entree = par_code.get(code.strip())
+        if entree is None:
+            raise ErreurDonneesInvalides(
+                f"Règle personnalisée inconnue ou inactive : {code.strip()!r} (règles actives : "
+                + (", ".join(sorted(par_code)) or "aucune")
+                + ")."
+            )
+        return entree
+
+    for code in sans_regle or ():
+        niveaux.pop(trouver(code).id, None)
+    for choix in regle or ():
+        code, separateur, valeur = choix.partition("=")
+        if not separateur or not code or not valeur:
+            raise ErreurDonneesInvalides(
+                f"Option --regle : écrire CODE=niveau, par exemple R007=facultatif (lu : {choix!r})."
+            )
+        entree = trouver(code)
+        if entree.id not in niveaux:
+            raise ErreurDonneesInvalides(
+                f"La règle {entree.code} est à la fois ignorée (--sans-regle) et dotée d'un "
+                "niveau (--regle) : choisir."
+            )
+        niveaux[entree.id] = niveau(valeur)
+    return niveaux
+
+
+def _recapitulatif_des_regles(
+    session, semestre: Semestre, niveaux: dict[int, Niveau] | None
+) -> str | None:
+    """Les règles dont le niveau change pour ce calcul, et celles ignorées."""
+    if niveaux is None:
+        return None
+    actives = charger_regles_actives(session, semestre.annee_scolaire_id)
+    changements = [
+        f"{r.code} : {niveaux[r.id].libelle.lower()}"
+        for r in actives
+        if r.id in niveaux and niveaux[r.id] is not r.niveau
+    ]
+    changements += [f"{r.code} : ignorée" for r in actives if r.id not in niveaux]
+    return "Règles personnalisées : " + " ; ".join(changements) + "." if changements else None
 
 
 def niveaux_choisis(desactiver: list[str] | None, niveau: list[str] | None) -> Niveaux:
@@ -124,18 +203,22 @@ def pre_verifier(
     semestre: OptionSemestre = None,
     desactiver: OptionDesactiver = None,
     niveau: OptionNiveau = None,
+    regle: OptionRegle = None,
+    sans_regle: OptionSansRegle = None,
 ) -> None:
     """Dit, avant tout calcul, ce qui rend un emploi du temps impossible ou difficile."""
     niveaux = niveaux_choisis(desactiver, niveau)
     with session_base() as session:
         cible = _semestre(session, semestre)
         libelle = cible.libelle
+        niveaux_regles = niveaux_regles_choisis(session, cible, regle, sans_regle)
+        rappel_regles = _recapitulatif_des_regles(session, cible, niveaux_regles)
         anomalies = generation.pre_verifier_semestre(
-            session, cible.id, desactiver or (), niveaux=niveaux
+            session, cible.id, desactiver or (), niveaux=niveaux, niveaux_regles=niveaux_regles
         )
-    recapitulatif = _recapitulatif_des_niveaux(niveaux)
-    if recapitulatif:
-        typer.echo(recapitulatif)
+    for rappel in (_recapitulatif_des_niveaux(niveaux), rappel_regles):
+        if rappel:
+            typer.echo(rappel)
     erreurs = [a for a in anomalies if a.gravite is Gravite.ERREUR]
     alertes = [a for a in anomalies if a.gravite is Gravite.AVERTISSEMENT]
     typer.echo(f"Pré-vérifications du semestre « {libelle} » :")
@@ -175,6 +258,8 @@ def generer(
     ] = None,
     desactiver: OptionDesactiver = None,
     niveau: OptionNiveau = None,
+    regle: OptionRegle = None,
+    sans_regle: OptionSansRegle = None,
     fils: Annotated[
         int | None,
         typer.Option("--fils", help="Fils de calcul (défaut : paramètre ; 0 = au plus deux)."),
@@ -199,11 +284,14 @@ def generer(
     with session_base() as session:
         cible = _semestre(session, semestre)
         semestre_id, libelle = cible.id, cible.libelle
+        niveaux_regles = niveaux_regles_choisis(session, cible, regle, sans_regle)
+        rappel_regles = _recapitulatif_des_regles(session, cible, niveaux_regles)
         options = OptionsSolveur.depuis_parametres(
             lire_parametres(session),
             niveaux=niveaux_choisis(desactiver, niveau),
             graine=graine,
             tolerer_violations_heritees=tolerer,
+            niveaux_regles=niveaux_regles,
         )
     changements: dict[str, object] = {"utiliser_indices": not sans_indices}
     if temps_limite is not None:
@@ -219,9 +307,9 @@ def generer(
         f"(temps limite {options.temps_limite_s:g} s, "
         f"{'avec' if options.optimiser else 'sans'} optimisation)..."
     )
-    recapitulatif = _recapitulatif_des_niveaux(options.niveaux)
-    if recapitulatif:
-        typer.echo(recapitulatif)
+    for rappel in (_recapitulatif_des_niveaux(options.niveaux), rappel_regles):
+        if rappel:
+            typer.echo(rappel)
     identifiant = generation.lancer_calcul(semestre_id, options, activer=not sans_activer)
     try:
         suivi = generation.attendre_calcul(identifiant)

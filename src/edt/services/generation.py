@@ -54,7 +54,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select, update
@@ -87,6 +87,7 @@ from edt.services.instanciation import instancier_version
 from edt.services.instantane import charger_instantane
 from edt.services.niveaux import niveaux_du_calcul
 from edt.services.parametres import lire_parametres
+from edt.services.regles import charger_regles_actives
 from edt.solveur.contrat import Moteur, OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.preverification import pre_verifier
 from edt.verification import Anomalie, calculer_indicateurs, verifier
@@ -139,6 +140,12 @@ class SuiviCalcul:
     - `niveaux` : niveau retenu pour chaque contrainte (clé absente : contrainte
       ignorée), lu dans les options enregistrées ou, pour un calcul ancien,
       déduit des contraintes désactivées ;
+    - `niveaux_regles` : niveau retenu pour chaque règle personnalisée
+      (identifiant → niveau), `None` quand chaque règle active valait à son
+      niveau ;
+    - `regles` : copie des règles personnalisées du semestre au lancement
+      (`parametres["regles"]` : code, type, portée, paramètres, niveau retenu
+      ou `None` si la règle était ignorée, phrase) ;
     - `contraintes_desactivees` : codes ignorés au lancement (absents de `niveaux`) ;
     - `fichier_journal` : chemin du journal dédié du calcul ;
     - `avertissements` : situations tendues relevées par les pré-vérifications
@@ -162,6 +169,8 @@ class SuiviCalcul:
     arret_demande: bool
     avertissements: tuple[str, ...] = field(default=())
     niveaux: Niveaux = field(default_factory=dict)
+    niveaux_regles: dict[int, Niveau] | None = None
+    regles: tuple[dict, ...] = ()
 
     @property
     def en_cours(self) -> bool:
@@ -257,6 +266,7 @@ def pre_verifier_semestre(
     contraintes_desactivees: Iterable[str] = (),
     *,
     niveaux: Niveaux | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
     version_base_id: int | None = None,
     tolerer_violations_heritees: bool = False,
 ) -> list[Anomalie]:
@@ -270,7 +280,8 @@ def pre_verifier_semestre(
     sont examinées, quel que soit leur niveau. À défaut,
     `contraintes_desactivees` donne les codes ignorés. Les verrous examinés
     sont ceux de `version_base_id` (défaut : la version active du semestre).
-    Voir `edt.solveur.preverification`.
+    `niveaux_regles` : niveaux des règles personnalisées retenues (`None` :
+    chaque règle active à son niveau). Voir `edt.solveur.preverification`.
     """
     if niveaux is not None:
         contraintes_desactivees = frozenset(CATALOGUE) - normaliser_codes(niveaux.keys())
@@ -280,6 +291,7 @@ def pre_verifier_semestre(
         contraintes_desactivees,
         tolerer_violations_heritees=tolerer_violations_heritees,
         niveaux=niveaux,
+        niveaux_regles=niveaux_regles,
     )
 
 
@@ -487,12 +499,16 @@ def _executer(
                     options.vers_dict(),
                 )
                 with session_base(config.db_url) as session:
+                    instantane = charger_instantane(session, semestre_id, version_base_id)
+                    regles = _regles_du_calcul(session, semestre_id, instantane, options)
                     session.execute(
                         update(Calcul)
                         .where(Calcul.id == calcul_id)
-                        .values(fichier_journal=chemin_journal)
+                        .values(
+                            fichier_journal=chemin_journal,
+                            parametres={**options.vers_dict(), "regles": regles},
+                        )
                     )
-                    instantane = charger_instantane(session, semestre_id, version_base_id)
                 etat, message, statistiques = _calculer(
                     calcul_id, instantane, options, moteur, arret, activer, config
                 )
@@ -534,6 +550,7 @@ def _calculer(
         options.contraintes_desactivees,
         tolerer_violations_heritees=options.tolerer_violations_heritees,
         niveaux=options.niveaux,
+        niveaux_regles=options.niveaux_regles,
     )
     impossibilites = [anomalie.message for anomalie in anomalies if anomalie.bloquante]
     alertes = [anomalie.message for anomalie in anomalies if not anomalie.bloquante]
@@ -595,10 +612,17 @@ def _controler(
     entre séances toutes verrouillées sont attendues et ne comptent pas.
     """
     # Seules les contraintes nécessaires sont dures : une entorse à l'une d'elles est un
-    # défaut du moteur. Les contraintes souples relèvent du bilan, pas du contrôle.
+    # défaut du moteur. Les contraintes souples relèvent du bilan, pas du contrôle. Les
+    # règles personnalisées sont vérifiées aux niveaux retenus par le moteur (une règle
+    # nécessaire enfreinte est bloquante, les autres sont des avertissements).
     necessaires = frozenset(c for c, n in options.niveaux.items() if n is Niveau.NECESSAIRE)
     try:
-        anomalies = verifier(instantane, resultat.placements, necessaires)
+        anomalies = verifier(
+            instantane,
+            resultat.placements,
+            necessaires,
+            niveaux_regles=resultat.niveaux_regles,
+        )
     except ErreurNonLivre:
         journal.warning(
             "Résultat non contrôlé : le vérificateur n'est pas livré (edt.verification)."
@@ -813,7 +837,67 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         arret_demande=calcul.arret_demande,
         avertissements=tuple((calcul.statistiques or {}).get("avertissements", ())),
         niveaux=_niveaux_du_calcul(calcul.id, calcul.parametres or {}, desactivees),
+        niveaux_regles=_niveaux_regles_du_calcul(calcul.id, calcul.parametres or {}),
+        regles=tuple((calcul.parametres or {}).get("regles") or ()),
     )
+
+
+def _niveaux_regles_du_calcul(calcul_id: int, parametres: dict) -> dict[int, Niveau] | None:
+    """Niveaux des règles personnalisées d'un calcul enregistré ; illisibles : signalés, `None`."""
+    try:
+        return OptionsSolveur.lire_niveaux_regles(parametres)
+    except ErreurEDT as erreur:
+        journal.warning(
+            "Calcul %d : niveaux des règles enregistrés illisibles (%s), ignorés", calcul_id, erreur
+        )
+        return None
+
+
+def _regles_du_calcul(
+    session: Session, semestre_id: int, instantane: Instantane, options: OptionsSolveur
+) -> list[dict]:
+    """Copie des règles personnalisées du semestre au lancement (`calcul.parametres["regles"]`).
+
+    Une entrée par règle active de l'instantané : identifiant, code, type,
+    portée, paramètres canoniques, phrase, et le niveau retenu pour ce calcul
+    (`None` pour une règle ignorée). Le vérificateur lit cette copie pour
+    rejouer les mêmes niveaux sur la version ; une règle qui en est absente a
+    été créée après le calcul.
+    """
+    semestre = session.get(Semestre, semestre_id)
+    canoniques = (
+        {regle.id: regle for regle in charger_regles_actives(session, semestre.annee_scolaire_id)}
+        if semestre is not None
+        else {}
+    )
+    copie = []
+    for regle in instantane.regles:
+        if options.niveaux_regles is None:
+            niveau = regle.niveau
+        else:
+            niveau = options.niveaux_regles.get(regle.id)
+        canonique = canoniques.get(regle.id)
+        copie.append(
+            {
+                "id": regle.id,
+                "code": regle.code,
+                "type": regle.type.value,
+                "portee": {
+                    "nature": regle.portee.value,
+                    "cible_id": regle.cible_id,
+                    "designation": canonique.portee.designation if canonique else None,
+                },
+                "parametres": dict(canonique.parametres) if canonique else {},
+                "niveau": niveau.value if niveau is not None else None,
+                "phrase": regle.phrase,
+            }
+        )
+    journal.info(
+        "Règles personnalisées du calcul : %d appliquée(s), %d ignorée(s)",
+        sum(1 for r in copie if r["niveau"] is not None),
+        sum(1 for r in copie if r["niveau"] is None),
+    )
+    return copie
 
 
 def _niveaux_du_calcul(calcul_id: int, parametres: dict, desactivees: Iterable[str]) -> Niveaux:

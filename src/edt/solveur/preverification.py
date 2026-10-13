@@ -33,10 +33,10 @@ from __future__ import annotations
 import logging
 import time
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 
-from edt.domaine.contraintes import CodeContrainte, Niveaux
-from edt.domaine.enumerations import JOURS, SAMEDI, CibleIndisponibilite, Gravite
+from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
+from edt.domaine.enumerations import JOURS, CibleIndisponibilite, Gravite
 from edt.domaine.heures import duree_vers_texte
 from edt.domaine.instantane import Indisponibilite, Instantane
 from edt.solveur.preparation import Preparation, SeancePreparee
@@ -63,11 +63,13 @@ def pre_verifier(
     *,
     tolerer_violations_heritees: bool = False,
     niveaux: Niveaux | None = None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
 ) -> list[Anomalie]:
     """Liste les impossibilités certaines et les situations tendues d'un calcul.
 
     `niveaux` : niveaux retenus (prime sur `contraintes_desactivees`, codes
-    que l'utilisateur a décochés). Seule une contrainte nécessaire peut
+    que l'utilisateur a décochés) ; `niveaux_regles` : niveaux des règles
+    personnalisées retenues (`edt.solveur.personnalisees`). Seule une contrainte nécessaire peut
     rendre un calcul impossible ; une contrainte souple enfreinte à coup sûr
     (maximum hebdomadaire d'un enseignant) donne un avertissement. Avec
     `tolerer_violations_heritees`, les contradictions entre verrous sont
@@ -78,7 +80,11 @@ def pre_verifier(
     """
     debut = time.perf_counter()
     preparation = Preparation(
-        instantane, contraintes_desactivees, tolerer_violations_heritees, niveaux
+        instantane,
+        contraintes_desactivees,
+        tolerer_violations_heritees,
+        niveaux,
+        dict(niveaux_regles) if niveaux_regles is not None else None,
     )
     anomalies = diagnostiquer(preparation)
     journal.info(
@@ -224,21 +230,24 @@ def _decoupes_par_jours(
     """Sous-ensembles de séances à comparer au temps des jours où elles peuvent aller.
 
     D'abord toutes les séances face aux jours que l'une d'elles peut occuper,
-    puis celles qui ne peuvent pas aller le samedi face aux jours hors samedi.
+    puis celles qui ne peuvent aller aucun jour d'appoint (un jour de la
+    grille hors des jours travaillés de l'établissement, le samedi par
+    défaut) face aux seuls jours travaillés.
     """
     libres = [seance for seance in seances if _dans_la_grille(seance)]
     jours = _jours_possibles(preparation, libres)
     decoupes = [(list(seances), [bloc for bloc in blocs if bloc[0] in jours])]
-    if SAMEDI in jours:
-        sans_samedi = [
+    appoint = jours - preparation.instantane.jours_travailles
+    if appoint:
+        sans_appoint = [
             seance
             for seance in seances
-            if seance.horaire_fixe or SAMEDI not in _jours_possibles(preparation, [seance])
+            if seance.horaire_fixe or appoint.isdisjoint(_jours_possibles(preparation, [seance]))
         ]
-        jours_sans_samedi = _jours_possibles(
-            preparation, (seance for seance in sans_samedi if _dans_la_grille(seance))
+        jours_sans_appoint = _jours_possibles(
+            preparation, (seance for seance in sans_appoint if _dans_la_grille(seance))
         )
-        decoupes.append((sans_samedi, [bloc for bloc in blocs if bloc[0] in jours_sans_samedi]))
+        decoupes.append((sans_appoint, [bloc for bloc in blocs if bloc[0] in jours_sans_appoint]))
     return decoupes
 
 
