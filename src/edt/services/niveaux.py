@@ -8,34 +8,60 @@ s'appliquent à une version enregistrée :
   désactivées enregistrés avec un calcul ;
 - `niveaux_de_version` : ceux du calcul qui a produit la version ; une
   version de référence (importée) ou dont le calcul a disparu prend les
-  niveaux par défaut du catalogue.
+  niveaux par défaut du catalogue ;
+- `niveaux_regles_du_calcul` (pur) et `niveaux_regles_de_version` : niveaux
+  des **règles personnalisées** (identifiant de règle → niveau). Une version
+  se vérifie avec les règles **actuelles** (actives de son année) et, pour
+  celles qui existaient lors du calcul, le niveau choisi alors.
 
 Chaque résolution est journalisée en DEBUG avec son origine.
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import logging
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from edt.db.modeles import Calcul, VersionEdt
+from edt.db.modeles import Calcul, Regle, Semestre, VersionEdt
 from edt.domaine.contraintes import (
     Niveau,
     Niveaux,
+    niveau,
     niveaux_depuis_desactivees,
     niveaux_par_defaut,
     normaliser_codes,
     normaliser_niveaux,
 )
+from edt.domaine.regles import EtatRegle
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 
 journal = logging.getLogger(__name__)
 
 CLE_NIVEAUX = "niveaux"
 """Clé des paramètres d'un calcul (`Calcul.parametres`) qui porte les niveaux choisis."""
+
+CLE_REGLES = "regles"
+"""Clé des paramètres d'un calcul qui copie chaque règle personnalisée appliquée.
+
+Écrite par le lot solveur : une liste de dictionnaires `{id, code, type,
+portee, parametres, niveau, phrase}` ; `niveau` vide (`None`) marque une
+règle explicitement non appliquée.
+"""
+
+
+@dataclass(frozen=True)
+class RegleActuelle:
+    """Ce qu'il faut savoir d'une règle active pour retrouver son niveau de vérification."""
+
+    id: int
+    niveau: Niveau
+    modifiee_le: dt.datetime | None = None
 
 
 def niveaux_du_calcul(
@@ -113,6 +139,114 @@ def niveaux_de_version(session: Session, version_id: int) -> Niveaux:
     return niveaux_du_calcul(calcul.parametres, calcul.contraintes_desactivees)
 
 
+def niveaux_regles_du_calcul(
+    parametres: Mapping[str, Any] | None,
+    regles: Iterable[RegleActuelle],
+    demarre_le: dt.datetime | None = None,
+) -> dict[int, Niveau]:
+    """Niveau de vérification de chaque règle active actuelle, d'après un calcul (pur).
+
+    - calcul sans `parametres["regles"]` (antérieur aux règles, ou pas de
+      calcul) : chaque règle à son propre niveau ;
+    - règle copiée par le calcul : le niveau choisi alors (`None` : règle
+      explicitement non appliquée, donc ignorée) ;
+    - règle absente de la copie : à son propre niveau si elle a été créée ou
+      modifiée (activation comprise) après le début du calcul ; sinon ignorée,
+      car elle existait et n'a pas été appliquée (« ne pas appliquer » coché).
+
+    Lève `ErreurDonneesInvalides` si la copie est illisible (pas une liste,
+    entrée sans identifiant entier, niveau inconnu) : jamais de repli silencieux.
+    """
+    actuelles = list(regles)
+    brut = (parametres or {}).get(CLE_REGLES)
+    if brut is None:
+        journal.debug(
+            "Calcul sans copie des règles : %d règle(s) à leur propre niveau", len(actuelles)
+        )
+        return {regle.id: regle.niveau for regle in actuelles}
+    if not isinstance(brut, list | tuple):
+        raise ErreurDonneesInvalides(
+            "Les règles enregistrées avec le calcul sont illisibles : une liste est attendue "
+            f"(lu : {type(brut).__name__})."
+        )
+    choisis: dict[int, Niveau | None] = {}
+    for entree in brut:
+        identifiant = entree.get("id") if isinstance(entree, Mapping) else None
+        if isinstance(identifiant, bool) or not isinstance(identifiant, int):
+            raise ErreurDonneesInvalides(
+                "Une règle enregistrée avec le calcul n'a pas d'identifiant entier "
+                f"(lu : {entree!r})."
+            )
+        valeur = entree.get("niveau")
+        choisis[identifiant] = None if valeur is None else niveau(str(valeur))
+    resultat: dict[int, Niveau] = {}
+    nouvelles = ignorees = 0
+    for regle in actuelles:
+        if regle.id in choisis:
+            choisi = choisis[regle.id]
+            if choisi is None:
+                ignorees += 1
+            else:
+                resultat[regle.id] = choisi
+        elif demarre_le is None or (
+            regle.modifiee_le is not None and regle.modifiee_le > demarre_le
+        ):
+            resultat[regle.id] = regle.niveau
+            nouvelles += 1
+        else:
+            ignorees += 1
+    journal.debug(
+        "Niveaux des règles : %d du calcul, %d créée(s) ou modifiée(s) depuis (niveau propre), "
+        "%d ignorée(s)",
+        len(resultat) - nouvelles,
+        nouvelles,
+        ignorees,
+    )
+    return resultat
+
+
+def niveaux_regles_de_version(session: Session, version_id: int) -> dict[int, Niveau]:
+    """Niveaux des règles personnalisées pour vérifier la version `version_id`.
+
+    Règles **actuelles** : les règles actives de l'année du semestre de la
+    version ; niveaux : `niveaux_regles_du_calcul` avec le calcul qui a produit
+    la version (aucun pour une version de référence : chaque règle à son
+    niveau). Lève `ErreurIntrouvable` si la version n'existe pas.
+    """
+    version = session.get(VersionEdt, version_id)
+    if version is None:
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
+    semestre = session.get(Semestre, version.semestre_id)
+    if semestre is None:
+        raise ErreurIntrouvable(f"Le semestre {version.semestre_id} n'existe pas.")
+    actuelles = [
+        RegleActuelle(identifiant, niveau_regle, modifiee_le)
+        for identifiant, niveau_regle, modifiee_le in session.execute(
+            select(Regle.id, Regle.niveau, Regle.modifie_le).where(
+                Regle.annee_scolaire_id == semestre.annee_scolaire_id,
+                Regle.etat == EtatRegle.ACTIVE,
+            )
+        )
+    ]
+    calcul = None if version.calcul_id is None else session.get(Calcul, version.calcul_id)
+    if version.calcul_id is not None and calcul is None:
+        journal.warning(
+            "Version %d : le calcul %d est introuvable ; règles à leur propre niveau",
+            version.id,
+            version.calcul_id,
+        )
+    journal.debug(
+        "Version %d : niveaux des règles %s",
+        version.id,
+        "sans calcul" if calcul is None else f"du calcul {calcul.id}",
+    )
+    return niveaux_regles_du_calcul(
+        None if calcul is None else calcul.parametres,
+        actuelles,
+        None if calcul is None else calcul.demarre_le,
+    )
+
+
 def _resume(niveaux: Niveaux) -> str:
     """« 15 nécessaire(s), 3 important(s), 1 facultatif(s) » pour le journal."""
     return ", ".join(
@@ -121,4 +255,12 @@ def _resume(niveaux: Niveaux) -> str:
     )
 
 
-__all__ = ["CLE_NIVEAUX", "niveaux_de_version", "niveaux_du_calcul"]
+__all__ = [
+    "CLE_NIVEAUX",
+    "CLE_REGLES",
+    "RegleActuelle",
+    "niveaux_de_version",
+    "niveaux_du_calcul",
+    "niveaux_regles_de_version",
+    "niveaux_regles_du_calcul",
+]

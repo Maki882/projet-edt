@@ -186,3 +186,141 @@ def _couche_datee(inst: Instantane, places) -> list[str]:
                             f"{seance.id} : le {date} pendant « {indispo.motif} » ({cible})"
                         )
     return erreurs
+
+
+# --------------------------------------------------------------------------- #
+# Règles personnalisées
+# --------------------------------------------------------------------------- #
+
+TYPES_CONTROLES = frozenset(
+    {
+        "JOURS_TRAVAILLES",
+        "PLAGE_HORAIRE",
+        "CRENEAUX_INTERDITS",
+        "CAMPUS",
+        "SALLES",
+        "PAUSE_DEJEUNER",
+        "PAUSE_MINIMALE",
+        "MAX_PAR_JOUR",
+        "JOURNEES_LIBRES",
+        "CAMPUS_PAR_JOUR",
+    }
+)
+"""Types de règle que `violations_regles` sait contrôler."""
+
+
+def _libre_dans(plages, debut_fenetre, fin_fenetre, duree) -> bool:
+    """Au moins `duree` minutes libres d'un seul tenant dans la fenêtre (ou aucune séance dedans)."""
+    dedans = sorted(
+        (max(d, debut_fenetre), min(f, fin_fenetre))
+        for d, f in plages
+        if d < fin_fenetre and debut_fenetre < f
+    )
+    if not dedans:
+        return True
+    libres, curseur = [], debut_fenetre
+    for d, f in dedans:
+        libres.append(d - curseur)
+        curseur = max(curseur, f)
+    libres.append(fin_fenetre - curseur)
+    return max(libres) >= duree
+
+
+def violations_regles(instantane: Instantane, temoin: Mapping[str, PlaceTemoin]) -> list[str]:
+    """Écarts du témoin aux règles personnalisées actives et aux réglages par personne.
+
+    Contrôle direct, type par type, avec `Instantane.regles`, `Instantane.reglages`
+    et `Instantane.emplois` ; un type actif non contrôlé est lui-même signalé.
+    """
+    inst = instantane
+    erreurs: list[str] = []
+    seances = {s.id: s for s in inst.seances}
+    place = {i: temoin[i] for i in seances if i in temoin}
+    campus_de = {i: inst.salle(p.salle_id).campus_id for i, p in place.items()}
+
+    # Jours : précédence résolue par l'instantané (standard ou règles).
+    for i, p in place.items():
+        permis = inst.reglages.jours_de(i).jours_permis(campus_de[i])
+        if p.jour not in permis:
+            erreurs.append(f"{i} : jour {p.jour} hors des jours permis {sorted(permis)}")
+
+    # Emplois du temps : par personne, semaine et jour.
+    def journees(emploi_seances):
+        par = {}
+        for i in emploi_seances:
+            if i not in place:
+                continue
+            for semaine in seances[i].semaines:
+                par.setdefault((semaine, place[i].jour), []).append(i)
+        return par
+
+    for emploi in inst.emplois:
+        personne = emploi.personne
+        dejeuner = inst.reglages.dejeuner[personne]
+        pause = inst.reglages.pause[personne].duree
+        for (semaine, jour), ids in journees(emploi.seances).items():
+            plages = sorted((place[i].debut, place[i].fin) for i in ids)
+            if dejeuner.plage is not None and any(
+                d < dejeuner.plage[1] and dejeuner.plage[0] < f for d, f in plages
+            ):
+                erreurs.append(f"{personne} semaine {semaine} jour {jour} : déjeuner fixe occupé")
+            if dejeuner.fenetre is not None and not _libre_dans(plages, *dejeuner.fenetre):
+                erreurs.append(f"{personne} semaine {semaine} jour {jour} : pas de pause déjeuner")
+            for (_, fin), (debut, _) in zip(plages, plages[1:], strict=False):
+                if debut - fin < pause:
+                    erreurs.append(
+                        f"{personne} semaine {semaine} jour {jour} : {debut - fin} min de pause "
+                        f"au lieu de {pause}"
+                    )
+
+    emplois = {e.personne: e for e in inst.emplois}
+    for regle in inst.regles:
+        nom, v = f"{regle.code} ({regle.phrase})", regle.valeurs
+        if regle.type.value not in TYPES_CONTROLES:
+            erreurs.append(f"{nom} : type actif non contrôlé")
+            continue
+        for i in sorted(regle.seances):
+            if i not in place or seances[i].semaines.isdisjoint(regle.semaines):
+                continue
+            p = place[i]
+            if regle.type.value == "PLAGE_HORAIRE" and (not v["jours"] or p.jour in v["jours"]):
+                if p.debut < v["debut"] or p.fin > v["fin"]:
+                    erreurs.append(f"{nom} : {i} hors de la plage")
+            elif regle.type.value == "CRENEAUX_INTERDITS" and p.jour in v["jours"]:
+                if p.debut < v["fin"] and v["debut"] < p.fin:
+                    erreurs.append(f"{nom} : {i} sur un créneau interdit")
+            elif regle.type.value == "CAMPUS":
+                dedans = campus_de[i] in v["campus"]
+                if dedans != (v["mode"] == "imposer"):
+                    erreurs.append(f"{nom} : {i} sur un campus refusé")
+            elif regle.type.value == "SALLES":
+                dedans = p.salle_id in v["salles"]
+                if dedans != (v["mode"] == "imposer"):
+                    erreurs.append(f"{nom} : {i} dans une salle refusée")
+        for personne in sorted(regle.personnes, key=lambda x: (x.nature, x.id)):
+            par = journees(emplois[personne].seances)
+            if regle.type.value == "MAX_PAR_JOUR":
+                for (semaine, jour), ids in par.items():
+                    if semaine not in regle.semaines:
+                        continue
+                    total = (
+                        len(ids)
+                        if v["unite"] == "seances"
+                        else sum(place[i].fin - place[i].debut for i in ids)
+                    )
+                    if total > v["maximum"]:
+                        erreurs.append(f"{nom} : {personne} semaine {semaine} jour {jour}")
+            elif regle.type.value == "CAMPUS_PAR_JOUR":
+                for (semaine, jour), ids in par.items():
+                    if len({campus_de[i] for i in ids}) > 1:
+                        erreurs.append(f"{nom} : {personne} semaine {semaine} jour {jour}")
+            elif regle.type.value == "JOURNEES_LIBRES":
+                if v["unite"] != "journee":
+                    erreurs.append(f"{nom} : unité « demi-journée » non contrôlée")
+                    break
+                parmi = {j for j, _ in v["parmi"]} or set(inst.jours_travailles)
+                for semaine in regle.semaines:
+                    presents = {jour for (s, jour) in par if s == semaine}
+                    if len(parmi - presents) < v["nombre"]:
+                        erreurs.append(f"{nom} : {personne} semaine {semaine}")
+    return erreurs

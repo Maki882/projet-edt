@@ -207,7 +207,7 @@ MOYEN = ConfigurationJeu(
             "ISSY",
             SallesSite(
                 amphis=(320, 150),
-                cours=10,
+                cours=12,
                 informatique=5,
                 electronique=3,
                 physique=1,

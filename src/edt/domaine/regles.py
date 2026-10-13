@@ -1498,6 +1498,18 @@ class RegleResolue:
     semaines: frozenset[int]
     seances: frozenset[str] = frozenset()
     personnes: frozenset[Personne] = frozenset()
+    date_debut: dt.date | None = None
+    date_fin: dt.date | None = None
+
+    def couvre(self, jour: dt.date) -> bool:
+        """Vrai si la période datée de la règle contient `jour` (toujours vrai sans dates).
+
+        Sur la semaine type, `semaines` suffit ; sur les séances datées, cette
+        méthode affine au jour près.
+        """
+        if self.date_debut is not None and jour < self.date_debut:
+            return False
+        return self.date_fin is None or jour <= self.date_fin
 
     @property
     def definition(self) -> DefinitionType:
@@ -1781,6 +1793,8 @@ def resoudre_regle(
         phrase=phrase(regle.type, regle.portee, regle.parametres, instantane.parametres),
         valeurs=valeurs,
         semaines=semaines,
+        date_debut=regle.date_debut,
+        date_fin=regle.date_fin,
     )
     seances: frozenset[str] = frozenset()
     personnes: frozenset[Personne] = frozenset()

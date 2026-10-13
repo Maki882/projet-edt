@@ -25,6 +25,7 @@ solution du solveur.
 
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import NamedTuple
@@ -80,6 +81,23 @@ class BesoinEcarte:
 
 
 @dataclass(frozen=True)
+class RegleJeu:
+    """Une règle personnalisée du jeu : code, type, niveau, état, origine, phrase.
+
+    `temoin` dit comment le témoin la respecte : posée dans son placement,
+    respectée par construction, ou sans effet (proposée ou inactive).
+    """
+
+    code: str
+    type: str
+    niveau: str
+    etat: str
+    origine: str
+    phrase: str
+    temoin: str
+
+
+@dataclass(frozen=True)
 class SeancePlacee:
     """Séance du témoin avec ce qu'il faut pour mesurer les charges."""
 
@@ -110,7 +128,8 @@ class RapportJeu:
     - `anomalies_temoin` : code -> gravité -> nombre d'anomalies relevées par
       le vérificateur sur le témoin ;
     - `indicateurs` : code -> indicateurs du vérificateur sur le témoin ;
-    - `duree_s` : durée de la génération (seule valeur non déterministe).
+    - `duree_s` : durée de la génération (seule valeur non déterministe) ;
+    - `regles` : règles personnalisées du jeu, dans l'ordre de leur code.
     """
 
     configuration: ConfigurationJeu
@@ -129,6 +148,7 @@ class RapportJeu:
     anomalies_temoin: dict[str, dict[str, int]]
     indicateurs: dict[str, Indicateurs]
     duree_s: float
+    regles: tuple[RegleJeu, ...] = ()
 
     @property
     def temoin(self) -> dict[str, PlaceTemoin]:
@@ -195,6 +215,18 @@ class RapportJeu:
             indicateurs = self.indicateurs.get(charge.semestre)
             if indicateurs is not None:
                 lignes.append(f"    indicateurs du témoin : {_texte_indicateurs(indicateurs)}")
+        if self.regles:
+            etats = Counter(r.etat for r in self.regles)
+            lignes.append(
+                f"  Règles personnalisées : {len(self.regles)} ("
+                + ", ".join(f"{etat} {n}" for etat, n in sorted(etats.items()))
+                + ")"
+            )
+            for regle in self.regles:
+                lignes.append(
+                    f"    {regle.code} [{regle.niveau}, {regle.etat}] {regle.phrase} "
+                    f"({regle.temoin})"
+                )
         if self.versions_reference:
             lignes.append(
                 "  Versions de référence (témoin) : "

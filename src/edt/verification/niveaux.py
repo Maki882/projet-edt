@@ -14,6 +14,15 @@ Quand une vérification reçoit des niveaux (`Niveaux`, voir
   une règle importante ou facultative commence par `PREFIXES_ENTORSE[niveau]`.
 
 Sans niveaux, rien ne change : tout est vérifié en dur et `niveau` vaut `None`.
+
+Règles personnalisées (code `REGLE`) : elles sont vérifiées si `REGLE` l'est.
+`niveaux_regles` (identifiant de règle → niveau) dit lesquelles et à quel
+niveau ; sans lui, chaque règle active de l'instantané l'est au sien. Une
+règle absente est **ignorée, comme si elle n'existait pas** : pour une règle de
+réglage (jours, déjeuner, pause), le standard reprend alors sa place
+(`choisir_regles` rend un instantané sans elle). Une anomalie de règle prend
+toujours le niveau de **sa règle** (même quand les contraintes du catalogue
+sont vérifiées en dur), avec le même plafond et le même début de message.
 """
 
 from __future__ import annotations
@@ -24,6 +33,7 @@ from collections.abc import Iterable, Mapping
 
 from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux, contrainte, niveau
 from edt.domaine.enumerations import Gravite
+from edt.domaine.instantane import Instantane
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification.contexte import ORDRE_GRAVITE, resoudre_codes
 from edt.verification.contrat import PREFIXES_ENTORSE, Anomalie
@@ -82,19 +92,95 @@ def choisir_contraintes(
     return valides, frozenset(valides)
 
 
-def appliquer_niveaux(anomalies: Iterable[Anomalie], niveaux: Niveaux) -> list[Anomalie]:
-    """Anomalies dont la gravité, le niveau et le début du message suivent `niveaux`.
+def valider_niveaux_regles(niveaux_regles: Mapping[int, str]) -> dict[int, Niveau]:
+    """Niveaux des règles reçus, typés (identifiant entier → `Niveau`) ; erreur sinon."""
+    if not isinstance(niveaux_regles, Mapping):
+        raise ErreurDonneesInvalides(
+            "Les niveaux des règles personnalisées se donnent sous forme de dictionnaire "
+            f"« identifiant : niveau » (lu : {type(niveaux_regles).__name__})."
+        )
+    valides: dict[int, Niveau] = {}
+    for regle_id, valeur in niveaux_regles.items():
+        if isinstance(regle_id, bool) or not isinstance(regle_id, int):
+            raise ErreurDonneesInvalides(
+                f"Identifiant de règle personnalisée invalide : {regle_id!r} (un entier est attendu)."
+            )
+        valides[regle_id] = valeur if isinstance(valeur, Niveau) else niveau(valeur)
+    return valides
 
-    Chaque anomalie a pour code une clé de `niveaux` (seules ces contraintes
-    sont vérifiées) ; une anomalie d'un autre code est une erreur de programmation.
+
+def choisir_regles(
+    instantane: Instantane,
+    codes: frozenset[CodeContrainte],
+    niveaux_regles: Mapping[int, str] | None,
+) -> tuple[Instantane, dict[int, Niveau]]:
+    """Instantané à vérifier et niveau de chaque règle personnalisée retenue.
+
+    Sans `REGLE` dans `codes`, aucune règle ; sinon celles de `niveaux_regles`
+    (toutes, à leur niveau, s'il vaut `None`). Si des règles de l'instantané
+    ne sont pas retenues, l'instantané renvoyé ne les contient plus : ses
+    réglages (`Instantane.reglages`) sont ceux d'un établissement sans elles.
+    Un identifiant de `niveaux_regles` absent de l'instantané (règle supprimée,
+    désactivée ou hors du semestre) est sans effet, noté dans le journal.
+    """
+    if CodeContrainte.REGLE not in codes:
+        retenus: dict[int, Niveau] = {}
+    elif niveaux_regles is None:
+        retenus = {regle.id: regle.niveau for regle in instantane.regles}
+    else:
+        demandes = valider_niveaux_regles(niveaux_regles)
+        presentes = {regle.id for regle in instantane.regles}
+        absentes = sorted(set(demandes) - presentes)
+        if absentes:
+            journal.debug(
+                "Niveaux reçus pour %d règle(s) absente(s) de l'instantané : %s",
+                len(absentes),
+                ", ".join(map(str, absentes)),
+            )
+        retenus = {regle_id: n for regle_id, n in demandes.items() if regle_id in presentes}
+    if len(retenus) == len(instantane.regles):
+        return instantane, retenus
+    ignorees = [regle.code for regle in instantane.regles if regle.id not in retenus]
+    journal.debug(
+        "Règles personnalisées ignorées pour cette vérification : %s", ", ".join(ignorees)
+    )
+    restreint = dataclasses.replace(
+        instantane, regles=tuple(r for r in instantane.regles if r.id in retenus)
+    )
+    return restreint, retenus
+
+
+def appliquer_niveaux(
+    anomalies: Iterable[Anomalie],
+    niveaux: Niveaux | None,
+    niveaux_regles: Mapping[int, Niveau] | None = None,
+) -> list[Anomalie]:
+    """Anomalies dont la gravité, le niveau et le début du message suivent les niveaux.
+
+    Une anomalie de règle (`REGLE`) suit le niveau de sa règle
+    (`niveaux_regles[regle_id]`) ; une autre, celui de sa contrainte dans
+    `niveaux` (inchangée si `niveaux` vaut `None` : vérification en dur).
+    Une anomalie d'une contrainte ou d'une règle non vérifiée est une erreur
+    de programmation.
     """
     resultat = []
     for anomalie in anomalies:
-        if anomalie.code not in niveaux:
+        if anomalie.code is CodeContrainte.REGLE:
+            if niveaux_regles is None or anomalie.regle_id not in niveaux_regles:
+                raise ValueError(
+                    f"Anomalie de la règle {anomalie.regle_code} produite alors qu'elle n'est "
+                    "pas vérifiée."
+                )
+            retenu = niveaux_regles[anomalie.regle_id]
+        elif niveaux is None:
+            resultat.append(anomalie)
+            continue
+        elif anomalie.code not in niveaux:
             raise ValueError(
                 f"Anomalie {anomalie.code} produite alors que la contrainte n'est pas vérifiée."
             )
-        retenu = niveaux[anomalie.code]
+        else:
+            retenu = niveaux[anomalie.code]
         plafond = GRAVITE_DU_NIVEAU[retenu]
         gravite = max(anomalie.gravite, plafond, key=ORDRE_GRAVITE.__getitem__)
         resultat.append(

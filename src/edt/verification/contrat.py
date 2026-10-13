@@ -29,6 +29,11 @@ Règles communes aux deux fonctions
   entorse à une règle importante ou facultative commence par
   `PREFIXES_ENTORSE[niveau]`. Sans niveaux, tout est vérifié en dur
   (comportement d'origine) et `Anomalie.niveau` vaut `None`.
+- Règles personnalisées (`Instantane.regles`, code `REGLE`) : vérifiées si
+  `REGLE` est vérifiée ; `niveaux_regles=` (facultatif, identifiant de règle
+  → niveau) dit lesquelles et à quel niveau (défaut : toutes, au niveau de la
+  règle ; une règle absente est ignorée, comme si elle n'existait pas). La
+  gravité d'une entorse suit toujours le niveau de la règle.
 - Le message est une phrase française lisible par un non-informaticien :
   il nomme les séances, les salles, les personnes et l'heure en clair.
 - Les fonctions sont pures : elles ne modifient rien et ne lèvent pas
@@ -69,7 +74,12 @@ class Anomalie:
       vérificateur : seul repère d'un problème de dépliage, qui n'a pas de séance) ;
     - `niveau` : niveau appliqué à la contrainte quand la vérification a reçu
       des niveaux, `None` sinon. Pour un niveau important ou facultatif, le
-      message commence par `PREFIXES_ENTORSE[niveau]`.
+      message commence par `PREFIXES_ENTORSE[niveau]`. Pour une anomalie de
+      règle personnalisée (code `REGLE`), toujours le niveau de **la règle**
+      retenu pour la vérification ;
+    - `regle_id`, `regle_code`, `regle_phrase` : la règle personnalisée
+      enfreinte (code `REGLE` seulement), pour la nommer et la relier dans
+      l'interface sans relire la base.
 
     Les tuples d'identifiants sont triés et sans doublon.
     """
@@ -86,6 +96,9 @@ class Anomalie:
     date: dt.date | None = None
     besoins: tuple[int, ...] = ()
     niveau: Niveau | None = None
+    regle_id: int | None = None
+    regle_code: str | None = None
+    regle_phrase: str | None = None
 
     @property
     def bloquante(self) -> bool:

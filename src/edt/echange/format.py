@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import (
     Accessibilite,
     CibleIndisponibilite,
@@ -34,6 +35,7 @@ from edt.domaine.enumerations import (
     NatureJourFerme,
     StatutEnseignant,
 )
+from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, NaturePortee, TypeRegle
 from edt.echange import valeurs as v
 from edt.erreurs import ErreurDonneesInvalides
 
@@ -112,7 +114,9 @@ class Colonne:
     - `choix` : liste fermée des valeurs permises (type `CHOIX`) ;
     - `defaut` : valeur retenue quand la cellule est vide (documentée dans l'aide) ;
     - `defaut_de` : nom d'une autre colonne dont la valeur est reprise quand la
-      cellule est vide (dernier jour = premier jour).
+      cellule est vide (dernier jour = premier jour) ;
+    - `export_seulement` : colonne écrite par l'export pour information (la
+      phrase d'une règle), ignorée à l'import.
     """
 
     nom: str
@@ -126,6 +130,7 @@ class Colonne:
     defaut: Any = None
     minimum: int | None = None
     defaut_de: str | None = None
+    export_seulement: bool = False
 
     def __post_init__(self) -> None:
         if (self.type is TypeColonne.CHOIX) != (self.choix is not None):
@@ -166,6 +171,8 @@ class Colonne:
             morceaux.append(f"Vide : {self.ecrire(self.defaut)}.")
         if self.defaut_de is not None:
             morceaux.append(f"Vide : même valeur que {self.defaut_de}.")
+        if self.export_seulement:
+            morceaux.append("Export seulement : ignorée à l'import.")
         return " ".join(morceaux)
 
 
@@ -644,6 +651,89 @@ FEUILLES: tuple[Feuille, ...] = (
             ),
         ),
     ),
+    Feuille(
+        "regles",
+        "Règles",
+        "Règles personnalisées d'une année (docs/regles-personnalisees.md) : un type, une "
+        "portée et sa cible, des paramètres, un niveau, un état et une période. Une règle "
+        "créée par import a l'origine « import ». Réimport : mise à jour par année et code.",
+        (
+            ANNEE,
+            _c(
+                "code",
+                "Code",
+                T.CODE,
+                identifiant=True,
+                aide="Code de la règle dans l'année ; vide = attribué à l'import (R001, "
+                "R002...). Donner le code pour réimporter sans doublon ; un code garde son type.",
+                exemple="R007",
+            ),
+            _c(
+                "type",
+                "Type de règle",
+                T.CHOIX,
+                obligatoire=True,
+                choix=TypeRegle,
+                exemple="PAUSE_DEJEUNER",
+            ),
+            _c("portee", "Portée", T.CHOIX, obligatoire=True, choix=NaturePortee, exemple="groupe"),
+            _c(
+                "cible",
+                "Cible",
+                T.CODE,
+                aide="Code du groupe, identifiant de l'enseignant, code du campus, du type de "
+                "séance ou de la matière ; un besoin s'écrit « matière / type / groupes » "
+                "(ex. « IM.1101 / CM / A1 ») ; vide pour l'établissement.",
+                exemple="A2-G3",
+            ),
+            _c(
+                "parametres",
+                "Paramètres",
+                T.TEXTE,
+                aide="« clé = valeur » séparés par des points-virgules, listes séparées par des "
+                "virgules ; clés et valeurs selon le type (onglet Lisez-moi) ; vide = défauts.",
+                exemple="mode = libre ; debut = 11:45 ; fin = 14:15 ; duree = 1 h 15",
+            ),
+            _c(
+                "niveau",
+                "Niveau",
+                T.CHOIX,
+                choix=Niveau,
+                aide="Vide = niveau par défaut du type.",
+                exemple="important",
+            ),
+            _c("etat", "État", T.CHOIX, choix=EtatRegle, defaut=EtatRegle.ACTIVE, exemple="active"),
+            _c(
+                "semestre",
+                "Semestre",
+                T.CODE,
+                aide="Code du semestre ; semestre et dates vides = toute l'année.",
+                exemple="S1",
+            ),
+            _c(
+                "date_debut",
+                "Début de la période",
+                T.DATE,
+                aide="Période datée, au lieu d'un semestre.",
+            ),
+            _c("date_fin", "Fin de la période", T.DATE),
+            _c("commentaire", "Commentaire", T.TEXTE, exemple="Demande de la responsable"),
+            _c(
+                "origine",
+                "Origine",
+                T.TEXTE,
+                export_seulement=True,
+                aide="Saisie, import, assistant, base ou reprise.",
+            ),
+            _c(
+                "phrase",
+                "Phrase",
+                T.TEXTE,
+                export_seulement=True,
+                aide="Phrase générée de la règle.",
+            ),
+        ),
+    ),
 )
 """Les feuilles des données de l'établissement, dans l'ordre de traitement."""
 
@@ -819,7 +909,71 @@ def documentation_markdown() -> str:
             f"Identifiant métier : {identifiant}.\n\n"
             f"{tableau_markdown(feuille_)}"
         )
+    blocs.append(
+        "#### Types de règle et paramètres (colonnes `type` et `parametres` de `regles`)\n\n"
+        + types_regles_markdown()
+    )
     return "\n\n".join(blocs)
+
+
+_SORTES_CHAMP = {
+    "jours": "liste de jours",
+    "heure": "heure",
+    "duree": "durée",
+    "entier": "nombre",
+    "choix": "choix",
+    "codes": "liste de codes",
+    "code": "code",
+    "moments": "liste de jours ou de demi-journées",
+}
+
+
+def description_parametre(champ: Any) -> str:
+    """« duree (durée ; 15 à 180 min ; si mode = libre) » : un paramètre d'un type de règle."""
+    if champ.choix:
+        morceaux = [" / ".join(valeur for valeur, _ in champ.choix)]
+    else:
+        morceaux = [_SORTES_CHAMP[champ.sorte.value]]
+    if champ.minimum is not None and champ.maximum is not None:
+        unite = f" {champ.unite}" if champ.unite else ""
+        morceaux.append(f"{champ.minimum} à {champ.maximum}{unite}")
+    if champ.minimum_elements:
+        morceaux.append(f"au moins {champ.minimum_elements}")
+    if champ.obligatoire:
+        morceaux.append("obligatoire")
+    elif champ.defaut not in (None, [], ()):
+        morceaux.append(f"défaut {champ.defaut}")
+    elif champ.defaut_global is not None:
+        morceaux.append("défaut : paramètre global")
+    if champ.condition is not None:
+        autre, valeurs = champ.condition
+        morceaux.append(f"si {autre} = {' ou '.join(valeurs)}")
+    return f"{champ.nom} ({' ; '.join(morceaux)})"
+
+
+def lignes_types_regles() -> list[tuple[str, str, str, str, str]]:
+    """Par type de règle : code, libellé, portées admises, paramètres, niveau par défaut."""
+    lignes = []
+    for code, definition in CATALOGUE_TYPES.items():
+        refusees = {nature for nature, _ in definition.refus}
+        admises = definition.portees - refusees
+        portees = ", ".join(p.value for p in NaturePortee if p in admises)
+        parametres = "; ".join(description_parametre(c) for c in definition.champs) or "aucun"
+        lignes.append(
+            (code.value, definition.libelle, portees, parametres, definition.niveau_defaut.value)
+        )
+    return lignes
+
+
+def types_regles_markdown() -> str:
+    """Tableau Markdown des types de règle et de leurs paramètres."""
+    lignes = [
+        "| Type | Libellé | Portées admises | Paramètres | Niveau par défaut |",
+        "|---|---|---|---|---|",
+    ]
+    for code, libelle, portees, parametres, niveau in lignes_types_regles():
+        lignes.append(f"| `{code}` | {libelle} | {portees} | {parametres} | {niveau} |")
+    return "\n".join(lignes)
 
 
 def texte_lisez_moi(listes: Mapping[str, Iterable[tuple[str, str]]] | None = None) -> list[str]:
@@ -849,5 +1003,14 @@ def texte_lisez_moi(listes: Mapping[str, Iterable[tuple[str, str]]] | None = Non
         identifiant = ", ".join(feuille_.identifiant)
         paragraphes.append(
             f"Feuille {feuille_.nom} : {feuille_.description} Identifiant : {identifiant}."
+        )
+    paragraphes.append(
+        "Types de règle (feuille regles) : colonne type, portées admises, puis les clés de la "
+        "colonne parametres, écrites « clé = valeur ; clé = valeur »."
+    )
+    for code, libelle, portees, parametres, niveau in lignes_types_regles():
+        paragraphes.append(
+            f"{code} ({libelle}) : portées {portees} ; paramètres : {parametres} ; "
+            f"niveau par défaut : {niveau}."
         )
     return paragraphes

@@ -484,6 +484,8 @@ def preparer_tableau(
                 if texte:
                     extra[entete] = texte
                 continue
+            if colonne.export_seulement:
+                continue  # information écrite par l'export (phrase d'une règle) : ignorée
             try:
                 valeur = colonne.lire(cellule)
             except ErreurDonneesInvalides as erreur:

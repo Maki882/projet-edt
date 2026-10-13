@@ -142,7 +142,12 @@ def lignes_du_rapport(rapport: RapportVerification) -> list[str]:
         anomalies = [a for a in rapport.anomalies if a.gravite is gravite]
         if anomalies:
             lignes += ["", f"{titre} ({len(anomalies)}) :"]
-            lignes += [f"  - [{anomalie.code}] {anomalie.message}" for anomalie in anomalies]
+            lignes += [
+                f"  - [{anomalie.code}"
+                + (f" {anomalie.regle_code}" if anomalie.regle_code else "")
+                + f"] {anomalie.message}"
+                for anomalie in anomalies
+            ]
     if rapport.indicateurs is not None:
         lignes += ["", *_lignes_indicateurs(rapport)]
     verdict = "emploi du temps valide" if rapport.valide else "emploi du temps NON valide"

@@ -28,7 +28,6 @@ from edt.domaine.instantane import (
 from edt.domaine.parametres import Parametres
 from edt.domaine.regles import (
     CATALOGUE_TYPES,
-    REGISTRES,
     REGLES_DE_BASE,
     ErreurSaisie,
     EtatRegle,
@@ -106,7 +105,11 @@ def test_regles_de_base_et_description_du_catalogue():
     assert "intersection" in description["precedence_des_jours"]
 
 
-def test_registre_des_implementations():
+def test_registre_des_implementations(monkeypatch):
+    # Registres vierges pour le test : les lots solveur et vérificateur remplissent les vrais.
+    import edt.domaine.regles as module_regles
+
+    monkeypatch.setattr(module_regles, "REGISTRES", {"solveur": {}, "verificateur": {}})
     assert types_non_couverts("solveur") == frozenset(TypeRegle)
     assert types_non_couverts("verificateur") == frozenset(TypeRegle)
 
@@ -114,15 +117,12 @@ def test_registre_des_implementations():
     def verifier_sans_trou():
         return "essai"
 
-    try:
-        assert TypeRegle.SANS_TROU not in types_non_couverts("verificateur")
-        assert REGISTRES["verificateur"][TypeRegle.SANS_TROU]() == "essai"
-        with pytest.raises(ErreurDonneesInvalides, match="déjà une implémentation"):
-            enregistrer("verificateur", TypeRegle.SANS_TROU)(verifier_sans_trou)
-        with pytest.raises(ErreurDonneesInvalides, match="Registre inconnu"):
-            enregistrer("interface", TypeRegle.SANS_TROU)
-    finally:
-        REGISTRES["verificateur"].pop(TypeRegle.SANS_TROU)
+    assert TypeRegle.SANS_TROU not in types_non_couverts("verificateur")
+    assert module_regles.REGISTRES["verificateur"][TypeRegle.SANS_TROU]() == "essai"
+    with pytest.raises(ErreurDonneesInvalides, match="déjà une implémentation"):
+        enregistrer("verificateur", TypeRegle.SANS_TROU)(verifier_sans_trou)
+    with pytest.raises(ErreurDonneesInvalides, match="Registre inconnu"):
+        enregistrer("interface", TypeRegle.SANS_TROU)
 
 
 # --------------------------------------------------------------------------- #
@@ -821,3 +821,38 @@ def test_parametre_jours_travailles_change_le_standard(etab):
     ) == ("La promotion A1 ne travaille pas le samedi.")
     assert [e.value for e in EtatRegle] == ["proposee", "active", "inactive"]
     assert [o.value for o in OrigineRegle] == ["saisie", "import", "assistant", "base", "reprise"]
+
+
+def test_la_regle_resolue_garde_sa_periode_datee(jeu_minimal):
+    # Une règle datée vaut pour ses semaines sur la semaine type et au jour près sur les
+    # séances datées : la règle résolue porte ses deux dates et `couvre`.
+    import datetime as dt
+
+    from edt.db.moteur import session_base
+    from edt.domaine.regles import resoudre_regle
+    from edt.services import regles as service
+    from edt.services.instantane import charger_instantane
+
+    with session_base() as session:
+        instantane = charger_instantane(session, jeu_minimal.semestre_id)
+        debut, fin = (
+            instantane.date_debut + dt.timedelta(days=7),
+            instantane.date_debut + dt.timedelta(days=13),
+        )
+        detail = service.creer(
+            session,
+            {
+                "type": "PLAGE_HORAIRE",
+                "portee": {"nature": "groupe", "cible": "A1"},
+                "parametres": {"debut": "09:00", "fin": "17:00"},
+                "niveau": "facultatif",
+                "periode": {"date_debut": debut.isoformat(), "date_fin": fin.isoformat()},
+            },
+        )
+        resolue = resoudre_regle(detail.regle, instantane)
+    assert (resolue.date_debut, resolue.date_fin) == (debut, fin)
+    assert resolue.couvre(debut) and resolue.couvre(fin)
+    assert not resolue.couvre(debut - dt.timedelta(days=1)) and not resolue.couvre(
+        fin + dt.timedelta(days=1)
+    )
+    assert len(resolue.semaines) == 1
