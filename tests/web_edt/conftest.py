@@ -32,7 +32,7 @@ from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire, prechauffage, raccords
+from edt.services.emploi_du_temps import memoire, modifications, prechauffage, raccords
 from edt.services.emploi_du_temps import versions as service_versions
 from edt.verification.contrat import Anomalie
 
@@ -241,6 +241,23 @@ def seance_du_besoin(session, version_id: int, matiere: str, type_code: str, gro
         ):
             return seance
     raise AssertionError(f"Aucune séance {type_code} {matiere} pour {groupe}")
+
+
+def autre_place(session, seance) -> tuple[int, int]:
+    """Une place `(jour, début)` proposée pour la séance, différente de sa place dans la version.
+
+    Lue au moment du test dans le formulaire de la séance, jamais écrite en
+    dur : la solution de CP-SAT, donc la place actuelle, change d'un système
+    à l'autre. Un autre jour d'abord, sinon un autre début du même jour.
+    """
+    actuelle = (seance.jour, seance.debut_min)
+    jours = [j for j, _ in modifications.formulaire_seance(session, seance.id).jours]
+    for jour in sorted(jours, key=lambda j: j == seance.jour):  # le jour actuel en dernier
+        proposes = modifications.formulaire_seance(session, seance.id, jour=jour).debuts
+        for debut, _ in proposes:
+            if (jour, debut) != actuelle:
+                return jour, debut
+    raise AssertionError(f"Aucune autre place proposée pour la séance {seance.id} ({actuelle}).")
 
 
 def identifiant_groupe(session, code: str) -> int:
