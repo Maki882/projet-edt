@@ -329,12 +329,6 @@ def test_identifiant_de_seance_illisible_refuse_proprement(identifiant):
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="à corriger par le lot socle : src/edt/domaine/instantane.py, decomposer_id_seance "
-    "(isdigit() laisse passer « ² » ; isascii() et isdecimal() attendus)",
-)
 def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier():
     """Cas : `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import).
 
