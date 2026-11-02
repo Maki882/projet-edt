@@ -53,7 +53,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import presentation, raccords, regles_personnalisees
 from edt.services.emploi_du_temps.disposition import Axe, Disposition, Plage, disposer
-from edt.services.emploi_du_temps.identifiants import exiger_identifiant
+from edt.services.emploi_du_temps.identifiants import apercu, entier_ecrit, exiger_identifiant
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
@@ -104,15 +104,16 @@ class Cible:
 
     @classmethod
     def lire(cls, texte: str) -> Cible:
-        """Lit « groupe:12 », « enseignant:3 » ou « salle:7 »."""
-        nature, _, identifiant = texte.partition(":")
-        try:
-            return cls(NatureCible(nature), int(identifiant))
-        except ValueError as erreur:
+        """Lit « groupe:12 », « enseignant:3 » ou « salle:7 » (chiffres ASCII, `entier_ecrit`)."""
+        nature, _, chiffres = texte.partition(":")
+        identifiant = entier_ecrit(chiffres)
+        natures = {n.value: n for n in NatureCible}
+        if nature not in natures or identifiant is None:
             raise ErreurDonneesInvalides(
-                f"Choix d'affichage invalide : {texte!r} (attendu : un groupe, un enseignant ou "
-                "une salle de la liste)."
-            ) from erreur
+                f"Choix d'affichage invalide (« {apercu(texte)} ») : attendu un groupe, un "
+                "enseignant ou une salle de la liste."
+            )
+        return cls(natures[nature], identifiant)
 
     @classmethod
     def depuis(

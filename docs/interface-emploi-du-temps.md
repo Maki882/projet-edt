@@ -29,12 +29,12 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/regles_personnalisees.py` | règles personnalisées sur ces écrans : tableau de la page Générer, règles appliquées et entorses d'un calcul, déjeuner de la personne affichée, jours permis d'une séance |
-| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base ; paramètre d'adresse vide = non précisé |
+| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base ; paramètre d'adresse vide = non précisé ; nombres écrits lus en chiffres ASCII (`entier_ecrit`) ; saisies recopiées coupées (`apercu`) |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
 | `src/edt/web/routes/a_traiter.py` | onglet « À traiter » (`/a-traiter`) |
-| `src/edt/web/routes/accueil.py` | accueil (`/`), sans statistiques ; `/sante` (seule la clé `base.ecarts_schema` ajoutée) |
+| `src/edt/web/routes/accueil.py` | accueil (`/`), sans statistiques ; `/sante` (clés `base.ecarts_schema` et `base.inscriptible` ajoutées) |
 | `src/edt/web/templates/edt/` | gabarits des trois onglets ; `_ui.html` : macros partagées |
 | `src/edt/web/static/css/edt.css`, `static/js/edt.js` | grille, panneau, impression ; recherche rapide, envoi automatique |
 | `tests/web_edt/` | tests de ces écrans et services |
@@ -456,8 +456,14 @@ nombres de séances ou de besoins. Quatre blocs, pour le semestre du jour :
 
 Une base au schéma périmé affiche « Le schéma de la base ne correspond
 plus à l'application », la liste des écarts et la marche à suivre
-(`python -m edt init-db --reset`). La route `/sante` n'a reçu qu'une clé :
-`base.ecarts_schema`.
+(`python -m edt init-db --reset`). La route `/sante` a reçu deux clés :
+`base.ecarts_schema`, et `base.inscriptible`, le résultat d'une écriture
+d'essai annulée (`edt.services.etat.verifier_ecriture`) : `false` pour une
+base en lecture seule ou un disque plein (503, et l'accueil affiche « La base
+de données refuse les écritures » avec la cause et le remède), `null` quand
+une autre écriture tient le verrou (essai sauté sans attendre : ce n'est pas
+une panne). Toute page GET répond aussi à HEAD, sans corps
+(`edt.web.intergiciels.IntergicielHead`), pour la supervision et `curl -I`.
 
 ## Cas limites
 
@@ -465,8 +471,9 @@ Aucune adresse de ces onglets ne répond par une erreur 500 sur un chemin
 normal ; `tests/web_edt/test_cas_limites.py` les essaie. Ces tests forment la
 banque des cas limites du lot (marqueur `cas_limite`, docstring « Cas : …
 Risque : … ») : `python -m pytest -m cas_limite tests/web_edt`. Les aides
-pour en écrire d'autres (identifiant `ENORME`, `reperes`, `creer_version_vide`,
-`calcul_qui_tourne`, `client_sans_trace`) sont dans `tests/web_edt/conftest.py`.
+pour en écrire d'autres (identifiant `ENORME`, nombre `CINQ_MILLE_CHIFFRES`,
+`reperes`, `creer_version_vide`, `calcul_qui_tourne`, `client_sans_trace`) sont
+dans `tests/web_edt/conftest.py`.
 
 - **Identifiants hors bornes ou inconnus** (`identifiants.py`) : SQLite range
   ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`
@@ -477,6 +484,16 @@ pour en écrire d'autres (identifiant `ENORME`, `reperes`, `creer_version_vide`,
   grille, une cible hors bornes ou inconnue affiche la première classe en le
   disant ; une séance (`seance=h…`, `o…`) introuvable ouvre la page sans
   panneau, en le disant.
+- **Nombres écrits dans un texte** (`seance=h12`, `cible=groupe:12`,
+  `niveau_regle_12`, `salle_id`, durée de la pause) : lus par `entier_ecrit`,
+  chiffres ASCII et 30 chiffres significatifs au plus. `int()` lève
+  ValueError au-delà de 4 300 chiffres et refuse « ² », que `str.isdigit`
+  accepte : c'était une erreur 500 ; c'est maintenant « illisible »,
+  « introuvable » ou « hors bornes ». Une saisie recopiée dans un message ou
+  dans le journal est coupée à 40 caractères (`apercu`).
+- **En-tête `HX-Current-URL` illisible** (« http://[::1 ») : ignoré et
+  journalisé (`gabarits.adresse_courante`) ; le panneau d'une séance s'ouvre
+  avec son adresse de retour par défaut.
 - **Paramètre vide** : `?semestre_id=` (option « Tous les semestres »
   d'« À traiter », lien ou favori) vaut « non précisé » (`EntierFacultatif`) :
   tous les semestres sur « À traiter », le semestre du jour ailleurs. Même
@@ -486,7 +503,11 @@ pour en écrire d'autres (identifiant `ENORME`, `reperes`, `creer_version_vide`,
   (INFO), remplacé par la cible affichée.
 - **Fragment ouvert sans HTMX** (adresse saisie, lien) : le suivi
   (`/calculs/{id}/etat`), les vérifications préalables, les formulaires et
-  les panneaux d'une séance mènent à leur page complète (303).
+  les panneaux d'une séance, le compteur d'« À traiter » mènent à leur page
+  complète (303).
+- **Motif d'annulation** d'une séance datée : `modifications.MOTIF_MAX`
+  (2 000) caractères au plus ; le champ du panneau porte la même borne
+  (`maxlength`), un envoi plus long est refusé (422) sans annuler la séance.
 - **Arrêter un calcul déjà terminé** (deux onglets) : « Ce calcul est déjà
   terminé : rien à arrêter. » (`calculs.arreter_calcul`), au lieu
   d'annoncer un arrêt.
@@ -501,9 +522,9 @@ pour en écrire d'autres (identifiant `ENORME`, `reperes`, `creer_version_vide`,
 - **Filtres inconnus** (`couche`, `affichage`, `etendu`, `date`, `jour`, deux
   cibles à la fois, `cible=bureau:3`) : page « Saisie invalide » ou
   « Données invalides » (422) qui nomme le paramètre.
-- **Hors de ce lot** : l'export (`/export/emploi-du-temps.csv`, `.ics`, lot
-  échange) répond encore 500 pour un `version_id` au-delà de 2^63 ; le test
-  est marqué `xfail` strict en attendant sa correction.
+- **Export** (`/export/emploi-du-temps.csv`, `.ics`, lot échange) : un
+  `version_id` au-delà de 2^63 répond « n'existe pas » (404) depuis la
+  correction du lot échange ; le test de cette banque le garde.
 
 ## Temps de réponse
 

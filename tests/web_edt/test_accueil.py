@@ -6,23 +6,29 @@ Seulement ce dont l'équipe pédagogique a besoin : aucune statistique
 
 from __future__ import annotations
 
+import sqlite3
 import threading
+import time
 
 import pytest
 from sqlalchemy import delete, select
 
 from edt import solveur
+from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.moteur import chemin_base, expliquer_erreur_base, session_base
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
-from edt.services import generation
+from edt.services import etat, generation
 from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
 from .conftest import DELAI
+
+DELAI_SANS_ATTENTE_S = 5.0
+"""Bien moins que l'attente sur verrou de la base (10 s) : `/sante` n'a pas attendu."""
 
 
 def test_base_vide_propose_un_etablissement_fictif(client):
@@ -213,3 +219,44 @@ def test_base_au_schema_perime(client):
     sante = client.get("/sante")
     assert sante.status_code == 503
     assert any("colonne en trop" in ecart for ecart in sante.json()["base"]["ecarts_schema"])
+
+
+@pytest.mark.cas_limite
+def test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante(
+    jeu_minimal, client, monkeypatch
+):
+    """Cas : la base refuse l'écriture (fichier copié en root, disque plein) alors qu'elle se lit.
+    Risque : accueil muet et `/sante` vert : la supervision est rassurée et chaque saisie de la
+    journée échoue ensuite.
+    """
+    cause = expliquer_erreur_base(sqlite3.OperationalError("attempt to write a readonly database"))
+    monkeypatch.setattr(etat, "verifier_ecriture", lambda moteur: (False, cause))
+
+    page = client.get("/").text
+    assert "La base de données refuse les écritures" in page
+    assert "lecture seule" in page and "python -m edt doctor" in page
+    sante = client.get("/sante")
+    assert sante.status_code == 503 and sante.json()["base"]["inscriptible"] is False
+
+
+@pytest.mark.cas_limite
+def test_base_occupee_par_une_ecriture_n_est_pas_une_panne(jeu_minimal, client):
+    """Cas : un autre processus tient le verrou d'écriture (calcul, import, commande) pendant
+    que la supervision interroge `/sante` et qu'on ouvre l'accueil.
+    Risque : `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai
+    d'attente sur verrou (dix secondes) ; l'écriture d'essai doit être sautée, sans attente.
+    """
+    detenteur = sqlite3.connect(
+        chemin_base(charger_configuration().db_url), isolation_level=None, timeout=0
+    )
+    try:
+        detenteur.execute("BEGIN IMMEDIATE")
+        debut = time.perf_counter()
+        sante = client.get("/sante")
+        assert time.perf_counter() - debut < DELAI_SANS_ATTENTE_S
+        assert sante.status_code == 200 and sante.json()["base"]["inscriptible"] is None
+        assert "refuse les écritures" not in client.get("/").text
+    finally:
+        detenteur.rollback()
+        detenteur.close()
+    assert client.get("/sante").json()["base"]["inscriptible"] is True  # verrou rendu

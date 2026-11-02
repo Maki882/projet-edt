@@ -72,7 +72,7 @@ from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import raccords, regles_personnalisees
-from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
+from edt.services.emploi_du_temps.identifiants import apercu, exiger_identifiant, obtenir
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
@@ -84,6 +84,9 @@ MESSAGE_SEANCES_IMPORTEES = (
     "type les doublerait. Elles restent telles quelles ; pour les changer, déplacer ou annuler "
     "les séances datées une par une."
 )
+
+MOTIF_MAX = 2000
+"""Longueur maximale du motif d'annulation d'une séance datée (le champ du panneau la reprend)."""
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -588,7 +591,19 @@ def deplacer_occurrence(
 
 
 def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None = None) -> str:
-    """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume)."""
+    """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume).
+
+    Le motif est recopié dans la remarque de la séance : au-delà de `MOTIF_MAX`
+    caractères (envoi fabriqué, le champ du navigateur s'arrête avant), refus
+    sans rien changer.
+    """
+    motif = (motif or "").strip()
+    if len(motif) > MOTIF_MAX:
+        journal.info("Annulation refusée : motif de %d caractères", len(motif))
+        raise ErreurDonneesInvalides(
+            f"Motif trop long : {MOTIF_MAX} caractères au plus (lu : {len(motif)}). "
+            "La séance n'a pas été annulée."
+        )
     occurrence = obtenir(session, m.Occurrence, occurrence_id)
     if occurrence is None:
         raise ErreurIntrouvable(f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
@@ -596,14 +611,13 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
         raise ErreurRegleMetier("Cette séance est déjà annulée.")
     occurrence.statut = StatutOccurrence.ANNULEE
     occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
-    motif = (motif or "").strip()
     if motif:
         note = f"Annulée : {motif}"
         occurrence.commentaire = (
             f"{occurrence.commentaire}\n{note}" if occurrence.commentaire else note
         )
     session.flush()
-    journal.info("Occurrence %d annulée (%s)", occurrence.id, motif or "sans motif")
+    journal.info("Occurrence %d annulée (%s)", occurrence.id, apercu(motif, 200) or "sans motif")
     return f"Séance du {occurrence.date:%d/%m/%Y} annulée."
 
 

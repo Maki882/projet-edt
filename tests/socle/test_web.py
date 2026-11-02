@@ -122,6 +122,7 @@ def test_sante(client):
     assert corps["base"] == {
         "accessible": True,
         "initialisee": True,
+        "inscriptible": True,
         "mode_journal": "wal",
         "ecarts_schema": [],
     }
@@ -350,12 +351,6 @@ def test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire(client_etendu
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot web : src/edt/web/erreurs.py (_base_indisponible) doit nommer "
-    "la lecture seule (droits du fichier) et le disque plein (espace) au lieu du message "
-    "générique « n'est pas accessible »",
-)
 @pytest.mark.parametrize(
     ("cause", "mot"),
     [
@@ -374,12 +369,6 @@ def test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes(client_etendu,
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot web / état : src/edt/services/etat.py (diagnostiquer_base : "
-    "ajouter « inscriptible » par BEGIN IMMEDIATE puis ROLLBACK) et src/edt/web/routes/accueil.py "
-    "(/sante répond 503 quand la base n'est pas inscriptible)",
-)
 def test_sante_signale_une_base_en_lecture_seule(base, environnement, lecture_seule):
     """Cas : `edt.db` est en lecture seule (droits), le déploiement a réussi.
 
@@ -393,12 +382,6 @@ def test_sante_signale_une_base_en_lecture_seule(base, environnement, lecture_se
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot web : src/edt/web/app.py (creer_app) — FastAPI n'ajoute pas "
-    "HEAD aux routes GET ; ajouter HEAD aux routes GET (ou un intergiciel qui sert HEAD comme "
-    "GET sans corps) pour la supervision",
-)
 def test_head_repond_comme_get_sans_corps(jeu_minimal, client):
     """Cas : la supervision (sonde, `curl -I`) envoie HEAD / et HEAD /sante.
 

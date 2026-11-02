@@ -321,8 +321,13 @@ absent), service abandonné après trop d'échecs (« start-limit-hit » : corri
 puis `sudo systemctl reset-failed edt && sudo systemctl start edt`, ou redéployer).
 
 **Erreur 503 sur `/sante`.** L'application tourne mais juge la base inutilisable :
-non initialisée, ou schéma périmé. `sudo edt doctor` dit laquelle ; schéma
-périmé : `deploy/deployer.sh --reset-base` (section 4).
+non initialisée, schéma périmé, ou écriture refusée (`base.inscriptible` à
+`false` : fichier de la base ou son dossier en lecture seule, disque plein).
+`sudo edt doctor` dit laquelle ; schéma périmé :
+`deploy/deployer.sh --reset-base` (section 4) ; lecture seule : voir
+« Fichiers de la base appartenant à root » ci-dessous. `base.inscriptible` à
+`null` n'est pas une panne : une autre écriture tenait le verrou, l'essai a
+été sauté. `/sante` accepte aussi HEAD (`curl -I`).
 
 **Épuisement de la mémoire.** Le service est limité à 3 Go (`MemoryMax=3G` dans
 `edt.service`, sur 3,7 Go) : au-delà, le noyau le tue, systemd note « killed by

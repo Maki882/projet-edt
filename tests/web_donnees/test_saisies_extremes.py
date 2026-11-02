@@ -18,7 +18,6 @@ from edt.services.referentiels.lieux import cle_trajet
 from edt.services.referentiels.operations import ErreurSaisie
 
 from .conftest import (
-    LOT_WEB_EDT,
     NOMBRE_DE_5000_CHIFFRES,
     NOMBRE_TROP_GRAND,
     compter,
@@ -200,11 +199,6 @@ def test_nombres_de_cinq_mille_chiffres_refuses(site, ids):
     assert annee.status_code == 200 and "Année de début invalide" in annee.text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=LOT_WEB_EDT + "src/edt/web/routes/emploi_du_temps.py (paramètre seance=h<n> : int() "
-    "sans borne ; edt.services.referentiels.conversion.entier_naturel le fait)",
-)
 def test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps(site, version_generee):
     """Cas : l'adresse de l'emploi du temps avec « seance=h » suivi de 5 000 chiffres (lien
     abîmé). Risque : erreur 500 au lieu d'ignorer la séance mise en évidence."""
@@ -212,11 +206,6 @@ def test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps(site, version_gene
     assert reponse.status_code in (200, 404, 422)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=LOT_WEB_EDT + "src/edt/web/routes/calculs.py (champs niveau_regle_<n> : int() sans "
-    "borne)",
-)
 def test_niveau_de_regle_de_cinq_mille_chiffres_au_lancement(site, ids):
     """Cas : le formulaire « Lancer le calcul » avec un champ niveau_regle_<5 000 chiffres>.
     Risque : erreur 500 au lancement au lieu d'un refus clair."""
@@ -260,12 +249,6 @@ def test_commentaire_de_regle_borne_cote_serveur(site, ids):
     assert compter(m.Regle, m.Regle.commentaire.like("yyy%")) == 0
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=LOT_WEB_EDT + "src/edt/web/routes/emploi_du_temps.py ou "
-    "src/edt/services/emploi_du_temps/modifications.py (motif d'annulation sans borne : 500 "
-    "caractères au plus)",
-)
 def test_motif_d_annulation_borne_cote_serveur(site, version_generee):
     """Cas : le motif d'annulation d'une séance datée envoyé avec 200 000 caractères. Risque :
     enregistré dans la note de la séance et réaffiché dans son panneau (page de 200 Ko)."""

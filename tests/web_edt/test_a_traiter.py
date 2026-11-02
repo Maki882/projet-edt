@@ -12,6 +12,7 @@ from edt.domaine.instantane import id_seance
 from edt.verification.contrat import Anomalie
 
 from .conftest import (
+    HX,
     creer_version_vide,
     date_avec_seances,
     identifiant_groupe,
@@ -29,7 +30,7 @@ def test_sans_verificateur_l_absence_est_dite(version_generee, client, sans_veri
 
     assert "Les vérifications automatiques ne sont pas encore disponibles" in page
     assert "Aucune anomalie" not in page
-    assert client.get("/a-traiter/compteur").text.strip() == ""
+    assert client.get("/a-traiter/compteur", headers=HX).text.strip() == ""
 
 
 def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
@@ -97,7 +98,7 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
     assert "Jour fermé et aucun autre créneau libre" in page
     assert f"seance=o{a_programmer_id}" in page
     # Erreurs et avertissements (3) + séances à programmer ; les informations ne comptent pas.
-    assert f">{3 + deja + 1}</span>" in client.get("/a-traiter/compteur").text
+    assert f">{3 + deja + 1}</span>" in client.get("/a-traiter/compteur", headers=HX).text
 
 
 def test_avec_le_vrai_verificateur(version_generee, client):
@@ -133,19 +134,19 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
     faux_verificateur.hebdo = [Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "Salle prise deux fois.")]
 
     for _ in range(3):
-        assert ">1</span>" in client.get("/a-traiter/compteur").text
+        assert ">1</span>" in client.get("/a-traiter/compteur", headers=HX).text
     assert len(appels) == 1  # calculé une seule fois tant que rien ne change
 
     with session_base() as session:
         occurrence = session.scalar(select(m.Occurrence).limit(1))
         occurrence.statut = StatutOccurrence.A_PROGRAMMER  # une occurrence change
-    assert ">2</span>" in client.get("/a-traiter/compteur").text
+    assert ">2</span>" in client.get("/a-traiter/compteur", headers=HX).text
     assert len(appels) == 2
 
     with session_base() as session:
         seance = session.scalar(select(m.SeanceHebdo).limit(1))
         seance.verrou = not seance.verrou  # une séance change
-    client.get("/a-traiter/compteur")
+    client.get("/a-traiter/compteur", headers=HX)
     assert len(appels) == 3
 
 

@@ -10,6 +10,13 @@ ces écrans vérifient donc chaque identifiant reçu : hors bornes, c'est
 Côté adresse, une valeur vide (`?semestre_id=`, l'option « Tous les
 semestres » d'un sélecteur) vaut « non précisé » au lieu d'une saisie
 invalide (`EntierFacultatif`).
+
+Un nombre écrit dans un texte (`seance=h12`, `niveau_regle_12`, `salle_id`,
+une durée) est lu par `entier_ecrit` : chiffres ASCII seulement, au plus
+`CHIFFRES_MAX` chiffres significatifs (Python refuse de convertir plus de
+4 300 chiffres, et `str.isdigit` accepte « ² », que `int()` refuse). Une
+saisie recopiée dans un message ou le journal passe par `apercu` : 5 000
+caractères reçus n'y sont pas recopiés.
 """
 
 from __future__ import annotations
@@ -23,6 +30,13 @@ from edt.erreurs import ErreurIntrouvable
 
 IDENTIFIANT_MAX = 2**63 - 1
 """Plus grand identifiant qu'une ligne SQLite puisse porter."""
+
+CHIFFRES_MAX = 30
+"""Au-delà, un nombre écrit ne désigne rien et n'est même pas converti (même borne que les
+adresses, `edt.web.gabarits.CHIFFRES_ADRESSE_MAX`, et les saisies de l'espace Données)."""
+
+APERCU_MAX = 40
+"""Longueur au-delà de laquelle une saisie recopiée dans un message ou le journal est coupée."""
 
 T = TypeVar("T")
 
@@ -42,6 +56,23 @@ def exiger_identifiant(ident: int, introuvable: str) -> int:
 def obtenir(session: Session, modele: type[T], ident: object) -> T | None:
     """`session.get(modele, ident)`, ou `None` pour un identifiant qui ne peut pas exister."""
     return session.get(modele, ident) if identifiant_possible(ident) else None
+
+
+def entier_ecrit(texte: str) -> int | None:
+    """L'entier naturel écrit en chiffres ASCII dans `texte`, ou `None` pour toute autre saisie.
+
+    `None` aussi pour « ² » ou « ١٢ » (des chiffres pour `str.isdigit`, que `int()`
+    refuse ou lit autrement), un signe, des espaces et plus de `CHIFFRES_MAX`
+    chiffres significatifs. Ne lève jamais : à l'appelant de dire ce qu'il attendait.
+    """
+    if not (texte.isascii() and texte.isdigit()) or len(texte.lstrip("0")) > CHIFFRES_MAX:
+        return None
+    return int(texte)
+
+
+def apercu(texte: str, longueur: int = APERCU_MAX) -> str:
+    """`texte` coupé à `longueur` caractères (« … » à la fin), pour un message ou le journal."""
+    return texte if len(texte) <= longueur else texte[: longueur - 1] + "…"
 
 
 def vide_en_rien(valeur: Any) -> Any:
