@@ -286,9 +286,9 @@ des fichiers appartenant à root (`edt.db-wal`…) qui empêchent le service d'�
   par l'application : attendre la fin du calcul ou l'arrêter.
 - Pour repartir d'une base vide, préférer `deploy/deployer.sh --reset-base`
   (sauvegarde faite avant) puis `sudo edt jeu …`. `sudo edt jeu --reset`
-  efface la base **sans sauvegarde** ; faire d'abord `sudo edt sauvegarder
-  --prefixe manuelle --garder 0` (section 9). Sa question de confirmation
-  demande `ssh -t`, ou l'option `--oui`.
+  efface la base **sans sauvegarde** ; faire d'abord
+  `sudo edt sauvegarder --prefixe manuelle --garder 0` (section 9). Sa question
+  de confirmation demande `ssh -t`, ou l'option `--oui`.
 
 ## 7. Journaux et état
 
@@ -375,7 +375,9 @@ puis recréer une base vide, ou restaurer la dernière sauvegarde saine (section
 
 ```bash
 sudo systemctl stop edt
-for f in edt.db edt.db-wal edt.db-shm; do [ -e /var/lib/edt/$f ] && sudo mv /var/lib/edt/$f /var/lib/edt/sauvegardes/manuelle-corrompue-$(date +%Y%m%d-%H%M%S)-$f; done
+d=$(date +%Y%m%d-%H%M%S)
+for f in edt.db edt.db-wal edt.db-shm; do if sudo test -e /var/lib/edt/$f; then sudo mv /var/lib/edt/$f /var/lib/edt/sauvegardes/manuelle-corrompue-$d-$f; fi; done
+sudo ls -l /var/lib/edt /var/lib/edt/sauvegardes
 ```
 
 puis, depuis le poste, `deploy/deployer.sh --reset-base` et `sudo edt jeu …`.
@@ -490,9 +492,15 @@ Ces procédures vérifient sur le serveur ce que les tests automatiques ne peuve
 pas reproduire (systemd, nginx, droits Unix, coupures réseau). Chacune se rejoue
 telle quelle ; les faire **hors des heures d'utilisation** (certaines arrêtent
 le service quelques secondes), après chaque modification de `deploy/` et au
-moins une fois par trimestre. Les commandes `ssh` s'écrivent ici sans leurs
-options : `ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 '…'`, appelé
-`ssh serveur '…'` ci-dessous.
+moins une fois par trimestre. Dans chaque fenêtre Git Bash utilisée, à la racine
+du dépôt, définir d'abord le raccourci utilisé par toutes les procédures :
+
+```bash
+serveur() { ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 "$@"; }
+```
+
+`serveur 'commande'` lance la commande sur le serveur ; `serveur -t 'commande'`
+lui donne un terminal (commande qui affiche sa progression ou pose une question).
 
 | Ce qui est vérifié | Automatiquement (`tests/exploitation/`) | À la main (ci-dessous) |
 |---|---|---|
@@ -511,14 +519,15 @@ fenêtres Git Bash (A et B) à la racine du dépôt.
 
 **Étapes**
 1. Fenêtre B : lancer une commande longue, par exemple un calcul qui n'active
-   rien : `ssh -t serveur 'sudo edt generer --temps-limite 120 --sans-activer'`.
+   rien : `serveur -t 'sudo edt generer --temps-limite 120 --sans-activer'`.
 2. Fenêtre A, pendant que le calcul tourne : `deploy/deployer.sh`.
 3. Une fois le calcul fini, fenêtre A : relancer `deploy/deployer.sh` et, pendant
    l'étape « Environnement Python et dépendances », fenêtre B :
-   `ssh serveur 'sudo edt doctor'`.
-4. Processus hors du lanceur : `ssh serveur 'sudo systemd-run --uid=edt --gid=edt
-   --unit=essai-edt sleep 300'`, puis fenêtre A : `deploy/deployer.sh`.
-5. Nettoyage : `ssh serveur 'sudo systemctl stop essai-edt'`.
+   `serveur 'sudo edt doctor'`.
+4. Processus hors du lanceur, fenêtre B :
+   `serveur 'sudo systemd-run --uid=edt --gid=edt --unit=essai-edt sleep 300'`,
+   puis fenêtre A : `deploy/deployer.sh`.
+5. Nettoyage : `serveur 'sudo systemctl stop essai-edt'`.
 
 **Résultat attendu**
 - étape 2 : refus en préparation, « un autre déploiement, ou une commande « sudo
@@ -536,10 +545,10 @@ accepte `chattr` (ext4, cas du serveur).
 
 **Étapes**
 1. Rendre le dossier des sauvegardes non modifiable :
-   `ssh serveur 'sudo chattr +i /var/lib/edt/sauvegardes'`.
+   `serveur 'sudo chattr +i /var/lib/edt/sauvegardes'`.
 2. `deploy/deployer.sh`.
 3. `deploy/etat.sh`.
-4. Nettoyage : `ssh serveur 'sudo chattr -i /var/lib/edt/sauvegardes'`.
+4. Nettoyage : `serveur 'sudo chattr -i /var/lib/edt/sauvegardes'`.
 
 **Résultat attendu**
 - étape 2 : échec à l'étape « Sauvegarde de la base » (« sauvegarde impossible »),
@@ -553,13 +562,13 @@ accepte `chattr` (ext4, cas du serveur).
 
 **Étapes**
 1. Noter l'heure de Paris, puis `deploy/deployer.sh`.
-2. `ssh serveur 'tail -n 1 /var/log/edt-deploiements/historique.log; sudo grep "Application EDT démarrée" /var/log/edt/edt.log | tail -n 1'`.
+2. `serveur 'sudo tail -n 1 /var/log/edt-deploiements/historique.log; sudo grep "Application EDT" /var/log/edt/edt.log | tail -n 1'`.
 
 **Résultat attendu**
 - le nom de version (`Nom de la version : 20261102-140512-…`) est en heure UTC
   (une heure de moins que Paris en hiver, deux en été) ;
-- les messages `[serveur]` du déploiement, la ligne « Application EDT démarrée »
-  de `edt.log` et la date de `historique.log` sont à la même heure de Paris, et
+- les messages `[serveur]` du déploiement, la ligne « Application EDT …
+  démarrée » de `edt.log` et la date de `historique.log` sont à la même heure de Paris, et
   `historique.log` porte le décalage (`+0100` ou `+0200`).
 
 ### 10.4 Envoi du code interrompu
@@ -567,19 +576,20 @@ accepte `chattr` (ext4, cas du serveur).
 **Prérequis** : une version en service.
 
 **Étapes**
-1. Simuler un envoi coupé : `ssh serveur 'sudo mkdir -p /opt/edt/versions/20260101-000000-deadbeef/code'`.
+1. Simuler un envoi coupé : `serveur 'sudo mkdir -p /opt/edt/versions/20260101-000000-deadbeef/code'`.
 2. `deploy/etat.sh`.
 3. Copier le script du serveur puis le lancer sur ce dossier :
-   `ssh serveur 'cat > /tmp/deployer-distant.sh' < deploy/deployer-distant.sh`, puis
-   `ssh serveur 'sudo bash /tmp/deployer-distant.sh 20260101-000000-deadbeef 0000000000000000000000000000000000000000 essai 0 essai 1'`.
+   `serveur 'cat > /tmp/deployer-distant.sh' < deploy/deployer-distant.sh`, puis
+   `serveur 'sudo bash /tmp/deployer-distant.sh 20260101-000000-deadbeef 0000000000000000000000000000000000000000 essai 0 essai 1'`.
 4. `deploy/deployer.sh` (déploiement normal).
+5. Nettoyage : `serveur 'rm -f /tmp/deployer-distant.sh'`.
 
 **Résultat attendu**
 - étape 2 : la version `20260101-000000-deadbeef` est marquée « incomplet » ;
 - étape 3 : refus en préparation, « envoi du code incomplet … (témoin
   « envoi-termine » absent …) », rien n'est touché ;
-- étape 4 : la finalisation affiche « Supprimé (jamais mis en service : envoi coupé ou déploiement annulé) :
-  20260101-000000-deadbeef ».
+- étape 4 : la finalisation affiche « Supprimé (jamais mis en service : envoi
+  coupé ou déploiement annulé) : 20260101-000000-deadbeef ».
 
 ### 10.5 Arrêt brutal pendant une écriture
 
@@ -588,11 +598,11 @@ accepte `chattr` (ext4, cas du serveur).
 **Étapes**
 1. Dans l'application, lancer un calcul (page Générer) avec un temps limite d'au
    moins deux minutes.
-2. Pendant le calcul : `ssh serveur 'sudo systemctl kill --signal=SIGKILL edt'`
+2. Pendant le calcul : `serveur 'sudo systemctl kill --signal=SIGKILL edt'`
    (le noyau tue le service comme à la fin du délai d'arrêt de 20 s ou quand la
    mémoire est épuisée).
 3. Attendre 5 secondes, puis :
-   `ssh serveur 'sudo edt doctor; sudo -u edt sqlite3 /var/lib/edt/edt.db "PRAGMA integrity_check"'`.
+   `serveur 'sudo edt doctor; sudo -u edt sqlite3 /var/lib/edt/edt.db "PRAGMA integrity_check"'`.
 4. Dans l'application, ouvrir la liste des calculs, puis relancer un calcul.
 
 **Résultat attendu**
@@ -603,15 +613,16 @@ accepte `chattr` (ext4, cas du serveur).
 
 ### 10.6 Épuisement de la mémoire pendant un calcul
 
-**Prérequis** : le jeu fictif « grand » chargé (`sudo edt jeu --taille grand
---graine 0` sur une base vide) ; hors des heures d'utilisation.
+**Prérequis** : le jeu fictif « grand » chargé sur une base vide
+(`serveur 'sudo edt jeu --taille grand --graine 0'`) ; hors des heures
+d'utilisation.
 
 **Étapes**
 1. Abaisser la limite pour la durée de l'essai :
-   `ssh serveur 'sudo systemctl set-property --runtime edt.service MemoryMax=400M'`.
+   `serveur 'sudo systemctl set-property --runtime edt.service MemoryMax=400M'`.
 2. Dans l'application, lancer un calcul sur le semestre du jeu « grand ».
 3. Suivre : `deploy/journaux.sh` (Ctrl+C pour arrêter), puis `deploy/etat.sh`.
-4. Remettre la limite : `ssh serveur 'sudo systemctl set-property --runtime edt.service MemoryMax=3G'`
+4. Remettre la limite : `serveur 'sudo systemctl set-property --runtime edt.service MemoryMax=3G'`
    (la valeur d'essai disparaît de toute façon au redémarrage du serveur).
 
 **Résultat attendu**
@@ -644,10 +655,11 @@ accepte `chattr` (ext4, cas du serveur).
 une version en service. À faire une fois par mois.
 
 **Étapes**
-1. `ssh serveur 'systemctl list-timers edt-sauvegarde.timer'`.
-2. `ssh serveur 'sudo systemctl start edt-sauvegarde; sudo journalctl -u edt-sauvegarde -n 20'`.
-3. `ssh serveur 'ls -t /var/lib/edt/sauvegardes/quotidienne-*.db | head -n 1'`, puis
-   `ssh serveur 'sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<ce fichier>'`.
+1. `serveur 'systemctl list-timers edt-sauvegarde.timer'`.
+2. `serveur 'sudo systemctl start edt-sauvegarde; sudo journalctl -u edt-sauvegarde -n 20'`.
+3. Chemin de la plus récente :
+   `serveur 'sudo sh -c "ls -t /var/lib/edt/sauvegardes/quotidienne-*.db | head -n 1"'`,
+   puis `serveur 'sudo edt verifier-sauvegarde <chemin affiché>'`.
 4. Restauration d'essai sur le poste, sans toucher à la production : rapatrier ce
    fichier (section 9) sous `essai.db`, puis à la racine du dépôt :
    `EDT_DB_URL=sqlite:///essai.db python -m edt doctor` et
@@ -667,9 +679,9 @@ une version en service. À faire une fois par mois.
 
 **Étapes**
 1. Simuler un fichier laissé par une commande lancée en root :
-   `ssh serveur 'sudo touch /var/lib/edt/essai-root'`.
+   `serveur 'sudo touch /var/lib/edt/essai-root'`.
 2. `deploy/etat.sh`, puis `deploy/deployer.sh`.
-3. Nettoyage : `ssh serveur 'sudo rm /var/lib/edt/essai-root'`.
+3. Nettoyage : `serveur 'sudo rm /var/lib/edt/essai-root'`.
 
 **Résultat attendu**
 - `etat.sh` : « fichiers de /var/lib/edt qui n'appartiennent pas à edt … /var/lib/edt/essai-root » ;
