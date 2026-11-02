@@ -30,7 +30,8 @@
   data-confirmation="Annuler la séance du {{ b.date|date_fr }} ? Elle n'aura pas lieu et ne comptera plus dans le volume.">
   <h3>Annuler cette séance</h3>
   <input type="hidden" name="retour" value="{{ retour }}">
-  {{ ui.champ("motif", "Motif (facultatif)", "", aide="Par exemple : enseignant absent, salle indisponible.") }}
+  {#- maxlength : modifications.MOTIF_MAX, vérifié aussi par le serveur #}
+  {{ ui.champ("motif", "Motif (facultatif)", "", aide="Par exemple : enseignant absent, salle indisponible.", attributs={"maxlength": 2000}) }}
   <div class="formulaire-actions">
     <button type="submit" class="bouton bouton-danger">Annuler la séance</button>
   </div>

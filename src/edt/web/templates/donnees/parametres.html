@@ -15,7 +15,10 @@
 </p>
 {%- if erreur %}
 {{ ui.message(erreur.message ~ (" Les messages sont sous les champs concernés." if erreurs else ""), "erreur", erreur.details if erreurs else ()) }}
-{%- elif calcul_en_cours %}
+{%- elif invalides %}
+{{ ui.message(invalides|length ~ (" paramètre enregistré est invalide" if invalides|length == 1 else " paramètres enregistrés sont invalides") ~ " : la valeur par défaut est proposée à sa place. Vérifier les champs signalés, puis enregistrer pour corriger la base.", "attention") }}
+{%- endif %}
+{%- if not erreur and calcul_en_cours %}
 <div class="message message-attention" role="status">
   <p>Un calcul d'emploi du temps est en cours (calcul n° {{ calcul_en_cours.id }}) : les paramètres
     ne pourront être enregistrés qu'après sa fin. <a href="/calculs/{{ calcul_en_cours.id }}">Suivre le calcul</a></p>

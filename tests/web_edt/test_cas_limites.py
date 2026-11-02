@@ -31,7 +31,13 @@ from edt.domaine.enumerations import StatutOccurrence
 from edt.services.emploi_du_temps import modifications, vues
 from edt.services.emploi_du_temps.identifiants import IDENTIFIANT_MAX, identifiant_possible
 
-from .conftest import ENORME, HX, calcul_qui_tourne, creer_version_vide
+from .conftest import (
+    CINQ_MILLE_CHIFFRES,
+    ENORME,
+    HX,
+    calcul_qui_tourne,
+    creer_version_vide,
+)
 
 # --------------------------------------------------------------------------- #
 # Identifiants énormes, négatifs ou inconnus
@@ -123,16 +129,26 @@ def test_cible_enorme_dans_l_adresse_montre_la_premiere_classe(version_generee, 
 
 @pytest.mark.cas_limite
 def test_seance_enorme_dans_l_adresse_ouvre_la_page_sans_panneau(version_generee, client):
-    """Cas : séance à ouvrir (`seance=h…` ou `o…`) énorme, nulle ou de préfixe inconnu dans
-    l'adresse de la grille (lien partagé, favori ancien).
-    Risque : erreur 500 au lieu de la page sans panneau, avec un message.
+    """Cas : séance à ouvrir (`seance=h…` ou `o…`) de vingt ou 5 000 chiffres, nulle, en chiffres
+    exotiques (« ² ») ou de préfixe inconnu dans l'adresse de la grille (lien abîmé, favori ancien).
+    Risque : erreur 500 (`int()` refuse « ² » et plus de 4 300 chiffres) au lieu de la page sans
+    panneau, avec un message qui ne recopie pas les 5 000 chiffres.
     """
-    for seance in (f"h{ENORME}", f"o{ENORME}", "h0", "x12"):
+    for seance in (
+        f"h{ENORME}",
+        f"o{ENORME}",
+        "h0",
+        "x12",
+        "h²",
+        f"h{CINQ_MILLE_CHIFFRES}",
+        f"o{CINQ_MILLE_CHIFFRES}",
+    ):
         page = client.get(
             f"/emploi-du-temps?version_id={version_generee.version_id}&seance={seance}"
         )
-        assert page.status_code == 200, seance
-        assert "La séance a pu être déplacée ou supprimée" in page.text, seance
+        assert page.status_code == 200, seance[:30]
+        assert "La séance a pu être déplacée ou supprimée" in page.text, seance[:30]
+        assert "1" * 100 not in page.text, seance[:30]  # ni dans le message, ni dans les liens
 
 
 @pytest.mark.cas_limite
@@ -170,7 +186,8 @@ def test_cookie_de_cible_illisible_ou_enorme_est_ignore(version_generee, client,
 @pytest.mark.cas_limite
 def test_fragments_ouverts_sans_htmx_menent_a_la_page(reperes, client, faux_verificateur):
     """Cas : fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau
-    d'une séance) ouvert sans en-tête HX-Request : adresse saisie, nouvel onglet, lien.
+    d'une séance, compteur d'« À traiter ») ouvert sans en-tête HX-Request : adresse saisie,
+    nouvel onglet, lien.
     Risque : un morceau de page nu, sans menu ni style, au lieu de la page complète.
     """
     attendus = {
@@ -186,6 +203,7 @@ def test_fragments_ouverts_sans_htmx_menent_a_la_page(reperes, client, faux_veri
         f"/emploi-du-temps/occurrences/{reperes.occurrence}/panneau": (
             f"seance=o{reperes.occurrence}"
         ),
+        "/a-traiter/compteur": "/a-traiter",
     }
     for adresse, cible in attendus.items():
         sans = client.get(adresse, follow_redirects=False)
@@ -216,8 +234,8 @@ def test_panneau_d_une_seance_supprimee_entre_temps(reperes, client, faux_verifi
 
 @pytest.mark.cas_limite
 def test_deplacement_vers_un_creneau_ou_un_jour_inexistant(reperes, client, faux_verificateur):
-    """Cas : séance déplacée vers un début hors grille, un jour hors semaine ou un jour illisible
-    (formulaire forgé ou périmé).
+    """Cas : séance déplacée vers un début hors grille, un jour hors semaine, un jour ou une salle
+    illisibles (« ² », 5 000 chiffres : formulaire forgé ou périmé).
     Risque : séance enregistrée à une place impossible, ou erreur 500, au lieu d'un refus
     lisible qui la laisse en place.
     """
@@ -229,6 +247,8 @@ def test_deplacement_vers_un_creneau_ou_un_jour_inexistant(reperes, client, faux
         ({"jour": avant[0], "debut": 100000}, "n&#39;est pas un début de créneau"),
         ({"jour": 9, "debut": 510}, "Jour invalide"),
         ({"jour": "lundi", "debut": 510}, "Saisie invalide"),
+        ({"jour": avant[0], "debut": avant[1], "salle_id": "²"}, "Salle illisible"),
+        ({"jour": avant[0], "debut": avant[1], "salle_id": CINQ_MILLE_CHIFFRES}, "Salle illisible"),
     ):
         reponse = client.post(
             f"/emploi-du-temps/seances/{reperes.seance}/modifier", data=donnees, headers=HX
@@ -314,6 +334,12 @@ def test_date_tres_ancienne_ou_lointaine_sans_erreur(version_generee, client):
         ("affichage=jour&jour=99", "Jour invalide"),
         ("groupe_id=1&salle_id=2", "Choisir un seul groupe"),
         ("cible=bureau:3", "Choix d&#39;affichage invalide"),
+        ("cible=groupe:²", "Choix d&#39;affichage invalide"),
+        pytest.param(
+            f"cible=groupe:{CINQ_MILLE_CHIFFRES}",
+            "Choix d&#39;affichage invalide",
+            id="cible-de-5000-chiffres",
+        ),
     ],
 )
 def test_filtres_inconnus_refuses_lisiblement(version_generee, client, parametres, attendu):
@@ -325,10 +351,34 @@ def test_filtres_inconnus_refuses_lisiblement(version_generee, client, parametre
     reponse = client.get(f"/emploi-du-temps?version_id={version_generee.version_id}&{parametres}")
     assert reponse.status_code == 422
     assert attendu in reponse.text and "Traceback" not in reponse.text
+    assert "1" * 100 not in reponse.text  # la saisie n'est pas recopiée en entier
+
+
+@pytest.mark.cas_limite
+def test_hx_current_url_illisible_dans_les_panneaux(reperes, client, faux_verificateur, caplog):
+    """Cas : panneau d'une séance ou d'une séance datée demandé avec un en-tête HX-Current-URL
+    que `urlsplit` refuse (« http://[::1 » : navigateur ou extension qui l'abîme).
+    Risque : erreur 500 au clic sur chaque séance de la grille ; le panneau doit s'ouvrir avec
+    son adresse de retour par défaut, l'en-tête ignoré et journalisé.
+    """
+    entetes = {**HX, "HX-Current-URL": "http://[::1"}
+    for adresse, retour in (
+        (f"/emploi-du-temps/seances/{reperes.seance}/panneau", f"seance=h{reperes.seance}"),
+        (
+            f"/emploi-du-temps/occurrences/{reperes.occurrence}/panneau",
+            f"seance=o{reperes.occurrence}",
+        ),
+    ):
+        caplog.clear()
+        with caplog.at_level(logging.INFO, logger="edt.web.gabarits"):
+            panneau = client.get(adresse, headers=entetes)
+        assert panneau.status_code == 200 and "<html" not in panneau.text, adresse
+        assert retour in panneau.text, adresse  # retour par défaut : la séance dans sa version
+        assert any("HX-Current-URL" in r.getMessage() for r in caplog.records), adresse
 
 
 # --------------------------------------------------------------------------- #
-# Calculs : relance pendant un calcul
+# Calculs : relance pendant un calcul, saisies extrêmes au lancement
 # --------------------------------------------------------------------------- #
 
 
@@ -351,6 +401,100 @@ def test_relance_pendant_un_calcul_mene_au_calcul_en_cours(version_generee, clie
         assert "Un calcul est déjà en cours" in client.get(f"/calculs/{en_cours}").text
         with session_base() as session:  # le calcul de la version générée et celui en cours
             assert session.scalar(select(func.count()).select_from(m.Calcul)) == 2
+
+
+@pytest.mark.cas_limite
+def test_saisies_de_cinq_mille_chiffres_au_lancement(jeu_minimal, client):
+    """Cas : formulaire « Lancer le calcul » fabriqué : règle personnalisée `niveau_regle_<5 000
+    chiffres>` ou `niveau_regle_²`, durée de pause de 5 000 chiffres ; même règle dans
+    l'adresse des vérifications préalables.
+    Risque : `int()` lève ValueError, erreur 500 au lancement au lieu d'un refus clair ; ou un
+    calcul lancé sur une saisie illisible.
+    """
+    semestre = jeu_minimal.semestre_id
+    base = {"semestre_id": semestre}
+    for champ in (f"niveau_regle_{CINQ_MILLE_CHIFFRES}", "niveau_regle_²"):
+        reponse = client.post("/calculs", data={**base, champ: "important"})
+        assert reponse.status_code == 422, champ[:20]
+        assert "n&#39;est pas (ou plus) active" in reponse.text, champ[:20]
+        assert "1" * 100 not in reponse.text, champ[:20]  # le message ne recopie pas le champ
+    pause = client.post(
+        "/calculs",
+        data={
+            **base,
+            "dejeuner": "libre",
+            "dejeuner_debut": "12:00",
+            "dejeuner_fin": "14:00",
+            "dejeuner_duree": CINQ_MILLE_CHIFFRES,
+        },
+    )
+    assert pause.status_code == 422 and "Durée minimale hors bornes" in pause.text
+    verifications = client.get(
+        "/calculs/verifications",
+        params={"semestre_id": semestre, f"niveau_regle_{CINQ_MILLE_CHIFFRES}": "important"},
+        headers=HX,
+    )
+    assert verifications.status_code == 422 and "n&#39;est pas (ou plus)" in verifications.text
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Calcul)) == 0  # rien lancé
+
+
+# --------------------------------------------------------------------------- #
+# Séance datée : motif d'annulation borné
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_motif_d_annulation_borne(reperes, client, faux_verificateur):
+    """Cas : motif d'annulation d'une séance datée envoyé avec un caractère de plus que la limite
+    (le navigateur borne le champ, pas un envoi fabriqué), puis exactement à la limite.
+    Risque : 200 Ko enregistrés dans la remarque de la séance et réaffichés dans son panneau ;
+    ou une séance annulée malgré le refus.
+    """
+    limite = modifications.MOTIF_MAX
+    adresse = f"/emploi-du-temps/occurrences/{reperes.occurrence}"
+    panneau = client.get(f"{adresse}/panneau", headers=HX).text
+    assert f'maxlength="{limite}"' in panneau  # le champ du navigateur borne comme le serveur
+
+    trop = client.post(f"{adresse}/annuler", data={"motif": "x" * (limite + 1)})
+    assert trop.status_code == 422
+    assert f"Motif trop long : {limite} caractères au plus (lu : {limite + 1})" in trop.text
+    with session_base() as session:
+        occurrence = session.get(m.Occurrence, reperes.occurrence)
+        assert occurrence.statut is not StatutOccurrence.ANNULEE
+        assert "xxx" not in (occurrence.commentaire or "")
+
+    assert client.post(f"{adresse}/annuler", data={"motif": "x" * limite}).status_code == 200
+    with session_base() as session:
+        occurrence = session.get(m.Occurrence, reperes.occurrence)
+        assert occurrence.statut is StatutOccurrence.ANNULEE
+        assert occurrence.commentaire.endswith("x" * limite)
+
+
+# --------------------------------------------------------------------------- #
+# HEAD : supervision et vérificateurs de liens
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_head_sur_les_ecrans_de_l_emploi_du_temps(version_generee, client):
+    """Cas : HEAD (sonde de supervision, `curl -I`, vérificateur de liens) sur les pages
+    Générer, versions, grille, suivi d'un calcul et « À traiter », et sur une action POST.
+    Risque : 405 « Action non permise » sur toute page (FastAPI ne déclare que GET) ; ou une
+    réponse HEAD qui porte la page entière.
+    """
+    for adresse in (
+        f"/calculs?semestre_id={version_generee.semestre_id}",
+        f"/versions?semestre_id={version_generee.semestre_id}",
+        f"/emploi-du-temps?version_id={version_generee.version_id}",
+        f"/calculs/{version_generee.calcul_id}",
+        "/a-traiter",
+    ):
+        reponse = client.head(adresse)
+        assert reponse.status_code == 200 and reponse.content == b"", adresse
+        assert int(reponse.headers["content-length"]) > 0, adresse  # celle de la page en GET
+    action = client.head(f"/calculs/{version_generee.calcul_id}/arreter")
+    assert action.status_code == 405 and action.content == b""
 
 
 # --------------------------------------------------------------------------- #
@@ -437,15 +581,11 @@ def test_semestre_sans_grille_reste_utilisable(reperes, client, faux_verificateu
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot échange : src/edt/web/routes/echange.py (identifiant au-delà "
-    "de 2^63 : OverflowError SQLite, erreur 500)",
-)
 @pytest.mark.parametrize("extension", ["csv", "ics"])
 def test_export_d_une_version_enorme_dit_introuvable(jeu_minimal, client_sans_trace, extension):
     """Cas : export CSV ou iCal d'une version de vingt chiffres (lien mal copié).
     Risque : OverflowError de SQLite non rattrapée : erreur 500 au lieu d'un « introuvable » (404).
+    Corrigé par le lot échange ; `client_sans_trace` montre un retour du 500 comme un statut.
     """
     reponse = client_sans_trace.get(f"/export/emploi-du-temps.{extension}?version_id={ENORME}")
     assert reponse.status_code == 404

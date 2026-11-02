@@ -58,7 +58,56 @@ vers un autre lot, manuel (procédure dans la documentation du lot) ou écarté.
 
 ### Socle (domaine, base, services transverses)
 
-*Rapport non encore reçu.*
+Validation : ruff propre ; pytest tests/socle : 340 réussis, 9 xfail stricts, 1 skip Windows ; suite complète 1329 réussis, 9 xfail, 1 skip, 1 échec arbitré (synthèse : ponctuels hors des dates d'un semestre d'un jour → générateur adapté). 65 tests cas_limite ; nouveaux fichiers tests/socle/test_moteur.py, test_config.py, test_journal.py, test_parametres.py, test_jeux.py ; aides dans tests/socle/conftest.py (lanceur, compter, delai_verrou_court, verrou_ecriture, lecture_seule, corrompre_base).
+
+Défauts corrigés : salles homonymes sur deux campus (un code → tous ses identifiants, code ambigu refusé) ; base corrompue ou verrouillée au démarrage (cycle de vie protégé, 503 « pas une base SQLite ») ; paramètre corrompu réparable (lire_parametres tolerant, anomalies_parametres) ; EDT_DB_URL sans fichier, pilote ou schéma inconnus refusés ; garde commune edt.db.moteur.identifiant_valide (instantané, niveaux, règles) ; règles hors heures d'ouverture refusées par champ ; jours incompatibles signalés (ReglesJours.regles_incompatibles) ; règle sans heures sans exception brute ; préconditions du jeu minimal ; doctor détecte lecture seule et verrou ; SAVEPOINT pysqlite (isolation_level=None) ; DatabaseError → message et code 1 en CLI ; edt.log non ouvrable → ErreurConfiguration, repli console pour doctor ; init-db --reset avec confirmation en terminal (--oui), refus pendant un calcul, sauvegarde avant reset en prod ; purge au-delà de 50 journaux de calcul ; panne après remise à zéro dite ; service des règles (brouillon non objet, modifier annee/code refusés, filtres inconnus, code en majuscules, année mal formée) ; CHECK maxima > 0 ; ecarts_schema compare index et unicités, deux versions actives refusées ; listes par défaut posées dans une base neuve seulement ; ponctuel hors des dates du semestre = problème de dépliage ; variables EDT_* validées ; rotation de journal tolérante ; besoin sans groupe signalé ; jeu sur schéma périmé → --reset ; marqueur d'opération d'un autre processus ; normalisation Unicode NFC des codes et identifiants (domaine/normalisation.py) ; tests du cycle de vie du serveur.
+Complément 80e8258 (demande d'intégration) : transaction SQLite IMMEDIATE à la demande pour les écrivains longs (`OPTION_ECRITURE_IMMEDIATE`, `transaction_immediate(session)`, à appeler avant la première requête, sinon `ErreurConfiguration`) ; BEGIN différé par défaut (lecteurs servis sous verrou long) ; utilisée par l'import de données.
+Points d'attention : ecarts_schema compare désormais index et unicités (une base créée avant un index ajouté sera dite périmée → --reset-base, données synthétiques) ; les listes par défaut ne sont plus reposées dans une base existante ; init-db --reset ne demande confirmation que dans un terminal (le déploiement l'appelle sans TTY).
+
+| Cas | Test (fichier::nom, relatif à tests/socle/) | État |
+|---|---|---|
+| 0 Règle SALLES, salles homonymes | test_instantane.py::test_regle_salles_avec_salles_homonymes_sur_deux_campus ; test_regles.py::test_des_salles_homonymes_sur_deux_campus_sont_toutes_resolues | corrigé |
+| 1 Base corrompue ou verrouillée au démarrage | test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue ; ::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs ; ::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede ; ::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire | corrigé |
+| 2 Paramètre corrompu | test_parametres.py::test_un_parametre_corrompu_en_base_reste_reparable_par_l_ecriture_et_la_reinitialisation ; ::test_l_ecran_des_parametres_reste_ouvrable_avec_une_valeur_corrompue | corrigé (écran : web données c32c81c, xfail levé) |
+| 3 EDT_DB_URL sans fichier | test_moteur.py::test_une_url_sqlite_sans_fichier_est_refusee | corrigé |
+| 4 Identifiant au-delà de 2^63 | test_moteur.py::test_un_identifiant_hors_des_entiers_sqlite_est_invalide ; test_instantane.py::test_un_identifiant_hors_des_entiers_sqlite_est_introuvable ; ::test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas | corrigé ; xfail vers solveur |
+| 5 Règles hors heures d'ouverture | test_regles.py::test_une_regle_hors_des_heures_d_ouverture_est_refusee_avec_le_champ_fautif | corrigé (jours sans créneau : accepté par conception) |
+| 6 Intersection vide des jours | test_regles.py::test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes | corrigé |
+| 7 Règle sans début ni fin | test_regles.py::test_une_regle_sans_heures_a_une_phrase_ou_une_erreur_nommee_jamais_une_exception_brute ; test_regles_service.py::test_une_regle_enregistree_sans_heures_reste_lisible | corrigé |
+| 8 Préconditions du jeu minimal | test_base.py::test_le_jeu_minimal_refuse_proprement_une_base_avec_regles_ou_sans_semestre_s1 | corrigé |
+| 9 Base en lecture seule | test_cli.py::test_doctor_signale_une_base_en_lecture_seule ; test_web.py::test_sante_signale_une_base_en_lecture_seule ; ::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes | corrigé (doctor ; /sante et page 503 : web EDT bbe664d, xfail levés) |
+| 10 SAVEPOINT pysqlite | test_moteur.py::test_un_point_de_sauvegarde_libere_reste_annule_par_la_transaction_englobante | corrigé |
+| 11 init-db et jeu-minimal sur base inaccessible | test_cli.py::test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1 | corrigé |
+| 12 edt.log non ouvrable | test_journal.py::test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit ; ::test_dossier_de_journaux_sous_un_fichier_est_une_erreur_de_configuration | corrigé |
+| 13 init-db --reset | test_cli.py::test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours ; ::test_init_db_reset_non_interactif_ne_pose_pas_de_question | corrigé |
+| 14 HEAD 405 | test_web.py::test_head_repond_comme_get_sans_corps ; ::test_une_methode_non_permise_donne_une_page_405 | corrigé (IntergicielHead, web EDT bbe664d) ; couvert |
+| 15 Journaux de calcul | test_journal.py::test_les_journaux_de_calcul_les_plus_anciens_sont_purges | corrigé (disque plein réel : manuel) |
+| 16 Panne après remise à zéro | test_jeux.py::test_panne_de_generation_apres_remise_a_zero_est_dite | corrigé |
+| 17 Brouillon non objet | test_regles_service.py::test_brouillon_qui_n_est_pas_un_objet_est_une_validation_invalide | corrigé |
+| 18 modifier annee/code | test_regles_service.py::test_modifier_refuse_un_changement_d_annee_ou_de_code_et_garde_le_controle_des_doublons | corrigé |
+| 19 EDT_DB_URL pilote ou schéma inconnus | test_moteur.py::test_une_url_sans_pilote_ou_de_schema_inconnu_est_une_erreur_de_configuration | corrigé |
+| 20 CHECK et maxima | test_base.py::test_contraintes_de_controle_du_modele_et_maxima_positifs | corrigé |
+| 21 Versions actives, index | test_instantane.py::test_deux_versions_actives_sont_refusees_et_l_index_absent_est_un_ecart ; test_schema.py::test_un_index_unique_partiel_absent_est_un_ecart ; ::test_une_unicite_absente_ou_en_trop_est_un_ecart | corrigé |
+| 22 init-db relancé | test_base.py::test_init_db_relance_ne_recree_pas_un_referentiel_supprime_volontairement | corrigé |
+| 23 Ponctuel hors des dates du semestre | test_depliage.py::test_ponctuel_hors_des_dates_du_semestre_est_un_probleme_de_depliage | corrigé (générateur adapté en conséquence) |
+| 24 Variables EDT_* | test_config.py::test_variables_d_environnement_invalides_levent_une_erreur_de_configuration ; ::test_valeurs_vides_ou_entourees_d_espaces ; ::test_doctor_signale_une_adresse_d_ecoute_introuvable | corrigé |
+| 25 Rotation concurrente des journaux | test_journal.py::test_une_rotation_impossible_ne_perd_ni_ligne_ni_console ; ::test_le_fichier_journal_suit_une_rotation_faite_par_un_autre_processus (skip Windows) | corrigé ; deux processus : manuel |
+| 26 Écritures concurrentes | test_moteur.py::test_une_ecriture_attend_la_fin_d_une_transaction_courte ; ::test_sous_un_verrou_tenu_l_ecriture_echoue_apres_le_delai_et_les_lecteurs_sont_servis | couvert |
+| 27 Besoin sans groupe | test_depliage.py::test_un_besoin_sans_groupe_est_signale_et_non_deplie ; test_instantane.py::test_un_besoin_sans_groupe_est_signale_dans_l_instantane | corrigé |
+| 28 Filtre inconnu | test_regles_service.py::test_filtre_inconnu_est_une_erreur_metier | corrigé |
+| 29 Code en minuscules | test_regles_service.py::test_le_code_est_normalise_en_majuscules | corrigé |
+| 30 Année mal formée | test_regles_service.py::test_annee_mal_formee_indique_le_format_attendu | corrigé |
+| 31 Jeu sur schéma périmé | test_jeux.py::test_jeu_fictif_sur_schema_perime_indique_le_reset | corrigé |
+| 32 Commandes de calcul | test_cli.py::test_commandes_de_calcul_avec_un_identifiant_inexistant ; ::test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces | couvert ; xfail vers solveur |
+| 33 Opération d'un autre processus | test_jeux.py::test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur ; test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee | corrigé |
+| Erreurs du pilote SQLite (verrou, lecture seule, corruption, disque plein) expliquées avec leur remède | test_moteur.py::test_les_erreurs_du_pilote_sont_expliquees_avec_leur_remede | corrigé (expliquer_erreur_base) |
+| Transaction immédiate à la demande : verrou d'écriture pris dès l'ouverture, lecteur servi, appel tardif refusé, politique différée préservée (demande d'intégration pour l'import) | test_moteur.py::test_transaction_immediate_prend_le_verrou_d_ecriture_des_l_ouverture ; ::test_transaction_immediate_apres_une_requete_est_une_erreur_de_configuration ; ::test_une_transaction_qui_lit_ne_bloque_pas_les_autres_ecrivains | corrigé (80e8258) |
+| Unicode des codes | test_base.py::test_un_code_aux_espaces_invisibles_est_le_meme_code ; ::test_les_codes_et_identifiants_sont_normalises_en_nfc | corrigé |
+| Cycle de vie du serveur | test_web.py::test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise ; ::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer | couvert |
+| Graine ou année invalides avant la remise à zéro (transmis par la synthèse) | test_jeux.py::test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero | corrigé |
+| decomposer_id_seance aux chiffres non décimaux (transmis par le vérificateur) | test_instantane.py::test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier | corrigé |
+| doctor et dossier generations/ (transmis par le solveur) | test_cli.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable | corrigé |
+| Cible numérique hors bornes (transmis par le solveur) | test_regles_service.py::test_regle_dont_la_cible_numerique_est_hors_bornes_est_invalide | corrigé |
 
 ### Solveur et service de génération
 
@@ -101,7 +150,7 @@ Non implémenté, volontairement : fils CP-SAT bornés par la mémoire (manque l
 Validation : ruff propre ; pytest tests/verification : 278 réussis, 2 xfail stricts ; -m cas_limite : 25 tests ; suite complète 1193 réussis (2 échecs chronométrés d'autres lots sous charge : tests/socle/test_charge.py 0,361 s pour 0,3 s ; tests/solveur/test_moteur.py 2,01 s pour 2 s).
 Aides réutilisables : tests/verification/versions.py (emploi du temps, enregistrer_version), conftest.py (version_id, version_sans_seances_datees, salle_n204_supprimee, salle_n204_orpheline), dates repères dans fabrique.py.
 Choix validés : séance hors semestre → JOUR_FERME (comme l'instanciation) ; vérificateur pur tolère une liste de contraintes vide (services la refusent) ; doublons de séance tus seulement si VOLUME vérifiée ; salle inconnue → « salle à définir » nommant la salle disparue, verifier_modification refuse une salle proposée inconnue ; seuil de performance 10 s processeur.
-Défauts corrigés (12) : voir tableau. Défauts transmis : socle — decomposer_id_seance accepte « ² » (isdigit) → isascii() and isdecimal() ; niveaux — règles copiées par le calcul mais introuvables ignorées sans journal (correction confiée au vérificateur lui-même).
+Défauts corrigés (12) : voir tableau. Complément 8e0dd97 : `_version` et `version_a_verifier` utilisent la garde commune `edt.db.moteur.identifiant_valide` (plus de copie locale) ; xfail de `decomposer_id_seance` levé après la correction du socle ; plus aucun xfail dans tests/verification. Défauts transmis : socle — decomposer_id_seance accepte « ² » (isdigit) → isascii() and isdecimal() ; niveaux — règles copiées par le calcul mais introuvables ignorées sans journal (correction confiée au vérificateur lui-même).
 
 | Cas | Test (fichier::nom) | État |
 |---|---|---|
@@ -111,24 +160,26 @@ Défauts corrigés (12) : voir tableau. Défauts transmis : socle — decomposer
 | 4. Salle supprimée ou orpheline | tests/verification/test_service.py::test_salle_supprimee_apres_le_calcul_degrade_en_salle_a_definir ; ::test_salle_orpheline_nommee_sans_rendre_la_verification_impossible ; tests/verification/test_salles.py::test_salle_inconnue_verifiee_comme_salle_a_definir ; ::test_salles_a_definir_regroupees_par_seance_dans_la_couche_datee | corrigé |
 | 5. Boucle de parenté entre groupes | tests/verification/test_dejeuner_libre.py::test_cycle_de_groupes_ne_rend_pas_le_verificateur_muet | corrigé |
 | 6. Identifiant « ²-1 » (vérificateur) | tests/verification/test_volume_verrou_maxima.py::test_identifiant_de_seance_illisible_refuse_proprement (3 variantes) | corrigé |
-| 6 bis. decomposer_id_seance("²-1") | tests/verification/test_volume_verrou_maxima.py::test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier | xfail vers socle (instantane.py:100) |
+| 6 bis. decomposer_id_seance("²-1") | tests/verification/test_volume_verrou_maxima.py::test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier | corrigé par le socle (isascii() et isdecimal()), xfail levé |
 | 7. Date reçue en datetime | tests/verification/test_datee.py::test_date_sous_forme_de_datetime_refusee | corrigé |
 | 8. Nom propre « Le Gall » mis en minuscule | tests/verification/test_niveaux.py::test_prefixe_garde_la_majuscule_d_un_nom_propre | corrigé |
 | 9. Jour sans créneau signalé deux fois | tests/verification/test_horaires.py::test_jour_sans_creneau_signale_une_seule_fois | corrigé |
 | 10. Période jusqu'à date.max | tests/verification/test_service.py::test_periode_aux_bornes_extremes_du_calendrier | corrigé |
 | 11. Semestre de 12 900 séances datées (perf) | tests/verification/test_performance.py::test_un_semestre_entier_de_13000_occurrences_en_moins_de_10_secondes | couvert |
 | 12. Règle supprimée ou désactivée après le calcul | tests/verification/test_service_regles.py::test_regle_supprimee_ou_desactivee_apres_le_calcul_ignoree_sans_erreur (2 variantes) | couvert |
-| 12 bis. Trace des règles introuvables | tests/verification/test_service_regles.py::test_regles_du_calcul_introuvables_nommees_dans_le_journal | xfail → correction en cours par le vérificateur (services/niveaux.py) |
+| 12 bis. Trace des règles introuvables | tests/verification/test_service_regles.py::test_regles_du_calcul_introuvables_nommees_dans_le_journal | corrigé (services/niveaux.py) |
 | 13. Contrainte désactivée au code inconnu | tests/verification/test_service_niveaux.py::test_contrainte_desactivee_inconnue_nommee_dans_l_erreur | corrigé |
 | 14. Grille vide ou d'un seul créneau | tests/verification/test_indicateurs.py::test_grille_vide_ou_d_un_seul_creneau | couvert |
 | 15. Liste de contraintes vide | tests/verification/test_service.py::test_liste_de_contraintes_vide_refusee ; tests/verification/test_paires.py::test_aucune_contrainte_a_verifier_journalisee | corrigé |
 | 16. Semaine réelle à cheval sur deux années | tests/verification/test_datee.py::test_maxima_hebdomadaires_a_cheval_sur_deux_annees_civiles | couvert |
+| Identifiant de version ou de semestre hors bornes (2^70) dans une adresse ou la commande | tests/verification/test_service.py::test_identifiant_hors_bornes_de_la_base_introuvable | corrigé (8e0dd97, garde commune identifiant_valide) |
 
 ### Écrans de données
 
 Validation : ruff propre ; pytest tests/web_donnees : 145 réussis, 7 xfail stricts ; suite complète 1195 réussis, 7 xfail. 49 tests cas_limite (test_cas_limites.py, test_performance.py perf, et dans test_parametres.py, test_saisies_extremes.py, test_regles.py, test_suppression.py). Aides dans tests/web_donnees/conftest.py : fixtures version_generee, calcul_retenu (calcul retenu jusqu'à liberer()) ; aides depuis, formulaire_de, saisie_salle, saisie_besoin, saisie_regle, texte_visible, NOMBRE_TROP_GRAND, NOMBRE_DE_5000_CHIFFRES. Contre-épreuve : les 16 tests des cas corrigés échouent sur l'ancien code.
 Défauts corrigés (10) : suppression refusée pendant un calcul (lien « Suivre le calcul » ; règles personnalisées restent supprimables car copiées au lancement) ; année scolaire 2000-2100 et ≤ 2 ans, semestre ≤ 1 an ; adresse de retour avec caractère de contrôle écartée ; paramètres refusés pendant un calcul (409, saisie gardée) ; HX-Current-URL illisible ignoré et journalisé ; nombre de 5 000 chiffres sans 500 (conversion.entier_naturel ; routage global `{n:int}` limité à 30 chiffres dans gabarits.py ; cible de règle à 20 chiffres) ; textes libres bornés (5 000 caractères, commentaire de règle 2 000) ; fragments sans HTMX redirigés ; règle ou année énorme introuvable ; /regles sans année explique et renvoie au calendrier.
-Défauts transmis au web EDT (xfail stricts) : urlsplit non protégé dans le panneau d'une séance ; seance=h<5000 chiffres> ; formulaire de séance sans HTMX ; niveau_regle_<5000 chiffres> ; /calculs/<n>/etat et /a-traiter/compteur sans HTMX ; motif d'annulation non borné. Marge : Générer à froid sur le jeu grand = 1,65 s CPU pour 2 s admis.
+Complément c32c81c : `/parametres` s'ouvre (200) malgré une valeur corrompue en base (lecture tolérante, valeur fautive affichée sous son champ avec la valeur par défaut à sa place, l'enregistrement répare la base) ; xfail du socle levé ; xfail `[calcul_etat]` et `[formulaire_seance]` levés (corrigés par le web EDT).
+Défauts transmis au web EDT, tous corrigés par lui (bbe664d, xfail levés) : urlsplit non protégé dans le panneau d'une séance ; seance=h<5000 chiffres> ; formulaire de séance sans HTMX ; niveau_regle_<5000 chiffres> ; /calculs/<n>/etat et /a-traiter/compteur sans HTMX ; motif d'annulation non borné. Marge : Générer à froid sur le jeu grand = 1,65 s CPU pour 2 s admis.
 
 | Cas | Test (fichier::nom) | État |
 |---|---|---|
@@ -137,23 +188,25 @@ Défauts transmis au web EDT (xfail stricts) : urlsplit non protégé dans le pa
 | 3 Durées d'année et de semestre | test_cas_limites.py::test_duree_d_une_annee_bornee, ::test_duree_d_un_semestre_bornee, ::test_calculs_d_un_semestre_sain_sans_erreur | corrigé / couvert |
 | 4 Adresse de retour avec saut de ligne | test_cas_limites.py::test_adresse_de_retour_avec_saut_de_ligne_est_ecartee | corrigé |
 | 5 Paramètres enregistrés pendant un calcul | test_parametres.py::test_parametres_refuses_pendant_un_calcul | corrigé |
-| 6 HX-Current-URL illisible | test_cas_limites.py::test_hx_current_url_illisible_est_ignore ; ::test_hx_current_url_illisible_dans_le_panneau_d_une_seance | corrigé ; xfail vers web-edt |
-| 7 Nombres de 5 000 chiffres | test_saisies_extremes.py::test_nombres_de_cinq_mille_chiffres_refuses ; ::test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps ; ::test_niveau_de_regle_de_cinq_mille_chiffres_au_lancement | corrigé ; xfail vers web-edt (2) |
-| 8 Textes libres non bornés | test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur, ::test_commentaire_de_regle_borne_cote_serveur, ::test_motif_d_annulation_borne_cote_serveur | corrigé ; xfail vers web-edt (motif) |
-| 9 Fragments ouverts sans HTMX | test_cas_limites.py::test_fragments_sans_htmx_redirigent_vers_la_page ; ::test_fragments_des_autres_ecrans_sans_htmx | corrigé ; couvert (/calculs/verifications) ; xfail vers web-edt (compteur, calcul_etat, formulaire_seance) |
+| Valeur de paramètre corrompue en base : écran ouvrable, valeur signalée, réparée à l'enregistrement (transmis par le socle) | test_parametres.py::test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran | corrigé (c32c81c) |
+| 6 HX-Current-URL illisible | test_cas_limites.py::test_hx_current_url_illisible_est_ignore ; ::test_hx_current_url_illisible_dans_le_panneau_d_une_seance | corrigé (panneau : web EDT bbe664d) |
+| 7 Nombres de 5 000 chiffres | test_saisies_extremes.py::test_nombres_de_cinq_mille_chiffres_refuses ; ::test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps ; ::test_niveau_de_regle_de_cinq_mille_chiffres_au_lancement | corrigé (séance et niveau_regle : web EDT bbe664d) |
+| 8 Textes libres non bornés | test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur, ::test_commentaire_de_regle_borne_cote_serveur, ::test_motif_d_annulation_borne_cote_serveur | corrigé (motif : web EDT bbe664d) |
+| 9 Fragments ouverts sans HTMX | test_cas_limites.py::test_fragments_sans_htmx_redirigent_vers_la_page ; ::test_fragments_des_autres_ecrans_sans_htmx | corrigé ; couvert (/calculs/verifications) ; compteur, calcul_etat, formulaire_seance : web EDT bbe664d |
 | 10 Identifiants énormes des règles | test_regles.py::test_identifiants_enormes_des_regles_sont_introuvables | corrigé |
 | 11 Règles sans année scolaire | test_regles.py::test_regles_sans_annee_scolaire_affiche_un_bandeau | corrigé |
 | 12 Rejeu d'une suppression et d'une annulation | test_suppression.py::test_rejeu_d_une_suppression_et_d_une_annulation | couvert |
 | 13 Échappement des champs libres | test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_donnees, ::test_champs_libres_echappes_sur_les_pages_de_l_emploi_du_temps | couvert |
 | 14 Pages du jeu grand sous deux secondes CPU, export sous dix | test_performance.py::test_pages_du_jeu_grand_sous_deux_secondes, ::test_export_des_donnees_du_jeu_grand_sous_dix_secondes (perf) | couvert |
-| Saisies extrêmes antérieures (11 tests) | test_saisies_extremes.py | couvert (marqués et documentés) |
+| Saisies extrêmes antérieures (11 tests : adresses aberrantes, année de début exotique, capacité et effectif trop grands, chiffres exotiques, graine exotique, identifiant trop grand dans un choix, jours fériés d'une année inexistante, listes vides avec ou sans filtre, service bornant les entiers) | test_saisies_extremes.py::test_adresses_aberrantes ; ::test_annee_de_debut_exotique ; ::test_capacite_trop_grande ; ::test_chiffres_exotiques_refuses ; ::test_effectif_trop_grand ; ::test_graine_exotique ; ::test_identifiant_trop_grand_dans_un_choix ; ::test_jours_feries_d_une_annee_inexistante ; ::test_liste_vide_avec_filtre_pose ; ::test_liste_vide_sans_filtre_pose ; ::test_service_borne_les_entiers | couvert (marqués et documentés) |
 
 ### Page Générer et emploi du temps
 
 Validation : ruff propre ; pytest tests/web_edt : 150 réussis, 2 xfail stricts ; -m cas_limite : 20 tests (31 cas paramétrés) ; suite complète 1183 réussis.
 Aides partagées : tests/web_edt/conftest.py (ENORME, HX, reperes, client_sans_trace, creer_version_vide, premiere_occurrence, calcul_qui_tourne).
 Défauts corrigés : paramètre vide (?semestre_id=) → « non précisé » ; identifiants > 2^63 ou négatifs sur 24 adresses → 404 ; cible/séance énorme ou cookie forgé → affichage par défaut ; jour sans créneau possible → formulaire lisible ; arrêt d'un calcul terminé → message juste ; fragments HTMX sans HX-Request → page complète.
-Défaut transmis : échange — export CSV/iCal avec version_id énorme → 500 (test xfail test_export_d_une_version_enorme_dit_introuvable).
+Défaut transmis à l'échange et corrigé par lui : export CSV/iCal avec version_id énorme → 500 (xfail levé).
+Complément bbe664d (neuf cas transmis par le web données et le socle, xfail levés) : HX-Current-URL illisible dans le panneau d'une séance (`gabarits.adresse_courante`) ; nombres reçus en texte (`seance=h…`, `niveau_regle_…`, `salle_id`, `cible=`, durée de pause) lus par `entier_ecrit` (chiffres ASCII, 30 au plus ; « ² », 5 000 chiffres et `niveau_regle_<5000>` des vérifications préalables donnaient 500), saisies recopiées coupées à 40 caractères ; compteur d'« À traiter » sans HTMX mène à la page ; motif d'annulation borné à 2 000 caractères (maxlength + 422 sans annuler) ; HEAD répond comme GET sans corps (`IntergicielHead`) ; `/sante` expose `base.inscriptible` (écriture d'essai annulée, sans attente sur verrou ; 503 si lecture seule, null si une autre écriture tient la base) et l'accueil le signale ; page 503 nommant la lecture seule et le disque plein avec le remède. Mesure : Générer à froid sur le jeu grand = 1,65 s (0,3 s instantané du récapitulatif + 0,3 s second chargement du même instantané par `pre_verifier_semestre` + 0,9 s préparation du solveur) ; piste côté solveur : `pre_verifier_semestre` acceptant un instantané déjà chargé (−0,3 s).
 
 | Cas | Test (fichier::nom) | État |
 |---|---|---|
@@ -176,7 +229,13 @@ Défaut transmis : échange — export CSV/iCal avec version_id énorme → 500 
 | Version sans séance : grille, historique, export CSV et iCal | `tests/web_edt/test_cas_limites.py::test_version_sans_seance_s_affiche_et_s_exporte` | couvert |
 | Version active vide sur À traiter et l'accueil | `tests/web_edt/test_cas_limites.py::test_version_active_vide_sur_a_traiter_et_l_accueil` | couvert |
 | Semestre dont la grille de créneaux est vidée | `tests/web_edt/test_cas_limites.py::test_semestre_sans_grille_reste_utilisable` | couvert |
-| Export CSV ou iCal d'une version à identifiant énorme | `tests/web_edt/test_cas_limites.py::test_export_d_une_version_enorme_dit_introuvable` | xfail vers échange |
+| Export CSV ou iCal d'une version à identifiant énorme | `tests/web_edt/test_cas_limites.py::test_export_d_une_version_enorme_dit_introuvable` | corrigé par l'échange, xfail levé |
+| Base en lecture seule ou disque plein : `/sante` répond 503 avec `base.inscriptible` faux, l'accueil le signale, la page 503 nomme la cause et le remède (transmis par le socle) | `tests/web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante` | corrigé (bbe664d) |
+| Base tenue par une autre écriture : `/sante` rend `inscriptible` null sans attendre, ce n'est pas une panne | `tests/web_edt/test_accueil.py::test_base_occupee_par_une_ecriture_n_est_pas_une_panne` | corrigé (bbe664d) |
+| HX-Current-URL illisible dans le panneau d'une séance (transmis par le web données) | `tests/web_edt/test_cas_limites.py::test_hx_current_url_illisible_dans_les_panneaux` | corrigé (bbe664d) |
+| Nombres de 5 000 chiffres ou « ² » au lancement (`seance=h…`, `niveau_regle_…`, `salle_id`, `cible=`, durée de pause) refusés sans 500 (transmis par le web données) | `tests/web_edt/test_cas_limites.py::test_saisies_de_cinq_mille_chiffres_au_lancement` | corrigé (bbe664d) |
+| Motif d'annulation de 5 000 caractères refusé (422) sans annuler la séance (transmis par le web données) | `tests/web_edt/test_cas_limites.py::test_motif_d_annulation_borne` | corrigé (bbe664d) |
+| HEAD sur les écrans de l'emploi du temps : même réponse que GET, sans corps (transmis par le socle) | `tests/web_edt/test_cas_limites.py::test_head_sur_les_ecrans_de_l_emploi_du_temps` | corrigé (bbe664d) |
 | Double clic sur « Lancer le calcul » | `tests/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret` | couvert (antérieur) |
 | Rendu sur téléphone, impression, grille très chargée | — | manuel : rendu visuel |
 | Coupure réseau pendant le suivi d'un calcul | — | manuel : comportement du navigateur |
@@ -186,7 +245,7 @@ Défaut transmis : échange — export CSV/iCal avec version_id énorme → 500 
 Validation : ruff propre ; pytest tests/echange : 239 réussis (perf compris) ; suite complète 1230 réussis, 0 échec ; contre-épreuve sur main : 61 des nouveaux tests échouent sur l'ancien code, 15 protègent un comportement déjà juste. 40 fonctions (78 variantes, 2 perf) marquées cas_limite avec docstring Cas/Risque. Aides : tests/echange/fabrique.py (CSV, classeur avec fusions, ZIP, iCal en mémoire ; compter, messages, erreurs, seul), fixture version_reference dans le conftest, test_format vérifie LONGUEURS.
 
 Défauts corrigés : cas 1 à 13, 15 à 17, 19, 20, noms d'archive du 18 ; iCal (ical.py) : INTERVAL=0 (lecture sans fin, base réservée), INTERVAL=-1 / BYDAY=9MO / durée immense / an 10000 / RECURRENCE-ID illisible (plantage), règles impossibles coûteuses (2 à 20 s) → refus avant calcul, erreur par événement sans arrêter la lecture, 3 s de calcul par fichier ; cas transmis par web EDT : version_id négatif/nul/énorme → 404, texte → 422.
-Recommandations (services/echange.py, confiées à l'agent) : lecture iCal avant la transaction ; budget de calcul partagé par envoi ; obtenir_par_id pour les identifiants bruts.
+Complément (b6402dc, services/echange.py) : les fichiers, récurrences iCal comprises, sont lus avant l'ouverture de la transaction (seule l'écriture réserve la base) ; le budget de 3 s de calcul iCal vaut pour tout l'envoi ; le semestre de l'import et la version de resoudre_filtre passent par obtenir_par_id ; `import_en_cours()` (vrai pendant tout import, simulé ou appliqué, faux même après une erreur) est exposé pour `lancer_calcul`. Validation du complément : pytest tests/echange 243 réussis ; suite complète 1234 réussis.
 Cas manuels : classeur chiffré par Excel ; fusions et formats réels d'un tableur ; imports simultanés depuis deux onglets. Écarté : zéros de tête perdus par le tableur (indétectable, documenté). Résiduel : 10 000 lignes ≈ 20 s (seuil 30 s) ; 50 000 lignes réserveraient la base ≈ 100 s (piste d'optimisation).
 
 | Cas | Test (fichier::nom, relatif à tests/echange/) | État |
@@ -217,13 +276,17 @@ Cas manuels : classeur chiffré par Excel ; fusions et formats réels d'un table
 | Dates iCal incalculables | test_ical.py::test_evenement_aux_dates_incalculables_ecarte_sans_arreter_la_lecture (4 variantes) | corrigé |
 | Récurrences trop coûteuses | test_ical.py::test_fichier_aux_recurrences_trop_couteuses_refuse_en_entier | corrigé |
 | Version négative, nulle ou énorme à l'export (transmis par web EDT) | test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable | corrigé |
+| Lecture iCal dans la transaction (base réservée pendant le développement des récurrences) | test_bornes.py::test_lecture_ical_faite_avant_de_reserver_la_base | corrigé (b6402dc) |
+| Budget de calcul iCal par fichier contourné par N fichiers hostiles | test_bornes.py::test_budget_de_calcul_ical_partage_par_l_envoi | corrigé (b6402dc) |
+| Service appelé avec un identifiant hors bornes (semestre, version) : OverflowError | test_bornes.py::test_service_appele_avec_un_identifiant_hors_base_repond_introuvable | corrigé (b6402dc) |
+| Marqueur « import en cours » consultable par le lancement d'un calcul | test_import_donnees.py::test_import_en_cours_signale_pendant_tout_l_import | corrigé (b6402dc) |
 | Zéros de tête perdus par le tableur | — | écarté : indétectable, documenté |
 
 ### Générateur de données fictives
 
-Validation : ruff propre ; pytest tests/synthese : 100 réussis, 1 xfail ; 22 tests dans tests/synthese/test_cas_limites.py (38 cas paramétrés), 8 cas existants annotés ; aides : conftest (generer_dans, total_prevu, lanceur), controle_temoin.problemes_du_temoin, empreinte.py.
+Validation : ruff propre ; pytest tests/synthese : 101 réussis, 0 xfail (perf compris, après le complément 4c4f38e et la correction du socle) ; 22 tests dans tests/synthese/test_cas_limites.py (38 cas paramétrés), 8 cas existants annotés ; aides : conftest (generer_dans, total_prevu, lanceur), controle_temoin.problemes_du_temoin, empreinte.py.
 Défauts corrigés (14) : année de début bornée 2000-2100 ; graine bornée 0..2^31-1 (une graine négative donnait le même jeu que son opposée) ; jeu --reset vérifie tout avant la remise à zéro ; S2 trop court sans stage ; configuration sans site ou salles négatives refusée ; division par zéro des taux de charge ; semaines d'intégration et partiels fermés du lundi au dimanche ; conférences et épreuves sans date comptées avec raison ; boucle infinie au-delà de 800 enseignants (noms Faker épuisés) ; tirages découplés de Faker, empreinte figée ; témoin relancé jusqu'à quatre fois (aucun besoin écarté sur 40 graines du moyen, 30 du grand) ; message « grille vide » ; contrôle des jours permis ; graine négative refusée par la commande.
-Défaut transmis : socle — services/jeux.py remet la base à zéro avant le refus d'une graine invalide (xfail test_service_refuse_une_graine_invalide_avant_la_remise_a_zero).
+Défaut transmis au socle et corrigé par lui (c96a1b7) : services/jeux.py remettait la base à zéro avant le refus d'une graine invalide. Complément 4c4f38e : le générateur ne crée aucun besoin ponctuel (amphi de rentrée, rencontres avec les tuteurs, conférence métiers, partiels) hors des dates ouvertes du semestre ; sans date possible, le besoin est écarté avec sa raison (demande du socle, dont le dépliage refuse désormais un ponctuel hors semestre).
 
 | Cas | Test (fichier::nom) | État |
 |---|---|---|
@@ -233,12 +296,12 @@ Défaut transmis : socle — services/jeux.py remet la base à zéro avant le re
 | Graines extrêmes admises (0, 2^31-1), déterministes | test_cas_limites.py::test_graines_extremes_admises_et_deterministes | couvert |
 | Même borne de graine à l'écran et en commande | test_cas_limites.py::test_borne_de_graine_identique_au_formulaire_web | couvert |
 | `jeu --reset --oui` avec graine ou année refusée | test_cas_limites.py::test_commande_refuse_sans_toucher_a_la_base | corrigé |
-| Service : remise à zéro avant le refus | test_cas_limites.py::test_service_refuse_une_graine_invalide_avant_la_remise_a_zero | xfail vers socle |
+| Service : remise à zéro avant le refus | test_cas_limites.py::test_service_refuse_une_graine_invalide_avant_la_remise_a_zero | corrigé par le socle (c96a1b7) |
 | Configuration sans site ou sans salle | test_cas_limites.py::test_configuration_sans_salle_refusee_a_la_construction | corrigé |
 | Capacité ≤ 0, nombre de salles négatif | test_cas_limites.py::test_salles_site_negatives_refusees | corrigé |
 | Une seule salle pour une promotion | test_cas_limites.py::test_configuration_qui_ne_tient_pas_dans_les_salles | couvert |
 | Classe d'un étudiant (demi-groupe vide) | test_cas_limites.py::test_configuration_minimale_un_etudiant_par_classe | couvert |
-| Semestre d'un jour, un créneau, samedi seul, dimanche sans créneau, pause de 2 h | test_cas_limites.py::test_calendrier_et_grille_degeneres_sans_plantage | corrigé |
+| Semestre d'un jour, un créneau, samedi seul, dimanche sans créneau, pause de 2 h | test_cas_limites.py::test_calendrier_et_grille_degeneres_sans_plantage | corrigé (ponctuels bornés aux dates du semestre, 4c4f38e) |
 | Besoin impossible d'avance (conférence sans date) | test_cas_limites.py::test_besoin_impossible_d_avance_ecarte_et_explique | corrigé |
 | S2 trop court pour un stage | test_cas_limites.py::test_semestre_tres_court_avec_stage_ne_plante_pas | corrigé |
 | Grille vide | test_cas_limites.py::test_grille_vide_refusee_lisiblement | corrigé |

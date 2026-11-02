@@ -1,6 +1,10 @@
-"""Intergiciel de journalisation des requêtes.
+"""Intergiciels : journalisation des requêtes, HEAD servi comme GET.
 
-Pour chaque requête HTTP :
+`IntergicielHead` : FastAPI ne déclare que GET pour `@routeur.get`
+(Starlette, lui, y ajoute HEAD) ; une sonde de supervision ou `curl -I`
+recevait donc 405 partout. HEAD suit le chemin de GET, corps retiré.
+
+`IntergicielJournal`, pour chaque requête HTTP :
 
 - attribue un identifiant court, posé dans le contexte de journalisation
   (toutes les lignes de journal de la requête le portent : `req=...`), dans
@@ -29,6 +33,29 @@ journal = logging.getLogger("edt.web.requetes")
 EN_TETE_ID = "X-Request-ID"
 PREFIXES_SILENCIEUX = ("/static/",)
 """Chemins journalisés au niveau DEBUG seulement (fichiers statiques)."""
+
+
+class IntergicielHead:
+    """Intergiciel ASGI : HEAD répond comme GET (statut, en-têtes dont Content-Length), sans corps.
+
+    Placé sous `IntergicielJournal`, qui journalise donc bien « HEAD ». Une
+    route qui n'accepte pas GET répond à HEAD comme à GET : 405.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http" or scope["method"] != "HEAD":
+            await self.app(scope, receive, send)
+            return
+
+        async def sans_corps(message: Message) -> None:
+            if message["type"] == "http.response.body":
+                message = {**message, "body": b""}
+            await send(message)
+
+        await self.app({**scope, "method": "GET"}, receive, sans_corps)
 
 
 class IntergicielJournal:

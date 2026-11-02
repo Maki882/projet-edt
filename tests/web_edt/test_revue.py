@@ -300,8 +300,8 @@ def test_prechauffage_remplit_la_memoire_des_ecrans(version_generee, client, fau
     verifications = len(faux_verificateur.appels)
     assert verifications >= 2  # semaine type et séances datées de la version active
 
-    for adresse in ("/", "/a-traiter", "/a-traiter/compteur"):
-        assert client.get(adresse).status_code == 200
+    for adresse, entetes in (("/", {}), ("/a-traiter", {}), ("/a-traiter/compteur", HX)):
+        assert client.get(adresse, headers=entetes).status_code == 200
     assert len(faux_verificateur.appels) == verifications  # tout venait de la mémoire
 
 

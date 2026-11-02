@@ -86,7 +86,12 @@ from edt.services.emploi_du_temps import (
     raccords,
     regles_personnalisees,
 )
-from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
+from edt.services.emploi_du_temps.identifiants import (
+    apercu,
+    entier_ecrit,
+    exiger_identifiant,
+    obtenir,
+)
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     annee_du_semestre,
@@ -669,7 +674,7 @@ def lire_saisie_dejeuner(
     if mode is None:
         return None
     if mode not in (DEJEUNER_FIXE, DEJEUNER_LIBRE, DEJEUNER_AUCUN):
-        journal.info("Pause déjeuner refusée : choix « %s » inconnu", mode)
+        journal.info("Pause déjeuner refusée : choix « %s » inconnu", apercu(mode))
         libelles = " ou ".join(f"« {libelle} »" for _, libelle in MODES_DEJEUNER)
         raise ErreurSaisieDejeuner({CHAMP_MODE_DEJEUNER: f"Choisir {libelles}."}, None)
     return ChoixDejeuner(mode, (debut or "").strip(), (fin or "").strip(), (duree or "").strip())
@@ -705,8 +710,8 @@ def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Va
             except ErreurDonneesInvalides as erreur:
                 journal.debug("Heure %s du déjeuner illisible : %s", nom, erreur.message)
                 erreurs[champ] = (
-                    f"Heure {nom} du déjeuner illisible (« {texte} ») : l'écrire par exemple "
-                    f"{exemple}."
+                    f"Heure {nom} du déjeuner illisible (« {apercu(texte)} ») : l'écrire par "
+                    f"exemple {exemple}."
                 )
         duree = courants.dejeuner_duree_min
         if choix.mode == DEJEUNER_LIBRE:
@@ -737,9 +742,11 @@ def _duree_dejeuner(texte: str) -> int | str:
     attendu = f"un nombre de minutes entre {minimum} et {maximum}, par exemple 60"
     if not texte:
         return f"Indiquer la durée minimale de la pause : {attendu}."
-    if not (texte.isascii() and texte.isdigit()):
-        return f"Durée minimale illisible (« {texte} ») : indiquer {attendu}."
-    duree = int(texte)
+    duree = entier_ecrit(texte)
+    if duree is None:
+        if texte.isascii() and texte.isdigit():  # plus de chiffres qu'aucune durée
+            return f"Durée minimale hors bornes : indiquer {attendu}."
+        return f"Durée minimale illisible (« {apercu(texte)} ») : indiquer {attendu}."
     if not minimum <= duree <= maximum:
         return f"Durée minimale de {duree} min hors bornes : indiquer {attendu}."
     return duree

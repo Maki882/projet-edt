@@ -7,7 +7,7 @@ import threading
 import time
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import OperationalError
 
 from edt import cli
@@ -20,6 +20,7 @@ from edt.db.moteur import (
     liberer_moteurs,
     obtenir_moteur,
     session_base,
+    transaction_immediate,
 )
 from edt.erreurs import ErreurConfiguration
 
@@ -192,3 +193,74 @@ def test_sous_un_verrou_tenu_l_ecriture_echoue_apres_le_delai_et_les_lecteurs_so
         assert time.perf_counter() - debut >= delai_verrou_court / 1000 - 0.05
         assert compter(Campus) == 0  # les lecteurs passent pendant le verrou
     assert "BLOQUE" not in _codes_campus()
+
+
+@pytest.mark.cas_limite
+def test_transaction_immediate_prend_le_verrou_d_ecriture_des_l_ouverture(base, environnement):
+    """Cas : un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa
+    transaction, avant toute lecture.
+
+    Risque : avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire
+    échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et
+    deux imports pouvaient commencer en même temps ; les lecteurs doivent rester servis.
+    """
+    chemin = environnement / "edt.db"
+    with session_base() as session:
+        transaction_immediate(session)
+        autre_ecrivain = sqlite3.connect(chemin, timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                autre_ecrivain.execute("BEGIN IMMEDIATE")
+        finally:
+            autre_ecrivain.close()
+        lecteur = sqlite3.connect(chemin, timeout=0)  # mode WAL : lire reste possible
+        try:
+            assert lecteur.execute("SELECT count(*) FROM campus").fetchone()[0] == 0
+        finally:
+            lecteur.close()
+        session.add(Campus(code="IMM", nom="Immédiat"))
+    # Verrou rendu à la validation ; l'écriture a bien eu lieu.
+    autre_ecrivain = sqlite3.connect(chemin, timeout=0)
+    try:
+        autre_ecrivain.execute("BEGIN IMMEDIATE")
+        autre_ecrivain.rollback()
+    finally:
+        autre_ecrivain.close()
+    assert "IMM" in _codes_campus()
+
+
+@pytest.mark.cas_limite
+def test_transaction_immediate_apres_une_requete_est_une_erreur_de_configuration(base):
+    """Cas : le verrou immédiat est demandé après une première requête de la transaction.
+
+    Risque : SQLAlchemy ignore alors l'option avec un simple avertissement : la transaction
+    resterait différée en silence et l'import croirait tenir le verrou.
+    """
+    with session_base() as session:
+        session.scalar(select(func.count()).select_from(Campus))
+        with pytest.raises(ErreurConfiguration, match="avant la première requête"):
+            transaction_immediate(session)
+    # Demandée en tête puis répétée dans la même transaction : sans effet, pas une erreur.
+    with session_base() as session:
+        transaction_immediate(session)
+        transaction_immediate(session)
+        session.add(Campus(code="DEUX", nom="Deux fois"))
+    assert "DEUX" in _codes_campus()
+
+
+@pytest.mark.cas_limite
+def test_une_transaction_qui_lit_ne_bloque_pas_les_autres_ecrivains(base, environnement):
+    """Cas : une transaction ordinaire a lu (BEGIN différé) pendant qu'un autre processus veut
+    écrire.
+
+    Risque : si le défaut devenait IMMEDIATE, chaque page lue tiendrait le verrou d'écriture et
+    bloquerait les écrivains ; la politique par défaut doit rester le BEGIN différé.
+    """
+    with session_base() as session:
+        session.scalar(select(func.count()).select_from(Campus))  # lecture : aucun verrou pris
+        autre_ecrivain = sqlite3.connect(environnement / "edt.db", timeout=0)
+        try:
+            autre_ecrivain.execute("BEGIN IMMEDIATE")
+            autre_ecrivain.rollback()
+        finally:
+            autre_ecrivain.close()

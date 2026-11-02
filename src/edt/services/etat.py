@@ -1,4 +1,4 @@
-"""État général de l'application : base initialisée ou non, schéma à jour, compteurs.
+"""État général de l'application : base initialisée ou non, schéma à jour, écriture, compteurs.
 
 Sert à la page d'accueil, à la route `/sante` et aux commandes `doctor` et
 `verifier-schema`.
@@ -7,6 +7,7 @@ Sert à la page d'accueil, à la route `/sante` et aux commandes `doctor` et
 from __future__ import annotations
 
 import logging
+import sqlite3
 from dataclasses import dataclass, field
 
 from sqlalchemy import Engine, func, select, text
@@ -16,7 +17,7 @@ from sqlalchemy.orm import Session
 from edt.config import url_affichable
 from edt.db import modeles as m
 from edt.db.initialisation import ecarts_schema, tables_manquantes
-from edt.db.moteur import obtenir_moteur
+from edt.db.moteur import expliquer_erreur_base, obtenir_moteur
 
 journal = logging.getLogger(__name__)
 
@@ -49,6 +50,10 @@ class EtatBase:
     - `ecarts_schema` : écarts entre les tables existantes et le modèle, en
       phrases lisibles (voir `edt.db.initialisation.ecarts_schema`) ;
     - `mode_journal` : mode de journalisation SQLite (attendu : `wal`) ;
+    - `inscriptible` : une écriture d'essai (annulée) passe ; `False` pour une
+      base en lecture seule ou un disque plein (`ecriture_impossible` dit
+      pourquoi, avec le remède), `None` si elle n'a pas pu être tentée (base
+      occupée par une autre écriture, ou inaccessible) ;
     - `erreur` : message si la base est inaccessible ;
     - `compteurs` : nombre de lignes par entité, seulement si la base est initialisée.
     """
@@ -61,6 +66,8 @@ class EtatBase:
     erreur: str | None = None
     compteurs: dict[str, int] = field(default_factory=dict)
     ecarts_schema: tuple[str, ...] = ()
+    inscriptible: bool | None = None
+    ecriture_impossible: str | None = None
 
     @property
     def schema_perime(self) -> bool:
@@ -81,6 +88,41 @@ def compter_entites(session: Session) -> dict[str, int]:
     }
 
 
+def verifier_ecriture(moteur: Engine) -> tuple[bool | None, str | None]:
+    """Écriture d'essai annulée : `(inscriptible, explication si elle est refusée)`.
+
+    En mode WAL, prendre le verrou d'écriture (BEGIN IMMEDIATE) réussit même
+    sur un fichier en lecture seule : seule une écriture réelle le révèle. La
+    version utilisateur est donc réécrite à l'identique, puis ROLLBACK : rien
+    n'est enregistré. Sans attente sur verrou (`/sante` est appelée souvent) :
+    une base occupée par une autre écriture donne `None` (non vérifié), pas une
+    panne. Ne lève jamais : un refus est journalisé et décrit.
+    """
+    try:
+        brute = moteur.raw_connection()
+        try:
+            attente = brute.execute("PRAGMA busy_timeout").fetchone()[0]
+            brute.execute("PRAGMA busy_timeout = 0")
+            try:
+                brute.execute("BEGIN IMMEDIATE")
+                version = brute.execute("PRAGMA user_version").fetchone()[0]
+                brute.execute(f"PRAGMA user_version = {int(version)}")
+            finally:
+                brute.rollback()
+                brute.execute(f"PRAGMA busy_timeout = {int(attente)}")
+        finally:
+            brute.close()
+    except (sqlite3.Error, SQLAlchemyError) as erreur:
+        cause = str(getattr(erreur, "orig", None) or erreur).lower()
+        if "locked" in cause or "busy" in cause:
+            journal.info("Écriture d'essai non tentée : base occupée (%s)", erreur)
+            return None, None
+        explication = expliquer_erreur_base(erreur)
+        journal.warning("Écriture d'essai refusée par la base : %s", explication)
+        return False, explication
+    return True, None
+
+
 def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
     """Examine la base configurée sans jamais lever : toute panne est décrite dans le résultat."""
     moteur = moteur or obtenir_moteur()
@@ -94,6 +136,9 @@ def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
         manquantes = tuple(tables_manquantes(moteur))
         ecarts = tuple(ecarts_schema(moteur))
         initialisee = not manquantes and not ecarts
+        inscriptible, ecriture_impossible = (
+            verifier_ecriture(moteur) if moteur.dialect.name == "sqlite" else (None, None)
+        )
         compteurs: dict[str, int] = {}
         if initialisee:
             with Session(moteur) as session:
@@ -119,4 +164,6 @@ def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
         mode_journal=mode_journal,
         compteurs=compteurs,
         ecarts_schema=ecarts,
+        inscriptible=inscriptible,
+        ecriture_impossible=ecriture_impossible,
     )

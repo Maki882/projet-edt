@@ -15,7 +15,8 @@ exactement comme il trouvera les vrais.
 Banque des cas limites (`@pytest.mark.cas_limite`, `test_cas_limites.py`) :
 
 - `ENORME` : un identifiant au-delà de 2^63, qu'aucune ligne SQLite ne peut
-  porter ; `HX` : l'en-tête d'une requête HTMX ;
+  porter ; `CINQ_MILLE_CHIFFRES` : un nombre que `int()` refuse de lire ;
+  `HX` : l'en-tête d'une requête HTMX ;
 - `reperes` : séance, occurrence, calcul, version et semestre réels de
   `version_generee`, lus dans la base (jamais écrits en dur) ;
 - `client_sans_trace` : client qui renvoie une erreur 500 comme une réponse
@@ -60,6 +61,10 @@ HX = {"HX-Request": "true"}
 
 ENORME = "9" * 20
 """Identifiant au-delà de 2^63 : aucune ligne SQLite ne peut le porter (lien mal copié)."""
+
+CINQ_MILLE_CHIFFRES = "1" * 5000
+"""Au-delà de 4 300 chiffres, `int()` lève ValueError (limite de Python) : lien abîmé, envoi
+fabriqué."""
 
 
 @dataclass(frozen=True)

@@ -597,29 +597,6 @@ du catalogue, ce qui est journalisé (INFO). La vérification en dur
 (`niveau` à `None`) n'existe plus qu'au niveau du vérificateur pur, appelé
 sans `niveaux`.
 
-Cas limites, pour les trois fonctions :
-
-- **aucune contrainte à vérifier** (liste vide, niveaux vides, ou calcul qui
-  les ignorait toutes) : `ErreurDonneesInvalides` « Aucune contrainte à
-  vérifier… » ; un rapport « valide » qui n'aurait rien vérifié tromperait ;
-- **niveaux enregistrés illisibles** (contrainte désactivée au code inconnu
-  dans un ancien calcul, copie des règles mal formée) :
-  `ErreurDonneesInvalides` qui nomme le calcul et la version, avec le message
-  d'origine en détail ;
-- **version sans aucune séance datée** (`verifier_occurrences_version`) :
-  avertissement `VOLUME` « La version « … » n'a aucune séance datée :
-  produire ses séances datées (instanciation sur le calendrier) pour vérifier
-  le calendrier réel. » si `VOLUME` est vérifiée, sinon un avertissement du
-  journal ; `nb_examines` vaut 0 ;
-- **période aux bornes du calendrier** (`date.min`, `date.max`) : la semaine
-  de la borne est complétée sans dépasser le 31 décembre 9999 ;
-- **salle inconnue proposée** à `verifier_modification` : `ErreurIntrouvable`
-  (une salle disparue d'une version enregistrée vaut, elle, « salle à
-  définir »).
-- **identifiant hors des bornes de la base** (version ou semestre nul,
-  négatif ou au-delà de 2**63 - 1) : `ErreurIntrouvable` « … n'existe pas »
-  (garde `identifiant_possible` des référentiels), jamais `OverflowError`.
-
 - `verifier_version` : semaine type de la version et ses indicateurs.
 - `verifier_occurrences_version` : séances datées de la version. Avec une
   période (bornes incluses, chacune facultative), la vérification porte sur
@@ -642,6 +619,29 @@ Cas limites, pour les trois fonctions :
 - `version_a_verifier` : la version donnée ; sinon la version active du
   semestre donné ; sinon celle du semestre proposé par défaut
   (`semestre_par_defaut`). `ErreurIntrouvable` si rien ne correspond.
+
+Cas limites, pour les trois fonctions :
+
+- **aucune contrainte à vérifier** (liste vide, niveaux vides, ou calcul qui
+  les ignorait toutes) : `ErreurDonneesInvalides` « Aucune contrainte à
+  vérifier… » ; un rapport « valide » qui n'aurait rien vérifié tromperait ;
+- **niveaux enregistrés illisibles** (contrainte désactivée au code inconnu
+  dans un ancien calcul, copie des règles mal formée) :
+  `ErreurDonneesInvalides` qui nomme le calcul et la version, avec le message
+  d'origine en détail ;
+- **version sans aucune séance datée** (`verifier_occurrences_version`) :
+  avertissement `VOLUME` « La version « … » n'a aucune séance datée :
+  produire ses séances datées (instanciation sur le calendrier) pour vérifier
+  le calendrier réel. » si `VOLUME` est vérifiée, sinon un avertissement du
+  journal ; `nb_examines` vaut 0 ;
+- **période aux bornes du calendrier** (`date.min`, `date.max`) : la semaine
+  de la borne est complétée sans dépasser le 31 décembre 9999 ;
+- **salle inconnue proposée** à `verifier_modification` : `ErreurIntrouvable`
+  (une salle disparue d'une version enregistrée vaut, elle, « salle à
+  définir »).
+- **identifiant hors des bornes de la base** (version ou semestre nul,
+  négatif ou au-delà de 2**63 - 1) : `ErreurIntrouvable` « … n'existe pas »
+  (garde commune `edt.db.moteur.identifiant_valide`), jamais `OverflowError`.
 
 `RapportVerification` est une dataclass figée : `anomalies`, `indicateurs`
 (ou `None`), `nb_erreurs`, `nb_avertissements`, `nb_informations`,

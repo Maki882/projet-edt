@@ -45,7 +45,7 @@ from edt.services.generation import cloturer_calculs_interrompus
 from edt.web import routes
 from edt.web.erreurs import installer_gestionnaires
 from edt.web.gabarits import DOSSIER_STATIQUE
-from edt.web.intergiciels import IntergicielJournal
+from edt.web.intergiciels import IntergicielHead, IntergicielJournal
 from edt.web.menu import EntreeMenu, construire_menu
 
 journal = logging.getLogger(__name__)
@@ -108,7 +108,11 @@ async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
 
 
 def creer_app() -> FastAPI:
-    """Crée l'application FastAPI : journalisation, routes découvertes, menu, erreurs."""
+    """Crée l'application FastAPI : journalisation, routes découvertes, menu, erreurs.
+
+    Toute route GET répond aussi à HEAD, sans corps (`IntergicielHead`) : la
+    supervision et `curl -I` ne voient pas un 405 « Action non permise ».
+    """
     config = charger_configuration()
     configurer_journalisation(config)
 
@@ -143,5 +147,7 @@ def creer_app() -> FastAPI:
 
     app.state.menu = construire_menu(entrees)
     installer_gestionnaires(app)
+    # Le dernier ajouté enveloppe les autres : le journal voit la méthode reçue (HEAD).
+    app.add_middleware(IntergicielHead)
     app.add_middleware(IntergicielJournal)
     return app
