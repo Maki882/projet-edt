@@ -22,6 +22,7 @@ from edt.db.modeles import (
     VersionEdt,
     besoin_groupe,
 )
+from edt.db.moteur import identifiant_valide
 from edt.domaine.calendrier import decoupage_par_defaut
 from edt.domaine.enumerations import JOURS, DemiJournee, NatureJourFerme
 from edt.domaine.heures import duree_vers_texte, minutes_vers_texte
@@ -42,7 +43,7 @@ from edt.services.referentiels.description import (
     options_reference,
     par_colonne,
 )
-from edt.services.referentiels.operations import identifiant_possible, lire
+from edt.services.referentiels.operations import lire
 from edt.services.referentiels.personnes import REF_ANNEE, REF_GROUPE, annee_par_defaut
 from edt.services.regles import proposer_pour_annee
 
@@ -244,7 +245,7 @@ def preremplir_jours_feries(session: Session, annee_scolaire_id: int) -> int:
     """Ajoute les jours fériés manquants de l'année (fériés mobiles compris) ; renvoie le nombre ajouté."""
     annee = (
         session.get(AnneeScolaire, annee_scolaire_id)
-        if identifiant_possible(annee_scolaire_id)
+        if identifiant_valide(annee_scolaire_id)
         else None
     )
     if annee is None:

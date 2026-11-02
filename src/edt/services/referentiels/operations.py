@@ -32,13 +32,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
+from edt.db.moteur import identifiant_valide
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurDonneesInvalides,
     ErreurIntrouvable,
     ErreurRegleMetier,
 )
-from edt.services.referentiels.conversion import ENTIER_MAX, ErreurChamp, canonique, convertir
+from edt.services.referentiels.conversion import ErreurChamp, canonique, convertir
 from edt.services.referentiels.description import (
     Champ,
     Decompte,
@@ -397,19 +398,15 @@ def _ligne(description: Entite, trouve: Any) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def identifiant_possible(ident: object) -> bool:
-    """Vrai si `ident` peut être un identifiant en base (entier positif représentable).
-
-    Une adresse comme « /salles/99999999999999999999 » donne alors « introuvable »
-    au lieu d'une erreur de la base.
-    """
-    return isinstance(ident, int) and not isinstance(ident, bool) and 0 < ident <= ENTIER_MAX
-
-
 def objet(session: Session, code: str | Entite, ident: int) -> Any:
-    """L'objet ORM `ident` ; lève `ErreurIntrouvable` s'il n'existe pas."""
+    """L'objet ORM `ident` ; lève `ErreurIntrouvable` s'il n'existe pas.
+
+    Un identifiant qu'aucune ligne ne peut porter (« /salles/99999999999999999999 »,
+    garde commune `edt.db.moteur.identifiant_valide`) est « introuvable » sans
+    interroger la base, au lieu d'une erreur du pilote.
+    """
     description = entite(code)
-    trouve = session.get(description.modele, ident) if identifiant_possible(ident) else None
+    trouve = session.get(description.modele, ident) if identifiant_valide(ident) else None
     if trouve is None:
         raise ErreurIntrouvable(
             f"{description.nom_majuscule} n° {ident} introuvable : "
