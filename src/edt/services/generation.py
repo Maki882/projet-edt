@@ -59,7 +59,7 @@ from collections.abc import Collection, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -285,6 +285,10 @@ def lancer_calcul(
                 "ce que le calcul lirait. Attendre la fin de l'import, puis relancer le calcul."
             )
         with session_base(config.db_url) as session:
+            # Deux processus (serveur et commande) peuvent lancer la même seconde : le verrou
+            # d'écriture est pris avant toute lecture, le contrôle et l'insertion sont alors
+            # atomiques d'un processus à l'autre (le second attend, puis voit la ligne du premier).
+            _reserver_ecriture(session)
             if session.get(Semestre, semestre_id) is None:
                 raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
             _cloturer_abandonnes(session)
@@ -309,19 +313,6 @@ def lancer_calcul(
             session.add(calcul)
             session.flush()
             calcul_id = calcul.id
-            # Deux processus (serveur et commande) ont pu passer le contrôle ci-dessus la même
-            # seconde : l'insertion prend le verrou d'écriture de la base, et celui qui écrit en
-            # second voit la ligne du premier. Il se retire (l'erreur annule son insertion).
-            concurrents = session.scalar(
-                select(func.count())
-                .select_from(Calcul)
-                .where(Calcul.etat == EtatCalcul.EN_COURS, Calcul.id != calcul_id)
-            )
-            if concurrents:
-                raise ErreurCalculEnCours(
-                    "Un calcul vient d'être lancé par un autre processus : attendre sa fin ou "
-                    "l'arrêter avant d'en lancer un autre."
-                )
 
         arret = threading.Event()
         fil = threading.Thread(
@@ -484,6 +475,19 @@ def cloturer_calculs_interrompus() -> int:
     """
     with _verrou, session_base() as session:
         return _cloturer_abandonnes(session)
+
+
+def _reserver_ecriture(session: Session) -> None:
+    """Prend le verrou d'écriture de SQLite en tête de transaction, avant toute lecture.
+
+    Le moteur ouvre chaque transaction par un `BEGIN` différé : une transaction
+    qui lit puis écrit pendant qu'un autre processus écrit échoue aussitôt
+    (« database is locked », sans attendre, règle anti-interblocage de SQLite),
+    alors qu'une écriture en première instruction attend son tour
+    (`busy_timeout`). Cette mise à jour vide ne change rien et réserve le verrou.
+    """
+    if session.bind is not None and session.bind.dialect.name == "sqlite":
+        session.execute(text("UPDATE calcul SET arret_demande = arret_demande WHERE 0"))
 
 
 def _processus_vivant(pid: int) -> bool:
@@ -691,11 +695,13 @@ def _executer(
                 with session_base(config.db_url) as session:
                     instantane = charger_instantane(session, semestre_id, version_base_id)
                     regles = _regles_du_calcul(session, semestre_id, instantane, options)
-                    valeurs: dict[str, object] = {
-                        "parametres": {**options.vers_dict(), "regles": regles}
-                    }
-                    if chemin_journal is not None:
-                        valeurs["fichier_journal"] = chemin_journal
+                valeurs: dict[str, object] = {
+                    "parametres": {**options.vers_dict(), "regles": regles}
+                }
+                if chemin_journal is not None:
+                    valeurs["fichier_journal"] = chemin_journal
+                with session_base(config.db_url) as session:
+                    # Écriture en première instruction : attend un autre processus qui écrit.
                     session.execute(update(Calcul).where(Calcul.id == calcul_id).values(**valeurs))
                 etat, message, statistiques = _calculer(
                     calcul_id, instantane, options, moteur, arret, activer, config
@@ -800,6 +806,7 @@ def _calculer(
     if indicateurs is not None:
         statistiques["indicateurs"] = indicateurs
     with session_base(config.db_url) as session:
+        _reserver_ecriture(session)
         version = _enregistrer_version(session, calcul_id, instantane, resultat, activer)
         version_id = version.id
         journal.info(
@@ -1045,6 +1052,7 @@ def _enregistrer_fin(
 ) -> None:
     """Une tentative d'enregistrement de l'état final (voir `_clore`)."""
     with session_base(config.db_url) as session:
+        _reserver_ecriture(session)
         if etat is EtatCalcul.ERREUR:
             message += _complement_version_sans_dates(session, calcul_id)
         session.execute(

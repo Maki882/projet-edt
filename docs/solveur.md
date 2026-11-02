@@ -965,9 +965,12 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
     journalisé), comme l'inverse l'est déjà. Les deux marqueurs ne couvrent
     que le processus (le serveur web en est un seul) ;
   - **deux processus qui lancent la même seconde** (commande et serveur) :
-    après l'insertion de sa ligne, qui prend le verrou d'écriture de SQLite,
-    `lancer_calcul` recompte les calculs « en cours » ; celui qui écrit en
-    second voit la ligne du premier et se retire (`ErreurCalculEnCours`).
+    `lancer_calcul` prend le verrou d'écriture de SQLite en tête de
+    transaction (`_reserver_ecriture`, une mise à jour vide), avant toute
+    lecture : le contrôle « aucun calcul en cours » et l'insertion sont
+    atomiques d'un processus à l'autre, le second attend puis voit la ligne du
+    premier (`ErreurCalculEnCours`). L'enregistrement de la version et celui
+    de l'état final font de même.
 
 ```sh
 python -m edt pre-verifier --semestre 1
@@ -1632,6 +1635,15 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
 - **Marqueurs d'un seul processus.** « Chargement en cours » et « import en
   cours » ne sont vus que dans le processus qui les porte : un import lancé
   par une commande dans un autre processus n'est pas vu par le serveur.
+- **Lire puis écrire pendant qu'un autre processus écrit.** Le moteur de base
+  ouvre chaque transaction par un `BEGIN` différé ; une transaction qui a lu
+  (instantané pris) puis veut écrire pendant qu'une autre connexion écrit
+  échoue aussitôt « database is locked » (mesuré : 0,01 s), sans attendre le
+  `busy_timeout`, là où une écriture en première instruction attend son tour
+  (1,5 s dans la même mesure). Le lancement, l'enregistrement de la version et
+  l'écriture de l'état final réservent le verrou en tête de transaction ; les
+  autres écritures du service (clôture d'un calcul abandonné depuis le suivi)
+  peuvent encore rencontrer « base occupée » pendant une écriture concurrente.
 - **Heure locale des calculs.** `demarre_le` et `termine_le` restent des
   heures locales naïves (affichage) ; seuls le temps écoulé et l'échéance
   d'abandon lisent l'époque. Un calcul enregistré avant la clé
