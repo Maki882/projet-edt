@@ -519,6 +519,8 @@ Ce qu'il faut savoir pour l'utiliser :
   tout identifiant hors des entiers de SQLite (`identifiant_valide`), jamais
   une erreur du pilote. Deux versions actives pour un semestre (base créée
   sans l'index unique partiel) sont refusées en nommant le remède.
+  `decomposer_id_seance` n'admet que des chiffres décimaux ASCII
+  (`ErreurDonneesInvalides` qui nomme l'identifiant, jamais `ValueError`).
 
 ### Le dépliage (`edt.domaine.depliage`)
 
