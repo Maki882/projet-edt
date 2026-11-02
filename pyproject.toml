@@ -46,6 +46,7 @@ pythonpath = ["src", "."]
 testpaths = ["tests"]
 markers = [
     "perf: test de charge long, exclu de la CI courante (pytest -m \"not perf\")",
+    "cas_limite: test d'un cas limite ou d'une panne plausible (banque de tests, docs/banque-de-tests.md)",
 ]
 
 [tool.ruff]
