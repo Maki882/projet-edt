@@ -22,7 +22,7 @@ from edt.db.initialisation import (
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import expliquer_erreur_base, obtenir_moteur, session_base
 from edt.erreurs import ErreurCalculEnCours, ErreurEDT, ErreurRegleMetier
-from edt.journal import NOM_FICHIER, panne_journalisation
+from edt.journal import DOSSIER_CALCULS, NOM_FICHIER, panne_journalisation
 from edt.services.etat import EtatBase, diagnostiquer_base
 
 commandes = typer.Typer()
@@ -212,6 +212,7 @@ def doctor() -> None:
         _controler_ecriture(etat),
         _controler_schema(etat),
         _controler_journaux(config),
+        _controler_journaux_calcul(config),
         _controler_port(config),
     ]
     typer.echo(f"Diagnostic EDT {__version__} (environnement « {config.env} »)")
@@ -337,6 +338,23 @@ def _controler_journaux(config: Configuration) -> tuple[str, str]:
     except OSError as erreur:
         return ECHEC, f"Journaux : impossible d'écrire dans « {dossier} » ({erreur})"
     return OK, f"Journaux : dossier « {dossier} » et fichier {NOM_FICHIER} accessibles en écriture"
+
+
+def _controler_journaux_calcul(config: Configuration) -> tuple[str, str]:
+    """Le sous-dossier des journaux de calcul doit exister (ou pouvoir être créé) et s'écrire."""
+    dossier = config.log_dir / DOSSIER_CALCULS
+    temoin = dossier / f".doctor-{uuid.uuid4().hex}"
+    try:
+        dossier.mkdir(parents=True, exist_ok=True)
+        temoin.write_text("ok", encoding="utf-8")
+        temoin.unlink()
+    except OSError as erreur:
+        return (
+            ECHEC,
+            f"Journaux de calcul : impossible d'écrire dans « {dossier} » ({erreur}) : aucun "
+            "calcul n'aurait de journal",
+        )
+    return OK, f"Journaux de calcul : dossier « {dossier} » accessible en écriture"
 
 
 def _controler_port(config: Configuration) -> tuple[str, str]:

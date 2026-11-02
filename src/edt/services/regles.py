@@ -780,6 +780,14 @@ def _resoudre_cible(
     if cible is None or cible == "":
         raise ErreurSaisie({"portee.cible": f"Un {nature.libelle.lower()} est attendu (son code)."})
     par_id = isinstance(cible, int) and not isinstance(cible, bool)
+    if par_id and not identifiant_valide(cible):
+        # Hors des entiers de SQLite, `session.get` lèverait OverflowError : erreur de saisie.
+        raise ErreurSaisie(
+            {
+                "portee.cible": f"Identifiant de {nature.libelle.lower()} invalide : {cible} "
+                "(entier positif attendu, ou le code de la cible)."
+            }
+        )
     texte = str(cible).strip()
     if nature is NaturePortee.GROUPE:
         groupe = (

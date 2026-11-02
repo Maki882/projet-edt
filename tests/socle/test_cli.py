@@ -313,3 +313,28 @@ def test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces():
     assert (
         niveaux_choisis(None, [" Pause = Facultatif "])[CodeContrainte.PAUSE] is Niveau.FACULTATIF
     )
+
+
+@pytest.mark.cas_limite
+def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
+    lanceur, base, environnement
+):
+    """Cas : `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le
+    dossier racine des journaux va bien.
+
+    Risque : doctor disait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul
+    n'aurait de journal (cas transmis par le lot solveur).
+    """
+    (environnement / "logs").mkdir(exist_ok=True)
+    (environnement / "logs" / "generations").write_text("pas un dossier", encoding="utf-8")
+
+    resultat = lanceur.invoke(cli.app, ["doctor"])
+    assert resultat.exit_code == 1, resultat.output
+    lignes = [ligne for ligne in resultat.output.splitlines() if "generations" in ligne]
+    assert lignes and all("ECHEC" in ligne for ligne in lignes)
+    assert "aucun calcul n'aurait de journal" in resultat.output
+
+    (environnement / "logs" / "generations").unlink()
+    repare = lanceur.invoke(cli.app, ["doctor"])
+    assert repare.exit_code == 0, repare.output
+    assert "Journaux de calcul" in repare.output and "Tout est prêt." in repare.output

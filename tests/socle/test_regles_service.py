@@ -702,3 +702,35 @@ def test_une_regle_enregistree_sans_heures_reste_lisible(jeu_minimal, session):
     )
     assert any(r.code == "R001" for r in service.lister(session, jeu_minimal.annee_scolaire_id))
     assert CATALOGUE_TYPES[TypeRegle.PLAGE_HORAIRE].champ("debut").defaut_global == "ouverture_min"
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "nature", ["groupe", "enseignant", "campus", "type_seance", "matiere", "besoin"]
+)
+@pytest.mark.parametrize("cible", [10**20, 2**63, -5, 0], ids=["10^20", "2^63", "-5", "0"])
+def test_regle_dont_la_cible_numerique_est_hors_bornes_est_invalide(
+    jeu_minimal, session, nature, cible
+):
+    """Cas : brouillon de règle dont la cible est un identifiant numérique hors des entiers de
+    SQLite, négatif ou nul (assistant, adresse forgée).
+
+    Risque : `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide :
+    page 500 sur l'écran des règles (cas transmis par le lot solveur).
+    """
+    validation = service.valider(
+        session,
+        {
+            "type": "CRENEAUX_INTERDITS",
+            "portee": {"nature": nature, "cible": cible},
+            "parametres": {"jours": ["lundi"]},
+        },
+    )
+    assert not validation.valide
+    assert str(cible) in validation.erreurs["portee.cible"]
+    # Même garde pour une année donnée par un identifiant hors bornes.
+    hors_annee = service.valider(
+        session,
+        {"type": "SANS_TROU", "portee": {"nature": "groupe", "cible": "A1-G2"}, "annee": cible},
+    )
+    assert not hors_annee.valide and "2026-2027" in hors_annee.erreurs["annee"]
