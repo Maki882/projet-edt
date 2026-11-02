@@ -6,7 +6,6 @@ import logging
 import os
 
 import pytest
-from typer.testing import CliRunner
 
 from edt import cli
 from edt.erreurs import ErreurConfiguration
@@ -24,11 +23,19 @@ def _fichier_tournant() -> _FichierTournant:
     return gestionnaire
 
 
+@pytest.mark.cas_limite
 def test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, lanceur
 ):
+    """Cas : `edt.log` ne peut pas être ouvert (un dossier porte son nom, ou il appartient à
+    un autre utilisateur).
+
+    Risque : `PermissionError` brute à chaque commande (code 2, « la trace est dans le
+    journal » qui n'existe pas), message en double, boucle de redémarrage du service ;
+    doctor, censé diagnostiquer, ne démarrait pas.
+    """
     dossier = tmp_path / "journaux"
-    (dossier / "edt.log").mkdir(parents=True)  # un DOSSIER porte le nom du fichier journal
+    (dossier / "edt.log").mkdir(parents=True)
     monkeypatch.setenv("EDT_LOG_DIR", str(dossier))
     reinitialiser_journalisation()
 
@@ -38,7 +45,6 @@ def test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor
     assert str(dossier / "edt.log") in message and "EDT_LOG_DIR" in message
     assert "droits" in message
 
-    lanceur = CliRunner()
     resultat = lanceur.invoke(cli.app, ["version"])
     assert resultat.exit_code == cli.CODE_ERREUR_METIER
     assert resultat.output.count("Impossible d'ouvrir le fichier journal") == 1  # une seule fois
@@ -50,7 +56,12 @@ def test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor
     assert "Impossible d'ouvrir le fichier journal" in doctor.output
 
 
+@pytest.mark.cas_limite
 def test_dossier_de_journaux_sous_un_fichier_est_une_erreur_de_configuration(tmp_path, monkeypatch):
+    """Cas : EDT_LOG_DIR désigne un chemin sous un fichier existant.
+
+    Risque : `NotADirectoryError` brute au lieu d'un message qui nomme la variable.
+    """
     obstacle = tmp_path / "obstacle"
     obstacle.write_text("je suis un fichier", encoding="utf-8")
     monkeypatch.setenv("EDT_LOG_DIR", str(obstacle / "logs"))
@@ -59,7 +70,14 @@ def test_dossier_de_journaux_sous_un_fichier_est_une_erreur_de_configuration(tmp
         configurer_journalisation()
 
 
+@pytest.mark.cas_limite
 def test_une_rotation_impossible_ne_perd_ni_ligne_ni_console(environnement, capsys):
+    """Cas : la rotation d'`edt.log` échoue parce qu'un autre processus tient le fichier
+    (service web et commande `edt` en même temps, cas de Windows).
+
+    Risque : « --- Logging error --- » répété sur la console et lignes perdues ; la ligne
+    doit être écrite dans le fichier courant, sans bruit.
+    """
     chemin = configurer_journalisation()
     gestionnaire = _fichier_tournant()
     gestionnaire.maxBytes = 50  # la prochaine ligne déclenche une rotation
@@ -77,20 +95,32 @@ def test_une_rotation_impossible_ne_perd_ni_ligne_ni_console(environnement, caps
     assert "Logging error" not in capsys.readouterr().err
 
 
+@pytest.mark.cas_limite
 @pytest.mark.skipif(os.name == "nt", reason="Windows interdit de renommer un fichier ouvert")
 def test_le_fichier_journal_suit_une_rotation_faite_par_un_autre_processus(environnement):
+    """Cas : un autre processus (ou logrotate) a renommé `edt.log` pendant que celui-ci écrit.
+
+    Risque : les lignes suivantes partiraient dans l'archive ou un fichier délié (incidents
+    introuvables) ; le flux doit être rouvert sur le nouveau fichier.
+    """
     chemin = configurer_journalisation()
     journal = logging.getLogger("edt.test.rotation")
     journal.info("avant la rotation")
     archive = chemin.with_name("edt.log.1")
-    chemin.rename(archive)  # un autre processus vient de tourner le fichier
+    chemin.rename(archive)
     journal.info("après la rotation")
 
     assert "après la rotation" in chemin.read_text(encoding="utf-8")
     assert "après la rotation" not in archive.read_text(encoding="utf-8")
 
 
+@pytest.mark.cas_limite
 def test_les_journaux_de_calcul_les_plus_anciens_sont_purges(environnement, caplog):
+    """Cas : des centaines de calculs ont laissé chacun leur fichier dans `generations/`.
+
+    Risque : disque plein à terme (« database or disk is full » sur toute écriture) ; seuls
+    les `NB_JOURNAUX_CALCUL` fichiers les plus récents doivent rester, et la purge est dite.
+    """
     dossier = environnement / "logs" / "generations"
     dossier.mkdir(parents=True)
     for numero in range(60):
@@ -105,6 +135,6 @@ def test_les_journaux_de_calcul_les_plus_anciens_sont_purges(environnement, capl
     restants = sorted(dossier.glob("calcul-*.log"))
     assert len(restants) == NB_JOURNAUX_CALCUL
     assert restants[-1].name.startswith("calcul-000061-")  # le nouveau est là
-    assert not (dossier / "calcul-000010-20260901-000000.log").exists()  # les plus anciens partent
+    assert not (dossier / "calcul-000010-20260901-000000.log").exists()
     assert (dossier / "calcul-000011-20260901-000000.log").exists()
     assert "11 fichier(s) ancien(s) supprimé(s)" in caplog.text

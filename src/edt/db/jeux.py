@@ -92,9 +92,10 @@ class JeuMinimal:
 def creer_jeu_minimal(session: Session) -> JeuMinimal:
     """Crée le jeu minimal dans une base initialisée et encore vide de référentiels.
 
-    Lève `ErreurRegleMetier` si la base n'a pas ses données par défaut ou si
-    elle contient déjà des campus, salles, enseignants ou groupes. Ne valide
-    pas la transaction : l'appelant appelle `session.commit()`.
+    Lève `ErreurRegleMetier` si la base n'a pas ses données par défaut (listes
+    configurables, semestre S1 de l'année) ou si elle contient déjà des
+    référentiels, des besoins ou des règles. Ne valide pas la transaction :
+    l'appelant appelle `session.commit()`.
     """
     types_salle = {t.code: t for t in session.scalars(select(TypeSalle))}
     equipements = {e.code: e for e in session.scalars(select(Equipement))}
@@ -103,20 +104,43 @@ def creer_jeu_minimal(session: Session) -> JeuMinimal:
         raise ErreurRegleMetier(
             "La base n'a pas ses données par défaut : lancer d'abord « python -m edt init-db »."
         )
-    for modele, nom in ((Campus, "campus"), (Salle, "salles"), (Enseignant, "enseignants")):
+    manquants = [
+        code
+        for code in ("AMPHI", "COURS", "INFO", "TP", "CM", "TD", "TP", "DST", "EXAMEN", "LANGUE")
+        if code not in types_salle and code not in types_seance
+    ]
+    if manquants:
+        raise ErreurRegleMetier(
+            "Le jeu minimal attend les types de salle et de séance par défaut ; absents : "
+            + ", ".join(dict.fromkeys(manquants))
+            + " (« python -m edt init-db --reset » les recrée)."
+        )
+    deja_la = [
+        (Campus, "campus"),
+        (Salle, "salles"),
+        (Enseignant, "enseignants"),
+        (Groupe, "groupes"),
+        (Etudiant, "étudiants"),
+        (Matiere, "matières"),
+        (Besoin, "besoins"),
+        (Regle, "règles personnalisées"),
+    ]
+    for modele, nom in deja_la:
         if session.scalar(select(modele.id).limit(1)) is not None:
             raise ErreurRegleMetier(
                 f"La base contient déjà des {nom} : le jeu minimal se charge dans une base "
                 "vide (« python -m edt init-db --reset » pour repartir de zéro)."
             )
-    if session.scalar(select(Groupe.id).limit(1)) is not None:
-        raise ErreurRegleMetier(
-            "La base contient déjà des groupes : le jeu minimal se charge dans une base "
-            "vide (« python -m edt init-db --reset » pour repartir de zéro)."
-        )
 
     annee = assurer_annee_scolaire(session, ANNEE_DEBUT)
-    semestre = next(s for s in annee.semestres if s.code == "S1")
+    semestre = next((s for s in annee.semestres if s.code == "S1"), None)
+    if semestre is None:
+        raise ErreurRegleMetier(
+            f"Le semestre S1 de l'année {annee.libelle} est introuvable (semestres : "
+            + (", ".join(s.code for s in annee.semestres) or "aucun")
+            + ") : le jeu minimal attend les semestres par défaut S1 et S2 "
+            "(« python -m edt init-db --reset » les recrée)."
+        )
 
     # -- campus et salles ---------------------------------------------------------
     ndc = Campus(code="NDC", nom="Notre-Dame-des-Champs", prefixe_salle="N")

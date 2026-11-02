@@ -23,6 +23,11 @@ Règles de suppression (clés étrangères) :
   un besoin est donc refusé ;
 - **SET NULL** pour une salle affectée à une séance déjà placée : la séance
   reste visible, signalée « sans salle ».
+
+Codes et identifiants (`CodeNormalise`, `IdentifiantNormalise`) sont
+normalisés à chaque affectation (`edt.domaine.normalisation`) : forme NFC,
+espaces invisibles retirés. Deux saisies qui ne diffèrent que par là sont le
+même code, et l'unicité de la base joue.
 """
 
 from __future__ import annotations
@@ -48,7 +53,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy import Enum as EnumSQL
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
 from edt.db.base import Base
 from edt.domaine.contraintes import Niveau
@@ -65,6 +70,7 @@ from edt.domaine.enumerations import (
     StatutEnseignant,
     StatutOccurrence,
 )
+from edt.domaine.normalisation import normaliser_code
 from edt.domaine.regles import EtatRegle, NaturePortee, OrigineRegle, TypeRegle
 from edt.erreurs import ErreurDonneesInvalides
 
@@ -80,6 +86,22 @@ def type_enum(enumeration: type[StrEnum], nom: str) -> EnumSQL:
         length=32,
         name=nom,
     )
+
+
+class CodeNormalise:
+    """Normalise la colonne `code` à chaque affectation (voir l'en-tête du module)."""
+
+    @validates("code")
+    def _normaliser_code(self, _cle: str, valeur: object) -> object:
+        return normaliser_code(valeur)
+
+
+class IdentifiantNormalise:
+    """Normalise la colonne `identifiant` à chaque affectation (voir l'en-tête du module)."""
+
+    @validates("identifiant")
+    def _normaliser_identifiant(self, _cle: str, valeur: object) -> object:
+        return normaliser_code(valeur)
 
 
 class Provenance:
@@ -126,7 +148,7 @@ class AnneeScolaire(Base):
         return f"<AnneeScolaire {self.libelle}>"
 
 
-class Semestre(Base):
+class Semestre(CodeNormalise, Base):
     """Semestre d'une année scolaire : l'unité de génération d'un emploi du temps."""
 
     __tablename__ = "semestre"
@@ -205,7 +227,7 @@ class Creneau(Base):
 # --------------------------------------------------------------------------- #
 
 
-class Campus(Base):
+class Campus(CodeNormalise, Base):
     """Site d'enseignement (campus de l'école ou établissement voisin)."""
 
     __tablename__ = "campus"
@@ -242,7 +264,7 @@ class Trajet(Base):
     duree_min: Mapped[int] = mapped_column(Integer, comment="Temps de trajet, en minutes")
 
 
-class TypeSalle(Base):
+class TypeSalle(CodeNormalise, Base):
     """Type de salle (amphithéâtre, salle informatique...), liste configurable."""
 
     __tablename__ = "type_salle"
@@ -256,7 +278,7 @@ class TypeSalle(Base):
         return f"<TypeSalle {self.code}>"
 
 
-class Equipement(Base):
+class Equipement(CodeNormalise, Base):
     """Équipement d'une salle (vidéoprojecteur, ordinateurs...), liste configurable."""
 
     __tablename__ = "equipement"
@@ -279,7 +301,7 @@ salle_equipement = Table(
 )
 
 
-class Salle(Provenance, Base):
+class Salle(CodeNormalise, Provenance, Base):
     """Salle de cours."""
 
     __tablename__ = "salle"
@@ -320,11 +342,19 @@ class Salle(Provenance, Base):
 # --------------------------------------------------------------------------- #
 
 
-class Enseignant(Provenance, Base):
+class Enseignant(IdentifiantNormalise, Provenance, Base):
     """Enseignant, identifié par un identifiant stable."""
 
     __tablename__ = "enseignant"
-    __table_args__ = (UniqueConstraint("identifiant"),)
+    __table_args__ = (
+        UniqueConstraint("identifiant"),
+        CheckConstraint(
+            "max_minutes_jour IS NULL OR max_minutes_jour > 0", name="max_jour_positif"
+        ),
+        CheckConstraint(
+            "max_minutes_semaine IS NULL OR max_minutes_semaine > 0", name="max_semaine_positif"
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     identifiant: Mapped[str] = mapped_column(
@@ -364,7 +394,7 @@ class Enseignant(Provenance, Base):
         return f"<Enseignant {self.identifiant}>"
 
 
-class Groupe(Provenance, Base):
+class Groupe(CodeNormalise, Provenance, Base):
     """Groupe d'étudiants : nœud de l'arbre promotion > classe > demi-groupe, ou groupe à part.
 
     Les groupes transverses (langues, options) et tiers-temps n'ont en général
@@ -425,7 +455,7 @@ inscription = Table(
 )
 
 
-class Etudiant(Provenance, Base):
+class Etudiant(IdentifiantNormalise, Provenance, Base):
     """Étudiant (facultatif, fictif). Aucune donnée de santé ni donnée réelle nominative."""
 
     __tablename__ = "etudiant"
@@ -447,7 +477,7 @@ class Etudiant(Provenance, Base):
 # --------------------------------------------------------------------------- #
 
 
-class Matiere(Provenance, Base):
+class Matiere(CodeNormalise, Provenance, Base):
     """Matière, identifiée par son code module et sa promotion de rattachement."""
 
     __tablename__ = "matiere"
@@ -477,7 +507,7 @@ class Matiere(Provenance, Base):
         return f"<Matiere {self.code}>"
 
 
-class TypeSeance(Base):
+class TypeSeance(CodeNormalise, Base):
     """Type de séance (CM, TD, TP...), liste configurable."""
 
     __tablename__ = "type_seance"
@@ -920,7 +950,7 @@ class Occurrence(Provenance, Base):
 # --------------------------------------------------------------------------- #
 
 
-class Regle(Provenance, Base):
+class Regle(CodeNormalise, Provenance, Base):
     """Règle personnalisée (voir `edt.domaine.regles` et `docs/regles-personnalisees.md`).
 
     Une règle appartient à une année scolaire, vise une portée (établissement

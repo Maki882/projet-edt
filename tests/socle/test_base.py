@@ -6,15 +6,27 @@ import datetime as dt
 from pathlib import Path
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 
 from edt.db import modeles as m
 from edt.db.base import Base
 from edt.db.initialisation import initialiser_base, tables_manquantes
+from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import obtenir_moteur, session_base
-from edt.domaine.enumerations import NatureGroupe, NatureJourFerme, OrigineVersion
+from edt.domaine.contraintes import Niveau
+from edt.domaine.enumerations import (
+    CibleIndisponibilite,
+    DemiJournee,
+    ModeVolume,
+    NatureGroupe,
+    NatureJourFerme,
+    OrigineVersion,
+)
+from edt.domaine.normalisation import normaliser_code
 from edt.domaine.parametres import definitions
+from edt.domaine.regles import NaturePortee, TypeRegle
+from edt.erreurs import ErreurRegleMetier
 
 RACINE = Path(__file__).resolve().parents[2]
 
@@ -225,3 +237,207 @@ def test_chaque_table_est_documentee():
     documentation = (RACINE / "docs" / "modele-donnees.md").read_text(encoding="utf-8")
     absentes = [nom for nom in Base.metadata.tables if f"### `{nom}`" not in documentation]
     assert absentes == []
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : contrôles du modèle, codes normalisés, init-db relancé, jeu minimal
+# --------------------------------------------------------------------------- #
+
+
+def _creneau_a_l_envers(session):
+    session.add(m.Creneau(jour=0, debut_min=600, fin_min=500, demi_journee=DemiJournee.MATIN))
+
+
+def _besoin_de_duree_nulle(session):
+    besoin = session.scalar(select(m.Besoin))
+    session.add(
+        m.Besoin(
+            semestre_id=besoin.semestre_id,
+            matiere_id=besoin.matiere_id,
+            type_seance_id=besoin.type_seance_id,
+            duree_min=0,
+        )
+    )
+
+
+def _ponctuel_sans_date(session):
+    besoin = session.scalar(select(m.Besoin))
+    session.add(
+        m.Besoin(
+            semestre_id=besoin.semestre_id,
+            matiere_id=besoin.matiere_id,
+            type_seance_id=besoin.type_seance_id,
+            mode_volume=ModeVolume.PONCTUEL,
+        )
+    )
+
+
+def _trajet_a_l_envers(session):
+    campus = sorted(session.scalars(select(m.Campus.id)))
+    session.add(m.Trajet(campus_a_id=campus[1], campus_b_id=campus[0], duree_min=10))
+
+
+def _indisponibilite_ni_recurrente_ni_datee(session):
+    enseignant = session.scalar(select(m.Enseignant))
+    session.add(
+        m.Indisponibilite(
+            cible=CibleIndisponibilite.ENSEIGNANT,
+            enseignant_id=enseignant.id,
+            debut_min=0,
+            fin_min=60,
+        )
+    )
+
+
+def _maximum_journalier_negatif(session):
+    session.add(m.Enseignant(identifiant="NEG-J", nom="Négatif", max_minutes_jour=-60))
+
+
+def _maximum_hebdomadaire_nul(session):
+    session.add(m.Enseignant(identifiant="NEG-S", nom="Nul", max_minutes_semaine=0))
+
+
+def _groupe_son_propre_parent(session):
+    groupe = session.scalar(select(m.Groupe))
+    groupe.parent_id = groupe.id
+
+
+@pytest.mark.parametrize(
+    ("fabrique", "contrainte"),
+    [
+        (_creneau_a_l_envers, "ck_creneau_plage"),
+        (_besoin_de_duree_nulle, "ck_besoin_duree_valide"),
+        (_ponctuel_sans_date, "ck_besoin_date_ponctuelle_si_ponctuel"),
+        (_trajet_a_l_envers, "ck_trajet_paire_ordonnee"),
+        (_indisponibilite_ni_recurrente_ni_datee, "ck_indisponibilite_recurrente_ou_datee"),
+        (_maximum_journalier_negatif, "ck_enseignant_max_jour_positif"),
+        (_maximum_hebdomadaire_nul, "ck_enseignant_max_semaine_positif"),
+        (_groupe_son_propre_parent, "ck_groupe_pas_son_propre_parent"),
+    ],
+    ids=lambda x: x.__name__.lstrip("_") if callable(x) else None,
+)
+@pytest.mark.cas_limite
+def test_contraintes_de_controle_du_modele_et_maxima_positifs(
+    jeu_minimal, session, fabrique, contrainte
+):
+    """Cas : une écriture qui contourne les services viole une règle de cohérence du modèle
+    (créneau à l'envers, besoin de durée nulle, ponctuel sans date, trajet inversé,
+    indisponibilité ni récurrente ni datée, maxima horaires négatifs ou nuls, groupe parent de
+    lui-même).
+
+    Risque : dernière ligne de défense avant un instantané incohérent ; un remaniement de
+    `modeles.py` perdrait ces CHECK sans signal, et les maxima négatifs rendaient
+    `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde.
+    """
+    fabrique(session)
+    with pytest.raises(IntegrityError) as capture:
+        session.flush()
+    assert contrainte in str(capture.value.orig)  # la base nomme la règle violée
+
+
+@pytest.mark.parametrize("variante", ["N105\u00a0", "\u200bN105", "  N105 ", "N105\t"])
+@pytest.mark.cas_limite
+def test_un_code_aux_espaces_invisibles_est_le_meme_code(jeu_minimal, session, variante):
+    """Cas : un code saisi ou importé porte une espace insécable, une espace de largeur nulle,
+    des espaces aux bords ou une tabulation (collé depuis un traitement de texte).
+
+    Risque : « N105 » et « N105\u00a0 » passaient l'unicité et créaient un doublon invisible,
+    introuvable à la recherche ; le code doit être normalisé dès l'affectation.
+    """
+    salle = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
+    doublon = m.Salle(
+        code=variante, campus_id=salle.campus_id, capacite=10, type_salle_id=salle.type_salle_id
+    )
+    assert doublon.code == "N105"  # normalisé dès l'affectation
+    session.add(doublon)
+    with pytest.raises(IntegrityError):
+        session.flush()
+
+
+@pytest.mark.cas_limite
+def test_les_codes_et_identifiants_sont_normalises_en_nfc(jeu_minimal, session):
+    """Cas : le même code en forme Unicode décomposée (« e » + accent) et précomposée ;
+    identifiant d'enseignant avec une espace insécable.
+
+    Risque : doublons invisibles de campus ou d'enseignants ; la forme enregistrée doit être NFC
+    et l'unicité doit jouer.
+    """
+    session.add(m.Campus(code="e\u0301cole", nom="Forme décomposée"))  # « e » + accent
+    session.flush()
+    assert session.scalar(select(m.Campus.code).where(m.Campus.nom == "Forme décomposée")) == (
+        "\u00e9cole"
+    )
+    session.add(m.Campus(code="\u00e9cole", nom="Forme composée"))
+    with pytest.raises(IntegrityError):
+        session.flush()
+    session.rollback()
+
+    session.add(m.Enseignant(identifiant="ENS004\u00a0", nom="Homonyme invisible"))
+    with pytest.raises(IntegrityError):
+        session.flush()
+    session.rollback()
+
+    assert normaliser_code("  A1\u00a0\u00a0G2 ") == "A1 G2"
+    assert normaliser_code("ENS\u200b001\ufeff") == "ENS001"
+    assert normaliser_code("IM.1101") == "IM.1101"
+
+
+@pytest.mark.cas_limite
+def test_init_db_relance_ne_recree_pas_un_referentiel_supprime_volontairement(base, aujourdhui):
+    """Cas : l'utilisateur a supprimé un type de séance, un équipement et toute la grille pour
+    la ressaisir ; le déploiement suivant relance `init-db`.
+
+    Risque : lignes ressuscitées sans un mot (choix de l'utilisateur annulé à chaque mise à
+    jour) ; seul un paramètre absent doit être reposé.
+    """
+    with session_base() as session:
+        session.delete(session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "PROJET")))
+        session.delete(session.scalar(select(m.Equipement).where(m.Equipement.code == "VISIO")))
+        session.execute(delete(m.Creneau))  # grille effacée pour être ressaisie
+
+    rapport = initialiser_base(aujourdhui=aujourdhui)
+
+    assert rapport.ajouts["type_seance"] == 0
+    assert rapport.ajouts["equipement"] == 0
+    assert rapport.ajouts["creneau"] == 0
+    with session_base() as session:
+        assert session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "PROJET")) is None
+        assert _compter(session, m.Creneau) == 0
+        # Un paramètre absent, lui, est toujours reposé (paramètre nouveau d'une version).
+        session.delete(session.get(m.Parametre, "pause_min"))
+    assert initialiser_base(aujourdhui=aujourdhui).ajouts["parametre"] == 1
+
+
+@pytest.mark.cas_limite
+def test_le_jeu_minimal_refuse_proprement_une_base_avec_regles_ou_sans_semestre_s1(base):
+    """Cas : `jeu-minimal` sur une base sans référentiel mais avec une règle déjà créée, puis sur
+    une base dont les semestres ont été renommés.
+
+    Risque : `IntegrityError` brute (unicité (année, code) de la règle) puis `StopIteration`
+    (semestre S1 introuvable) : code 2 / 500 au lieu d'un refus qui dit quoi faire.
+    """
+    with session_base() as session:
+        annee = session.scalar(select(m.AnneeScolaire))
+        session.add(
+            m.Regle(
+                annee_scolaire_id=annee.id,
+                code="R001",
+                type=TypeRegle.ORDRE_SEMAINE,
+                portee=NaturePortee.ETABLISSEMENT,
+                parametres={"avant": "CM", "apres": "TD"},
+                niveau=Niveau.FACULTATIF,
+            )
+        )
+    with session_base() as session, pytest.raises(ErreurRegleMetier) as capture:
+        creer_jeu_minimal(session)
+    assert "règles" in capture.value.message and "init-db --reset" in capture.value.message
+
+    with session_base() as session:
+        session.execute(delete(m.Regle))
+        for semestre in session.scalars(select(m.Semestre)):
+            semestre.code = semestre.code.replace("S", "SEM")
+    with session_base() as session, pytest.raises(ErreurRegleMetier) as capture:
+        creer_jeu_minimal(session)
+    assert "S1" in capture.value.message and "SEM1, SEM2" in capture.value.message
+    with session_base() as session:
+        assert _compter(session, m.Salle) == 0  # rien n'a été écrit

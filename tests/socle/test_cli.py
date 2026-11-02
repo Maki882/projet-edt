@@ -5,18 +5,15 @@ from __future__ import annotations
 import datetime as dt
 import os
 import sqlite3
-import stat
 import sys
 import types
 
 import pytest
 import typer
 from sqlalchemy import func, select
-from typer.testing import CliRunner
 
 from edt import __version__, cli
 from edt.commandes import base as module_base
-from edt.db import moteur as module_moteur
 from edt.db.initialisation import base_initialisee
 from edt.db.modeles import Besoin, Calcul, Parametre, Salle
 from edt.db.moteur import liberer_moteurs, obtenir_moteur, session_base
@@ -24,11 +21,6 @@ from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurConfiguration, ErreurRegleMetier
 
 NOM_MODULE_ESSAI = "edt.commandes.essai_socle"
-
-
-@pytest.fixture
-def lanceur() -> CliRunner:
-    return CliRunner()
 
 
 def test_version(lanceur):
@@ -160,54 +152,63 @@ def test_les_sorties_sont_forcees_en_utf8(monkeypatch):
 # --------------------------------------------------------------------------- #
 
 
-def _compter_salles() -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(Salle))
-
-
+@pytest.mark.cas_limite
 @pytest.mark.parametrize("panne", ["verrou", "lecture_seule", "corrompue"])
 def test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1(
-    lanceur, base, environnement, monkeypatch, panne
+    lanceur,
+    base,
+    environnement,
+    panne,
+    delai_verrou_court,
+    verrou_ecriture,
+    lecture_seule,
+    corrompre_base,
 ):
+    """Cas : `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou
+    d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite.
+
+    Risque : trace brute et code 2, et le script de déploiement enchaînait sur « --reset-base »
+    (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et
+    le remède, code 1.
+    """
     chemin = environnement / "edt.db"
     with session_base() as session:  # init-db aura une ligne à écrire
         session.delete(session.get(Parametre, "pause_min"))
     liberer_moteurs()
-    monkeypatch.setattr(module_moteur, "DELAI_VERROU_MS", 400)
-    brute = None
-    try:
-        if panne == "verrou":
-            brute = sqlite3.connect(chemin)
-            brute.execute("BEGIN IMMEDIATE")  # un autre processus tient le verrou d'écriture
-            attendu = "verrouillée"
-        elif panne == "lecture_seule":
-            os.chmod(chemin, stat.S_IREAD)
-            attendu = "lecture seule"
-        else:
-            for suffixe in ("-wal", "-shm"):
-                (environnement / f"edt.db{suffixe}").unlink(missing_ok=True)
-            chemin.write_text("x" * 1200, encoding="utf-8")  # plus une base SQLite
-            attendu = "n'est pas une base SQLite"
+
+    def verifier(attendu: str) -> None:
         for commande in (["init-db"], ["jeu-minimal"]):
             resultat = lanceur.invoke(cli.app, commande)
             assert resultat.exit_code == cli.CODE_ERREUR_METIER, (commande, resultat.output)
             assert attendu in resultat.output, (commande, resultat.output)
             assert "Traceback" not in resultat.output and "inattendue" not in resultat.output
-    finally:
-        if brute is not None:
-            brute.rollback()
-            brute.close()
-        if panne == "lecture_seule":
-            os.chmod(chemin, stat.S_IWRITE | stat.S_IREAD)
+
+    if panne == "verrou":
+        with verrou_ecriture():
+            verifier("verrouillée")
+    elif panne == "lecture_seule":
+        with lecture_seule(chemin):
+            verifier("lecture seule")
+    else:
+        corrompre_base()
+        verifier("n'est pas une base SQLite")
 
 
+@pytest.mark.cas_limite
 def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours(
-    lanceur, jeu_minimal, environnement, monkeypatch
+    lanceur, jeu_minimal, environnement, monkeypatch, compter
 ):
+    """Cas : `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne
+    dans un autre processus, puis en production hors calcul.
+
+    Risque : base de production effacée par mégarde sans question ni sauvegarde, calcul en
+    cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie
+    « edt-<date>-avant-reset.db » dans le troisième.
+    """
     monkeypatch.setattr(module_base, "_entree_interactive", lambda: True)
     refus = lanceur.invoke(cli.app, ["init-db", "--reset"], input="n\n")
     assert refus.exit_code != 0
-    assert _compter_salles() == jeu_minimal.nb_salles  # rien d'effacé
+    assert compter(Salle) == jeu_minimal.nb_salles  # rien d'effacé
 
     # Un calcul en cours dans un autre processus (vivant) : refus, même avec --oui.
     with session_base() as session:
@@ -222,7 +223,7 @@ def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_e
         calcul_id = calcul.id
     pendant = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
     assert pendant.exit_code == cli.CODE_ERREUR_METIER, pendant.output
-    assert "calcul" in pendant.output and _compter_salles() == jeu_minimal.nb_salles
+    assert "calcul" in pendant.output and compter(Salle) == jeu_minimal.nb_salles
     with session_base() as session:
         session.get(Calcul, calcul_id).etat = EtatCalcul.ERREUR
 
@@ -230,7 +231,7 @@ def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_e
     monkeypatch.setenv("EDT_ENV", "prod")
     fait = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
     assert fait.exit_code == 0, fait.output
-    assert "Sauvegarde" in fait.output and _compter_salles() == 0
+    assert "Sauvegarde" in fait.output and compter(Salle) == 0
     (copie,) = environnement.glob("edt-*-avant-reset.db")
     with sqlite3.connect(copie) as sauvegarde:
         assert (
@@ -238,8 +239,15 @@ def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_e
         )
 
 
-def test_init_db_reset_non_interactif_ne_pose_pas_de_question(lanceur, jeu_minimal, environnement):
-    # Un script (déploiement) n'est pas interrogé ; en développement, pas de sauvegarde.
+@pytest.mark.cas_limite
+def test_init_db_reset_non_interactif_ne_pose_pas_de_question(
+    lanceur, jeu_minimal, environnement, compter
+):
+    """Cas : `init-db --reset` lancé par un script (déploiement), sans terminal, en développement.
+
+    Risque : une question posée à un script le bloquerait ou le ferait échouer ; en
+    développement, pas de copie de sauvegarde qui encombre le dossier.
+    """
     resultat = lanceur.invoke(cli.app, ["init-db", "--reset"])
     assert resultat.exit_code == 0, resultat.output
-    assert _compter_salles() == 0 and not list(environnement.glob("edt-*-avant-reset.db"))
+    assert compter(Salle) == 0 and not list(environnement.glob("edt-*-avant-reset.db"))

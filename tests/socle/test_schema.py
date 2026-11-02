@@ -8,8 +8,8 @@ ancienne version du code, puis vérifient que rien ne se déclare « prêt » :
 from __future__ import annotations
 
 import pytest
-from sqlalchemy import func, select
-from typer.testing import CliRunner
+from sqlalchemy import UniqueConstraint, func, select
+from sqlalchemy.schema import CreateIndex
 
 from edt import cli
 from edt.db.base import Base
@@ -27,11 +27,6 @@ from edt.services.etat import diagnostiquer_base
 
 COLONNE_EN_TROP = "table besoin : colonne en trop : ancien_champ"
 COLONNE_ABSENTE = "table salle : colonne etage absente de la base"
-
-
-@pytest.fixture
-def lanceur() -> CliRunner:
-    return CliRunner()
 
 
 def ajouter_colonne(table: str, definition: str) -> None:
@@ -66,11 +61,19 @@ def recreer_table(
         colonnes.append(f"{colonne.name} {definition}")
     cle = ", ".join(colonne.name for colonne in modele.primary_key.columns)
     colonnes.append(f"PRIMARY KEY ({cle})")
+    # Unicités et index du modèle conservés : ces tests ne portent que sur les colonnes.
+    for contrainte in modele.constraints:
+        if isinstance(contrainte, UniqueConstraint):
+            noms = ", ".join(c.name for c in contrainte.columns if c.name != sans)
+            if noms:
+                colonnes.append(f"CONSTRAINT {contrainte.name} UNIQUE ({noms})")
     with moteur.begin() as connexion:
         connexion.exec_driver_sql(f"DROP TABLE {nom}")
         # Une définition par ligne, comme dans les tables créées par SQLAlchemy.
         lignes = ",\n".join(colonnes)
         connexion.exec_driver_sql(f"CREATE TABLE {nom} (\n{lignes}\n)")
+        for index in modele.indexes:
+            connexion.exec_driver_sql(str(CreateIndex(index).compile(dialect=moteur.dialect)))
 
 
 def _compter(modele) -> int:
@@ -135,6 +138,45 @@ def test_valeurs_d_une_enumeration_comparees(base):
         "table creneau : colonne demi_journee : valeur(s) du modèle refusée(s) par la base : "
         "apres_midi",
         "table creneau : colonne demi_journee : valeur(s) de la base inconnue(s) du modèle : soir",
+    ]
+
+
+@pytest.mark.cas_limite
+def test_un_index_unique_partiel_absent_est_un_ecart(base):
+    """Cas : la base date d'avant l'index unique partiel « une seule version active par semestre ».
+
+    Risque : `verifier-schema` disait « à jour », deux versions pouvaient être actives et
+    l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma.
+    """
+    # Base créée avant l'index qui garantit une seule version active par semestre.
+    with obtenir_moteur().begin() as connexion:
+        connexion.exec_driver_sql("DROP INDEX uq_version_edt_active_par_semestre")
+
+    ecarts = ecarts_schema(obtenir_moteur())
+    assert ecarts == [
+        "table version_edt : index uq_version_edt_active_par_semestre absent de la base"
+    ]
+    assert not base_initialisee(obtenir_moteur())
+
+
+@pytest.mark.cas_limite
+def test_une_unicite_absente_ou_en_trop_est_un_ecart(base):
+    """Cas : une table recréée par une ancienne version sans l'unicité du modèle (ou avec une autre).
+
+    Risque : doublons acceptés (ou refusés à tort) sans que rien ne signale le schéma périmé.
+    """
+    moteur = obtenir_moteur()
+    with moteur.begin() as connexion:
+        connexion.exec_driver_sql("DROP TABLE campus")
+        connexion.exec_driver_sql(
+            "CREATE TABLE campus (id INTEGER NOT NULL, code VARCHAR(16) NOT NULL, "
+            "nom VARCHAR(128) NOT NULL, prefixe_salle VARCHAR(16), PRIMARY KEY (id), "
+            "CONSTRAINT uq_campus_nom UNIQUE (nom))"
+        )
+
+    assert ecarts_schema(moteur) == [
+        "table campus : unicité (code) absente de la base",
+        "table campus : unicité (nom) en trop dans la base",
     ]
 
 
