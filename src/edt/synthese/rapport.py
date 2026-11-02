@@ -25,6 +25,7 @@ solution du solveur.
 
 from __future__ import annotations
 
+import logging
 from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -34,6 +35,8 @@ from edt.domaine.instantane import Placement
 from edt.erreurs import ErreurIntrouvable
 from edt.synthese.configuration import ConfigurationJeu
 from edt.verification import Indicateurs
+
+journal = logging.getLogger(__name__)
 
 
 class PlaceTemoin(NamedTuple):
@@ -273,12 +276,19 @@ def calculer_charge(
 ) -> ChargeSemestre:
     """Mesure les charges d'un semestre sur son témoin.
 
-    - `capacite` : minutes de créneaux du lundi au vendredi ;
+    - `capacite` : minutes de créneaux des jours travaillés ; nulle (aucun créneau
+      un jour travaillé), les taux valent 0 et le fait est journalisé ;
     - `groupes_suivis` : identifiant -> code des groupes mesurés (les demi-groupes) ;
     - `lies` : groupe -> lui-même et les groupes en conflit avec lui ;
     - `salles` : identifiant -> (code, type de salle) de toutes les salles.
     """
     seances = list(seances)
+    if capacite <= 0:
+        journal.warning(
+            "Semestre %s : aucun créneau les jours travaillés, taux de charge non mesurables "
+            "(affichés à 0)",
+            semestre,
+        )
     semaines = range(1, nb_semaines + 1)
     semaines_de_cours = [w for w in semaines if any(s.masque >> w & 1 for s in seances)]
 
@@ -294,6 +304,8 @@ def calculer_charge(
         par_salle.setdefault(seance.salle_id, []).append(seance)
 
     def taux(liste: list[SeancePlacee], toutes_semaines: bool) -> tuple[float, float]:
+        if capacite <= 0:
+            return 0.0, 0.0
         valeurs = [_minutes_semaine(liste, w) / capacite for w in semaines_de_cours]
         actives = valeurs if toutes_semaines else [v for v in valeurs if v > 0]
         if not actives:
