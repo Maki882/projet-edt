@@ -13,7 +13,9 @@ Les tests de cas limites portent le marqueur `cas_limite` et une docstring
 - `lecture_seule` : contexte qui rend un fichier en lecture seule le temps
   du bloc, puis rétablit ses droits ;
 - `corrompre_base` : remplace le fichier de la base par du texte (« file is
-  not a database »), moteurs libérés.
+  not a database »), moteurs libérés ;
+- `verrou_ecriture_bref` : un autre fil tient le verrou d'écriture pendant
+  quelques dixièmes de seconde (« un autre processus écrit brièvement »).
 """
 
 from __future__ import annotations
@@ -21,6 +23,8 @@ from __future__ import annotations
 import os
 import sqlite3
 import stat
+import threading
+import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -112,3 +116,30 @@ def corrompre_base(environnement: Path) -> Callable[[], Path]:
         return chemin
 
     return _corrompre
+
+
+@pytest.fixture
+def verrou_ecriture_bref(environnement: Path):
+    """`verrou_ecriture_bref(duree_s)` : un autre fil prend le verrou d'écriture de la base et le
+    rend après `duree_s` secondes ; rend la main une fois le verrou pris."""
+    fils: list[threading.Thread] = []
+
+    def _tenir(duree_s: float = 0.4) -> None:
+        pris = threading.Event()
+
+        def tenir() -> None:
+            brute = sqlite3.connect(environnement / "edt.db")
+            brute.execute("BEGIN IMMEDIATE")
+            pris.set()
+            time.sleep(duree_s)
+            brute.rollback()
+            brute.close()
+
+        fil = threading.Thread(target=tenir, name="verrou-bref")
+        fil.start()
+        fils.append(fil)
+        assert pris.wait(5)
+
+    yield _tenir
+    for fil in fils:
+        fil.join(5)

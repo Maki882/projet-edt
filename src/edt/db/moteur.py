@@ -41,7 +41,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DatabaseError, SAWarning
 from sqlalchemy.orm import Session, sessionmaker
@@ -163,6 +163,19 @@ def transaction_immediate(session: Session) -> None:
             "transaction : la connexion de la session est déjà engagée (BEGIN différé déjà "
             "émis). Appeler transaction_immediate(session) en tête du bloc, avant toute lecture."
         )
+
+
+@contextmanager
+def connexion_immediate(moteur: Engine) -> Iterator[Connection]:
+    """Connexion dont la transaction s'ouvre par `BEGIN IMMEDIATE`, validée à la sortie du bloc.
+
+    Pour les écrivains longs qui travaillent hors session (création et
+    suppression du schéma) : même politique que `transaction_immediate`.
+    """
+    with moteur.connect() as connexion:
+        connexion.execution_options(**{OPTION_ECRITURE_IMMEDIATE: True})
+        with connexion.begin():
+            yield connexion
 
 
 def chemin_base(url: str) -> Path | None:

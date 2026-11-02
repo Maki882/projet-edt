@@ -33,7 +33,12 @@ from edt.db.initialisation import (
     tables_manquantes,
 )
 from edt.db.jeux import creer_jeu_minimal
-from edt.db.moteur import expliquer_erreur_base, obtenir_moteur, session_base
+from edt.db.moteur import (
+    expliquer_erreur_base,
+    obtenir_moteur,
+    session_base,
+    transaction_immediate,
+)
 from edt.erreurs import (
     ErreurCalculEnCours,
     ErreurConfiguration,
@@ -195,6 +200,7 @@ def jeu_minimal() -> None:
             "La base n'est pas initialisée : lancer d'abord « python -m edt init-db »."
         )
     with session_base() as session:
+        transaction_immediate(session)  # écrivain long : lit puis écrit, verrou pris d'emblée
         jeu = creer_jeu_minimal(session)
     typer.echo(
         "Jeu minimal chargé : "
