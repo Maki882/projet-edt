@@ -894,11 +894,6 @@ def test_identifiant_hors_bornes_est_introuvable(jeu_minimal):
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot vérificateur : src/edt/services/verification.py "
-    "(version_a_verifier lève OverflowError pour un identifiant hors bornes SQLite)",
-)
 def test_version_a_verifier_identifiant_hors_bornes_est_introuvable(jeu_minimal):
     """Cas : `version_a_verifier(session, version_id=2**70)`.
 
@@ -909,11 +904,6 @@ def test_version_a_verifier_identifiant_hors_bornes_est_introuvable(jeu_minimal)
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot règles personnalisées : src/edt/services/regles.py "
-    "(_resoudre_cible lève OverflowError pour une cible numérique hors bornes SQLite)",
-)
 def test_regle_dont_la_cible_est_hors_bornes_est_invalide(jeu_minimal):
     """Cas : brouillon de règle dont la cible est l'identifiant numérique 10^20.
 
@@ -1004,15 +994,11 @@ def test_journal_de_calcul_impossible_donne_la_vraie_cause(jeu_minimal, environn
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot socle : src/edt/commandes/base.py (doctor ne teste que le "
-    "dossier racine des journaux, pas generations/)",
-)
 def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
     lanceur, base, environnement
 ):
-    """Cas : `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier.
+    """Cas : `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier (corrigé par le socle
+    à la demande de ce lot ; le socle a son propre test, celui-ci garde le point de vue du calcul).
 
     Risque : « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal.
     """
@@ -1153,18 +1139,14 @@ def test_lancer_un_calcul_pendant_un_chargement_est_refuse(jeu_minimal):
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot import et export : src/edt/services/echange.py (aucun marqueur "
-    "« import en cours » que lancer_calcul puisse consulter, alors que l'import refuse, lui, un "
-    "calcul en cours)",
-)
 def test_lancer_un_calcul_pendant_un_import_est_refuse(jeu_minimal, monkeypatch):
     """Cas : import de données en cours (fichier en cours de lecture), Générer depuis un autre
     onglet.
 
     Risque : calcul sur des données en train de changer, version qui référence des besoins
-    remplacés ; l'inverse (import pendant un calcul) est refusé, l'asymétrie surprend.
+    remplacés ; l'inverse (import pendant un calcul) est refusé, l'asymétrie surprend. Le test
+    exerce le vrai marqueur `edt.services.echange.import_en_cours` (seule la lecture du fichier
+    est remplacée, pour tenir l'import ouvert).
     """
     commence, liberer = threading.Event(), threading.Event()
 

@@ -494,9 +494,7 @@ class ModeleHoraires:
         unites: dict[tuple, list[int]] = defaultdict(list)
         for seance in self.seances:
             seule = (seance.index,) if seance.verrouillee and preparation.isolees else ()
-            if avec_groupes and seance.besoin.groupes:
-                # Une séance sans groupe n'occupe personne côté groupes : sans ce test, toutes
-                # les séances sans groupe formeraient une même unité fictive, au plus une en cours.
+            if avec_groupes:
                 groupes = tuple(sorted(seance.besoin.groupes))
                 unites[("g", groupes, seance.semaines, *seule)].append(seance.index)
             if avec_enseignants:

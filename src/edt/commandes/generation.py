@@ -33,7 +33,7 @@ from typing import Annotated
 import typer
 
 from edt.db.modeles import Semestre
-from edt.db.moteur import session_base
+from edt.db.moteur import identifiant_valide, session_base
 from edt.domaine.contraintes import (
     CATALOGUE,
     Niveau,
@@ -157,10 +157,15 @@ def _recapitulatif_des_regles(
 
 
 def niveaux_choisis(desactiver: list[str] | None, niveau: list[str] | None) -> Niveaux:
-    """Niveaux d'un calcul d'après la ligne de commande : codes ignorés, puis niveaux choisis."""
-    niveaux = niveaux_depuis_desactivees(desactiver or ())
+    """Niveaux d'un calcul d'après la ligne de commande : codes ignorés, puis niveaux choisis.
+
+    Casse et espaces tolérés, comme pour `--regle` : « -d pause », « --niveau " Pause =
+    Facultatif " ».
+    """
+    niveaux = niveaux_depuis_desactivees(code.strip().upper() for code in desactiver or ())
     for choix in niveau or ():
-        code, separateur, valeur = choix.partition("=")
+        code, separateur, valeur = (morceau.strip() for morceau in choix.partition("="))
+        code, valeur = code.upper(), valeur.lower()
         if not separateur or not code or not valeur:
             raise ErreurDonneesInvalides(
                 "Option --niveau : écrire CODE=niveau, par exemple PAUSE=facultatif "
@@ -193,7 +198,8 @@ def _semestre(session, semestre_id: int | None) -> Semestre:
     """Le semestre demandé, ou celui proposé par défaut."""
     if semestre_id is None:
         return semestre_par_defaut(session)
-    semestre = session.get(Semestre, semestre_id)
+    # Un identifiant hors des bornes de SQLite (2**63) ferait lever le pilote : il n'existe pas.
+    semestre = session.get(Semestre, semestre_id) if identifiant_valide(semestre_id) else None
     if semestre is None:
         raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     return semestre

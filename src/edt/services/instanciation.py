@@ -61,6 +61,7 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.calendrier import lundi_de
 from edt.domaine.contraintes import Niveau, Niveaux, niveaux_depuis_desactivees
 from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
@@ -370,19 +371,6 @@ def replacer_occurrences(
 # --------------------------------------------------------------------------- #
 # Outils
 # --------------------------------------------------------------------------- #
-
-
-IDENTIFIANT_MAX = 2**63 - 1
-"""Plus grand identifiant que SQLite sait chercher ; au-delà, la ligne n'existe pas."""
-
-
-def identifiant_valide(valeur: object) -> bool:
-    """Vrai si `valeur` peut être un identifiant de ligne : entier strictement positif, dans
-    les bornes de SQLite. Un identifiant hors bornes (2^70) ferait lever `OverflowError` à
-    `session.get` au lieu d'« introuvable »."""
-    return (
-        isinstance(valeur, int) and not isinstance(valeur, bool) and 0 < valeur <= IDENTIFIANT_MAX
-    )
 
 
 def _contexte(

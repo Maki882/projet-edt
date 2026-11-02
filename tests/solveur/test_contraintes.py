@@ -705,11 +705,14 @@ def test_verrou_intenable_seul_est_refuse_nommement():
 
 
 @pytest.mark.cas_limite
-def test_deux_besoins_sans_groupe_peuvent_coexister():
-    """Cas : deux besoins sans groupe, d'enseignants différents, un seul créneau et deux salles.
+def test_deux_besoins_sans_groupe_sont_refuses_en_les_nommant():
+    """Cas : deux besoins sans aucun groupe inscrit (données hors interface), d'enseignants
+    différents, un seul créneau et deux salles.
 
-    Risque : les séances sans groupe réunies en une unité fictive « aucun groupe » (au plus une
-    en cours) rendraient le calcul infaisable « c'est prouvé » alors qu'une solution existe.
+    Risque : une donnée incomplète tolérée en silence, ou une exception brute. Le dépliage ne
+    produit aucune séance pour un tel besoin et la pré-vérification refuse le calcul en nommant
+    chaque besoin ; autrefois, le moteur réunissait les séances sans groupe en une unité fictive
+    « aucun groupe » et prouvait une infaisabilité fausse.
     """
     f = Fabrique(creneaux=UN_CRENEAU)
     f.salle("N101")
@@ -717,19 +720,9 @@ def test_deux_besoins_sans_groupe_peuvent_coexister():
     f.besoin([], [f.enseignant("Mme Martin")], effectif=10)
     f.besoin([], [f.enseignant("M. Durand")], effectif=10)
     instantane = f.instantane()
-    places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
-    a, b = places["1-1"], places["2-1"]
-    assert (a.jour, a.debut) == (b.jour, b.debut) == (LUNDI, C1)
-    assert {a.salle_id, b.salle_id} == {1, 2}
-
-    # Le même enseignant, lui, ne donne pas deux séances sans groupe en même temps.
-    g = Fabrique(creneaux=UN_CRENEAU)
-    g.salle("N101")
-    g.salle("N102")
-    martin = g.enseignant("Mme Martin")
-    g.besoin([], [martin], effectif=10)
-    g.besoin([], [martin], effectif=10)
-    impossible(g.instantane())
+    assert instantane.seances == ()
+    assert {probleme.besoin_id for probleme in instantane.problemes_depliage} == {1, 2}
+    impossible(instantane, "Cours 1", "Cours 2", "aucun groupe n'est inscrit")
 
 
 @pytest.mark.cas_limite

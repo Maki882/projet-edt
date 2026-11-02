@@ -294,12 +294,6 @@ def test_commandes_de_calcul_avec_un_identifiant_inexistant(
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot solveur : src/edt/commandes/generation.py (niveaux_choisis) : "
-    "accepter la casse et les espaces des codes et des niveaux (« pause », « Pause = Facultatif ») "
-    "comme le fait --regle",
-)
 def test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces():
     """Cas : `generer -d pause --niveau " Pause = Facultatif "` (casse et espaces libres).
 
