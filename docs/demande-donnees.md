@@ -1,5 +1,10 @@
 # Demande de données à la direction
 
+> **Note du 2 novembre 2026.** L'école ne fournira pas de données : le projet se
+> fait entièrement sur les jeux synthétiques (`docs/donnees-fictives.md`). Ce
+> document est conservé pour mémoire ; il montre quelles données un
+> établissement réel devrait réunir pour utiliser l'application.
+
 Liste des données d'une année passée qui serviraient au projet, classées par
 priorité. On n'obtiendra sans doute pas tout : les blocs **A** suffisent à faire
 tourner l'application, les blocs **B** la rendent réaliste, les blocs **C** sont

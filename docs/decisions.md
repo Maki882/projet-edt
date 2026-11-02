@@ -8,7 +8,9 @@ changer le code.
 
 Règle générale donnée par l'équipe : **simplicité et efficacité**, tout est
 **configurable**, tous les **cas réalistes** sont pris en charge, les données
-sont **fictives et générées par nous** tant que l'école n'a rien fourni.
+sont **fictives et générées par nous** : l'école ne fournira pas de données
+réelles (décision du 2 novembre 2026), le projet se fait entièrement sur les
+jeux synthétiques (`docs/donnees-fictives.md`).
 
 ## 1. Périmètre et usage
 
@@ -318,9 +320,10 @@ Préférences (objectif à minimiser, activable, activé pour la démonstration)
 
 ## 12. Confidentialité
 
-- Aucune donnée personnelle réelle dans le dépôt. Les fichiers réels éventuels
-  restent hors du dépôt et hors des dossiers lus par les assistants ; seuls des
-  fichiers pseudonymisés ou fictifs y entrent.
+- Aucune donnée personnelle réelle dans le dépôt, et aucune n'est attendue :
+  l'école ne fournit pas de données (2 novembre 2026). Si des fichiers réels
+  circulaient malgré tout, ils resteraient hors du dépôt et hors des dossiers lus
+  par les assistants ; seuls des fichiers pseudonymisés ou fictifs y entrent.
 - Aucune donnée de santé : l'accessibilité est un drapeau porté par un groupe.
 
 ## 13. Reporté
