@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.enumerations import Gravite, OrigineVersion, StatutOccurrence
+from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import id_seance
 from edt.verification.contrat import Anomalie
 
-from .conftest import date_avec_seances, identifiant_groupe, seance_du_besoin
+from .conftest import (
+    creer_version_vide,
+    date_avec_seances,
+    identifiant_groupe,
+    seance_du_besoin,
+)
 
 
 def test_sans_emploi_du_temps_actif(jeu_minimal, client):
@@ -143,23 +149,22 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
     assert len(appels) == 3
 
 
-def test_option_tous_les_semestres_affiche_tous_les_semestres(version_generee, client):
-    """L'option « Tous les semestres » envoie `semestre_id=` (vide) : jamais « Saisie invalide »."""
+@pytest.mark.cas_limite
+def test_option_tous_les_semestres_affiche_tous_les_semestres(
+    version_generee, client, faux_verificateur
+):
+    """Cas : option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse
+    gardée en favori sur Générer, l'historique et la grille.
+    Risque : la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » :
+    impossible de revenir à tous les semestres.
+    """
     with session_base() as session:
         autre = session.scalar(
-            select(m.Semestre).where(m.Semestre.id != version_generee.semestre_id).limit(1)
+            select(m.Semestre.id).where(m.Semestre.id != version_generee.semestre_id).limit(1)
         )
         assert autre is not None, "la base par défaut a deux semestres"
-        session.add(
-            m.VersionEdt(
-                semestre_id=autre.id,
-                numero=1,
-                libelle="Version du second semestre",
-                origine=OrigineVersion.REFERENCE,
-                active=True,
-            )
-        )
-        libelles = {s.id: s.libelle for s in session.scalars(select(m.Semestre)).all()}
+        libelles = {s.id: s.libelle for s in session.scalars(select(m.Semestre))}
+    creer_version_vide(autre, active=True, libelle="Version du second semestre")
 
     page = client.get("/a-traiter?semestre_id=")
     assert page.status_code == 200
@@ -167,7 +172,7 @@ def test_option_tous_les_semestres_affiche_tous_les_semestres(version_generee, c
     for libelle in libelles.values():  # les deux semestres ont une version active
         assert f"<h2>{libelle}" in page.text
     seul = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
-    assert f"<h2>{libelles[autre.id]}" not in seul
+    assert f"<h2>{libelles[autre]}" not in seul
 
     # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut.
     for adresse in (

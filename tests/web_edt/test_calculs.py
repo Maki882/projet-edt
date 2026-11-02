@@ -18,9 +18,8 @@ from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
-from .conftest import DELAI
+from .conftest import DELAI, HX
 
-HX = {"HX-Request": "true"}
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 
 
@@ -410,8 +409,12 @@ def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
     )
 
 
+@pytest.mark.cas_limite
 def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
-    """Deux onglets : l'arrêt demandé après la fin ne doit pas annoncer un arrêt."""
+    """Cas : « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé.
+    Risque : « Arrêt demandé » affiché : on croit avoir interrompu un calcul fini dont la
+    version est déjà active.
+    """
     calcul_id = version_generee.calcul_id
 
     sans_htmx = client.post(f"/calculs/{calcul_id}/arreter")  # suit la redirection

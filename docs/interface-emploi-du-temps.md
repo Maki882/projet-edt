@@ -462,7 +462,11 @@ plus à l'application », la liste des écarts et la marche à suivre
 ## Cas limites
 
 Aucune adresse de ces onglets ne répond par une erreur 500 sur un chemin
-normal ; `tests/web_edt/test_cas_limites.py` les essaie.
+normal ; `tests/web_edt/test_cas_limites.py` les essaie. Ces tests forment la
+banque des cas limites du lot (marqueur `cas_limite`, docstring « Cas : …
+Risque : … ») : `python -m pytest -m cas_limite tests/web_edt`. Les aides
+pour en écrire d'autres (identifiant `ENORME`, `reperes`, `creer_version_vide`,
+`calcul_qui_tourne`, `client_sans_trace`) sont dans `tests/web_edt/conftest.py`.
 
 - **Identifiants hors bornes ou inconnus** (`identifiants.py`) : SQLite range
   ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`

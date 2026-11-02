@@ -18,14 +18,13 @@ from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCi
 from edt.verification.contrat import Anomalie
 
 from .conftest import (
+    HX,
     autre_place,
     date_avec_seances,
     identifiant_groupe,
     jour_avec_seance,
     seance_du_besoin,
 )
-
-HX = {"HX-Request": "true"}
 
 
 def _cible(session, nature: str) -> tuple[str, object]:
@@ -577,10 +576,15 @@ def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
     assert "introuvable" not in perdue.text.lower()
 
 
+@pytest.mark.cas_limite
 def test_formulaire_seance_sans_debut_possible_reste_lisible(
     version_generee, client, faux_verificateur
 ):
-    """Un jour où la séance ne tient sur aucun créneau garde le jour actuel, et le dit."""
+    """Cas : dans le panneau d'une séance, choix d'un jour où elle ne tient sur aucun créneau
+    avant la fermeture, ou d'un jour non proposé (le dimanche).
+    Risque : liste de débuts vide lue au rang 0 (IndexError), donc fragment 500 à la place
+    du formulaire.
+    """
     from edt.services.parametres import ecrire_parametres
 
     with session_base() as session:
