@@ -19,7 +19,10 @@ import tourne dans le processus.
 
 Les fichiers sont lus entièrement (tableaux, puis récurrences iCal) avant
 l'ouverture de la transaction de l'import : la base n'est réservée en
-écriture (`BEGIN IMMEDIATE`) que le temps d'écrire.
+écriture que le temps d'écrire (`edt.db.moteur.transaction_immediate`, appelé
+par `transaction.simulation_possible`). La session reçue ne doit donc avoir
+servi à rien : ce que l'import lit avant sa transaction (le semestre) se lit
+dans une session à part.
 """
 
 from __future__ import annotations

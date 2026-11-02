@@ -172,8 +172,10 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
   inchangé(s), 3 rejeté(s) » par feuille) est donc celui que donnera
   l'application, et rien n'est écrit.
 - **Imports simultanés** : un import lit d'abord tous ses fichiers (tableaux
-  et récurrences iCal) sans rien réserver, puis réserve la base en écriture
-  (`BEGIN IMMEDIATE`) le temps d'écrire ; un second import, ou une autre
+  et récurrences iCal) sans rien réserver, puis réserve la base en écriture le
+  temps d'écrire (transaction ouverte par `edt.db.moteur.transaction_immediate`,
+  qui fait émettre `BEGIN IMMEDIATE` au moteur ; la session de l'import ne doit
+  avoir servi à rien avant) ; un second import, ou une autre
   écriture, attend qu'il finisse (10 s au plus, puis « base occupée »). Sans
   cela, le second échouait aussitôt dès que l'autre avait écrit entre-temps.
 - **Import et calcul** : un import est refusé pendant un calcul ; en retour,

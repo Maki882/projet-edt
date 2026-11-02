@@ -20,7 +20,12 @@ from edt.echange.format import FEUILLES
 from edt.echange.lecture import LigneTypee
 from edt.echange.transaction import simulation_possible
 from edt.echange.valeurs import cle_code
-from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
+from edt.erreurs import (
+    ErreurCalculEnCours,
+    ErreurConfiguration,
+    ErreurDonneesInvalides,
+    ErreurRegleMetier,
+)
 from edt.services import echange as service
 from edt.services.echange import FichierEnvoye, OptionsImport
 from edt.services.generation import CLE_PROCESSUS
@@ -316,7 +321,6 @@ def test_import_refuse_pendant_un_calcul(jeu_minimal, importer):
 def test_point_de_sauvegarde_ne_valide_pas_la_transaction(base):
     """Le RELEASE d'un point de sauvegarde ne doit pas valider l'import avant l'appelant."""
     with fabrique_sessions()() as session:
-        session.scalar(select(func.count()).select_from(m.Campus))  # lecture seule d'abord
         with simulation_possible(session, simuler=False):
             session.add(m.Campus(code="SP", nom="Point de sauvegarde"))
         session.rollback()
@@ -599,3 +603,20 @@ def test_import_en_cours_signale_pendant_tout_l_import(base, monkeypatch):
 
     assert fins == ["fin de la lecture simulée"]
     assert not service.import_en_cours()  # remis à zéro, même après une erreur
+
+
+@pytest.mark.cas_limite
+def test_import_sur_une_session_deja_engagee_refuse_clairement(base):
+    """Cas : un appelant lit avec la session, puis lui confie un import (simulation_possible).
+
+    Risque : la transaction, déjà ouverte en mode différé, ne réserverait pas la
+    base : deux imports simultanés échoueraient au hasard « database is locked »,
+    sans que rien ne dise pourquoi.
+    """
+    with fabrique_sessions()() as session:
+        session.scalar(select(func.count()).select_from(m.Campus))  # la session a servi
+
+        with pytest.raises(ErreurConfiguration), simulation_possible(session, simuler=True):
+            session.add(m.Campus(code="SE", nom="Session engagée"))  # jamais atteint
+
+    assert compter(m.Campus) == 0
