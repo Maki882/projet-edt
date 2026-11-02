@@ -152,7 +152,9 @@ def niveaux_regles_du_calcul(
       explicitement non appliquée, donc ignorée) ;
     - règle absente de la copie : à son propre niveau si elle a été créée ou
       modifiée (activation comprise) après le début du calcul ; sinon ignorée,
-      car elle existait et n'a pas été appliquée (« ne pas appliquer » coché).
+      car elle existait et n'a pas été appliquée (« ne pas appliquer » coché) ;
+    - règle copiée par le calcul mais absente des règles actives (supprimée ou
+      désactivée depuis) : ignorée, et nommée dans le journal (INFO).
 
     Lève `ErreurDonneesInvalides` si la copie est illisible (pas une liste,
     entrée sans identifiant entier, niveau inconnu) : jamais de repli silencieux.
@@ -195,6 +197,14 @@ def niveaux_regles_du_calcul(
             nouvelles += 1
         else:
             ignorees += 1
+    introuvables = sorted(set(choisis) - {regle.id for regle in actuelles})
+    if introuvables:
+        journal.info(
+            "%d règle(s) copiée(s) par le calcul introuvable(s) parmi les règles actives "
+            "(supprimée(s) ou désactivée(s) depuis), donc non vérifiée(s) : %s",
+            len(introuvables),
+            ", ".join(map(str, introuvables)),
+        )
     journal.debug(
         "Niveaux des règles : %d du calcul, %d créée(s) ou modifiée(s) depuis (niveau propre), "
         "%d ignorée(s)",

@@ -555,7 +555,10 @@ type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
 - règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
 - règle absente de la copie : à son niveau si elle a été créée ou modifiée
   (activation comprise) après le début du calcul, sinon ignorée (elle
-  existait et n'a pas été appliquée).
+  existait et n'a pas été appliquée) ;
+- règle copiée mais absente des règles actives (supprimée ou désactivée
+  depuis) : ignorée, et ses identifiants sont journalisés (INFO), pour qu'une
+  entorse d'hier qui n'est plus signalée s'explique.
 
 Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
 
