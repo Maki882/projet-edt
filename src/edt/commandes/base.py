@@ -9,6 +9,7 @@ import uuid
 from typing import Annotated
 
 import typer
+from sqlalchemy.exc import DatabaseError
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
@@ -16,11 +17,13 @@ from edt.db.initialisation import (
     MARCHE_A_SUIVRE_SCHEMA_PERIME,
     exiger_schema_a_jour,
     initialiser_base,
+    sauvegarder_base,
     tables_manquantes,
 )
 from edt.db.jeux import creer_jeu_minimal
-from edt.db.moteur import obtenir_moteur, session_base
-from edt.erreurs import ErreurEDT, ErreurRegleMetier
+from edt.db.moteur import expliquer_erreur_base, obtenir_moteur, session_base
+from edt.erreurs import ErreurCalculEnCours, ErreurEDT, ErreurRegleMetier
+from edt.journal import NOM_FICHIER, panne_journalisation
 from edt.services.etat import EtatBase, diagnostiquer_base
 
 commandes = typer.Typer()
@@ -50,20 +53,71 @@ def init_db(
             "--reset", help="Supprime d'abord toutes les tables : les données sont perdues."
         ),
     ] = False,
+    oui: Annotated[
+        bool,
+        typer.Option("--oui", "-y", help="Avec --reset : ne demande pas de confirmation."),
+    ] = False,
 ) -> None:
     """Crée la base, son schéma et les données par défaut (sans risque à relancer).
 
     Il n'y a pas de migrations : si une table existante n'a plus les colonnes du
     modèle, la commande échoue sans rien modifier, liste les écarts et indique
     de relancer avec --reset.
+
+    --reset demande confirmation quand la commande est tapée dans un terminal
+    (--oui l'évite ; un script non interactif n'est pas interrogé), refuse
+    d'agir pendant un calcul, et, en production, sauvegarde d'abord le fichier
+    de la base à côté de lui (« edt-<date>-avant-reset.db »).
     """
+    sauvegarde = None
+    if reset:
+        _confirmer_remise_a_zero(oui)
+        _exiger_aucun_calcul_en_cours()
+        if charger_configuration().est_prod:
+            sauvegarde = sauvegarder_base()
     rapport = initialiser_base(reset=reset)
     action = "remise à zéro puis initialisée" if rapport.reinitialisee else "initialisée"
+    if sauvegarde is not None:
+        typer.echo(f"Sauvegarde de l'ancienne base : {sauvegarde}")
     typer.echo(f"Base {action} : {rapport.url}")
     typer.echo(f"  {rapport.nb_tables} tables, {rapport.nb_ajouts} ligne(s) par défaut ajoutée(s)")
     for table, nombre in rapport.ajouts.items():
         if nombre:
             typer.echo(f"  - {table} : {nombre}")
+
+
+def _entree_interactive() -> bool:
+    """Vrai si la commande est tapée dans un terminal (on peut poser une question)."""
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def _confirmer_remise_a_zero(oui: bool) -> None:
+    """Demande confirmation d'une remise à zéro tapée dans un terminal (sauf --oui)."""
+    if oui:
+        return
+    if not _entree_interactive():
+        journal.warning(
+            "Remise à zéro de la base demandée sans confirmation (entrée non interactive)"
+        )
+        return
+    typer.confirm(
+        "La remise à zéro supprime TOUTES les données de la base. Continuer ?", abort=True
+    )
+
+
+def _exiger_aucun_calcul_en_cours() -> None:
+    """Refuse la remise à zéro pendant un calcul : il lit la base et sa ligne disparaîtrait."""
+    from edt.db.initialisation import base_initialisee
+    from edt.services.generation import calcul_en_cours
+
+    if not base_initialisee(obtenir_moteur()):
+        return  # pas de table « calcul » : aucun calcul ne peut tourner
+    suivi = calcul_en_cours()
+    if suivi is not None:
+        raise ErreurCalculEnCours(
+            f"Impossible de remettre la base à zéro : un calcul d'emploi du temps est en cours "
+            f"(calcul n°{suivi.id}). Attendre sa fin ou l'arrêter."
+        )
 
 
 @commandes.command("verifier-schema")
@@ -156,6 +210,7 @@ def doctor() -> None:
         _controler_python(),
         _controler_ortools(),
         _controler_base(etat),
+        _controler_ecriture(etat),
         _controler_schema(etat),
         _controler_journaux(config),
         _controler_port(config),
@@ -228,6 +283,25 @@ def _controler_base(etat: EtatBase | str) -> tuple[str, str]:
     return OK, f"Base {etat.url} accessible{mode}"
 
 
+def _controler_ecriture(etat: EtatBase | str) -> tuple[str, str]:
+    """La base accepte-t-elle une écriture ? (lecture seule, verrou, disque plein)."""
+    if isinstance(etat, str) or not etat.accessible:
+        return ATTENTION, "Écriture non vérifiée : la base est inaccessible"
+    try:
+        brute = obtenir_moteur().raw_connection()
+        try:
+            # BEGIN IMMEDIATE prend le verrou d'écriture sans rien écrire ; ROLLBACK le rend.
+            brute.execute("BEGIN IMMEDIATE")
+            brute.rollback()
+        finally:
+            brute.close()
+    except DatabaseError as erreur:
+        return ECHEC, f"Écriture dans la base impossible : {expliquer_erreur_base(erreur)}"
+    except Exception as erreur:  # pilote brut : OperationalError de sqlite3 hors SQLAlchemy
+        return ECHEC, f"Écriture dans la base impossible : {erreur}"
+    return OK, "Écriture dans la base possible (verrou d'écriture obtenu puis rendu)"
+
+
 def _controler_schema(etat: EtatBase | str) -> tuple[str, str]:
     if isinstance(etat, str) or not etat.accessible:
         return ATTENTION, "Schéma non vérifié : la base est inaccessible"
@@ -248,19 +322,32 @@ def _controler_schema(etat: EtatBase | str) -> tuple[str, str]:
 
 
 def _controler_journaux(config: Configuration) -> tuple[str, str]:
+    panne = panne_journalisation()
+    if panne:
+        return ECHEC, f"Journaux : {panne}"
     dossier = config.log_dir
     temoin = dossier / f".doctor-{uuid.uuid4().hex}"
     try:
         dossier.mkdir(parents=True, exist_ok=True)
         temoin.write_text("ok", encoding="utf-8")
         temoin.unlink()
+        with (dossier / NOM_FICHIER).open("a", encoding="utf-8"):
+            pass
     except OSError as erreur:
         return ECHEC, f"Journaux : impossible d'écrire dans « {dossier} » ({erreur})"
-    return OK, f"Journaux : dossier « {dossier} » accessible en écriture"
+    return OK, f"Journaux : dossier « {dossier} » et fichier {NOM_FICHIER} accessibles en écriture"
 
 
 def _controler_port(config: Configuration) -> tuple[str, str]:
     adresse = f"{config.host}:{config.port}"
+    try:
+        socket.getaddrinfo(config.host, config.port, type=socket.SOCK_STREAM)
+    except socket.gaierror as erreur:
+        return (
+            ECHEC,
+            f"Adresse d'écoute « {config.host} » introuvable ({erreur}) : corriger EDT_HOST "
+            "(adresse IP ou nom d'hôte de cette machine)",
+        )
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as prise:
             prise.bind((config.host, config.port))

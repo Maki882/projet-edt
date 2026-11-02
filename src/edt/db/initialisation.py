@@ -33,7 +33,9 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from sqlalchemy import Engine, MetaData, inspect, select
 from sqlalchemy import Enum as EnumSQL
@@ -54,7 +56,7 @@ from edt.db.modeles import (
     TypeSalle,
     TypeSeance,
 )
-from edt.db.moteur import obtenir_moteur, session_base
+from edt.db.moteur import chemin_base, obtenir_moteur, session_base
 from edt.domaine.calendrier import annee_scolaire_de, decoupage_par_defaut, jours_feries_entre
 from edt.domaine.enumerations import DemiJournee, NatureJourFerme
 from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, definitions
@@ -158,6 +160,31 @@ class RapportInitialisation:
 def creer_schema(moteur: Engine) -> None:
     """Crée les tables manquantes (ne modifie pas une table existante)."""
     Base.metadata.create_all(moteur)
+
+
+def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Path | None:
+    """Copie cohérente du fichier SQLite à côté de lui (« edt-<date>-<suffixe>.db »).
+
+    Utilise l'API de sauvegarde de SQLite : la copie inclut les écritures
+    encore dans le fichier -wal. Renvoie le chemin de la copie, ou `None` si
+    la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si la copie
+    échoue : on ne détruit pas une base qu'on n'a pas su sauvegarder.
+    """
+    chemin = chemin_base(url or str(obtenir_moteur(url).url))
+    if chemin is None or not chemin.exists():
+        return None
+    horodatage = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    copie = chemin.with_name(f"{chemin.stem}-{horodatage}-{suffixe}{chemin.suffix or '.db'}")
+    try:
+        with sqlite3.connect(chemin) as source, sqlite3.connect(copie) as cible:
+            source.backup(cible)
+    except (sqlite3.Error, OSError) as erreur:
+        raise ErreurRegleMetier(
+            f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
+            "remise à zéro annulée, rien n'a été modifié."
+        ) from erreur
+    journal.warning("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
+    return copie
 
 
 def supprimer_schema(moteur: Engine) -> None:
