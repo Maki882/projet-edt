@@ -7,7 +7,9 @@ contenu, charges, verdict du vérificateur sur le témoin, besoins écartés.
     python -m edt jeu --taille grand --graine 0 --reset --oui --reference
 
 La remise à zéro supprime toutes les données : elle demande une
-confirmation, sauf avec `--oui`.
+confirmation, sauf avec `--oui`. La graine (0 à 2 147 483 647) et l'année
+(2000 à 2100) sont vérifiées **avant** : une valeur refusée ne touche pas
+à la base.
 """
 
 from __future__ import annotations
@@ -18,6 +20,8 @@ from typing import Annotated
 import typer
 
 from edt.services.jeux import recharger_jeu_fictif, tailles_disponibles
+from edt.synthese.configuration import configuration_nommee
+from edt.synthese.generateur import valider_demande
 
 commandes = typer.Typer()
 journal = logging.getLogger(__name__)
@@ -64,6 +68,9 @@ def jeu(
     ] = False,
 ) -> None:
     """Charge un établissement fictif complet et réaliste (données fictives)."""
+    # Tout ce qui peut être refusé l'est avant la remise à zéro.
+    configuration_nommee(taille)
+    valider_demande(graine, annee)
     if reset and not oui:
         typer.confirm(
             "La remise à zéro supprime TOUTES les données de la base. Continuer ?", abort=True
