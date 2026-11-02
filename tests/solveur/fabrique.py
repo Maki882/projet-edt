@@ -300,9 +300,22 @@ class Fabrique:
         )
         return identifiant
 
-    def verrou(self, seance_id: str, jour: int, debut: int, salle: int | None = None) -> None:
-        """Verrouille une séance (la fin se déduit de la durée du besoin)."""
-        self._verrous[seance_id] = Placement(seance_id, jour, debut, -1, salle)
+    def verrou(
+        self,
+        seance_id: str,
+        jour: int,
+        debut: int,
+        salle: int | None = None,
+        fin: int | None = None,
+    ) -> None:
+        """Verrouille une séance ; la fin se déduit de la durée du besoin, sauf `fin` donnée.
+
+        Rien n'est validé : un verrou incohérent (jour 7, salle inconnue, autre
+        durée que le besoin) se fabrique ainsi, pour les tests des cas limites.
+        """
+        self._verrous[seance_id] = Placement(
+            seance_id, jour, debut, -1 if fin is None else fin, salle
+        )
 
     def indice(self, seance_id: str, jour: int, debut: int, salle: int | None = None) -> None:
         """Donne le placement précédent d'une séance."""
@@ -399,7 +412,8 @@ class Fabrique:
             for champ, source in (("verrou", self._verrous), ("indice", self._indices)):
                 if seance.id in source:
                     place = source[seance.id]
-                    changements[champ] = dataclasses.replace(place, fin=place.debut + seance.duree)
+                    fin = place.fin if place.fin >= 0 else place.debut + seance.duree
+                    changements[champ] = dataclasses.replace(place, fin=fin)
             seances.append(dataclasses.replace(seance, **changements) if changements else seance)
         instantane = Instantane(
             semestre_id=1,

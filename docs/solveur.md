@@ -150,7 +150,10 @@ une indisponibilité de Mme Martin, 8 par la pause déjeuner »).
 **Contraintes.**
 
 - *Personnes.* Les séances sont réunies en **unités** : même ensemble de
-  groupes (ou même enseignant) et mêmes semaines actives. Deux unités se
+  groupes (ou même enseignant) et mêmes semaines actives. Une séance sans
+  groupe n'entre dans aucune unité de groupes (sinon toutes les séances sans
+  groupe formeraient une unité fictive « aucun groupe », au plus une en
+  cours : infaisabilité « prouvée » à tort). Deux unités se
   gênent si leurs semaines se croisent et si elles partagent l'enseignant ou
   ont des groupes en conflit. Pour chaque unité et chaque instant, un booléen
   « occupée » est impliqué par les choix de ses séances en cours, chaque
@@ -228,7 +231,7 @@ semaine commune rend le problème impossible.
 | `CAMPUS_TRAJET` | phase 1 | couples de choix interdits pour chaque paire de séances d'une même personne qui se suivent sans se chevaucher |
 | `DEJEUNER` | domaines, phase 1 | mode fixe : débuts qui recoupent la plage du déjeuner retirés (séances sans heure imposée) ; mode libre : une position de pause libre par personne et par jour (voir « Pause déjeuner ») ; mode « aucun » : rien |
 | `HORAIRES` | domaines | débuts de la grille, ouverture, fermeture, demi-journée du créneau de début |
-| `JOURS` | domaines | jours de la grille parmi les jours permis de la séance (`Instantane.reglages` : standard `jours_travailles`, plus le samedi si le type de séance l'autorise, et règles `JOURS_TRAVAILLES` retenues, campus compris) |
+| `JOURS` | domaines | jours de la grille parmi les jours permis de la séance (`Instantane.reglages` : standard `jours_travailles`, plus le samedi si le type de séance l'autorise, et règles `JOURS_TRAVAILLES` retenues, campus compris) ; un jour sans aucun créneau n'est jamais un jour de cours, même `HORAIRES` ignorée (lecture du vérificateur) |
 | `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE`, `EQUIPEMENT` | domaines | salles qui ne conviennent pas retirées (salle et campus imposés compris) |
 | `DISPO_ENSEIGNANT`, `DISPO_GROUPE` | domaines | débuts qui recoupent une indisponibilité récurrente retirés (groupes liés compris) |
 | `DISPO_SALLE` | domaines | salle retirée si elle est indisponible à tous les débuts ; sinon elle manque seulement aux choix concernés |
@@ -239,7 +242,11 @@ semaine commune rend le problème impossible.
 
 Règles de construction des débuts :
 
-- un verrou fixe le début, et la durée placée est celle du verrou ;
+- un verrou fixe le début, et la durée placée est celle du verrou. Un verrou
+  incohérent (jour hors de 0 à 6, plage vide ou après minuit), d'une autre
+  durée que son besoin ou sur une salle inconnue est **refusé en le nommant**,
+  que `HORAIRES` soit active ou non : jamais de verrou appliqué en silence
+  avec une autre durée ;
 - le jour et l'heure imposés par le besoin (ou sa date, pour un besoin
   ponctuel) sont **toujours** respectés, même si `HORAIRES` est désactivée :
   ils font partie de la demande ;
@@ -261,7 +268,9 @@ Cas particuliers :
   le vérificateur acceptait ;
 - `HORAIRES` désactivée : les débuts ne sont plus limités à la grille. Le
   moteur propose alors un début toutes les 30 minutes, de 0 h à 24 h, en plus
-  des débuts de la grille (`PAS_HORS_GRILLE`) ;
+  des débuts de la grille (`PAS_HORS_GRILLE`), mais seulement les jours qui
+  ont un créneau tant que `JOURS` est active ; aucune séance ne finit après
+  minuit, quel que soit le réglage ;
 - `VERROU` désactivée : les verrous sont ignorés, les séances redeviennent
   libres et suivent la grille. Dans la version enregistrée, seule une séance
   **restée à la place de son verrou** garde sa marque « verrouillée » : le
@@ -744,10 +753,20 @@ vérificateur, avec la même phrase.
 - **Temps limite** : il couvre tout le calcul, construction comprise. Une
   petite part (5 %, au plus 3 s) est réservée à la phase des salles. C'est
   un plafond : en mode optimisé le calcul s'arrête avant s'il prouve
-  l'optimum ou ne progresse plus.
+  l'optimum ou ne progresse plus. `OptionsSolveur` refuse (`ErreurDonneesInvalides`)
+  un temps limite qui n'est pas un nombre fini entre 0 exclu et
+  `TEMPS_LIMITE_MAX_S` (24 h) : NaN, infini ou 10⁹ s donneraient un calcul
+  sans fin, et une échéance d'abandon impossible à calculer. Même garde sur
+  les fils (`NB_WORKERS_MAX`, 64) ; la graine est un entier quelconque,
+  ramenée dans les bornes de CP-SAT par le moteur (modulo 2³¹ − 1).
 - **Arrêt** : un fil de surveillance relit l'événement `arret` dix fois par
   seconde et interrompt CP-SAT ; la construction du modèle le relit entre
-  ses étapes. Le moteur rend la main en moins de deux secondes.
+  ses étapes. Le moteur rend la main en moins de deux secondes, avant la
+  première solution comme pendant l'amélioration.
+- **Niveaux de règles** : un identifiant de règle inconnu de l'instantané
+  (règle supprimée, désactivée ou d'une autre année) est signalé dans les
+  avertissements et absent de `ResultatSolveur.niveaux_regles`, jamais
+  ignoré en silence.
 - **Fils de calcul** : `nb_workers = 0` en utilise deux au plus (le serveur a
   deux cœurs). Quel que soit le réglage, le moteur n'en prend **jamais plus
   que la machine n'a de cœurs** : chaque fil de CP-SAT garde sa copie du
@@ -803,7 +822,13 @@ vérificateur, avec la même phrase.
 | salles | « Les 5 séance(s) qui ne peuvent avoir lieu que dans la salle Labo demandent 10 h de cours par semaine pour 8 h 30 disponibles dans ces salles : c'est impossible. » |
 
 Le temps disponible est celui des demi-journées de la grille, moins les
-indisponibilités récurrentes et les séances à horaire déjà fixe. La charge
+indisponibilités récurrentes et les séances à horaire déjà fixe. Une séance
+sans aucun horaire possible (domaine vide, verrou intenable ou incohérent)
+est déjà une impossibilité à elle seule : elle n'entre dans **aucune** borne
+de charge, sinon « ... pour 0 min disponibles : c'est impossible » viendrait
+s'ajouter à tort pour son groupe et son enseignant. Les verrous
+contradictoires portent le conseil de cocher « tolérer les violations
+héritées » : c'est ce message que le service affiche quand il refuse. La charge
 d'un groupe compte ses séances et celles des groupes qui le contiennent. Les
 salles sont examinées par **famille** (l'ensemble des salles qui conviennent
 à un besoin), ce qui couvre le type, la capacité, les équipements et
@@ -833,6 +858,14 @@ la date de son jour. Une occurrence est « à replacer » si, à sa date :
 
 `ResultatInstanciation(occurrences, a_replacer)` : les occurrences
 maintenues, et les `OccurrenceARevoir(occurrence, code, raison)`.
+
+Un placement hors bornes (jour hors de 0 à 6, début ≥ fin, fin après
+minuit : semaine type importée mal formée) lève `ErreurDonneesInvalides` en
+nommant la séance, avant toute occurrence : rien ne déborde sur le lendemain.
+Un semestre qui commence en milieu de semaine donne, pour les jours qui
+précèdent, des occurrences « en dehors du semestre » replacées dans la même
+semaine ; un semestre d'un seul jour replace ce qu'il peut ce jour-là et met
+le reste « à programmer », raison à l'appui.
 
 ### Replacement (`replacer`)
 
@@ -907,7 +940,31 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
   n'est enregistré), enregistrement de la version, séances datées. Les
   avertissements sont dans `SuiviCalcul.avertissements`, les indicateurs du
   vérificateur dans `statistiques["indicateurs"]`, le bilan des séances
-  datées dans `statistiques["instanciation"]`.
+  datées dans `statistiques["instanciation"]`. Garde-fous, chacun figé par un
+  test de la banque des cas limites (`tests/solveur/test_services.py`) :
+  - **semestre sans séance** : refusé (état « erreur », « aucune séance à
+    placer »), aucune version vide n'est créée ni activée à la place de la
+    version active ;
+  - **données modifiées pendant le calcul** (salle ou besoin supprimé) :
+    l'enregistrement de la version échoue sur une clé étrangère, dit en clair
+    (« Les données du semestre ont changé pendant le calcul ... Relancer le
+    calcul. »), jamais « erreur inattendue » ;
+  - **journal dédié indisponible** (`<EDT_LOG_DIR>/generations` inaccessible) :
+    le calcul a lieu quand même, `fichier_journal` reste vide et un
+    avertissement renvoie à `edt.log` et à `EDT_LOG_DIR` ;
+  - **moteur de remplacement fautif** : placement sans salle ou sur une salle
+    inconnue refusé avant tout enregistrement, comme un placement manquant ;
+  - **identifiant hors bornes** (2⁷⁰, que SQLite ne sait pas chercher) :
+    « introuvable » pour le suivi, l'arrêt, le lancement, les pré-vérifications,
+    l'instanciation et le replacement (`identifiant_valide`), jamais
+    `OverflowError` ;
+  - **lancement pendant un chargement de jeu ou une remise à zéro**
+    (`edt.services.jeux.operation_en_cours`) : refusé (`ErreurRegleMetier`),
+    comme l'inverse l'est déjà ;
+  - **deux processus qui lancent la même seconde** (commande et serveur) :
+    après l'insertion de sa ligne, qui prend le verrou d'écriture de SQLite,
+    `lancer_calcul` recompte les calculs « en cours » ; celui qui écrit en
+    second voit la ligne du premier et se retire (`ErreurCalculEnCours`).
 
 ```sh
 python -m edt pre-verifier --semestre 1
@@ -934,11 +991,18 @@ et bloquerait tous les calculs suivants, puisqu'il n'y en a qu'un à la fois.
 Mécanisme retenu (`edt.services.generation`) :
 
 - au lancement, le **numéro du processus** est noté avec le calcul
-  (`statistiques["pid"]`, remplacé à la fin par les statistiques du moteur) ;
+  (`statistiques["pid"]`, remplacé à la fin par les statistiques du moteur),
+  ainsi que l'**instant de départ en secondes depuis l'époque**
+  (`statistiques["demarre_epoch"]`, `time.time()`). Le temps écoulé et
+  l'échéance d'abandon se lisent sur cette époque, insensible aux changements
+  d'heure (un passage à l'heure d'été ne clôt plus un calcul vivant une heure
+  trop tôt) ; `demarre_le`, heure locale, reste pour l'affichage et pour les
+  calculs enregistrés avant cette clé ;
 - chaque fois que l'on s'intéresse aux calculs en cours (`lancer_calcul`,
   `calcul_en_cours`, `demander_arret`, et `cloturer_calculs_interrompus` au
   démarrage du serveur), un calcul resté « en cours » est **clos en erreur**
-  (« Calcul interrompu par l'arrêt de l'application. ») si plus rien ne
+  (« Calcul interrompu : le processus qui l'exécutait s'est arrêté avant la
+  fin (redémarrage de l'application, ou mémoire épuisée ...) ») si plus rien ne
   l'exécute : son fil a disparu de ce processus, ou le processus noté
   n'existe plus, ou le calcul a dépassé son temps limite de plus de dix
   minutes (`DELAI_DE_GRACE_S`, pour le cas rare d'un numéro de processus
@@ -946,6 +1010,26 @@ Mécanisme retenu (`edt.services.generation`) :
 - un calcul **vivant d'un autre processus n'est jamais clos** : une commande
   `generer` lancée sur le serveur pendant que le service calcule est refusée
   (« Un calcul est déjà en cours ») et ne touche pas au calcul du service ;
+- sur le serveur, la cause la plus fréquente d'un calcul abandonné est la
+  **limite de mémoire du service** (3 Go, `MemoryMax`) : le noyau tue le
+  processus au milieu d'un gros calcul. Le message de clôture le dit et
+  invite à relancer avec un temps limite plus court ou moins de fils, pour
+  que l'utilisateur ne relance pas le même calcul vers la même fin ;
+- la clôture renseigne `duree_s` (le temps couru depuis le lancement, pas
+  « 0 s »), et si une **version du calcul existe sans aucune séance datée**
+  (processus tué entre l'enregistrement de la version et l'instanciation),
+  le message le dit et donne la commande `instancier --version` à relancer ;
+  l'orchestration fait de même pour un calcul fini en erreur, interruption
+  (`KeyboardInterrupt`) comprise ;
+- une **ligne corrompue** (statistiques ou paramètres qui ne sont pas des
+  dictionnaires, temps limite en texte, avertissements en texte) ne fait
+  planter ni le suivi ni le lancement : un calcul « en cours » au suivi
+  illisible est clos (« son suivi enregistré était illisible »), les champs
+  illisibles sont tenus pour vides avec un avertissement dans le journal ;
+- l'**écriture de l'état final** est retentée trois fois à une seconde
+  d'intervalle (`NB_ESSAIS_CLOTURE`, `DELAI_ENTRE_ESSAIS_S`) si la base est
+  verrouillée par une longue écriture, avant d'être abandonnée en le
+  journalisant ;
 - `generer` interrompue au clavier (Ctrl+C) demande l'arrêt du calcul et
   attend sa fin : un emploi du temps déjà trouvé est enregistré, sinon le
   calcul finit « arrêté ». Un second Ctrl+C quitte tout de suite ; le calcul
@@ -1542,11 +1626,48 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   ou de jours : une impossibilité qui tient à plusieurs séances (quatre
   séances pour trois créneaux après 10 h) est prouvée par CP-SAT, sans
   nommer la règle.
+- **Import en cours.** `lancer_calcul` refuse un calcul pendant un
+  chargement de jeu ou une remise à zéro, mais aucun marqueur « import en
+  cours » n'existe encore côté import : un calcul lancé pendant un import de
+  données passe (test `xfail` transmis au lot import et export).
+- **Heure locale des calculs.** `demarre_le` et `termine_le` restent des
+  heures locales naïves (affichage) ; seuls le temps écoulé et l'échéance
+  d'abandon lisent l'époque. Un calcul enregistré avant la clé
+  `demarre_epoch` garde l'ancienne lecture.
 - **Pause déjeuner libre et groupes qui se chevauchent.** Deux groupes
   déclarés chevauchants (ou avec un étudiant commun) comptent chacun les
   séances de l'autre : un étudiant qui n'est que dans l'un des deux peut
   avoir sa pause alors que la règle dit le contraire. Les sous-groupes d'une
   hiérarchie, eux, sont traités exactement.
+
+## Banque de tests des cas limites
+
+Les tests qui figent les cas limites du lot portent le marqueur
+`@pytest.mark.cas_limite` et une docstring « Cas : ... Risque : ... » (le
+scénario, puis ce qui casserait sans le test). Ils vivent avec les tests du
+module concerné, dans une section « Cas limites » en fin de fichier :
+
+| Fichier | Cas couverts |
+|---|---|
+| `tests/solveur/test_contraintes.py` | séances sans groupe, séance finissant après minuit |
+| `tests/solveur/test_preverification.py` | charges parasites d'une séance sans horaire, verrous incohérents, indisponibilités incohérentes, grille vide |
+| `tests/solveur/test_moteur.py` | bornes des options, tout verrouillé, arrêt avant la première solution, paramètres extrêmes |
+| `tests/solveur/test_regles.py` | niveau d'une règle inconnue |
+| `tests/solveur/test_couche_datee.py` | placement hors bornes, semestre en milieu de semaine ou d'un jour |
+| `tests/solveur/test_services.py` | options hors bornes en ligne de commande, identifiants hors bornes, données modifiées pendant le calcul, semestre sans besoin, journal indisponible, suivi corrompu, version sans séances datées, clôture, lancement pendant un chargement, deux processus (`perf`), moteur fautif, verrous tolérés, écriture finale retentée, saut d'horloge |
+
+```sh
+pytest -m "cas_limite and not perf"    # la banque, test long exclu
+pytest -m cas_limite                   # tout, les deux processus qui lancent en même temps compris
+```
+
+Aides réutilisables : `Fabrique.verrou(..., fin=)` (verrou incohérent),
+`tests/solveur/conftest.py` (`lanceur`, `processus_vivant`), et dans
+`test_services.py` `_calcul_fictif` (ligne de calcul telle quelle) et
+`_calcul_en_cours_d_un_autre_processus`. Un défaut qui relève d'un autre lot
+est figé par un test `@pytest.mark.xfail(strict=True, reason="à corriger par
+le lot ... : fichier")` : il passe au rouge « inattendu » dès que le lot
+corrige, et le marqueur se retire alors.
 
 ## Comment ajouter une contrainte
 

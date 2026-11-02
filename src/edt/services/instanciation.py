@@ -372,6 +372,19 @@ def replacer_occurrences(
 # --------------------------------------------------------------------------- #
 
 
+IDENTIFIANT_MAX = 2**63 - 1
+"""Plus grand identifiant que SQLite sait chercher ; au-delà, la ligne n'existe pas."""
+
+
+def identifiant_valide(valeur: object) -> bool:
+    """Vrai si `valeur` peut être un identifiant de ligne : entier strictement positif, dans
+    les bornes de SQLite. Un identifiant hors bornes (2^70) ferait lever `OverflowError` à
+    `session.get` au lieu d'« introuvable »."""
+    return (
+        isinstance(valeur, int) and not isinstance(valeur, bool) and 0 < valeur <= IDENTIFIANT_MAX
+    )
+
+
 def _contexte(
     session: Session, version_id: int, contraintes_desactivees: Iterable[str] | None
 ) -> tuple[m.VersionEdt, Instantane, Niveaux, dict[int, Niveau] | None]:
@@ -384,6 +397,8 @@ def _contexte(
     ceux de la version (`edt.services.niveaux.niveaux_regles_de_version`,
     même lecture que le vérificateur).
     """
+    if not identifiant_valide(version_id):
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     version = session.get(m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")

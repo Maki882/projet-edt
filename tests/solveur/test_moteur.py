@@ -12,6 +12,7 @@ import time
 import pytest
 from tests.solveur.fabrique import (
     C1,
+    C2,
     LUNDI,
     MARDI,
     OPTIONS,
@@ -26,7 +27,9 @@ from tests.solveur.generateur import generer
 from tests.solveur.test_contraintes import MATINEE, UN_CRENEAU
 
 from edt.domaine.enumerations import ModeVolume
+from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur import ResultatSolveur, StatutSolveur, resoudre
+from edt.solveur.contrat import NB_WORKERS_MAX, TEMPS_LIMITE_MAX_S
 from edt.verification import calculer_indicateurs
 
 
@@ -210,13 +213,15 @@ def test_recherche_rendue_en_retard_l_amelioration_n_est_pas_perdue(monkeypatch)
     from edt.solveur import moteur
 
     # Réserve négative : la recherche se termine une seconde et demie APRÈS le temps limite,
-    # comme il arrive sur une machine chargée avec un gros modèle.
+    # comme il arrive sur une machine chargée avec un gros modèle. Le temps limite laisse une
+    # marge large à la première solution (quelques secondes, même machine chargée), et
+    # l'instance est assez grande pour que l'amélioration ne prouve pas l'optimum avant la fin.
     monkeypatch.setattr(moteur, "RESERVE_MAX_S", -1.5)
-    instantane, _ = generer(60, graine=4)
-    resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=2, nb_workers=2))
+    instantane, _ = generer(120, graine=4)
+    resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=6, nb_workers=2))
     verifier_solution(instantane, resultat)
     stats = resultat.statistiques
-    assert stats["duree_s"] > 2  # le temps limite était bien dépassé au retour de la recherche
+    assert stats["duree_s"] > 6  # le temps limite était bien dépassé au retour de la recherche
     assert stats["raison_arret"] == "temps_limite"
     assert stats["objectif"] < stats["objectif_premiere_solution"]
     indicateurs = calculer_indicateurs(instantane, resultat.placements)
@@ -259,9 +264,17 @@ def test_arret_demande_avant_le_calcul():
     assert "arrêté" in resultat.message
 
 
-def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(caplog):
-    """Arrêt demandé alors qu'une solution existe : rendue en moins de deux secondes, pas perdue."""
+def _arreter_pendant_l_amelioration(guetter_journal):
+    """Lance un calcul optimisé de 300 séances, attend que l'amélioration ait commencé, demande
+    l'arrêt ; rend `(instantané, résultat, délai en secondes entre la demande et le retour)`.
+
+    Toute attente est une attente d'événement du moteur (première solution annoncée, départ de
+    l'amélioration), jamais un délai fixe : le déroulement ne dépend pas de la charge de la
+    machine, seule la durée change.
+    """
     instantane, _ = generer(300, graine=1)
+    solution = guetter_journal("Emploi du temps valide trouvé")
+    amelioration = guetter_journal("Amélioration : départ à l'objectif")
     arret = threading.Event()
     resultats: list[ResultatSolveur] = []
     calcul = threading.Thread(
@@ -269,29 +282,41 @@ def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(caplog):
             resoudre(instantane, options(optimiser=True, temps_limite_s=120, nb_workers=2), arret)
         )
     )
-    # On attend que le moteur annonce la première solution valide (deux secondes d'ordinaire,
-    # bien plus sur une machine lente ou un cœur économe), puis on laisse l'amélioration tourner.
-    with caplog.at_level(logging.INFO, logger="edt.solveur.moteur"):
-        calcul.start()
-        echeance = time.perf_counter() + 90
-        while not any(
-            r.getMessage().startswith("Emploi du temps valide trouvé") for r in caplog.records
-        ):
-            assert time.perf_counter() < echeance, "aucune solution valide en 90 s"
-            time.sleep(0.1)
-        time.sleep(1.5)
+    calcul.start()
+    assert solution.wait(90), "aucune solution valide en 90 s"
+    assert amelioration.wait(30), "l'amélioration n'a pas commencé en 30 s"
     assert calcul.is_alive(), "le calcul devait encore améliorer la solution"
     demande = time.perf_counter()
     arret.set()
-    calcul.join(timeout=10)
-    assert not calcul.is_alive()
-    assert time.perf_counter() - demande < 2
-    resultat = resultats[0]
+    calcul.join(timeout=60)
+    delai = time.perf_counter() - demande
+    assert not calcul.is_alive(), "le moteur n'a pas rendu la main en 60 s"
+    (resultat,) = resultats
+    return instantane, resultat, delai
+
+
+def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(guetter_journal):
+    """Arrêt demandé alors qu'une solution existe : elle est rendue, pas perdue.
+
+    Borne large sur le délai de retour : l'arrêt est suivi d'effet bien avant le temps limite
+    (120 s), quelle que soit la charge de la machine ; la réactivité fine est mesurée à part
+    (`test_arret_pendant_l_amelioration_repond_en_moins_de_deux_secondes`, `perf`).
+    """
+    instantane, resultat, delai = _arreter_pendant_l_amelioration(guetter_journal)
+    assert delai < 60
     verifier_solution(instantane, resultat)
     assert resultat.statistiques["arrete_par_utilisateur"] is True
     assert resultat.statistiques["raison_arret"] == "arret_utilisateur"
     conservee = "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
     assert conservee in resultat.avertissements and conservee in resultat.message
+
+
+@pytest.mark.perf
+def test_arret_pendant_l_amelioration_repond_en_moins_de_deux_secondes(guetter_journal):
+    """Machine au repos : le moteur rend la main moins de deux secondes après la demande d'arrêt
+    (engagement de `resoudre`, voir docs/solveur.md « Réglages et suivi »)."""
+    _, _, delai = _arreter_pendant_l_amelioration(guetter_journal)
+    assert delai < 2
 
 
 def test_l_amelioration_s_arrete_d_elle_meme_quand_elle_ne_progresse_plus(monkeypatch):
@@ -426,3 +451,133 @@ def test_conflit_de_salles_contourne_quand_une_autre_matinee_existe():
     instantane = _salles_en_quinconce([LUNDI, MARDI])
     places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
     assert places["1-1"].fin - places["1-1"].debut == 4 * H
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "champs",
+    [
+        {"temps_limite_s": float("nan")},
+        {"temps_limite_s": float("inf")},
+        {"temps_limite_s": 1e9},
+        {"temps_limite_s": 0},
+        {"temps_limite_s": -3},
+        {"temps_limite_s": "60"},
+        {"temps_limite_s": True},
+        {"nb_workers": -1},
+        {"nb_workers": 1000},
+        {"nb_workers": 2.5},
+        {"graine": 1.5},
+    ],
+    ids=str,
+)
+def test_options_invalides_refusees(champs):
+    """Cas : options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul,
+    négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers.
+
+    Risque : « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon
+    ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils.
+    """
+    with pytest.raises(ErreurDonneesInvalides):
+        options(**champs)
+
+
+@pytest.mark.cas_limite
+def test_options_aux_bornes_acceptees():
+    """Cas : options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40.
+
+    Risque : des bornes trop serrées refuseraient des réglages légitimes ; une graine hors
+    [0, 2^31[ est ramenée dans les bornes de CP-SAT par le moteur, pas refusée.
+    """
+    for champs in (
+        {"temps_limite_s": TEMPS_LIMITE_MAX_S},
+        {"temps_limite_s": 0.5},
+        {"nb_workers": NB_WORKERS_MAX},
+        {"nb_workers": 0},
+        {"graine": -5},
+        {"graine": 2**40},
+    ):
+        assert options(**champs).vers_dict()
+
+
+@pytest.mark.cas_limite
+def test_toutes_les_seances_verrouillees():
+    """Cas : chaque séance porte un verrou avec sa salle : le modèle n'a ni variable ni choix.
+
+    Risque : plantage sur un modèle vide (objectif sans terme, statistiques) ou solution non
+    rendue, en mode faisable comme en mode optimisé.
+    """
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2)
+    f.verrou("1-1", LUNDI, C1, 1)
+    f.verrou("1-2", LUNDI, C2, 1)
+    instantane = f.instantane()
+    for reglages in ({}, {"optimiser": True}):
+        resultat = resoudre(instantane, options(**reglages))
+        places = verifier_solution(instantane, resultat)
+        assert [(p.jour, p.debut, p.salle_id) for p in (places["1-1"], places["1-2"])] == [
+            (LUNDI, C1, 1),
+            (LUNDI, C2, 1),
+        ]
+        assert resultat.statistiques["nb_variables"] == 0
+        assert resultat.statistiques["raison_arret"] == "premiere_solution"
+
+
+@pytest.mark.cas_limite
+def test_arret_pendant_la_premiere_recherche_rend_la_main_vite(guetter_journal):
+    """Cas : instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la
+    première recherche, avant toute solution (la première solution demande ici plus d'une
+    minute).
+
+    Risque : le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à
+    rendre la main : bouton « Arrêter » sans effet avant la première solution.
+    """
+    instantane, _ = generer(300, graine=1)
+    modele_construit = guetter_journal("Modèle des horaires construit")
+    arret = threading.Event()
+    resultats = []
+    fil = threading.Thread(
+        target=lambda: resultats.append(resoudre(instantane, options(temps_limite_s=120), arret))
+    )
+    fil.start()
+    assert modele_construit.wait(60), "le modèle n'a pas été construit en 60 s"
+    demande = time.perf_counter()
+    arret.set()
+    fil.join(30)
+    assert not fil.is_alive(), "le moteur n'a pas rendu la main en 30 s"
+    # Borne large : l'arrêt est suivi d'effet bien avant le temps limite, machine chargée ou non.
+    assert time.perf_counter() - demande < 30
+    (resultat,) = resultats
+    assert resultat.statut is StatutSolveur.ARRETE and resultat.placements == ()
+    assert "avant qu'un emploi du temps soit trouvé" in resultat.message
+
+
+@pytest.mark.cas_limite
+def test_parametres_extremes_restent_valides():
+    """Cas : pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et
+    2^40, mode optimisé.
+
+    Risque : coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage
+    jour × pas des débuts faux quand le pas dépasse 100 000.
+    """
+    f = Fabrique(pause_min=120, poids_trous=1000, poids_samedi=1000)
+    nord, sud = f.campus("N"), f.campus("S")
+    f.trajet(nord, sud, 100_000)
+    n101, s101 = f.salle("N101", campus=nord), f.salle("S101", campus=sud)
+    classe, prof = f.groupe("A1"), f.enseignant()
+    f.besoin([classe], [prof], salle_imposee_id=n101)
+    f.besoin([classe], [prof], salle_imposee_id=s101)
+    instantane = f.instantane()
+    for graine in (-5, 2**40):
+        resultat = resoudre(instantane, options(optimiser=True, graine=graine))
+        places = verifier_solution(instantane, resultat)
+        assert resultat.statistiques["graine"] == graine
+        assert resultat.statistiques["statut_cp_sat"] != "MODEL_INVALID"
+        # 100 000 min de trajet : jamais le même jour.
+        assert places["1-1"].jour != places["2-1"].jour

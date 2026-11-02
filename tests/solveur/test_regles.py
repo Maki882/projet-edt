@@ -1144,3 +1144,32 @@ def test_replacement_ouverture_datee_du_samedi():
         niveaux=OPTIONS.niveaux,
         niveaux_regles={1: Niveau.NECESSAIRE},
     )
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_niveau_d_une_regle_inconnue_est_signale():
+    """Cas : options avec un niveau pour la règle n° 999, absente de l'instantané (supprimée,
+    désactivée ou d'une autre année), à côté d'une règle connue.
+
+    Risque : l'utilisateur croit avoir réglé une règle ; ni le résultat ni la copie des règles du
+    calcul n'en garderaient trace.
+    """
+    f = Fabrique()
+    f.salle()
+    classe = f.groupe("A1")
+    f.besoin([classe], [f.enseignant()])
+    f.regle(TypeRegle.JOURS_TRAVAILLES, NaturePortee.GROUPE, classe, jours=["lundi", "mardi"])
+    instantane = f.instantane()
+    resultat = resoudre(
+        instantane, options(niveaux_regles={1: Niveau.NECESSAIRE, 999: Niveau.IMPORTANT})
+    )
+    places = verifier_solution(instantane, resultat)
+    assert places["1-1"].jour in (LUNDI, MARDI)
+    assert resultat.niveaux_regles == {1: Niveau.NECESSAIRE}
+    (avertissement,) = [a for a in resultat.avertissements if "999" in a]
+    assert "inconnue" in avertissement and "ignoré" in avertissement

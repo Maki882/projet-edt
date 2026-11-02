@@ -13,7 +13,9 @@ from tests.solveur.fabrique import (
     JEUDI,
     LUNDI,
     MARDI,
+    MERCREDI,
     RENTREE,
+    VENDREDI,
     Fabrique,
     H,
     grille,
@@ -248,3 +250,64 @@ def test_replacement_respecte_le_maximum_journalier():
     (replacement,) = resultat.replacements
     # Le mardi, Mme Martin a déjà ses deux heures : la séance part au jeudi.
     assert replacement.occurrence.date == RENTREE + dt.timedelta(days=JEUDI)
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_placement_hors_bornes_refuse_en_nommant_la_seance():
+    """Cas : semaine type importée avec une séance au jour 7, une séance finissant après minuit
+    (23 h - 25 h) ou une séance de durée nulle.
+
+    Risque : « Jour invalide : 7 » sans nommer la séance, ou des occurrences débordant minuit
+    enregistrées (contrainte de plage de la base violée plus tard, ou acceptée).
+    """
+    instantane = une_classe().instantane()
+    for placement in (
+        Placement("1-1", 7, C1, C1 + 2 * H, 1),
+        Placement("1-1", LUNDI, 23 * H, 25 * H, 1),
+        Placement("1-1", LUNDI, C2, C2, 1),
+    ):
+        with pytest.raises(ErreurDonneesInvalides, match="séance 1-1"):
+            instancier(instantane, [placement])
+
+
+@pytest.mark.cas_limite
+def test_semestre_commencant_en_milieu_de_semaine_et_semestre_d_un_jour():
+    """Cas : semestre du mercredi 09/09 au vendredi 18/09 avec une séance le lundi ; semestre d'un
+    seul jour (un mercredi) avec cinq séances par semaine pour quatre créneaux ce jour-là.
+
+    Risque : occurrence hors semestre créée ou perdue, replacée dans une mauvaise semaine ;
+    séances « à programmer » en cascade sans raison dite.
+    """
+    f = une_classe(nb_semaines=2)
+    f.date_debut = RENTREE + dt.timedelta(days=2)
+    instantane = f.instantane()
+    instancie = instancier(instantane, [place("1-1", LUNDI, C1, 1)])
+    assert [o.date for o in instancie.occurrences] == [RENTREE + SEMAINE]
+    (hors,) = instancie.a_replacer
+    assert hors.occurrence.date == RENTREE and "en dehors du semestre" in hors.raison
+    resultat = replacer(instantane, instancie.occurrences, [hors.occurrence])
+    (replacee,) = resultat.replacees
+    assert f.date_debut <= replacee.occurrence.date <= RENTREE + dt.timedelta(days=4)
+    verifier_dates(instantane, [*instancie.occurrences, replacee.occurrence])
+
+    g = une_classe(nb_semaines=1, nombre=5)
+    g.date_debut = g.date_fin = RENTREE + dt.timedelta(days=2)
+    instantane = g.instantane()
+    jours = (LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI)
+    placements = [place(f"1-{n}", jour, C1, 1) for n, jour in enumerate(jours, start=1)]
+    instancie = instancier(instantane, placements)
+    assert len(instancie.occurrences) == 1 and len(instancie.a_replacer) == 4
+    resultat = replacer(
+        instantane, instancie.occurrences, [r.occurrence for r in instancie.a_replacer]
+    )
+    assert len(resultat.replacees) == 3 and len(resultat.a_programmer) == 1
+    toutes = [*instancie.occurrences, *(r.occurrence for r in resultat.replacees)]
+    assert {o.date for o in toutes} == {g.date_debut} and len({o.debut for o in toutes}) == 4
+    verifier_dates(instantane, toutes)
+    (programmer,) = resultat.a_programmer
+    assert programmer.raison

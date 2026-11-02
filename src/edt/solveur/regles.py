@@ -373,8 +373,12 @@ class Regles:
         pas, les règles restent. Avec `date` (couche datée), les règles
         résolues à cette date (`jours_de`). Une séance inconnue de la semaine
         type (occurrence saisie à la main, `seance_id` absent) n'a que le
-        standard de son `besoin`.
+        standard de son `besoin`. Un jour sans aucun créneau dans la grille
+        n'est pas un jour de cours (le vérificateur l'exige aussi), même quand
+        `HORAIRES` est ignorée et que les débuts sortent de la grille.
         """
+        if self.active(C.JOURS) and not self.instantane.debuts_de_creneau(jour):
+            return [Violation(C.JOURS, f"la grille horaire n'a aucun créneau le {JOURS[jour]}")]
         reglages = self.instantane.reglages.jours
         if seance_id is None or seance_id not in reglages:
             if not self.active(C.JOURS) or jour in self.instantane.jours_travailles:

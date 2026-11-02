@@ -697,3 +697,55 @@ def test_verrou_intenable_seul_est_refuse_nommement():
     f.besoin([f.groupe("A1", 30)], [f.enseignant()], libelle="Maths")
     f.verrou("1-1", LUNDI, C1, petite)
     impossible(f.instantane(), "Maths", "N101", "30 places")
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_deux_besoins_sans_groupe_peuvent_coexister():
+    """Cas : deux besoins sans groupe, d'enseignants différents, un seul créneau et deux salles.
+
+    Risque : les séances sans groupe réunies en une unité fictive « aucun groupe » (au plus une
+    en cours) rendraient le calcul infaisable « c'est prouvé » alors qu'une solution existe.
+    """
+    f = Fabrique(creneaux=UN_CRENEAU)
+    f.salle("N101")
+    f.salle("N102")
+    f.besoin([], [f.enseignant("Mme Martin")], effectif=10)
+    f.besoin([], [f.enseignant("M. Durand")], effectif=10)
+    instantane = f.instantane()
+    places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
+    a, b = places["1-1"], places["2-1"]
+    assert (a.jour, a.debut) == (b.jour, b.debut) == (LUNDI, C1)
+    assert {a.salle_id, b.salle_id} == {1, 2}
+
+    # Le même enseignant, lui, ne donne pas deux séances sans groupe en même temps.
+    g = Fabrique(creneaux=UN_CRENEAU)
+    g.salle("N101")
+    g.salle("N102")
+    martin = g.enseignant("Mme Martin")
+    g.besoin([], [martin], effectif=10)
+    g.besoin([], [martin], effectif=10)
+    impossible(g.instantane())
+
+
+@pytest.mark.cas_limite
+def test_seance_finissant_apres_minuit_refusee_meme_sans_horaires():
+    """Cas : besoin de 25 h, ou besoin de 2 h au début imposé 23 h, la grille active puis ignorée.
+
+    Risque : placement dont la fin dépasse minuit (occurrence débordant sur le lendemain, refusée
+    ensuite par la base), ou refus muet qui ne dit pas pourquoi.
+    """
+    for champs in ({"duree": 25 * H}, {"jour_impose": LUNDI, "debut_impose": 23 * H}):
+        f = Fabrique()
+        f.salle()
+        f.besoin([f.groupe("A1")], [f.enseignant()], **champs)
+        instantane = f.instantane()
+        impossible(instantane, "finirait après minuit")
+        resultat = resoudre_sans(instantane, C.HORAIRES)
+        assert resultat.statut is StatutSolveur.INFAISABLE, resultat.message
+        assert resultat.placements == ()
+        assert "finirait après minuit" in resultat.message
