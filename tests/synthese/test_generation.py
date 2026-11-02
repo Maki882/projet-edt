@@ -45,7 +45,10 @@ def test_trois_tailles_nommees():
         configuration_nommee("géant")
 
 
+@pytest.mark.cas_limite
 def test_configuration_invalide_refusee_avec_le_detail():
+    """Cas : configuration sur mesure incohérente (classes d'apprentis en 1re année).
+    Risque : jeu absurde ou erreur tardive sans la liste des problèmes."""
     with pytest.raises(ErreurDonneesInvalides) as erreur:
         dataclasses.replace(PETIT, promotions=(ConfigPromotion(1, 2, nb_classes_apprentis=1),))
     assert "apprentis" in str(erreur.value)
@@ -67,7 +70,10 @@ def test_graines_differentes_jeux_differents(tmp_path, jeu_petit):
     assert empreinte(autre.url) != empreinte(jeu_petit.url)
 
 
+@pytest.mark.cas_limite
 def test_base_deja_garnie_refusee(jeu_petit):
+    """Cas : génération directe dans une base qui contient déjà des référentiels.
+    Risque : doublons ou mélange de deux établissements."""
     with session_base(jeu_petit.url) as session, pytest.raises(ErreurRegleMetier, match="déjà"):
         generer_jeu(session, "petit")
 
