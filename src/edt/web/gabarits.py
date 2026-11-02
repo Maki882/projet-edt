@@ -12,6 +12,18 @@ simples gabarits sans `{% extends %}`.
 Filtres disponibles dans tous les gabarits : `heure` (510 donne « 8 h 30 »),
 `duree` (120 donne « 2 h »), `jour` (0 donne « lundi »), `date_fr`
 (« 05/10/2026 »), `dateheure_fr`.
+
+Ce qui vient du navigateur n'est jamais cru sur parole :
+
+- `adresse_locale` dit si une adresse de retour reste dans l'application
+  (pas de redirection ouverte, aucun caractère de contrôle qui finirait dans
+  un en-tête) ; `rediriger` écarte en dernier recours une adresse qui en
+  contient (un retour à la ligne dans `HX-Redirect` ajouterait un en-tête) ;
+- `adresse_courante` lit l'en-tête `HX-Current-URL` sans planter s'il est
+  illisible ;
+- un identifiant d'adresse (`{n:int}`) de plus de `CHIFFRES_ADRESSE_MAX`
+  chiffres ne correspond à aucune page (404) : Python refuse de convertir plus
+  de 4 300 chiffres, ce qui donnait une erreur 500 dans le routage.
 """
 
 from __future__ import annotations
@@ -23,11 +35,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import SplitResult, quote, unquote, urlsplit
 
 from fastapi import Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
+from starlette.convertors import IntegerConvertor, register_url_convertor
 
 from edt import __version__
 from edt.domaine.enumerations import JOURS
@@ -41,6 +54,8 @@ DOSSIER_GABARITS = DOSSIER_WEB / "templates"
 DOSSIER_STATIQUE = DOSSIER_WEB / "static"
 
 COOKIE_MESSAGES = "edt_messages"
+CHIFFRES_ADRESSE_MAX = 30
+"""Au-delà, un identifiant d'adresse ne désigne rien : la route ne correspond pas (404)."""
 NIVEAUX = ("succes", "info", "attention", "erreur")
 
 
@@ -89,6 +104,56 @@ gabarits.env.filters.update(
 gabarits.env.globals.update(version_application=__version__, JOURS=JOURS)
 
 
+class _IdentifiantBorne(IntegerConvertor):
+    """`{n:int}` des adresses, borné à `CHIFFRES_ADRESSE_MAX` chiffres.
+
+    Le convertisseur d'origine accepte « [0-9]+ » puis appelle `int()`, qui lève
+    `ValueError` au-delà de 4 300 chiffres : erreur 500 avant même la route.
+    Enregistré à l'import de ce module, que tous les modules de routes
+    importent avant de déclarer leurs adresses.
+    """
+
+    regex = f"[0-9]{{1,{CHIFFRES_ADRESSE_MAX}}}"
+
+
+register_url_convertor("int", _IdentifiantBorne())
+
+_CARACTERES_DE_CONTROLE = frozenset(chr(code) for code in (*range(32), 127))
+
+
+def adresse_locale(adresse: object, prefixe: str = "/") -> bool:
+    """Vrai si `adresse` est une adresse de l'application commençant par `prefixe`.
+
+    Refusées : adresse vers un autre site (« //exemple.org », barre oblique
+    inverse), et tout caractère de contrôle (un retour à la ligne finirait dans
+    un en-tête de réponse).
+    """
+    texte = adresse if isinstance(adresse, str) else ""
+    return (
+        texte.startswith(prefixe)
+        and texte.startswith("/")
+        and "//" not in texte
+        and "\\" not in texte
+        and not _CARACTERES_DE_CONTROLE.intersection(texte)
+    )
+
+
+def adresse_courante(request: Request) -> SplitResult | None:
+    """Adresse de la page d'où part une requête HTMX (`HX-Current-URL`), ou None.
+
+    L'en-tête vient du navigateur : illisible (« http://[::1 »), il est ignoré
+    et noté dans le journal au lieu de faire échouer la requête.
+    """
+    brute = request.headers.get("HX-Current-URL")
+    if not brute:
+        return None
+    try:
+        return urlsplit(brute)
+    except ValueError as erreur:
+        journal.info("En-tête HX-Current-URL illisible, ignoré (%s) : %r", erreur, brute[:200])
+        return None
+
+
 def est_htmx(request: Request) -> bool:
     """Vrai si la requête vient de HTMX (elle attend un fragment, pas une page entière)."""
     return request.headers.get("HX-Request") == "true"
@@ -128,7 +193,13 @@ def rediriger(
     """Redirige après une action (POST puis GET) en laissant un message pour la page suivante.
 
     Pour une requête HTMX, la redirection passe par l'en-tête `HX-Redirect`.
+    Une adresse qui contient un caractère de contrôle (fabriquée : les écrans
+    vérifient leurs adresses de retour avec `adresse_locale`) est remplacée par
+    l'accueil, jamais recopiée dans un en-tête.
     """
+    if _CARACTERES_DE_CONTROLE.intersection(url):
+        journal.warning("Redirection vers une adresse invalide écartée : %r", url[:200])
+        url = "/"
     if est_htmx(request):
         reponse: Response = Response(status_code=204, headers={"HX-Redirect": url})
     else:

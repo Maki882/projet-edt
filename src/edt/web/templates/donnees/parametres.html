@@ -15,6 +15,11 @@
 </p>
 {%- if erreur %}
 {{ ui.message(erreur.message ~ (" Les messages sont sous les champs concernés." if erreurs else ""), "erreur", erreur.details if erreurs else ()) }}
+{%- elif calcul_en_cours %}
+<div class="message message-attention" role="status">
+  <p>Un calcul d'emploi du temps est en cours (calcul n° {{ calcul_en_cours.id }}) : les paramètres
+    ne pourront être enregistrés qu'après sa fin. <a href="/calculs/{{ calcul_en_cours.id }}">Suivre le calcul</a></p>
+</div>
 {%- endif %}
 <form class="formulaire formulaire-large" method="post" action="/parametres">
   {%- for titre, liste in rubriques %}

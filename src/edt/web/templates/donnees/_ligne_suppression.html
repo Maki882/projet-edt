@@ -2,7 +2,8 @@
   Ligne de confirmation d'une suppression (HTMX), à la place de la ligne de la liste.
   Possible : ce qui sera emporté, « Supprimer définitivement » (la zone de liste est
   rafraîchie) ou « Annuler » (la ligne revient). Refusée : pourquoi, avec des liens
-  vers les éléments qui bloquent. Sans JavaScript, la page de confirmation sert.
+  vers les éléments qui bloquent (pendant un calcul : le suivi du calcul). Sans
+  JavaScript, la page de confirmation sert.
 #}
 {% import "donnees/_ui.html" as d %}
 <tr id="ligne-{{ ecran.entite.code }}-{{ analyse.id }}" class="ligne-suppression{% if not analyse.possible %} ligne-suppression-refusee{% endif %}">
@@ -22,11 +23,14 @@
                 hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Annuler</button>
       </div>
       {%- else %}
-      <p><strong>Impossible de supprimer {{ entite.demonstratif|lower }} « {{ analyse.libelle }} »</strong> :
-        {{ "elle" if entite.feminin else "il" }} est encore {{ entite.accorde("utilisé") }}.</p>
+      <p><strong>Impossible de supprimer {{ entite.demonstratif|lower }} « {{ analyse.libelle }} »</strong>
+        {%- if analyse.calcul_id %} pour l'instant : un calcul d'emploi du temps est en cours.
+        {%- else %} : {{ "elle" if entite.feminin else "il" }} est encore {{ entite.accorde("utilisé") }}.{% endif %}</p>
       <ul class="liste-simple">{{ d.raisons(analyse.blocages) }}</ul>
       {{ d.regles_touchees(analyse, retour_regles) }}
+      {%- if analyse.blocages|length > (1 if analyse.calcul_id else 0) %}
       <p class="discret">Modifiez ou supprimez d'abord ces éléments : on ne modifie jamais une demande en silence.</p>
+      {%- endif %}
       <div class="ligne-boutons">
         <button type="button" class="bouton bouton-petit" autofocus
                 hx-get="{{ url_element }}/ligne" hx-target="closest tr" hx-swap="outerHTML">Fermer</button>

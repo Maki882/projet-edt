@@ -22,6 +22,7 @@ from edt.services.jeux import (
     remettre_a_zero,
     tailles_disponibles,
 )
+from edt.services.referentiels.conversion import entier_naturel
 from edt.web.donnees.ecrans import Formulaire
 from edt.web.gabarits import Message, rediriger, rendre
 from edt.web.menu import GROUPE_JEUX, SECTION_DONNEES, EntreeMenu
@@ -97,8 +98,8 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
     erreurs: dict[str, str] = {}
     if saisies["taille"] not in {t.nom for t in tailles_disponibles()}:
         erreurs["taille"] = "Choisir une taille."
-    graine = saisies["graine"]
-    if not (graine.isascii() and graine.isdigit()) or int(graine) > GRAINE_MAX:
+    graine = entier_naturel(saisies["graine"])
+    if graine is None or graine > GRAINE_MAX:
         erreurs["graine"] = "Nombre entier positif attendu (0 par défaut)."
     etat = diagnostiquer_base()
     effacer = donnees_presentes(etat)
@@ -113,7 +114,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
     try:
         rapport = recharger_jeu_fictif(
             saisies["taille"],
-            int(saisies["graine"]),
+            graine,
             reinitialiser=effacer or not etat.initialisee,
             enregistrer_reference=bool(saisies["reference"]),
         )

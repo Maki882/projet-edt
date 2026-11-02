@@ -37,6 +37,10 @@ _COULEUR = re.compile(r"^#[0-9a-fA-F]{6}$")
 ENTIER_MAX = 2**63 - 1
 """Plus grand entier que la base (SQLite) sait enregistrer ; au-delà, refus clair."""
 
+CHIFFRES_MAX = 30
+"""Au-delà de 30 chiffres significatifs, un nombre saisi est trop grand pour tout champ :
+on ne le convertit même pas (Python refuse de lire plus de 4 300 chiffres)."""
+
 
 class ErreurChamp(ErreurDonneesInvalides):
     """Valeur refusée pour un champ précis (message court, affiché sous le champ)."""
@@ -90,6 +94,19 @@ def lire_date(valeur: object) -> dt.date:
     raise ErreurChamp("Date invalide : format attendu jj/mm/aaaa.")
 
 
+def entier_naturel(texte: object) -> int | None:
+    """Entier positif ou nul écrit en chiffres ASCII (« 42 »), ou None pour toute autre saisie.
+
+    None : vide, signe, lettres, chiffres exotiques (« ² », « ٣ »), ou plus de
+    `CHIFFRES_MAX` chiffres significatifs. Ne lève jamais d'exception : à
+    l'appelant de dire ce qu'il attendait (page, graine, identifiant...).
+    """
+    brut = "" if texte is None else str(texte).strip()
+    if not (brut.isascii() and brut.isdigit()) or len(brut.lstrip("0")) > CHIFFRES_MAX:
+        return None
+    return int(brut)
+
+
 def _entier(valeur: object, *, borner: bool = True) -> int:
     """Entier saisi ; `borner` refuse ce que la base ne sait pas enregistrer."""
     if isinstance(valeur, bool):
@@ -102,6 +119,8 @@ def _entier(valeur: object, *, borner: bool = True) -> int:
         # « ² » ou « ٣ » sont des chiffres pour Python, pas pour une saisie : refusés.
         if not (chiffres.isascii() and chiffres.isdigit()):
             raise ErreurChamp("Nombre entier attendu.")
+        if len(chiffres.lstrip("0")) > CHIFFRES_MAX:
+            raise ErreurChamp("Nombre beaucoup trop grand.")
         nombre = int(texte)
     if borner and abs(nombre) > ENTIER_MAX:
         raise ErreurChamp("Nombre beaucoup trop grand.")

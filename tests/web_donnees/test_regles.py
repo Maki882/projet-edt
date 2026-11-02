@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 import re
 
+import pytest
 from sqlalchemy import func, select
 from starlette.datastructures import FormData
 
@@ -23,6 +24,8 @@ from edt.web.donnees.regles import (
     erreurs_par_champ,
     rubriques_regle,
 )
+
+from .conftest import NOMBRE_TROP_GRAND, saisie_regle
 
 HTMX = {"HX-Request": "true"}
 
@@ -239,7 +242,7 @@ def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
     assert 'id="erreur-cible_groupe"' in sans_cible.text
     # Saisie refusée : l'aperçu est redemandé au chargement, il liste ce qui reste à corriger.
     assert re.search(r'<section class="apercu-regle"[^>]*hx-trigger="load, ', sans_cible.text)
-    apercu_vide = site.post("/regles/apercu", data={**donnees, "p_jours": []}).text
+    apercu_vide = site.post("/regles/apercu", data={**donnees, "p_jours": []}, headers=HTMX).text
     assert "À compléter ou corriger" in apercu_vide and "Jours travaillés" in apercu_vide
 
     cree = site.post("/regles/nouveau", data=donnees, follow_redirects=True)
@@ -323,6 +326,7 @@ def test_modification_preremplie_et_doublon_refuse(site, ids):
     apercu = site.post(
         "/regles/apercu",
         data={**donnees, "type": "PAUSE_DEJEUNER", "annee": str(ids.annee), "_id": r002.id},
+        headers=HTMX,
     )
     assert "1 h 30" in apercu.text  # pas de doublon avec elle-même
     reponse = site.post(f"/regles/{r002.id}/modifier", data=donnees, follow_redirects=False)
@@ -567,7 +571,7 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
         p_maximum="3",
         niveau="important",
     )
-    apercu = client.post("/regles/apercu", data=donnees).text
+    apercu = client.post("/regles/apercu", data=donnees, headers=HTMX).text
     assert "apercu-phrase" in apercu and groupe.code in apercu
     cree = client.post("/regles/nouveau", data=donnees, follow_redirects=True).text
     assert "créée" in cree and len(_codes(cree)) == avant + 1
@@ -606,7 +610,55 @@ def test_aucune_page_des_regles_ne_renvoie_de_trace(site, ids):
         assert reponse.status_code == 200, adresse
         assert "Traceback" not in reponse.text and "Une erreur inattendue" not in reponse.text
     for type_regle in CATALOGUE_TYPES:  # aperçu d'un formulaire vide : message, jamais de 500
-        apercu = site.post("/regles/apercu", data={"type": type_regle, "annee": ids.annee})
+        apercu = site.post(
+            "/regles/apercu", data={"type": type_regle, "annee": ids.annee}, headers=HTMX
+        )
         assert apercu.status_code == 200, type_regle
     assert site.get("/regles/999/modifier").status_code == 404
     assert site.get("/regles/nouveau?type=INCONNU").status_code == 404
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (inventaire n° 10 et 11)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_identifiants_enormes_des_regles_sont_introuvables(site, ids):
+    """Cas : une adresse des règles retouchée avec une année ou un numéro de règle de vingt
+    chiffres. Risque : OverflowError de SQLite, erreur 500 là où les autres écrans répondent
+    « introuvable »."""
+    enorme = NOMBRE_TROP_GRAND
+    for adresse in (
+        f"/regles?annee={enorme}",
+        f"/regles/{enorme}/modifier",
+        f"/regles/{enorme}/supprimer",
+        f"/regles/nouveau?annee={enorme}",
+    ):
+        reponse = site.get(adresse)
+        assert reponse.status_code == 404, adresse
+        assert "introuvable" in reponse.text and "Une erreur inattendue" not in reponse.text
+    ligne = site.get(f"/regles/{enorme}/ligne", headers=HTMX)
+    assert ligne.status_code == 404 and f"Règle n° {enorme} introuvable" in ligne.text
+    etat = site.post(f"/regles/{enorme}/etat", data={"etat": "active"})
+    assert etat.status_code == 404
+    # Une cible de vingt chiffres (liste de choix fabriquée) : « inconnue », pas OverflowError.
+    cible = site.post("/regles/nouveau", data=saisie_regle(ids, cible_groupe=enorme))
+    assert cible.status_code == 422 and re.search(
+        r'id="erreur-cible_groupe">[^<]*inconnu', cible.text
+    )
+
+
+@pytest.mark.cas_limite
+def test_regles_sans_annee_scolaire_affiche_un_bandeau(client):
+    """Cas : toutes les années scolaires ont été supprimées, puis on ouvre « Règles
+    personnalisées ». Risque : une page d'erreur 404 pour une entrée du menu, sans dire quoi
+    faire."""
+    with session_base() as session:
+        for annee in session.scalars(select(m.AnneeScolaire.id)).all():
+            operations.supprimer(session, "annee_scolaire", annee)
+    for adresse in ("/regles", "/regles/nouveau", "/regles/nouveau?type=JOURS_TRAVAILLES"):
+        reponse = client.get(adresse)
+        assert reponse.status_code == 200, adresse
+        assert "Aucune année scolaire pour l'instant" in reponse.text
+        assert 'href="/calendrier"' in reponse.text and "Ouvrir le calendrier" in reponse.text
