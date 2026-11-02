@@ -255,10 +255,11 @@ def lancer_calcul(
 
     Lève `ErreurCalculEnCours` si un calcul tourne déjà (dans ce processus ou
     un autre, même lancé la même seconde), `ErreurRegleMetier` pendant un
-    chargement de jeu de données ou une remise à zéro, `ErreurIntrouvable` si
-    le semestre n'existe pas.
+    chargement de jeu de données, une remise à zéro ou un import,
+    `ErreurIntrouvable` si le semestre n'existe pas.
     """
-    # Import local : `edt.services.jeux` importe ce module.
+    # Imports locaux : `edt.services.jeux` et `edt.services.echange` importent ce module.
+    from edt.services.echange import import_en_cours
     from edt.services.jeux import operation_en_cours
 
     if not identifiant_valide(semestre_id):
@@ -267,10 +268,21 @@ def lancer_calcul(
     moteur = moteur or solveur.resoudre
     with _verrou:
         if operation_en_cours():
+            journal.info(
+                "Calcul refusé pour le semestre %d : chargement ou remise à zéro en cours",
+                semestre_id,
+            )
             raise ErreurRegleMetier(
                 "Impossible de lancer un calcul : un chargement de jeu de données ou une remise "
                 "à zéro est en cours, les tables sont en train d'être recréées. Attendre sa fin, "
                 "puis réessayer."
+            )
+        if import_en_cours():
+            # L'inverse est déjà vrai : un import est refusé pendant un calcul.
+            journal.info("Calcul refusé pour le semestre %d : import en cours", semestre_id)
+            raise ErreurRegleMetier(
+                "Impossible de lancer un calcul : un import de données est en cours et modifie "
+                "ce que le calcul lirait. Attendre la fin de l'import, puis relancer le calcul."
             )
         with session_base(config.db_url) as session:
             if session.get(Semestre, semestre_id) is None:
