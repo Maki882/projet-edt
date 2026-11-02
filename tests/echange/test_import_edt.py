@@ -172,7 +172,12 @@ def test_simulation_d_un_import_d_emploi_du_temps(importer_edt, jeu_minimal):
 
     assert rapport.simulation and rapport.version_id is None
     assert rapport.bilan("besoins").nombre("crees") == 2
-    assert [b["etat"] for b in rapport.besoins] == ["mis à jour", "créé", "inchangé", "créé"]
+    assert [b["etat"] for b in rapport.besoins] == [
+        "mis à jour (volume, dates)",  # ce qui change est nommé avant d'appliquer
+        "créé",
+        "inchangé",
+        "créé",
+    ]
     assert _compter(m.VersionEdt) == 0
     assert _compter(m.Besoin) == jeu_minimal.nb_besoins
 

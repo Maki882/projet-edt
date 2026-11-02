@@ -171,7 +171,11 @@ def test_ical_trop_d_evenements_ou_regle_trop_dense(monkeypatch):
     seances, signalements = ical.lire_ical(
         "b.ics", dense, (dt.date(2026, 9, 7), dt.date(2027, 1, 29))
     )
-    assert seances == [] and "trop d'occurrences" in _erreurs(signalements)[0]
+    assert seances == [] and "répétition « MINUTELY »" in _erreurs(signalements)[0]
+
+    sans_fin = texte.format(evenement.format("j", "RRULE:FREQ=DAILY\n"))
+    seances, signalements = ical.lire_ical("c.ics", sans_fin)  # ni fin ni période
+    assert seances == [] and "plus de 1000 occurrences" in _erreurs(signalements)[0]
 
 
 def test_signalements_bornes_et_comptes():
