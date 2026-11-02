@@ -1,0 +1,48 @@
+# =============================================================================
+# deploy/edt-sauvegarde.service — sauvegarde quotidienne de la base, lancée par
+# edt-sauvegarde.timer. Installée par installer-serveur.sh dans
+# /etc/systemd/system/. À la main : sudo systemctl start edt-sauvegarde ;
+# résultat : sudo journalctl -u edt-sauvegarde -n 30.
+#
+# Exécute « python -m edt sauvegarder » de la version en service, comme le
+# service edt (utilisateur edt, /etc/edt/edt.env lu par systemd) : copie
+# cohérente même pendant le service (API de sauvegarde SQLite), contrôle
+# d'intégrité, 14 sauvegardes quotidiennes gardées dans /var/lib/edt/sauvegardes.
+# Un échec laisse l'unité en « failed » : deploy/etat.sh le signale.
+# =============================================================================
+
+[Unit]
+Description=EDT - sauvegarde quotidienne de la base
+Documentation=file:/opt/edt/courant/code/docs/deploiement.md
+# Rien à sauvegarder tant qu'aucune version n'est déployée.
+ConditionPathExists=/opt/edt/courant/venv/bin/python
+
+[Service]
+Type=oneshot
+User=edt
+Group=edt
+WorkingDirectory=/opt/edt/courant/code
+EnvironmentFile=/etc/edt/edt.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/edt/courant/venv/bin/python -m edt sauvegarder --dossier /var/lib/edt/sauvegardes --garder 14
+# Priorité basse : ne ralentit ni le service ni un calcul en cours.
+Nice=10
+IOSchedulingClass=idle
+UMask=0027
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=edt-sauvegarde
+
+# --- Durcissement (comme edt.service) ----------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/edt /var/log/edt
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=

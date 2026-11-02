@@ -1,0 +1,31 @@
+<!doctype html>
+<!--
+  deploy/erreur-413.html — page renvoyée par nginx (code 413) quand un envoi
+  dépasse sa limite (client_max_body_size, nginx-edt-application.conf).
+  L'application accepte 20 Mo par envoi et refuse elle-même, avec son propre
+  message, un envoi un peu plus gros ; nginx n'arrête que ceux qui dépassent
+  nettement. Installée par installer-serveur.sh dans
+  /var/www/edt-erreurs/erreur-413.html.
+
+  L'import passe par HTMX, qui insère cette page telle quelle dans la zone des
+  messages de l'application : elle n'emploie donc que les styles de
+  l'application (/static/css/app.css) et ne restyle rien de la page hôte.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emplois du temps : envoi trop volumineux</title>
+<link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="message message-erreur" role="alert">
+  <p>Envoi trop volumineux : 20 Mo au plus par envoi. Les fichiers n'ont pas été reçus et rien n'a été modifié.</p>
+  <ul>
+    <li>Découper l'envoi : plusieurs fichiers plus petits, envoyés l'un après l'autre.</li>
+    <li>Alléger le classeur : retirer les onglets inutiles, les images et les mises en forme.</li>
+  </ul>
+  <p><a class="bouton" href="/import">Revenir à l'import</a></p>
+</div>
+</body>
+</html>
