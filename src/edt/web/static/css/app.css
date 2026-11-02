@@ -131,15 +131,6 @@ h3 {
 
 /* ----- 2. Bandeau, barre et onglets ------------------------------------------ */
 
-.bandeau-fictif {
-  background: var(--attention-pale);
-  color: #5c3b00;
-  border-bottom: 1px solid #ecd9a8;
-  padding: 0.3rem var(--espace);
-  font-size: 0.85rem;
-  text-align: center;
-}
-
 .barre {
   display: flex;
   align-items: stretch;
@@ -1561,7 +1552,6 @@ fieldset.champ {
 @media print {
   .barre,
   .sous-navigation,
-  .bandeau-fictif,
   .pied,
   .entete-actions,
   .lien-evitement,

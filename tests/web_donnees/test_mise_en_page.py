@@ -99,7 +99,7 @@ def test_panneau_assistant_present_sur_toutes_les_pages(site):
         assert '<aside class="assistant" id="assistant"' in page
         assert "Bientôt" in page and "langage courant" in page
         assert re.search(r'<textarea id="assistant-question"[^>]*disabled', page)
-    assert "Données fictives" in page  # le bandeau est conservé
+    assert "Données fictives" not in page  # plus de bandeau sur les données
 
 
 def test_blocs_styles_et_scripts_du_gabarit_de_base():

@@ -59,7 +59,7 @@ def test_accueil_tait_une_base_en_bon_etat(jeu_minimal, client):
     assert reponse.status_code == 200
     assert reponse.headers["X-Request-ID"]
     page = reponse.text
-    assert "Données fictives" in page
+    assert "Données fictives" not in page  # plus de bandeau : les données sont celles du projet
     # Tout va bien : ni bloc sur la base, ni emplacement, ni environnement.
     assert "État de la base de données" not in page
     assert "Emplacement" not in page and "Environnement" not in page
