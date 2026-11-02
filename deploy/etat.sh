@@ -5,11 +5,12 @@
 # À lancer depuis le POSTE DU DÉVELOPPEUR (Git Bash) :
 #   deploy/etat.sh
 #
-# Affiche : état du service et de nginx, version déployée et versions
-# disponibles, derniers déploiements, réponse de /sante (sur le serveur),
-# certificat HTTPS, espace disque et mémoire, diagnostic de l'application
-# (« edt doctor » : base utilisée, schéma), taille de la base et des
-# sauvegardes, 30 dernières lignes du journal du service, puis l'URL publique
+# Affiche : état du service et de nginx (arrêts pour mémoire épuisée compris),
+# version déployée et versions disponibles, derniers déploiements, réponse de
+# /sante (sur le serveur), certificat HTTPS, espace disque et mémoire,
+# diagnostic de l'application (« edt doctor » : base utilisée, schéma),
+# fichiers de la base, sauvegardes (quotidienne récente, minuteur, fichiers
+# partiels), 30 dernières lignes du journal du service, puis l'URL publique
 # vue depuis ce poste. Ne modifie rien.
 #
 # Code de sortie : 0 si tout va bien, 1 si un problème a été détecté (lignes
@@ -51,7 +52,17 @@ for unite in edt nginx; do
     probleme "le service $unite n'est pas actif (état : $etat_unite)"
   fi
 done
-systemctl show edt -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID -p MemoryCurrent
+systemctl show edt -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID -p MemoryCurrent -p Result
+# Mémoire épuisée (MemoryMax de edt.service) : systemd note « oom-kill » à
+# chaque fois, puis redémarre le service ; un calcul en cours est alors perdu.
+if journal_oom="$(journalctl -u edt --since "-7d" --no-pager -o cat)"; then
+  nb_oom="$(awk '/oom-kill/ { n++ } END { print n + 0 }' <<< "$journal_oom")"
+  if [ "$nb_oom" -gt 0 ]; then
+    probleme "$nb_oom arrêt(s) du service pour mémoire épuisée ces 7 derniers jours (oom-kill) : réduire le temps limite ou le nombre de fils des calculs (docs/deploiement.md, « Épuisement de la mémoire »)"
+  fi
+else
+  probleme "lecture du journal du service impossible (journalctl)"
+fi
 
 titre "Version déployée"
 if [ -L /opt/edt/courant ]; then
@@ -66,10 +77,16 @@ else
   probleme "aucune version déployée (/opt/edt/courant absent) : lancez deploy/deployer.sh"
 fi
 echo
-echo "Versions présentes sur le serveur (OK = mise en service réussie ; -- = en cours ou en échec) :"
+echo "Versions présentes sur le serveur (OK = mise en service réussie ; -- = envoyée, en cours ou annulée ; incomplet = envoi coupé ; les deux dernières sont supprimées au prochain déploiement réussi) :"
 for dossier in /opt/edt/versions/*/; do
   [ -e "$dossier" ] || continue
-  if [ -e "${dossier}deploiement-reussi" ]; then marque="OK"; else marque="--"; fi
+  if [ -e "${dossier}deploiement-reussi" ]; then
+    marque="OK"
+  elif [ -e "${dossier}envoi-termine" ]; then
+    marque="--"
+  else
+    marque="incomplet"
+  fi
   nom="${dossier%/}"
   echo "  $marque ${nom##*/}"
 done
@@ -128,14 +145,42 @@ fi
 echo "(Le contrôle du port 8000 est en « ATTENTION » quand le service tourne : c'est normal.)"
 echo "Fichiers de /var/lib/edt :"
 ls -lh /var/lib/edt
-nombre_sauvegardes=0
-derniere=""
-for fichier in /var/lib/edt/sauvegardes/*.db; do
-  [ -e "$fichier" ] || continue
-  nombre_sauvegardes=$((nombre_sauvegardes + 1))
-  derniere="$fichier"
+# Un fichier créé par root (commande lancée hors du lanceur) bloque le service.
+etrangers="$(find /var/lib/edt -maxdepth 2 ! -user edt -print)"
+if [ -n "$etrangers" ]; then
+  probleme "fichiers de /var/lib/edt qui n'appartiennent pas à edt (le service ne peut pas les modifier ; sudo chown edt:edt <fichier>) : $etrangers"
+fi
+
+titre "Sauvegardes de la base (/var/lib/edt/sauvegardes)"
+for prefixe in quotidienne edt manuelle; do
+  nombre=0
+  derniere=""
+  for fichier in /var/lib/edt/sauvegardes/"$prefixe"-*.db; do
+    [ -e "$fichier" ] || continue
+    nombre=$((nombre + 1))
+    derniere="${fichier##*/}"
+  done
+  echo "$prefixe : $nombre (la plus récente : ${derniere:-aucune})"
 done
-echo "sauvegardes : $nombre_sauvegardes (la plus récente par ordre de nom : ${derniere:-aucune})"
+for fichier in /var/lib/edt/sauvegardes/*.partiel; do
+  [ -e "$fichier" ] || continue
+  probleme "sauvegarde partielle laissée par un échec (disque plein ?) : $fichier"
+done
+if systemctl is-active --quiet edt-sauvegarde.timer; then
+  echo "sauvegarde quotidienne : minuteur actif"
+  systemctl list-timers edt-sauvegarde.timer --no-pager
+else
+  probleme "minuteur edt-sauvegarde.timer inactif : aucune sauvegarde quotidienne (relancez installer-serveur.sh)"
+fi
+if systemctl is-failed --quiet edt-sauvegarde.service; then
+  probleme "la dernière sauvegarde quotidienne a échoué : sudo journalctl -u edt-sauvegarde -n 30"
+fi
+if [ -L /opt/edt/courant ]; then
+  recentes="$(find /var/lib/edt/sauvegardes -maxdepth 1 -name 'quotidienne-*.db' -mtime -2 -print)"
+  if [ -z "$recentes" ]; then
+    probleme "aucune sauvegarde quotidienne de moins de 2 jours (sudo systemctl start edt-sauvegarde, puis sudo journalctl -u edt-sauvegarde)"
+  fi
+fi
 
 titre "30 dernières lignes du journal du service edt"
 if ! journalctl -u edt -n 30 --no-pager -o short-iso; then
