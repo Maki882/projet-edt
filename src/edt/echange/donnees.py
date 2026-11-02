@@ -46,7 +46,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
-from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte
+from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, minutes_vers_texte
 from edt.domaine.regles import (
     CATALOGUE_TYPES,
     ErreurSaisie,
@@ -82,6 +82,21 @@ FEUILLES_AVEC_PROVENANCE = frozenset(
 """Feuilles dont la table garde la provenance (fichier, ligne) et les colonnes inconnues."""
 
 LONGUEUR_SOURCE = 255
+
+
+ENTIER_SQLITE_MAX = 2**63 - 1
+"""Plus grand entier qu'enregistre SQLite : au-delà, aucune ligne ne peut avoir cet identifiant."""
+
+
+def obtenir_par_id(session: Session, modele: type, identifiant: int) -> Any | None:
+    """La ligne d'identifiant `identifiant`, ou `None` (y compris hors des limites de SQLite).
+
+    `session.get` lèverait `OverflowError` pour un entier énorme venu d'une
+    adresse ou de la ligne de commande : on répond « n'existe pas ».
+    """
+    if not 0 < identifiant <= ENTIER_SQLITE_MAX:
+        return None
+    return session.get(modele, identifiant)
 
 
 class Action(StrEnum):
@@ -287,11 +302,19 @@ class Contexte:
         return element
 
     def salle(self, reference: str, colonne: str) -> m.Salle:
-        """Salle désignée par son code, ou par « code@campus » si le code est ambigu."""
-        code, _, campus = reference.partition("@")
-        candidates = list(self.salles.get(cle_code(code), ()))
-        if campus:
-            candidates = [s for s in candidates if cle_code(s.campus.code) == cle_code(campus)]
+        """Salle désignée par son code, ou par « code@campus » si le code est ambigu.
+
+        Le code exact est cherché d'abord : un code de salle peut lui-même
+        contenir « @ ». Sinon, la référence se coupe au dernier « @ ».
+        """
+        candidates = list(self.salles.get(cle_code(reference), ()))
+        if not candidates and "@" in reference:
+            code, _, campus = reference.rpartition("@")
+            candidates = [
+                s
+                for s in self.salles.get(cle_code(code), ())
+                if cle_code(s.campus.code) == cle_code(campus)
+            ]
         if not candidates:
             raise Rejet(colonne, f"Salle « {reference} » inconnue (feuille salles).")
         if len(candidates) > 1:
@@ -759,6 +782,16 @@ def _verifier_besoin(ligne: LigneTypee) -> None:
         raise Rejet("date_fin", "La fin de la période précède son début.")
     if ligne["debut_impose"] is not None and ligne["debut_impose"] >= MINUTES_PAR_JOUR:
         raise Rejet("debut_impose", "L'heure de début imposée doit être avant minuit.")
+    if (
+        ligne["debut_impose"] is not None
+        and ligne["debut_impose"] + ligne["duree"] > MINUTES_PAR_JOUR
+    ):
+        raise Rejet(
+            "debut_impose",
+            f"Une séance de {duree_vers_texte(ligne['duree'])} commençant à "
+            f"{minutes_vers_texte(ligne['debut_impose'])} dépasserait minuit : avancer l'heure "
+            "de début ou raccourcir la durée.",
+        )
 
 
 def _importer_indisponibilite(ctx: Contexte, ligne: LigneTypee) -> Action:
@@ -1335,6 +1368,20 @@ def _appliquer_ligne(
             "",
             "La base de données a refusé cette ligne (règle d'intégrité non respectée : "
             f"{erreur.orig}). Les autres lignes ne sont pas affectées.",
+            bilan,
+            signalements,
+        )
+        return False
+    except OverflowError:
+        # Les lectures bornent les nombres ; ce filet garde l'import debout si une valeur
+        # hors des limites de SQLite passait quand même.
+        journal.exception("Valeur hors limites : %s (feuille %s)", ligne.position, ligne.feuille)
+        ctx.oublier()
+        _rejeter(
+            ligne,
+            "",
+            "Un nombre de cette ligne dépasse ce que la base peut enregistrer : ligne rejetée, "
+            "les autres lignes ne sont pas affectées.",
             bilan,
             signalements,
         )

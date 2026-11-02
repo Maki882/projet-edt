@@ -35,6 +35,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import zipfile
 import zlib
 from collections.abc import Iterable, Sequence
@@ -44,7 +45,12 @@ from typing import Any
 from edt.domaine.enumerations import Gravite
 from edt.echange.format import Colonne, Feuille, TypeColonne, est_lisez_moi
 from edt.echange.rapport import Apercu, Bilan, Signalement
-from edt.echange.valeurs import cle_code, texte_cellule
+from edt.echange.valeurs import (
+    caracteres_de_controle,
+    cle_code,
+    restituer_controle,
+    texte_cellule,
+)
 from edt.erreurs import ErreurDonneesInvalides
 
 journal = logging.getLogger(__name__)
@@ -180,8 +186,9 @@ def lire_fichier(
         signalements.append(
             _erreur(
                 fichier.nom,
-                "Format Excel 97-2003 (.xls) non pris en charge : enregistrer le fichier au "
-                "format .xlsx ou .csv.",
+                f"« {fichier.nom} » est un fichier Office binaire, illisible ici : un classeur "
+                "protégé par un mot de passe (chiffré), ou l'ancien format Excel 97-2003 (.xls). "
+                "Retirer le mot de passe, puis enregistrer le fichier au format .xlsx ou .csv.",
             )
         )
         return FichierLu(fichier.nom), signalements
@@ -189,16 +196,25 @@ def lire_fichier(
         texte = decoder(fichier.contenu, fichier.nom, signalements)
         return FichierLu(fichier.nom, texte_ical=texte), signalements
     if nature == "xlsx":
-        tableaux = lire_xlsx(fichier, signalements, limites)
-        return FichierLu(fichier.nom, tuple(tableaux)), signalements
-    if nature == "zip":
-        tableaux = lire_zip(fichier, signalements, limites)
-        return FichierLu(fichier.nom, tuple(tableaux)), signalements
-    texte = decoder(fichier.contenu, fichier.nom, signalements)
-    if texte is None:
-        return FichierLu(fichier.nom), signalements
-    tableau = lire_csv_texte(fichier.nom, fichier.nom, texte, signalements, limites)
-    return FichierLu(fichier.nom, (tableau,) if tableau else ()), signalements
+        tableaux = tuple(lire_xlsx(fichier, signalements, limites))
+    elif nature == "zip":
+        tableaux = tuple(lire_zip(fichier, signalements, limites))
+    else:
+        texte = decoder(fichier.contenu, fichier.nom, signalements)
+        if texte is None:
+            return FichierLu(fichier.nom), signalements
+        tableau = lire_csv_texte(fichier.nom, fichier.nom, texte, signalements, limites)
+        tableaux = (tableau,) if tableau else ()
+    if not tableaux and not any(s.gravite is Gravite.ERREUR for s in signalements):
+        # Rien de lisible et aucune erreur pour l'expliquer : le dire, plutôt qu'un succès vide.
+        signalements.append(
+            _erreur(
+                fichier.nom,
+                "Aucune cellule remplie dans ce fichier (en dehors des explications) : rien "
+                "à importer.",
+            )
+        )
+    return FichierLu(fichier.nom, tableaux), signalements
 
 
 # --------------------------------------------------------------------------- #
@@ -313,7 +329,13 @@ def lire_xlsx(
             # Les dimensions déclarées par le fichier ne servent pas : chaque ligne garde sa
             # longueur réelle (un onglet qui se dit large de 16 384 colonnes reste borné).
             onglet.reset_dimensions()
-            lignes = enumerate(onglet.iter_rows(values_only=True), start=1)
+            lignes = (
+                (
+                    numero,
+                    tuple(restituer_controle(c) if isinstance(c, str) else c for c in cellules),
+                )
+                for numero, cellules in enumerate(onglet.iter_rows(values_only=True), start=1)
+            )
             try:
                 tableau = _tableau(fichier.nom, onglet.title, lignes, limites)
             except TableauRefuse as refus:
@@ -323,6 +345,7 @@ def lire_xlsx(
                 continue
             if tableau is not None:
                 tableaux.append(tableau)
+                _signaler_fusions(fichier, onglet, signalements)
     except ERREURS_DECOMPRESSION as erreur:
         journal.warning("Classeur %s : partie illisible (%r)", fichier.nom, erreur)
         signalements.append(
@@ -331,6 +354,35 @@ def lire_xlsx(
     finally:
         classeur.close()
     return tableaux
+
+
+_FUSION = re.compile(rb'<(?:\w+:)?mergeCell\b[^>]*\bref="([^"]+)"')
+
+
+def _signaler_fusions(fichier: FichierEnvoye, onglet: Any, signalements: list[Signalement]) -> None:
+    """Avertit si l'onglet a des cellules fusionnées : seule la première porte la valeur.
+
+    La lecture en continu d'openpyxl ne voit pas les fusions : elles se lisent
+    dans le XML de l'onglet (taille déjà bornée par `_archive_acceptable`).
+    """
+    chemin = getattr(onglet, "_worksheet_path", None)
+    if not chemin:
+        journal.debug("Onglet %s : chemin interne inconnu, fusions non examinées", onglet.title)
+        return
+    with zipfile.ZipFile(io.BytesIO(fichier.contenu)) as archive:
+        fusions = [ref.decode("ascii", "replace") for ref in _FUSION.findall(archive.read(chemin))]
+    if fusions:
+        apercu = ", ".join(fusions[:5]) + (" ..." if len(fusions) > 5 else "")
+        signalements.append(
+            Signalement(
+                Gravite.AVERTISSEMENT,
+                f"L'onglet contient des cellules fusionnées ({apercu}) : seule la première "
+                "cellule d'une fusion porte la valeur, les autres sont lues vides. Défusionner "
+                "et recopier la valeur dans chaque ligne.",
+                fichier.nom,
+                onglet.title,
+            )
+        )
 
 
 def lire_zip(
@@ -345,7 +397,7 @@ def lire_zip(
         for membre in archive.infolist():
             if membre.is_dir() or est_lisez_moi(membre.filename.rsplit("/", 1)[-1]):
                 continue
-            nom_complet = f"{fichier.nom}/{membre.filename}"
+            nom_complet = f"{fichier.nom}/{nom_sur(membre.filename)}"
             try:
                 contenu = archive.read(membre)
             except ERREURS_DECOMPRESSION as erreur:
@@ -362,7 +414,7 @@ def lire_zip(
                 texte = decoder(interne.contenu, nom_complet, signalements)
                 if texte is not None:
                     tableau = lire_csv_texte(
-                        nom_complet, membre.filename, texte, signalements, limites
+                        nom_complet, nom_sur(membre.filename), texte, signalements, limites
                     )
                     if tableau is not None:
                         tableaux.append(tableau)
@@ -418,21 +470,25 @@ def preparer_tableau(
     correspondance: list[Colonne | None] = []
     vues: set[str] = set()
     inconnues: list[str] = []
-    for entete in tableau.entetes:
+    doublons: set[int] = set()
+    for indice, entete in enumerate(tableau.entetes):
         colonne = feuille.reconnaitre_entete(entete)
         if colonne is not None and colonne.nom in vues:
+            # Une seule trace, et la valeur n'est pas rangée parmi les colonnes inconnues.
             signalements.append(
                 Signalement(
                     Gravite.AVERTISSEMENT,
-                    f"Colonne « {entete} » en double : seule la première est lue.",
+                    f"Colonne « {entete} » en double (déjà lue sous « {colonne.nom} ») : seule "
+                    "la première est lue, celle-ci est ignorée.",
                     tableau.fichier,
                     tableau.nom,
                     tableau.ligne_entetes,
                     entete,
                 )
             )
+            doublons.add(indice)
             colonne = None
-        if colonne is None:
+        elif colonne is None:
             inconnues.append(entete)
         else:
             vues.add(colonne.nom)
@@ -476,9 +532,11 @@ def preparer_tableau(
         valeurs: dict[str, Any] = {}
         extra: dict[str, str] = {}
         erreurs: list[tuple[str, str]] = []
-        for colonne, entete, cellule in zip(
-            correspondance, tableau.entetes, brute.cellules, strict=True
+        for indice, (colonne, entete, cellule) in enumerate(
+            zip(correspondance, tableau.entetes, brute.cellules, strict=True)
         ):
+            if indice in doublons:
+                continue
             if colonne is None:
                 texte = texte_cellule(cellule)
                 if texte:
@@ -486,6 +544,18 @@ def preparer_tableau(
                 continue
             if colonne.export_seulement:
                 continue  # information écrite par l'export (phrase d'une règle) : ignorée
+            if isinstance(cellule, str) and (codes := caracteres_de_controle(cellule)):
+                signalements.append(
+                    Signalement(
+                        Gravite.AVERTISSEMENT,
+                        f"Caractère(s) de contrôle invisible(s) {', '.join(codes)} dans la "
+                        "cellule (souvent un copier-coller) : à retirer s'il n'est pas voulu.",
+                        tableau.fichier,
+                        tableau.nom,
+                        brute.numero,
+                        colonne.nom,
+                    )
+                )
             try:
                 valeur = colonne.lire(cellule)
             except ErreurDonneesInvalides as erreur:
@@ -529,6 +599,18 @@ def comparable(colonne: Colonne, valeur: Any) -> Any:
 # --------------------------------------------------------------------------- #
 # Outils
 # --------------------------------------------------------------------------- #
+
+
+def nom_sur(chemin: str) -> str:
+    """Nom d'un membre d'archive sans « .. », lecteur ni racine : « ../../etc/x.csv » -> « etc/x.csv ».
+
+    Le contenu d'une archive n'est jamais écrit sur le disque ; le nom ne sert
+    qu'à reconnaître la feuille et à l'afficher dans le rapport.
+    """
+    morceaux = [
+        m for m in re.split(r"[/\\]", chemin) if m not in ("", ".", "..") and not m.endswith(":")
+    ]
+    return "/".join(morceaux) or "sans_nom"
 
 
 def _archive_acceptable(
