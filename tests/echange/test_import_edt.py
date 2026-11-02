@@ -5,7 +5,8 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import select
+from tests.echange.fabrique import compter, csv_envoye, seul
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -41,11 +42,6 @@ def _besoin(session, matiere: str, type_: str) -> m.Besoin:
         .join(m.TypeSeance)
         .where(m.Matiere.code == matiere, m.TypeSeance.code == type_)
     )
-
-
-def _compter(modele) -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(modele))
 
 
 def test_mode_reference(importer_edt, jeu_minimal):
@@ -152,8 +148,8 @@ def test_mode_a_replacer_cree_seulement_les_besoins(importer_edt, jeu_minimal):
 
     assert rapport.version_id is None
     assert rapport.bilan("besoins").compteurs == {"crees": 2, "mis_a_jour": 1, "inchanges": 1}
-    assert _compter(m.VersionEdt) == 0
-    assert _compter(m.Besoin) == jeu_minimal.nb_besoins + 2
+    assert compter(m.VersionEdt) == 0
+    assert compter(m.Besoin) == jeu_minimal.nb_besoins + 2
 
 
 def test_reimport_dans_un_autre_mode_sans_doublon(importer_edt, jeu_minimal):
@@ -163,8 +159,8 @@ def test_reimport_dans_un_autre_mode_sans_doublon(importer_edt, jeu_minimal):
 
     assert rapport.bilan("besoins").compteurs == {"inchanges": 4}
     assert rapport.bilan("enseignants fictifs").compteurs == {}
-    assert _compter(m.Besoin) == jeu_minimal.nb_besoins + 2
-    assert _compter(m.VersionEdt) == 2
+    assert compter(m.Besoin) == jeu_minimal.nb_besoins + 2
+    assert compter(m.VersionEdt) == 2
 
 
 def test_simulation_d_un_import_d_emploi_du_temps(importer_edt, jeu_minimal):
@@ -178,8 +174,8 @@ def test_simulation_d_un_import_d_emploi_du_temps(importer_edt, jeu_minimal):
         "inchangé",
         "créé",
     ]
-    assert _compter(m.VersionEdt) == 0
-    assert _compter(m.Besoin) == jeu_minimal.nb_besoins
+    assert compter(m.VersionEdt) == 0
+    assert compter(m.Besoin) == jeu_minimal.nb_besoins
 
 
 def test_semaine_type_imposee(importer_edt):
@@ -243,3 +239,37 @@ def test_tableau_plat_illisible_rejete_sans_arreter(importer_edt, importer, jeu_
         (3, "date"),
         (4, "jour"),
     ]
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites de l'import d'emploi du temps (banque de tests)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_reimport_sans_enseignants_signale_le_remplacement_des_enseignants_existants(
+    jeu_minimal, importer
+):
+    """Cas : un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001).
+
+    Risque : le besoin retrouvé était « mis à jour » avec l'enseignant fictif à la
+    place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue.
+    """
+    fichier = csv_envoye(
+        "seances.csv",
+        "date;debut;fin;matiere;type;groupes;salle",
+        "07/09/2026;08:30;10:30;IM.1101;CM;A1;N016",
+        "14/09/2026;08:30;10:30;IM.1101;CM;A1;N016",
+    )
+
+    rapport = importer(fichier, mode=ModeImport.A_REPLACER, semestre_id=jeu_minimal.semestre_id)
+
+    avertissement = seul(rapport.signalements, Gravite.AVERTISSEMENT)
+    assert avertissement.colonne == "enseignants"
+    assert "enseignant(s) ENS001 remplacé(s) par FICTIF-IM.1101-A1" in avertissement.message
+    assert "ne nomme aucun enseignant connu" in avertissement.message
+    (resume,) = rapport.besoins
+    assert resume["etat"].startswith("mis à jour (") and "enseignants" in resume["etat"]
+    with session_base() as session:
+        besoin = _besoin(session, "IM.1101", "CM")
+        assert [e.identifiant for e in besoin.enseignants] == ["FICTIF-IM.1101-A1"]

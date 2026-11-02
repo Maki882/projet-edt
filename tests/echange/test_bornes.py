@@ -10,36 +10,28 @@ import asyncio
 import csv
 import datetime as dt
 import io
+import sqlite3
 import threading
 import time
 import zipfile
 
 import httpx
+import pytest
 from sqlalchemy import select
+from tests.echange.fabrique import archive_zip, classeur, compter, csv_envoye, erreurs, seul
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import Gravite, OrigineVersion
-from edt.echange import ical, lecture
+from edt.echange import ical, lecture, valeurs
 from edt.echange.format import FEUILLES
 from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
 from edt.echange.rapport import ListeSignalements, RapportImport, Signalement, rapport_csv
+from edt.echange.transaction import ouvrir_transaction
 from edt.services import echange as service
-from edt.services.echange import ModeImport
+from edt.services.echange import ModeImport, OptionsImport
 
 HTMX = {"HX-Request": "true"}
-
-
-def _zip(membres: dict[str, bytes]) -> bytes:
-    tampon = io.BytesIO()
-    with zipfile.ZipFile(tampon, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for nom, contenu in membres.items():
-            archive.writestr(nom, contenu)
-    return tampon.getvalue()
-
-
-def _erreurs(signalements) -> list[str]:
-    return [s.message for s in signalements if s.gravite is Gravite.ERREUR]
 
 
 # --------------------------------------------------------------------------- #
@@ -49,7 +41,7 @@ def _erreurs(signalements) -> list[str]:
 
 def test_archive_bombe_refusee_avant_decompression():
     """40 Ko qui feraient 21 Mo de retours à la ligne une fois décompressés."""
-    bombe = _zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
+    bombe = archive_zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
     assert len(bombe) < 100 * 1024
 
     debut = time.perf_counter()
@@ -57,31 +49,31 @@ def test_archive_bombe_refusee_avant_decompression():
 
     assert time.perf_counter() - debut < 2
     assert lu.tableaux == ()
-    (message,) = _erreurs(signalements)
+    (message,) = erreurs(signalements)
     assert "Archive ZIP refusé" in message and "décompressé" in message and "20 Mo" in message
 
 
 def test_archive_de_plus_de_50_fichiers_refusee():
-    archive = _zip({f"salles_{i}.csv": b"code;campus\nN1;NDC\n" for i in range(51)})
+    archive = archive_zip({f"salles_{i}.csv": b"code;campus\nN1;NDC\n" for i in range(51)})
     lu, signalements = lire_fichier(FichierEnvoye("trop.zip", archive))
     assert lu.tableaux == ()
-    assert "51 fichiers" in _erreurs(signalements)[0]
+    assert "51 fichiers" in erreurs(signalements)[0]
 
 
 def test_membre_abime_signale_sans_planter():
-    contenu = _zip(
+    contenu = archive_zip(
         {"campus.csv": b"code;nom\n" + b"NDC;Notre-Dame\n" * 200, "salles.csv": b"code\n"}
     )
     abime = bytearray(contenu)
     position = abime.index(b"campus.csv") + len("campus.csv") + 10  # dans les données compressées
     abime[position] ^= 0xFF
     lu, signalements = lire_fichier(FichierEnvoye("abime.zip", bytes(abime)))
-    assert any("illisible" in m for m in _erreurs(signalements))
+    assert any("illisible" in m for m in erreurs(signalements))
     assert [t.nom for t in lu.tableaux] == ["salles.csv"]  # le membre sain est lu
 
 
 def test_classeur_bombe_refuse_avant_openpyxl():
-    bombe = _zip(
+    bombe = archive_zip(
         {
             "[Content_Types].xml": b"<Types/>",
             "xl/workbook.xml": b"<workbook/>",
@@ -90,7 +82,7 @@ def test_classeur_bombe_refuse_avant_openpyxl():
     )
     lu, signalements = lire_fichier(FichierEnvoye("bombe.xlsx", bombe))
     assert lu.tableaux == ()
-    assert "Classeur Excel refusé" in _erreurs(signalements)[0]
+    assert "Classeur Excel refusé" in erreurs(signalements)[0]
 
 
 def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
@@ -99,11 +91,11 @@ def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
     with zipfile.ZipFile(io.BytesIO(gabarit.contenu)) as archive:
         assert len(archive.infolist()) <= lecture.MAX_MEMBRES_CLASSEUR
     lu, signalements = lire_fichier(FichierEnvoye(gabarit.nom, gabarit.contenu))
-    assert _erreurs(signalements) == [] and len(lu.tableaux) == len(FEUILLES)
+    assert erreurs(signalements) == [] and len(lu.tableaux) == len(FEUILLES)
 
 
 def test_import_web_d_une_archive_bombe(base, client):
-    bombe = _zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
+    bombe = archive_zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
     reponse = client.post(
         "/import/simuler",
         headers=HTMX,
@@ -127,7 +119,7 @@ def test_fichier_de_retours_a_la_ligne_refuse_sans_tout_lire():
     lu, signalements = lire_fichier(FichierEnvoye("annees.csv", texte))
     assert time.perf_counter() - debut < 5
     assert lu.tableaux == ()
-    assert f"plus de {lecture.MAX_LIGNES_LUES} lignes" in _erreurs(signalements)[0]
+    assert f"plus de {lecture.MAX_LIGNES_LUES} lignes" in erreurs(signalements)[0]
 
 
 def test_tableau_trop_long_refuse_avec_un_message_clair():
@@ -136,7 +128,7 @@ def test_tableau_trop_long_refuse_avec_un_message_clair():
         FichierEnvoye("annees.csv", ("libelle;a;b\n" + lignes).encode())
     )
     assert lu.tableaux == ()
-    (message,) = _erreurs(signalements)
+    (message,) = erreurs(signalements)
     assert f"plus de {lecture.MAX_LIGNES_TABLEAU} lignes de données" in message
     assert "Découper" in message
 
@@ -148,14 +140,14 @@ def test_budget_de_lignes_partage_par_l_envoi():
         FichierEnvoye("b.csv", b"code;nom\n" + b"B;b\n" * 3), limites
     )
     assert len(premier.tableaux[0].lignes) == 3
-    assert second.tableaux == () and "au total" in _erreurs(signalements)[0]
+    assert second.tableaux == () and "au total" in erreurs(signalements)[0]
 
 
 def test_trop_de_colonnes_et_cellule_geante():
     large = lire_fichier(FichierEnvoye("x.csv", b"code;nom\n" + b";" * 600 + b"z\n"))
-    assert "colonnes" in _erreurs(large[1])[0]
+    assert "colonnes" in erreurs(large[1])[0]
     geante = lire_fichier(FichierEnvoye("x.csv", b'code;nom\nA;"' + b"x" * 200_000 + b'"\n'))
-    assert "CSV illisible" in _erreurs(geante[1])[0]
+    assert "CSV illisible" in erreurs(geante[1])[0]
 
 
 def test_ical_trop_d_evenements_ou_regle_trop_dense(monkeypatch):
@@ -165,17 +157,17 @@ def test_ical_trop_d_evenements_ou_regle_trop_dense(monkeypatch):
     seances, signalements = ical.lire_ical(
         "a.ics", texte.format("".join(evenement.format(i, "") for i in range(3)))
     )
-    assert seances == [] and "3 événements" in _erreurs(signalements)[0]
+    assert seances == [] and "3 événements" in erreurs(signalements)[0]
 
     dense = texte.format(evenement.format("m", "RRULE:FREQ=MINUTELY\n"))
     seances, signalements = ical.lire_ical(
         "b.ics", dense, (dt.date(2026, 9, 7), dt.date(2027, 1, 29))
     )
-    assert seances == [] and "répétition « MINUTELY »" in _erreurs(signalements)[0]
+    assert seances == [] and "répétition « MINUTELY »" in erreurs(signalements)[0]
 
     sans_fin = texte.format(evenement.format("j", "RRULE:FREQ=DAILY\n"))
     seances, signalements = ical.lire_ical("c.ics", sans_fin)  # ni fin ni période
-    assert seances == [] and "plus de 1000 occurrences" in _erreurs(signalements)[0]
+    assert seances == [] and "plus de 1000 occurrences" in erreurs(signalements)[0]
 
 
 def test_signalements_bornes_et_comptes():
@@ -343,4 +335,187 @@ def test_import_d_emploi_du_temps_limite_aussi_l_ical(jeu_minimal, importer, mon
         semestre_id=jeu_minimal.semestre_id,
         simuler=True,
     )
-    assert rapport.a_des_rejets and "2 événements" in _erreurs(rapport.signalements)[0]
+    assert rapport.a_des_rejets and "2 événements" in erreurs(rapport.signalements)[0]
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites des bornes (banque de tests)
+# --------------------------------------------------------------------------- #
+
+ENORME = 10**20
+"""Au-delà des entiers de SQLite (2**63 - 1) : faisait planter le flush."""
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("simuler", [True, False], ids=["simulation", "application"])
+@pytest.mark.parametrize(
+    ("nom", "entete", "valide", "enorme", "colonne", "modele"),
+    [
+        (
+            "salles.csv",
+            "code;campus;capacite;type",
+            "N900;NDC;30;COURS",
+            f"N901;NDC;{ENORME};COURS",
+            "capacite",
+            m.Salle,
+        ),
+        (
+            "groupes.csv",
+            "annee;code;libelle;nature;effectif",
+            "2026-2027;GF1;Groupe fictif 1;classe;20",
+            f"2026-2027;GF2;Groupe fictif 2;classe;{ENORME}",
+            "effectif",
+            m.Groupe,
+        ),
+        (
+            "besoins.csv",
+            "annee;semestre;matiere;type;groupes;duree;nombre;libelle",
+            "2026-2027;S1;IM.1101;TD;A1-G1;2 h;1;Besoin fictif 1",
+            f"2026-2027;S1;IM.1101;TD;A1-G1;2 h;{ENORME};Besoin fictif 2",
+            "nombre",
+            m.Besoin,
+        ),
+    ],
+    ids=["capacite", "effectif", "nombre"],
+)
+def test_entier_hors_bornes_sqlite_rejette_la_ligne_sans_planter(
+    nom, entete, valide, enorme, colonne, modele, simuler, jeu_minimal, importer
+):
+    """Cas : une capacité, un effectif ou un nombre de séances de 10**20 parmi des lignes valides.
+
+    Risque : OverflowError au flush de SQLite, non capturée : tout l'import échouait
+    (erreur 500 ou code 2) et aucune ligne du fichier n'entrait.
+    """
+    avant = compter(modele)
+
+    rapport = importer(csv_envoye(nom, entete, valide, enorme), simuler=simuler)
+
+    assert rapport.bilan(nom.removesuffix(".csv")).compteurs == {"crees": 1, "rejetes": 1}
+    erreur = seul(rapport.signalements, Gravite.ERREUR)
+    assert (erreur.ligne, erreur.colonne) == (3, colonne)
+    assert "Nombre hors limites" in erreur.message and "1 000 000" in erreur.message
+    assert compter(modele) == avant + (0 if simuler else 1)
+
+
+@pytest.mark.cas_limite
+def test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule(jeu_minimal, importer, monkeypatch):
+    """Cas : un entier au-delà de 2**63 atteint la base (borne de lecture levée pour le test).
+
+    Risque : sans filet, OverflowError au flush fait échouer tout l'import au lieu
+    de la seule ligne fautive ; c'est la défense en profondeur derrière la borne.
+    """
+    monkeypatch.setattr(valeurs, "ENTIER_MAX", 10**30)
+    entetes = ["code", "campus", "capacite", "type"]
+    lignes = [["N900", "NDC", 30, "COURS"], ["N901", "NDC", ENORME, "COURS"]]
+    lignes.append(["N902", "NDC", 40, "COURS"])
+
+    rapport = importer(classeur({"salles": [entetes, *lignes]}))
+
+    assert rapport.bilan("salles").compteurs == {"crees": 2, "rejetes": 1}
+    erreur = seul(rapport.signalements, Gravite.ERREUR)
+    assert erreur.ligne == 3 and "dépasse ce que la base peut enregistrer" in erreur.message
+    assert compter(m.Salle) == jeu_minimal.nb_salles + 2
+
+
+@pytest.mark.cas_limite
+def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
+    """Cas : une autre connexion veut écrire pendant qu'un import a ouvert sa transaction.
+
+    Risque : avec un BEGIN différé, l'import lisait sans verrou puis échouait
+    aussitôt « database is locked » si une autre écriture avait validé entre-temps
+    (SQLite n'attend pas dans ce cas) ; BEGIN IMMEDIATE fait attendre son tour.
+    """
+    with session_base() as session:
+        ouvrir_transaction(session)
+        autre = sqlite3.connect(environnement / "edt.db", timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                autre.execute("BEGIN IMMEDIATE")
+        finally:
+            autre.close()
+
+
+@pytest.mark.cas_limite
+def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
+    """Cas : deux imports appliqués au même moment (deux onglets du navigateur).
+
+    Risque : le second échouait « base occupée » au lieu d'attendre la fin du
+    premier ; ou l'un écrasait l'autre.
+    """
+    depart = threading.Barrier(2)
+    rapports, echecs = {}, []
+
+    def importer_(prefixe: str) -> None:
+        lignes = (f"{prefixe}{i:03d};NDC;20;COURS" for i in range(200))
+        fichier = csv_envoye(f"salles-{prefixe}.csv", "code;campus;capacite;type", *lignes)
+        try:
+            depart.wait(timeout=10)
+            with session_base() as session:
+                rapports[prefixe] = service.appliquer_import(
+                    session, [fichier], OptionsImport(mode=ModeImport.DONNEES)
+                )
+        except Exception as erreur:  # rendue par l'assertion ci-dessous
+            echecs.append(repr(erreur))
+
+    fils = [threading.Thread(target=importer_, args=(p,)) for p in ("A", "B")]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join(timeout=60)
+
+    assert echecs == []
+    assert {p: r.bilan("salles").compteurs for p, r in rapports.items()} == {
+        "A": {"crees": 200},
+        "B": {"crees": 200},
+    }
+    assert compter(m.Salle) == jeu_minimal.nb_salles + 400
+
+
+@pytest.mark.perf
+@pytest.mark.cas_limite
+def test_import_de_dix_mille_lignes_valides_sous_le_seuil(jeu_minimal, importer):
+    """Cas : un fichier de 10 000 enseignants valides, simulé (un point de sauvegarde par ligne).
+
+    Risque : une régression de performance (index perdu, requête par ligne) qui
+    rendrait l'import d'un vrai établissement interminable, sans aucun test pour le voir.
+    """
+    lignes = (f"EF{i:05d};Nomfictif{i};Prénom{i}" for i in range(10_000))
+    fichier = csv_envoye("enseignants.csv", "identifiant;nom;prenom", *lignes)
+
+    debut = time.perf_counter()
+    rapport = importer(fichier, simuler=True)
+    duree = time.perf_counter() - debut
+
+    assert rapport.bilan("enseignants").compteurs == {"crees": 10_000}
+    assert rapport.signalements == ()
+    assert duree < 30, f"{duree:.1f} s"
+
+
+@pytest.mark.cas_limite
+def test_archive_aux_chemins_hostiles_lue_sans_ecriture_sur_disque(
+    base, importer, environnement, monkeypatch
+):
+    """Cas : une archive ZIP aux membres « ../../etc/campus.csv » et « C:\\Windows\\salles.csv ».
+
+    Risque : sûr tant que l'archive est lue en mémoire ; une évolution qui
+    l'extrairait écrirait hors du dossier (zip slip), et le rapport afficherait
+    des chemins trompeurs.
+    """
+    travail = environnement / "a" / "b"
+    travail.mkdir(parents=True)
+    monkeypatch.chdir(travail)
+    contenu = archive_zip(
+        {
+            "../../etc/campus.csv": "code;nom\nZZ;Campus fictif\n",
+            "C:\\Windows\\salles.csv": "code;campus;capacite;type\nZ001;ZZ;20;COURS\n",
+        }
+    )
+
+    rapport = importer(FichierEnvoye("hostile.zip", contenu), simuler=True)
+
+    assert rapport.bilan("campus").compteurs == {"crees": 1}
+    assert rapport.bilan("salles").compteurs == {"crees": 1}
+    assert list(environnement.rglob("*.csv")) == []  # rien d'extrait, nulle part
+    assert not (environnement / "etc").exists()
+    noms = [a.fichier for a in rapport.apercus] + [s.fichier for s in rapport.signalements]
+    assert noms and all(".." not in nom and ":" not in nom for nom in noms), noms
