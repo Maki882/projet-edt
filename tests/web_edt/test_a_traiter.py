@@ -6,7 +6,7 @@ from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.enumerations import Gravite, StatutOccurrence
+from edt.domaine.enumerations import Gravite, OrigineVersion, StatutOccurrence
 from edt.domaine.instantane import id_seance
 from edt.verification.contrat import Anomalie
 
@@ -141,3 +141,40 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
         seance.verrou = not seance.verrou  # une séance change
     client.get("/a-traiter/compteur")
     assert len(appels) == 3
+
+
+def test_option_tous_les_semestres_affiche_tous_les_semestres(version_generee, client):
+    """L'option « Tous les semestres » envoie `semestre_id=` (vide) : jamais « Saisie invalide »."""
+    with session_base() as session:
+        autre = session.scalar(
+            select(m.Semestre).where(m.Semestre.id != version_generee.semestre_id).limit(1)
+        )
+        assert autre is not None, "la base par défaut a deux semestres"
+        session.add(
+            m.VersionEdt(
+                semestre_id=autre.id,
+                numero=1,
+                libelle="Version du second semestre",
+                origine=OrigineVersion.REFERENCE,
+                active=True,
+            )
+        )
+        libelles = {s.id: s.libelle for s in session.scalars(select(m.Semestre)).all()}
+
+    page = client.get("/a-traiter?semestre_id=")
+    assert page.status_code == 200
+    assert '<option value="" selected>Tous les semestres</option>' in page.text
+    for libelle in libelles.values():  # les deux semestres ont une version active
+        assert f"<h2>{libelle}" in page.text
+    seul = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
+    assert f"<h2>{libelles[autre.id]}" not in seul
+
+    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut.
+    for adresse in (
+        "/calculs?semestre_id=",
+        "/versions?semestre_id=",
+        "/emploi-du-temps?semestre_id=",
+    ):
+        reponse = client.get(adresse)
+        assert reponse.status_code == 200, adresse
+        assert "Saisie invalide" not in reponse.text, adresse

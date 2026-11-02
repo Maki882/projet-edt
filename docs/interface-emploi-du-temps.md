@@ -29,6 +29,7 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/regles_personnalisees.py` | règles personnalisées sur ces écrans : tableau de la page Générer, règles appliquées et entorses d'un calcul, déjeuner de la personne affichée, jours permis d'une séance |
+| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base ; paramètre d'adresse vide = non précisé |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -457,6 +458,48 @@ Une base au schéma périmé affiche « Le schéma de la base ne correspond
 plus à l'application », la liste des écarts et la marche à suivre
 (`python -m edt init-db --reset`). La route `/sante` n'a reçu qu'une clé :
 `base.ecarts_schema`.
+
+## Cas limites
+
+Aucune adresse de ces onglets ne répond par une erreur 500 sur un chemin
+normal ; `tests/web_edt/test_cas_limites.py` les essaie.
+
+- **Identifiants hors bornes ou inconnus** (`identifiants.py`) : SQLite range
+  ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`
+  (lien mal copié, `-1`, vingt chiffres) donné à la base lèverait
+  `OverflowError`. Chaque service vérifie l'identifiant reçu avant de
+  l'interroger (`exiger_identifiant`, `obtenir`) : hors bornes, c'est
+  « introuvable » (404), comme un identifiant inconnu. Dans l'adresse de la
+  grille, une cible hors bornes ou inconnue affiche la première classe en le
+  disant ; une séance (`seance=h…`, `o…`) introuvable ouvre la page sans
+  panneau, en le disant.
+- **Paramètre vide** : `?semestre_id=` (option « Tous les semestres »
+  d'« À traiter », lien ou favori) vaut « non précisé » (`EntierFacultatif`) :
+  tous les semestres sur « À traiter », le semestre du jour ailleurs. Même
+  chose pour `version_id`, `groupe_id`, `enseignant_id`, `salle_id`, `jour`
+  de la grille.
+- **Cookie de dernière cible** illisible ou hors bornes : ignoré, journalisé
+  (INFO), remplacé par la cible affichée.
+- **Fragment ouvert sans HTMX** (adresse saisie, lien) : le suivi
+  (`/calculs/{id}/etat`), les vérifications préalables, les formulaires et
+  les panneaux d'une séance mènent à leur page complète (303).
+- **Arrêter un calcul déjà terminé** (deux onglets) : « Ce calcul est déjà
+  terminé : rien à arrêter. » (`calculs.arreter_calcul`), au lieu
+  d'annoncer un arrêt.
+- **Formulaire d'une séance** : un jour où elle ne tient sur aucun créneau
+  avant la fermeture, ou un jour non proposé, garde le jour actuel et le dit
+  (`FormulaireSeance.remarque`) ; l'enregistrement sur ce jour est refusé
+  (422, « n'est pas un début de créneau »).
+- **Données vides** : une version sans séance s'affiche (grille vide), se
+  liste et s'exporte (fichiers d'en-tête seul) ; un semestre sans grille
+  laisse les écrans ouverts, une séance ne pouvant alors que rester à sa
+  place.
+- **Filtres inconnus** (`couche`, `affichage`, `etendu`, `date`, `jour`, deux
+  cibles à la fois, `cible=bureau:3`) : page « Saisie invalide » ou
+  « Données invalides » (422) qui nomme le paramètre.
+- **Hors de ce lot** : l'export (`/export/emploi-du-temps.csv`, `.ics`, lot
+  échange) répond encore 500 pour un `version_id` au-delà de 2^63 ; le test
+  est marqué `xfail` strict en attendant sa correction.
 
 ## Temps de réponse
 

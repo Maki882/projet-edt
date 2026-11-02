@@ -15,6 +15,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from edt.services.emploi_du_temps import anomalies, compteur, presentation, versions
+from edt.services.emploi_du_temps.identifiants import EntierFacultatif
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import rendre
 from edt.web.menu import EntreeMenu
@@ -30,8 +31,8 @@ MENU = [
 
 
 @routeur.get("", name="a_traiter")
-def page(request: Request, session: SessionRequete, semestre_id: int | None = None):
-    """Ce qui reste à traiter dans les emplois du temps actifs."""
+def page(request: Request, session: SessionRequete, semestre_id: EntierFacultatif = None):
+    """Ce qui reste à traiter dans les emplois du temps actifs (`semestre_id` vide : tous)."""
     if semestre_id is not None:
         versions.exiger_semestre(session, semestre_id)
     return rendre(

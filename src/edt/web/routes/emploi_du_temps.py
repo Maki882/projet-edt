@@ -32,6 +32,7 @@ from fastapi.responses import RedirectResponse
 from edt.domaine.enumerations import JOURS
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.emploi_du_temps import modifications, presentation, raccords, versions, vues
+from edt.services.emploi_du_temps.identifiants import EntierFacultatif
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rediriger, rendre
@@ -181,16 +182,16 @@ def _message_resultat(resultat: modifications.ResultatModification) -> str:
 def page(
     request: Request,
     session: SessionRequete,
-    semestre_id: int | None = None,
-    version_id: int | None = None,
-    groupe_id: int | None = None,
-    enseignant_id: int | None = None,
-    salle_id: int | None = None,
+    semestre_id: EntierFacultatif = None,
+    version_id: EntierFacultatif = None,
+    groupe_id: EntierFacultatif = None,
+    enseignant_id: EntierFacultatif = None,
+    salle_id: EntierFacultatif = None,
     cible: str | None = None,
     couche: Couche = Couche.HEBDO,
     affichage: Affichage = Affichage.SEMAINE,
     date: dt.date | None = None,
-    jour: int | None = None,
+    jour: EntierFacultatif = None,
     seance: str | None = None,
     etendu: bool | None = None,
 ):
@@ -369,10 +370,18 @@ def formulaire_seance(
     verrouiller: bool = False,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change le jour ou l'heure (débuts et salles libres)."""
+    """Formulaire recalculé quand on change le jour ou l'heure (débuts et salles libres).
+
+    Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
+    """
     formulaire = modifications.formulaire_seance(
         session, seance_id, jour=jour, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
+    if not est_htmx(request):
+        return RedirectResponse(
+            _retour(retour, f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}"),
+            status_code=303,
+        )
     return rendre(
         request,
         "edt/_formulaire_seance.html",
@@ -478,10 +487,22 @@ def formulaire_occurrence(
     salle_id: str | None = None,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change la date ou l'heure."""
+    """Formulaire recalculé quand on change la date ou l'heure.
+
+    Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
+    """
     formulaire = modifications.formulaire_occurrence(
         session, occurrence_id, date=date, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
+    if not est_htmx(request):
+        return RedirectResponse(
+            _retour(
+                retour,
+                f"{ADRESSE}?version_id={formulaire.version_id}&couche=date"
+                f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
+            ),
+            status_code=303,
+        )
     return rendre(
         request,
         "edt/_formulaire_occurrence.html",
