@@ -51,18 +51,21 @@ from __future__ import annotations
 import ctypes
 import datetime as dt
 import logging
+import math
 import os
 import threading
 import time
 from collections.abc import Collection, Iterable, Mapping
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from edt import solveur
 from edt.config import Configuration, charger_configuration
-from edt.db.modeles import Calcul, SeanceHebdo, Semestre, VersionEdt
+from edt.db.modeles import Calcul, Occurrence, SeanceHebdo, Semestre, VersionEdt
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import (
     CATALOGUE,
@@ -80,15 +83,22 @@ from edt.erreurs import (
     ErreurInfaisable,
     ErreurIntrouvable,
     ErreurNonLivre,
+    ErreurRegleMetier,
     ErreurTempsDepasse,
 )
 from edt.journal import ouvrir_journal_calcul
-from edt.services.instanciation import instancier_version
+from edt.services.instanciation import identifiant_valide, instancier_version
 from edt.services.instantane import charger_instantane
 from edt.services.niveaux import niveaux_du_calcul
 from edt.services.parametres import lire_parametres
 from edt.services.regles import charger_regles_actives
-from edt.solveur.contrat import Moteur, OptionsSolveur, ResultatSolveur, StatutSolveur
+from edt.solveur.contrat import (
+    TEMPS_LIMITE_MAX_S,
+    Moteur,
+    OptionsSolveur,
+    ResultatSolveur,
+    StatutSolveur,
+)
 from edt.solveur.preverification import pre_verifier
 from edt.verification import Anomalie, calculer_indicateurs, verifier
 
@@ -116,6 +126,17 @@ _MESSAGES_PAR_DEFAUT = {
 MESSAGE_INTERROMPU = "Calcul interrompu par l'arrêt de l'application."
 CLE_PROCESSUS = "pid"
 """Clé des statistiques d'un calcul en cours : numéro du processus qui l'exécute."""
+CLE_DEMARRAGE = "demarre_epoch"
+"""Clé des statistiques d'un calcul : instant du lancement en secondes depuis l'époque
+(`time.time()`), insensible aux changements d'heure, à la différence de `demarre_le` (heure
+locale naïve, gardée pour l'affichage). Le temps écoulé et l'échéance d'abandon le lisent
+d'abord, et ne retombent sur `demarre_le` que pour un calcul enregistré sans lui."""
+PID_MAX = 2**31
+"""Au-delà, un numéro de processus enregistré n'est pas lisible : le calcul est tenu pour abandonné."""
+NB_ESSAIS_CLOTURE = 3
+"""Tentatives d'enregistrement de l'état final d'un calcul (base occupée par une longue écriture)."""
+DELAI_ENTRE_ESSAIS_S = 1.0
+"""Attente entre deux tentatives d'enregistrement de l'état final."""
 DELAI_DE_GRACE_S = 600.0
 """Dépassement du temps limite au-delà duquel un calcul « en cours » est tenu pour mort."""
 PAS_ATTENTE_S = 0.5
@@ -125,6 +146,17 @@ NB_RAISONS_DANS_LE_MESSAGE = 3
 
 MESSAGE_ERREUR_INATTENDUE = (
     "Une erreur inattendue a interrompu le calcul. Le détail est dans le journal du calcul."
+)
+MESSAGE_SUIVI_ILLISIBLE = (
+    "Calcul clos : son suivi enregistré était illisible (statistiques ou paramètres corrompus)."
+)
+MESSAGE_DONNEES_MODIFIEES = (
+    "Les données du semestre ont changé pendant le calcul (salle, besoin ou semestre supprimé) : "
+    "l'emploi du temps trouvé ne peut pas être enregistré. Relancer le calcul."
+)
+MESSAGE_SANS_SEANCE = (
+    "Le calcul n'a pas été lancé : ce semestre n'a aucune séance à placer (aucun besoin, ou "
+    "aucun besoin qui donne une séance). Aucune version n'a été créée."
 )
 
 
@@ -215,12 +247,25 @@ def lancer_calcul(
       la version active du semestre) ;
     - `activer` : rendre active la version produite en cas de succès.
 
-    Lève `ErreurCalculEnCours` si un calcul tourne déjà, `ErreurIntrouvable`
-    si le semestre n'existe pas.
+    Lève `ErreurCalculEnCours` si un calcul tourne déjà (dans ce processus ou
+    un autre, même lancé la même seconde), `ErreurRegleMetier` pendant un
+    chargement de jeu de données ou une remise à zéro, `ErreurIntrouvable` si
+    le semestre n'existe pas.
     """
+    # Import local : `edt.services.jeux` importe ce module.
+    from edt.services.jeux import operation_en_cours
+
+    if not identifiant_valide(semestre_id):
+        raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     config = charger_configuration()
     moteur = moteur or solveur.resoudre
     with _verrou:
+        if operation_en_cours():
+            raise ErreurRegleMetier(
+                "Impossible de lancer un calcul : un chargement de jeu de données ou une remise "
+                "à zéro est en cours, les tables sont en train d'être recréées. Attendre sa fin, "
+                "puis réessayer."
+            )
         with session_base(config.db_url) as session:
             if session.get(Semestre, semestre_id) is None:
                 raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
@@ -241,11 +286,24 @@ def lancer_calcul(
                 demarre_le=dt.datetime.now(),
                 parametres=options.vers_dict(),
                 contraintes_desactivees=sorted(options.contraintes_desactivees),
-                statistiques={CLE_PROCESSUS: os.getpid()},
+                statistiques={CLE_PROCESSUS: os.getpid(), CLE_DEMARRAGE: time.time()},
             )
             session.add(calcul)
             session.flush()
             calcul_id = calcul.id
+            # Deux processus (serveur et commande) ont pu passer le contrôle ci-dessus la même
+            # seconde : l'insertion prend le verrou d'écriture de la base, et celui qui écrit en
+            # second voit la ligne du premier. Il se retire (l'erreur annule son insertion).
+            concurrents = session.scalar(
+                select(func.count())
+                .select_from(Calcul)
+                .where(Calcul.etat == EtatCalcul.EN_COURS, Calcul.id != calcul_id)
+            )
+            if concurrents:
+                raise ErreurCalculEnCours(
+                    "Un calcul vient d'être lancé par un autre processus : attendre sa fin ou "
+                    "l'arrêter avant d'en lancer un autre."
+                )
 
         arret = threading.Event()
         fil = threading.Thread(
@@ -284,6 +342,8 @@ def pre_verifier_semestre(
     `niveaux_regles` : niveaux des règles personnalisées retenues (`None` :
     chaque règle active à son niveau). Voir `edt.solveur.preverification`.
     """
+    if not identifiant_valide(semestre_id):
+        raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     if niveaux is not None:
         contraintes_desactivees = frozenset(CATALOGUE) - normaliser_codes(niveaux.keys())
     instantane = charger_instantane(session, semestre_id, version_base_id)
@@ -298,6 +358,8 @@ def pre_verifier_semestre(
 
 def etat_calcul(calcul_id: int) -> SuiviCalcul:
     """État courant du calcul `calcul_id` ; lève `ErreurIntrouvable` s'il n'existe pas."""
+    if not identifiant_valide(calcul_id):
+        raise ErreurIntrouvable(f"Le calcul {calcul_id} n'existe pas.")
     with session_base() as session:
         calcul = session.get(Calcul, calcul_id)
         if calcul is None:
@@ -320,6 +382,8 @@ def calcul_en_cours() -> SuiviCalcul | None:
 
 def dernier_calcul(semestre_id: int | None = None) -> SuiviCalcul | None:
     """Le calcul le plus récent (du semestre donné, ou tous semestres confondus)."""
+    if semestre_id is not None and not identifiant_valide(semestre_id):
+        return None
     with session_base() as session:
         requete = select(Calcul).order_by(Calcul.id.desc()).limit(1)
         if semestre_id is not None:
@@ -337,6 +401,8 @@ def demander_arret(calcul_id: int) -> SuiviCalcul:
     terminé. L'arrêt n'atteint que les calculs lancés par ce processus ; un
     calcul que plus rien n'exécute est clos en erreur.
     """
+    if not identifiant_valide(calcul_id):
+        raise ErreurIntrouvable(f"Le calcul {calcul_id} n'existe pas.")
     with _verrou, session_base() as session:
         calcul = session.get(Calcul, calcul_id)
         if calcul is None:
@@ -433,18 +499,99 @@ def _processus_vivant(pid: int) -> bool:
     return True
 
 
+def _dictionnaire(valeur: object, calcul_id: int, champ: str) -> dict:
+    """Un champ JSON du calcul lu comme dictionnaire ; autre chose est signalé et tenu pour vide.
+
+    Une ligne corrompue (paramètres en texte, statistiques en liste) ne doit
+    jamais faire planter le suivi, l'accueil ni le lancement d'un calcul.
+    """
+    if isinstance(valeur, dict):
+        return valeur
+    if valeur is not None:
+        journal.warning(
+            "Calcul %d : %s illisibles (%s au lieu d'un dictionnaire), tenus pour vides",
+            calcul_id,
+            champ,
+            type(valeur).__name__,
+        )
+    return {}
+
+
+def _textes(valeur: object) -> tuple[str, ...]:
+    """Une liste de textes enregistrée en JSON ; un texte seul compte pour un (jamais lettre à lettre)."""
+    if isinstance(valeur, str):
+        return (valeur,)
+    if isinstance(valeur, (list, tuple)):
+        return tuple(str(element) for element in valeur)
+    return ()
+
+
+def _pid_lisible(pid: object) -> bool:
+    """Vrai pour un numéro de processus qu'on peut interroger."""
+    return isinstance(pid, int) and not isinstance(pid, bool) and 0 < pid < PID_MAX
+
+
+def _temps_limite_lu(calcul: Calcul) -> float:
+    """Temps limite enregistré avec le calcul, fini et borné ; illisible : 0 (signalé)."""
+    parametres = _dictionnaire(calcul.parametres, calcul.id, "paramètres")
+    brut = parametres.get("temps_limite_s")
+    try:
+        limite = float(brut) if brut is not None else 0.0
+    except (TypeError, ValueError):
+        limite = math.nan
+    if not math.isfinite(limite) or limite < 0:
+        journal.warning(
+            "Calcul %d : temps limite enregistré illisible (%r), tenu pour 0 s", calcul.id, brut
+        )
+        return 0.0
+    return min(limite, TEMPS_LIMITE_MAX_S)
+
+
+def _ecoule_s(calcul: Calcul, statistiques: Mapping[str, object]) -> float:
+    """Secondes écoulées depuis le lancement, d'après l'époque (`CLE_DEMARRAGE`) quand elle existe.
+
+    L'époque ne bouge pas au changement d'heure ; `demarre_le`, heure locale
+    naïve, ne sert qu'aux calculs enregistrés avant cette clé.
+    """
+    depart = statistiques.get(CLE_DEMARRAGE)
+    if isinstance(depart, (int, float)) and not isinstance(depart, bool) and math.isfinite(depart):
+        return max(0.0, time.time() - depart)
+    return max(0.0, (dt.datetime.now() - calcul.demarre_le).total_seconds())
+
+
 def _abandonne(calcul: Calcul, vivants: Collection[int]) -> bool:
     """Vrai si plus rien n'exécute ce calcul resté « en cours » (voir l'en-tête du module)."""
     if calcul.id in vivants:
         return False
-    pid = (calcul.statistiques or {}).get(CLE_PROCESSUS)
-    if not isinstance(pid, int) or pid == os.getpid() or not _processus_vivant(pid):
+    statistiques = _dictionnaire(calcul.statistiques, calcul.id, "statistiques")
+    pid = statistiques.get(CLE_PROCESSUS)
+    if not _pid_lisible(pid) or pid == os.getpid() or not _processus_vivant(pid):
         return True
     # Le numéro de processus a pu être réattribué : passé le temps limite et le délai de
     # grâce, le calcul ne peut plus être vivant.
-    limite = float((calcul.parametres or {}).get("temps_limite_s") or 0)
-    echeance = calcul.demarre_le + dt.timedelta(seconds=limite + DELAI_DE_GRACE_S)
-    return dt.datetime.now() > echeance
+    return _ecoule_s(calcul, statistiques) > _temps_limite_lu(calcul) + DELAI_DE_GRACE_S
+
+
+def _complement_version_sans_dates(session: Session, calcul_id: int) -> str:
+    """Phrase à ajouter quand une version du calcul existe sans aucune séance datée.
+
+    Processus tué ou erreur entre l'enregistrement de la version et la fin de
+    l'instanciation : la version est là, active, mais vide de séances datées ;
+    l'utilisateur doit savoir quoi relancer.
+    """
+    version = session.scalar(select(VersionEdt).where(VersionEdt.calcul_id == calcul_id))
+    if version is None:
+        return ""
+    nb_dates = session.scalar(
+        select(func.count()).select_from(Occurrence).where(Occurrence.version_id == version.id)
+    )
+    if nb_dates:
+        return ""
+    return (
+        f" La version n° {version.numero} (identifiant {version.id}) a été enregistrée avant "
+        "l'interruption, sans ses séances datées : relancer l'instanciation "
+        f"(python -m edt instancier --version {version.id})."
+    )
 
 
 def _cloturer_abandonnes(session: Session) -> int:
@@ -452,6 +599,8 @@ def _cloturer_abandonnes(session: Session) -> int:
 
     Le verrou garantit qu'un calcul de ce processus est soit enregistré avec
     son fil, soit pas encore créé : il ne peut pas être pris pour abandonné.
+    La durée enregistrée est le temps couru depuis le lancement ; un suivi
+    illisible (statistiques corrompues) est remplacé par un suivi vide.
     """
     vivants = {calcul_id for calcul_id, actif in _actifs.items() if actif.fil.is_alive()}
     abandonnes = [
@@ -460,10 +609,16 @@ def _cloturer_abandonnes(session: Session) -> int:
         if _abandonne(calcul, vivants)
     ]
     for calcul in abandonnes:
+        lisible = isinstance(calcul.statistiques, dict)
+        statistiques = calcul.statistiques if lisible else {}
+        message = MESSAGE_INTERROMPU if lisible else MESSAGE_SUIVI_ILLISIBLE
         calcul.etat = EtatCalcul.ERREUR
-        calcul.message = MESSAGE_INTERROMPU
+        calcul.message = message + _complement_version_sans_dates(session, calcul.id)
         calcul.termine_le = dt.datetime.now()
-        journal.warning("Calcul %d clôturé : %s", calcul.id, MESSAGE_INTERROMPU)
+        calcul.duree_s = round(_ecoule_s(calcul, statistiques), 3)
+        if not lisible:
+            calcul.statistiques = {}
+        journal.warning("Calcul %d clôturé : %s", calcul.id, calcul.message)
     session.flush()
     return len(abandonnes)
 
@@ -483,15 +638,31 @@ def _executer(
     activer: bool,
     config: Configuration,
 ) -> None:
-    """Corps du fil d'un calcul : ne laisse échapper aucune exception."""
+    """Corps du fil d'un calcul : ne laisse échapper aucune exception.
+
+    Si le journal dédié ne peut pas être ouvert (dossier des journaux
+    inaccessible), le calcul a lieu quand même et le dit : son détail reste
+    dans le journal général (`edt.log`).
+    """
     debut = time.perf_counter()
     etat = EtatCalcul.ERREUR
     message = MESSAGE_ERREUR_INATTENDUE
     statistiques: dict = {}
     chemin_journal: str | None = None
+    alertes: list[str] = []
     try:
-        with ouvrir_journal_calcul(calcul_id, config) as journal_calcul:
-            chemin_journal = str(journal_calcul.chemin)
+        try:
+            journal_calcul = ouvrir_journal_calcul(calcul_id, config)
+        except (ErreurEDT, OSError) as erreur:
+            journal.warning("Journal dédié du calcul %d indisponible : %s", calcul_id, erreur)
+            alertes.append(
+                f"Journal dédié du calcul indisponible ({erreur}) : le détail du calcul est dans "
+                "le journal général (edt.log). Vérifier le dossier des journaux (EDT_LOG_DIR)."
+            )
+            journal_calcul = None
+        with journal_calcul if journal_calcul is not None else nullcontext():
+            if journal_calcul is not None:
+                chemin_journal = str(journal_calcul.chemin)
             try:
                 journal.info(
                     "Début du calcul %d (semestre %d, options %s)",
@@ -502,17 +673,24 @@ def _executer(
                 with session_base(config.db_url) as session:
                     instantane = charger_instantane(session, semestre_id, version_base_id)
                     regles = _regles_du_calcul(session, semestre_id, instantane, options)
-                    session.execute(
-                        update(Calcul)
-                        .where(Calcul.id == calcul_id)
-                        .values(
-                            fichier_journal=chemin_journal,
-                            parametres={**options.vers_dict(), "regles": regles},
-                        )
-                    )
+                    valeurs: dict[str, object] = {
+                        "parametres": {**options.vers_dict(), "regles": regles}
+                    }
+                    if chemin_journal is not None:
+                        valeurs["fichier_journal"] = chemin_journal
+                    session.execute(update(Calcul).where(Calcul.id == calcul_id).values(**valeurs))
                 etat, message, statistiques = _calculer(
                     calcul_id, instantane, options, moteur, arret, activer, config
                 )
+            except IntegrityError as erreur:
+                # Salle, besoin ou semestre supprimé pendant le calcul : la version ne peut
+                # plus être enregistrée (clé étrangère). Cause ordinaire, dite en clair.
+                journal.error(
+                    "Calcul %d : les données ont changé pendant le calcul (%s)",
+                    calcul_id,
+                    erreur.orig,
+                )
+                etat, message = EtatCalcul.ERREUR, MESSAGE_DONNEES_MODIFIEES
             except ErreurEDT as erreur:
                 journal.error("Calcul %d refusé ou en échec : %s", calcul_id, erreur)
                 etat, message = EtatCalcul.ERREUR, str(erreur)
@@ -521,9 +699,19 @@ def _executer(
                 etat, message = EtatCalcul.ERREUR, MESSAGE_ERREUR_INATTENDUE
             journal.info("Fin du calcul %d : %s - %s", calcul_id, etat.value, message)
     except Exception:
-        # Le journal dédié lui-même n'a pas pu être ouvert ou fermé : on le dit dans edt.log.
+        # Le journal dédié n'a pas pu être fermé : on le dit dans edt.log.
         journal.exception("Échec de la journalisation dédiée du calcul %d", calcul_id)
+    except (KeyboardInterrupt, SystemExit) as erreur:
+        # Interruption arrivée dans le fil : l'état final est enregistré quand même, et une
+        # version déjà écrite sans séances datées est nommée (voir `_enregistrer_fin`).
+        journal.exception("Calcul %d interrompu par %s", calcul_id, type(erreur).__name__)
+        etat, message = EtatCalcul.ERREUR, MESSAGE_ERREUR_INATTENDUE
     finally:
+        if alertes:
+            statistiques = {
+                **statistiques,
+                "avertissements": [*_textes(statistiques.get("avertissements")), *alertes],
+            }
         _clore(calcul_id, etat, message, statistiques, time.perf_counter() - debut, config)
         with _verrou:
             _actifs.pop(calcul_id, None)
@@ -574,6 +762,10 @@ def _calculer(
             "avertissements": alertes,
         }
         return EtatCalcul.INFAISABLE, message, statistiques
+    if not instantane.seances:
+        # Rien à placer : une version vide, activée à la place de l'ancienne, viderait
+        # l'emploi du temps affiché sans que personne l'ait voulu.
+        raise ErreurEDT(MESSAGE_SANS_SEANCE)
 
     resultat = moteur(instantane, options, arret)
     statistiques = dict(resultat.statistiques)
@@ -795,34 +987,73 @@ def _clore(
     duree_s: float,
     config: Configuration,
 ) -> None:
-    """Enregistre l'état final du calcul (journalise si même cela échoue)."""
-    try:
-        with session_base(config.db_url) as session:
-            session.execute(
-                update(Calcul)
-                .where(Calcul.id == calcul_id)
-                .values(
-                    etat=etat,
-                    message=message,
-                    statistiques=statistiques,
-                    termine_le=dt.datetime.now(),
-                    duree_s=round(duree_s, 3),
+    """Enregistre l'état final du calcul, en réessayant si la base est occupée.
+
+    Une longue écriture (import, remise à zéro) peut tenir le verrou de la
+    base au-delà de son délai d'attente : l'état final serait perdu et le
+    calcul resterait « en cours ». Si même les nouvelles tentatives échouent,
+    c'est journalisé.
+    """
+    for essai in range(1, NB_ESSAIS_CLOTURE + 1):
+        try:
+            _enregistrer_fin(calcul_id, etat, message, statistiques, duree_s, config)
+            return
+        except Exception as erreur:
+            if essai == NB_ESSAIS_CLOTURE:
+                journal.exception(
+                    "Impossible d'enregistrer la fin du calcul %d (état %s) après %d tentatives",
+                    calcul_id,
+                    etat.value,
+                    essai,
                 )
+                return
+            journal.warning(
+                "Enregistrement de la fin du calcul %d en échec (%s) : nouvelle tentative dans "
+                "%g s",
+                calcul_id,
+                erreur,
+                DELAI_ENTRE_ESSAIS_S,
             )
-    except Exception:
-        journal.exception(
-            "Impossible d'enregistrer la fin du calcul %d (état %s)", calcul_id, etat.value
+            time.sleep(DELAI_ENTRE_ESSAIS_S)
+
+
+def _enregistrer_fin(
+    calcul_id: int,
+    etat: EtatCalcul,
+    message: str,
+    statistiques: dict,
+    duree_s: float,
+    config: Configuration,
+) -> None:
+    """Une tentative d'enregistrement de l'état final (voir `_clore`)."""
+    with session_base(config.db_url) as session:
+        if etat is EtatCalcul.ERREUR:
+            message += _complement_version_sans_dates(session, calcul_id)
+        session.execute(
+            update(Calcul)
+            .where(Calcul.id == calcul_id)
+            .values(
+                etat=etat,
+                message=message,
+                statistiques=statistiques,
+                termine_le=dt.datetime.now(),
+                duree_s=round(duree_s, 3),
+            )
         )
 
 
 def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
+    """Le suivi d'une ligne de calcul ; une ligne corrompue (JSON mal typés) reste lisible."""
     etat = EtatCalcul(calcul.etat)
+    statistiques = _dictionnaire(calcul.statistiques, calcul.id, "statistiques")
+    parametres = _dictionnaire(calcul.parametres, calcul.id, "paramètres")
     if etat is EtatCalcul.EN_COURS:
-        ecoule = (dt.datetime.now() - calcul.demarre_le).total_seconds()
+        ecoule = _ecoule_s(calcul, statistiques)
     else:
         ecoule = calcul.duree_s or 0.0
     version_id = session.scalar(select(VersionEdt.id).where(VersionEdt.calcul_id == calcul.id))
-    desactivees = tuple(calcul.contraintes_desactivees or ())
+    desactivees = _textes(calcul.contraintes_desactivees)
+    regles = parametres.get("regles")
     return SuiviCalcul(
         id=calcul.id,
         semestre_id=calcul.semestre_id,
@@ -833,13 +1064,13 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         message=calcul.message,
         version_id=version_id,
         contraintes_desactivees=desactivees,
-        statistiques=dict(calcul.statistiques or {}),
+        statistiques=dict(statistiques),
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
-        avertissements=tuple((calcul.statistiques or {}).get("avertissements", ())),
-        niveaux=_niveaux_du_calcul(calcul.id, calcul.parametres or {}, desactivees),
-        niveaux_regles=_niveaux_regles_du_calcul(calcul.id, calcul.parametres or {}),
-        regles=tuple((calcul.parametres or {}).get("regles") or ()),
+        avertissements=_textes(statistiques.get("avertissements")),
+        niveaux=_niveaux_du_calcul(calcul.id, parametres, desactivees),
+        niveaux_regles=_niveaux_regles_du_calcul(calcul.id, parametres),
+        regles=tuple(r for r in regles if isinstance(r, dict)) if isinstance(regles, list) else (),
     )
 
 
