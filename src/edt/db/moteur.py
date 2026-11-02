@@ -61,12 +61,13 @@ def identifiant_valide(valeur: object) -> bool:
     )
 
 
-def expliquer_erreur_base(erreur: DatabaseError) -> str:
+def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """Phrase française pour une erreur du pilote de base, avec le remède.
 
     Couvre les pannes d'exploitation : base verrouillée par un autre
     processus, fichier en lecture seule, fichier qui n'est pas une base
-    SQLite, disque plein. Sinon, le message du pilote est repris.
+    SQLite, disque plein. Sinon, le message du pilote est repris. Accepte
+    l'erreur enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
     """
     cause = str(getattr(erreur, "orig", None) or erreur)
     minuscule = cause.lower()

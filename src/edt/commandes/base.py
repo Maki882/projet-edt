@@ -9,7 +9,6 @@ import uuid
 from typing import Annotated
 
 import typer
-from sqlalchemy.exc import DatabaseError
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
@@ -290,16 +289,18 @@ def _controler_ecriture(etat: EtatBase | str) -> tuple[str, str]:
     try:
         brute = obtenir_moteur().raw_connection()
         try:
-            # BEGIN IMMEDIATE prend le verrou d'écriture sans rien écrire ; ROLLBACK le rend.
+            # BEGIN IMMEDIATE prend le verrou d'écriture (attente puis « locked » s'il est tenu) ;
+            # en mode WAL, seule une écriture réelle révèle un fichier en lecture seule :
+            # réécrire la version utilisateur à l'identique écrit l'en-tête, puis ROLLBACK.
             brute.execute("BEGIN IMMEDIATE")
+            version = brute.execute("PRAGMA user_version").fetchone()[0]
+            brute.execute(f"PRAGMA user_version = {int(version)}")
             brute.rollback()
         finally:
             brute.close()
-    except DatabaseError as erreur:
+    except Exception as erreur:  # erreur SQLAlchemy ou du pilote sqlite3 brut
         return ECHEC, f"Écriture dans la base impossible : {expliquer_erreur_base(erreur)}"
-    except Exception as erreur:  # pilote brut : OperationalError de sqlite3 hors SQLAlchemy
-        return ECHEC, f"Écriture dans la base impossible : {erreur}"
-    return OK, "Écriture dans la base possible (verrou d'écriture obtenu puis rendu)"
+    return OK, "Écriture dans la base possible (écriture d'essai annulée)"
 
 
 def _controler_schema(etat: EtatBase | str) -> tuple[str, str]:

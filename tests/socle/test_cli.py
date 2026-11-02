@@ -251,3 +251,65 @@ def test_init_db_reset_non_interactif_ne_pose_pas_de_question(
     resultat = lanceur.invoke(cli.app, ["init-db", "--reset"])
     assert resultat.exit_code == 0, resultat.output
     assert compter(Salle) == 0 and not list(environnement.glob("edt-*-avant-reset.db"))
+
+
+@pytest.mark.cas_limite
+def test_doctor_signale_une_base_en_lecture_seule(lanceur, base, environnement, lecture_seule):
+    """Cas : `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule).
+
+    Risque : doctor disait « Tout est prêt » alors qu'aucune écriture n'était possible ; il
+    doit échouer en nommant la lecture seule.
+    """
+    liberer_moteurs()
+    with lecture_seule(environnement / "edt.db"):
+        resultat = lanceur.invoke(cli.app, ["doctor"])
+    assert resultat.exit_code == 1, resultat.output
+    assert "ECHEC" in resultat.output and "lecture seule" in resultat.output
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "commande",
+    [
+        ["generer", "--semestre", "999"],
+        ["generer", "--semestre", "-1"],
+        ["pre-verifier", "--semestre", "0"],
+        ["instancier", "--version", "999"],
+    ],
+    ids=lambda c: " ".join(c),
+)
+def test_commandes_de_calcul_avec_un_identifiant_inexistant(
+    lanceur, jeu_minimal, commande, compter
+):
+    """Cas : `generer`, `pre-verifier` ou `instancier` reçoivent un identifiant inexistant,
+    nul ou négatif.
+
+    Risque : trace Python (code 2) ou ligne de calcul créée pour un semestre inexistant ; il
+    faut le code 1, « n'existe pas », et aucun calcul enregistré.
+    """
+    resultat = lanceur.invoke(cli.app, commande)
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert "n'existe pas" in resultat.output and "Traceback" not in resultat.output
+    assert compter(Calcul) == 0
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par le lot solveur : src/edt/commandes/generation.py (niveaux_choisis) : "
+    "accepter la casse et les espaces des codes et des niveaux (« pause », « Pause = Facultatif ») "
+    "comme le fait --regle",
+)
+def test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces():
+    """Cas : `generer -d pause --niveau " Pause = Facultatif "` (casse et espaces libres).
+
+    Risque : refus surprenant alors que `--regle r007=Facultatif` tolère casse et espaces ;
+    fragile pour les scripts.
+    """
+    from edt.commandes.generation import niveaux_choisis
+    from edt.domaine.contraintes import CodeContrainte, Niveau
+
+    assert CodeContrainte.PAUSE not in niveaux_choisis(["pause"], None)
+    assert (
+        niveaux_choisis(None, [" Pause = Facultatif "])[CodeContrainte.PAUSE] is Niveau.FACULTATIF
+    )
