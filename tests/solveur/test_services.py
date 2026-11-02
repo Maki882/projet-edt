@@ -21,13 +21,13 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import OperationalError
 
 import edt
 from edt import cli, solveur
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.calendrier import lundi_de
 from edt.domaine.contraintes import niveaux_depuis_desactivees
 from edt.domaine.enumerations import (
@@ -1118,6 +1118,34 @@ def test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates(jeu_minimal):
     suivi = generation.etat_calcul(avec_version)
     assert suivi.version_id is not None and "relancer l'instanciation" in suivi.message
     assert "relancer l'instanciation" not in generation.etat_calcul(sans_version).message
+
+
+@pytest.mark.cas_limite
+def test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne(jeu_minimal, caplog):
+    """Cas : une requête d'écriture tient le verrou d'écriture (transaction immédiate et une
+    écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête
+    consulte `calcul_en_cours()` (import, remise à zéro, paramètres).
+
+    Risque : la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête
+    tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de
+    la reporter et de répondre d'après ce qu'on a lu.
+    """
+    abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
+    with session_base() as requete:
+        transaction_immediate(requete)
+        requete.execute(
+            update(m.Semestre)
+            .where(m.Semestre.id == jeu_minimal.semestre_id)
+            .values(libelle=m.Semestre.libelle)
+        )
+        debut = time.perf_counter()
+        assert generation.calcul_en_cours() is None
+        assert time.perf_counter() - debut < 1, "la clôture a attendu le verrou"
+        assert _journalise(caplog, "reportée", logging.INFO)
+        assert _etat(abandonne) is EtatCalcul.EN_COURS  # clôture reportée, rien d'écrit
+    # Verrou relâché : l'appel suivant clôt le calcul.
+    assert generation.calcul_en_cours() is None
+    assert _etat(abandonne) is EtatCalcul.ERREUR
 
 
 @pytest.mark.cas_limite

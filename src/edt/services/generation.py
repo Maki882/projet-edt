@@ -60,13 +60,18 @@ from contextlib import nullcontext
 from dataclasses import dataclass, field
 
 from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from edt import solveur
 from edt.config import Configuration, charger_configuration
 from edt.db.modeles import Calcul, Occurrence, SeanceHebdo, Semestre, VersionEdt
-from edt.db.moteur import identifiant_valide, session_base, transaction_immediate
+from edt.db.moteur import (
+    DELAI_VERROU_MS,
+    identifiant_valide,
+    session_base,
+    transaction_immediate,
+)
 from edt.domaine.contraintes import (
     CATALOGUE,
     Niveau,
@@ -380,13 +385,21 @@ def etat_calcul(calcul_id: int) -> SuiviCalcul:
 def calcul_en_cours() -> SuiviCalcul | None:
     """Le calcul en cours, s'il y en a un.
 
-    Un calcul abandonné par son processus est d'abord clos : il ne compte pas.
+    Un calcul abandonné par son processus ne compte pas. Il est clos au
+    passage si la base est libre ; sinon la clôture est reportée **sans
+    attendre** : cette fonction est appelée par des requêtes web d'écriture
+    (import, remise à zéro, paramètres) qui tiennent déjà le verrou d'écriture
+    dans le même fil, et l'attendre serait s'attendre soi-même jusqu'au délai.
     """
     with _verrou, session_base() as session:
-        _cloturer_abandonnes(session)
-        calcul = session.scalar(
+        abandonnes = _calculs_abandonnes(session)
+        ignores = {calcul.id for calcul in abandonnes}
+        if abandonnes:
+            _clore_sans_attendre(session, abandonnes)
+        calculs = session.scalars(
             select(Calcul).where(Calcul.etat == EtatCalcul.EN_COURS).order_by(Calcul.id.desc())
-        )
+        ).all()
+        calcul = next((c for c in calculs if c.id not in ignores), None)
         return _suivi(session, calcul) if calcul is not None else None
 
 
@@ -604,20 +617,26 @@ def _complement_version_sans_dates(session: Session, calcul_id: int) -> str:
     )
 
 
-def _cloturer_abandonnes(session: Session) -> int:
-    """Clôt en erreur les calculs « en cours » abandonnés ; à appeler en tenant `_verrou`.
+def _calculs_abandonnes(session: Session) -> list[Calcul]:
+    """Les calculs « en cours » que plus rien n'exécute ; à appeler en tenant `_verrou`.
 
     Le verrou garantit qu'un calcul de ce processus est soit enregistré avec
     son fil, soit pas encore créé : il ne peut pas être pris pour abandonné.
-    La durée enregistrée est le temps couru depuis le lancement ; un suivi
-    illisible (statistiques corrompues) est remplacé par un suivi vide.
     """
     vivants = {calcul_id for calcul_id, actif in _actifs.items() if actif.fil.is_alive()}
-    abandonnes = [
+    return [
         calcul
         for calcul in session.scalars(select(Calcul).where(Calcul.etat == EtatCalcul.EN_COURS))
         if _abandonne(calcul, vivants)
     ]
+
+
+def _clore_abandonnes(session: Session, abandonnes: list[Calcul]) -> None:
+    """Clôt en erreur les calculs abandonnés (écrits dans la session, non validés).
+
+    La durée enregistrée est le temps couru depuis le lancement ; un suivi
+    illisible (statistiques corrompues) est remplacé par un suivi vide.
+    """
     for calcul in abandonnes:
         lisible = isinstance(calcul.statistiques, dict)
         statistiques = calcul.statistiques if lisible else {}
@@ -628,9 +647,51 @@ def _cloturer_abandonnes(session: Session) -> int:
         calcul.duree_s = round(_ecoule_s(calcul, statistiques), 3)
         if not lisible:
             calcul.statistiques = {}
-        journal.warning("Calcul %d clôturé : %s", calcul.id, calcul.message)
     session.flush()
+    for calcul in abandonnes:
+        journal.warning("Calcul %d clôturé : %s", calcul.id, calcul.message)
+
+
+def _cloturer_abandonnes(session: Session) -> int:
+    """Clôt en erreur les calculs « en cours » abandonnés ; à appeler en tenant `_verrou`.
+
+    Attend le verrou d'écriture s'il le faut (délai de verrou du moteur) :
+    pour le lancement, l'arrêt et le démarrage de l'application, qui ne
+    tiennent pas déjà ce verrou. Renvoie le nombre de calculs clos.
+    """
+    abandonnes = _calculs_abandonnes(session)
+    if abandonnes:
+        _clore_abandonnes(session, abandonnes)
     return len(abandonnes)
+
+
+def _clore_sans_attendre(session: Session, abandonnes: list[Calcul]) -> bool:
+    """Tente la clôture des calculs abandonnés sans attendre le verrou d'écriture.
+
+    Vrai si elle est faite. Appelée depuis une requête qui tient peut-être
+    déjà le verrou dans le même fil : le délai de verrou de la connexion est
+    nul le temps de l'essai (puis rétabli) ; base occupée, l'essai est annulé
+    et la clôture reportée au prochain appel ou au démarrage, dit au journal.
+    """
+    brute = session.connection().connection.dbapi_connection
+    brute.execute("PRAGMA busy_timeout=0")
+    reportee = False
+    try:
+        _clore_abandonnes(session, abandonnes)
+    except OperationalError as erreur:
+        if "locked" not in str(getattr(erreur, "orig", erreur)).lower():
+            raise
+        reportee = True
+    finally:
+        brute.execute(f"PRAGMA busy_timeout={DELAI_VERROU_MS}")
+    if reportee:
+        session.rollback()
+        journal.info(
+            "Clôture de %d calcul(s) abandonné(s) reportée : un autre écrivain tient la base ; "
+            "elle sera refaite au prochain appel ou au démarrage de l'application",
+            len(abandonnes),
+        )
+    return not reportee
 
 
 # --------------------------------------------------------------------------- #

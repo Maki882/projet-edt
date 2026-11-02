@@ -1017,6 +1017,14 @@ Mécanisme retenu (`edt.services.generation`) :
 - un calcul **vivant d'un autre processus n'est jamais clos** : une commande
   `generer` lancée sur le serveur pendant que le service calcule est refusée
   (« Un calcul est déjà en cours ») et ne touche pas au calcul du service ;
+- `calcul_en_cours()` est appelée par des requêtes web d'écriture (import,
+  remise à zéro, paramètres) qui tiennent déjà le verrou d'écriture dans le
+  même fil : sa clôture des calculs abandonnés est tentée **sans attendre**
+  (délai de verrou nul sur sa connexion le temps de l'essai) ; base occupée,
+  elle est annulée, reportée au prochain appel ou au démarrage (journal,
+  niveau info), et la réponse ignore quand même le calcul abandonné. Le
+  lancement, l'arrêt et le démarrage, qui ne tiennent pas ce verrou, attendent
+  normalement ;
 - sur le serveur, la cause la plus fréquente d'un calcul abandonné est la
   **limite de mémoire du service** (3 Go, `MemoryMax`) : le noyau tue le
   processus au milieu d'un gros calcul. Le message de clôture le dit et
@@ -1644,9 +1652,9 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   (1,5 s dans la même mesure). Le lancement, l'enregistrement de la version et
   l'écriture de l'état final ouvrent leur transaction par
   `edt.db.moteur.transaction_immediate` (la garde du socle, qui refuse d'être
-  appelée après une première requête) ; les autres écritures du service
-  (clôture d'un calcul abandonné depuis le suivi) peuvent encore rencontrer
-  « base occupée » pendant une écriture concurrente.
+  appelée après une première requête) ; la clôture d'un calcul abandonné
+  depuis `calcul_en_cours()` est tentée sans attente et reportée si la base
+  est occupée (voir « Calcul abandonné par son processus »).
 - **Heure locale des calculs.** `demarre_le` et `termine_le` restent des
   heures locales naïves (affichage) ; seuls le temps écoulé et l'échéance
   d'abandon lisent l'époque. Un calcul enregistré avant la clé
