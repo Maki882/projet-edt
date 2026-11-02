@@ -114,21 +114,49 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
 - **En-têtes** : reconnus par leur nom ou leur libellé, sans casse ni
   accents (« Capacité » vaut `capacite`), dans n'importe quel ordre.
 - **Dates** : `05/10/2026`, `5/10/2026`, `05-10-2026`, ISO `2026-10-05`, ou
-  une date de classeur. **Heures** : `8h30`, `8 h 30`, `08:30`, `18 h`.
-  **Durées** : `2 h`, `1 h 30`, `90 min`, `01:30` (un nombre seul est refusé :
-  l'unité serait devinée). **Oui/non** : oui/non, vrai/faux, 1/0. **Jours** :
-  lundi ... dimanche ou leurs trois premières lettres.
+  une date de classeur. **Heures** : `8h30`, `8 h 30`, `08:30`, `18 h`, ou une
+  heure entière seule (`8`). **Durées** : `2 h`, `1 h 30`, `90 min`, `01:30`
+  (un nombre seul est refusé : l'unité serait devinée). **Oui/non** :
+  oui/non, vrai/faux, 1/0. **Jours** : lundi ... dimanche ou leurs trois
+  premières lettres.
+- **Pièges du tableur**, refusés avec leur explication, jamais convertis :
+  une date gardée en nombre de série (`46300`) ou une heure en fraction de
+  journée (`0,354166`) : mettre la colonne au format Date ou Heure ; une
+  date ou une heure dans une colonne de codes ou de listes (le tableur a
+  changé « 1-2 » en 2 janvier) : mettre la colonne au format Texte.
 - **Codes** : espaces de début et de fin retirés, espaces multiples
   réduits ; deux codes sont comparés sans tenir compte de la casse.
+- **Bornes des valeurs** (la ligne est rejetée, avec la borne) : un entier
+  vaut au plus 1 000 000 en valeur absolue ; un texte ou un code ne dépasse
+  pas la longueur de sa colonne en base (indiquée dans les tableaux des
+  feuilles, « 32 caractères au plus ») ; une durée a un maximum quand
+  au-delà elle n'a pas de sens (trajet 12 h, séance 24 h, maximum d'un
+  enseignant 24 h par jour et 168 h par semaine) ; un début imposé plus la
+  durée ne dépasse pas minuit.
+- **Caractères de contrôle** invisibles (U+0001..., souvent un
+  copier-coller) : gardés, avec un avertissement qui les nomme. L'export
+  XLSX les écrit `_x0001_` (la notation d'Excel), et la lecture les
+  restitue : l'aller-retour est exact.
 - **Listes** (groupes, enseignants, types de salle, équipements) : dans une
   cellule, séparées par `;` ou `,`.
 - **Listes configurables** (types de salle, équipements, types de séance)
   : référencées par leur code ; les codes valides sont listés dans l'onglet
   « Lisez-moi ».
 - **Salle** : désignée par son code, ou par `code@campus` si le même code
-  existe sur plusieurs campus.
+  existe sur plusieurs campus. Le code exact est cherché d'abord (un code
+  peut contenir « @ ») ; sinon la référence se coupe au dernier « @ ».
 - Une ligne entièrement vide est sautée. Une valeur sans en-tête est gardée
-  sous le nom « colonne N » (colonnes non reconnues).
+  sous le nom « colonne N » (colonnes non reconnues). Une colonne en double
+  (« capacite » et « Capacité ») n'est lue qu'une fois : un avertissement le
+  dit, et la seconde n'est pas gardée.
+- **Cellules fusionnées** d'un classeur : seule la première porte la
+  valeur ; un avertissement nomme les plages (« A2:A3 ») pour expliquer les
+  valeurs manquantes des lignes suivantes.
+- **Fichier sans aucune cellule remplie** (BOM seul, « ;;; », classeur
+  réduit au « Lisez-moi ») : erreur « rien à importer ». Un fichier qui n'a
+  que des en-têtes passe : sa feuille dit « rien à traiter ». Un **classeur
+  protégé par mot de passe** (conteneur Office chiffré) est nommé comme
+  tel : retirer le mot de passe.
 - **Aucune valeur n'est corrigée** : soit elle se lit sans ambiguïté, soit
   la ligne est rejetée avec un message.
 
@@ -143,6 +171,12 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
   annulé à la fin ; le bilan affiché (« 12 créé(s), 30 mis à jour, 2
   inchangé(s), 3 rejeté(s) » par feuille) est donc celui que donnera
   l'application, et rien n'est écrit.
+- **Imports simultanés** : un import réserve la base en écriture dès son
+  début (`BEGIN IMMEDIATE`) ; un second import, ou une autre écriture, attend
+  qu'il finisse (10 s au plus, puis « base occupée »). Sans cela, le second
+  échouait aussitôt dès que l'autre avait écrit entre-temps.
+- Une valeur que la base ne sait pas enregistrer malgré les bornes de
+  lecture (entier au-delà de 2^63) rejette sa ligne seule, avec un message.
 - **Ordre de traitement** : celui des feuilles ci-dessous (une salle après
   son campus, un besoin après ses groupes...), quel que soit l'ordre des
   fichiers. Une référence inconnue (salle d'un campus absent) rejette la
@@ -195,7 +229,8 @@ qui dit quoi faire ; il n'est jamais tronqué en silence.
 | Classeur XLSX (c'est aussi une archive) | 300 parties, 20 Mo une fois décompressé | `lecture.MAX_MEMBRES_CLASSEUR`, `TAILLE_MAX_DECOMPRESSEE` |
 | Tableau (un CSV ou un onglet) | 50 000 lignes de données, 100 000 lignes lues (vides comprises), 500 colonnes | `lecture.MAX_LIGNES_TABLEAU`, `MAX_LIGNES_LUES`, `MAX_COLONNES` |
 | Envoi (tous fichiers et onglets) | 100 000 lignes de données ou séances iCal | `lecture.MAX_LIGNES_ENVOI` |
-| Fichier iCal | 50 000 événements ; 1 000 occurrences par règle de récurrence | `ical.MAX_EVENEMENTS`, `MAX_OCCURRENCES` |
+| Fichier iCal | 50 000 événements ; 3 s de calcul pour toutes ses récurrences | `ical.MAX_EVENEMENTS`, `DELAI_RECURRENCES` |
+| Règle de récurrence (refusée seule) | 1 000 occurrences sur la période, 100 000 pas de calcul depuis son début | `ical.MAX_OCCURRENCES`, `MAX_ITERATIONS` |
 | Emploi du temps importé | 200 000 séances une fois les lignes hebdomadaires développées | `reconstitution.MAX_SEANCES_DEVELOPPEES` |
 | Rapport | 20 000 signalements détaillés | `rapport.MAX_SIGNALEMENTS` |
 | Page de résultat | 200 signalements, 500 besoins, 20 aperçus de 40 colonnes | `web.routes.echange.LIMITE_*` |
@@ -203,6 +238,15 @@ qui dit quoi faire ; il n'est jamais tronqué en silence.
 Les tailles décompressées sont celles que déclare l'archive, vérifiées avant
 toute décompression : à la lecture, un membre qui dépasse sa taille déclarée
 lève une erreur au lieu de déborder. Un membre abîmé ou chiffré est signalé.
+Une archive n'est jamais extraite sur le disque ; le nom d'un membre est
+affiché sans « .. », racine ni lecteur (`lecture.nom_sur`).
+
+S'y ajoutent les bornes des valeurs (section « Règles de lecture »), qui
+rejettent la seule ligne fautive (`valeurs.ENTIER_MAX`, `format.LONGUEURS`,
+`format.MAXIMA`). Dans une adresse d'export, un identifiant qui ne peut
+désigner aucun élément (négatif, nul, plus grand que les entiers de la
+base) répond « n'existe pas » (404), un texte non numérique « nombre
+attendu » (422) ; jamais une erreur inattendue.
 Un établissement réel reste loin de ces bornes : le classeur exporté du jeu
 minimal fait 0,2 Mo décompressé, et un emploi du temps de 800 séances par
 semaine sur 30 semaines compte 24 000 lignes.
@@ -571,6 +615,11 @@ retrouvés par leur identifiant métier, sans doublon.
 - Lignes **strictement identiques** : fusionnées.
 - Une occurrence issue d'une **règle de récurrence** (iCal) qui tombe un
   jour fermé du calendrier (férié, vacances) est retirée.
+- **Réimport sur un besoin existant** : ce qui change est nommé dans le
+  résumé des besoins (« mis à jour (volume, dates, enseignants) »). Si des
+  enseignants réels du besoin sont remplacés, par exemple par l'enseignant
+  fictif parce que le fichier ne nomme pas d'enseignant, un avertissement
+  les cite : l'affectation saisie à la main ne disparaît pas en silence.
 - Une séance qui ne respecte pas la grille ou les règles n'est **ni rejetée
   ni corrigée** : elle entre telle quelle et le vérificateur la signalera.
 - Une séance hors des dates du semestre choisi est mise de côté.
@@ -619,8 +668,24 @@ semaine type, créé / mis à jour / inchangé) avant toute écriture.
   depuis `LOCATION`, libellé depuis `SUMMARY`.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
   jours n'est pas une séance : il est signalé et non importé.
-- Une règle de récurrence qui donnerait plus de 1 000 occurrences (par
-  exemple toutes les minutes) n'est pas un cours : elle est refusée.
+- **Fuseau inconnu** (`TZID` qui n'est ni un fuseau connu ni décrit par un
+  `VTIMEZONE` du fichier) : l'heure est prise comme heure de Paris, et un
+  avertissement par fuseau le dit (à vérifier).
+- Une règle de récurrence qui donnerait plus de 1 000 occurrences sur le
+  semestre n'est pas un cours : elle est refusée. Une série ancienne
+  (hebdomadaire depuis 1800, quotidienne depuis 1998) est lue normalement :
+  seules ses occurrences du semestre comptent.
+- Une règle qui n'a pas la forme d'une règle de cours est refusée **avant
+  tout calcul** : répétition à l'heure, à la minute ou à la seconde ;
+  intervalle nul ou négatif ; valeur impossible (mois 13, 31 février,
+  9e lundi) ; `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO` ou `BYSETPOS` dans une
+  répétition quotidienne ou hebdomadaire. Raison : `dateutil` cherche
+  l'occurrence suivante jusqu'à l'an 9999 sans rendre la main ; une telle
+  règle l'occupait de 2 à 20 s, et un intervalle nul ne s'arrêtait jamais,
+  base réservée.
+- Un événement dont les dates ne se calculent pas (durée immense, date
+  au-delà de l'an 9999, `RECURRENCE-ID` illisible) est écarté avec une
+  erreur ; le reste du fichier est lu.
 
 ## Exports
 
@@ -641,6 +706,9 @@ semaine type, créé / mis à jour / inchangé) avant toute écriture.
     `statut`, `libelle`) : il se réimporte comme emploi du temps existant.
   - L'iCal déclare le fuseau `Europe/Paris` (VTIMEZONE), porte un lieu, une
     description lisible et les propriétés `X-EDT-*` ; il se réimporte aussi.
+  - Si les dates du semestre ont changé depuis l'enregistrement de la
+    version (fin avancée), l'iCal hebdomadaire ignore les semaines sorties
+    du semestre et le journal le dit ; le reste s'exporte.
 
 ## Écrire un adaptateur pour un autre logiciel
 
@@ -664,6 +732,10 @@ intermédiaire ; il ne touche ni à la base ni à la reconstitution.
    fichier ou en-têtes) et appeler le lecteur à la place du tableau plat.
 3. Ajouter un petit fichier d'exemple **fictif** dans `tests/echange/fichiers/`
    et un test par particularité du format (encodage, fuseaux, statuts).
+   Un test de cas limite (fichier abîmé ou hostile) porte le marqueur
+   `cas_limite` et commence par une docstring « Cas : ... Risque : ... » ;
+   ses fichiers se construisent en mémoire avec `tests/echange/fabrique.py`
+   (CSV, classeur, archive, iCal).
 
 Le lecteur iCal (`edt.echange.ical`) est le premier adaptateur et sert de
 modèle.
@@ -682,8 +754,17 @@ modèle.
   sur les mêmes fichiers), et le journal garde le bilan.
 - Les bornes (section « Bornes ») protègent la mémoire et le processeur,
   pas le débit : rien ne limite le nombre d'imports qu'un visiteur lance à
-  la suite. Un import de 50 000 lignes valides prend une vingtaine de
-  secondes et occupe la base en écriture pendant ce temps.
+  la suite. Un import compte de l'ordre de 2 ms par ligne valide (10 000
+  enseignants simulés : 20 s environ, test `perf`) et réserve la base en
+  écriture pendant tout ce temps : une saisie lancée en même temps attend
+  10 s au plus, puis reçoit « base occupée ». Lire un fichier iCal fait
+  partie de ce temps.
+- Le tableur change un code numérique (« 0101 ») en nombre (101) sans que
+  le fichier en garde trace : le zéro de tête est perdu. Mettre la colonne
+  au format Texte avant la saisie.
+- Un texte qui contient littéralement `_x0001_` (de `_x0000_` à `_x001F_`)
+  est relu, depuis un classeur, comme le caractère de contrôle qu'il note :
+  c'est la convention d'Excel.
 - Une année créée par import ne reçoit ni semestre ni jour férié
   automatiquement : les décrire dans les feuilles `semestres` et
   `jours_fermes` (l'export les contient).
@@ -693,6 +774,7 @@ modèle.
 - La couche `date` n'exporte que les occurrences enregistrées : une version
   générée n'en a pas tant que le lot calendrier ne les instancie pas
   (utiliser la couche `hebdo`).
-- Les fichiers `.xls` (Excel 97-2003) ne sont pas lus : les enregistrer en
-  `.xlsx` ou `.csv`. Pas d'assistant de correspondance de colonnes : le
-  format est fixe et décrit dans le gabarit.
+- Les fichiers `.xls` (Excel 97-2003) et les classeurs protégés par mot de
+  passe ne sont pas lus : retirer le mot de passe, enregistrer en `.xlsx` ou
+  `.csv`. Pas d'assistant de correspondance de colonnes : le format est fixe
+  et décrit dans le gabarit.
