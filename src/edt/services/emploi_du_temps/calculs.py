@@ -53,6 +53,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.db.moteur import transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     CodeContrainte,
@@ -774,6 +775,9 @@ def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Vale
             "pause déjeuner."
         )
     with Session(session.get_bind()) as transaction, transaction.begin():
+        # Lit puis écrit : verrou pris d'emblée, pour attendre un import en cours au lieu
+        # d'échouer « database is locked » (voir edt.web.dependances).
+        transaction_immediate(transaction)
         ecrire_parametres(transaction, changements)
     journal.info(
         "Pause déjeuner réglée depuis l'écran « Générer » (%s)",
