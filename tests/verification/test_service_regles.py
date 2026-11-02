@@ -222,12 +222,6 @@ def test_regle_supprimee_ou_desactivee_apres_le_calcul_ignoree_sans_erreur(
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot vérificateur (niveaux) : src/edt/services/niveaux.py, "
-    "niveaux_regles_du_calcul ne journalise pas les règles copiées par le calcul et "
-    "introuvables parmi les règles actives",
-)
 def test_regles_du_calcul_introuvables_nommees_dans_le_journal(
     version_tp_le_samedi, session, caplog
 ):
@@ -244,4 +238,5 @@ def test_regles_du_calcul_introuvables_nommees_dans_le_journal(
         for r in caplog.records
         if r.levelno >= logging.INFO and "introuvable" in r.getMessage()
     ]
-    assert any("999" in message for message in signalees)
+    # Seule la règle n° 999 a disparu (R001 est toujours active).
+    assert len(signalees) == 1 and signalees[0].endswith(" : 999")

@@ -555,7 +555,10 @@ type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
 - règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
 - règle absente de la copie : à son niveau si elle a été créée ou modifiée
   (activation comprise) après le début du calcul, sinon ignorée (elle
-  existait et n'a pas été appliquée).
+  existait et n'a pas été appliquée) ;
+- règle copiée mais absente des règles actives (supprimée ou désactivée
+  depuis) : ignorée, et ses identifiants sont journalisés (INFO), pour qu'une
+  entorse d'hier qui n'est plus signalée s'explique.
 
 Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
 
@@ -613,6 +616,9 @@ Cas limites, pour les trois fonctions :
 - **salle inconnue proposée** à `verifier_modification` : `ErreurIntrouvable`
   (une salle disparue d'une version enregistrée vaut, elle, « salle à
   définir »).
+- **identifiant hors des bornes de la base** (version ou semestre nul,
+  négatif ou au-delà de 2**63 - 1) : `ErreurIntrouvable` « … n'existe pas »
+  (garde `identifiant_possible` des référentiels), jamais `OverflowError`.
 
 - `verifier_version` : semaine type de la version et ses indicateurs.
 - `verifier_occurrences_version` : séances datées de la version. Avec une
