@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import threading
 import time
 
 import pytest
@@ -19,9 +20,9 @@ from edt.echange.format import FEUILLES
 from edt.echange.lecture import LigneTypee
 from edt.echange.transaction import simulation_possible
 from edt.echange.valeurs import cle_code
-from edt.erreurs import ErreurCalculEnCours, ErreurRegleMetier
+from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import echange as service
-from edt.services.echange import FichierEnvoye
+from edt.services.echange import FichierEnvoye, OptionsImport
 from edt.services.generation import CLE_PROCESSUS
 
 
@@ -558,3 +559,43 @@ def test_ical_en_mode_donnees_signale_le_mauvais_mode(jeu_minimal, importer, fic
     assert rapport.a_des_rejets and rapport.bilan("séances").compteurs == {}
     assert rapport.bilan("campus").compteurs == {"crees": 1}  # le reste de l'envoi est lu
     assert messages(rapport.signalements, Gravite.AVERTISSEMENT) == []
+
+
+@pytest.mark.cas_limite
+def test_import_en_cours_signale_pendant_tout_l_import(base, monkeypatch):
+    """Cas : un calcul est demandé depuis un autre onglet pendant qu'un import lit ses fichiers.
+
+    Risque : sans marqueur consultable, le lancement d'un calcul ne pouvait pas
+    savoir qu'un import tournait (calcul sur des données en train de changer),
+    alors que l'import, lui, refuse un calcul en cours.
+    """
+    commence, liberer = threading.Event(), threading.Event()
+    fins = []
+
+    def lecture_bloquee(fichier, limites):
+        commence.set()
+        assert liberer.wait(10)
+        raise ErreurDonneesInvalides("fin de la lecture simulée")
+
+    def importer_():
+        try:
+            with session_base() as session:
+                service.appliquer_import(
+                    session, [FichierEnvoye("donnees.xlsx", b"x" * 100)], OptionsImport()
+                )
+        except ErreurDonneesInvalides as erreur:  # vérifiée ci-dessous
+            fins.append(erreur.message)
+
+    monkeypatch.setattr(service, "lire_fichier", lecture_bloquee)
+    fil = threading.Thread(target=importer_)
+    assert not service.import_en_cours()
+    fil.start()
+    try:
+        assert commence.wait(10), "l'import simulé n'a pas commencé"
+        assert service.import_en_cours()
+    finally:
+        liberer.set()
+        fil.join(10)
+
+    assert fins == ["fin de la lecture simulée"]
+    assert not service.import_en_cours()  # remis à zéro, même après une erreur
