@@ -57,7 +57,7 @@ from edt.db.initialisation import (
     initialiser_base,
     tables_manquantes,
 )
-from edt.db.moteur import chemin_base, obtenir_moteur, session_base
+from edt.db.moteur import chemin_base, obtenir_moteur, session_base, transaction_immediate
 from edt.erreurs import ErreurCalculEnCours, ErreurEDT, ErreurRegleMetier
 from edt.services.generation import calcul_en_cours
 from edt.synthese.configuration import CONFIGURATIONS, ConfigurationJeu, configuration_nommee
@@ -186,6 +186,11 @@ def charger_jeu_fictif(
     sinon) ; une taille inconnue lève `ErreurDonneesInvalides`. Refusé
     pendant un calcul et pendant un autre chargement ou une remise à zéro
     (`ErreurChargementEnCours`). Ne valide pas la transaction.
+
+    Écrivain long : la transaction de `session` s'ouvre en `BEGIN IMMEDIATE`
+    (`transaction_immediate`), le contrôle « base vide » se fait donc sous le
+    verrou d'écriture ; `session` ne doit pas encore avoir exécuté de requête
+    (`ErreurConfiguration` sinon).
     """
     with _seul_a_la_fois("charger un jeu fictif"):
         return _charger(session, taille, graine, annee_debut, enregistrer_reference)
@@ -198,6 +203,9 @@ def _charger(
     annee_debut: int | None,
     enregistrer_reference: bool,
 ) -> RapportJeu:
+    # Verrou d'écriture pris d'emblée : un second chargement (autre processus) attend son tour
+    # puis trouve la base garnie, au lieu de lire puis d'échouer « database is locked ».
+    transaction_immediate(session)
     moteur = session.get_bind()
     exiger_schema_a_jour(moteur)  # schéma périmé : le remède est « --reset », pas « init-db »
     if tables_manquantes(moteur):

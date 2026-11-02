@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import os
+import threading
 import time
 
 import pytest
@@ -12,7 +13,7 @@ import pytest
 from edt.db import modeles as m
 from edt.db.initialisation import ErreurSchemaPerime, base_initialisee
 from edt.db.moteur import obtenir_moteur, session_base
-from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
+from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.jeux import (
     charger_jeu_fictif,
@@ -126,3 +127,105 @@ def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
     assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
     assert compter(m.Besoin) == jeu_minimal.nb_besoins
     assert not operation_en_cours()
+
+
+@pytest.mark.cas_limite
+def test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit(
+    base, compter, verrou_ecriture_bref
+):
+    """Cas : un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou
+    d'écriture quelques dixièmes de seconde.
+
+    Risque : avec un BEGIN différé, le chargement lisait puis échouait aussitôt « database is
+    locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ;
+    ouvert en IMMEDIATE, il attend son tour et réussit.
+    """
+    verrou_ecriture_bref(0.4)
+    debut = time.perf_counter()
+    rapport = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+    duree = time.perf_counter() - debut
+
+    assert rapport.nb_besoins > 0 and compter(m.Salle) > 0
+    assert duree >= 0.3  # il a bien attendu la fin du verrou
+
+
+@pytest.mark.cas_limite
+def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
+    jeu_minimal, compter, verrou_ecriture_bref
+):
+    """Cas : `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion
+    écrit brièvement.
+
+    Risque : suppression du schéma (lecture du catalogue puis DROP) en échec « database is
+    locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit.
+    """
+    verrou_ecriture_bref(0.4)
+    rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
+    assert rapport.reinitialisee and compter(m.Salle) == 0 and base_initialisee(obtenir_moteur())
+
+
+@pytest.mark.cas_limite
+def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement(base, compter):
+    """Cas : deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux
+    onglets).
+
+    Risque : les deux passent le contrôle « base vide » puis l'un échoue « database is
+    locked » brut ou les données sont doublées ; un seul doit réussir, l'autre être refusé
+    par un message clair (opération en cours, ou base déjà garnie).
+    """
+    depart = threading.Barrier(2)
+    resultats: dict[str, object] = {}
+
+    def charger(nom: str) -> None:
+        depart.wait(5)
+        try:
+            resultats[nom] = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+        except ErreurEDT as erreur:
+            resultats[nom] = erreur
+
+    fils = [threading.Thread(target=charger, args=(nom,)) for nom in ("a", "b")]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join(30)
+
+    reussis = [r for r in resultats.values() if not isinstance(r, Exception)]
+    refus = [r for r in resultats.values() if isinstance(r, Exception)]
+    assert len(reussis) == 1 and len(refus) == 1, resultats
+    message = refus[0].message
+    assert ("en cours" in message) or ("contient déjà" in message), message
+    assert "locked" not in message.lower()
+    assert compter(m.Campus) == reussis[0].nb_campus if hasattr(reussis[0], "nb_campus") else True
+
+
+@pytest.mark.cas_limite
+def test_deux_chargements_de_deux_processus_sont_serialises_sous_le_verrou(base, compter):
+    """Cas : deux chargements depuis deux processus (le verrou du processus ne joue pas) : deux
+    transactions distinctes, lancées ensemble, sur la même base.
+
+    Risque : les deux lisent « base vide », le second échoue « database is locked » brut à sa
+    première écriture ; en IMMEDIATE le second attend la fin du premier puis est refusé « la
+    base contient déjà des données ».
+    """
+    depart = threading.Barrier(2)
+    resultats: dict[str, object] = {}
+
+    def charger(nom: str) -> None:
+        depart.wait(5)
+        try:
+            with session_base() as session:  # comme un autre processus : pas le verrou du module
+                resultats[nom] = jeux._charger(session, "petit", 1, None, False)
+        except ErreurEDT as erreur:
+            resultats[nom] = erreur
+
+    fils = [threading.Thread(target=charger, args=(nom,)) for nom in ("a", "b")]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join(30)
+
+    reussis = [r for r in resultats.values() if not isinstance(r, Exception)]
+    refus = [r for r in resultats.values() if isinstance(r, Exception)]
+    assert len(reussis) == 1 and len(refus) == 1, resultats
+    assert isinstance(refus[0], ErreurRegleMetier) and "contient déjà" in refus[0].message
+    assert compter(m.Salle) > 0

@@ -62,7 +62,13 @@ from edt.db.modeles import (
     TypeSalle,
     TypeSeance,
 )
-from edt.db.moteur import chemin_base, obtenir_moteur, session_base
+from edt.db.moteur import (
+    chemin_base,
+    connexion_immediate,
+    obtenir_moteur,
+    session_base,
+    transaction_immediate,
+)
 from edt.domaine.calendrier import annee_scolaire_de, decoupage_par_defaut, jours_feries_entre
 from edt.domaine.enumerations import DemiJournee, NatureJourFerme
 from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, definitions
@@ -164,8 +170,14 @@ class RapportInitialisation:
 
 
 def creer_schema(moteur: Engine) -> None:
-    """Crée les tables manquantes (ne modifie pas une table existante)."""
-    Base.metadata.create_all(moteur)
+    """Crée les tables manquantes (ne modifie pas une table existante).
+
+    Écrivain long connu : la transaction prend le verrou d'écriture d'emblée
+    (`connexion_immediate`) au lieu de lire puis d'échouer « database is
+    locked » face à un autre écrivain.
+    """
+    with connexion_immediate(moteur) as connexion:
+        Base.metadata.create_all(connexion)
 
 
 def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Path | None:
@@ -194,10 +206,15 @@ def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Pa
 
 
 def supprimer_schema(moteur: Engine) -> None:
-    """Supprime **toutes** les tables de la base, y compris celles d'un ancien schéma."""
-    existant = MetaData()
-    existant.reflect(bind=moteur)
-    existant.drop_all(moteur)
+    """Supprime **toutes** les tables de la base, y compris celles d'un ancien schéma.
+
+    Réflexion et suppression dans une même transaction ouverte en
+    `BEGIN IMMEDIATE` (voir `creer_schema`).
+    """
+    with connexion_immediate(moteur) as connexion:
+        existant = MetaData()
+        existant.reflect(bind=connexion)
+        existant.drop_all(connexion)
 
 
 def tables_manquantes(moteur: Engine) -> list[str]:
@@ -597,6 +614,7 @@ def initialiser_base(
         exiger_schema_a_jour(moteur)
     creer_schema(moteur)
     with session_base(url) as session:
+        transaction_immediate(session)  # écrivain long : lit puis écrit, verrou pris d'emblée
         ajouts = inserer_donnees_par_defaut(session, aujourdhui)
     rapport = RapportInitialisation(
         url=url_affichee,
