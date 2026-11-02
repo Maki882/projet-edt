@@ -311,8 +311,11 @@ def _identifiant(texte: str | None, nom: str) -> int | None:
         if nom == "version_id":
             raise ErreurDonneesInvalides("Choisir la version d'emploi du temps à exporter.")
         return None
-    if not texte.strip().isdigit():
-        raise ErreurDonneesInvalides(f"Paramètre {nom} invalide : {texte!r} (nombre attendu).")
+    texte = texte.strip()
+    if not (texte.isascii() and texte.isdigit()):  # « ² » passe isdigit, pas int()
+        raise ErreurDonneesInvalides(f"Paramètre {nom} invalide : {texte[:30]!r} (nombre attendu).")
+    if len(texte) > 18:  # aucun identifiant n'est si long (et `int` refuse 4 300 chiffres)
+        raise ErreurDonneesInvalides(f"Paramètre {nom} invalide : nombre trop grand.")
     return int(texte)
 
 

@@ -25,6 +25,7 @@ les jours fermés en sont exclus (EXDATE).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -37,11 +38,13 @@ from sqlalchemy.orm import Session, selectinload
 from edt.db import modeles as m
 from edt.domaine.enumerations import JOURS, EnumLibelle, StatutOccurrence
 from edt.domaine.heures import minutes_vers_hhmm
-from edt.echange.donnees import references_salles
+from edt.echange.donnees import obtenir_par_id, references_salles
 from edt.echange.ecriture import csv_octets
 from edt.echange.ical import NOM_FUSEAU, PROPRIETES_EDT, fuseau_paris
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.instantane import charger_instantane
+
+journal = logging.getLogger(__name__)
 
 PARIS = ZoneInfo(NOM_FUSEAU)
 DOMAINE_UID = "edt"
@@ -145,7 +148,7 @@ class Export:
 
 def charger(session: Session, version_id: int, couche: Couche, filtre: Filtre) -> Export:
     """Séances de la version, filtrées, triées par date (ou jour) et heure."""
-    version = session.get(m.VersionEdt, version_id)
+    version = obtenir_par_id(session, m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     options_besoin = (
@@ -206,7 +209,7 @@ def _filtrer(
     session: Session, elements: list[Element], filtre: Filtre
 ) -> tuple[list[Element], str]:
     if filtre.groupe_id is not None:
-        groupe = session.get(m.Groupe, filtre.groupe_id)
+        groupe = obtenir_par_id(session, m.Groupe, filtre.groupe_id)
         if groupe is None:
             raise ErreurIntrouvable(f"Le groupe {filtre.groupe_id} n'existe pas.")
         lies = _groupes_lies(session, groupe)
@@ -214,7 +217,7 @@ def _filtrer(
             e for e in elements if any(g.id in lies for g in e.besoin.groupes)
         ], f"groupe-{groupe.code}"
     if filtre.enseignant_id is not None:
-        enseignant = session.get(m.Enseignant, filtre.enseignant_id)
+        enseignant = obtenir_par_id(session, m.Enseignant, filtre.enseignant_id)
         if enseignant is None:
             raise ErreurIntrouvable(f"L'enseignant {filtre.enseignant_id} n'existe pas.")
         return (
@@ -222,7 +225,7 @@ def _filtrer(
             f"enseignant-{enseignant.identifiant}",
         )
     if filtre.salle_id is not None:
-        salle = session.get(m.Salle, filtre.salle_id)
+        salle = obtenir_par_id(session, m.Salle, filtre.salle_id)
         if salle is None:
             raise ErreurIntrouvable(f"La salle {filtre.salle_id} n'existe pas.")
         return [
@@ -350,9 +353,23 @@ def _evenement(export: Export, e: Element, horodatage: dt.datetime, instantane) 
         evenement.add("uid", f"occurrence-{e.occurrence_id}@{DOMAINE_UID}")
         premiere = e.date
     else:
-        if not e.semaines:
+        connues = {s.numero for s in instantane.semaines}
+        hors = sorted(set(e.semaines) - connues)
+        if hors:
+            # Les dates du semestre ont changé depuis la version : ces semaines n'ont plus de
+            # date. L'export garde les autres et le journal le dit.
+            journal.warning(
+                "Export iCal de la version %d : séance %d-%s, semaine(s) %s hors du semestre "
+                "actuel (%s), ignorée(s)",
+                export.version.id,
+                b.id,
+                e.rang,
+                ", ".join(map(str, hors)),
+                instantane.libelle,
+            )
+        semaines = [instantane.semaine(n) for n in e.semaines if n in connues]
+        if not semaines:
             return None
-        semaines = [instantane.semaine(n) for n in e.semaines]
         dates = [s.date_du(e.jour) for s in semaines]
         besoin_domaine = instantane.besoin(b.id)
         exclues = [d for d in _toutes_les_semaines(dates[0], dates[-1]) if d not in dates]
