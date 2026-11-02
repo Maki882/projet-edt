@@ -1148,17 +1148,35 @@ def _coherence(
         TypeRegle.PAUSE_DEJEUNER,
     ) and (code is not TypeRegle.PAUSE_DEJEUNER or valeurs.get("mode") != DEJEUNER_AUCUN)
     if avec_heures and parametres is not None:
-        # Hors des heures d'ouverture, une règle n'a aucune séance à placer ou à interdire :
-        # elle serait trompeuse (déjeuner « réservé » à 6 h) ou rendrait sa portée infaisable.
-        for nom, minute in heures.items():
-            if not parametres.ouverture_min <= minute <= parametres.fermeture_min:
-                erreurs[f"parametres.{nom}"] = (
-                    f"{'Début' if nom == 'debut' else 'Fin'} à {minutes_vers_texte(minute)}, "
-                    "hors des heures d'ouverture de l'établissement "
-                    f"({minutes_vers_texte(parametres.ouverture_min)} - "
-                    f"{minutes_vers_texte(parametres.fermeture_min)}) : aucune séance ne peut "
-                    "s'y trouver."
+        ouverture = (
+            f"{minutes_vers_texte(parametres.ouverture_min)} - "
+            f"{minutes_vers_texte(parametres.fermeture_min)}"
+        )
+        if code is TypeRegle.CRENEAUX_INTERDITS:
+            # Un créneau interdit peut déborder des heures d'ouverture (il n'interdit rien de
+            # plus) ; entièrement hors d'elles, il n'interdit rien du tout : trompeur.
+            if "debut" in heures and heures["debut"] >= parametres.fermeture_min:
+                erreurs["parametres.debut"] = (
+                    f"Début à {minutes_vers_texte(heures['debut'])}, après la fermeture : le "
+                    f"créneau interdit est entièrement hors des heures d'ouverture ({ouverture}), "
+                    "aucune séance ne peut s'y trouver."
                 )
+            elif "fin" in heures and heures["fin"] <= parametres.ouverture_min:
+                erreurs["parametres.fin"] = (
+                    f"Fin à {minutes_vers_texte(heures['fin'])}, avant l'ouverture : le créneau "
+                    f"interdit est entièrement hors des heures d'ouverture ({ouverture}), aucune "
+                    "séance ne peut s'y trouver."
+                )
+        else:
+            # Hors des heures d'ouverture, une plage horaire rend sa portée infaisable et un
+            # déjeuner « réservé » à 6 h ne protège rien : refusés champ par champ.
+            for nom, minute in heures.items():
+                if not parametres.ouverture_min <= minute <= parametres.fermeture_min:
+                    erreurs[f"parametres.{nom}"] = (
+                        f"{'Début' if nom == 'debut' else 'Fin'} à {minutes_vers_texte(minute)}, "
+                        f"hors des heures d'ouverture de l'établissement ({ouverture}) : aucune "
+                        "séance ne peut s'y trouver."
+                    )
     if code in (TypeRegle.PLAGE_HORAIRE, TypeRegle.CRENEAUX_INTERDITS):
         if "debut" in heures and "fin" in heures and heures["debut"] >= heures["fin"]:
             erreurs["parametres.fin"] = (

@@ -1090,12 +1090,13 @@ def test_une_ouverture_datee_ne_vaut_pas_hors_de_sa_periode(etab):
 def test_une_regle_hors_des_heures_d_ouverture_est_refusee_avec_le_champ_fautif(
     type_regle, brouillon, champ
 ):
-    """Cas : une règle d'horaires, de créneaux interdits ou de déjeuner cite une heure hors
-    des heures d'ouverture de l'établissement (8 h 30 - 18 h 00 par défaut).
+    """Cas : une règle d'horaires ou de déjeuner cite une heure hors des heures d'ouverture de
+    l'établissement (8 h 30 - 18 h 00 par défaut), ou un créneau interdit y est entièrement
+    extérieur.
 
     Risque : règle acceptée alors que le paramètre global équivalent est refusé ; un déjeuner
     « réservé » à 6 h ne protège rien, une plage 20 h - 22 h rend sa portée infaisable sans
-    nommer la règle.
+    nommer la règle, un créneau interdit à 22 h n'interdit rien.
     """
     with pytest.raises(ErreurSaisie) as capture:
         valider_parametres(type_regle, brouillon, PARAMETRES)
@@ -1103,6 +1104,15 @@ def test_une_regle_hors_des_heures_d_ouverture_est_refusee_avec_le_champ_fautif(
     assert "8 h 30 - 18 h 00" in capture.value.erreurs[champ]
     # Sans paramètres globaux, rien ne permet de juger : les valeurs canoniques sont rendues.
     assert "debut" in valider_parametres(type_regle, brouillon)
+    # Un créneau interdit qui déborde des heures d'ouverture n'interdit rien de plus : accepté.
+    assert (
+        valider_parametres(
+            TypeRegle.CRENEAUX_INTERDITS,
+            {"jours": ["lundi"], "debut": "13:00", "fin": "19:00"},
+            PARAMETRES,
+        )["fin"]
+        == "19:00"
+    )
     # Un jour sans créneau reste permis par la conception : il est signalé, pas refusé.
     assert valider_parametres(TypeRegle.JOURS_TRAVAILLES, {"jours": ["dimanche"]}, PARAMETRES) == {
         "jours": ["dimanche"]

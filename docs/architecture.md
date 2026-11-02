@@ -964,11 +964,13 @@ Ce qu'il faut savoir :
   et absent des valeurs canoniques. `decrire_catalogue()` expose `portees`
   par paramètre et `periode_datable` par type pour les formulaires et
   l'assistant.
-- **Heures d'ouverture** : les heures d'une règle `PLAGE_HORAIRE`,
-  `CRENEAUX_INTERDITS` ou `PAUSE_DEJEUNER` doivent être dans les heures
-  d'ouverture de l'établissement (erreur par champ quand `valider_parametres`
-  reçoit les paramètres globaux) : hors d'elles, la règle serait trompeuse ou
-  rendrait sa portée infaisable.
+- **Heures d'ouverture** : les heures d'une règle `PLAGE_HORAIRE` ou
+  `PAUSE_DEJEUNER` doivent être dans les heures d'ouverture de l'établissement
+  (erreur par champ quand `valider_parametres` reçoit les paramètres
+  globaux) : hors d'elles, la règle serait trompeuse ou rendrait sa portée
+  infaisable. Un créneau interdit (`CRENEAUX_INTERDITS`) peut déborder des
+  heures d'ouverture, il n'interdit rien de plus ; entièrement hors d'elles,
+  il est refusé.
 - **Règle incomplète** : une règle enregistrée sans ses heures (import
   ancien) a une phrase complétée par les défauts du type et des paramètres
   globaux ; sans eux, `phrase` lève `ErreurDonneesInvalides` en nommant le
