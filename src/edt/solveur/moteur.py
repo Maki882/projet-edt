@@ -267,6 +267,17 @@ def resoudre(
         options.niveaux_regles,
     )
     niveaux_regles.update(preparation.regles.niveaux_regles)
+    inconnues = sorted(set(options.niveaux_regles or ()) - {r.id for r in instantane.regles})
+    if inconnues:
+        # Identifiant périmé (règle supprimée, désactivée, d'une autre année) : l'utilisateur
+        # croirait avoir réglé une règle ; le résultat n'en garde que les règles connues.
+        avertissement = (
+            f"Niveau demandé pour {len(inconnues)} règle(s) personnalisée(s) inconnue(s) de ce "
+            f"semestre (n° {', '.join(map(str, inconnues))} : supprimée(s), inactive(s) ou "
+            "d'une autre année) : ignoré."
+        )
+        journal.warning(avertissement)
+        avertissements.append(avertissement)
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     for anomalie in anomalies:

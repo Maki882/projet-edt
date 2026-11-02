@@ -12,6 +12,7 @@ import time
 import pytest
 from tests.solveur.fabrique import (
     C1,
+    C2,
     LUNDI,
     MARDI,
     OPTIONS,
@@ -26,7 +27,9 @@ from tests.solveur.generateur import generer
 from tests.solveur.test_contraintes import MATINEE, UN_CRENEAU
 
 from edt.domaine.enumerations import ModeVolume
+from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur import ResultatSolveur, StatutSolveur, resoudre
+from edt.solveur.contrat import NB_WORKERS_MAX, TEMPS_LIMITE_MAX_S
 from edt.verification import calculer_indicateurs
 
 
@@ -426,3 +429,130 @@ def test_conflit_de_salles_contourne_quand_une_autre_matinee_existe():
     instantane = _salles_en_quinconce([LUNDI, MARDI])
     places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
     assert places["1-1"].fin - places["1-1"].debut == 4 * H
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "champs",
+    [
+        {"temps_limite_s": float("nan")},
+        {"temps_limite_s": float("inf")},
+        {"temps_limite_s": 1e9},
+        {"temps_limite_s": 0},
+        {"temps_limite_s": -3},
+        {"temps_limite_s": "60"},
+        {"temps_limite_s": True},
+        {"nb_workers": -1},
+        {"nb_workers": 1000},
+        {"nb_workers": 2.5},
+        {"graine": 1.5},
+    ],
+    ids=str,
+)
+def test_options_invalides_refusees(champs):
+    """Cas : options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul,
+    négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers.
+
+    Risque : « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon
+    ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils.
+    """
+    with pytest.raises(ErreurDonneesInvalides):
+        options(**champs)
+
+
+@pytest.mark.cas_limite
+def test_options_aux_bornes_acceptees():
+    """Cas : options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40.
+
+    Risque : des bornes trop serrées refuseraient des réglages légitimes ; une graine hors
+    [0, 2^31[ est ramenée dans les bornes de CP-SAT par le moteur, pas refusée.
+    """
+    for champs in (
+        {"temps_limite_s": TEMPS_LIMITE_MAX_S},
+        {"temps_limite_s": 0.5},
+        {"nb_workers": NB_WORKERS_MAX},
+        {"nb_workers": 0},
+        {"graine": -5},
+        {"graine": 2**40},
+    ):
+        assert options(**champs).vers_dict()
+
+
+@pytest.mark.cas_limite
+def test_toutes_les_seances_verrouillees():
+    """Cas : chaque séance porte un verrou avec sa salle : le modèle n'a ni variable ni choix.
+
+    Risque : plantage sur un modèle vide (objectif sans terme, statistiques) ou solution non
+    rendue, en mode faisable comme en mode optimisé.
+    """
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2)
+    f.verrou("1-1", LUNDI, C1, 1)
+    f.verrou("1-2", LUNDI, C2, 1)
+    instantane = f.instantane()
+    for reglages in ({}, {"optimiser": True}):
+        resultat = resoudre(instantane, options(**reglages))
+        places = verifier_solution(instantane, resultat)
+        assert [(p.jour, p.debut, p.salle_id) for p in (places["1-1"], places["1-2"])] == [
+            (LUNDI, C1, 1),
+            (LUNDI, C2, 1),
+        ]
+        assert resultat.statistiques["nb_variables"] == 0
+        assert resultat.statistiques["raison_arret"] == "premiere_solution"
+
+
+@pytest.mark.cas_limite
+def test_arret_pendant_la_premiere_recherche_rend_la_main_vite():
+    """Cas : instantané de 300 séances, arrêt demandé 0,3 s après le lancement, pendant la
+    construction du modèle ou la première recherche, avant toute solution.
+
+    Risque : le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à
+    rendre la main : bouton « Arrêter » sans effet.
+    """
+    instantane, _ = generer(300, graine=1)
+    arret = threading.Event()
+    resultats = []
+    fil = threading.Thread(
+        target=lambda: resultats.append(resoudre(instantane, options(temps_limite_s=120), arret))
+    )
+    debut = time.perf_counter()
+    fil.start()
+    time.sleep(0.3)
+    arret.set()
+    fil.join(10)
+    assert not fil.is_alive(), "le moteur n'a pas rendu la main"
+    assert time.perf_counter() - debut < 3, "l'arrêt a mis trop longtemps à être suivi d'effet"
+    (resultat,) = resultats
+    assert resultat.statut is StatutSolveur.ARRETE and resultat.placements == ()
+    assert "avant qu'un emploi du temps soit trouvé" in resultat.message
+
+
+@pytest.mark.cas_limite
+def test_parametres_extremes_restent_valides():
+    """Cas : pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et
+    2^40, mode optimisé.
+
+    Risque : coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage
+    jour × pas des débuts faux quand le pas dépasse 100 000.
+    """
+    f = Fabrique(pause_min=120, poids_trous=1000, poids_samedi=1000)
+    nord, sud = f.campus("N"), f.campus("S")
+    f.trajet(nord, sud, 100_000)
+    n101, s101 = f.salle("N101", campus=nord), f.salle("S101", campus=sud)
+    classe, prof = f.groupe("A1"), f.enseignant()
+    f.besoin([classe], [prof], salle_imposee_id=n101)
+    f.besoin([classe], [prof], salle_imposee_id=s101)
+    instantane = f.instantane()
+    for graine in (-5, 2**40):
+        resultat = resoudre(instantane, options(optimiser=True, graine=graine))
+        places = verifier_solution(instantane, resultat)
+        assert resultat.statistiques["graine"] == graine
+        assert resultat.statistiques["statut_cp_sat"] != "MODEL_INVALID"
+        # 100 000 min de trajet : jamais le même jour.
+        assert places["1-1"].jour != places["2-1"].jour

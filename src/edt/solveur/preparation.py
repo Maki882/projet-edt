@@ -652,7 +652,9 @@ class Preparation:
         Horaires et jours ne sont pas opposés à un verrou (une séance imposée
         qui s'en écarte n'est qu'une information) ; les indisponibilités, les
         exigences de salle du catalogue et les règles `SALLES` et `CAMPUS`
-        nécessaires le sont, et les règles souples valent une entorse.
+        nécessaires le sont, et les règles souples valent une entorse. Un
+        verrou incohérent (jour, plage), d'une autre durée que son besoin ou
+        sur une salle inconnue est refusé en le nommant, dans tous les cas.
         """
         regles, besoin = self.regles, seance.besoin
         preparee = SeancePreparee(
@@ -707,25 +709,27 @@ class Preparation:
         creneau = nom_creneau(verrou.jour, verrou.debut, verrou.fin)
         designation = f"La séance verrouillée {nom_seance(seance)}, placée {creneau},"
         valide = True
+        ecarts = []
+        if preparee.duree != besoin.duree:
+            # La durée vient du besoin, pas de la grille : l'écart vaut quel que soit le
+            # niveau de HORAIRES (jamais de verrou appliqué en silence avec une autre durée).
+            ecarts.append(
+                f"dure {duree_vers_texte(preparee.duree)} au lieu des "
+                f"{duree_vers_texte(besoin.duree)} demandées"
+            )
         if regles.active(C.HORAIRES):
-            ecarts = []
-            if preparee.duree != besoin.duree:
-                ecarts.append(
-                    f"dure {duree_vers_texte(preparee.duree)} au lieu des "
-                    f"{duree_vers_texte(besoin.duree)} demandées"
-                )
             if seance.jour_impose is not None and seance.jour_impose != verrou.jour:
                 ecarts.append(f"devrait avoir lieu le {JOURS[seance.jour_impose]}")
             if besoin.debut_impose is not None and besoin.debut_impose != verrou.debut:
                 ecarts.append("ne commence pas à l'heure imposée par son besoin")
-            if ecarts:
-                valide = False
-                refuser(
-                    C.VERROU,
-                    f"{designation} contredit son besoin : elle {' et '.join(ecarts)}. "
-                    "Corriger le verrou ou le besoin.",
-                    jour=verrou.jour,
-                )
+        if ecarts:
+            valide = False
+            refuser(
+                C.VERROU,
+                f"{designation} contredit son besoin : elle {' et '.join(ecarts)}. "
+                "Corriger le verrou ou le besoin.",
+                jour=verrou.jour,
+            )
         entorses: list[Violation] = []
         for code, nom, plage in regles.recurrentes_des_personnes(besoin):
             if plage.jour == verrou.jour and se_chevauchent(
