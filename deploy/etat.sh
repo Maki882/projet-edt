@@ -53,10 +53,13 @@ for unite in edt nginx; do
   fi
 done
 systemctl show edt -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID -p MemoryCurrent -p Result
-# Mémoire épuisée (MemoryMax de edt.service) : systemd note « oom-kill » à
-# chaque fois, puis redémarre le service ; un calcul en cours est alors perdu.
+# Mémoire épuisée (MemoryMax de edt.service) : le noyau tue le service, systemd
+# écrit « A process of this unit has been killed by the OOM killer » puis, le plus
+# souvent, « Failed with result 'oom-kill' » (parfois 'signal'), et le redémarre ;
+# un calcul en cours est alors perdu. Chaque panne laisse au moins une des deux
+# lignes : on compte le plus grand des deux nombres.
 if journal_oom="$(journalctl -u edt --since "-7d" --no-pager -o cat)"; then
-  nb_oom="$(awk '/oom-kill/ { n++ } END { print n + 0 }' <<< "$journal_oom")"
+  nb_oom="$(awk '/killed by the OOM killer/ { tue++ } /result .oom-kill./ { echec++ } END { n = (tue > echec) ? tue : echec; print n + 0 }' <<< "$journal_oom")"
   if [ "$nb_oom" -gt 0 ]; then
     probleme "$nb_oom arrêt(s) du service pour mémoire épuisée ces 7 derniers jours (oom-kill) : réduire le temps limite ou le nombre de fils des calculs (docs/deploiement.md, « Épuisement de la mémoire »)"
   fi

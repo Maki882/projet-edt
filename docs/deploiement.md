@@ -325,8 +325,9 @@ non initialisée, ou schéma périmé. `sudo edt doctor` dit laquelle ; schéma
 périmé : `deploy/deployer.sh --reset-base` (section 4).
 
 **Épuisement de la mémoire.** Le service est limité à 3 Go (`MemoryMax=3G` dans
-`edt.service`, sur 3,7 Go) : au-delà, le noyau le tue, systemd note « oom-kill »
-et le redémarre trois secondes plus tard ; un calcul en cours est perdu et clos
+`edt.service`, sur 3,7 Go) : au-delà, le noyau le tue, systemd note « killed by
+the OOM killer » (et le plus souvent « oom-kill ») et le redémarre trois secondes
+plus tard ; un calcul en cours est perdu et clos
 « interrompu par l'arrêt de l'application ». `deploy/etat.sh` compte ces arrêts
 sur 7 jours. Remède : relancer le calcul avec un temps limite plus court ou
 moins de fils de calcul (`--fils`), ou réduire le périmètre ; procédure de
@@ -510,7 +511,10 @@ lui donne un terminal (commande qui affiche sa progression ou pose une question)
 | Base intacte après un arrêt brutal, calcul tué clos au redémarrage | oui | sur le serveur : 10.5 |
 | Verrou déploiement / `sudo edt`, recherche des processus | en partie (Linux) | 10.1 |
 | Échec de sauvegarde pendant la bascule, envoi interrompu | en partie | 10.2, 10.4 |
-| Mémoire épuisée, page 413, fichiers à root, fuseaux | non | 10.3, 10.6, 10.7, 10.9 |
+| Mémoire épuisée : lecture du journal par `etat.sh` | oui | arrêt réel : 10.6 |
+| Page 413 : configuration nginx, texte, styles | oui | affichage réel : 10.7 |
+| Fichiers à root, fuseaux horaires | en partie (contrôles présents) | 10.3, 10.9 |
+| Commandes du guide : sudo, lignes entières, cible SSH | oui | non |
 
 ### 10.1 Déploiement pendant une commande « sudo edt »
 
@@ -627,7 +631,7 @@ d'utilisation.
 
 **Résultat attendu**
 - le journal montre « A process of this unit has been killed by the OOM killer »
-  et « Failed with result 'oom-kill' », puis un redémarrage automatique ;
+  et « Failed with result 'oom-kill' » (ou 'signal'), puis un redémarrage automatique ;
 - `etat.sh` : « 1 arrêt(s) du service pour mémoire épuisée ces 7 derniers jours » ;
   `/sante` à 200 ; nginx et SSH n'ont pas été touchés ;
 - le calcul est clos « interrompu par l'arrêt de l'application ».
