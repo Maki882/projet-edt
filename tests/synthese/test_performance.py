@@ -11,6 +11,7 @@ from .conftest import generer
 SEUIL_S = 60
 
 
+@pytest.mark.cas_limite
 @pytest.mark.perf
 def test_jeu_grand_en_moins_d_une_minute(tmp_path):
     debut = time.perf_counter()

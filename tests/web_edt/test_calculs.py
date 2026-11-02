@@ -106,6 +106,7 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis(jeu_minima
     assert "hx-trigger" not in fragment  # calcul fini : l'interrogation s'arrête
 
 
+@pytest.mark.cas_limite
 def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
     jeu_minimal, client, monkeypatch
 ):
