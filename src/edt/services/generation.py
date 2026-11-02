@@ -59,14 +59,14 @@ from collections.abc import Collection, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass, field
 
-from sqlalchemy import func, select, text, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from edt import solveur
 from edt.config import Configuration, charger_configuration
 from edt.db.modeles import Calcul, Occurrence, SeanceHebdo, Semestre, VersionEdt
-from edt.db.moteur import identifiant_valide, session_base
+from edt.db.moteur import identifiant_valide, session_base, transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     Niveau,
@@ -286,9 +286,10 @@ def lancer_calcul(
             )
         with session_base(config.db_url) as session:
             # Deux processus (serveur et commande) peuvent lancer la même seconde : le verrou
-            # d'écriture est pris avant toute lecture, le contrôle et l'insertion sont alors
-            # atomiques d'un processus à l'autre (le second attend, puis voit la ligne du premier).
-            _reserver_ecriture(session)
+            # d'écriture est pris d'emblée (BEGIN IMMEDIATE, avant toute lecture), le contrôle et
+            # l'insertion sont alors atomiques d'un processus à l'autre (le second attend, puis
+            # voit la ligne du premier). La session est neuve : rien n'a encore été exécuté.
+            transaction_immediate(session)
             if session.get(Semestre, semestre_id) is None:
                 raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
             _cloturer_abandonnes(session)
@@ -475,19 +476,6 @@ def cloturer_calculs_interrompus() -> int:
     """
     with _verrou, session_base() as session:
         return _cloturer_abandonnes(session)
-
-
-def _reserver_ecriture(session: Session) -> None:
-    """Prend le verrou d'écriture de SQLite en tête de transaction, avant toute lecture.
-
-    Le moteur ouvre chaque transaction par un `BEGIN` différé : une transaction
-    qui lit puis écrit pendant qu'un autre processus écrit échoue aussitôt
-    (« database is locked », sans attendre, règle anti-interblocage de SQLite),
-    alors qu'une écriture en première instruction attend son tour
-    (`busy_timeout`). Cette mise à jour vide ne change rien et réserve le verrou.
-    """
-    if session.bind is not None and session.bind.dialect.name == "sqlite":
-        session.execute(text("UPDATE calcul SET arret_demande = arret_demande WHERE 0"))
 
 
 def _processus_vivant(pid: int) -> bool:
@@ -701,7 +689,8 @@ def _executer(
                 if chemin_journal is not None:
                     valeurs["fichier_journal"] = chemin_journal
                 with session_base(config.db_url) as session:
-                    # Écriture en première instruction : attend un autre processus qui écrit.
+                    # Transaction courte, verrou pris d'emblée : attend un autre processus qui écrit.
+                    transaction_immediate(session)
                     session.execute(update(Calcul).where(Calcul.id == calcul_id).values(**valeurs))
                 etat, message, statistiques = _calculer(
                     calcul_id, instantane, options, moteur, arret, activer, config
@@ -806,7 +795,7 @@ def _calculer(
     if indicateurs is not None:
         statistiques["indicateurs"] = indicateurs
     with session_base(config.db_url) as session:
-        _reserver_ecriture(session)
+        transaction_immediate(session)
         version = _enregistrer_version(session, calcul_id, instantane, resultat, activer)
         version_id = version.id
         journal.info(
@@ -1052,7 +1041,7 @@ def _enregistrer_fin(
 ) -> None:
     """Une tentative d'enregistrement de l'état final (voir `_clore`)."""
     with session_base(config.db_url) as session:
-        _reserver_ecriture(session)
+        transaction_immediate(session)
         if etat is EtatCalcul.ERREUR:
             message += _complement_version_sans_dates(session, calcul_id)
         session.execute(
