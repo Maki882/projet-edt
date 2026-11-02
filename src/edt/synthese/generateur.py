@@ -847,6 +847,33 @@ class _Generateur:
     def _date_ouverte(self, jour: dt.date, groupes: Sequence[int]) -> bool:
         return not any(f.concerne(jour, groupes, ponctuelle=True) for f in self.fermetures)
 
+    def _dates_possibles(
+        self,
+        code: str,
+        semaine: Semaine,
+        groupes: Sequence[int],
+        jours: Sequence[int] | None = None,
+    ) -> tuple[dt.date, ...]:
+        """Dates où une séance ponctuelle de ces groupes peut avoir lieu dans la semaine.
+
+        Une date possible est un jour travaillé (ou l'un des `jours` donnés),
+        **dans les dates du semestre** (une semaine du bord peut déborder du
+        semestre) et ouverte pour ces groupes (pas fériée, pas en vacances).
+        Le générateur ne crée aucun besoin ponctuel hors de ces dates : sans
+        date possible, le besoin est écarté avec sa raison.
+        """
+        semestre = self.semestres[code]
+        return tuple(
+            semaine.date_du(j)
+            for j in (self.jours_travailles if jours is None else jours)
+            if semestre.date_debut <= semaine.date_du(j) <= semestre.date_fin
+            and self._date_ouverte(semaine.date_du(j), groupes)
+        )
+
+    def _periode(self, code: str) -> tuple[dt.date, dt.date]:
+        """Dates exactes du semestre, pour le dépliage (comme l'instantané)."""
+        return self.semestres[code].date_debut, self.semestres[code].date_fin
+
     def _creer_indisponibilites_groupes(self) -> None:
         """Après-midi du mercredi libéré pour le sport (cycle intégré) : respecté par le témoin."""
         self.indispos_groupes: dict[int, list[tuple[int, int, int]]] = {}
@@ -1094,9 +1121,8 @@ class _Generateur:
         semaine = self.semaine_partiels[(promotion.annee, code)]
         groupes_promo = [promotion.groupe.id]
         creneaux = [
-            (semaine.date_du(j), debut, duree)
-            for j in self.jours_travailles
-            if self._date_ouverte(semaine.date_du(j), groupes_promo)
+            (jour, debut, duree)
+            for jour in self._dates_possibles(code, semaine, groupes_promo)
             for debut, duree in cat.EPREUVES_PARTIEL
         ]
         if not creneaux:
@@ -1140,6 +1166,7 @@ class _Generateur:
         )
         if promotion.annee == 1 and code == "S1":
             premiere = semaines[0]
+            ouvertes = self._dates_possibles(code, premiere, [promotion.groupe.id])
             amphis = sorted(
                 (
                     x
@@ -1148,7 +1175,9 @@ class _Generateur:
                 ),
                 key=lambda x: (-x.capacite, x.code),
             )
-            self._ajouter(
+            # L'amphi de rentrée a lieu le premier jour possible de la semaine d'intégration,
+            # les rencontres avec les tuteurs les jours suivants.
+            amphi = self._ajouter(
                 semestre=code,
                 promotion=promotion,
                 matiere=matiere,
@@ -1158,14 +1187,22 @@ class _Generateur:
                 profil="amphi",
                 priorite=0,
                 mode=ModeVolume.PONCTUEL,
-                date_ponctuelle=premiere.lundi,
+                date_ponctuelle=ouvertes[0] if ouvertes else premiere.lundi,
                 debut_impose=10 * H,
                 salle_imposee=amphis[0] if amphis else None,
                 libelle="Amphi de rentrée",
             )
-            jours = tuple(premiere.date_du(j) for j in range(1, 5))
+            if not ouvertes:
+                self._retirer(
+                    amphi, "aucune date ouverte du semestre dans la semaine d'intégration"
+                )
             for classe in promotion.classes_de("classique"):
-                self._ajouter(
+                dates = tuple(
+                    jour
+                    for jour in self._dates_possibles(code, premiere, [classe.groupe.id])
+                    if jour not in ouvertes[:1]
+                )
+                rencontre = self._ajouter(
                     semestre=code,
                     promotion=promotion,
                     matiere=matiere,
@@ -1175,14 +1212,19 @@ class _Generateur:
                     profil="cours",
                     priorite=9,
                     mode=ModeVolume.PONCTUEL,
-                    dates_possibles=jours,
+                    dates_possibles=dates,
                     libelle="Rencontre avec le tuteur de classe",
                 )
+                if not dates:
+                    self._retirer(
+                        rencontre,
+                        "aucune date ouverte du semestre dans la semaine d'intégration "
+                        "(hors du jour de l'amphi de rentrée)",
+                    )
         dates = tuple(
-            semaines[n - 1].date_du(j)
+            jour
             for n in _semaines_bornees(SEMAINES_CONFERENCE, len(semaines))
-            for j in self.jours_travailles
-            if self._date_ouverte(semaines[n - 1].date_du(j), [promotion.groupe.id])
+            for jour in self._dates_possibles(code, semaines[n - 1], [promotion.groupe.id])
         )
         spec = self._ajouter(
             semestre=code,
@@ -1399,6 +1441,7 @@ class _Generateur:
                 semaines,
                 self.fermetures,
                 self.parametres.jours_travailles,
+                self._periode(spec.semestre),
             )
             if depliage.problemes:
                 return "; ".join(p.message for p in depliage.problemes)
@@ -1753,6 +1796,7 @@ class _Generateur:
                 self.semaines[code],
                 self.fermetures,
                 self.parametres.jours_travailles,
+                self._periode(code),
             )
             obtenu = {s.id: sum(1 << n for n in s.semaines) for s in depliage.seances}
             if depliage.problemes or obtenu != attendu:
