@@ -26,15 +26,17 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.moteur import IDENTIFIANT_MAX, session_base
 from edt.domaine.enumerations import StatutOccurrence
+from edt.erreurs import ErreurIntrouvable
 from edt.services.emploi_du_temps import modifications, vues
-from edt.services.emploi_du_temps.identifiants import IDENTIFIANT_MAX, identifiant_possible
+from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
 
 from .conftest import (
     CINQ_MILLE_CHIFFRES,
     ENORME,
     HX,
+    autre_ecrivain,
     calcul_qui_tourne,
     creer_version_vide,
 )
@@ -44,15 +46,38 @@ from .conftest import (
 # --------------------------------------------------------------------------- #
 
 
+class _SessionEspion:
+    """Session réduite à `get`, qui note chaque interrogation de la base (et n'en trouve aucune)."""
+
+    def __init__(self) -> None:
+        self.interrogations: list[object] = []
+
+    def get(self, modele, ident):
+        self.interrogations.append(ident)
+        return None
+
+
 @pytest.mark.cas_limite
-def test_bornes_des_identifiants():
-    """Cas : identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal.
+def test_bornes_des_identifiants(session):
+    """Cas : identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu
+    par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne
+    2^63 - 1, acceptée.
     Risque : un identifiant qu'aucune ligne SQLite ne peut porter atteint la base
-    (OverflowError, erreur 500), ou `True` passe pour l'identifiant 1.
+    (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1.
     """
-    assert identifiant_possible(1) and identifiant_possible(IDENTIFIANT_MAX)
-    for impossible in (0, -1, IDENTIFIANT_MAX + 1, int(ENORME), True, "12", None, 1.0):
-        assert not identifiant_possible(impossible), impossible
+    impossibles = (0, -1, IDENTIFIANT_MAX + 1, int(ENORME), True, "12", None, 1.0)
+    espion = _SessionEspion()
+    for impossible in impossibles:
+        with pytest.raises(ErreurIntrouvable, match="Calcul introuvable"):
+            exiger_identifiant(impossible, "Calcul introuvable.")
+        assert obtenir(espion, m.Calcul, impossible) is None, impossible
+    assert espion.interrogations == []  # rien n'a atteint la base
+
+    assert exiger_identifiant(1, "Calcul introuvable.") == 1
+    assert exiger_identifiant(IDENTIFIANT_MAX, "Calcul introuvable.") == IDENTIFIANT_MAX
+    assert obtenir(espion, m.Calcul, IDENTIFIANT_MAX) is None
+    assert espion.interrogations == [IDENTIFIANT_MAX]  # la borne, elle, est cherchée
+    assert obtenir(session, m.Calcul, IDENTIFIANT_MAX) is None  # et SQLite l'accepte
 
 
 @pytest.mark.cas_limite
@@ -495,6 +520,73 @@ def test_head_sur_les_ecrans_de_l_emploi_du_temps(version_generee, client):
         assert int(reponse.headers["content-length"]) > 0, adresse  # celle de la page en GET
     action = client.head(f"/calculs/{version_generee.calcul_id}/arreter")
     assert action.status_code == 405 and action.content == b""
+
+
+# --------------------------------------------------------------------------- #
+# Verrou d'écriture tenu par un autre écrivain (import, chargement de jeu)
+# --------------------------------------------------------------------------- #
+
+ECRITURE_D_UN_IMPORT = (
+    "UPDATE occurrence SET commentaire = 'Import en cours' "
+    "WHERE id = (SELECT max(id) FROM occurrence)"
+)
+"""Ce que l'autre écrivain change et valide : la note de la dernière séance datée."""
+
+
+@pytest.mark.cas_limite
+def test_une_ecriture_attend_son_tour_pendant_un_autre_ecrivain(reperes, client, faux_verificateur):
+    """Cas : une séance datée est annulée pendant qu'un import, dans un autre onglet, tient le
+    verrou d'écriture puis valide ses changements environ 0,3 s plus tard.
+    Risque : la requête lit d'abord puis écrit ; SQLite la refuse aussitôt (« database is
+    locked », page « base occupée ») au lieu de la faire attendre la fin de l'import.
+    """
+    adresse = f"/emploi-du-temps/occurrences/{reperes.occurrence}/annuler"
+    with autre_ecrivain(ecriture=ECRITURE_D_UN_IMPORT, rendre_apres_s=0.3) as rendu:
+        reponse = client.post(adresse, data={"motif": "Grève"})
+        assert rendu.is_set()  # la requête n'a abouti qu'après la fin de l'autre écrivain
+    assert reponse.status_code == 200 and "occupée" not in reponse.text
+    with session_base() as session:
+        assert session.get(m.Occurrence, reperes.occurrence).statut is StatutOccurrence.ANNULEE
+        derniere = session.get(m.Occurrence, session.scalar(select(func.max(m.Occurrence.id))))
+        assert derniere.commentaire == "Import en cours"  # les deux écritures, l'une après l'autre
+
+
+@pytest.mark.cas_limite
+def test_une_lecture_est_servie_pendant_un_autre_ecrivain(version_generee, client):
+    """Cas : la grille, la page Générer et « À traiter » sont ouvertes (GET, HEAD) pendant
+    qu'un import tient le verrou d'écriture.
+    Risque : une lecture qui prendrait le verrou d'emblée attendrait la fin de l'import (dix
+    secondes au plus) puis répondrait « base occupée » : chaque onglet gelé pendant l'import.
+    """
+    with autre_ecrivain() as rendu:
+        for adresse in (
+            f"/emploi-du-temps?version_id={version_generee.version_id}",
+            f"/calculs?semestre_id={version_generee.semestre_id}",
+            "/a-traiter",
+        ):
+            assert client.get(adresse).status_code == 200, adresse
+        assert client.head("/a-traiter").status_code == 200
+        assert not rendu.is_set()  # servies sous le verrou, sans l'attendre
+
+
+@pytest.mark.cas_limite
+def test_verrou_tenu_au_dela_du_delai_donne_la_page_base_occupee(
+    reperes, client, faux_verificateur, delai_verrou_court
+):
+    """Cas : l'autre écrivain garde le verrou au-delà du délai d'attente de la base (import
+    très long, commande bloquée sur le serveur).
+    Risque : trace ou erreur 500 « inattendue » au lieu de la page « base occupée » (503) qui
+    dit de réessayer ; ou une séance annulée à moitié.
+    """
+    adresse = f"/emploi-du-temps/occurrences/{reperes.occurrence}/annuler"
+    with autre_ecrivain() as rendu:
+        reponse = client.post(adresse, data={"motif": "Grève"})
+        assert not rendu.is_set()  # le délai (réduit) est écoulé, l'autre écrivain tient toujours
+    assert reponse.status_code == 503
+    assert "Base de données occupée" in reponse.text and "réessayer" in reponse.text
+    assert "inattendue" not in reponse.text and "Traceback" not in reponse.text
+    with session_base() as session:
+        assert session.get(m.Occurrence, reperes.occurrence).statut is not StatutOccurrence.ANNULEE
 
 
 # --------------------------------------------------------------------------- #

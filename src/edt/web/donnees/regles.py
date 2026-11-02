@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_hhmm
@@ -47,7 +48,6 @@ from edt.domaine.regles import (
 )
 from edt.services.referentiels.conversion import entier_naturel
 from edt.services.referentiels.enseignements import libelle_besoin
-from edt.services.referentiels.operations import identifiant_possible
 from edt.services.referentiels.personnes import NoeudGroupe, arbre_groupes
 from edt.services.regles import RegleDetail
 from edt.web.donnees.formulaires import ChampAffiche, RubriqueChamps
@@ -252,7 +252,7 @@ def brouillon_depuis_formulaire(
     # Une cible est un identifiant choisi dans la liste ; un identifiant impossible
     # (« 999...9 », champ fabriqué) part comme un code, que le service dira inconnu.
     ident = entier_naturel(cible)
-    valeur_cible = ident if ident is not None and identifiant_possible(ident) else cible[:40]
+    valeur_cible = ident if ident is not None and identifiant_valide(ident) else cible[:40]
     parametres: dict[str, Any] = {}
     for champ in definition.champs:
         nom = PREFIXE_PARAMETRE + champ.nom

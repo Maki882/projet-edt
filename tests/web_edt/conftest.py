@@ -23,7 +23,11 @@ Banque des cas limites (`@pytest.mark.cas_limite`, `test_cas_limites.py`) :
   (pour un test `xfail` qui la constate) au lieu de lever l'exception ;
 - `creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` : une
   version sans séance, une séance datée de la version, un calcul en cours
-  (moteur lent, arrêté à la sortie).
+  (moteur lent, arrêté à la sortie) ;
+- `autre_ecrivain`, `delai_verrou_court` : une autre connexion (import,
+  chargement de jeu) qui tient le verrou d'écriture de la base ; l'attente
+  sur verrou réduite, pour constater sans attendre dix secondes ce qui se
+  passe au-delà du délai.
 
 Aucun test ne suppose l'emploi du temps particulier d'un moteur : les jours
 et les dates utilisés sont lus dans la version produite (`jour_avec_seance`,
@@ -34,6 +38,7 @@ from __future__ import annotations
 
 import contextlib
 import datetime as dt
+import sqlite3
 import sys
 import threading
 import types
@@ -44,8 +49,10 @@ import pytest
 from sqlalchemy import func, select
 
 from edt import solveur
+from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db import moteur as module_moteur
+from edt.db.moteur import chemin_base, liberer_moteurs, session_base
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.enumerations import OrigineVersion, StatutOccurrence
 from edt.services import generation
@@ -61,6 +68,9 @@ HX = {"HX-Request": "true"}
 
 ENORME = "9" * 20
 """Identifiant au-delà de 2^63 : aucune ligne SQLite ne peut le porter (lien mal copié)."""
+
+DELAI_VERROU_COURT_MS = 200
+"""Attente sur verrou des tests qui dépassent le délai (au lieu de `DELAI_VERROU_MS`, 10 s)."""
 
 CINQ_MILLE_CHIFFRES = "1" * 5000
 """Au-delà de 4 300 chiffres, `int()` lève ValueError (limite de Python) : lien abîmé, envoi
@@ -408,3 +418,55 @@ def calcul_qui_tourne(semestre_id: int, monkeypatch) -> Iterator[int]:
     finally:
         generation.demander_arret(calcul_id)
         generation.attendre_calcul(calcul_id, DELAI)
+
+
+@contextlib.contextmanager
+def autre_ecrivain(
+    *, ecriture: str | None = None, rendre_apres_s: float | None = None
+) -> Iterator[threading.Event]:
+    """Une autre connexion (import, chargement de jeu dans un autre onglet) tient le verrou
+    d'écriture de la base, pris par `BEGIN IMMEDIATE` à l'entrée du bloc.
+
+    - `ecriture` : instruction SQL faite par cet écrivain puis validée en rendant le
+      verrou (la base a changé : une transaction qui avait déjà lu ne pourrait plus
+      écrire) ; sans elle, il annule ;
+    - `rendre_apres_s` : un fil rend le verrou après ce délai ; sinon, à la sortie du bloc.
+
+    Renvoie l'événement posé quand le verrou est rendu.
+    """
+    brute = sqlite3.connect(
+        chemin_base(charger_configuration().db_url), isolation_level=None, check_same_thread=False
+    )
+    rendu = threading.Event()
+
+    def rendre() -> None:
+        brute.execute("COMMIT" if ecriture else "ROLLBACK")
+        rendu.set()
+
+    brute.execute("BEGIN IMMEDIATE")
+    if ecriture:
+        brute.execute(ecriture)
+    minuterie = threading.Timer(rendre_apres_s, rendre) if rendre_apres_s is not None else None
+    if minuterie is not None:
+        minuterie.start()
+    try:
+        yield rendu
+    finally:
+        if minuterie is not None:
+            minuterie.join()
+        if not rendu.is_set():
+            rendre()
+        brute.close()
+
+
+@pytest.fixture
+def delai_verrou_court(monkeypatch) -> Iterator[int]:
+    """Attente sur verrou réduite à `DELAI_VERROU_COURT_MS` pour les connexions ouvertes ensuite.
+
+    Le moteur relit `DELAI_VERROU_MS` à chaque nouvelle connexion : les moteurs existants
+    sont libérés pour que la suivante l'applique (comme la fixture du socle, sans l'importer).
+    """
+    monkeypatch.setattr(module_moteur, "DELAI_VERROU_MS", DELAI_VERROU_COURT_MS)
+    liberer_moteurs()
+    yield DELAI_VERROU_COURT_MS
+    liberer_moteurs()

@@ -29,7 +29,7 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/regles_personnalisees.py` | règles personnalisées sur ces écrans : tableau de la page Générer, règles appliquées et entorses d'un calcul, déjeuner de la personne affichée, jours permis d'une séance |
-| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base ; paramètre d'adresse vide = non précisé ; nombres écrits lus en chiffres ASCII (`entier_ecrit`) ; saisies recopiées coupées (`apercu`) |
+| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base par la garde commune `edt.db.moteur.identifiant_valide` ; paramètre d'adresse vide = non précisé ; nombres écrits lus en chiffres ASCII (`entier_ecrit`) ; saisies recopiées coupées (`apercu`) |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -472,14 +472,15 @@ normal ; `tests/web_edt/test_cas_limites.py` les essaie. Ces tests forment la
 banque des cas limites du lot (marqueur `cas_limite`, docstring « Cas : …
 Risque : … ») : `python -m pytest -m cas_limite tests/web_edt`. Les aides
 pour en écrire d'autres (identifiant `ENORME`, nombre `CINQ_MILLE_CHIFFRES`,
-`reperes`, `creer_version_vide`, `calcul_qui_tourne`, `client_sans_trace`) sont
-dans `tests/web_edt/conftest.py`.
+`reperes`, `creer_version_vide`, `calcul_qui_tourne`, `client_sans_trace`,
+`autre_ecrivain`, `delai_verrou_court`) sont dans `tests/web_edt/conftest.py`.
 
 - **Identifiants hors bornes ou inconnus** (`identifiants.py`) : SQLite range
   ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`
   (lien mal copié, `-1`, vingt chiffres) donné à la base lèverait
   `OverflowError`. Chaque service vérifie l'identifiant reçu avant de
-  l'interroger (`exiger_identifiant`, `obtenir`) : hors bornes, c'est
+  l'interroger (`exiger_identifiant`, `obtenir`, qui appliquent la garde
+  commune `edt.db.moteur.identifiant_valide`) : hors bornes, c'est
   « introuvable » (404), comme un identifiant inconnu. Dans l'adresse de la
   grille, une cible hors bornes ou inconnue affiche la première classe en le
   disant ; une séance (`seance=h…`, `o…`) introuvable ouvre la page sans
@@ -508,6 +509,15 @@ dans `tests/web_edt/conftest.py`.
 - **Motif d'annulation** d'une séance datée : `modifications.MOTIF_MAX`
   (2 000) caractères au plus ; le champ du panneau porte la même borne
   (`maxlength`), un envoi plus long est refusé (422) sans annuler la séance.
+- **Autre écrivain** (import ou chargement de jeu dans un autre onglet,
+  commande sur le serveur) : une modification de la grille ou une
+  annulation attend son tour, la requête d'écriture prenant le verrou
+  d'emblée (`edt.web.dependances`, `BEGIN IMMEDIATE`) ; au-delà du délai
+  (10 s), page « base occupée » (503) sans rien changer. Les pages restent
+  servies pendant ce temps. Lancer, relancer et arrêter un calcul gardent une
+  session différée (le service de génération écrit dans ses propres
+  transactions) ; la pause déjeuner choisie au lancement est enregistrée
+  dans une transaction immédiate (`calculs.appliquer_dejeuner`).
 - **Arrêter un calcul déjà terminé** (deux onglets) : « Ce calcul est déjà
   terminé : rien à arrêter. » (`calculs.arreter_calcul`), au lieu
   d'annoncer un arrêt.

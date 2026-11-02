@@ -43,6 +43,7 @@ from edt.erreurs import ErreurConfiguration
 from edt.journal import configurer_journalisation
 from edt.services.generation import cloturer_calculs_interrompus
 from edt.web import routes
+from edt.web.dependances import ROUTES_ECRITURE_DELEGUEE
 from edt.web.erreurs import installer_gestionnaires
 from edt.web.gabarits import DOSSIER_STATIQUE
 from edt.web.intergiciels import IntergicielHead, IntergicielJournal
@@ -128,6 +129,7 @@ def creer_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=DOSSIER_STATIQUE), name="static")
 
     entrees: list[EntreeMenu] = []
+    noms_des_routes: set[str] = set()
     for nom_module in modules_de_routes():
         module = importlib.import_module(nom_module)
         routeur = getattr(module, ATTRIBUT_ROUTEUR, None)
@@ -142,12 +144,29 @@ def creer_app() -> FastAPI:
                 f"Le module {nom_module} : « {ATTRIBUT_MENU} » doit être une liste d'EntreeMenu."
             )
         app.include_router(routeur)
+        noms_des_routes.update(route.name for route in routeur.routes if hasattr(route, "name"))
         entrees.extend(menu)
         journal.debug("Routes chargées : %s (%d entrée(s) de menu)", nom_module, len(menu))
 
+    _verifier_routes_a_ecriture_deleguee(noms_des_routes)
     app.state.menu = construire_menu(entrees)
     installer_gestionnaires(app)
     # Le dernier ajouté enveloppe les autres : le journal voit la méthode reçue (HEAD).
     app.add_middleware(IntergicielHead)
     app.add_middleware(IntergicielJournal)
     return app
+
+
+def _verifier_routes_a_ecriture_deleguee(noms_des_routes: set[str]) -> None:
+    """Chaque nom de `ROUTES_ECRITURE_DELEGUEE` doit désigner une route des modules chargés.
+
+    Une route renommée sans mettre la liste à jour prendrait le verrou d'écriture
+    d'emblée et bloquerait jusqu'au délai le service de génération qu'elle appelle.
+    """
+    inconnues = sorted(ROUTES_ECRITURE_DELEGUEE - noms_des_routes)
+    if inconnues:
+        raise ErreurConfiguration(
+            "edt.web.dependances.ROUTES_ECRITURE_DELEGUEE cite des routes inexistantes "
+            f"({', '.join(inconnues)}) : mettre la liste à jour avec les noms des routes "
+            "dont la session ne fait que lire."
+        )

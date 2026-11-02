@@ -150,11 +150,21 @@ sont servis sous un verrou d'écriture long) ; un écrivain long et connu
 requête** pour ouvrir par `BEGIN IMMEDIATE` (verrou d'écriture pris
 d'emblée, autres écrivains sérialisés) ; appelée trop tard, elle lève
 `ErreurConfiguration` au lieu de laisser la transaction différée en silence.
+Côté web, toute requête d'écriture (POST, PUT, PATCH, DELETE) ouvre sa
+transaction ainsi (`edt.web.dependances.session_requete`), car une transaction
+qui a déjà lu ne peut plus attendre son tour pour écrire (règle
+anti-interblocage de SQLite) : elle attend le délai de verrou, puis « base
+occupée » (503) ; GET et HEAD restent différés, et les routes dont le service
+écrit dans ses propres transactions (lancer, relancer, arrêter un calcul :
+`ROUTES_ECRITURE_DELEGUEE`) gardent une session différée, sans quoi ce
+service attendrait en vain le verrou tenu par la requête.
 
 - `identifiant_valide(valeur)` : entier strictement positif dans les bornes
-  de SQLite ; à appeler avant `session.get` sur un identifiant venu de
-  l'extérieur (adresse, option) pour répondre « n'existe pas » au lieu de
-  laisser le pilote lever `OverflowError`.
+  de SQLite (`IDENTIFIANT_MAX`) ; à appeler avant `session.get` sur un
+  identifiant venu de l'extérieur (adresse, formulaire, option) pour
+  répondre « n'existe pas » au lieu de laisser le pilote lever
+  `OverflowError`. Garde commune : services et écrans l'importent d'ici,
+  jamais de copie locale.
 - `expliquer_erreur_base(erreur)` : phrase française et remède pour une
   panne du pilote (base verrouillée par un autre processus, fichier en
   lecture seule, fichier qui n'est pas une base SQLite, disque plein). La

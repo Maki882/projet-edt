@@ -45,6 +45,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
 from edt.domaine.heures import MINUTES_PAR_JOUR, duree_vers_texte, minutes_vers_texte
 from edt.domaine.regles import (
@@ -84,17 +85,15 @@ FEUILLES_AVEC_PROVENANCE = frozenset(
 LONGUEUR_SOURCE = 255
 
 
-ENTIER_SQLITE_MAX = 2**63 - 1
-"""Plus grand entier qu'enregistre SQLite : au-delà, aucune ligne ne peut avoir cet identifiant."""
+def obtenir_par_id(session: Session, modele: type, identifiant: object) -> Any | None:
+    """La ligne d'identifiant `identifiant`, ou `None` s'il ne peut désigner aucune ligne.
 
-
-def obtenir_par_id(session: Session, modele: type, identifiant: int) -> Any | None:
-    """La ligne d'identifiant `identifiant`, ou `None` (y compris hors des limites de SQLite).
-
-    `session.get` lèverait `OverflowError` pour un entier énorme venu d'une
-    adresse ou de la ligne de commande : on répond « n'existe pas ».
+    La garde est celle du socle (`edt.db.moteur.identifiant_valide`) : un
+    identifiant nul, négatif, booléen ou au-delà des entiers de SQLite répond
+    « n'existe pas », là où `session.get` lèverait `OverflowError` pour un
+    entier énorme venu d'une adresse ou de la ligne de commande.
     """
-    if not 0 < identifiant <= ENTIER_SQLITE_MAX:
+    if not identifiant_valide(identifiant):
         return None
     return session.get(modele, identifiant)
 
