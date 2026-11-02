@@ -64,6 +64,8 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     catalogue = page.count('name="niveau_') - page.count('name="niveau_regle_')
     assert catalogue == 3 * len(MODIFIABLES)  # trois niveaux par règle du catalogue
     assert 'name="contraintes"' not in page  # plus de case pour ignorer une règle
+    assert page.count(">Lancer le calcul</button>") == 2  # en tête de page et en bas du formulaire
+    assert 'form="formulaire-calcul"' in page  # le bouton du haut soumet le même formulaire
     assert all(
         entree.libelle in page
         for code, entree in CATALOGUE.items()
