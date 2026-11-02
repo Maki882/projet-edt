@@ -171,10 +171,14 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
   annulé à la fin ; le bilan affiché (« 12 créé(s), 30 mis à jour, 2
   inchangé(s), 3 rejeté(s) » par feuille) est donc celui que donnera
   l'application, et rien n'est écrit.
-- **Imports simultanés** : un import réserve la base en écriture dès son
-  début (`BEGIN IMMEDIATE`) ; un second import, ou une autre écriture, attend
-  qu'il finisse (10 s au plus, puis « base occupée »). Sans cela, le second
-  échouait aussitôt dès que l'autre avait écrit entre-temps.
+- **Imports simultanés** : un import lit d'abord tous ses fichiers (tableaux
+  et récurrences iCal) sans rien réserver, puis réserve la base en écriture
+  (`BEGIN IMMEDIATE`) le temps d'écrire ; un second import, ou une autre
+  écriture, attend qu'il finisse (10 s au plus, puis « base occupée »). Sans
+  cela, le second échouait aussitôt dès que l'autre avait écrit entre-temps.
+- **Import et calcul** : un import est refusé pendant un calcul ; en retour,
+  `services.echange.import_en_cours()` dit au lancement d'un calcul qu'un
+  import, simulé ou appliqué, tourne dans le processus.
 - Une valeur que la base ne sait pas enregistrer malgré les bornes de
   lecture (entier au-delà de 2^63) rejette sa ligne seule, avec un message.
 - **Ordre de traitement** : celui des feuilles ci-dessous (une salle après
@@ -229,7 +233,8 @@ qui dit quoi faire ; il n'est jamais tronqué en silence.
 | Classeur XLSX (c'est aussi une archive) | 300 parties, 20 Mo une fois décompressé | `lecture.MAX_MEMBRES_CLASSEUR`, `TAILLE_MAX_DECOMPRESSEE` |
 | Tableau (un CSV ou un onglet) | 50 000 lignes de données, 100 000 lignes lues (vides comprises), 500 colonnes | `lecture.MAX_LIGNES_TABLEAU`, `MAX_LIGNES_LUES`, `MAX_COLONNES` |
 | Envoi (tous fichiers et onglets) | 100 000 lignes de données ou séances iCal | `lecture.MAX_LIGNES_ENVOI` |
-| Fichier iCal | 50 000 événements ; 3 s de calcul pour toutes ses récurrences | `ical.MAX_EVENEMENTS`, `DELAI_RECURRENCES` |
+| Fichier iCal | 50 000 événements | `ical.MAX_EVENEMENTS` |
+| Récurrences iCal d'un envoi | 3 s de calcul, tous fichiers confondus ; au-delà, les fichiers suivants sont refusés | `ical.DELAI_RECURRENCES`, `BudgetRecurrences` |
 | Règle de récurrence (refusée seule) | 1 000 occurrences sur la période, 100 000 pas de calcul depuis son début | `ical.MAX_OCCURRENCES`, `MAX_ITERATIONS` |
 | Emploi du temps importé | 200 000 séances une fois les lignes hebdomadaires développées | `reconstitution.MAX_SEANCES_DEVELOPPEES` |
 | Rapport | 20 000 signalements détaillés | `rapport.MAX_SIGNALEMENTS` |
@@ -757,8 +762,8 @@ modèle.
   la suite. Un import compte de l'ordre de 2 ms par ligne valide (10 000
   enseignants simulés : 20 s environ, test `perf`) et réserve la base en
   écriture pendant tout ce temps : une saisie lancée en même temps attend
-  10 s au plus, puis reçoit « base occupée ». Lire un fichier iCal fait
-  partie de ce temps.
+  10 s au plus, puis reçoit « base occupée ». La lecture des fichiers, iCal
+  compris, se fait avant et ne réserve pas la base.
 - Le tableur change un code numérique (« 0101 ») en nombre (101) sans que
   le fichier en garde trace : le zéro de tête est perdu. Mettre la colonne
   au format Texte avant la saisie.

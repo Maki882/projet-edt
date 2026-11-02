@@ -28,8 +28,9 @@ C'est un **adaptateur isolé** : il produit le même tableau intermédiaire
   VTIMEZONE du fichier) : icalendar rend une heure sans fuseau, prise comme
   heure de Paris ; un avertissement par fuseau le dit.
 - Bornes : un fichier de plus de `MAX_EVENEMENTS` événements, qui donne plus
-  de séances qu'il n'en reste pour l'envoi, ou dont les récurrences demandent
-  plus de `DELAI_RECURRENCES` secondes de calcul, est refusé en entier. Une
+  de séances qu'il n'en reste pour l'envoi, ou dont les récurrences dépassent
+  le temps de calcul qui reste à l'envoi (`BudgetRecurrences`,
+  `DELAI_RECURRENCES` secondes pour tous ses fichiers), est refusé en entier. Une
   règle de récurrence est refusée seule (signalement d'erreur, le reste du
   fichier est lu) si elle donne plus de `MAX_OCCURRENCES` occurrences sur la
   période, demande plus de `MAX_ITERATIONS` pas depuis son début, ou n'a pas
@@ -45,7 +46,7 @@ import datetime as dt
 import logging
 import re
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -72,9 +73,10 @@ MAX_ITERATIONS = 100_000
 """Pas de calcul au plus pour développer une règle, occurrences antérieures à la période
 comprises : une série quotidienne commencée vers 1750 passe encore (0,2 s environ)."""
 DELAI_RECURRENCES = 3.0
-"""Secondes de calcul au plus pour toutes les récurrences d'un fichier (un gros fichier
-réel en demande bien moins d'une seconde) ; au-delà, le fichier est refusé. La lecture
-se fait pendant l'import, base réservée : ce délai reste sous celui d'attente de la base."""
+"""Secondes de calcul au plus pour toutes les récurrences d'un envoi, tous fichiers iCal
+confondus (un gros fichier réel en demande bien moins d'une seconde) ; au-delà, les
+fichiers suivants sont refusés. Le service lit les fichiers avant d'ouvrir la
+transaction de l'import : ce calcul ne réserve pas la base."""
 FREQUENCES = {
     "DAILY": "quotidienne",
     "WEEKLY": "hebdomadaire",
@@ -102,7 +104,7 @@ class _Illisible(Exception):  # noqa: N818 - refus d'un événement, converti en
 
 
 class _TropLong(Exception):  # noqa: N818 - refus du fichier entier, converti en signalement
-    """Les récurrences du fichier demandent plus de `DELAI_RECURRENCES` secondes."""
+    """Les récurrences ont épuisé le temps de calcul de l'envoi (`BudgetRecurrences`)."""
 
 
 _horloge = time.monotonic
@@ -110,10 +112,16 @@ _horloge = time.monotonic
 
 
 @dataclass
-class _Budget:
-    """Temps de calcul des récurrences qu'il reste à un fichier, en secondes."""
+class BudgetRecurrences:
+    """Temps de calcul des récurrences qu'il reste à un envoi, en secondes.
 
-    restant: float
+    Le service en crée un par envoi et le passe à chaque `lire_ical`, comme
+    `max_seances` : plusieurs fichiers hostiles ne disposent pas chacun de
+    `DELAI_RECURRENCES` secondes. Sans budget fourni, `lire_ical` en crée un
+    pour le fichier seul.
+    """
+
+    restant: float = field(default_factory=lambda: DELAI_RECURRENCES)
 
     def verifier(self, depart: float) -> None:
         """Lève `_TropLong` si le calcul commencé à `depart` épuise le temps restant."""
@@ -133,12 +141,14 @@ def lire_ical(
     texte: str,
     periode: tuple[dt.date, dt.date] | None = None,
     max_seances: int = MAX_SEANCES,
+    budget: BudgetRecurrences | None = None,
 ) -> tuple[list[SeanceLue], list[Signalement]]:
     """Séances d'un fichier iCal ; `periode` borne le développement des récurrences.
 
     Chaque événement illisible donne un signalement d'erreur (et rien d'autre).
-    Un fichier trop grand (événements, ou séances au-delà de `max_seances`)
-    est refusé en entier, avec un signalement d'erreur.
+    Un fichier trop grand (événements, séances au-delà de `max_seances`, ou
+    récurrences au-delà du `budget` de calcul de l'envoi) est refusé en entier,
+    avec un signalement d'erreur.
     """
     signalements: list[Signalement] = []
     nombre = texte.upper().count("BEGIN:VEVENT")
@@ -195,7 +205,7 @@ def lire_ical(
             )
 
     seances: list[SeanceLue] = []
-    budget = _Budget(DELAI_RECURRENCES)
+    budget = budget if budget is not None else BudgetRecurrences()
 
     def refus(message: str) -> tuple[list[SeanceLue], list[Signalement]]:
         journal.warning("Fichier iCal %s refusé : %s", nom, message)
@@ -223,9 +233,9 @@ def lire_ical(
                 return refus(trop)
     except _TropLong:
         return refus(
-            f"ses règles de récurrence demandent plus de {DELAI_RECURRENCES:g} s de calcul "
-            "(règles trop nombreuses, ou sans occurrence possible). Découper le fichier ou "
-            "simplifier ses règles."
+            f"les règles de récurrence de l'envoi demandent plus de {DELAI_RECURRENCES:g} s "
+            "de calcul (règles trop nombreuses, ou sans occurrence possible). Découper "
+            "l'envoi ou simplifier ses règles."
         )
     journal.info(
         "Fichier iCal %s : %d événement(s), %d séance(s)", nom, len(evenements), len(seances)
@@ -240,7 +250,7 @@ def _lire_ou_signaler(
     remplacements: dict[tuple[str, dt.datetime], Any],
     periode: tuple[dt.date, dt.date] | None,
     signalements: list[Signalement],
-    budget: _Budget,
+    budget: BudgetRecurrences,
 ) -> list[SeanceLue]:
     """Séances d'un événement ; un événement illisible devient un signalement d'erreur.
 
@@ -272,7 +282,7 @@ def _lire_evenement(
     remplacements: dict[tuple[str, dt.datetime], Any],
     periode: tuple[dt.date, dt.date] | None,
     signalements: list[Signalement],
-    budget: _Budget,
+    budget: BudgetRecurrences,
 ) -> list[SeanceLue]:
     debut, duree = _debut_et_duree(ev)
     champs = _champs(ev)
@@ -570,14 +580,14 @@ def _developper(
     ev: Any,
     debut: dt.datetime,
     periode: tuple[dt.date, dt.date] | None,
-    budget: _Budget,
+    budget: BudgetRecurrences,
 ) -> list[dt.datetime]:
     """Occurrences d'un événement récurrent, dans le fuseau de son début.
 
     La récurrence se calcule en heure locale du fuseau de l'événement (comme
     le veut la norme), puis chaque occurrence reprend ce fuseau. Les pas
     antérieurs à la période comptent (`MAX_ITERATIONS`) ; le temps passé est
-    retiré du `budget` du fichier.
+    retiré du `budget` de l'envoi.
     """
     fuseau = debut.tzinfo
     naif = debut.replace(tzinfo=None)

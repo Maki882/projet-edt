@@ -14,7 +14,12 @@ sérialisables en JSON (`vers_dict`).
 Un import est toujours exécuté de la même façon ; la simulation annule ses
 écritures à la fin (point de sauvegarde), le bilan qu'elle affiche est donc
 celui que donnera l'application. Un import est refusé pendant qu'un calcul
-tourne.
+tourne ; en retour, `import_en_cours()` dit au lancement d'un calcul qu'un
+import tourne dans le processus.
+
+Les fichiers sont lus entièrement (tableaux, puis récurrences iCal) avant
+l'ouverture de la transaction de l'import : la base n'est réservée en
+écriture (`BEGIN IMMEDIATE`) que le temps d'écrire.
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ from __future__ import annotations
 import base64
 import datetime as dt
 import logging
-from collections.abc import Sequence
+import threading
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -35,7 +42,7 @@ from edt.echange import donnees, export_edt
 from edt.echange.ecriture import archive_zip, classeur_xlsx
 from edt.echange.export_edt import Couche, Filtre
 from edt.echange.format import FEUILLES, identifier_feuille, texte_lisez_moi
-from edt.echange.ical import lire_ical
+from edt.echange.ical import BudgetRecurrences, lire_ical
 from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
 from edt.echange.rapport import (
     Bilan,
@@ -45,7 +52,7 @@ from edt.echange.rapport import (
     rapport_csv,
 )
 from edt.echange.reconstitution import reconstituer
-from edt.echange.seances import ModeImport, lire_tableau_seances
+from edt.echange.seances import ModeImport, SeanceLue, lire_tableau_seances
 from edt.echange.transaction import simulation_possible
 from edt.echange.valeurs import lire_choix, lire_date, lire_entier
 from edt.erreurs import (
@@ -78,6 +85,7 @@ __all__ = [
     "compter_remplacement",
     "exporter_donnees",
     "exporter_emploi_du_temps",
+    "import_en_cours",
     "lire_options",
     "produire_gabarit",
     "rapport_telechargeable",
@@ -284,11 +292,46 @@ def verifier_taille(tailles: Sequence[int]) -> None:
         )
 
 
+_verrou_imports = threading.Lock()
+_imports_actifs = 0
+"""Imports (simulés ou appliqués) en train de tourner dans ce processus."""
+
+
+def import_en_cours() -> bool:
+    """Vrai si un import, simulé ou appliqué, tourne dans ce processus.
+
+    Le lancement d'un calcul le consulte : un calcul ne doit pas lire des
+    données en train d'être importées, de même qu'un import est refusé
+    pendant un calcul. Une simulation compte aussi : elle réserve la base en
+    écriture. Comme `services.jeux.operation_en_cours`, le marqueur ne couvre
+    que le processus (le serveur web en est un seul).
+    """
+    return _imports_actifs > 0
+
+
+@contextmanager
+def _import_signale() -> Iterator[None]:
+    """Compte l'import comme en cours pendant le bloc, même s'il échoue.
+
+    Un compteur et non un booléen : deux imports peuvent tourner ensemble
+    (ils se suivent sur la base).
+    """
+    global _imports_actifs
+    with _verrou_imports:
+        _imports_actifs += 1
+    try:
+        yield
+    finally:
+        with _verrou_imports:
+            _imports_actifs -= 1
+
+
 def simuler_import(
     session: Session, fichiers: Sequence[FichierEnvoye], options: OptionsImport
 ) -> RapportImport:
     """Fait tout l'import puis l'annule : le rapport et le bilan, sans rien écrire."""
-    return _importer(session, fichiers, options, simuler=True)
+    with _import_signale():
+        return _importer(session, fichiers, options, simuler=True)
 
 
 def appliquer_import(
@@ -299,7 +342,8 @@ def appliquer_import(
     Ne valide pas la transaction (l'appelant le fait). « Tout remplacer »
     exige `options.confirmer_remplacement`.
     """
-    return _importer(session, fichiers, options, simuler=False)
+    with _import_signale():
+        return _importer(session, fichiers, options, simuler=False)
 
 
 def compter_remplacement(session: Session) -> dict[str, int]:
@@ -357,21 +401,53 @@ def _importer(
         if lu.texte_ical is not None:
             calendriers.append((lu.nom, lu.texte_ical))
 
+    # Tout ce qui se lit sans écrire est lu avant la transaction : le développement des
+    # récurrences iCal (jusqu'à DELAI_RECURRENCES secondes) ne réserve pas la base.
+    semestre = None
+    bilan_seances = Bilan("séances")
+    seances: list[SeanceLue] = []
+    if options.mode is ModeImport.DONNEES:
+        for nom, _ in calendriers:
+            signalements.append(
+                Signalement(
+                    Gravite.ERREUR,
+                    "Un fichier iCal décrit un emploi du temps : choisir un mode d'import "
+                    "d'emploi du temps (référence, verrous ou à replacer).",
+                    fichier=nom,
+                )
+            )
+    else:
+        semestre = (
+            donnees.obtenir_par_id(session, m.Semestre, options.semestre_id)
+            if options.semestre_id is not None
+            else semestre_par_defaut(session)
+        )
+        if semestre is None:
+            raise ErreurIntrouvable(f"Le semestre {options.semestre_id} n'existe pas.")
+        for tableau in tableaux:
+            seances.extend(lire_tableau_seances(tableau, bilan_seances, signalements))
+        budget = BudgetRecurrences()  # un seul temps de calcul pour tous les fichiers iCal
+        for nom, texte in calendriers:
+            lues, signales = lire_ical(
+                nom,
+                texte,
+                (semestre.date_debut, semestre.date_fin),
+                max_seances=limites.lignes_restantes,
+                budget=budget,
+            )
+            limites.lignes_restantes -= len(lues)
+            bilan_seances.ajouter(
+                "rejetes", sum(1 for s in signales if s.gravite is Gravite.ERREUR)
+            )
+            seances.extend(lues)
+            signalements.extend(signales)
+
     bilans: list[Bilan] = []
     version_id = None
     semaines_types: tuple[str, ...] = ()
     besoins: tuple[dict, ...] = ()
     with simulation_possible(session, simuler):
         if options.mode is ModeImport.DONNEES:
-            for nom, _ in calendriers:
-                signalements.append(
-                    Signalement(
-                        Gravite.ERREUR,
-                        "Un fichier iCal décrit un emploi du temps : choisir un mode d'import "
-                        "d'emploi du temps (référence, verrous ou à replacer).",
-                        fichier=nom,
-                    )
-                )
             if options.tout_remplacer:
                 bilans.append(_remplacer(session, signalements))
             importes, _ = donnees.importer_tableaux(session, tableaux, signalements)
@@ -381,30 +457,6 @@ def _importer(
                 for t in tableaux
             )
         else:
-            semestre = (
-                session.get(m.Semestre, options.semestre_id)
-                if options.semestre_id is not None
-                else semestre_par_defaut(session)
-            )
-            if semestre is None:
-                raise ErreurIntrouvable(f"Le semestre {options.semestre_id} n'existe pas.")
-            bilan_seances = Bilan("séances")
-            seances = []
-            for tableau in tableaux:
-                seances.extend(lire_tableau_seances(tableau, bilan_seances, signalements))
-            for nom, texte in calendriers:
-                lues, signales = lire_ical(
-                    nom,
-                    texte,
-                    (semestre.date_debut, semestre.date_fin),
-                    max_seances=limites.lignes_restantes,
-                )
-                limites.lignes_restantes -= len(lues)
-                bilan_seances.ajouter(
-                    "rejetes", sum(1 for s in signales if s.gravite is Gravite.ERREUR)
-                )
-                seances.extend(lues)
-                signalements.extend(signales)
             resultat = reconstituer(
                 session,
                 seances,
@@ -524,7 +576,7 @@ def resoudre_filtre(
     s'écrit « code » ou « code@campus ». Renvoie les paramètres `groupe_id`,
     `enseignant_id` et `salle_id` d'`exporter_emploi_du_temps`.
     """
-    version = session.get(m.VersionEdt, version_id)
+    version = donnees.obtenir_par_id(session, m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     contexte = donnees.Contexte(session)
