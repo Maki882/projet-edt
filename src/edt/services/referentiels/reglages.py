@@ -34,7 +34,7 @@ from edt.domaine.parametres import (
     definitions,
 )
 from edt.erreurs import ErreurDonneesInvalides
-from edt.services.parametres import ecrire_parametres, lire_parametres
+from edt.services.parametres import anomalies_parametres, ecrire_parametres, lire_parametres
 from edt.services.referentiels.operations import ErreurSaisie
 
 journal = logging.getLogger(__name__)
@@ -111,8 +111,13 @@ class ParametreAffiche:
 
 
 def parametres_affichables(session: Session) -> tuple[ParametreAffiche, ...]:
-    """Tous les paramètres, dans l'ordre de déclaration, avec leur valeur courante."""
-    courants = lire_parametres(session)
+    """Tous les paramètres, dans l'ordre de déclaration, avec leur valeur courante.
+
+    Lecture tolérante : une valeur enregistrée invalide (base abîmée) est
+    remplacée par la valeur par défaut, pour que l'écran s'ouvre et serve à la
+    réparer (voir `parametres_invalides`).
+    """
+    courants = lire_parametres(session, tolerant=True)
     return tuple(
         ParametreAffiche(
             cle=d.cle,
@@ -129,6 +134,23 @@ def parametres_affichables(session: Session) -> tuple[ParametreAffiche, ...]:
         )
         for d in definitions()
     )
+
+
+def parametres_invalides(session: Session) -> dict[str, str]:
+    """Paramètres dont la valeur enregistrée est invalide : clé → message pour l'écran.
+
+    L'écran propose à leur place la valeur par défaut ; l'enregistrer corrige
+    la base (voir `edt.services.parametres.anomalies_parametres`).
+    """
+    libelles = {d.cle: d.libelle for d in definitions()}
+    messages = {}
+    for cle, message in anomalies_parametres(session).items():
+        detail = message.removeprefix(f"{libelles.get(cle, cle)} : ").rstrip(".")
+        messages[cle] = (
+            f"Valeur enregistrée invalide ({detail}) : la valeur par défaut est proposée, "
+            "enregistrer pour corriger la base."
+        )
+    return messages
 
 
 def convertir_saisie(cle: str, texte: str, unite: str) -> ValeurParametre:
@@ -160,7 +182,8 @@ def enregistrer_parametres_saisis(session: Session, saisies: Mapping[str, str]) 
             message = erreur.message.removeprefix(f"{definition.libelle} : ")
             erreurs[cle] = message[:1].upper() + message[1:]
     if not erreurs:
-        erreurs = _defauts_du_dejeuner(lire_parametres(session), valeurs)
+        # Lecture tolérante : une valeur corrompue ailleurs n'empêche pas de réparer la base.
+        erreurs = _defauts_du_dejeuner(lire_parametres(session, tolerant=True), valeurs)
     if erreurs:
         raise ErreurSaisie(erreurs, {cle: connues[cle].libelle for cle in erreurs})
     resultat = ecrire_parametres(session, valeurs)

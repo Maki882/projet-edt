@@ -39,6 +39,7 @@ from edt.services.referentiels.reglages import (
     ParametreAffiche,
     enregistrer_parametres_saisis,
     parametres_affichables,
+    parametres_invalides,
 )
 from edt.services.regles import lister as lister_regles
 from edt.web.dependances import SessionRequete
@@ -240,13 +241,17 @@ def _rendre_parametres(
         statut = 409
     else:
         statut = 422 if erreur is not None else 200
+    # Valeurs enregistrées invalides (base abîmée) : signalées sous leur champ, la page reste
+    # ouverte pour les réenregistrer ; une erreur de la saisie en cours passe devant.
+    invalides = parametres_invalides(session)
     return rendre(
         request,
         "donnees/parametres.html",
         {
             "rubriques": _rubriques_parametres(parametres),
             "saisies": saisies or {},
-            "erreurs": erreur.champs if isinstance(erreur, ErreurSaisie) else {},
+            "erreurs": {**invalides, **(erreur.champs if isinstance(erreur, ErreurSaisie) else {})},
+            "invalides": invalides,
             "erreur": erreur,
             "unites": UNITES,
             # Prévenir avant la saisie (le refus, lui, s'affiche à la place).
