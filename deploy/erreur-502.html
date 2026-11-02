@@ -3,6 +3,10 @@
   deploy/erreur-502.html — page affichée par nginx quand l'application EDT ne
   répond pas (arrêtée, en cours de redémarrage, ou plantée). Installée par
   installer-serveur.sh dans /var/www/edt-erreurs/erreur-502.html.
+
+  Ses styles sont propres à la page (l'application est arrêtée) mais limités à
+  la classe « edt-indisponible » : quand HTMX insère cette page dans la zone des
+  messages d'une page déjà ouverte, elle ne restyle pas la page hôte.
 -->
 <html lang="fr">
 <head>
@@ -11,18 +15,18 @@
 <meta http-equiv="refresh" content="15">
 <title>Emplois du temps : application momentanément indisponible</title>
 <style>
-  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-         background: #f4f5f7; color: #1f2933; line-height: 1.5; }
-  main { max-width: 38rem; margin: 12vh auto 2rem; padding: 2rem; background: #fff;
-         border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
-  h1 { font-size: 1.4rem; margin-top: 0; }
-  .technique { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e4e7eb;
-               font-size: .85rem; color: #52606d; }
-  code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
+  .edt-indisponible { max-width: 38rem; margin: 2rem auto; padding: 2rem; background: #fff;
+                      border: 1px solid #e4e7eb; border-radius: 8px; color: #1f2933; line-height: 1.5;
+                      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+  .edt-indisponible h1 { font-size: 1.4rem; margin-top: 0; }
+  .edt-indisponible .technique { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e4e7eb;
+                                 font-size: .85rem; color: #52606d; }
+  .edt-indisponible code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
 </style>
 </head>
 <body>
-<main>
+<main class="edt-indisponible">
   <h1>L'application des emplois du temps est momentanément indisponible</h1>
   <p>Le serveur fonctionne, mais l'application ne répond pas. C'est normal
      pendant une mise à jour, qui dure en général moins d'une minute.</p>
@@ -30,7 +34,7 @@
      dure, prévenez l'équipe du projet.</p>
   <p class="technique">Pour l'équipe : nginx n'arrive pas à joindre l'application
      sur 127.0.0.1:8000 (erreur 502). Lancez <code>deploy/etat.sh</code>, puis voir
-     <code>docs/deploiement.md</code>, section 8 « Pannes classiques » (erreur 502).</p>
+     <code>docs/deploiement.md</code>, section « Pannes classiques » (erreur 502).</p>
 </main>
 </body>
 </html>
