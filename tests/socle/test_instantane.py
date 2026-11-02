@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import select
 
 from edt import cli
+from edt.commandes.verification import CODE_IMPOSSIBLE
 from edt.db import modeles as m
 from edt.db.initialisation import ecarts_schema
 from edt.db.moteur import obtenir_moteur, session_base
@@ -228,34 +229,26 @@ def test_un_identifiant_hors_des_entiers_sqlite_est_introuvable(
 
 @pytest.mark.cas_limite
 @pytest.mark.parametrize(
-    ("commande", "identifiant"),
+    ("commande", "identifiant", "code_attendu"),
     [
-        (["pre-verifier", "--semestre"], 2**63),
-        (["pre-verifier", "--semestre"], 10**30),
-        pytest.param(
-            ["verifier", "--version"],
-            2**63,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="à trancher par le lot vérificateur : src/edt/commandes/verification.py "
-                "répond bien « n'existe pas » sans trace, mais avec son code 2 (CODE_IMPOSSIBLE, "
-                "« vérification impossible ») là où ce test attend le code 1 des erreurs métier",
-            ),
-        ),
+        (["pre-verifier", "--semestre"], 2**63, cli.CODE_ERREUR_METIER),
+        (["pre-verifier", "--semestre"], 10**30, cli.CODE_ERREUR_METIER),
+        (["verifier", "--version"], 2**63, CODE_IMPOSSIBLE),
     ],
     ids=["pre-verifier-2^63", "pre-verifier-10^30", "verifier-2^63"],
 )
 def test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas(
-    base, commande, identifiant, lanceur
+    base, commande, identifiant, code_attendu, lanceur
 ):
     """Cas : `pre-verifier --semestre 99999999999999999999` ou `verifier --version 2**63`
     (identifiant au-delà des entiers de SQLite).
 
-    Risque : `OverflowError` brute du pilote, code 2 « Erreur inattendue » avec trace, au lieu
-    du code 1 « n'existe pas » rendu pour -1.
+    Risque : `OverflowError` brute du pilote, « Erreur inattendue » avec trace, au lieu de
+    « n'existe pas » avec le code de sortie que la commande rend déjà pour -1 : 1 (erreur
+    métier) pour `pre-verifier`, 2 (« vérification impossible ») pour `verifier`.
     """
     resultat = lanceur.invoke(cli.app, [*commande, str(identifiant)])
-    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert resultat.exit_code == code_attendu, resultat.output
     assert "n'existe pas" in resultat.output and "Traceback" not in resultat.output
 
 

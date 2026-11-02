@@ -150,10 +150,11 @@ une indisponibilité de Mme Martin, 8 par la pause déjeuner »).
 **Contraintes.**
 
 - *Personnes.* Les séances sont réunies en **unités** : même ensemble de
-  groupes (ou même enseignant) et mêmes semaines actives. Une séance sans
-  groupe n'entre dans aucune unité de groupes (sinon toutes les séances sans
-  groupe formeraient une unité fictive « aucun groupe », au plus une en
-  cours : infaisabilité « prouvée » à tort). Deux unités se
+  groupes (ou même enseignant) et mêmes semaines actives. Un besoin sans
+  aucun groupe est refusé en amont, par le dépliage et la pré-vérification,
+  en le nommant : aucune séance sans groupe n'atteint le modèle (elles
+  auraient formé une unité fictive « aucun groupe », au plus une en cours, et
+  prouvé une infaisabilité fausse). Deux unités se
   gênent si leurs semaines se croisent et si elles partagent l'enseignant ou
   ont des groupes en conflit. Pour chaque unité et chaque instant, un booléen
   « occupée » est impliqué par les choix de ses séances en cours, chaque
@@ -958,9 +959,11 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
     « introuvable » pour le suivi, l'arrêt, le lancement, les pré-vérifications,
     l'instanciation et le replacement (`identifiant_valide`), jamais
     `OverflowError` ;
-  - **lancement pendant un chargement de jeu ou une remise à zéro**
-    (`edt.services.jeux.operation_en_cours`) : refusé (`ErreurRegleMetier`),
-    comme l'inverse l'est déjà ;
+  - **lancement pendant un chargement de jeu, une remise à zéro ou un
+    import** (`edt.services.jeux.operation_en_cours`,
+    `edt.services.echange.import_en_cours`) : refusé (`ErreurRegleMetier`,
+    journalisé), comme l'inverse l'est déjà. Les deux marqueurs ne couvrent
+    que le processus (le serveur web en est un seul) ;
   - **deux processus qui lancent la même seconde** (commande et serveur) :
     après l'insertion de sa ligne, qui prend le verrou d'écriture de SQLite,
     `lancer_calcul` recompte les calculs « en cours » ; celui qui écrit en
@@ -1626,10 +1629,9 @@ mémoire du mode optimisé, ajoutée à celle du service, reste loin des 3 Go.
   ou de jours : une impossibilité qui tient à plusieurs séances (quatre
   séances pour trois créneaux après 10 h) est prouvée par CP-SAT, sans
   nommer la règle.
-- **Import en cours.** `lancer_calcul` refuse un calcul pendant un
-  chargement de jeu ou une remise à zéro, mais aucun marqueur « import en
-  cours » n'existe encore côté import : un calcul lancé pendant un import de
-  données passe (test `xfail` transmis au lot import et export).
+- **Marqueurs d'un seul processus.** « Chargement en cours » et « import en
+  cours » ne sont vus que dans le processus qui les porte : un import lancé
+  par une commande dans un autre processus n'est pas vu par le serveur.
 - **Heure locale des calculs.** `demarre_le` et `termine_le` restent des
   heures locales naïves (affichage) ; seuls le temps écoulé et l'échéance
   d'abandon lisent l'époque. Un calcul enregistré avant la clé
@@ -1649,7 +1651,7 @@ module concerné, dans une section « Cas limites » en fin de fichier :
 
 | Fichier | Cas couverts |
 |---|---|
-| `tests/solveur/test_contraintes.py` | séances sans groupe, séance finissant après minuit |
+| `tests/solveur/test_contraintes.py` | besoins sans groupe (refusés en les nommant), séance finissant après minuit |
 | `tests/solveur/test_preverification.py` | charges parasites d'une séance sans horaire, verrous incohérents, indisponibilités incohérentes, grille vide |
 | `tests/solveur/test_moteur.py` | bornes des options, tout verrouillé, arrêt avant la première solution, paramètres extrêmes |
 | `tests/solveur/test_regles.py` | niveau d'une règle inconnue |
