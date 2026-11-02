@@ -66,7 +66,7 @@ from sqlalchemy.orm import Session
 from edt import solveur
 from edt.config import Configuration, charger_configuration
 from edt.db.modeles import Calcul, Occurrence, SeanceHebdo, Semestre, VersionEdt
-from edt.db.moteur import session_base
+from edt.db.moteur import identifiant_valide, session_base
 from edt.domaine.contraintes import (
     CATALOGUE,
     Niveau,
@@ -87,7 +87,7 @@ from edt.erreurs import (
     ErreurTempsDepasse,
 )
 from edt.journal import ouvrir_journal_calcul
-from edt.services.instanciation import identifiant_valide, instancier_version
+from edt.services.instanciation import instancier_version
 from edt.services.instantane import charger_instantane
 from edt.services.niveaux import niveaux_du_calcul
 from edt.services.parametres import lire_parametres

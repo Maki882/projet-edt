@@ -227,18 +227,21 @@ def test_un_identifiant_hors_des_entiers_sqlite_est_introuvable(
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par les lots solveur et vérification : src/edt/commandes/generation.py "
-    "(_semestre, ligne 196) et src/edt/services/verification.py (version_a_verifier) font "
-    "session.get sans garder l'identifiant par identifiant_valide",
-)
 @pytest.mark.parametrize(
     ("commande", "identifiant"),
     [
         (["pre-verifier", "--semestre"], 2**63),
         (["pre-verifier", "--semestre"], 10**30),
-        (["verifier", "--version"], 2**63),
+        pytest.param(
+            ["verifier", "--version"],
+            2**63,
+            marks=pytest.mark.xfail(
+                strict=True,
+                reason="à trancher par le lot vérificateur : src/edt/commandes/verification.py "
+                "répond bien « n'existe pas » sans trace, mais avec son code 2 (CODE_IMPOSSIBLE, "
+                "« vérification impossible ») là où ce test attend le code 1 des erreurs métier",
+            ),
+        ),
     ],
     ids=["pre-verifier-2^63", "pre-verifier-10^30", "verifier-2^63"],
 )

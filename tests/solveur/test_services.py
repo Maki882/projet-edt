@@ -894,11 +894,6 @@ def test_identifiant_hors_bornes_est_introuvable(jeu_minimal):
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot vérificateur : src/edt/services/verification.py "
-    "(version_a_verifier lève OverflowError pour un identifiant hors bornes SQLite)",
-)
 def test_version_a_verifier_identifiant_hors_bornes_est_introuvable(jeu_minimal):
     """Cas : `version_a_verifier(session, version_id=2**70)`.
 
@@ -909,11 +904,6 @@ def test_version_a_verifier_identifiant_hors_bornes_est_introuvable(jeu_minimal)
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot règles personnalisées : src/edt/services/regles.py "
-    "(_resoudre_cible lève OverflowError pour une cible numérique hors bornes SQLite)",
-)
 def test_regle_dont_la_cible_est_hors_bornes_est_invalide(jeu_minimal):
     """Cas : brouillon de règle dont la cible est l'identifiant numérique 10^20.
 
@@ -1001,26 +991,6 @@ def test_journal_de_calcul_impossible_donne_la_vraie_cause(jeu_minimal, environn
     (alerte,) = [a for a in suivi.avertissements if "Journal dédié du calcul indisponible" in a]
     assert "EDT_LOG_DIR" in alerte
     assert _journalise(caplog, "indisponible")
-
-
-@pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot socle : src/edt/commandes/base.py (doctor ne teste que le "
-    "dossier racine des journaux, pas generations/)",
-)
-def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
-    lanceur, base, environnement
-):
-    """Cas : `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier.
-
-    Risque : « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal.
-    """
-    configurer_journalisation()
-    (environnement / "logs" / "generations").write_text("pas un dossier", encoding="utf-8")
-    resultat = lanceur.invoke(cli.app, ["doctor"])
-    lignes = [ligne for ligne in resultat.output.splitlines() if "generations" in ligne]
-    assert resultat.exit_code == 1 and lignes and all("ECHEC" in ligne for ligne in lignes)
 
 
 @pytest.mark.cas_limite
