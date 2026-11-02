@@ -11,13 +11,14 @@
 #
 # Déroulement (détail dans docs/deploiement.md) :
 #   1. contrôles locaux : outils, clé, référence git, arbre de travail ;
-#   2. contrôles du serveur : connexion, sudo, installation faite ;
+#   2. contrôles du serveur : connexion, sudo, installation faite et à jour ;
 #   3. envoi du code : git archive <commit> | ssh ... tar -x
-#      vers /opt/edt/versions/<date>-<sha>/code ;
-#   4. sur le serveur (deploy/deployer-distant.sh) : venv et dépendances,
-#      chargement, arrêt du service, sauvegarde de la base, init-db,
-#      verifier-schema, bascule du lien /opt/edt/courant, redémarrage, attente
-#      de /sante (30 s) ; en cas d'échec : journal + retour arrière automatique ;
+#      vers /opt/edt/versions/<date UTC>-<sha>/code, puis témoin envoi-termine ;
+#   4. sur le serveur (deploy/deployer-distant.sh) : aucune commande « sudo edt »
+#      en cours, venv et dépendances, chargement, arrêt du service, sauvegarde
+#      de la base, init-db, verifier-schema, bascule du lien /opt/edt/courant,
+#      redémarrage, attente de /sante (30 s) ; en cas d'échec : journal + retour
+#      arrière automatique ;
 #   5. vérification informative de l'URL publique (n'annule rien).
 #
 # Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
