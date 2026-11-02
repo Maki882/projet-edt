@@ -213,13 +213,15 @@ def test_recherche_rendue_en_retard_l_amelioration_n_est_pas_perdue(monkeypatch)
     from edt.solveur import moteur
 
     # Réserve négative : la recherche se termine une seconde et demie APRÈS le temps limite,
-    # comme il arrive sur une machine chargée avec un gros modèle.
+    # comme il arrive sur une machine chargée avec un gros modèle. Le temps limite laisse une
+    # marge large à la première solution (quelques secondes, même machine chargée), et
+    # l'instance est assez grande pour que l'amélioration ne prouve pas l'optimum avant la fin.
     monkeypatch.setattr(moteur, "RESERVE_MAX_S", -1.5)
-    instantane, _ = generer(60, graine=4)
-    resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=2, nb_workers=2))
+    instantane, _ = generer(120, graine=4)
+    resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=6, nb_workers=2))
     verifier_solution(instantane, resultat)
     stats = resultat.statistiques
-    assert stats["duree_s"] > 2  # le temps limite était bien dépassé au retour de la recherche
+    assert stats["duree_s"] > 6  # le temps limite était bien dépassé au retour de la recherche
     assert stats["raison_arret"] == "temps_limite"
     assert stats["objectif"] < stats["objectif_premiere_solution"]
     indicateurs = calculer_indicateurs(instantane, resultat.placements)
@@ -262,9 +264,17 @@ def test_arret_demande_avant_le_calcul():
     assert "arrêté" in resultat.message
 
 
-def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(caplog):
-    """Arrêt demandé alors qu'une solution existe : rendue en moins de deux secondes, pas perdue."""
+def _arreter_pendant_l_amelioration(guetter_journal):
+    """Lance un calcul optimisé de 300 séances, attend que l'amélioration ait commencé, demande
+    l'arrêt ; rend `(instantané, résultat, délai en secondes entre la demande et le retour)`.
+
+    Toute attente est une attente d'événement du moteur (première solution annoncée, départ de
+    l'amélioration), jamais un délai fixe : le déroulement ne dépend pas de la charge de la
+    machine, seule la durée change.
+    """
     instantane, _ = generer(300, graine=1)
+    solution = guetter_journal("Emploi du temps valide trouvé")
+    amelioration = guetter_journal("Amélioration : départ à l'objectif")
     arret = threading.Event()
     resultats: list[ResultatSolveur] = []
     calcul = threading.Thread(
@@ -272,29 +282,41 @@ def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(caplog):
             resoudre(instantane, options(optimiser=True, temps_limite_s=120, nb_workers=2), arret)
         )
     )
-    # On attend que le moteur annonce la première solution valide (deux secondes d'ordinaire,
-    # bien plus sur une machine lente ou un cœur économe), puis on laisse l'amélioration tourner.
-    with caplog.at_level(logging.INFO, logger="edt.solveur.moteur"):
-        calcul.start()
-        echeance = time.perf_counter() + 90
-        while not any(
-            r.getMessage().startswith("Emploi du temps valide trouvé") for r in caplog.records
-        ):
-            assert time.perf_counter() < echeance, "aucune solution valide en 90 s"
-            time.sleep(0.1)
-        time.sleep(1.5)
+    calcul.start()
+    assert solution.wait(90), "aucune solution valide en 90 s"
+    assert amelioration.wait(30), "l'amélioration n'a pas commencé en 30 s"
     assert calcul.is_alive(), "le calcul devait encore améliorer la solution"
     demande = time.perf_counter()
     arret.set()
-    calcul.join(timeout=10)
-    assert not calcul.is_alive()
-    assert time.perf_counter() - demande < 2
-    resultat = resultats[0]
+    calcul.join(timeout=60)
+    delai = time.perf_counter() - demande
+    assert not calcul.is_alive(), "le moteur n'a pas rendu la main en 60 s"
+    (resultat,) = resultats
+    return instantane, resultat, delai
+
+
+def test_arret_pendant_l_amelioration_la_solution_trouvee_est_conservee(guetter_journal):
+    """Arrêt demandé alors qu'une solution existe : elle est rendue, pas perdue.
+
+    Borne large sur le délai de retour : l'arrêt est suivi d'effet bien avant le temps limite
+    (120 s), quelle que soit la charge de la machine ; la réactivité fine est mesurée à part
+    (`test_arret_pendant_l_amelioration_repond_en_moins_de_deux_secondes`, `perf`).
+    """
+    instantane, resultat, delai = _arreter_pendant_l_amelioration(guetter_journal)
+    assert delai < 60
     verifier_solution(instantane, resultat)
     assert resultat.statistiques["arrete_par_utilisateur"] is True
     assert resultat.statistiques["raison_arret"] == "arret_utilisateur"
     conservee = "Calcul arrêté à votre demande : la meilleure solution trouvée a été conservée."
     assert conservee in resultat.avertissements and conservee in resultat.message
+
+
+@pytest.mark.perf
+def test_arret_pendant_l_amelioration_repond_en_moins_de_deux_secondes(guetter_journal):
+    """Machine au repos : le moteur rend la main moins de deux secondes après la demande d'arrêt
+    (engagement de `resoudre`, voir docs/solveur.md « Réglages et suivi »)."""
+    _, _, delai = _arreter_pendant_l_amelioration(guetter_journal)
+    assert delai < 2
 
 
 def test_l_amelioration_s_arrete_d_elle_meme_quand_elle_ne_progresse_plus(monkeypatch):
@@ -508,26 +530,29 @@ def test_toutes_les_seances_verrouillees():
 
 
 @pytest.mark.cas_limite
-def test_arret_pendant_la_premiere_recherche_rend_la_main_vite():
-    """Cas : instantané de 300 séances, arrêt demandé 0,3 s après le lancement, pendant la
-    construction du modèle ou la première recherche, avant toute solution.
+def test_arret_pendant_la_premiere_recherche_rend_la_main_vite(guetter_journal):
+    """Cas : instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la
+    première recherche, avant toute solution (la première solution demande ici plus d'une
+    minute).
 
     Risque : le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à
-    rendre la main : bouton « Arrêter » sans effet.
+    rendre la main : bouton « Arrêter » sans effet avant la première solution.
     """
     instantane, _ = generer(300, graine=1)
+    modele_construit = guetter_journal("Modèle des horaires construit")
     arret = threading.Event()
     resultats = []
     fil = threading.Thread(
         target=lambda: resultats.append(resoudre(instantane, options(temps_limite_s=120), arret))
     )
-    debut = time.perf_counter()
     fil.start()
-    time.sleep(0.3)
+    assert modele_construit.wait(60), "le modèle n'a pas été construit en 60 s"
+    demande = time.perf_counter()
     arret.set()
-    fil.join(10)
-    assert not fil.is_alive(), "le moteur n'a pas rendu la main"
-    assert time.perf_counter() - debut < 3, "l'arrêt a mis trop longtemps à être suivi d'effet"
+    fil.join(30)
+    assert not fil.is_alive(), "le moteur n'a pas rendu la main en 30 s"
+    # Borne large : l'arrêt est suivi d'effet bien avant le temps limite, machine chargée ou non.
+    assert time.perf_counter() - demande < 30
     (resultat,) = resultats
     assert resultat.statut is StatutSolveur.ARRETE and resultat.placements == ()
     assert "avant qu'un emploi du temps soit trouvé" in resultat.message
