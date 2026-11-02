@@ -333,21 +333,9 @@ def test_fragments_sans_htmx_redirigent_vers_la_page(site, ids):
                 strict=True, reason=LOT_WEB_EDT + "src/edt/web/routes/a_traiter.py (compteur)"
             ),
         ),
-        "/calculs/verifications",  # déjà correct : la page entière
-        pytest.param(
-            "calcul_etat",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason=LOT_WEB_EDT + "src/edt/web/routes/calculs.py (/calculs/<n>/etat)",
-            ),
-        ),
-        pytest.param(
-            "formulaire_seance",
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason=LOT_WEB_EDT + "src/edt/web/routes/emploi_du_temps.py (formulaire de séance)",
-            ),
-        ),
+        "/calculs/verifications",
+        "calcul_etat",  # corrigé par le lot web-edt
+        "formulaire_seance",  # corrigé par le lot web-edt
     ],
 )
 def test_fragments_des_autres_ecrans_sans_htmx(site, version_generee, adresse):

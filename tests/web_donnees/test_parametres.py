@@ -6,6 +6,7 @@ import re
 
 import pytest
 
+from edt.db.modeles import Parametre
 from edt.db.moteur import session_base
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
@@ -15,7 +16,7 @@ from edt.domaine.parametres import (
     Parametres,
     definitions,
 )
-from edt.services.parametres import lire_parametres
+from edt.services.parametres import anomalies_parametres, lire_parametres
 
 MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
 
@@ -147,3 +148,27 @@ def test_parametres_refuses_pendant_un_calcul(site, calcul_retenu):
     assert "Paramètres enregistrés." in apres.text
     with session_base() as session:
         assert lire_parametres(session).temps_limite_s == 120
+
+
+@pytest.mark.cas_limite
+def test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran(site):
+    """Cas : une valeur de paramètre corrompue en base (« quinze » pour la pause entre deux
+    séances), puis l'utilisateur ouvre /parametres et enregistre. Risque : l'écran, seul moyen
+    de la corriger, ne s'ouvre plus (422), ne dit pas quelle valeur est en cause, ou refuse
+    l'enregistrement qui la répare."""
+    with session_base() as session:
+        session.get(Parametre, "pause_min").valeur = "quinze"
+    page = site.get("/parametres")
+    assert page.status_code == 200
+    erreur = re.search(r'id="erreur-pause_min">([^<]+)<', page.text).group(1)
+    assert erreur.startswith("Valeur enregistrée invalide (un nombre entier est attendu")
+    assert "1 paramètre enregistré est invalide" in page.text
+    defaut = next(d.defaut for d in definitions() if d.cle == "pause_min")
+    assert f'name="pause_min" value="{defaut}"' in page.text  # la valeur par défaut est proposée
+
+    repare = site.post("/parametres", data=_saisies(), follow_redirects=True)
+    assert "Paramètres enregistrés." in repare.text
+    with session_base() as session:
+        assert anomalies_parametres(session) == {}
+        assert lire_parametres(session).pause_min == defaut
+    assert 'id="erreur-pause_min"' not in site.get("/parametres").text

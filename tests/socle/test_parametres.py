@@ -47,12 +47,6 @@ def test_un_parametre_corrompu_en_base_reste_reparable_par_l_ecriture_et_la_rein
 
 
 @pytest.mark.cas_limite
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot web données : src/edt/web/routes/donnees_regles.py "
-    "(_rendre_parametres et parametres_affichables lisent lire_parametres en mode strict ; "
-    "lire avec tolerant=True et afficher anomalies_parametres sous les champs)",
-)
 def test_l_ecran_des_parametres_reste_ouvrable_avec_une_valeur_corrompue(base, client):
     """Cas : l'utilisateur ouvre /parametres pour corriger une valeur corrompue en base.
 
