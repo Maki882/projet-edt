@@ -7,6 +7,11 @@
 {% block actions %}
 {%- if semestre %}
 <a class="bouton" href="/versions?semestre_id={{ semestre.id }}">Historique et versions</a>
+{%- if not en_cours %}
+{#- Le même bouton qu'en bas du formulaire, en tête de page : il soumet le formulaire par
+    son attribut form, sans avoir à faire défiler la page. #}
+<button type="submit" form="formulaire-calcul" class="bouton bouton-principal"{% if not recap.nb_besoins %} disabled title="Aucun besoin d'enseignement à placer"{% endif %}>Lancer le calcul</button>
+{%- endif %}
 {%- endif %}
 {% endblock %}
 
