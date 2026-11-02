@@ -29,10 +29,14 @@
 </section>
 {%- else %}
 <section class="carte carte-erreur">
-  <h2>Suppression impossible</h2>
+  <h2>Suppression impossible{% if analyse.calcul_id %} pendant le calcul{% endif %}</h2>
   <ul>{{ d.raisons(analyse.blocages) }}</ul>
   {{ d.regles_touchees(analyse, retour_regles) }}
+  {%- if analyse.blocages|length > (1 if analyse.calcul_id else 0) %}
   <p>Modifiez ou supprimez d'abord les éléments qui l'utilisent : on ne modifie jamais une demande en silence.</p>
+  {%- else %}
+  <p>La suppression sera possible dès la fin du calcul.</p>
+  {%- endif %}
   <p class="ligne-boutons">
     <a class="bouton bouton-principal" href="{{ url_fiche }}">Revenir à {{ entite.demonstratif|lower }}</a>
     <a class="bouton" href="{{ retour }}">Retour à la liste</a>

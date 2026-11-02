@@ -5,12 +5,15 @@ from __future__ import annotations
 import re
 from urllib.parse import quote, urlencode
 
+import pytest
 from sqlalchemy import func, select
 
-from edt.db.modeles import Besoin, Campus, Salle, SeanceHebdo
+from edt.db.modeles import Besoin, Campus, Occurrence, Salle, SeanceHebdo, TypeSalle
 from edt.db.moteur import session_base
 from edt.services.jeux import recharger_jeu_fictif
 from edt.services.referentiels import operations
+
+from .conftest import compter, occurrence_prevue
 
 HTMX = {"HX-Request": "true"}
 
@@ -246,3 +249,50 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
     lien = re.search(r'<a href="([^"]+)">Voir ces 2 besoins</a>', refus).group(1)
     assert "2 besoins correspondant" in client.get(lien.replace("&amp;", "&")).text
     assert _nb_salles() == salles_au_depart - 2
+
+
+# --------------------------------------------------------------------------- #
+# Rejeu : deux onglets, double clic, bouton « Précédent » (inventaire n° 12)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_rejeu_d_une_suppression_et_d_une_annulation(site, ids, version_generee):
+    """Cas : la même suppression envoyée deux fois (deux onglets, double clic, bouton
+    « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. Risque : une
+    erreur 500, une double écriture ou un message trompeur ; correct aujourd'hui, ce test fige
+    le comportement."""
+    # Page de confirmation ouverte deux fois : la seconde dit que la salle n'existe plus.
+    l012, l115 = _id_salle("L012"), _id_salle("L115")
+    premiere = site.post(
+        f"/salles/{l012}/supprimer", data={"_retour": "/salles"}, follow_redirects=False
+    )
+    assert premiere.status_code == 303 and premiere.headers["location"] == "/salles"
+    seconde = site.post(f"/salles/{l012}/supprimer", data={"_retour": "/salles"})
+    assert seconde.status_code == 404 and "introuvable" in seconde.text
+    assert "a peut-être été supprimée" in seconde.text
+
+    # Même chose depuis la ligne (HTMX) : la zone repart sans la ligne, puis le refus est dit.
+    zone = site.post(f"/salles/{l115}/ligne/supprimer", headers=_depuis("/salles"))
+    assert zone.status_code == 200 and f'id="ligne-salle-{l115}"' not in zone.text
+    assert f'id="ligne-salle-{ids.salle_n016}"' in zone.text  # les autres lignes restent
+    rejeu = site.post(f"/salles/{l115}/ligne/supprimer", headers=_depuis("/salles"))
+    assert rejeu.status_code == 404 and "<html" not in rejeu.text  # fragment pour #messages
+    assert "introuvable" in rejeu.text
+    assert _id_salle("L012") is None and _id_salle("L115") is None
+
+    # Annulation d'une séance datée rejouée : refus explicite, une seule annulation.
+    occurrence = occurrence_prevue(version_generee)
+    annuler = f"/emploi-du-temps/occurrences/{occurrence}/annuler"
+    assert site.post(annuler, data={"motif": "grève"}, follow_redirects=False).status_code == 303
+    deja = site.post(annuler, data={"motif": "grève"})
+    assert deja.status_code == 409 and "déjà annulée" in deja.text
+    with session_base() as session:
+        assert session.get(Occurrence, occurrence).commentaire == "Annulée : grève"
+
+    # Double envoi d'un ajout : le doublon est refusé sous le champ, un seul enregistrement.
+    donnees = {"code": "LABO2", "libelle": "Laboratoire 2"}
+    assert site.post("/types-salle", data=donnees, follow_redirects=False).status_code == 303
+    doublon = site.post("/types-salle", data=donnees)
+    assert doublon.status_code == 422 and 'id="erreur-code"' in doublon.text
+    assert compter(TypeSalle, TypeSalle.code == "LABO2") == 1

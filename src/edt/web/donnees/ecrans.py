@@ -22,6 +22,11 @@ et reçoit les adresses suivantes (`<p>` = préfixe, `<n>` = identifiant) :
 | GET     | `<p>/<n>/ligne/suppression` | ligne de confirmation de suppression (HTMX)  |
 | POST    | `<p>/<n>/ligne/supprimer`   | suppression depuis la ligne : zone de liste rafraîchie (HTMX) |
 
+Un fragment (`/ligne...`) demandé sans HTMX (lien copié, historique, sans
+JavaScript) renvoie vers la page entière qui lui correspond : la fiche, ou la
+confirmation de suppression ; un enregistrement depuis la ligne revient à la
+liste. Jamais un morceau de tableau nu, sans menu ni mise en page.
+
 Les routes appellent les services génériques ; une saisie refusée réaffiche
 le formulaire avec les messages sous les champs (statut 422), sans rien
 enregistrer.
@@ -49,11 +54,19 @@ from starlette.datastructures import FormData, QueryParams
 
 from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services.referentiels import operations
+from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
 from edt.services.referentiels.description import Entite, TypeChamp
 from edt.services.referentiels.operations import ErreurSaisie, PageListe
 from edt.web.dependances import SessionRequete
 from edt.web.donnees.formulaires import champs_affiches, saisies_formulaire
-from edt.web.gabarits import Message, est_htmx, rediriger, rendre
+from edt.web.gabarits import (
+    Message,
+    adresse_courante,
+    adresse_locale,
+    est_htmx,
+    rediriger,
+    rendre,
+)
 
 journal = logging.getLogger(__name__)
 
@@ -127,9 +140,11 @@ class Ecran:
         return f"{self.prefixe}/{ident}"
 
     def adresse_retour(self, brute: str | None) -> str:
-        """Adresse de retour sûre : une page de cet écran, sinon la liste."""
-        if brute and brute.startswith(self.prefixe) and "//" not in brute and "\\" not in brute:
-            return brute
+        """Adresse de retour sûre : une page de cet écran (`adresse_locale`), sinon la liste."""
+        if adresse_locale(brute, self.prefixe):
+            return str(brute)
+        if brute:
+            journal.info("Adresse de retour écartée (%s) : %r", self.prefixe, str(brute)[:200])
         return self.prefixe
 
 
@@ -172,8 +187,8 @@ class EtatListe:
 def _parametres_de_liste(request: Request, ecran: Ecran) -> QueryParams:
     """Paramètres de la liste affichée : ceux de la requête, ou pour un fragment de
     ligne (HTMX), ceux de la liste d'où il est demandé (en-tête `HX-Current-URL`)."""
-    courante = urlsplit(request.headers.get("HX-Current-URL", ""))
-    if not request.query_params and courante.path == ecran.prefixe:
+    courante = adresse_courante(request)
+    if not request.query_params and courante is not None and courante.path == ecran.prefixe:
         return QueryParams(courante.query)
     return request.query_params
 
@@ -185,15 +200,16 @@ def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
 def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
     """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
     brute = parametres.get("page", "1").strip() or "1"
-    if not (brute.isascii() and brute.isdigit()) or int(brute) < 1:
-        raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute} ».")
+    numero = entier_naturel(brute)
+    if numero is None or not 1 <= numero <= ENTIER_MAX:
+        raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute[:30]} ».")
     noms = {filtre.nom for filtre in ecran.entite.filtres}
     return EtatListe(
         prefixe=ecran.prefixe,
         recherche=parametres.get("q", "").strip(),
         tri=parametres.get("tri", "").strip(),
         descendant=parametres.get("sens") == "desc",
-        page=int(brute),
+        page=numero,
         filtres={nom: valeur for nom, valeur in parametres.items() if nom in noms},
         tri_defaut=ecran.entite.tri_defaut,
     )
@@ -342,11 +358,23 @@ def regles_confirmees(formulaire: FormData) -> list[int] | None:
 
     Champ `_regles` : identifiants séparés par des virgules ; absent = aucune
     confirmation (une suppression qui toucherait des règles est alors refusée).
+    Une valeur qui n'est pas un identifiant (champ fabriqué) est refusée.
     """
     brut = formulaire.get("_regles")
     if brut is None:
         return None
-    return [int(v) for v in str(brut).split(",") if v.strip().isascii() and v.strip().isdigit()]
+    identifiants = []
+    for morceau in (m.strip() for m in str(brut).split(",")):
+        if not morceau:
+            continue
+        ident = entier_naturel(morceau)
+        if ident is None or ident > ENTIER_MAX:
+            raise ErreurDonneesInvalides(
+                f"Règles confirmées illisibles : « {morceau[:30]} » n'est pas un identifiant. "
+                "Rien n'a été supprimé."
+            )
+        identifiants.append(ident)
+    return identifiants
 
 
 def _texte_regles(nombre: int) -> str:
@@ -588,6 +616,8 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
 
     @routeur.get("/{ident:int}/ligne/suppression", name=f"{entite.code}_ligne_suppression")
     def ligne_suppression(request: Request, session: SessionRequete, ident: int) -> Response:
+        if not est_htmx(request):
+            return rediriger(request, f"{ecran.url_element(ident)}/supprimer")
         return _rendre_ligne_suppression(request, session, ecran, ident)
 
     @routeur.post("/{ident:int}/ligne/supprimer", name=f"{entite.code}_ligne_supprimer")
@@ -617,12 +647,16 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
 
     @routeur.get("/{ident:int}/ligne", name=f"{entite.code}_ligne")
     def ligne(request: Request, session: SessionRequete, ident: int) -> Response:
+        if not est_htmx(request):
+            return rediriger(request, ecran.url_element(ident))
         return _rendre_ligne(request, session, ecran, ident)
 
     if ecran.edition_en_ligne:
 
         @routeur.get("/{ident:int}/ligne/edition", name=f"{entite.code}_ligne_edition")
         def ligne_edition(request: Request, session: SessionRequete, ident: int) -> Response:
+            if not est_htmx(request):
+                return rediriger(request, ecran.url_element(ident))
             valeurs = operations.lire(session, entite, ident)
             return _rendre_ligne_edition(request, session, ecran, ident, valeurs)
 
@@ -632,10 +666,25 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         ) -> Response:
             saisies = saisies_formulaire(entite, formulaire)
             try:
-                operations.modifier(session, entite, ident, saisies)
+                modifie = operations.modifier(session, entite, ident, saisies)
             except ErreurDonneesInvalides as erreur:
                 session.rollback()
+                if not est_htmx(request):  # sans JavaScript : le formulaire complet
+                    nom = operations.lire(session, entite, ident)["nom_affiche"]
+                    return rendre_formulaire(
+                        request,
+                        session,
+                        ecran,
+                        saisies,
+                        ident=ident,
+                        nom_affiche=nom,
+                        erreur=erreur,
+                    )
                 return _rendre_ligne_edition(request, session, ecran, ident, saisies, erreur)
+            if not est_htmx(request):
+                return rediriger(
+                    request, ecran.prefixe, _message(ecran, modifie["nom_affiche"], "modifié")
+                )
             return _rendre_ligne(request, session, ecran, ident, modifiee=True)
 
     return routeur
