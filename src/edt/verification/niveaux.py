@@ -47,7 +47,12 @@ GRAVITE_DU_NIVEAU: dict[Niveau, Gravite] = {
 }
 """Gravité maximale d'une entorse à une contrainte de ce niveau."""
 
-_ARTICLES = ("La ", "Le ", "Les ", "L'", "Un ", "Une ")
+_DEBUTS_NOMS_COMMUNS = ("La séance ", "La salle ", "Le groupe ", "Les groupes ")
+"""Débuts des messages du vérificateur mis en minuscule après le préfixe d'entorse.
+
+Liste fermée : tout autre début garde sa majuscule, à commencer par un nom
+propre qui commence comme un article (l'enseignant « Le Gall »).
+"""
 
 
 def valider_niveaux(niveaux: Mapping[str, str]) -> Niveaux:
@@ -83,13 +88,23 @@ def choisir_contraintes(
 
     Avec `niveaux`, les codes vérifiés sont ses clés et `contraintes_actives`
     est ignoré ; sans, c'est le comportement d'origine (`resoudre_codes`).
+    Aucun code (liste vide, niveaux vides) ne vérifie rien : permis ici (le
+    contrôle d'une solution peut n'avoir rien de nécessaire à vérifier), mais
+    journalisé en avertissement ; les services de vérification le refusent.
     """
     if niveaux is None:
-        return None, resoudre_codes(contraintes_actives)
-    valides = valider_niveaux(niveaux)
-    if contraintes_actives is not None:
-        journal.debug("Niveaux fournis : la liste de contraintes actives est ignorée.")
-    return valides, frozenset(valides)
+        valides, codes = None, resoudre_codes(contraintes_actives)
+    else:
+        valides = valider_niveaux(niveaux)
+        codes = frozenset(valides)
+        if contraintes_actives is not None:
+            journal.debug("Niveaux fournis : la liste de contraintes actives est ignorée.")
+    if not codes:
+        journal.warning(
+            "Aucune contrainte à vérifier : la vérification ne contrôle rien et ne peut relever "
+            "aucune anomalie."
+        )
+    return valides, codes
 
 
 def valider_niveaux_regles(niveaux_regles: Mapping[int, str]) -> dict[int, Niveau]:
@@ -197,12 +212,13 @@ def appliquer_niveaux(
 def prefixer(message: str, retenu: Niveau) -> str:
     """Message précédé de « Entorse à une règle importante : » (ou facultative) ; inchangé si nécessaire.
 
-    Après les deux-points, un article de début de phrase passe en minuscule
-    (« … : la salle N204 accueille… ») ; un nom propre garde sa majuscule.
+    Après les deux-points, un début de phrase du vérificateur passe en
+    minuscule (« … : la salle N204 accueille… ») ; un nom propre garde sa
+    majuscule (« … : Le Gall dépasse… », voir `_DEBUTS_NOMS_COMMUNS`).
     """
     prefixe = PREFIXES_ENTORSE.get(retenu)
     if prefixe is None:
         return message
-    if message.startswith(_ARTICLES):
+    if message.startswith(_DEBUTS_NOMS_COMMUNS):
         message = message[:1].lower() + message[1:]
     return prefixe + message

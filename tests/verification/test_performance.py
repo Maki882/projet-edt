@@ -24,11 +24,13 @@ CRENEAUX_CM = (0, 5, 10, 15)
 CRENEAUX_CLASSE = (1, 6, 11, 16)
 CRENEAUX_TD = tuple(c for c in range(20) if c not in CRENEAUX_CM + CRENEAUX_CLASSE)
 MOITIES = (range(1, 8), range(8, 16))
+JOURS_OUVRES = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]
 
 pytestmark = pytest.mark.perf
 
 
-def etablissement():
+def fabrique_etablissement():
+    """La fabrique de l'établissement et ses placements (pour y ajouter des règles)."""
     f = Fabrique()
     placements = []
 
@@ -63,6 +65,11 @@ def etablissement():
                 for creneau in CRENEAUX_TD:
                     td = f.cours(f"TD {p}-{c}-{d}-{creneau}", [demi], [prof_td])
                     placer_au_creneau(td, creneau, salles[2 * c + d])
+    return f, placements
+
+
+def etablissement():
+    f, placements = fabrique_etablissement()
     return f.construire(), placements
 
 
@@ -118,3 +125,41 @@ def test_conflits_detectes_a_grande_echelle():
     assert codes(anomalies).count("CAMPUS_TRAJET") == 24
     assert len(anomalies) == 44
     assert duree < 2.0
+
+
+@pytest.mark.cas_limite
+def test_un_semestre_entier_de_13000_occurrences_en_moins_de_10_secondes():
+    """Cas : tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran À traiter le vérifie.
+
+    Risque : une régression de coût (règles reconstruites par séance et par date, emplois
+    par personne) rendrait À traiter lent de plusieurs secondes sans qu'aucun test ne le voie.
+    """
+    f, placements = fabrique_etablissement()
+    for promo in (g.id for g in f.groupes if g.parent_id is None):
+        f.regle("JOURS_TRAVAILLES", "groupe", promo, jours=JOURS_OUVRES)
+        f.regle("MAX_PAR_JOUR", "groupe", promo, unite="seances", maximum=4)
+    instantane = f.construire()
+    assert len(instantane.regles) == 10
+    occurrences = [
+        occurrence(
+            instantane.seance(p.seance_id),
+            instantane.date_de(numero, p.jour),
+            p.debut,
+            p.salle_id,
+            identifiant=rang,
+        )
+        for rang, (p, numero) in enumerate(
+            (p, numero) for p in placements for numero in instantane.seance(p.seance_id).semaines
+        )
+    ]
+    assert len(occurrences) == 12_900
+
+    # Temps processeur, insensible aux autres programmes. Mesuré : 1,1 s seul, jusqu'à 5,2 s en
+    # fin de suite complète (tas fragmenté par les tests précédents : même coût par séance,
+    # mémoire moins favorable). Le seuil vise une régression d'un ordre de grandeur.
+    chrono = time.process_time()
+    anomalies = verifier_occurrences(instantane, occurrences)
+    duree = time.process_time() - chrono
+    print(f"\nVérification de {len(occurrences)} séances datées : {duree * 1000:.0f} ms")
+    assert anomalies == []
+    assert duree < 10.0

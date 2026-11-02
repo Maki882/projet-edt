@@ -6,11 +6,22 @@ import pytest
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
-from edt.domaine.instantane import Placement
+from edt.domaine.instantane import Occurrence, Placement, decomposer_id_seance
 from edt.erreurs import ErreurDonneesInvalides
-from edt.verification import verifier
+from edt.verification import verifier, verifier_occurrences
 
-from .fabrique import JEUDI, LUNDI, MARDI, MERCREDI, SAMEDI, Fabrique, codes, h, placer
+from .fabrique import (
+    JEUDI,
+    LUNDI,
+    MARDI,
+    MARDI_6_OCT,
+    MERCREDI,
+    SAMEDI,
+    Fabrique,
+    codes,
+    h,
+    placer,
+)
 
 # --------------------------------------------------------------------------- #
 # Volume
@@ -243,11 +254,13 @@ def test_codes_acceptes_en_texte_ou_type():
 
 def test_anomalies_triees_et_independantes_de_l_ordre_recu():
     instantane, placements = charge(max_semaine=60, max_jour=60)
-    # Une séance placée deux fois, à midi : volume, déjeuner, grille, maxima, chevauchements.
+    # Des séances placées deux fois, dont une à midi et une sur le créneau d'une autre séance
+    # de Mme Martin : volume, déjeuner, grille, maxima, chevauchement.
     melange = [
         *placements,
         placer(instantane.seances[0], LUNDI, "8h30"),
         placer(instantane.seances[1], MERCREDI, "12h00"),
+        placer(instantane.seances[2], LUNDI, "10h45"),
     ]
     anomalies = verifier(instantane, melange)
     assert anomalies == verifier(instantane, list(reversed(melange)))
@@ -278,3 +291,55 @@ def test_seance_verrouillee_deplacee_n_est_plus_imposee():
     f, n204, _, seance = seance_verrouillee()
     anomalies = verifier(f.construire(), [placer(seance, SAMEDI, "8h30", n204)], ["JOURS"])
     assert [(str(a.code), a.gravite) for a in anomalies] == [("JOURS", Gravite.ERREUR)]
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("identifiant", ["²-1", "٣-1", "1-²"])
+def test_identifiant_de_seance_illisible_refuse_proprement(identifiant):
+    """Cas : un placement ou une séance datée porte un identifiant de séance aux chiffres non ASCII (« ²-1 », « ٣-1 »).
+
+    Risque : `str.isdigit` les accepte mais `int` lève `ValueError` : erreur 500 ou trace
+    au lieu d'une anomalie ou d'une erreur métier.
+    """
+    f, n204, s1, s2 = deux_seances()
+    instantane = f.construire()
+    placements = [
+        placer(s1, LUNDI, "8h30", n204),
+        placer(s2, MARDI, "8h30", n204),
+        Placement(identifiant, JEUDI, h("8h30"), h("10h30"), n204),
+    ]
+    # Semaine type : un placement de séance inconnue, signalé (VOLUME).
+    (anomalie,) = verifier(instantane, placements, ["VOLUME"])
+    assert anomalie.seances == (identifiant,)
+    if identifiant.startswith("1-"):  # besoin lisible, rang illisible : le besoin est nommé
+        assert anomalie.message.startswith("La séance de « Mathématiques TD (A1-G1) »")
+    else:
+        assert f"(référence « {identifiant} »)" in anomalie.message
+    # Couche datée : une séance datée qui n'appartient pas à son besoin rend la vérification
+    # impossible, avec une erreur métier.
+    illisible = Occurrence(1, 1, identifiant, MARDI_6_OCT, h("8h30"), h("10h30"), n204)
+    with pytest.raises(ErreurDonneesInvalides, match="séances datées") as erreur:
+        verifier_occurrences(instantane, [illisible])
+    assert f"« {identifiant} »" in erreur.value.details[0]
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    raises=ValueError,
+    reason="à corriger par le lot socle : src/edt/domaine/instantane.py, decomposer_id_seance "
+    "(isdigit() laisse passer « ² » ; isascii() et isdecimal() attendus)",
+)
+def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier():
+    """Cas : `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import).
+
+    Risque : `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui
+    décomposent les identifiants (anomalies de l'emploi du temps, instanciation).
+    """
+    with pytest.raises(ErreurDonneesInvalides):
+        decomposer_id_seance("²-1")

@@ -11,14 +11,18 @@
   créneau de la grille du jour, (c) pas de débordement de la demi-journée
   du créneau de début, (d) durée placée égale à la durée du besoin,
   (e) jour, début et date imposés respectés ;
-- `JOURS` : jour avec au moins un créneau dans la grille, et jour permis par
-  le **standard** (jours travaillés de l'établissement, plus le samedi pour un
-  type de séance qui l'autorise : `Instantane.reglages`). Quand les jours
-  d'une séance viennent d'une règle `JOURS_TRAVAILLES`, c'est la règle qui
-  relève l'entorse (`REGLE`), pas `JOURS` ;
+- `JOURS` : jour permis par le **standard** (jours travaillés de
+  l'établissement, plus le samedi pour un type de séance qui l'autorise :
+  `Instantane.reglages`). Quand les jours d'une séance viennent d'une règle
+  `JOURS_TRAVAILLES`, c'est la règle qui relève l'entorse (`REGLE`), pas
+  `JOURS`. Un jour sans créneau dans la grille relève de `HORAIRES` (b) : la
+  même cause n'est pas signalée deux fois ;
 - salle : `ACCESSIBILITE`, `CAPACITE`, `TYPE_SALLE` (type accepté, salle
   imposée, campus imposé), `EQUIPEMENT` ; une séance sans salle donne un
-  avertissement `VOLUME` (« salle à définir ») et échappe aux règles de salle ;
+  avertissement `VOLUME` (« salle à définir ») et échappe aux règles de salle.
+  Une salle inconnue de l'instantané (supprimée depuis) vaut « salle à
+  définir », et le message la nomme. Dans la couche datée, l'avertissement
+  est **regroupé par séance** : il cite toutes ses occurrences sans salle ;
 - disponibilités : `DISPO_ENSEIGNANT` (enseignants non fictifs),
   `DISPO_SALLE`, `DISPO_GROUPE` (groupes du besoin et groupes liés) ;
   indisponibilités dures seulement, récurrentes sur la semaine type, toutes
@@ -36,13 +40,14 @@ disponibilités : une anomalie par indisponibilité touchée.
 
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Iterator, Sequence
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import SAMEDI, Accessibilite, CibleIndisponibilite, Gravite
 from edt.domaine.heures import MINUTES_PAR_JOUR, se_chevauchent
 from edt.domaine.instantane import Indisponibilite, Placement
-from edt.verification.contexte import Contexte, Element
+from edt.verification.contexte import Contexte, Element, cle_chronologique
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import date_texte, duree, enumerer, heure, nom_jour, plage
 
@@ -57,6 +62,7 @@ def verifier_seances(ctx: Contexte, elements: Sequence[Element]) -> Iterator[Ano
         yield from _jours(ctx, element)
         yield from _salle(ctx, element)
         yield from _disponibilites(ctx, element)
+    yield from _sans_salle_datees(ctx, elements)
 
 
 def ecart_au_verrou(ctx: Contexte, element: Element, verrou: Placement) -> tuple[str, str] | None:
@@ -72,18 +78,17 @@ def ecart_au_verrou(ctx: Contexte, element: Element, verrou: Placement) -> tuple
         verrou.debut,
         verrou.fin,
     )
-    meme_salle = verrou.salle_id is None or element.salle_id == verrou.salle_id
+    # Salle reçue, même disparue depuis (`Element.salle_inconnue`) : le verrou enregistré
+    # avec la version la cite aussi.
+    salle = element.salle_id if element.salle_inconnue is None else element.salle_inconnue
+    meme_salle = verrou.salle_id is None or salle == verrou.salle_id
     if meme_horaire and meme_salle:
         return None
     attendu = f"le {nom_jour(verrou.jour)} {plage(verrou.debut, verrou.fin)}"
     place = ctx.moment(element)
     if verrou.salle_id is not None:
-        attendu += f" en salle {ctx.salle(verrou.salle_id).code}"
-        place += (
-            " sans salle"
-            if element.salle_id is None
-            else f" en salle {ctx.salle(element.salle_id).code}"
-        )
+        attendu += f" {ctx.designer_salle(verrou.salle_id)}"
+        place += " sans salle" if salle is None else f" {ctx.designer_salle(salle)}"
     return attendu, place
 
 
@@ -186,45 +191,89 @@ def _horaires(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
 def _jours(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
     if not ctx.actif(CodeContrainte.JOURS):
         return
-    jour = nom_jour(element.jour)
-    raisons: list[str] = []
-    if not ctx.instantane.debuts_de_creneau(element.jour):
-        raisons.append(f"la grille horaire n'a aucun créneau le {jour}")
     # Jours permis : `Instantane.reglages` (standard et règles par axe). Seule l'entorse au
-    # standard relève de `JOURS` ; une règle enfreinte relève de `REGLE`, à son niveau.
-    if any(source.est_standard for source in ctx.entorses_jours(element)):
-        if (
-            element.jour == SAMEDI
-            and not element.besoin.samedi_autorise
-            and SAMEDI not in ctx.instantane.jours_travailles
-        ):
-            raisons.append(
-                f"le type de séance {element.besoin.type_seance_code} n'est pas autorisé le samedi"
-            )
-        else:
-            raisons.append(f"le {jour} ne fait pas partie des jours travaillés de l'établissement")
-    if not raisons:
+    # standard relève de `JOURS` ; une règle enfreinte relève de `REGLE`, à son niveau. Un
+    # jour sans créneau dans la grille relève de `HORAIRES` (b), qui le signale déjà.
+    if not any(source.est_standard for source in ctx.entorses_jours(element)):
         return
+    if (
+        element.jour == SAMEDI
+        and not element.besoin.samedi_autorise
+        and SAMEDI not in ctx.instantane.jours_travailles
+    ):
+        raison = f"le type de séance {element.besoin.type_seance_code} n'est pas autorisé le samedi"
+    else:
+        raison = (
+            f"le {nom_jour(element.jour)} ne fait pas partie des jours travaillés de "
+            "l'établissement"
+        )
     yield ctx.anomalie(
         CodeContrainte.JOURS,
         _gravite_ecart(element),
         f"La séance {ctx.libelle(element)} est placée {ctx.quand(element)} alors que "
-        f"{' et que '.join(raisons)}." + (_MENTION_IMPOSEE if element.imposee else ""),
+        f"{raison}." + (_MENTION_IMPOSEE if element.imposee else ""),
         (element,),
         **ctx.ressources(element),
         **ctx.reperes(element),
     )
 
 
+def _sans_salle(element: Element) -> tuple[str, str]:
+    """(constat, suite) d'une séance sans salle : jamais attribuée, ou salle disparue."""
+    if element.salle_inconnue is None:
+        return "n'a pas encore de salle", " (salle à définir)"
+    return (
+        f"est placée dans une salle qui n'existe plus (n° {element.salle_inconnue})",
+        " : salle à définir",
+    )
+
+
+def _sans_salle_datees(ctx: Contexte, elements: Sequence[Element]) -> Iterator[Anomalie]:
+    """Couche datée : un avertissement « salle à définir » par séance, qui cite ses dates.
+
+    Une salle supprimée laisse sans salle toutes les occurrences d'une séance :
+    un avertissement par date noierait le panneau des anomalies. Les
+    occurrences sont regroupées par séance (par besoin pour une occurrence
+    sans séance hebdomadaire) et par salle disparue.
+    """
+    if not ctx.datee or not ctx.actif(CodeContrainte.VOLUME):
+        return
+    groupes: dict[tuple[int, str, int], list[Element]] = defaultdict(list)
+    for element in elements:
+        if element.salle_id is None:
+            disparue = -1 if element.salle_inconnue is None else element.salle_inconnue
+            groupes[(element.besoin.id, element.seance_id or "", disparue)].append(element)
+    for datees in groupes.values():
+        datees.sort(key=cle_chronologique)
+        premiere, derniere = datees[0], datees[-1]
+        constat, suite = _sans_salle(premiere)
+        if len(datees) == 1:
+            message = f"La séance {ctx.libelle(premiere)} {ctx.moment(premiere)} {constat}{suite}."
+        else:
+            message = (
+                f"La séance {ctx.libelle(premiere)} {constat} pour {len(datees)} séances datées, "
+                f"du {date_texte(premiere.date)} au {date_texte(derniere.date)}{suite}."
+            )
+        yield ctx.anomalie(
+            CodeContrainte.VOLUME,
+            Gravite.AVERTISSEMENT,
+            message,
+            datees,
+            **ctx.ressources(premiere),
+            **ctx.reperes(premiere),
+        )
+
+
 def _salle(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
     seance = f"la séance {ctx.libelle(element)} {ctx.moment(element)}"
     if element.salle_id is None:
-        if ctx.actif(CodeContrainte.VOLUME):
+        # Couche datée : un avertissement par séance, regroupé par `_sans_salle_datees`.
+        if ctx.actif(CodeContrainte.VOLUME) and not ctx.datee:
+            constat, suite = _sans_salle(element)
             yield ctx.anomalie(
                 CodeContrainte.VOLUME,
                 Gravite.AVERTISSEMENT,
-                f"La séance {ctx.libelle(element)} {ctx.moment(element)} n'a pas encore de "
-                "salle (salle à définir).",
+                f"La séance {ctx.libelle(element)} {ctx.moment(element)} {constat}{suite}.",
                 (element,),
                 **ctx.ressources(element),
                 **ctx.reperes(element),

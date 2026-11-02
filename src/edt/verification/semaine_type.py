@@ -3,9 +3,9 @@
 Étapes, dans l'ordre :
 
 1. validation de structure des placements (jour de 0 à 6, heures dans la
-   journée, fin après le début, salle connue) : un placement mal formé rend
-   la vérification impossible et lève `ErreurDonneesInvalides` avec la liste
-   de tous les défauts ;
+   journée, fin après le début, identifiant de salle entier ou absent) : un
+   placement mal formé rend la vérification impossible et lève
+   `ErreurDonneesInvalides` avec la liste de tous les défauts ;
 2. `VOLUME` : problèmes de dépliage de l'instantané (rapportés tels quels,
    avec leur propre code), placements d'une séance inconnue, séances sans
    placement, séances placées plusieurs fois ;
@@ -16,7 +16,15 @@
 Une séance placée plusieurs fois est signalée (`VOLUME`) et **chacun** de
 ses placements est vérifié comme les autres : rien n'est écarté en silence.
 Un placement d'une séance inconnue n'a pas de besoin : il est signalé
-(`VOLUME`) mais ne peut pas être vérifié autrement.
+(`VOLUME`) mais ne peut pas être vérifié autrement. Deux copies d'une même
+séance qui se chevauchent ne sont pas en conflit « avec elles-mêmes »
+(`regles_paires`) : le doublon est signalé une fois, par `VOLUME` (sans
+`VOLUME`, leurs conflits restent signalés).
+
+Une salle inconnue de l'instantané (supprimée depuis le calcul, base
+importée) ne rend pas la vérification impossible : la séance est vérifiée
+comme une séance sans salle, et l'avertissement « salle à définir » nomme la
+salle disparue (`Element.salle_inconnue` ; journalisé même sans `VOLUME`).
 """
 
 from __future__ import annotations
@@ -36,7 +44,11 @@ from edt.verification.contexte import (
     cle_chronologique,
     cle_tri,
     creneau_impose,
+    defaut_de_salle,
     defauts_de_plage,
+    est_numero,
+    salle_reelle,
+    signaler_salles_disparues,
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import enumerer, nom_jour, plage
@@ -88,6 +100,7 @@ def verifier(
     valider_placements(instantane, placements)
     ctx = Contexte(instantane, codes, datee=False, niveaux_regles=regles_retenues)
     elements, inconnus = construire_elements(instantane, placements)
+    signaler_salles_disparues(elements)
 
     anomalies: list[Anomalie] = []
     anomalies.extend(_problemes_depliage(ctx))
@@ -115,8 +128,10 @@ def verifier(
 
 
 def valider_placements(instantane: Instantane, placements: Sequence[Placement]) -> None:
-    """Lève `ErreurDonneesInvalides` (avec tous les défauts) si un placement est mal formé."""
-    salles = {salle.id for salle in instantane.salles}
+    """Lève `ErreurDonneesInvalides` (avec tous les défauts) si un placement est mal formé.
+
+    Une salle inconnue de l'instantané n'est pas un défaut de structure (voir l'en-tête).
+    """
     defauts: list[str] = []
     for numero, placement in enumerate(placements, start=1):
         if not isinstance(placement, Placement):
@@ -133,8 +148,9 @@ def valider_placements(instantane: Instantane, placements: Sequence[Placement]) 
             f"{nom} : {defaut}"
             for defaut in defauts_de_plage(placement.jour, placement.debut, placement.fin)
         )
-        if placement.salle_id is not None and placement.salle_id not in salles:
-            defauts.append(f"{nom} : salle {placement.salle_id!r} inconnue dans ce semestre")
+        defaut = defaut_de_salle(placement.salle_id)
+        if defaut is not None:
+            defauts.append(f"{nom} : {defaut}")
     if defauts:
         raise ErreurDonneesInvalides(
             f"{len(defauts)} défaut(s) dans les placements reçus : la vérification est "
@@ -146,8 +162,12 @@ def valider_placements(instantane: Instantane, placements: Sequence[Placement]) 
 def construire_elements(
     instantane: Instantane, placements: Sequence[Placement]
 ) -> tuple[list[Element], list[tuple[int, Placement]]]:
-    """Éléments des placements de séances connues, et placements de séances inconnues (avec leur rang)."""
+    """Éléments des placements de séances connues, et placements de séances inconnues (avec leur rang).
+
+    Une salle inconnue de l'instantané devient « salle à définir » (`salle_reelle`).
+    """
     seances = {seance.id: seance for seance in instantane.seances}
+    salles = frozenset(salle.id for salle in instantane.salles)
     elements: list[Element] = []
     inconnus: list[tuple[int, Placement]] = []
     for position, placement in enumerate(placements):
@@ -155,13 +175,14 @@ def construire_elements(
         if seance is None:
             inconnus.append((position, placement))
             continue
+        salle_id, salle_inconnue = salle_reelle(placement.salle_id, salles)
         elements.append(
             Element(
                 besoin=seance.besoin,
                 jour=placement.jour,
                 debut=placement.debut,
                 fin=placement.fin,
-                salle_id=placement.salle_id,
+                salle_id=salle_id,
                 position=position,
                 seance_id=seance.id,
                 semaines=seance.semaines,
@@ -169,6 +190,7 @@ def construire_elements(
                     seance.besoin, seance.verrou, placement.jour, placement.debut
                 ),
                 jour_impose=seance.jour_impose,
+                salle_inconnue=salle_inconnue,
             )
         )
     return elements, inconnus
@@ -257,13 +279,13 @@ def _placement_inconnu(ctx: Contexte, placement: Placement) -> Anomalie:
     """
     ou = f"le {nom_jour(placement.jour)} {plage(placement.debut, placement.fin)}"
     if placement.salle_id is not None:
-        ou += f" en salle {ctx.salle(placement.salle_id).code}"
+        ou += f" {ctx.designer_salle(placement.salle_id)}"
     besoin_id, _, rang = placement.seance_id.partition("-")
-    besoin = ctx.besoin(int(besoin_id)) if besoin_id.isdigit() else None
-    salles = () if placement.salle_id is None else (placement.salle_id,)
+    besoin = ctx.besoin(int(besoin_id)) if est_numero(besoin_id) else None
+    salles = (placement.salle_id,) if ctx.salle_connue(placement.salle_id) else ()
     if besoin is None:
         reference = (
-            f"n° {besoin_id}" if besoin_id.isdigit() else f"référence « {placement.seance_id} »"
+            f"n° {besoin_id}" if est_numero(besoin_id) else f"référence « {placement.seance_id} »"
         )
         return ctx.anomalie(
             CodeContrainte.VOLUME,
@@ -274,7 +296,7 @@ def _placement_inconnu(ctx: Contexte, placement: Placement) -> Anomalie:
             salles=salles,
             jour=placement.jour,
         )
-    numero = f"n° {rang} " if rang.isdigit() else ""
+    numero = f"n° {rang} " if est_numero(rang) else ""
     return ctx.anomalie(
         CodeContrainte.VOLUME,
         Gravite.ERREUR,

@@ -15,8 +15,9 @@ groupes liés, indisponibilités à vérifier, libellés des séances).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Container, Iterable, Sequence
 from dataclasses import dataclass, replace
 
 from edt.domaine.contraintes import CodeContrainte, Niveau, codes_par_defaut, normaliser_codes
@@ -49,6 +50,8 @@ from edt.verification.messages import (
     semaines_texte,
 )
 
+journal = logging.getLogger(__name__)
+
 ORDRE_GRAVITE: dict[Gravite, int] = {
     Gravite.ERREUR: 0,
     Gravite.AVERTISSEMENT: 1,
@@ -67,7 +70,11 @@ class Element:
     - `position` : rang dans la liste reçue (départage les doublons) ;
     - `imposee` : créneau imposé (début imposé, besoin ponctuel, ou verrou
       resté à sa place : voir `creneau_impose`) ;
-    - `jour_impose` / `date_imposee` : ce que le besoin impose au placement.
+    - `jour_impose` / `date_imposee` : ce que le besoin impose au placement ;
+    - `salle_inconnue` : salle reçue mais absente de l'instantané (supprimée
+      depuis le calcul, base importée) ; la séance est alors vérifiée comme
+      une séance sans salle (`salle_id` à `None`, « salle à définir ») et le
+      message nomme la salle disparue (voir `salle_reelle`).
     """
 
     besoin: Besoin
@@ -83,6 +90,7 @@ class Element:
     imposee: bool = False
     jour_impose: int | None = None
     date_imposee: dt.date | None = None
+    salle_inconnue: int | None = None
 
     @property
     def cle_jour(self) -> int | dt.date:
@@ -126,6 +134,57 @@ def _est_entier(valeur: object) -> bool:
     return isinstance(valeur, int) and not isinstance(valeur, bool)
 
 
+def est_numero(texte: str) -> bool:
+    """Vrai si `texte` est un nombre écrit en chiffres ASCII : « 12 », pas « ² » ni « ٣ ».
+
+    `str.isdigit` accepte des chiffres que `int` refuse (« ² ») : un identifiant
+    de séance mal formé lèverait alors une `ValueError` au lieu d'être signalé.
+    """
+    return texte.isascii() and texte.isdecimal()
+
+
+def defaut_de_salle(salle_id: object) -> str | None:
+    """Défaut de structure d'un identifiant de salle reçu, ou `None` (sans salle : permis).
+
+    Une salle **inconnue** de l'instantané n'est pas un défaut de structure :
+    elle a pu être supprimée depuis le calcul ; la séance est alors vérifiée
+    comme une séance sans salle (voir `salle_reelle`).
+    """
+    if salle_id is None or _est_entier(salle_id):
+        return None
+    return f"salle {salle_id!r} invalide (un identifiant entier est attendu)"
+
+
+def salle_reelle(salle_id: int | None, connues: Container[int]) -> tuple[int | None, int | None]:
+    """(salle vérifiée, salle disparue) d'une séance reçue avec `salle_id`.
+
+    Une salle absente de l'instantané (supprimée depuis le calcul) donne
+    `(None, salle_id)` : la séance est vérifiée comme « salle à définir », et
+    le message nomme la salle disparue au lieu de rendre toute la
+    vérification impossible.
+    """
+    if salle_id is None or salle_id in connues:
+        return salle_id, None
+    return None, salle_id
+
+
+def signaler_salles_disparues(elements: Iterable[Element]) -> None:
+    """Journalise (avertissement) les séances reçues dans une salle absente de l'instantané.
+
+    Elles sont vérifiées comme des séances sans salle ; l'anomalie « salle à
+    définir » ne les signale que si `VOLUME` est vérifiée : le journal le dit
+    dans tous les cas.
+    """
+    disparues = Counter(e.salle_inconnue for e in elements if e.salle_inconnue is not None)
+    if disparues:
+        journal.warning(
+            "%d séance(s) placée(s) dans une salle qui n'existe plus dans l'instantané (%s) : "
+            "vérifiée(s) comme sans salle",
+            sum(disparues.values()),
+            ", ".join(f"n° {salle} : {nombre}" for salle, nombre in sorted(disparues.items())),
+        )
+
+
 def creneau_impose(besoin: Besoin, verrou: Placement | None, jour: int, debut: int) -> bool:
     """Vrai si une séance placée le `jour` à `debut` est sur un créneau **imposé**.
 
@@ -160,10 +219,46 @@ def valider_indisponibilite(indisponibilite: Indisponibilite) -> None:
         )
 
 
+def valider_groupes(instantane: Instantane) -> None:
+    """Lève `ErreurDonneesInvalides` si l'arbre des groupes boucle.
+
+    Une boucle de parenté (A parent de B et B parent de A, après une retouche
+    de la base ou un import) ne laisse aucun groupe feuille dans la boucle :
+    ses étudiants n'auraient plus d'emploi du temps, et toutes les règles par
+    personne (déjeuner, pause, maxima, règles personnalisées...) se tairaient
+    sans rien dire. L'erreur nomme les groupes de la boucle.
+    """
+    parents = {groupe.id: groupe.parent_id for groupe in instantane.groupes}
+    en_boucle: set[int] = set()
+    for depart in parents:
+        chemin, courant = [depart], parents[depart]
+        while courant is not None and courant in parents and courant not in en_boucle:
+            if courant in chemin:
+                en_boucle.update(chemin[chemin.index(courant) :])
+                break
+            chemin.append(courant)
+            courant = parents[courant]
+    if not en_boucle:
+        return
+    codes = sorted(f"« {instantane.groupe(groupe).code} »" for groupe in en_boucle)
+    if len(codes) == 1:
+        message = (
+            f"Le groupe {codes[0]} est son propre parent : l'arbre des groupes forme une "
+            "boucle, la vérification est impossible (corriger son groupe parent)."
+        )
+    else:
+        message = (
+            f"Les groupes {enumerer(codes)} forment une boucle de parenté (chacun est "
+            "l'ascendant des autres) : la vérification est impossible (corriger le groupe "
+            "parent de l'un d'eux)."
+        )
+    raise ErreurDonneesInvalides(message)
+
+
 def cle_naturelle_seance(identifiant: str) -> tuple[int, int, int, str]:
     """Clé de tri des identifiants de séance : « 2-1 » avant « 10-1 »."""
     besoin, _, rang = identifiant.partition("-")
-    if besoin.isdigit() and rang.isdigit():
+    if est_numero(besoin) and est_numero(rang):
         return (0, int(besoin), int(rang), "")
     return (1, 0, 0, identifiant)
 
@@ -215,6 +310,7 @@ class Contexte:
         datee: bool,
         niveaux_regles: dict[int, Niveau] | None = None,
     ) -> None:
+        valider_groupes(instantane)
         self.instantane = instantane
         self.codes = codes
         self.datee = datee
@@ -226,6 +322,7 @@ class Contexte:
         self.parametres = instantane.parametres
         self.toutes_semaines = frozenset(semaine.numero for semaine in instantane.semaines)
         self._campus = {campus.id: campus for campus in instantane.campus}
+        self._salles_connues = frozenset(salle.id for salle in instantane.salles)
         self._besoins: dict[int, Besoin] | None = None
         self._seances_par_besoin = Counter(seance.besoin.id for seance in instantane.seances)
         self._enseignants_reels: dict[int, frozenset[int]] = {}
@@ -249,6 +346,16 @@ class Contexte:
     def salle(self, salle_id: int) -> Salle:
         """Salle de l'instantané (erreur métier si elle est inconnue)."""
         return self.instantane.salle(salle_id)
+
+    def salle_connue(self, salle_id: int | None) -> bool:
+        """Vrai si `salle_id` désigne une salle de l'instantané."""
+        return salle_id in self._salles_connues
+
+    def designer_salle(self, salle_id: int) -> str:
+        """« en salle N204 », ou « dans une salle qui n'existe plus (n° 3) » si elle a disparu."""
+        if salle_id in self._salles_connues:
+            return f"en salle {self.salle(salle_id).code}"
+        return f"dans une salle qui n'existe plus (n° {salle_id})"
 
     def campus(self, campus_id: int) -> Campus:
         """Campus de l'instantané (erreur métier s'il est inconnu)."""

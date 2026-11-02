@@ -7,7 +7,9 @@ import json
 import pytest
 
 from edt.domaine.contraintes import CodeContrainte
-from edt.verification import calculer_indicateurs
+from edt.domaine.enumerations import DemiJournee
+from edt.domaine.instantane import Creneau
+from edt.verification import calculer_indicateurs, verifier
 
 from .fabrique import ISSY, LUNDI, SAMEDI, Fabrique, placer
 
@@ -141,3 +143,45 @@ def test_pause_libre_premieres_minutes_libres_de_la_fenetre():
     ]
     # Journée finie avant la fenêtre : aucune pause à retirer.
     assert _pause_libre(fenetre, 510, 630, [(510, 630)]) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+def un_cours_sur_la_grille(creneaux):
+    """Un TD de A1-G1 placé le lundi à 8 h 30 en N204, avec la grille `creneaux`."""
+    f = Fabrique()
+    f.creneaux = tuple(creneaux)
+    n204 = f.salle("N204")
+    cours = f.cours("TD", [f.groupe("A1-G1")])
+    return f.construire(), [placer(cours, LUNDI, "8h30", n204)]
+
+
+@pytest.mark.cas_limite
+def test_grille_vide_ou_d_un_seul_creneau():
+    """Cas : grille horaire vide, ou réduite à un seul créneau (lundi 8 h 30-10 h 30).
+
+    Risque : division par zéro ou `min()`/`max()` sur une liste vide (utilisation des
+    salles, créneaux extrêmes), limite de demi-journée absente.
+    """
+    instantane, placements = un_cours_sur_la_grille(())
+    anomalies = verifier(instantane, placements)
+    assert [str(a.code) for a in anomalies] == ["HORAIRES"]
+    assert "la grille horaire n'a aucun créneau le lundi" in anomalies[0].message
+    vide = calculer_indicateurs(instantane, placements, anomalies)
+    assert vide.pourcentage_utilisation_salles is None
+    assert vide.utilisation_par_salle == ((1, None),)
+    assert (vide.trous_creneaux, vide.trous_minutes_journee, vide.seances_creneaux_extremes) == (
+        0,
+        0,
+        0,
+    )
+
+    instantane, placements = un_cours_sur_la_grille([Creneau(LUNDI, 510, 630, DemiJournee.MATIN)])
+    assert verifier(instantane, placements) == []
+    seul = calculer_indicateurs(instantane, placements)
+    assert seul.pourcentage_utilisation_salles == 100.0
+    assert seul.seances_creneaux_extremes == 15
+    assert seul.trous_creneaux == 0

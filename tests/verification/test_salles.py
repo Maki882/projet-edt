@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from edt.domaine.enumerations import Accessibilite, Gravite
-from edt.verification import verifier
+import datetime as dt
 
-from .fabrique import ISSY, MARDI, Fabrique, codes, placer
+import pytest
+
+from edt.domaine.enumerations import Accessibilite, Gravite
+from edt.verification import verifier, verifier_occurrences
+
+from .fabrique import ISSY, MARDI, MARDI_6_OCT, MARDI_13_OCT, Fabrique, codes, occurrence, placer
 
 REGLES_SALLE = ["ACCESSIBILITE", "CAPACITE", "TYPE_SALLE", "EQUIPEMENT", "VOLUME"]
 
@@ -116,3 +120,60 @@ def test_salle_a_definir_avertissement_sans_regle_de_salle():
 def test_regles_de_salle_desactivees():
     f, seance, salle = seance_en_salle({"capacite": 5}, effectif=40)
     assert verifier(f.construire(), [placer(seance, MARDI, "8h30", salle)], ["TYPE_SALLE"]) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_salle_inconnue_verifiee_comme_salle_a_definir(caplog):
+    """Cas : un placement désigne une salle absente de l'instantané (supprimée depuis le calcul, base importée).
+
+    Risque : `ErreurDonneesInvalides` « salle inconnue » : toute la vérification de la
+    version devient impossible.
+    """
+    f, seance, _ = seance_en_salle(effectif=500)
+    placement = placer(seance, MARDI, "8h30", 99)
+    anomalies = verifier(f.construire(), [placement], REGLES_SALLE)
+    # Une seule anomalie : aucune règle de salle (capacité...) sur une salle disparue.
+    assert codes(anomalies) == ["VOLUME"]
+    assert anomalies[0].gravite is Gravite.AVERTISSEMENT
+    assert anomalies[0].message == (
+        "La séance Physique TP (A1-G1) le mardi de 8 h 30 à 10 h 30 est placée dans une salle "
+        "qui n'existe plus (n° 99) : salle à définir."
+    )
+    assert anomalies[0].salles == ()
+    # Sans VOLUME, aucune anomalie, mais le journal le dit : jamais en silence.
+    with caplog.at_level("WARNING", logger="edt.verification"):
+        assert verifier(f.construire(), [placement], ["CAPACITE"]) == []
+    assert "salle qui n'existe plus dans l'instantané (n° 99 : 1)" in caplog.text
+
+
+@pytest.mark.cas_limite
+def test_salles_a_definir_regroupees_par_seance_dans_la_couche_datee():
+    """Cas : une séance a plusieurs séances datées sans salle, et une dans une salle disparue.
+
+    Risque : un avertissement « salle à définir » par date (une quinzaine par séance) noie le
+    panneau des anomalies.
+    """
+    f, seance, _ = seance_en_salle()
+    dates = [MARDI_6_OCT, MARDI_13_OCT, dt.date(2026, 10, 20)]
+    sans_salle = [
+        occurrence(seance, jour, "8h30", identifiant=i) for i, jour in enumerate(dates, 1)
+    ]
+    disparue = occurrence(seance, dt.date(2026, 10, 27), "8h30", 99, identifiant=4)
+    anomalies = verifier_occurrences(f.construire(), [*sans_salle, disparue], REGLES_SALLE)
+    assert [(str(a.code), a.gravite, a.occurrences) for a in anomalies] == [
+        ("VOLUME", Gravite.AVERTISSEMENT, (1, 2, 3)),
+        ("VOLUME", Gravite.AVERTISSEMENT, (4,)),
+    ]
+    assert anomalies[0].message == (
+        "La séance Physique TP (A1-G1) n'a pas encore de salle pour 3 séances datées, du mardi "
+        "6 octobre 2026 au mardi 20 octobre 2026 (salle à définir)."
+    )
+    assert anomalies[1].message == (
+        "La séance Physique TP (A1-G1) le mardi 27 octobre 2026 de 8 h 30 à 10 h 30 est placée "
+        "dans une salle qui n'existe plus (n° 99) : salle à définir."
+    )
