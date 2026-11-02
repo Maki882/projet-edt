@@ -15,11 +15,18 @@ rien à passer, il écrit simplement `journal = logging.getLogger(__name__)`.
 Convention pour tout le projet : un journal par module, jamais de `print`
 dans les services, `journal.exception(...)` dans tout bloc `except` qui ne
 relance pas l'erreur.
+
+Robustesse : un fichier journal impossible à ouvrir est une
+`ErreurConfiguration` (chemin, variable et droits nommés), jamais une trace ;
+le fichier tournant survit à un autre processus qui écrit le même fichier
+(commande `edt` lancée pendant que le service tourne) ; les journaux de
+calcul les plus anciens sont purgés (`NB_JOURNAUX_CALCUL` conservés).
 """
 
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from contextvars import ContextVar
 from dataclasses import dataclass
@@ -35,6 +42,8 @@ NOM_FICHIER = "edt.log"
 DOSSIER_CALCULS = "generations"
 TAILLE_MAX_OCTETS = 5 * 1024 * 1024
 NB_ARCHIVES = 5
+NB_JOURNAUX_CALCUL = 50
+"""Journaux de calcul conservés dans `generations/` : au-delà, les plus anciens sont supprimés."""
 
 #: Identifiant de la requête web en cours de traitement (posé par l'intergiciel).
 contexte_requete: ContextVar[str | None] = ContextVar("edt_id_requete", default=None)
@@ -43,7 +52,7 @@ contexte_calcul: ContextVar[int | None] = ContextVar("edt_id_calcul", default=No
 
 _PREFIXE_JOURNAL_CALCUL = "edt.calcul."
 _MARQUE = "_edt_socle"
-_etat: dict[str, object] = {"signature": None}
+_etat: dict[str, object] = {"signature": None, "panne": None}
 
 journal = logging.getLogger(__name__)
 
@@ -102,6 +111,48 @@ class _ConsoleCourante(logging.StreamHandler):
         return
 
 
+class _FichierTournant(RotatingFileHandler):
+    """Fichier tournant qui supporte qu'un autre processus écrive le même fichier.
+
+    - si la rotation échoue (fichier tenu par un autre processus, cas de
+      Windows), on continue d'écrire dans le fichier courant et on réessaie à
+      la ligne suivante, sans « Logging error » sur la console ;
+    - si un autre processus a tourné le fichier (le chemin désigne désormais
+      un autre fichier), le flux est rouvert sur le nouveau, comme le fait
+      `WatchedFileHandler` : aucune ligne ne part dans un fichier délié.
+    """
+
+    def __init__(self, *arguments, **options) -> None:
+        super().__init__(*arguments, **options)
+        self._empreinte = self._empreinte_actuelle()
+
+    def _empreinte_actuelle(self) -> tuple[int, int] | None:
+        try:
+            infos = os.stat(self.baseFilename)
+        except OSError:
+            return None
+        return infos.st_dev, infos.st_ino
+
+    def emit(self, record: logging.LogRecord) -> None:
+        empreinte = self._empreinte_actuelle()
+        if empreinte != self._empreinte:
+            if self.stream is not None:
+                self.stream.close()
+            self.stream = self._open()
+            self._empreinte = self._empreinte_actuelle()
+        super().emit(record)
+
+    def doRollover(self) -> None:  # noqa: N802 (nom imposé par logging)
+        try:
+            super().doRollover()
+        except OSError:
+            # Un autre processus tient le fichier : on garde le fichier courant, la rotation
+            # sera retentée à la prochaine ligne.
+            if self.stream is None:
+                self.stream = self._open()
+        self._empreinte = self._empreinte_actuelle()
+
+
 def _creer_dossier(dossier: Path) -> None:
     try:
         dossier.mkdir(parents=True, exist_ok=True)
@@ -110,6 +161,43 @@ def _creer_dossier(dossier: Path) -> None:
             f"Impossible de créer le dossier des journaux « {dossier} » : {erreur}. "
             "Vérifier la variable EDT_LOG_DIR et les droits d'écriture."
         ) from erreur
+
+
+def _ouvrir_fichier_tournant(chemin: Path) -> _FichierTournant:
+    try:
+        return _FichierTournant(
+            chemin, maxBytes=TAILLE_MAX_OCTETS, backupCount=NB_ARCHIVES, encoding="utf-8"
+        )
+    except OSError as erreur:
+        raise ErreurConfiguration(
+            f"Impossible d'ouvrir le fichier journal « {chemin} » : {erreur}. Vérifier la "
+            "variable EDT_LOG_DIR et les droits d'écriture (un dossier ou un fichier d'un autre "
+            "utilisateur porte peut-être ce nom)."
+        ) from erreur
+
+
+def _purger_journaux_calcul(dossier: Path, garder: int) -> int:
+    """Supprime les journaux de calcul les plus anciens au-delà de `garder` ; renvoie le nombre."""
+    fichiers = sorted(
+        (f for f in dossier.glob("calcul-*.log") if f.is_file()),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    supprimes = 0
+    for fichier in fichiers[garder:]:
+        try:
+            fichier.unlink()
+            supprimes += 1
+        except OSError as erreur:
+            journal.warning("Journal de calcul %s non supprimé : %s", fichier.name, erreur)
+    if supprimes:
+        journal.info(
+            "Journaux de calcul : %d fichier(s) ancien(s) supprimé(s) de %s (%d conservés)",
+            supprimes,
+            dossier,
+            garder,
+        )
+    return supprimes
 
 
 def _retirer_gestionnaires() -> None:
@@ -135,15 +223,13 @@ def configurer_journalisation(config: Configuration | None = None) -> Path:
         return chemin
 
     _creer_dossier(dossier)
+    fichier = _ouvrir_fichier_tournant(chemin)
     _retirer_gestionnaires()
 
     formateur = logging.Formatter(FORMAT)
     filtre = _FiltreContexte()
 
     console = _ConsoleCourante()
-    fichier = RotatingFileHandler(
-        chemin, maxBytes=TAILLE_MAX_OCTETS, backupCount=NB_ARCHIVES, encoding="utf-8"
-    )
     racine = logging.getLogger()
     for gestionnaire in (console, fichier):
         gestionnaire.setFormatter(formateur)
@@ -153,8 +239,36 @@ def configurer_journalisation(config: Configuration | None = None) -> Path:
     racine.setLevel(config.log_level)
 
     _etat["signature"] = signature
+    _etat["panne"] = None
     journal.debug("Journalisation configurée : %s (niveau %s)", chemin, config.log_level)
     return chemin
+
+
+def journalisation_de_secours(panne: str, config: Configuration | None = None) -> None:
+    """Repli sur la console seule quand le fichier journal est inutilisable.
+
+    Sert à `python -m edt doctor`, qui doit pouvoir diagnostiquer un dossier
+    de journaux défaillant : la panne est mémorisée (`panne_journalisation`)
+    et affichée dans son bilan.
+    """
+    config = config or charger_configuration()
+    _retirer_gestionnaires()
+    console = _ConsoleCourante()
+    console.setFormatter(logging.Formatter(FORMAT))
+    console.addFilter(_FiltreContexte())
+    setattr(console, _MARQUE, True)
+    racine = logging.getLogger()
+    racine.addHandler(console)
+    racine.setLevel(config.log_level)
+    _etat["signature"] = None
+    _etat["panne"] = panne
+    journal.error("Journalisation en repli sur la console : %s", panne)
+
+
+def panne_journalisation() -> str | None:
+    """Message de la panne qui a imposé le repli console, sinon `None`."""
+    panne = _etat["panne"]
+    return str(panne) if panne else None
 
 
 def reinitialiser_journalisation() -> None:
@@ -165,6 +279,7 @@ def reinitialiser_journalisation() -> None:
     """
     _retirer_gestionnaires()
     _etat["signature"] = None
+    _etat["panne"] = None
 
 
 @dataclass
@@ -209,10 +324,17 @@ def ouvrir_journal_calcul(id_calcul: int, config: Configuration | None = None) -
     config = config or charger_configuration()
     dossier = config.log_dir / DOSSIER_CALCULS
     _creer_dossier(dossier)
+    _purger_journaux_calcul(dossier, max(NB_JOURNAUX_CALCUL - 1, 0))
     horodatage = datetime.now().strftime("%Y%m%d-%H%M%S")
     chemin = dossier / f"calcul-{id_calcul:06d}-{horodatage}.log"
 
-    gestionnaire = logging.FileHandler(chemin, encoding="utf-8")
+    try:
+        gestionnaire = logging.FileHandler(chemin, encoding="utf-8")
+    except OSError as erreur:
+        raise ErreurConfiguration(
+            f"Impossible d'ouvrir le journal du calcul « {chemin} » : {erreur}. Vérifier la "
+            "variable EDT_LOG_DIR, les droits d'écriture et l'espace disque."
+        ) from erreur
     gestionnaire.setFormatter(logging.Formatter(FORMAT))
     gestionnaire.addFilter(_FiltreContexte())
     gestionnaire.addFilter(_FiltreCalcul(id_calcul))

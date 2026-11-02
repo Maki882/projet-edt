@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.calendrier import semaines_entre
 from edt.domaine.depliage import deplier
 from edt.domaine.enumerations import CibleIndisponibilite
@@ -74,7 +75,7 @@ def charger_instantane(
     Les besoins impossibles à déplier ne lèvent rien : ils sont listés dans
     `Instantane.problemes_depliage`.
     """
-    semestre = session.get(m.Semestre, semestre_id)
+    semestre = session.get(m.Semestre, semestre_id) if identifiant_valide(semestre_id) else None
     if semestre is None:
         raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     annee_id = semestre.annee_scolaire_id
@@ -116,7 +117,13 @@ def charger_instantane(
     )
     jours_fermes = _jours_fermes(session, semestre, groupes)
     parametres = lire_parametres(session)
-    depliage = deplier(besoins, semaines, jours_fermes, parametres.jours_travailles)
+    depliage = deplier(
+        besoins,
+        semaines,
+        jours_fermes,
+        parametres.jours_travailles,
+        periode=(semestre.date_debut, semestre.date_fin),
+    )
 
     version_base = _version_base(session, semestre, version_base_id)
     seances = _attacher_version(session, depliage.seances, version_base)
@@ -193,9 +200,13 @@ def _regles_resolues(
         "salle": {s.code for s in instantane.salles},
         "type_seance": set(session.scalars(select(m.TypeSeance.code))),
     }
-    identifiants = {
+    # Deux salles peuvent porter le même code sur deux campus : un code donne tous ses ids.
+    salles_par_code: dict[str, list[int]] = {}
+    for salle in instantane.salles:
+        salles_par_code.setdefault(salle.code, []).append(salle.id)
+    identifiants: dict[str, dict] = {
         "campus": {c.code: c.id for c in instantane.campus},
-        "salle": {s.code: s.id for s in instantane.salles},
+        "salle": salles_par_code,
         "type_seance": dict(session.execute(select(m.TypeSeance.code, m.TypeSeance.id)).all()),
     }
     connues = {
@@ -452,7 +463,7 @@ def _indisponibilites(session: Session, ids_groupes: set[int]) -> tuple[Indispon
 
 
 def _exiger_version(session: Session, version_id: int) -> m.VersionEdt:
-    version = session.get(m.VersionEdt, version_id)
+    version = session.get(m.VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     return version
@@ -462,11 +473,19 @@ def _version_base(
     session: Session, semestre: m.Semestre, version_base_id: int | None
 ) -> m.VersionEdt | None:
     if version_base_id is None:
-        return session.scalar(
-            select(m.VersionEdt).where(
-                m.VersionEdt.semestre_id == semestre.id, m.VersionEdt.active.is_(True)
+        actives = session.scalars(
+            select(m.VersionEdt)
+            .where(m.VersionEdt.semestre_id == semestre.id, m.VersionEdt.active.is_(True))
+            .order_by(m.VersionEdt.id)
+        ).all()
+        if len(actives) > 1:
+            # L'index unique partiel l'interdit ; une base créée sans lui peut en avoir deux.
+            raise ErreurRegleMetier(
+                f"Plusieurs versions d'emploi du temps sont actives pour « {semestre.libelle} » "
+                f"(versions {', '.join(str(v.id) for v in actives)}) : en garder une seule, puis "
+                "lancer « python -m edt verifier-schema » (l'index qui l'interdit manque)."
             )
-        )
+        return actives[0] if actives else None
     version = _exiger_version(session, version_base_id)
     if version.semestre_id != semestre.id:
         raise ErreurRegleMetier(

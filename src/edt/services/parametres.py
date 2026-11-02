@@ -7,6 +7,12 @@ stocke chaque valeur en JSON : entier, booléen ou chaîne (paramètres à choix
 Anciennes bases : la lecture reste possible sans rien modifier en base (voir
 `_mode_dejeuner_herite` et `_dejeuner_lisible`) ; l'enregistrer de nouveau
 dans l'écran des paramètres met la base d'aplomb.
+
+Valeur corrompue (type impossible, « quinze » pour une durée) : la lecture
+stricte lève en nommant le paramètre ; l'écriture et la réinitialisation
+lisent en mode **tolérant** (défaut à la place, avertissement) pour que
+l'application reste réparable depuis son écran ; `anomalies_parametres`
+liste les paramètres fautifs à afficher.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ ANCIENNE_CLE_DEJEUNER = "dejeuner_horaires_determines"
 """Paramètre booléen d'avant `dejeuner_mode` ; encore présent dans les bases d'alors."""
 
 
-def lire_parametres(session: Session) -> Parametres:
+def lire_parametres(session: Session, *, tolerant: bool = False) -> Parametres:
     """Tous les paramètres, typés.
 
     Un paramètre absent de la table (base créée avant son ajout) prend sa
@@ -47,11 +53,40 @@ def lire_parametres(session: Session) -> Parametres:
     de déjeuner d'une ancienne base se déduit de `dejeuner_horaires_determines`
     (voir `_mode_dejeuner_herite`), et des réglages de déjeuner incohérents
     sont lus comme « pas de pause » (voir `_dejeuner_lisible`). Toute autre
-    valeur enregistrée invalide lève `ErreurDonneesInvalides`.
+    valeur enregistrée invalide lève `ErreurDonneesInvalides` ; en mode
+    `tolerant`, elle est remplacée par la valeur par défaut avec un
+    avertissement, pour que l'écran des paramètres puisse la réenregistrer.
     """
+    valeurs, anomalies = _lire(session)
+    if anomalies:
+        cle, message = next(iter(anomalies.items()))
+        if not tolerant:
+            raise ErreurDonneesInvalides(
+                f"Le paramètre « {cle} » enregistré en base est invalide : {message}"
+            )
+        for cle, message in anomalies.items():
+            journal.warning(
+                "Paramètre « %s » enregistré invalide (%s) : valeur par défaut %r utilisée à sa "
+                "place ; l'enregistrer de nouveau dans l'écran des paramètres.",
+                cle,
+                message,
+                definition(cle).defaut,
+            )
+    valeurs.update(_dejeuner_lisible(valeurs))
+    return Parametres(**valeurs)
+
+
+def anomalies_parametres(session: Session) -> dict[str, str]:
+    """Paramètres dont la valeur enregistrée est invalide : clé → message (vide si tout va bien)."""
+    return _lire(session)[1]
+
+
+def _lire(session: Session) -> tuple[dict[str, ValeurParametre], dict[str, str]]:
+    """Valeurs valides (défaut pour une valeur absente ou invalide) et anomalies par clé."""
     enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
     enregistres.update(_mode_dejeuner_herite(enregistres))
     valeurs: dict[str, ValeurParametre] = {}
+    anomalies: dict[str, str] = {}
     for entree in definitions():
         if entree.cle not in enregistres:
             journal.info(
@@ -77,11 +112,8 @@ def lire_parametres(session: Session) -> Parametres:
         try:
             valeurs[entree.cle] = valider(entree.cle, retenue)
         except ErreurDonneesInvalides as erreur:
-            raise ErreurDonneesInvalides(
-                f"Le paramètre « {entree.cle} » enregistré en base est invalide : {erreur.message}"
-            ) from erreur
-    valeurs.update(_dejeuner_lisible(valeurs))
-    return Parametres(**valeurs)
+            anomalies[entree.cle] = erreur.message
+    return valeurs, anomalies
 
 
 def _mode_dejeuner_herite(enregistres: dict[str, object]) -> dict[str, str]:
@@ -160,7 +192,8 @@ def ecrire_parametres(session: Session, valeurs: dict[str, ValeurParametre]) -> 
     Tout est validé avant la première écriture : en cas d'erreur, rien n'est modifié.
     """
     nouvelles = {cle: valider(cle, valeur) for cle, valeur in valeurs.items()}
-    resultat = lire_parametres(session).avec(**nouvelles)
+    # Lecture tolérante : une valeur corrompue ailleurs n'empêche pas de réparer la base.
+    resultat = lire_parametres(session, tolerant=True).avec(**nouvelles)
     for cle, valeur in nouvelles.items():
         ligne = session.get(Parametre, cle)
         if ligne is None:

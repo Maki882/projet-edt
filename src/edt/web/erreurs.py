@@ -8,6 +8,8 @@ Aucun écran n'affiche d'erreur brute :
   deviennent une page explicite ;
 - une violation d'intégrité de la base (doublon, élément encore utilisé)
   devient un refus expliqué ;
+- une panne du pilote de base (base occupée, non initialisée, fichier qui
+  n'est pas une base SQLite, inaccessible) devient un 503 qui dit quoi faire ;
 - toute autre exception est interceptée par l'intergiciel
   (`edt.web.intergiciels`), journalisée avec sa trace, et rendue par la même
   page d'erreur avec l'identifiant de la requête.
@@ -25,7 +27,7 @@ from collections.abc import Iterable
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import IntegrityError, OperationalError
+from sqlalchemy.exc import DatabaseError, IntegrityError
 from starlette.exceptions import HTTPException as ErreurHTTP
 
 from edt.erreurs import (
@@ -149,14 +151,17 @@ async def _integrite(request: Request, erreur: IntegrityError) -> Response:
     )
 
 
-async def _base_indisponible(request: Request, erreur: OperationalError) -> Response:
-    """Base inutilisable : occupée (opération en cours, verrou), non initialisée, ou inaccessible.
+async def _base_indisponible(request: Request, erreur: DatabaseError) -> Response:
+    """Base inutilisable : occupée (opération en cours, verrou), non initialisée, corrompue
+    ou inaccessible.
 
     Pendant un chargement de jeu fictif ou une remise à zéro, les tables sont
     supprimées puis recréées : une requête qui tombe à ce moment-là reçoit
-    « occupée, réessayer », pas le conseil d'initialiser la base.
+    « occupée, réessayer », pas le conseil d'initialiser la base. Un fichier
+    qui n'est pas une base SQLite (`sqlite3.DatabaseError`, qui n'est pas une
+    `OperationalError`) reçoit le même traitement, avec son remède.
     """
-    cause = str(erreur.orig).lower()
+    cause = str(erreur.orig or erreur).lower()
     if operation_en_cours() or "locked" in cause:
         journal.warning("Base de données occupée sur %s : %s", request.url.path, erreur.orig)
         return reponse_erreur(
@@ -176,6 +181,12 @@ async def _base_indisponible(request: Request, erreur: OperationalError) -> Resp
             "« python -m edt init-db », ou la remettre à zéro dans Données > Jeux de "
             "données, puis réessayer."
         )
+    elif "not a database" in cause or "malformed" in cause:
+        message = (
+            "Le fichier de la base de données est illisible : ce n'est pas une base SQLite, "
+            "ou il est corrompu. Restaurer une sauvegarde, ou recréer la base avec "
+            "« python -m edt init-db --reset » (les données sont perdues), puis réessayer."
+        )
     else:
         message = (
             "La base de données n'est pas accessible. Réessayer dans quelques instants ; si "
@@ -192,4 +203,4 @@ def installer_gestionnaires(app: FastAPI) -> None:
     app.add_exception_handler(ErreurHTTP, _erreur_http)
     app.add_exception_handler(RequestValidationError, _saisie_invalide)
     app.add_exception_handler(IntegrityError, _integrite)
-    app.add_exception_handler(OperationalError, _base_indisponible)
+    app.add_exception_handler(DatabaseError, _base_indisponible)

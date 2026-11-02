@@ -7,11 +7,16 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
+from edt import cli
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.initialisation import ecarts_schema
+from edt.db.moteur import obtenir_moteur, session_base
 from edt.domaine.enumerations import CibleIndisponibilite, ModeVolume, OrigineVersion
-from edt.erreurs import ErreurIntrouvable
-from edt.services.instantane import charger_instantane, charger_placements
+from edt.domaine.instantane import decomposer_id_seance
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
+from edt.services import regles as service_regles
+from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
+from edt.services.niveaux import niveaux_de_version, niveaux_regles_de_version
 from edt.synthese.generateur import generer_jeu
 
 from .test_depliage import semaines_ouvertes_de_reference
@@ -194,3 +199,160 @@ def test_semaines_actives_d_un_jeu_realiste_conformes_a_la_regle_de_reference(ba
     assert comparees > 100
     # Le jeu exerce la règle : selon les groupes et les fenêtres, les semaines ouvertes diffèrent.
     assert len(jeux_de_semaines) > 3
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : identifiants hors bornes, salles homonymes, versions actives, besoin sans groupe
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("identifiant", [2**63, 10**30, -1, 0])
+def test_un_identifiant_hors_des_entiers_sqlite_est_introuvable(
+    base, session, identifiant, lanceur
+):
+    """Cas : un identifiant de semestre ou de version au-delà de 2**63, négatif ou nul arrive
+    par une adresse web ou une option de commande.
+
+    Risque : `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors
+    que -1 donnait proprement « n'existe pas » ; tous doivent être introuvables.
+    """
+    for chargeur in (charger_instantane, charger_placements, charger_occurrences):
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            chargeur(session, identifiant)
+    # Même garde pour les niveaux d'une version.
+    for lecteur in (niveaux_de_version, niveaux_regles_de_version):
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            lecteur(session, identifiant)
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par les lots solveur et vérification : src/edt/commandes/generation.py "
+    "(_semestre, ligne 196) et src/edt/services/verification.py (version_a_verifier) font "
+    "session.get sans garder l'identifiant par identifiant_valide",
+)
+@pytest.mark.parametrize(
+    ("commande", "identifiant"),
+    [
+        (["pre-verifier", "--semestre"], 2**63),
+        (["pre-verifier", "--semestre"], 10**30),
+        (["verifier", "--version"], 2**63),
+    ],
+    ids=["pre-verifier-2^63", "pre-verifier-10^30", "verifier-2^63"],
+)
+def test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas(
+    base, commande, identifiant, lanceur
+):
+    """Cas : `pre-verifier --semestre 99999999999999999999` ou `verifier --version 2**63`
+    (identifiant au-delà des entiers de SQLite).
+
+    Risque : `OverflowError` brute du pilote, code 2 « Erreur inattendue » avec trace, au lieu
+    du code 1 « n'existe pas » rendu pour -1.
+    """
+    resultat = lanceur.invoke(cli.app, [*commande, str(identifiant)])
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert "n'existe pas" in resultat.output and "Traceback" not in resultat.output
+
+
+@pytest.mark.cas_limite
+def test_regle_salles_avec_salles_homonymes_sur_deux_campus(jeu_minimal, session):
+    """Cas : une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la
+    classe A1-G1.
+
+    Risque : la règle résolue ne visait qu'une des deux salles, au hasard de l'ordre de
+    lecture : résultat faux sans message ; les deux identifiants doivent être retenus.
+    """
+    ndc = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
+    issy = session.scalar(select(m.Campus).where(m.Campus.code == "ISSY"))
+    homonyme = m.Salle(code="N105", campus_id=issy.id, capacite=30, type_salle_id=ndc.type_salle_id)
+    session.add(homonyme)
+    session.flush()
+    detail = service_regles.creer(
+        session,
+        {
+            "type": "SALLES",
+            "portee": {"nature": "groupe", "cible": "A1-G1"},
+            "parametres": {"mode": "imposer", "salles": ["N105"]},
+        },
+    )
+
+    instantane = charger_instantane(session, jeu_minimal.semestre_id)
+    assert set(instantane.regle(detail.id).valeurs["salles"]) == {ndc.id, homonyme.id}
+
+
+@pytest.mark.cas_limite
+def test_deux_versions_actives_sont_refusees_et_l_index_absent_est_un_ecart(jeu_minimal, session):
+    """Cas : base créée sans l'index unique partiel « une version active par semestre » ; deux
+    versions ont été activées.
+
+    Risque : l'instantané prenait la première ligne : verrous repris d'une version arbitraire,
+    affichage d'une version et calcul sur l'autre, sans message.
+    """
+    with obtenir_moteur().begin() as connexion:
+        connexion.exec_driver_sql("DROP INDEX uq_version_edt_active_par_semestre")
+    semestre = session.get(m.Semestre, jeu_minimal.semestre_id)
+    for numero in (1, 2):
+        session.add(
+            m.VersionEdt(
+                semestre_id=semestre.id,
+                numero=numero,
+                libelle=f"Version {numero}",
+                origine=OrigineVersion.REFERENCE,
+                active=True,
+            )
+        )
+    session.flush()
+
+    with pytest.raises(ErreurRegleMetier, match="Plusieurs versions"):
+        charger_instantane(session, semestre.id)
+    assert any("uq_version_edt_active_par_semestre" in e for e in ecarts_schema(obtenir_moteur()))
+
+
+@pytest.mark.cas_limite
+def test_un_besoin_sans_groupe_est_signale_dans_l_instantane(jeu_minimal, session):
+    """Cas : un besoin du jeu perd tous ses groupes (script, import partiel) puis le semestre
+    est chargé.
+
+    Risque : besoin déplié avec un effectif nul et planifié ; il doit figurer dans les
+    problèmes de dépliage et n'avoir aucune séance.
+    """
+    besoin = session.scalar(select(m.Besoin).order_by(m.Besoin.id))
+    besoin.groupes = []
+    session.flush()
+
+    instantane = charger_instantane(session, jeu_minimal.semestre_id)
+    assert any(
+        p.besoin_id == besoin.id and "aucun groupe" in p.message
+        for p in instantane.problemes_depliage
+    )
+    assert not any(s.id.startswith(f"{besoin.id}-") for s in instantane.seances)
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "identifiant",
+    ["1\u00b2-1", "12-\u00b2", "\u0661\u0662-3", "12-", "-3", "12-3-4", "douze", " 12-3"],
+    ids=[
+        "exposant-besoin",
+        "exposant-rang",
+        "chiffres-arabes",
+        "rang-vide",
+        "besoin-vide",
+        "trois-parties",
+        "texte",
+        "espace",
+    ],
+)
+def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier(identifiant):
+    """Cas : un identifiant de séance venu d'une adresse ou d'un fichier porte un chiffre
+    Unicode (« ² », chiffres d'une autre écriture) ou une forme bancale.
+
+    Risque : `isdigit()` acceptait « ² » puis `int()` levait une `ValueError` brute (500 / code
+    2) ; l'erreur doit être métier et nommer l'identifiant (cas transmis par le lot vérificateur).
+    """
+    with pytest.raises(ErreurDonneesInvalides) as capture:
+        decomposer_id_seance(identifiant)
+    assert repr(identifiant) in str(capture.value)
+    assert decomposer_id_seance("12-3") == (12, 3)

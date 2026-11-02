@@ -23,6 +23,9 @@ Erreurs
 -------
 Une commande lève simplement les erreurs métier (`ErreurEDT`) : elles sont
 affichées en clair sur la sortie d'erreur et donnent le code de sortie 1.
+Une panne du pilote de base (base verrouillée par un autre processus, fichier
+en lecture seule ou corrompu, disque plein) est traduite en phrase française
+avec son remède, code 1 également (`edt.db.moteur.expliquer_erreur_base`).
 Toute autre exception est journalisée avec sa trace complète et donne le
 code de sortie 2.
 """
@@ -37,10 +40,12 @@ from collections.abc import Sequence
 
 import typer
 import typer.core
+from sqlalchemy.exc import DatabaseError
 
 from edt import __version__, commandes
+from edt.db.moteur import expliquer_erreur_base
 from edt.erreurs import ErreurConfiguration, ErreurEDT
-from edt.journal import configurer_journalisation
+from edt.journal import configurer_journalisation, journalisation_de_secours
 
 journal = logging.getLogger(__name__)
 
@@ -67,8 +72,16 @@ class GroupeEDT(typer.core.TyperGroup):
         except ERREURS_DE_TYPER:
             raise
         except ErreurEDT as erreur:
-            journal.error("Commande en échec : %s", erreur)
+            # Sans gestionnaire (journalisation en panne), `logging` répéterait le message
+            # sur la console : on ne journalise que si un gestionnaire est en place.
+            if logging.getLogger().handlers:
+                journal.error("Commande en échec : %s", erreur)
             typer.echo(f"Erreur : {erreur}", err=True)
+            raise typer.Exit(CODE_ERREUR_METIER) from erreur
+        except DatabaseError as erreur:
+            message = expliquer_erreur_base(erreur)
+            journal.error("Commande en échec, base de données inaccessible : %s", erreur)
+            typer.echo(f"Erreur : {message}", err=True)
             raise typer.Exit(CODE_ERREUR_METIER) from erreur
         except Exception as erreur:
             journal.exception("Erreur inattendue dans une commande")
@@ -102,9 +115,15 @@ def construire_app() -> typer.Typer:
     )
 
     @app.callback()
-    def racine() -> None:
+    def racine(ctx: typer.Context) -> None:
         """Prépare la journalisation avant toute commande."""
-        configurer_journalisation()
+        try:
+            configurer_journalisation()
+        except ErreurConfiguration as erreur:
+            if ctx.invoked_subcommand != "doctor":
+                raise
+            # doctor doit pouvoir diagnostiquer un dossier de journaux défaillant.
+            journalisation_de_secours(str(erreur))
 
     for nom_module in modules_de_commandes():
         module = importlib.import_module(nom_module)
