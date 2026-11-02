@@ -61,7 +61,7 @@ from edt.db.moteur import chemin_base, obtenir_moteur, session_base
 from edt.erreurs import ErreurCalculEnCours, ErreurEDT, ErreurRegleMetier
 from edt.services.generation import calcul_en_cours
 from edt.synthese.configuration import CONFIGURATIONS, ConfigurationJeu, configuration_nommee
-from edt.synthese.generateur import generer_jeu
+from edt.synthese.generateur import generer_jeu, valider_demande
 from edt.synthese.rapport import RapportJeu
 
 journal = logging.getLogger(__name__)
@@ -249,12 +249,16 @@ def recharger_jeu_fictif(
     """Remet la base à zéro si demandé, puis y charge un jeu fictif (sessions propres).
 
     Sans `reinitialiser`, la base doit déjà être initialisée et vide de
-    référentiels. Le jeu est validé en base si la génération réussit, rien
-    n'est écrit sinon. Refusé pendant un calcul, et pendant un autre
+    référentiels. Une taille inconnue, une graine ou une année de début hors
+    bornes sont refusées avant toute action destructrice. Le jeu est validé en
+    base si la génération réussit, rien n'est écrit sinon. Refusé pendant un calcul, et pendant un autre
     chargement ou une remise à zéro (`ErreurChargementEnCours`) : la remise à
     zéro et le chargement se font sous le même verrou, sans interruption.
     """
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
+    # Une graine ou une année de début hors bornes sont refusées ici, AVANT la remise à
+    # zéro : la génération les refuserait aussi, mais une fois les données effacées.
+    valider_demande(graine, annee_debut)
     with _seul_a_la_fois("charger un jeu fictif", url):
         if reinitialiser:
             _remettre_a_zero(aujourdhui, url)

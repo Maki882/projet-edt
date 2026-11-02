@@ -137,12 +137,6 @@ def test_commande_refuse_sans_toucher_a_la_base(lanceur, base, arguments):
         assert session.scalar(select(func.count()).select_from(m.Besoin)) == besoins
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="à corriger par le lot socle : src/edt/services/jeux.py — recharger_jeu_fictif "
-    "remet la base à zéro avant que la génération ne refuse la graine ou l'année ; appeler "
-    "edt.synthese.generateur.valider_demande(graine, annee_debut) avant _remettre_a_zero",
-)
 def test_service_refuse_une_graine_invalide_avant_la_remise_a_zero(base):
     """Cas : le service de rechargement (écran, futur assistant) reçoit une graine refusée
     avec la remise à zéro. Risque : toutes les données perdues pour une faute de saisie."""

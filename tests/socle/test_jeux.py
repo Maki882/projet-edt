@@ -12,7 +12,7 @@ import pytest
 from edt.db import modeles as m
 from edt.db.initialisation import ErreurSchemaPerime, base_initialisee
 from edt.db.moteur import obtenir_moteur, session_base
-from edt.erreurs import ErreurRegleMetier
+from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.jeux import (
     charger_jeu_fictif,
@@ -104,3 +104,25 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
     rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
     assert rapport.reinitialisee and vu_pendant == [True]
     assert not marqueur.exists() and not operation_en_cours()
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("graine", "annee_debut"), [(-1, None), (0, 1900)], ids=["graine négative", "année 1900"]
+)
+def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
+    jeu_minimal, compter, graine, annee_debut
+):
+    """Cas : l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine
+    ou une année de début hors bornes.
+
+    Risque : la base était remise à zéro, puis la génération refusait la demande : toutes les
+    données perdues pour une faute de saisie (cas transmis par le lot synthèse).
+    """
+    with pytest.raises(ErreurDonneesInvalides):
+        recharger_jeu_fictif(
+            "petit", graine, reinitialiser=True, annee_debut=annee_debut, aujourdhui=AUJOURDHUI
+        )
+    assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
+    assert compter(m.Besoin) == jeu_minimal.nb_besoins
+    assert not operation_en_cours()
