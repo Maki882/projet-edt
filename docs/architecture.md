@@ -50,7 +50,7 @@ src/edt/
   erreurs.py                   hiérarchie ErreurEDT
   commandes/                   un module par lot (objet `commandes`)
     base.py                    init-db, verifier-schema, jeu-minimal, serve,
-                               version, doctor
+                               version, doctor, sauvegarder, verifier-sauvegarde
     generation.py              generer, pre-verifier, instancier
   db/
     base.py                    base déclarative, nommage des contraintes
