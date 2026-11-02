@@ -259,11 +259,16 @@ def lire_heure(valeur: Any) -> int | None:
     if texte is None:
         return None
     # Un nombre n'est une heure que s'il est une heure entière (« 8 » comme « 8 h ») ;
-    # sinon c'est le plus souvent une heure enregistrée en fraction de journée (0,354166).
+    # entre 0 et 1, c'est une heure enregistrée en fraction de journée (0,354166).
     if _NOMBRE_DECIMAL.match(texte) and not texte_est_une_heure(texte):
+        if 0 < float(texte.replace(",", ".")) < 1:
+            raise ErreurDonneesInvalides(
+                f"Heure attendue, pas le nombre {texte} : le tableur a enregistré l'heure comme "
+                "une fraction de journée. Mettre la colonne au format Heure (08:30) et ressaisir "
+                "l'heure."
+            )
         raise ErreurDonneesInvalides(
-            f"Heure attendue, pas le nombre {texte} : le tableur a enregistré l'heure comme une "
-            "fraction de journée. Mettre la colonne au format Heure (08:30) et ressaisir l'heure."
+            f"Heure attendue, pas le nombre {texte} (formats acceptés : « 8h30 », « 08:30 »)."
         )
     secondes = _HEURE_SECONDES.match(texte)
     if secondes:
