@@ -18,9 +18,8 @@ from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
-from .conftest import DELAI
+from .conftest import DELAI, HX
 
-HX = {"HX-Request": "true"}
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 
 
@@ -408,3 +407,26 @@ def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
         "Bilan sur l'ensemble du semestre : 2 créneau(x) libre(s) entre deux cours et "
         "0 séance(s) le samedi."
     )
+
+
+@pytest.mark.cas_limite
+def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
+    """Cas : « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé.
+    Risque : « Arrêt demandé » affiché : on croit avoir interrompu un calcul fini dont la
+    version est déjà active.
+    """
+    calcul_id = version_generee.calcul_id
+
+    sans_htmx = client.post(f"/calculs/{calcul_id}/arreter")  # suit la redirection
+    assert sans_htmx.status_code == 200
+    assert "Ce calcul est déjà terminé : rien à arrêter." in sans_htmx.text
+    assert "Arrêt demandé" not in sans_htmx.text
+
+    fragment = client.post(f"/calculs/{calcul_id}/arreter", headers=HX)
+    assert fragment.status_code == 200 and "<html" not in fragment.text
+    assert "Ce calcul est déjà terminé : rien à arrêter." in fragment.text
+    assert "Arrêter le calcul" not in fragment.text
+
+    suivi = generation.etat_calcul(calcul_id)
+    assert suivi.reussi and suivi.version_id == version_generee.version_id
+    assert not suivi.arret_demande

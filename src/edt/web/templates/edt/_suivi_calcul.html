@@ -10,6 +10,9 @@
 <div id="suivi-calcul" class="edt-suivi" aria-live="polite"
   {%- if r.en_cours %} hx-get="/calculs/{{ r.suivi.id }}/etat" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
   <h2>{{ r.titre }} {{ ui.etiquette("Calcul n° " ~ r.suivi.id, niveaux[r.issue]) }}</h2>
+  {%- if remarque %}
+  {{ ui.message(remarque, "info") }}
+  {%- endif %}
   <p>{{ r.phrase }}</p>
   {%- if r.en_cours %}
   <div class="edt-progression" role="progressbar" aria-label="Calcul en cours"></div>

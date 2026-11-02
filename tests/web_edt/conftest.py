@@ -12,6 +12,18 @@ exactement comme il trouvera les vrais.
   ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
 - `aujourdhui_fige` : le « semestre par défaut » calculé au 5 octobre 2026.
 
+Banque des cas limites (`@pytest.mark.cas_limite`, `test_cas_limites.py`) :
+
+- `ENORME` : un identifiant au-delà de 2^63, qu'aucune ligne SQLite ne peut
+  porter ; `HX` : l'en-tête d'une requête HTMX ;
+- `reperes` : séance, occurrence, calcul, version et semestre réels de
+  `version_generee`, lus dans la base (jamais écrits en dur) ;
+- `client_sans_trace` : client qui renvoie une erreur 500 comme une réponse
+  (pour un test `xfail` qui la constate) au lieu de lever l'exception ;
+- `creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` : une
+  version sans séance, une séance datée de la version, un calcul en cours
+  (moteur lent, arrêté à la sortie).
+
 Aucun test ne suppose l'emploi du temps particulier d'un moteur : les jours
 et les dates utilisés sont lus dans la version produite (`jour_avec_seance`,
 `date_avec_seances`).
@@ -19,24 +31,35 @@ et les dates utilisés sont lus dans la version produite (`jour_avec_seance`,
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import sys
+import threading
 import types
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 
 import pytest
 from sqlalchemy import func, select
 
+from edt import solveur
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE
-from edt.domaine.enumerations import StatutOccurrence
+from edt.domaine.enumerations import OrigineVersion, StatutOccurrence
 from edt.services import generation
 from edt.services.emploi_du_temps import memoire, modifications, prechauffage, raccords
 from edt.services.emploi_du_temps import versions as service_versions
+from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
 DELAI = 20  # secondes : garde-fou pour qu'un test bloqué échoue au lieu d'attendre sans fin
+
+HX = {"HX-Request": "true"}
+"""En-tête d'une requête HTMX (fragment attendu au lieu de la page complète)."""
+
+ENORME = "9" * 20
+"""Identifiant au-delà de 2^63 : aucune ligne SQLite ne peut le porter (lien mal copié)."""
 
 
 @dataclass(frozen=True)
@@ -269,3 +292,114 @@ def autre_place(session, seance) -> tuple[int, int]:
 def identifiant_groupe(session, code: str) -> int:
     """Identifiant d'un groupe du jeu minimal par son code."""
     return session.scalar(select(m.Groupe.id).where(m.Groupe.code == code))
+
+
+# --------------------------------------------------------------------------- #
+# Banque des cas limites
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class Reperes:
+    """Identifiants réels d'une version générée, pour viser des adresses existantes."""
+
+    seance: int
+    occurrence: int
+    calcul: int
+    version: int
+    semestre: int
+
+
+@pytest.fixture
+def reperes(version_generee) -> Reperes:
+    """Séance (CM de mathématiques de A1), première occurrence, calcul, version et semestre."""
+    with session_base() as session:
+        seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
+        occurrence = premiere_occurrence(session, version_generee.version_id)
+        resultat = Reperes(
+            seance=seance.id,
+            occurrence=occurrence.id,
+            calcul=version_generee.calcul_id,
+            version=version_generee.version_id,
+            semestre=version_generee.semestre_id,
+        )
+    return resultat
+
+
+@pytest.fixture
+def client_sans_trace(base):
+    """Client qui rend une erreur 500 comme une réponse au lieu de lever l'exception.
+
+    Sert aux tests `xfail` qui constatent une erreur 500 d'un autre lot.
+    """
+    from fastapi.testclient import TestClient
+
+    from edt.web.app import creer_app
+
+    return TestClient(creer_app(), raise_server_exceptions=False)
+
+
+def premiere_occurrence(session, version_id: int) -> m.Occurrence:
+    """La séance datée de plus petit identifiant de la version (échoue clairement sans)."""
+    occurrence = session.scalar(
+        select(m.Occurrence)
+        .where(m.Occurrence.version_id == version_id)
+        .order_by(m.Occurrence.id)
+        .limit(1)
+    )
+    assert occurrence is not None, f"la version {version_id} n'a aucune séance datée"
+    return occurrence
+
+
+def creer_version_vide(
+    semestre_id: int, *, active: bool = False, libelle: str = "Version vide"
+) -> int:
+    """Une version sans aucune séance (import resté vide, référence non remplie) ; son identifiant.
+
+    `active` : elle devient la version active du semestre (l'ancienne ne l'est plus).
+    """
+    with session_base() as session:
+        if active:
+            for version in session.scalars(
+                select(m.VersionEdt).where(
+                    m.VersionEdt.semestre_id == semestre_id, m.VersionEdt.active.is_(True)
+                )
+            ):
+                version.active = False
+            session.flush()
+        numero = (
+            session.scalar(
+                select(func.max(m.VersionEdt.numero)).where(m.VersionEdt.semestre_id == semestre_id)
+            )
+            or 0
+        ) + 1
+        version = m.VersionEdt(
+            semestre_id=semestre_id,
+            numero=numero,
+            libelle=libelle,
+            origine=OrigineVersion.REFERENCE,
+            active=active,
+        )
+        session.add(version)
+        session.flush()
+        return version.id
+
+
+@contextlib.contextmanager
+def calcul_qui_tourne(semestre_id: int, monkeypatch) -> Iterator[int]:
+    """Un calcul en cours (moteur lent qui attend l'arrêt) ; arrêté et attendu à la sortie."""
+    demarre = threading.Event()
+
+    def moteur_lent(instantane, options, arret=None):
+        demarre.set()
+        arret.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_lent)
+    calcul_id = generation.lancer_calcul(semestre_id)
+    try:
+        assert demarre.wait(DELAI), "le calcul n'a pas démarré"
+        yield calcul_id
+    finally:
+        generation.demander_arret(calcul_id)
+        generation.attendre_calcul(calcul_id, DELAI)

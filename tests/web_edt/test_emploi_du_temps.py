@@ -18,14 +18,13 @@ from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCi
 from edt.verification.contrat import Anomalie
 
 from .conftest import (
+    HX,
     autre_place,
     date_avec_seances,
     identifiant_groupe,
     jour_avec_seance,
     seance_du_besoin,
 )
-
-HX = {"HX-Request": "true"}
 
 
 def _cible(session, nature: str) -> tuple[str, object]:
@@ -575,3 +574,47 @@ def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
     perdue = client.get("/emploi-du-temps")
     assert perdue.status_code == 200 and "Groupe A1-G1" in perdue.text
     assert "introuvable" not in perdue.text.lower()
+
+
+@pytest.mark.cas_limite
+def test_formulaire_seance_sans_debut_possible_reste_lisible(
+    version_generee, client, faux_verificateur
+):
+    """Cas : dans le panneau d'une séance, choix d'un jour où elle ne tient sur aucun créneau
+    avant la fermeture, ou d'un jour non proposé (le dimanche).
+    Risque : liste de débuts vide lue au rang 0 (IndexError), donc fragment 500 à la place
+    du formulaire.
+    """
+    from edt.services.parametres import ecrire_parametres
+
+    with session_base() as session:
+        seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
+        identifiant, jour, debut = seance.id, seance.jour, seance.debut_min
+        duree = seance.fin_min - seance.debut_min
+        # Fermeture à 10 h : aucun créneau de la grille (8 h 30 - 10 h 30 au plus tôt)
+        # ne laisse finir une séance de deux heures.
+        ecrire_parametres(session, {"dejeuner_mode": "aucun", "fermeture_min": 600})
+    autre = next(j for j in range(5) if j != jour)
+
+    fragment = client.get(
+        f"/emploi-du-temps/seances/{identifiant}/formulaire?jour={autre}", headers=HX
+    )
+    assert fragment.status_code == 200 and "<html" not in fragment.text
+    assert (
+        f"Aucun début de créneau le {JOURS[autre]} où cette séance de {duree} min tienne avant "
+        "la fermeture : jour actuel conservé."
+    ) in fragment.text.replace("&#39;", "'")
+    assert f'<option value="{jour}" selected' in fragment.text
+    assert f'<option value="{debut}" selected' in fragment.text
+
+    refus = client.post(
+        f"/emploi-du-temps/seances/{identifiant}/modifier",
+        data={"jour": autre, "debut": 510},
+        headers=HX,
+    )
+    assert refus.status_code == 422 and "n&#39;est pas un début de créneau" in refus.text
+
+    # Un jour non proposé (le dimanche) est dit aussi, sans erreur.
+    dimanche = client.get(f"/emploi-du-temps/seances/{identifiant}/formulaire?jour=6", headers=HX)
+    assert dimanche.status_code == 200
+    assert "Le dimanche n&#39;est pas proposé pour cette séance" in dimanche.text

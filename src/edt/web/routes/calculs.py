@@ -28,6 +28,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from fastapi.responses import RedirectResponse
 
 from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
@@ -40,6 +41,7 @@ from edt.services.emploi_du_temps import (
     regles_personnalisees,
     versions,
 )
+from edt.services.emploi_du_temps.identifiants import EntierFacultatif
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rediriger, rendre
 from edt.web.menu import EntreeMenu
@@ -134,8 +136,8 @@ def _page_calculs(
 
 
 @routeur.get("/calculs", name="calculs")
-def page_calculs(request: Request, session: SessionRequete, semestre_id: int | None = None):
-    """Écran de lancement d'un calcul."""
+def page_calculs(request: Request, session: SessionRequete, semestre_id: EntierFacultatif = None):
+    """Écran de lancement d'un calcul (`semestre_id` vide : le semestre du jour)."""
     return _page_calculs(request, session, semestre_id)
 
 
@@ -152,8 +154,11 @@ def fragment_verifications(
     Niveaux des contraintes et des règles personnalisées (règles ignorées
     comprises). Un choix illisible lève `ErreurSaisieNiveaux` ou
     `ErreurSaisieRegles`, rendues comme toute erreur métier (message, pas de trace).
+    Ouverte hors HTMX (adresse saisie, lien), elle mène à la page « Générer ».
     """
     versions.exiger_semestre(session, semestre_id)
+    if not est_htmx(request):
+        return RedirectResponse(f"/calculs?semestre_id={semestre_id}", status_code=303)
     choix_regles, bloc = calculs.lire_choix_regles(session, semestre_id, champs_regles)
     pre = calculs.pre_verifier(
         session,
@@ -293,7 +298,12 @@ def _prechauffer_si_fini(resultat: calculs.ResultatCalcul) -> None:
 
 @routeur.get("/calculs/{calcul_id:int}/etat", name="calcul_etat")
 def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
-    """État du calcul (fragment interrogé chaque seconde tant que le calcul tourne)."""
+    """État du calcul (fragment interrogé chaque seconde tant que le calcul tourne).
+
+    Ouvert hors HTMX (adresse saisie, lien), il mène à la page du calcul.
+    """
+    if not est_htmx(request):
+        return RedirectResponse(f"/calculs/{calcul_id}", status_code=303)
     resultat = calculs.resultat_calcul(session, calcul_id)
     _prechauffer_si_fini(resultat)
     return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
@@ -301,12 +311,21 @@ def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
 
 @routeur.post("/calculs/{calcul_id:int}/arreter", name="arreter_calcul")
 def arreter(request: Request, session: SessionRequete, calcul_id: int):
-    """Demande l'arrêt du calcul (le moteur rend la main dès qu'il voit la demande)."""
-    generation.demander_arret(calcul_id)
+    """Demande l'arrêt du calcul (le moteur rend la main dès qu'il voit la demande).
+
+    Un calcul déjà terminé (deux onglets ouverts, par exemple) n'est pas
+    « arrêté » : la page le dit.
+    """
+    _, tournait = calculs.arreter_calcul(calcul_id)
+    remarque = None if tournait else calculs.CALCUL_DEJA_TERMINE
     if est_htmx(request):
         resultat = calculs.resultat_calcul(session, calcul_id, indicateurs=False)
-        return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
-    return rediriger(request, f"/calculs/{calcul_id}", "Arrêt demandé.", "info")
+        return rendre(
+            request,
+            "edt/_suivi_calcul.html",
+            {"r": resultat, "fmt": presentation, "remarque": remarque},
+        )
+    return rediriger(request, f"/calculs/{calcul_id}", remarque or "Arrêt demandé.", "info")
 
 
 @routeur.post("/calculs/{calcul_id:int}/relancer", name="relancer_calcul")
@@ -343,7 +362,7 @@ def relancer(
 
 
 @routeur.get("/versions", name="versions")
-def page_versions(request: Request, session: SessionRequete, semestre_id: int | None = None):
+def page_versions(request: Request, session: SessionRequete, semestre_id: EntierFacultatif = None):
     """Historique des calculs et des versions d'un semestre."""
     semestre = versions.choisir_semestre(session, semestre_id)
     historique = versions.historique(session, semestre.id) if semestre else None
