@@ -263,6 +263,31 @@ et `effets` (`refus` et `consequences` en donnent les textes), et `regles` :
 les règles personnalisées touchées (voir « Supprimer une cible visée par des
 règles » au § 4).
 
+**Pendant un calcul, aucune suppression.** Un calcul enregistre à sa fin des
+séances qui pointent vers les besoins, salles, groupes... lus à son
+lancement ; supprimer l'un d'eux entre-temps ferait échouer l'enregistrement,
+et supprimer le semestre ou l'année emporterait le calcul lui-même (et le
+verrou « un seul calcul à la fois »). Tant qu'un calcul tourne,
+`analyser_suppression` refuse donc toute suppression (`blocage_calcul`,
+`AnalyseSuppression.calcul_id`) : la confirmation dit « Suppression impossible
+pendant le calcul » avec un lien « Suivre le calcul », et `supprimer` lève
+`ErreurCalculEnCours` avant toute écriture. Les règles personnalisées, que le
+calcul copie à son lancement, restent supprimables.
+
+**Ce qui vient du navigateur.** Une adresse de retour (`retour`, `_retour`)
+n'est suivie que si elle reste dans l'écran et ne contient aucun caractère de
+contrôle (`gabarits.adresse_locale`) ; `rediriger` écarte en dernier recours
+une adresse qui en contient, au lieu de la recopier dans `HX-Redirect`.
+L'en-tête `HX-Current-URL` illisible est ignoré et journalisé
+(`gabarits.adresse_courante`). Un nombre écrit en chiffres passe par
+`conversion.entier_naturel`, qui ne lève jamais d'exception : au-delà de 30
+chiffres, le nombre est « invalide » sans même être converti (Python refuse
+d'en lire plus de 4 300) ; un identifiant d'adresse de plus de 30 chiffres ne
+correspond à aucune page (404). Un fragment (`/ligne`,
+`/ligne/edition`, `/ligne/suppression`) demandé sans HTMX renvoie (303) vers
+sa page entière : la fiche, ou la confirmation ; un enregistrement depuis la
+ligne sans HTMX revient à la liste.
+
 - Un filtre qui a une valeur par défaut (l'année ou le semestre en cours) est
   rappelé dans le résumé (« 0 groupe (Année : 2026-2027) ») mais ne compte pas
   comme un filtre posé : une liste vide invite alors à ajouter un élément ou
@@ -272,7 +297,9 @@ règles » au § 4).
   erreur.
 - Les entiers saisis sont bornés : par le champ (`maximum`, par exemple
   100 000 places ou étudiants) puis par ce que la base sait enregistrer ;
-  seuls les chiffres 0 à 9 sont acceptés.
+  seuls les chiffres 0 à 9 sont acceptés. Un texte sans longueur de colonne
+  (note, commentaire) est borné à 5 000 caractères (`LONGUEUR_TEXTE_LIBRE`),
+  le navigateur comme le serveur.
 - La liste fonctionne sans JavaScript (liens et bouton « Filtrer ») ; avec
   HTMX, recherche, filtres, tri et pagination remplacent seulement la zone
   `#zone-liste` (en-tête `HX-Target: zone-liste`) et l'adresse suit.
@@ -310,9 +337,9 @@ règles » au § 4).
 | Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, groupe (et ses sous-groupes), matière, type, enseignant, salle imposée, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
 | | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
 | Règles et calendrier | `/regles` | règles personnalisées de l'année : voir ci-dessous |
-| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; une année créée par le formulaire générique (`POST /calendrier/annees`) mène à ses règles proposées (`/regles?annee=<n>&etat=proposee`, « 4 règles personnalisées proposées pour cette année, ci-dessous ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` |
+| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; une année créée par le formulaire générique (`POST /calendrier/annees`) mène à ses règles proposées (`/regles?annee=<n>&etat=proposee`, « 4 règles personnalisées proposées pour cette année, ci-dessous ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` ; une année commence entre 2000 et 2100 et dure deux ans au plus, un semestre un an au plus (au-delà, faute de frappe : « 2227 » pour « 2027 ») |
 | | `/grille` | créneaux de la grille (édition sur place) |
-| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un ensemble de jours (`type == "jours"` : les jours travaillés de l'établissement) sept cases du lundi au dimanche, envoyées « 0,1,2,3,4 » au service (aucune case cochée : « au moins un jour est attendu » sous le champ), un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` |
+| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un ensemble de jours (`type == "jours"` : les jours travaillés de l'établissement) sept cases du lundi au dimanche, envoyées « 0,1,2,3,4 » au service (aucune case cochée : « au moins un jour est attendu » sous le champ), un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` ; pendant un calcul, la page le signale et tout enregistrement est refusé (409, saisie conservée) : le calcul relit les paramètres pour contrôler sa solution |
 | Jeux de données | `/jeux` | établissement fictif petit / moyen / grand (`edt.services.jeux`), graine, version de référence ; remise à zéro |
 
 Page `/jeux` : la base n'est touchée qu'au travers de
@@ -391,6 +418,13 @@ formulaire, prérempli (`valeurs_de_regle`) ; son aperçu est calculé comme si
 la règle était inactive, pour qu'elle ne fasse pas doublon avec elle-même
 (le contrôle complet a lieu à l'enregistrement).
 
+Sans aucune année scolaire, `/regles` et `/regles/nouveau` affichent « Aucune
+année scolaire pour l'instant » avec un lien vers le calendrier, pas une
+erreur. Un numéro de règle ou d'année impossible (vingt chiffres) donne
+« introuvable » ; le commentaire d'une règle est borné à 2 000 caractères
+(`LONGUEUR_COMMENTAIRE`, contrôlé par le formulaire : le service ne le borne
+pas) ; l'aperçu demandé sans HTMX renvoie vers le formulaire.
+
 **Suppression d'une règle.** Comme les autres listes : confirmation dans la
 ligne (`GET /regles/<n>/ligne/suppression`, `POST /regles/<n>/ligne/supprimer`)
 ou page de confirmation sans JavaScript (`GET`/`POST /regles/<n>/supprimer`),
@@ -431,7 +465,8 @@ modifier(session, code, ident, valeurs, *, partiel=False) -> dict
 analyser_suppression(session, code, ident) -> AnalyseSuppression   # refus, conséquences, règles
 supprimer(session, code, ident, *, regles_confirmees=None) -> str
     # ErreurRegleMetier si encore utilisé, ou si des règles personnalisées sont touchées
-    # et que regles_confirmees (leurs id) ne correspond pas exactement
+    # et que regles_confirmees (leurs id) ne correspond pas exactement ;
+    # ErreurCalculEnCours (sous-classe) pendant un calcul
 options(session, code, nom_champ) -> list[tuple[str, str]]
 decrire(code) -> dict                           # champs, types, choix, filtres, tris
 ```
@@ -479,3 +514,23 @@ et un champ de saisie désactivé.
    reviennent à l'assistant comme messages à reformuler ;
 3. journaliser chaque demande et chaque action au niveau INFO, comme le
    reste de l'application.
+
+## 7. Banque des cas limites (`tests/web_donnees`)
+
+Les tests de cas limites de l'espace « Données » portent le marqueur
+`cas_limite` (`pytest -m cas_limite`) et commencent par « Cas : <le scénario>.
+Risque : <ce qui casserait sans ce test>. ». Ils sont rangés avec leur écran ;
+`test_cas_limites.py` réunit ceux qui traversent plusieurs écrans (calcul en
+cours, dates aberrantes, adresses et en-têtes fabriqués, fragments ouverts à
+la main, champs piégés), `test_performance.py` mesure l'établissement complet
+(marqueur `perf` en plus, exclu de la CI courante).
+
+Les fixtures et aides communes sont dans `tests/web_donnees/conftest.py` :
+`version_generee` (une version produite par un vrai calcul), `calcul_retenu`
+(un calcul en cours, retenu jusqu'à `liberer()`), `depuis(adresse)` (en-têtes
+d'une requête HTMX), `formulaire_de` (valeurs d'un élément telles que le
+navigateur les renverrait), `saisie_salle` / `saisie_besoin` / `saisie_regle`,
+`texte_visible`, `NOMBRE_TROP_GRAND`, `NOMBRE_DE_5000_CHIFFRES`. Un cas qui
+relève d'un autre lot reste en `xfail(strict=True)` avec, en raison, le
+fichier à corriger : quand il sera corrigé, le test passera et échouera
+(XPASS) pour qu'on retire la marque.

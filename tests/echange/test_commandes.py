@@ -2,16 +2,16 @@
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pytest
 from icalendar import Calendar
-from sqlalchemy import func, select
+from tests.echange.fabrique import compter
 from typer.testing import CliRunner
 
 from edt import cli
 from edt.db import modeles as m
-from edt.db.moteur import session_base
 from edt.echange.lecture import FichierEnvoye, lire_fichier
 
 DOSSIER_FICHIERS = Path(__file__).parent / "fichiers"
@@ -20,11 +20,6 @@ DOSSIER_FICHIERS = Path(__file__).parent / "fichiers"
 @pytest.fixture
 def lanceur() -> CliRunner:
     return CliRunner()
-
-
-def _compter(modele) -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(modele))
 
 
 def test_gabarit(lanceur, base, tmp_path):
@@ -61,7 +56,7 @@ def test_importer_avec_rejets_sort_en_erreur(lanceur, jeu_minimal, tmp_path):
     assert resultat.exit_code == 1
     assert "salles : 2 créé(s), 4 rejeté(s)" in resultat.output
     assert "[erreur] salles_avec_erreurs.csv, ligne 3, colonne capacite" in resultat.output
-    assert _compter(m.Salle) == jeu_minimal.nb_salles + 2  # les lignes valides sont entrées
+    assert compter(m.Salle) == jeu_minimal.nb_salles + 2  # les lignes valides sont entrées
     assert "Campus « LYON » inconnu" in rapport.read_text(encoding="utf-8-sig")
 
 
@@ -71,11 +66,11 @@ def test_tout_remplacer_demande_confirmation(lanceur, jeu_minimal, tmp_path):
 
     refus = lanceur.invoke(cli.app, ["importer", str(campus), "--tout-remplacer"], input="n\n")
     assert refus.exit_code == 1 and "rien n'a été modifié" in refus.output
-    assert _compter(m.Salle) == jeu_minimal.nb_salles
+    assert compter(m.Salle) == jeu_minimal.nb_salles
 
     accord = lanceur.invoke(cli.app, ["importer", str(campus), "--tout-remplacer", "--oui"])
     assert accord.exit_code == 0, accord.output
-    assert _compter(m.Salle) == 0 and _compter(m.Campus) == 1
+    assert compter(m.Salle) == 0 and compter(m.Campus) == 1
 
 
 def test_importer_un_emploi_du_temps_puis_l_exporter(lanceur, jeu_minimal, tmp_path):
@@ -111,3 +106,44 @@ def test_fichier_introuvable_et_groupe_inconnu(lanceur, jeu_minimal, tmp_path):
 
     inconnu = lanceur.invoke(cli.app, ["exporter-edt", "--version", "1", "--groupe", "A1-G1"])
     assert inconnu.exit_code == 1 and "n'existe pas" in inconnu.output
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites de la ligne de commande (banque de tests)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_dossier_melange_signale_l_agenda_en_mode_donnees(lanceur, jeu_minimal, tmp_path):
+    """Cas : « python -m edt importer dossier/ » avec salles.csv et agenda.ics, mode données.
+
+    Risque : l'agenda ignoré en silence, l'utilisateur croyant son emploi du temps
+    importé avec les salles ; le code de sortie doit signaler le problème.
+    """
+    envoi = tmp_path / "envoi"
+    envoi.mkdir()
+    (envoi / "salles.csv").write_text(
+        "code;campus;capacite;type\nN900;NDC;30;COURS\n", encoding="utf-8"
+    )
+    shutil.copy(DOSSIER_FICHIERS / "agenda.ics", envoi / "agenda.ics")
+
+    resultat = lanceur.invoke(cli.app, ["importer", str(envoi), "--simuler"])
+
+    assert resultat.exit_code == 1
+    assert "salles : 1 créé(s)" in resultat.output
+    assert "[erreur] agenda.ics : Un fichier iCal décrit un emploi du temps" in resultat.output
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("version", [str(10**20), "-7", "0"])
+def test_version_hors_limites_en_ligne_de_commande_donne_un_message(lanceur, base, version):
+    """Cas : « exporter-edt --version 100000000000000000000 » (ou -7, ou 0).
+
+    Risque : OverflowError dans la recherche de la version : « Erreur inattendue »
+    et trace au lieu de « n'existe pas ».
+    """
+    resultat = lanceur.invoke(cli.app, ["exporter-edt", "--version", version])
+
+    assert resultat.exit_code == 1
+    assert f"La version d'emploi du temps {version} n'existe pas" in resultat.output
+    assert "inattendue" not in resultat.output

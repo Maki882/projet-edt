@@ -27,6 +27,39 @@ from edt.erreurs import ErreurDonneesInvalides
 SITES_CONNUS = ("NDC", "ISSY", "STAN")
 """Codes des sites que le catalogue sait décrire (voir `edt.synthese.catalogue.SITES`)."""
 
+GRAINE_MAX = 2**31 - 1
+"""Plus grande graine admise (la même borne que le formulaire web). Une graine
+négative est refusée : `random.Random(-n)` donnerait exactement le jeu de la graine `n`."""
+
+ANNEE_DEBUT_MIN, ANNEE_DEBUT_MAX = 2000, 2100
+"""Années de début d'année scolaire admises (2026 pour 2026-2027)."""
+
+
+def valider_graine(graine: object) -> int:
+    """La graine si elle est un entier de 0 à `GRAINE_MAX`, sinon `ErreurDonneesInvalides`."""
+    if isinstance(graine, bool) or not isinstance(graine, int) or not 0 <= graine <= GRAINE_MAX:
+        raise ErreurDonneesInvalides(
+            f"Graine invalide : {graine!r} (attendu : un entier de 0 à {GRAINE_MAX}). "
+            "Une même graine redonne exactement le même jeu."
+        )
+    return graine
+
+
+def valider_annee_debut(annee: object) -> int | None:
+    """L'année de début si elle est vide ou dans les bornes, sinon `ErreurDonneesInvalides`."""
+    if annee is None:
+        return None
+    if (
+        isinstance(annee, bool)
+        or not isinstance(annee, int)
+        or not ANNEE_DEBUT_MIN <= annee <= ANNEE_DEBUT_MAX
+    ):
+        raise ErreurDonneesInvalides(
+            f"Année de début invalide : {annee!r} (attendu : de {ANNEE_DEBUT_MIN} à "
+            f"{ANNEE_DEBUT_MAX}, par exemple 2026 pour l'année 2026-2027)."
+        )
+    return annee
+
 
 @dataclass(frozen=True)
 class SallesSite:
@@ -39,6 +72,26 @@ class SallesSite:
     physique: int = 0
     langues: int = 0
     projet: int = 0
+
+    def __post_init__(self) -> None:
+        erreurs = [
+            f"capacité d'amphithéâtre invalide : {capacite!r} (attendu : un entier positif)"
+            for capacite in self.amphis
+            if isinstance(capacite, bool) or not isinstance(capacite, int) or capacite <= 0
+        ]
+        erreurs += [
+            f"nombre de salles « {champ.name} » invalide : {getattr(self, champ.name)!r} "
+            "(attendu : un entier positif ou nul)"
+            for champ in fields(self)
+            if champ.name != "amphis"
+            and (
+                isinstance(getattr(self, champ.name), bool)
+                or not isinstance(getattr(self, champ.name), int)
+                or getattr(self, champ.name) < 0
+            )
+        ]
+        if erreurs:
+            raise ErreurDonneesInvalides("Salles d'un site invalides.", erreurs)
 
     @property
     def total(self) -> int:
@@ -135,6 +188,8 @@ class ConfigurationJeu:
             erreurs.append(f"sites inconnus : {inconnus} (connus : {list(SITES_CONNUS)})")
         if len(set(sites)) != len(sites):
             erreurs.append("un site ne peut figurer qu'une fois dans `salles`")
+        if not any(salles.total for _, salles in self.salles):
+            erreurs.append("au moins un site avec au moins une salle est nécessaire")
         if not self.semestres or set(self.semestres) - {"S1", "S2"}:
             erreurs.append(f"semestres attendus parmi S1 et S2 (lu : {self.semestres})")
         for nom in ("effectif_classe", "effectif_classe_apprentis"):

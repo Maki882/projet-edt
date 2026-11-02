@@ -39,7 +39,10 @@ Règles communes aux deux fonctions
 - Les fonctions sont pures : elles ne modifient rien et ne lèvent pas
   d'erreur pour signaler une violation (elles la renvoient). Elles lèvent
   une erreur métier (`edt.erreurs`) seulement quand l'entrée est trop
-  incohérente pour être vérifiée (heure hors de la journée, salle inconnue...).
+  incohérente pour être vérifiée (heure hors de la journée, date qui n'est pas
+  une date, arbre des groupes qui boucle...). Une salle inconnue de
+  l'instantané n'en est pas une : la séance est vérifiée comme « salle à
+  définir ».
 - La liste renvoyée est triée de façon déterministe : gravité, ordre du
   catalogue, jour ou date, séances concernées, puis message.
 

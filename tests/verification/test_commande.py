@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 from edt import cli
 from edt.db.moteur import session_base
 
-from .test_service import enregistrer_version
+from .versions import enregistrer_version
 
 
 @pytest.fixture

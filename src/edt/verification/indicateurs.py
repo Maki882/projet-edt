@@ -39,7 +39,7 @@ from edt.domaine.enumerations import SAMEDI
 from edt.domaine.heures import se_chevauchent
 from edt.domaine.instantane import Creneau, Instantane, Placement
 from edt.domaine.regles import NaturePersonne, Personne
-from edt.verification.contexte import Element
+from edt.verification.contexte import Element, valider_groupes
 from edt.verification.contrat import Anomalie
 from edt.verification.semaine_type import construire_elements, valider_placements, verifier
 
@@ -119,9 +119,12 @@ def calculer_indicateurs(
     à une règle importante ou facultative n'en fait pas partie. Les
     placements d'une séance inconnue sont ignorés ici (le vérificateur les
     signale) ; une séance placée deux fois compte deux fois dans les mesures
-    d'occupation, comme dans le vérificateur.
+    d'occupation, comme dans le vérificateur. Lève `ErreurDonneesInvalides` si
+    un placement est mal formé ou si l'arbre des groupes boucle (les trous et
+    changements de campus des groupes n'auraient plus de sens).
     """
     placements = tuple(placements)
+    valider_groupes(instantane)
     valider_placements(instantane, placements)
     if anomalies is None:
         anomalies = verifier(instantane, placements, niveaux=niveaux, niveaux_regles=niveaux_regles)

@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from edt.db.modeles import Calcul, Regle, Semestre, VersionEdt
+from edt.db.moteur import identifiant_valide
 from edt.domaine.contraintes import (
     Niveau,
     Niveaux,
@@ -119,7 +120,7 @@ def niveaux_de_version(session: Session, version_id: int) -> Niveaux:
     avec un avertissement dans le journal. Lève `ErreurIntrouvable` si la
     version n'existe pas.
     """
-    version = session.get(VersionEdt, version_id)
+    version = session.get(VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     if version.calcul_id is None:
@@ -152,7 +153,9 @@ def niveaux_regles_du_calcul(
       explicitement non appliquée, donc ignorée) ;
     - règle absente de la copie : à son propre niveau si elle a été créée ou
       modifiée (activation comprise) après le début du calcul ; sinon ignorée,
-      car elle existait et n'a pas été appliquée (« ne pas appliquer » coché).
+      car elle existait et n'a pas été appliquée (« ne pas appliquer » coché) ;
+    - règle copiée par le calcul mais absente des règles actives (supprimée ou
+      désactivée depuis) : ignorée, et nommée dans le journal (INFO).
 
     Lève `ErreurDonneesInvalides` si la copie est illisible (pas une liste,
     entrée sans identifiant entier, niveau inconnu) : jamais de repli silencieux.
@@ -195,6 +198,14 @@ def niveaux_regles_du_calcul(
             nouvelles += 1
         else:
             ignorees += 1
+    introuvables = sorted(set(choisis) - {regle.id for regle in actuelles})
+    if introuvables:
+        journal.info(
+            "%d règle(s) copiée(s) par le calcul introuvable(s) parmi les règles actives "
+            "(supprimée(s) ou désactivée(s) depuis), donc non vérifiée(s) : %s",
+            len(introuvables),
+            ", ".join(map(str, introuvables)),
+        )
     journal.debug(
         "Niveaux des règles : %d du calcul, %d créée(s) ou modifiée(s) depuis (niveau propre), "
         "%d ignorée(s)",
@@ -213,7 +224,7 @@ def niveaux_regles_de_version(session: Session, version_id: int) -> dict[int, Ni
     la version (aucun pour une version de référence : chaque règle à son
     niveau). Lève `ErreurIntrouvable` si la version n'existe pas.
     """
-    version = session.get(VersionEdt, version_id)
+    version = session.get(VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     semestre = session.get(Semestre, version.semestre_id)

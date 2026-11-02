@@ -87,9 +87,17 @@ def charger_configuration(environ: Mapping[str, str] | None = None) -> Configura
         return valeur or DEFAUTS[nom]
 
     port_brut = lire("EDT_PORT")
-    if not port_brut.isdigit() or not 1 <= int(port_brut) <= 65535:
+    # `isdigit` accepte des chiffres exotiques (« ² ») que `int` refuse : chiffres ASCII seuls.
+    if not (port_brut.isascii() and port_brut.isdigit()) or not 1 <= int(port_brut) <= 65535:
         raise ErreurConfiguration(
             f"EDT_PORT doit être un entier entre 1 et 65535 (valeur lue : {port_brut!r})."
+        )
+
+    hote = lire("EDT_HOST")
+    if any(caractere.isspace() for caractere in hote) or "/" in hote:
+        raise ErreurConfiguration(
+            "EDT_HOST doit être une adresse IP ou un nom d'hôte, sans espace ni « / » "
+            f"(valeur lue : {hote!r})."
         )
 
     env = lire("EDT_ENV").lower()
@@ -109,7 +117,7 @@ def charger_configuration(environ: Mapping[str, str] | None = None) -> Configura
     return Configuration(
         db_url=lire("EDT_DB_URL"),
         log_dir=Path(lire("EDT_LOG_DIR")),
-        host=lire("EDT_HOST"),
+        host=hote,
         port=int(port_brut),
         env=env,
         log_level=niveau,

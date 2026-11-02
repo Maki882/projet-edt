@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+import sqlite3
 import sys
 import types
 from pathlib import Path
@@ -10,10 +12,14 @@ import pytest
 from fastapi import APIRouter, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import select
+from sqlalchemy.exc import OperationalError
 
-from edt.db.modeles import Campus
-from edt.db.moteur import session_base
+from edt.db.initialisation import supprimer_schema
+from edt.db.modeles import Calcul, Campus
+from edt.db.moteur import liberer_moteurs, obtenir_moteur, session_base
+from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurConfiguration, ErreurRegleMetier
+from edt.services import generation
 from edt.web import app as module_app
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import rediriger
@@ -26,9 +32,13 @@ def _journal(dossier: Path) -> str:
     return (dossier / "logs" / "edt.log").read_text(encoding="utf-8")
 
 
-@pytest.fixture
-def client_etendu(base, monkeypatch):
-    """Application à laquelle un module de routes d'essai est ajouté par la découverte."""
+def _app_etendue(monkeypatch):
+    """Application à laquelle un module de routes d'essai est ajouté par la découverte.
+
+    Les routes d'essai provoquent ce qu'une vraie route pourrait faire : une
+    panne, un refus métier, une erreur du pilote de base (`/essai/panne-base?cause=…`),
+    une écriture (`POST /essai/campus?code=…`).
+    """
     routeur = APIRouter(prefix="/essai")
 
     @routeur.get("/panne")
@@ -38,6 +48,10 @@ def client_etendu(base, monkeypatch):
     @routeur.get("/refus")
     def refus():
         raise ErreurRegleMetier("Cette salle est encore utilisée.", ["par le besoin n° 12"])
+
+    @routeur.get("/panne-base")
+    def panne_base(cause: str):
+        raise OperationalError("UPDATE parametre ...", {}, sqlite3.OperationalError(cause))
 
     @routeur.post("/campus")
     def creer_campus(request: Request, session: SessionRequete, code: str):
@@ -50,7 +64,27 @@ def client_etendu(base, monkeypatch):
     monkeypatch.setitem(sys.modules, NOM_MODULE_ESSAI, module)
     reels = module_app.modules_de_routes()
     monkeypatch.setattr(module_app, "modules_de_routes", lambda: [*reels, NOM_MODULE_ESSAI])
-    return TestClient(module_app.creer_app())
+    return module_app.creer_app()
+
+
+@pytest.fixture
+def client_etendu(base, monkeypatch):
+    """Client de l'application étendue (`_app_etendue`)."""
+    return TestClient(_app_etendue(monkeypatch))
+
+
+def _calcul_reste_en_cours(semestre_id: int) -> int:
+    """Une ligne « calcul en cours » laissée par un processus disparu."""
+    with session_base() as session:
+        calcul = Calcul(
+            semestre_id=semestre_id,
+            etat=EtatCalcul.EN_COURS,
+            demarre_le=dt.datetime(2026, 10, 5, 8, 0),
+            statistiques={"pid": 999_999},
+        )
+        session.add(calcul)
+        session.flush()
+        return calcul.id
 
 
 def test_accueil_tait_une_base_en_bon_etat(jeu_minimal, client):
@@ -194,3 +228,217 @@ def test_macros_tableau_formulaire_et_message():
     assert '<option value="2" selected>Cours</option>' in page
     assert 'class="message message-succes"' in page
     assert "8 h 30 / 2 h / mercredi" in page
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : cycle de vie du serveur, base corrompue ou verrouillée, pannes du pilote
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise(
+    jeu_minimal, environnement
+):
+    """Cas : démarrage puis arrêt du serveur sur une base prête, avec un calcul resté « en
+    cours » depuis un processus disparu.
+
+    Risque : le cycle de vie n'était testé nulle part : journalisation du démarrage, clôture
+    des calculs abandonnés et message d'arrêt pouvaient casser sans signal.
+    """
+    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+
+    with TestClient(module_app.creer_app()) as client:
+        assert client.get("/sante").status_code == 200
+
+    journal = _journal(environnement)
+    assert "Application EDT" in journal and "démarrée" in journal and "arrêtée" in journal
+    assert f"Calcul {abandonne} clôturé" in journal
+    assert generation.etat_calcul(abandonne).etat is EtatCalcul.ERREUR
+
+
+@pytest.mark.cas_limite
+def test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer(environnement):
+    """Cas : le serveur démarre avant `init-db` (base vide).
+
+    Risque : démarrage en échec ou silence ; il doit démarrer et dire quoi lancer.
+    """
+    with TestClient(module_app.creer_app()) as client:
+        assert client.get("/sante").status_code == 503
+    assert "n'est pas prête" in _journal(environnement)
+
+
+@pytest.mark.cas_limite
+def test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue(
+    jeu_minimal, environnement, corrompre_base
+):
+    """Cas : `edt.db` a été tronqué ou remplacé (« file is not a database ») avant le
+    démarrage du serveur.
+
+    Risque : « Application startup failed », cinq redémarrages puis 502 pour tout le monde et
+    `/sante` jamais servi ; une fois servi, 500 « erreur inattendue » car
+    `sqlite3.DatabaseError` n'est pas une `OperationalError`.
+    """
+    corrompre_base()
+
+    with TestClient(module_app.creer_app()) as client:  # le cycle de vie ne lève pas
+        sante = client.get("/sante")
+        assert sante.status_code == 503 and sante.json()["statut"] == "degrade"
+        page = client.get("/")  # l'accueil reste lisible et montre l'état de la base
+        assert page.status_code == 200 and "not a database" in page.text
+    journal = _journal(environnement)
+    assert "indisponible au démarrage" in journal and "startup failed" not in journal
+
+
+@pytest.mark.cas_limite
+def test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede(
+    base, corrompre_base, client_etendu
+):
+    """Cas : une page qui écrit dans la base alors que le fichier n'est plus une base SQLite.
+
+    Risque : 500 « erreur inattendue » au lieu du 503 « base indisponible » qui nomme le remède.
+    """
+    corrompre_base()
+    reponse = client_etendu.post("/essai/campus", params={"code": "KO"}, follow_redirects=False)
+    assert reponse.status_code == 503
+    assert "Base de données indisponible" in reponse.text and "pas une base SQLite" in reponse.text
+    assert "init-db --reset" in reponse.text and "inattendue" not in reponse.text
+
+
+@pytest.mark.cas_limite
+def test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs(
+    jeu_minimal, environnement, monkeypatch, delai_verrou_court, verrou_ecriture
+):
+    """Cas : un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné
+    attend d'être clos.
+
+    Risque : la clôture (une écriture) faisait échouer le démarrage ; elle doit être reportée
+    (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ».
+    """
+    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+    liberer_moteurs()
+
+    with verrou_ecriture(), TestClient(_app_etendue(monkeypatch)) as client:
+        assert client.get("/sante").status_code == 200  # lecture servie malgré le verrou (WAL)
+        assert client.get("/static/css/app.css").status_code == 200
+        ecriture = client.post("/essai/campus", params={"code": "VERROU"}, follow_redirects=False)
+        assert ecriture.status_code == 503 and "occupée" in ecriture.text
+
+    journal = _journal(environnement)
+    assert "Clôture des calculs interrompus reportée" in journal
+    assert generation.etat_calcul(abandonne).etat is EtatCalcul.EN_COURS  # pas clos sous verrou
+    assert generation.cloturer_calculs_interrompus() == 1  # rattrapé une fois le verrou rendu
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("cause", "mot"),
+    [
+        ("database is locked", "occupée"),
+        ("no such table: parametre", "init-db"),
+        ("file is not a database", "pas une base SQLite"),
+    ],
+)
+def test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire(client_etendu, cause, mot):
+    """Cas : une route reçoit du pilote SQLite une erreur de verrou, de table absente ou de
+    fichier illisible.
+
+    Risque : page 500 sans remède ; chaque cause doit donner un 503 avec sa marche à suivre.
+    """
+    reponse = client_etendu.get("/essai/panne-base", params={"cause": cause})
+    assert reponse.status_code == 503, reponse.text
+    assert mot in reponse.text and "inattendue" not in reponse.text
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par le lot web : src/edt/web/erreurs.py (_base_indisponible) doit nommer "
+    "la lecture seule (droits du fichier) et le disque plein (espace) au lieu du message "
+    "générique « n'est pas accessible »",
+)
+@pytest.mark.parametrize(
+    ("cause", "mot"),
+    [
+        ("attempt to write a readonly database", "lecture seule"),
+        ("database or disk is full", "espace disque"),
+    ],
+)
+def test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes(client_etendu, cause, mot):
+    """Cas : la base est en lecture seule (fichier copié en root) ou le disque est plein.
+
+    Risque : 503 générique « réessayer » : le travail saisi est perdu et rien ne nomme les
+    droits ni l'espace disque.
+    """
+    reponse = client_etendu.get("/essai/panne-base", params={"cause": cause})
+    assert reponse.status_code == 503 and mot in reponse.text
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par le lot web / état : src/edt/services/etat.py (diagnostiquer_base : "
+    "ajouter « inscriptible » par BEGIN IMMEDIATE puis ROLLBACK) et src/edt/web/routes/accueil.py "
+    "(/sante répond 503 quand la base n'est pas inscriptible)",
+)
+def test_sante_signale_une_base_en_lecture_seule(base, environnement, lecture_seule):
+    """Cas : `edt.db` est en lecture seule (droits), le déploiement a réussi.
+
+    Risque : `/sante` vert et supervision rassurée alors qu'aucune écriture n'est possible.
+    """
+    liberer_moteurs()
+    with lecture_seule(environnement / "edt.db"):
+        sante = TestClient(module_app.creer_app()).get("/sante")
+        assert sante.status_code == 503
+        assert sante.json()["base"].get("inscriptible") is False
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par le lot web : src/edt/web/app.py (creer_app) — FastAPI n'ajoute pas "
+    "HEAD aux routes GET ; ajouter HEAD aux routes GET (ou un intergiciel qui sert HEAD comme "
+    "GET sans corps) pour la supervision",
+)
+def test_head_repond_comme_get_sans_corps(jeu_minimal, client):
+    """Cas : la supervision (sonde, `curl -I`) envoie HEAD / et HEAD /sante.
+
+    Risque : 405 « Action non permise » partout : la supervision conclut à une panne permanente.
+    """
+    for chemin in ("/", "/sante"):
+        reponse = client.head(chemin)
+        assert reponse.status_code == 200, (chemin, reponse.status_code)
+        assert reponse.content == b""
+
+
+@pytest.mark.cas_limite
+def test_une_methode_non_permise_donne_une_page_405(client):
+    """Cas : un client envoie PUT ou DELETE sur une page.
+
+    Risque : trace ou page blanche ; la page « Action non permise » doit répondre 405.
+    """
+    for methode in ("put", "delete"):
+        reponse = getattr(client, methode)("/sante")
+        assert reponse.status_code == 405 and "Action non permise" in reponse.text
+
+
+@pytest.mark.cas_limite
+def test_remise_a_zero_par_un_autre_processus_donne_base_occupee(
+    base, environnement, client_etendu
+):
+    """Cas : un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant
+    que le serveur sert une requête.
+
+    Risque : « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé
+    par l'autre processus doit faire répondre « occupée, réessayer ».
+    """
+    supprimer_schema(obtenir_moteur())
+    marqueur = environnement / "edt.db.operation"
+    marqueur.write_text("4242 remise à zéro", encoding="utf-8")
+
+    pendant = client_etendu.post("/essai/campus", params={"code": "X"}, follow_redirects=False)
+    assert pendant.status_code == 503
+    assert "occupée" in pendant.text and "init-db" not in pendant.text
+
+    marqueur.unlink()
+    apres = client_etendu.post("/essai/campus", params={"code": "X"}, follow_redirects=False)
+    assert apres.status_code == 503 and "init-db" in apres.text

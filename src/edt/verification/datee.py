@@ -12,7 +12,9 @@ Mêmes règles que la semaine type (`semaine_type`), avec ces différences :
 - les maxima des enseignants se comptent par date réelle et par semaine
   réelle (du lundi au dimanche) ;
 - `JOUR_FERME` : une occurrence qui a lieu à une date fermée pour son besoin
-  (`Instantane.fermeture`) est une erreur ;
+  (`Instantane.fermeture`) ou **hors du semestre** (avant `date_debut` ou
+  après `date_fin` : semestre raccourci, import qui déborde) est une erreur,
+  comme pour l'instanciation, qui n'y place jamais de séance ;
 - `HORAIRES` (e) : un besoin ponctuel impose sa date, un besoin à jour imposé
   impose le jour de la semaine ;
 - `VERROU` : une occurrence **planifiée** d'une séance verrouillée a lieu au
@@ -21,12 +23,21 @@ Mêmes règles que la semaine type (`semaine_type`), avec ces différences :
 - `VOLUME` : une occurrence d'un besoin inconnu est une erreur (elle ne peut
   pas être vérifiée) ; une occurrence rattachée à une séance hebdomadaire
   absente du semestre est un avertissement (vérifiée sans son verrou
-  éventuel). Le compte des occurrences par séance n'est pas vérifié ici :
-  la liste reçue peut n'être qu'une partie du semestre.
+  éventuel) ; plusieurs occurrences d'une même séance qui se chevauchent à
+  la même date sont un **doublon** : une erreur qui les cite toutes (elles
+  ne sont pas en conflit « avec elles-mêmes »). Le compte des occurrences par
+  séance n'est pas vérifié ici : la liste reçue peut n'être qu'une partie du
+  semestre ;
+- « salle à définir » (`VOLUME`, avertissement) : **un** avertissement par
+  séance, qui cite toutes ses occurrences sans salle (une salle supprimée
+  laisse sans salle toutes les dates d'une séance).
 
 Une occurrence mal formée (heures hors de la journée, fin avant le début,
-salle inconnue, identifiant en double, séance d'un autre besoin) rend la
-vérification impossible : `ErreurDonneesInvalides` avec tous les défauts.
+date qui n'est pas exactement un `datetime.date`, identifiant de salle qui
+n'est pas un entier, identifiant en double, séance d'un autre besoin) rend la
+vérification impossible : `ErreurDonneesInvalides` avec tous les défauts. Une
+salle **inconnue** de l'instantané (supprimée depuis) ne l'est pas : la séance
+est vérifiée comme une séance sans salle.
 """
 
 from __future__ import annotations
@@ -34,6 +45,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
+from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 
 from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
@@ -43,9 +55,14 @@ from edt.erreurs import ErreurDonneesInvalides
 from edt.verification.contexte import (
     Contexte,
     Element,
+    cle_chronologique,
     cle_tri,
     creneau_impose,
+    defaut_de_salle,
     defauts_de_plage,
+    est_numero,
+    salle_reelle,
+    signaler_salles_disparues,
 )
 from edt.verification.contrat import Anomalie
 from edt.verification.messages import date_texte, plage
@@ -93,6 +110,7 @@ def verifier_occurrences(
     ctx = Contexte(instantane, codes, datee=True, niveaux_regles=regles_retenues)
     besoins = {besoin.id: besoin for besoin in instantane.besoins}
     seances = {seance.id: seance for seance in instantane.seances}
+    salles = frozenset(salle.id for salle in instantane.salles)
 
     anomalies: list[Anomalie] = []
     elements: list[Element] = []
@@ -104,7 +122,7 @@ def verifier_occurrences(
         seance = None if occurrence.seance_id is None else seances.get(occurrence.seance_id)
         if occurrence.seance_id is not None and seance is None:
             anomalies.extend(_seance_inconnue(ctx, occurrence, besoin))
-        element = _element(occurrence, besoin, seance, position)
+        element = _element(occurrence, besoin, seance, position, salles)
         if occurrence.statut is StatutOccurrence.A_PROGRAMMER:
             anomalies.extend(_a_programmer(ctx, element))
             continue
@@ -115,6 +133,8 @@ def verifier_occurrences(
         if occurrence.statut is StatutOccurrence.PLANIFIEE and seance is not None:
             anomalies.extend(_verrou(ctx, element, seance))
 
+    signaler_salles_disparues(elements)
+    anomalies.extend(_doublons(ctx, elements))
     anomalies.extend(verifier_seances(ctx, elements))
     anomalies.extend(verifier_dejeuner_libre(ctx, elements))
     anomalies.extend(verifier_paires(ctx, elements))
@@ -138,8 +158,13 @@ def verifier_occurrences(
 
 
 def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence]) -> None:
-    """Lève `ErreurDonneesInvalides` (avec tous les défauts) si une occurrence est mal formée."""
-    salles = {salle.id for salle in instantane.salles}
+    """Lève `ErreurDonneesInvalides` (avec tous les défauts) si une occurrence est mal formée.
+
+    La date doit être exactement un `datetime.date` : un `datetime` (date et
+    heure) ne se compare pas aux dates (tri des jours) et ne leur est jamais
+    égal (conflits manqués). Une salle inconnue de l'instantané n'est pas un
+    défaut de structure (voir l'en-tête).
+    """
     numeros_par_id: dict[int, int] = {}
     defauts: list[str] = []
     for numero, occurrence in enumerate(occurrences, start=1):
@@ -159,7 +184,7 @@ def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence
                 )
             else:
                 numeros_par_id[occurrence.id] = numero
-        if not isinstance(occurrence.date, dt.date):
+        if type(occurrence.date) is not dt.date:
             defauts.append(f"{nom} : date absente ou invalide ({occurrence.date!r})")
         if not isinstance(occurrence.statut, StatutOccurrence):
             defauts.append(f"{nom} : statut invalide ({occurrence.statut!r})")
@@ -167,11 +192,13 @@ def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence
             f"{nom} : {defaut}"
             for defaut in defauts_de_plage(None, occurrence.debut, occurrence.fin)
         )
-        if occurrence.salle_id is not None and occurrence.salle_id not in salles:
-            defauts.append(f"{nom} : salle {occurrence.salle_id!r} inconnue dans ce semestre")
+        defaut = defaut_de_salle(occurrence.salle_id)
+        if defaut is not None:
+            defauts.append(f"{nom} : {defaut}")
         if occurrence.seance_id is not None:
             besoin, _, rang = str(occurrence.seance_id).partition("-")
-            if not (besoin.isdigit() and rang.isdigit()) or int(besoin) != occurrence.besoin_id:
+            lisible = est_numero(besoin) and est_numero(rang)
+            if not lisible or int(besoin) != occurrence.besoin_id:
                 defauts.append(
                     f"{nom} : la séance « {occurrence.seance_id} » n'appartient pas au "
                     f"besoin {occurrence.besoin_id}"
@@ -185,18 +212,23 @@ def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence
 
 
 def _element(
-    occurrence: Occurrence, besoin: Besoin, seance: SeanceAPlacer | None, position: int
+    occurrence: Occurrence,
+    besoin: Besoin,
+    seance: SeanceAPlacer | None,
+    position: int,
+    salles: frozenset[int],
 ) -> Element:
     # Le verrou fixe la place de la semaine type : une occurrence déplacée à la
     # main (autre jour ou autre heure) ne bénéficie plus des écarts admis.
     verrou = None if seance is None else seance.verrou
     imposee = creneau_impose(besoin, verrou, occurrence.date.weekday(), occurrence.debut)
+    salle_id, salle_inconnue = salle_reelle(occurrence.salle_id, salles)
     return Element(
         besoin=besoin,
         jour=occurrence.date.weekday(),
         debut=occurrence.debut,
         fin=occurrence.fin,
-        salle_id=occurrence.salle_id,
+        salle_id=salle_id,
         position=position,
         seance_id=None if seance is None else seance.id,
         occurrence_id=occurrence.id,
@@ -204,6 +236,7 @@ def _element(
         imposee=imposee,
         jour_impose=besoin.jour_impose if besoin.date_ponctuelle is None else None,
         date_imposee=besoin.date_ponctuelle,
+        salle_inconnue=salle_inconnue,
     )
 
 
@@ -224,7 +257,7 @@ def _besoin_inconnu(ctx: Contexte, occurrence: Occurrence) -> Iterator[Anomalie]
         f"semestre (n° {occurrence.besoin_id}) : elle ne peut pas être vérifiée.",
         occurrences=() if occurrence.id is None else (occurrence.id,),
         besoins=(occurrence.besoin_id,),
-        salles=() if occurrence.salle_id is None else (occurrence.salle_id,),
+        salles=(occurrence.salle_id,) if ctx.salle_connue(occurrence.salle_id) else (),
         date=occurrence.date,
     )
 
@@ -256,7 +289,7 @@ def _seance_inconnue(ctx: Contexte, occurrence: Occurrence, besoin: Besoin) -> I
 def _numero(seance_id: str | None) -> str:
     """« n° 2 » pour la séance « 107-2 », rien si le rang est illisible."""
     rang = (seance_id or "").partition("-")[2]
-    return f"n° {rang} " if rang.isdigit() else ""
+    return f"n° {rang} " if est_numero(rang) else ""
 
 
 def _a_programmer(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
@@ -277,7 +310,22 @@ def _jour_ferme(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
     if not ctx.actif(CodeContrainte.JOUR_FERME):
         return
     assert element.date is not None  # couche datée
-    fermeture = ctx.instantane.fermeture(element.date, element.besoin)
+    instantane = ctx.instantane
+    if not instantane.date_debut <= element.date <= instantane.date_fin:
+        # Hors du semestre, le calendrier est fermé (l'instanciation n'y place rien) ; les
+        # règles personnalisées, bornées aux semaines du semestre, ne la verraient pas.
+        yield ctx.anomalie(
+            CodeContrainte.JOUR_FERME,
+            Gravite.ERREUR,
+            f"La séance {ctx.libelle(element)} a lieu {ctx.moment(element)}, en dehors du "
+            f"semestre « {instantane.libelle} » (du {date_texte(instantane.date_debut)} au "
+            f"{date_texte(instantane.date_fin)}) : la replacer dans le semestre ou la supprimer.",
+            (element,),
+            **ctx.ressources(element),
+            **ctx.reperes(element),
+        )
+        return
+    fermeture = instantane.fermeture(element.date, element.besoin)
     if fermeture is None:
         return
     groupes = element.besoin.groupes
@@ -294,6 +342,50 @@ def _jour_ferme(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
         salles=() if element.salle_id is None else (element.salle_id,),
         **ctx.reperes(element),
     )
+
+
+def _doublons(ctx: Contexte, elements: Sequence[Element]) -> Iterator[Anomalie]:
+    """Occurrences d'une même séance qui se chevauchent à la même date : un doublon (`VOLUME`).
+
+    Cas typique : une instanciation reprise ou un import qui ajoute une seconde
+    fois les séances datées. Une erreur par groupe de copies, qui les cite
+    toutes ; les copies ne sont pas en conflit « avec elles-mêmes »
+    (`regles_paires`). Deux occurrences d'une même séance à des heures
+    disjointes (rattrapage) ne sont pas un doublon.
+    """
+    if not ctx.actif(CodeContrainte.VOLUME):
+        return
+    par_seance: dict[tuple[str, object], list[Element]] = defaultdict(list)
+    for element in elements:
+        if element.seance_id is not None:
+            par_seance[(element.seance_id, element.date)].append(element)
+    for copies in par_seance.values():
+        if len(copies) < 2:
+            continue
+        copies.sort(key=cle_chronologique)
+        grappes: list[list[Element]] = []
+        fin = 0
+        for element in copies:
+            if grappes and element.debut < fin:
+                grappes[-1].append(element)
+                fin = max(fin, element.fin)
+            else:
+                grappes.append([element])
+                fin = element.fin
+        for grappe in grappes:
+            if len(grappe) < 2:
+                continue
+            premiere = grappe[0]
+            yield ctx.anomalie(
+                CodeContrainte.VOLUME,
+                Gravite.ERREUR,
+                f"La séance {ctx.libelle(premiere)} a lieu {len(grappe)} fois en même temps "
+                f"{ctx.quand(premiere)} ({plage(premiere.debut, max(e.fin for e in grappe))}) : "
+                "garder une seule de ces séances datées.",
+                grappe,
+                **ctx.ressources(premiere),
+                **ctx.reperes(premiere),
+            )
 
 
 def _verrou(ctx: Contexte, element: Element, seance: SeanceAPlacer) -> Iterator[Anomalie]:

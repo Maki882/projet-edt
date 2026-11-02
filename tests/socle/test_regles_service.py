@@ -5,13 +5,14 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from edt.db import modeles as m
 from edt.db.initialisation import assurer_annee_scolaire, ecarts_schema, tables_manquantes
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
 from edt.domaine.regles import (
+    CATALOGUE_TYPES,
     EtatRegle,
     NaturePersonne,
     OrigineRegle,
@@ -544,3 +545,192 @@ def test_proposer_ne_double_pas_une_regle_de_base_confirmee_ni_reimportee(jeu_mi
     assert [r.regle.origine for r in proposition.creees] == [OrigineRegle.BASE, OrigineRegle.BASE]
     assert proposition.deja_presentes == 1  # la reprise de R003, déjà là comme règle de base
     assert len(proposition.a_revoir) == 2  # R001 et R002 : pas de groupe A1 ni A1-G1 en 2027-2028
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : brouillons mal formés, filtres, code, année, modifications, règles incomplètes
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("brouillon", [["PAUSE_DEJEUNER"], "PAUSE_DEJEUNER", None, 42])
+def test_brouillon_qui_n_est_pas_un_objet_est_une_validation_invalide(
+    jeu_minimal, session, brouillon
+):
+    """Cas : l'assistant ou un client JSON envoie une liste, un texte, `null` ou un nombre à
+    `valider()` ou `creer()`.
+
+    Risque : `dict(brouillon)` levait `ValueError`/`TypeError` (500) : le contrat « valider ne
+    lève pas, renvoie une validation invalide » était rompu ; `creer` doit refuser sans écrire.
+    """
+    validation = service.valider(session, brouillon)
+    assert not validation.valide and "objet" in validation.erreurs["brouillon"]
+    nb_regles = session.scalar(select(func.count()).select_from(m.Regle))
+    with pytest.raises(ErreurSaisie) as capture:
+        service.creer(session, brouillon)
+    assert "brouillon" in capture.value.erreurs
+    assert session.scalar(select(func.count()).select_from(m.Regle)) == nb_regles
+    with pytest.raises(ErreurSaisie):
+        service.modifier(session, jeu_minimal.annee_scolaire_id, "R001", brouillon)
+
+
+@pytest.mark.cas_limite
+def test_modifier_refuse_un_changement_d_annee_ou_de_code_et_garde_le_controle_des_doublons(
+    jeu_minimal, session
+):
+    """Cas : `modifier()` reçoit « annee » (autre année) ou « code » dans les changements.
+
+    Risque : le doublon était cherché dans l'autre année mais la règle restait dans la sienne :
+    deux réglages actifs pour la même cible, et le semestre entier devenait inchargeable ; le
+    changement de code était ignoré en silence.
+    """
+    annee = jeu_minimal.annee_scolaire_id
+    assurer_annee_scolaire(session, 2027)
+    brouillon = {
+        "type": "PAUSE_MINIMALE",
+        "portee": {"nature": "enseignant", "cible": "ENS004"},
+        "parametres": {"duree": 30},
+    }
+    active = service.creer(session, brouillon)
+    inactive = service.creer(session, {**brouillon, "parametres": {"duree": 45}}, etat="inactive")
+
+    with pytest.raises(ErreurSaisie) as capture:
+        service.modifier(session, annee, inactive.code, {"etat": "active", "annee": "2027-2028"})
+    assert (
+        set(capture.value.erreurs) == {"annee"}
+        and "ne se modifie pas" in capture.value.erreurs["annee"]
+    )
+    with pytest.raises(ErreurSaisie) as capture:
+        service.modifier(session, annee, "R001", {"code": "R099"})
+    assert set(capture.value.erreurs) == {"code"}
+
+    assert service.lire(session, annee, inactive.code).etat is EtatRegle.INACTIVE  # inchangée
+    assert service.lire(session, annee, "R001").code == "R001"
+    actives = [
+        r for r in service.lister(session, annee, type_regle="PAUSE_MINIMALE", etat="active")
+    ]
+    assert [r.code for r in actives] == [active.code]
+    charger_instantane(session, jeu_minimal.semestre_id)  # le semestre reste chargeable
+    # Répéter sa propre année ou son propre code n'est pas un changement.
+    assert (
+        service.modifier(session, annee, "R001", {"annee": "2026-2027", "code": "R001"}).code
+        == "R001"
+    )
+
+
+@pytest.mark.cas_limite
+def test_filtre_inconnu_est_une_erreur_metier(jeu_minimal, session):
+    """Cas : `lister()` ou `regles_visant()` reçoit un filtre hors énumération (paramètre de
+    requête, valeur de l'assistant).
+
+    Risque : `ValueError` brute (500) au lieu d'une erreur métier (422) qui liste les valeurs
+    admises.
+    """
+    annee = jeu_minimal.annee_scolaire_id
+    for filtre, valeur in (
+        ("etat", "inconnu"),
+        ("type_regle", "PLANETE"),
+        ("niveau", "vital"),
+        ("origine", "martienne"),
+    ):
+        with pytest.raises(ErreurDonneesInvalides) as capture:
+            service.lister(session, annee, **{filtre: valeur})
+        assert valeur in capture.value.message and "valeurs admises" in capture.value.message
+    with pytest.raises(ErreurDonneesInvalides, match="planete"):
+        service.regles_visant(session, "planete", 1)
+    with pytest.raises(ErreurDonneesInvalides, match="valeurs admises"):
+        service.changer_etat(session, annee, "R001", "dormante")
+    # Les membres eux-mêmes restent acceptés.
+    assert service.lister(session, annee, etat=EtatRegle.ACTIVE, niveau=Niveau.NECESSAIRE)
+
+
+@pytest.mark.cas_limite
+def test_le_code_est_normalise_en_majuscules(jeu_minimal, session):
+    """Cas : `creer()` reçoit le code « r002 » alors que R002 existe, puis « r007 » ; la ligne
+    de commande met les codes en majuscules.
+
+    Risque : « r002 » créé à côté de R002 (unicité sensible à la casse), ignoré par
+    l'attribution automatique des codes et introuvable par la commande.
+    """
+    annee = jeu_minimal.annee_scolaire_id
+    brouillon = {
+        "type": "SANS_TROU",
+        "portee": {"nature": "groupe", "cible": "A1-G2"},
+    }
+    with pytest.raises(ErreurSaisie) as capture:
+        service.creer(session, {**brouillon, "code": "r002"})
+    assert "R002 existe déjà" in capture.value.erreurs["code"]
+    detail = service.creer(session, {**brouillon, "code": " r007 "})
+    assert detail.code == "R007"
+    assert service.lire(session, annee, "r007").id == detail.id
+    assert service.lire(session, annee, " R007 ").id == detail.id
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("annee", [2026, "2026", True, "2026/2027"])
+def test_annee_mal_formee_indique_le_format_attendu(jeu_minimal, session, annee):
+    """Cas : le brouillon donne l'année comme entier, « 2026 », booléen ou « 2026/2027 ».
+
+    Risque : « L'année scolaire 2026 n'existe pas » : l'assistant ne savait ni le format
+    « 2026-2027 » ni les années existantes, et bouclait sur des corrections.
+    """
+    validation = service.valider(
+        session,
+        {"type": "SANS_TROU", "portee": {"nature": "groupe", "cible": "A1-G2"}, "annee": annee},
+    )
+    assert not validation.valide
+    message = validation.erreurs["annee"]
+    assert "2026-2027" in message and str(annee) in message
+
+
+@pytest.mark.cas_limite
+def test_une_regle_enregistree_sans_heures_reste_lisible(jeu_minimal, session):
+    """Cas : une règle enregistrée (import ancien, script) de type PLAGE_HORAIRE sans `debut` ni
+    `fin` ; la liste et la fiche des règles sont ouvertes.
+
+    Risque : `KeyError` dans la phrase : toute la liste répondait 500 pour une ligne ; la
+    phrase doit se compléter avec les heures d'ouverture de l'établissement.
+    """
+    ligne = session.scalar(select(m.Regle).where(m.Regle.code == "R001"))
+    ligne.type = TypeRegle.PLAGE_HORAIRE
+    ligne.parametres = {"jours": []}
+    session.flush()
+
+    detail = service.lire_par_id(session, ligne.id)
+    assert detail.phrase == (
+        "La promotion A1 commence à 8 h 30 au plus tôt et finit à 18 h 00 au plus tard."
+    )
+    assert any(r.code == "R001" for r in service.lister(session, jeu_minimal.annee_scolaire_id))
+    assert CATALOGUE_TYPES[TypeRegle.PLAGE_HORAIRE].champ("debut").defaut_global == "ouverture_min"
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "nature", ["groupe", "enseignant", "campus", "type_seance", "matiere", "besoin"]
+)
+@pytest.mark.parametrize("cible", [10**20, 2**63, -5, 0], ids=["10^20", "2^63", "-5", "0"])
+def test_regle_dont_la_cible_numerique_est_hors_bornes_est_invalide(
+    jeu_minimal, session, nature, cible
+):
+    """Cas : brouillon de règle dont la cible est un identifiant numérique hors des entiers de
+    SQLite, négatif ou nul (assistant, adresse forgée).
+
+    Risque : `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide :
+    page 500 sur l'écran des règles (cas transmis par le lot solveur).
+    """
+    validation = service.valider(
+        session,
+        {
+            "type": "CRENEAUX_INTERDITS",
+            "portee": {"nature": nature, "cible": cible},
+            "parametres": {"jours": ["lundi"]},
+        },
+    )
+    assert not validation.valide
+    assert str(cible) in validation.erreurs["portee.cible"]
+    # Même garde pour une année donnée par un identifiant hors bornes.
+    hors_annee = service.valider(
+        session,
+        {"type": "SANS_TROU", "portee": {"nature": "groupe", "cible": "A1-G2"}, "annee": cible},
+    )
+    assert not hors_annee.valide and "2026-2027" in hors_annee.erreurs["annee"]

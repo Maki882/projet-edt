@@ -20,9 +20,7 @@ from edt.services.emploi_du_temps import (
 )
 from edt.verification.contrat import Anomalie
 
-from .conftest import autre_place, seance_du_besoin
-
-HX = {"HX-Request": "true"}
+from .conftest import HX, autre_place, seance_du_besoin
 
 
 def _nb_occurrences(version_id: int) -> int:

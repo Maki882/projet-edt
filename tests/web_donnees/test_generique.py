@@ -11,6 +11,8 @@ from edt.erreurs import ErreurRegleMetier
 from edt.services.referentiels import operations
 from edt.services.referentiels.operations import ErreurSaisie
 
+from .conftest import HX
+
 
 def _salle(ids, code="N999", **autres):
     return {
@@ -135,10 +137,12 @@ def test_edition_dans_la_ligne(site):
         'class="ligne-edition"' in edition.text and 'hx-post="/types-salle/1/ligne"' in edition.text
     )
 
-    refus = site.post("/types-salle/1/ligne", data={"code": "AMPHI", "libelle": ""})
+    refus = site.post("/types-salle/1/ligne", data={"code": "AMPHI", "libelle": ""}, headers=HX)
     assert refus.status_code == 200 and "Ce champ est obligatoire." in refus.text
 
-    ok = site.post("/types-salle/1/ligne", data={"code": "AMPHI", "libelle": "Grand amphi"})
+    ok = site.post(
+        "/types-salle/1/ligne", data={"code": "AMPHI", "libelle": "Grand amphi"}, headers=HX
+    )
     assert "ligne-modifiee" in ok.text and "Grand amphi" in ok.text
 
 

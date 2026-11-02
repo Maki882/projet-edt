@@ -86,6 +86,7 @@ from edt.services.emploi_du_temps import (
     raccords,
     regles_personnalisees,
 )
+from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     annee_du_semestre,
@@ -830,6 +831,24 @@ def demarrer_calcul(
     return generation.lancer_calcul(semestre_id, options)
 
 
+CALCUL_DEJA_TERMINE = "Ce calcul est déjà terminé : rien à arrêter."
+"""Ce que l'écran dit quand on demande l'arrêt d'un calcul déjà fini (deux onglets ouverts)."""
+
+
+def arreter_calcul(calcul_id: int) -> tuple[generation.SuiviCalcul, bool]:
+    """Demande l'arrêt d'un calcul ; renvoie son état et vrai s'il tournait encore.
+
+    Faux pour un calcul déjà terminé (réussi, impossible, arrêté…) : la
+    demande est sans effet et l'écran doit le dire, pas annoncer un arrêt.
+    Lève `ErreurIntrouvable` pour un calcul inconnu.
+    """
+    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
+    suivi = generation.demander_arret(calcul_id)
+    if not suivi.en_cours:
+        journal.info("Arrêt demandé pour le calcul %d, déjà terminé : sans effet", calcul_id)
+    return suivi, suivi.en_cours
+
+
 @dataclass(frozen=True)
 class Relance:
     """Un calcul relancé, et les règles personnalisées que le calcul d'origine ne connaissait pas.
@@ -857,7 +876,7 @@ def relancer_calcul(
     active (sinon le moteur, guidé par eux, peut redonner le même emploi du
     temps). Mêmes erreurs que `demarrer_calcul`.
     """
-    calcul = session.get(m.Calcul, calcul_id)
+    calcul = obtenir(session, m.Calcul, calcul_id)
     if calcul is None:
         raise ErreurIntrouvable(f"Le calcul n° {calcul_id} n'existe pas.")
     parametres = dict(calcul.parametres or {})
@@ -905,6 +924,7 @@ def resultat_calcul(
     session: Session, calcul_id: int, *, indicateurs: bool = True
 ) -> ResultatCalcul:
     """Le calcul `calcul_id` raconté en phrases (voir l'en-tête du module)."""
+    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
     suivi = generation.etat_calcul(calcul_id)
     calcul = session.get(m.Calcul, calcul_id)
     if calcul is None:

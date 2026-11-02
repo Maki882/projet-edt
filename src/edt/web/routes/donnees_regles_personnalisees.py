@@ -6,6 +6,10 @@ niveau, période, avec un aperçu de la phrase), modification, changement
 d'état, suppression (confirmation dans la ligne, page de confirmation sans
 JavaScript) et proposition des règles de base. Toute lecture et toute
 écriture passent par `edt.services.regles` ; voir `docs/regles-personnalisees.md`.
+
+Sans aucune année scolaire, l'écran l'explique (et mène au calendrier) au
+lieu d'une erreur. Un identifiant impossible donne « introuvable » ; un
+fragment (`/ligne...`, `/apercu`) demandé sans HTMX renvoie vers sa page.
 """
 
 from __future__ import annotations
@@ -14,10 +18,11 @@ import logging
 import math
 import unicodedata
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 from starlette.datastructures import QueryParams
 
@@ -36,7 +41,9 @@ from edt.domaine.regles import (
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services import regles as service_regles
 from edt.services.parametres import lire_parametres
+from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
 from edt.services.referentiels.description import options_reference
+from edt.services.referentiels.operations import identifiant_possible
 from edt.services.referentiels.personnes import REF_ANNEE, annee_par_defaut
 from edt.web.dependances import SessionRequete
 from edt.web.donnees.ecrans import CIBLE_LISTE, Formulaire
@@ -51,7 +58,14 @@ from edt.web.donnees.regles import (
     valeurs_de_regle,
     valeurs_nouvelle,
 )
-from edt.web.gabarits import Message, est_htmx, rediriger, rendre
+from edt.web.gabarits import (
+    Message,
+    adresse_courante,
+    adresse_locale,
+    est_htmx,
+    rediriger,
+    rendre,
+)
 from edt.web.menu import SECTION_CONFIGURATION, EntreeMenu
 
 journal = logging.getLogger(__name__)
@@ -72,11 +86,28 @@ MENU = [
 
 
 def adresse_sure(brute: object, defaut: str) -> str:
-    """Adresse de retour locale (« /salles?q=... »), sinon `defaut`."""
+    """Adresse de retour locale (« /salles?q=... », `adresse_locale`), sinon `defaut`."""
     texte = str(brute or "")
-    if texte.startswith("/") and not texte.startswith("//") and "\\" not in texte:
+    if adresse_locale(texte):
         return texte
+    if texte:
+        journal.info("Adresse de retour écartée : %r", texte[:200])
     return defaut
+
+
+def _detail(session: Session, numero: int) -> service_regles.RegleDetail:
+    """La règle n° `numero` ; « introuvable » aussi pour un numéro impossible (« 999...9 »)."""
+    if not identifiant_possible(numero):
+        raise ErreurIntrouvable(f"Règle n° {numero} introuvable : elle a peut-être été supprimée.")
+    return service_regles.lire_par_id(session, numero)
+
+
+def _sans_annee(request: Request, session: Session) -> Response | None:
+    """Page qui explique qu'il faut d'abord une année scolaire, s'il n'y en a aucune."""
+    if session.scalar(select(func.count()).select_from(m.AnneeScolaire)):
+        return None
+    journal.info("Règles personnalisées : aucune année scolaire, renvoi vers le calendrier")
+    return rendre(request, "donnees/regles_sans_annee.html", {})
 
 
 def _annee(session: Session, valeur: object) -> m.AnneeScolaire:
@@ -89,11 +120,14 @@ def _annee(session: Session, valeur: object) -> m.AnneeScolaire:
                 "Aucune année scolaire n'existe : en créer une dans Calendrier."
             )
         texte = str(defaut)
+    ident = entier_naturel(texte)
     annee = (
-        session.get(m.AnneeScolaire, int(texte)) if texte.isascii() and texte.isdigit() else None
+        session.get(m.AnneeScolaire, ident)
+        if ident is not None and identifiant_possible(ident)
+        else None
     )
     if annee is None:
-        raise ErreurIntrouvable(f"Année scolaire introuvable : « {texte} ».")
+        raise ErreurIntrouvable(f"Année scolaire introuvable : « {texte[:30]} ».")
     return annee
 
 
@@ -109,8 +143,8 @@ def _texte_regles(nombre: int, adjectif: str) -> str:
 
 def _parametres_liste(request: Request) -> QueryParams:
     """Paramètres de la liste : ceux de la requête, ou ceux de la page qui demande un fragment."""
-    courante = urlsplit(request.headers.get("HX-Current-URL", ""))
-    if not request.query_params and courante.path == PREFIXE:
+    courante = adresse_courante(request)
+    if not request.query_params and courante is not None and courante.path == PREFIXE:
         return QueryParams(courante.query)
     return request.query_params
 
@@ -149,8 +183,9 @@ def contexte_liste(request: Request, session: Session) -> dict[str, Any]:
             )
     recherche = parametres.get("q", "").strip()
     brute = parametres.get("page", "1").strip() or "1"
-    if not (brute.isascii() and brute.isdigit()) or int(brute) < 1:
-        raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute} ».")
+    numero = entier_naturel(brute)
+    if numero is None or not 1 <= numero <= ENTIER_MAX:
+        raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute[:30]} ».")
 
     details = service_regles.lister(
         session,
@@ -183,7 +218,7 @@ def contexte_liste(request: Request, session: Session) -> dict[str, Any]:
         ]
     total = len(details)
     nb_pages = max(1, math.ceil(total / TAILLE_PAGE))
-    page = min(int(brute), nb_pages)
+    page = min(numero, nb_pages)
 
     def url(**changements: Any) -> str:
         valeurs = {"annee": annee.id, "q": recherche, **filtres, "page": page, **changements}
@@ -226,7 +261,7 @@ def _rendre_liste(request: Request, session: Session, messages=()) -> Response:
 @routeur.get("", name="regles")
 def liste(request: Request, session: SessionRequete) -> Response:
     """Règles d'une année scolaire."""
-    return _rendre_liste(request, session)
+    return _sans_annee(request, session) or _rendre_liste(request, session)
 
 
 @routeur.post("/{ident:int}/etat", name="regle_etat")
@@ -234,7 +269,7 @@ def changer_etat(
     request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
 ) -> Response:
     """Active, désactive ou écarte une règle (une activation est revalidée : doublons)."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     retour = adresse_sure(
         formulaire.get("_retour"), f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"
     )
@@ -358,6 +393,9 @@ def _rendre_formulaire(
 @routeur.get("/nouveau", name="regle_nouvelle")
 def nouvelle(request: Request, session: SessionRequete) -> Response:
     """Étape 1 : choix du type ; étape 2 (avec `type`) : le formulaire de la règle."""
+    sans_annee = _sans_annee(request, session)
+    if sans_annee is not None:
+        return sans_annee
     annee = _annee(session, request.query_params.get("annee"))
     retour = adresse_sure(request.query_params.get("retour"), f"{PREFIXE}?annee={annee.id}")
     if not request.query_params.get("type"):
@@ -409,7 +447,7 @@ def creer(request: Request, session: SessionRequete, formulaire: Formulaire) -> 
 @routeur.get("/{ident:int}/modifier", name="regle_modifier")
 def modifier_formulaire(request: Request, session: SessionRequete, ident: int) -> Response:
     """Formulaire prérempli d'une règle enregistrée (son type ne change pas)."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     annee = _annee(session, detail.regle.annee_scolaire_id)
     retour = adresse_sure(request.query_params.get("retour"), f"{PREFIXE}?annee={annee.id}")
     return _rendre_formulaire(
@@ -428,7 +466,7 @@ def modifier(
     request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
 ) -> Response:
     """Enregistre la règle modifiée (revalidée en entier)."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     definition = detail.regle.definition
     annee = _annee(session, detail.regle.annee_scolaire_id)
     retour = adresse_sure(formulaire.get("_retour"), f"{PREFIXE}?annee={annee.id}")
@@ -465,7 +503,18 @@ def _avec_libelle(libelle: str, texte: str) -> str:
 
 @routeur.post("/apercu", name="regle_apercu")
 def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) -> Response:
-    """Aperçu (HTMX) : la phrase de la règle telle qu'elle serait enregistrée, ou ce qui manque."""
+    """Aperçu (HTMX) : la phrase de la règle telle qu'elle serait enregistrée, ou ce qui manque.
+
+    Demandé sans HTMX (adresse ouverte à la main) : renvoi vers le formulaire.
+    """
+    if not est_htmx(request):
+        ident = entier_naturel(formulaire.get("_id"))
+        if ident is not None:
+            return rediriger(request, f"{PREFIXE}/{ident}/modifier")
+        parametres = {cle: str(formulaire[cle]) for cle in ("annee", "type") if formulaire.get(cle)}
+        return rediriger(
+            request, f"{PREFIXE}/nouveau" + (f"?{urlencode(parametres)}" if parametres else "")
+        )
     definition = _definition(formulaire.get("type"))
     annee = _annee(session, formulaire.get("annee"))
     brouillon = brouillon_depuis_formulaire(definition, annee.id, formulaire)
@@ -490,7 +539,7 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
     erreurs = [
         _avec_libelle(libelles.get(cle, cle), texte) for cle, texte in validation.erreurs.items()
     ]
-    libelles_locaux = {"semestre": "Semestre", "periode": "Période"}
+    libelles_locaux = {"semestre": "Semestre", "periode": "Période", "commentaire": "Commentaire"}
     erreurs += [
         _avec_libelle(libelles_locaux.get(cle, cle), texte)
         for cle, texte in locales.items()
@@ -509,9 +558,9 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
 
 
 def _contexte_ligne(request: Request, session: Session, ident: int) -> dict[str, Any]:
-    detail = service_regles.lire_par_id(session, ident)
-    courante = urlsplit(request.headers.get("HX-Current-URL", ""))
-    if courante.path == PREFIXE:
+    detail = _detail(session, ident)
+    courante = adresse_courante(request)
+    if courante is not None and courante.path == PREFIXE:
         url_liste = PREFIXE + (f"?{courante.query}" if courante.query else "")
     else:
         url_liste = f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"
@@ -520,13 +569,17 @@ def _contexte_ligne(request: Request, session: Session, ident: int) -> dict[str,
 
 @routeur.get("/{ident:int}/ligne", name="regle_ligne")
 def ligne(request: Request, session: SessionRequete, ident: int) -> Response:
-    """Ligne de la liste (fragment HTMX, après « Annuler »)."""
+    """Ligne de la liste (fragment HTMX, après « Annuler ») ; sans HTMX, la fiche de la règle."""
+    if not est_htmx(request):
+        return rediriger(request, f"{PREFIXE}/{ident}/modifier")
     return rendre(request, "donnees/_regle_ligne.html", _contexte_ligne(request, session, ident))
 
 
 @routeur.get("/{ident:int}/ligne/suppression", name="regle_ligne_suppression")
 def ligne_suppression(request: Request, session: SessionRequete, ident: int) -> Response:
-    """Ligne de confirmation de suppression (fragment HTMX)."""
+    """Ligne de confirmation de suppression (fragment HTMX) ; sans HTMX, la page de confirmation."""
+    if not est_htmx(request):
+        return rediriger(request, f"{PREFIXE}/{ident}/supprimer")
     return rendre(
         request, "donnees/_regle_ligne_suppression.html", _contexte_ligne(request, session, ident)
     )
@@ -535,7 +588,7 @@ def ligne_suppression(request: Request, session: SessionRequete, ident: int) -> 
 @routeur.post("/{ident:int}/ligne/supprimer", name="regle_ligne_supprimer")
 def ligne_supprimer(request: Request, session: SessionRequete, ident: int) -> Response:
     """Supprime depuis la ligne et renvoie la zone de liste à jour (HTMX)."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     service_regles.supprimer(session, detail.regle.annee_scolaire_id or 0, detail.code)
     message = Message(f"Règle {detail.code} supprimée : {detail.phrase}", "succes")
     if not est_htmx(request):
@@ -551,7 +604,7 @@ def ligne_supprimer(request: Request, session: SessionRequete, ident: int) -> Re
 @routeur.get("/{ident:int}/supprimer", name="regle_confirmer_suppression")
 def confirmer_suppression(request: Request, session: SessionRequete, ident: int) -> Response:
     """Page de confirmation (sans JavaScript, ou depuis la suppression d'une cible)."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     retour = adresse_sure(
         request.query_params.get("retour"), f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"
     )
@@ -563,7 +616,7 @@ def supprimer(
     request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
 ) -> Response:
     """Supprime la règle et revient là d'où l'on venait."""
-    detail = service_regles.lire_par_id(session, ident)
+    detail = _detail(session, ident)
     retour = adresse_sure(
         formulaire.get("_retour"), f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"
     )

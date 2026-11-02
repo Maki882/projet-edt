@@ -25,7 +25,10 @@ Règles
   écart inférieur au temps de trajet entre ces campus.
 
 Une paire en violation produit **une** anomalie par code, qui cite les deux
-séances dans l'ordre chronologique.
+séances dans l'ordre chronologique. Deux copies d'une même séance qui se
+chevauchent ne forment pas une paire quand `VOLUME` est vérifiée : ce doublon
+est alors signalé une fois, par `VOLUME` (sans `VOLUME`, leurs conflits restent
+signalés, pour que le doublon ne passe pas inaperçu).
 
 Algorithme
 ----------
@@ -112,6 +115,14 @@ def _examiner(
     if cle_chronologique(b) < cle_chronologique(a):
         a, b = b, a
     if se_chevauchent(a.debut, a.fin, b.debut, b.fin):
+        # Deux copies d'une même séance : un doublon, signalé une fois par `VOLUME` (« placée
+        # 2 fois », « a lieu 2 fois en même temps ») ; pas un conflit avec elle-même.
+        if (
+            a.seance_id is not None
+            and a.seance_id == b.seance_id
+            and ctx.actif(CodeContrainte.VOLUME)
+        ):
+            return
         yield from _chevauchement(ctx, a, b, codes)
     else:
         yield from _enchainement(ctx, a, b, codes)

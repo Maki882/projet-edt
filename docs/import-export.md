@@ -114,21 +114,49 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
 - **En-têtes** : reconnus par leur nom ou leur libellé, sans casse ni
   accents (« Capacité » vaut `capacite`), dans n'importe quel ordre.
 - **Dates** : `05/10/2026`, `5/10/2026`, `05-10-2026`, ISO `2026-10-05`, ou
-  une date de classeur. **Heures** : `8h30`, `8 h 30`, `08:30`, `18 h`.
-  **Durées** : `2 h`, `1 h 30`, `90 min`, `01:30` (un nombre seul est refusé :
-  l'unité serait devinée). **Oui/non** : oui/non, vrai/faux, 1/0. **Jours** :
-  lundi ... dimanche ou leurs trois premières lettres.
+  une date de classeur. **Heures** : `8h30`, `8 h 30`, `08:30`, `18 h`, ou une
+  heure entière seule (`8`). **Durées** : `2 h`, `1 h 30`, `90 min`, `01:30`
+  (un nombre seul est refusé : l'unité serait devinée). **Oui/non** :
+  oui/non, vrai/faux, 1/0. **Jours** : lundi ... dimanche ou leurs trois
+  premières lettres.
+- **Pièges du tableur**, refusés avec leur explication, jamais convertis :
+  une date gardée en nombre de série (`46300`) ou une heure en fraction de
+  journée (`0,354166`) : mettre la colonne au format Date ou Heure ; une
+  date ou une heure dans une colonne de codes ou de listes (le tableur a
+  changé « 1-2 » en 2 janvier) : mettre la colonne au format Texte.
 - **Codes** : espaces de début et de fin retirés, espaces multiples
   réduits ; deux codes sont comparés sans tenir compte de la casse.
+- **Bornes des valeurs** (la ligne est rejetée, avec la borne) : un entier
+  vaut au plus 1 000 000 en valeur absolue ; un texte ou un code ne dépasse
+  pas la longueur de sa colonne en base (indiquée dans les tableaux des
+  feuilles, « 32 caractères au plus ») ; une durée a un maximum quand
+  au-delà elle n'a pas de sens (trajet 12 h, séance 24 h, maximum d'un
+  enseignant 24 h par jour et 168 h par semaine) ; un début imposé plus la
+  durée ne dépasse pas minuit.
+- **Caractères de contrôle** invisibles (U+0001..., souvent un
+  copier-coller) : gardés, avec un avertissement qui les nomme. L'export
+  XLSX les écrit `_x0001_` (la notation d'Excel), et la lecture les
+  restitue : l'aller-retour est exact.
 - **Listes** (groupes, enseignants, types de salle, équipements) : dans une
   cellule, séparées par `;` ou `,`.
 - **Listes configurables** (types de salle, équipements, types de séance)
   : référencées par leur code ; les codes valides sont listés dans l'onglet
   « Lisez-moi ».
 - **Salle** : désignée par son code, ou par `code@campus` si le même code
-  existe sur plusieurs campus.
+  existe sur plusieurs campus. Le code exact est cherché d'abord (un code
+  peut contenir « @ ») ; sinon la référence se coupe au dernier « @ ».
 - Une ligne entièrement vide est sautée. Une valeur sans en-tête est gardée
-  sous le nom « colonne N » (colonnes non reconnues).
+  sous le nom « colonne N » (colonnes non reconnues). Une colonne en double
+  (« capacite » et « Capacité ») n'est lue qu'une fois : un avertissement le
+  dit, et la seconde n'est pas gardée.
+- **Cellules fusionnées** d'un classeur : seule la première porte la
+  valeur ; un avertissement nomme les plages (« A2:A3 ») pour expliquer les
+  valeurs manquantes des lignes suivantes.
+- **Fichier sans aucune cellule remplie** (BOM seul, « ;;; », classeur
+  réduit au « Lisez-moi ») : erreur « rien à importer ». Un fichier qui n'a
+  que des en-têtes passe : sa feuille dit « rien à traiter ». Un **classeur
+  protégé par mot de passe** (conteneur Office chiffré) est nommé comme
+  tel : retirer le mot de passe.
 - **Aucune valeur n'est corrigée** : soit elle se lit sans ambiguïté, soit
   la ligne est rejetée avec un message.
 
@@ -143,6 +171,12 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
   annulé à la fin ; le bilan affiché (« 12 créé(s), 30 mis à jour, 2
   inchangé(s), 3 rejeté(s) » par feuille) est donc celui que donnera
   l'application, et rien n'est écrit.
+- **Imports simultanés** : un import réserve la base en écriture dès son
+  début (`BEGIN IMMEDIATE`) ; un second import, ou une autre écriture, attend
+  qu'il finisse (10 s au plus, puis « base occupée »). Sans cela, le second
+  échouait aussitôt dès que l'autre avait écrit entre-temps.
+- Une valeur que la base ne sait pas enregistrer malgré les bornes de
+  lecture (entier au-delà de 2^63) rejette sa ligne seule, avec un message.
 - **Ordre de traitement** : celui des feuilles ci-dessous (une salle après
   son campus, un besoin après ses groupes...), quel que soit l'ordre des
   fichiers. Une référence inconnue (salle d'un campus absent) rejette la
@@ -195,7 +229,8 @@ qui dit quoi faire ; il n'est jamais tronqué en silence.
 | Classeur XLSX (c'est aussi une archive) | 300 parties, 20 Mo une fois décompressé | `lecture.MAX_MEMBRES_CLASSEUR`, `TAILLE_MAX_DECOMPRESSEE` |
 | Tableau (un CSV ou un onglet) | 50 000 lignes de données, 100 000 lignes lues (vides comprises), 500 colonnes | `lecture.MAX_LIGNES_TABLEAU`, `MAX_LIGNES_LUES`, `MAX_COLONNES` |
 | Envoi (tous fichiers et onglets) | 100 000 lignes de données ou séances iCal | `lecture.MAX_LIGNES_ENVOI` |
-| Fichier iCal | 50 000 événements ; 1 000 occurrences par règle de récurrence | `ical.MAX_EVENEMENTS`, `MAX_OCCURRENCES` |
+| Fichier iCal | 50 000 événements ; 3 s de calcul pour toutes ses récurrences | `ical.MAX_EVENEMENTS`, `DELAI_RECURRENCES` |
+| Règle de récurrence (refusée seule) | 1 000 occurrences sur la période, 100 000 pas de calcul depuis son début | `ical.MAX_OCCURRENCES`, `MAX_ITERATIONS` |
 | Emploi du temps importé | 200 000 séances une fois les lignes hebdomadaires développées | `reconstitution.MAX_SEANCES_DEVELOPPEES` |
 | Rapport | 20 000 signalements détaillés | `rapport.MAX_SIGNALEMENTS` |
 | Page de résultat | 200 signalements, 500 besoins, 20 aperçus de 40 colonnes | `web.routes.echange.LIMITE_*` |
@@ -203,6 +238,15 @@ qui dit quoi faire ; il n'est jamais tronqué en silence.
 Les tailles décompressées sont celles que déclare l'archive, vérifiées avant
 toute décompression : à la lecture, un membre qui dépasse sa taille déclarée
 lève une erreur au lieu de déborder. Un membre abîmé ou chiffré est signalé.
+Une archive n'est jamais extraite sur le disque ; le nom d'un membre est
+affiché sans « .. », racine ni lecteur (`lecture.nom_sur`).
+
+S'y ajoutent les bornes des valeurs (section « Règles de lecture »), qui
+rejettent la seule ligne fautive (`valeurs.ENTIER_MAX`, `format.LONGUEURS`,
+`format.MAXIMA`). Dans une adresse d'export, un identifiant qui ne peut
+désigner aucun élément (négatif, nul, plus grand que les entiers de la
+base) répond « n'existe pas » (404), un texte non numérique « nombre
+attendu » (422) ; jamais une erreur inattendue.
 Un établissement réel reste loin de ces bornes : le classeur exporté du jeu
 minimal fait 0,2 Mo décompressé, et un emploi du temps de 800 séances par
 semaine sur 30 semaines compte 24 000 lignes.
@@ -274,7 +318,7 @@ Identifiant métier : `libelle`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `libelle` | Libellé | code | oui | oui |  | 2026-2027 |
+| `libelle` | Libellé | code | oui | oui | 32 caractères au plus. | 2026-2027 |
 | `date_debut` | Début | date JJ/MM/AAAA | oui |  |  | 01/09/2026 |
 | `date_fin` | Fin | date JJ/MM/AAAA | oui |  |  | 31/08/2027 |
 
@@ -286,9 +330,9 @@ Identifiant métier : `annee`, `code`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
-| `code` | Code | code | oui | oui |  | S1 |
-| `libelle` | Libellé | texte | oui |  |  | Semestre 1 |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
+| `code` | Code | code | oui | oui | 16 caractères au plus. | S1 |
+| `libelle` | Libellé | texte | oui |  | 64 caractères au plus. | Semestre 1 |
 | `date_debut` | Premier jour de cours | date JJ/MM/AAAA | oui |  |  | 07/09/2026 |
 | `date_fin` | Dernier jour de cours | date JJ/MM/AAAA | oui |  |  | 29/01/2027 |
 
@@ -300,9 +344,9 @@ Identifiant métier : `code`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `code` | Code | code | oui | oui |  | NDC |
-| `nom` | Nom | texte | oui |  |  | Notre-Dame-des-Champs |
-| `prefixe_salle` | Préfixe des salles | code |  |  | Préfixe des codes de salle du site. | N |
+| `code` | Code | code | oui | oui | 16 caractères au plus. | NDC |
+| `nom` | Nom | texte | oui |  | 128 caractères au plus. | Notre-Dame-des-Champs |
+| `prefixe_salle` | Préfixe des salles | code |  |  | Préfixe des codes de salle du site. 16 caractères au plus. | N |
 
 #### 4. `trajets` : Trajets
 
@@ -312,9 +356,9 @@ Identifiant métier : `campus_a`, `campus_b`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `campus_a` | Campus A | code | oui | oui |  | NDC |
-| `campus_b` | Campus B | code | oui | oui |  | ISSY |
-| `duree` | Durée du trajet | durée (2 h, 1 h 30, 90 min) | oui |  |  | 1 h |
+| `campus_a` | Campus A | code | oui | oui | 16 caractères au plus. | NDC |
+| `campus_b` | Campus B | code | oui | oui | 16 caractères au plus. | ISSY |
+| `duree` | Durée du trajet | durée (2 h, 1 h 30, 90 min) | oui |  | Au plus 12 h. | 1 h |
 
 #### 5. `salles` : Salles
 
@@ -324,13 +368,13 @@ Identifiant métier : `code`, `campus`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `code` | Code | code | oui | oui |  | N204 |
-| `campus` | Campus | code | oui | oui |  | NDC |
+| `code` | Code | code | oui | oui | 32 caractères au plus. | N204 |
+| `campus` | Campus | code | oui | oui | 16 caractères au plus. | NDC |
 | `capacite` | Capacité | nombre entier | oui |  |  | 40 |
-| `type` | Type de salle | code | oui |  | Code d'un type de salle (liste configurable). | COURS |
-| `batiment` | Bâtiment | texte |  |  |  | Principal |
+| `type` | Type de salle | code | oui |  | Code d'un type de salle (liste configurable). 32 caractères au plus. | COURS |
+| `batiment` | Bâtiment | texte |  |  | 64 caractères au plus. | Principal |
 | `etage` | Étage | nombre entier |  |  | 0 = rez-de-chaussée. | 2 |
-| `equipements` | Équipements | liste de codes séparés par ; ou , |  |  | Codes d'équipements (liste configurable). | VIDEOPROJ; VISIO |
+| `equipements` | Équipements | liste de codes séparés par ; ou , |  |  | Codes d'équipements (liste configurable). 32 caractères au plus. | VIDEOPROJ; VISIO |
 | `accessible` | Accessible PMR | une valeur de la liste |  |  | Valeurs : oui, non, inconnu. Vide : inconnu. | oui |
 
 #### 6. `enseignants` : Enseignants
@@ -341,13 +385,13 @@ Identifiant métier : `identifiant`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `identifiant` | Identifiant | code | oui | oui |  | ENS001 |
-| `civilite` | Civilité | texte |  |  |  | Mme |
-| `nom` | Nom | texte | oui |  |  | Martin |
-| `prenom` | Prénom | texte |  |  |  | Claire |
+| `identifiant` | Identifiant | code | oui | oui | 64 caractères au plus. | ENS001 |
+| `civilite` | Civilité | texte |  |  | 16 caractères au plus. | Mme |
+| `nom` | Nom | texte | oui |  | 128 caractères au plus. | Martin |
+| `prenom` | Prénom | texte |  |  | 128 caractères au plus. | Claire |
 | `statut` | Statut | une valeur de la liste |  |  | Valeurs : permanent, vacataire, exterieur. Vide : permanent. | vacataire |
-| `max_par_jour` | Maximum par jour | durée (2 h, 1 h 30, 90 min) |  |  |  | 6 h |
-| `max_par_semaine` | Maximum par semaine | durée (2 h, 1 h 30, 90 min) |  |  |  | 18 h |
+| `max_par_jour` | Maximum par jour | durée (2 h, 1 h 30, 90 min) |  |  | Au plus 24 h. | 6 h |
+| `max_par_semaine` | Maximum par semaine | durée (2 h, 1 h 30, 90 min) |  |  | Au plus 168 h. | 18 h |
 | `fictif` | Fictif | oui / non |  |  | Enseignant de remplacement (inconnu à l'import) : exclu des contraintes. Vide : non. | non |
 
 #### 7. `groupes` : Groupes
@@ -358,14 +402,14 @@ Identifiant métier : `annee`, `code`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
-| `code` | Code | code | oui | oui |  | A1-G1 |
-| `libelle` | Libellé | texte | oui |  |  | 1re année, classe 1 |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
+| `code` | Code | code | oui | oui | 64 caractères au plus. | A1-G1 |
+| `libelle` | Libellé | texte | oui |  | 128 caractères au plus. | 1re année, classe 1 |
 | `nature` | Nature | une valeur de la liste | oui |  | Valeurs : promotion, classe, demi_groupe, transverse, tiers_temps. | classe |
-| `parent` | Groupe parent | code |  |  | Code du groupe qui le contient (vide pour une promotion ou un groupe à part). | A1 |
+| `parent` | Groupe parent | code |  |  | Code du groupe qui le contient (vide pour une promotion ou un groupe à part). 64 caractères au plus. | A1 |
 | `effectif` | Effectif | nombre entier | oui |  |  | 28 |
 | `accessibilite_requise` | Salle accessible requise | oui / non |  |  | Vide : non. | non |
-| `chevauche` | Chevauche | liste de codes séparés par ; ou , |  |  | Groupes qui partagent des étudiants avec celui-ci (déclaration symétrique : une seule des deux lignes suffit). | A1-ANG-B2 |
+| `chevauche` | Chevauche | liste de codes séparés par ; ou , |  |  | Groupes qui partagent des étudiants avec celui-ci (déclaration symétrique : une seule des deux lignes suffit). 64 caractères au plus. | A1-ANG-B2 |
 
 #### 8. `jours_fermes` : Jours fermés
 
@@ -375,12 +419,12 @@ Identifiant métier : `annee`, `date_debut`, `date_fin`, `groupe`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
 | `date_debut` | Premier jour | date JJ/MM/AAAA | oui | oui |  | 26/10/2026 |
 | `date_fin` | Dernier jour | date JJ/MM/AAAA |  | oui | Inclus. Vide : même valeur que date_debut. | 01/11/2026 |
-| `libelle` | Libellé | texte | oui |  |  | Vacances de la Toussaint |
+| `libelle` | Libellé | texte | oui |  | 128 caractères au plus. | Vacances de la Toussaint |
 | `nature` | Nature | une valeur de la liste | oui |  | Valeurs : ferie, vacances, examens, semaine_speciale, autre. | vacances |
-| `groupe` | Groupe concerné | code |  | oui | Vide = fermeture globale. | A1 |
+| `groupe` | Groupe concerné | code |  | oui | Vide = fermeture globale. 64 caractères au plus. | A1 |
 
 #### 9. `etudiants` : Étudiants (facultative)
 
@@ -390,9 +434,9 @@ Identifiant métier : `identifiant`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `identifiant` | Identifiant | code | oui | oui |  | ETU001 |
-| `nom` | Nom | texte | oui |  |  | Petit |
-| `prenom` | Prénom | texte |  |  |  | Camille |
+| `identifiant` | Identifiant | code | oui | oui | 64 caractères au plus. | ETU001 |
+| `nom` | Nom | texte | oui |  | 128 caractères au plus. | Petit |
+| `prenom` | Prénom | texte |  |  | 128 caractères au plus. | Camille |
 
 #### 10. `inscriptions` : Inscriptions (facultative)
 
@@ -402,9 +446,9 @@ Identifiant métier : `annee`, `etudiant`, `groupe`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
-| `etudiant` | Étudiant | code | oui | oui |  | ETU001 |
-| `groupe` | Groupe | code | oui | oui |  | A1-G1a |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
+| `etudiant` | Étudiant | code | oui | oui | 64 caractères au plus. | ETU001 |
+| `groupe` | Groupe | code | oui | oui | 64 caractères au plus. | A1-G1a |
 
 #### 11. `matieres` : Matières
 
@@ -414,10 +458,10 @@ Identifiant métier : `code`, `annee`, `promotion`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `code` | Code module | code | oui | oui |  | IM.1101 |
-| `libelle` | Libellé | texte | oui |  |  | Mathématiques |
-| `annee` | Année scolaire | code |  | oui | Obligatoire si la promotion est renseignée. | 2026-2027 |
-| `promotion` | Promotion | code |  | oui | Code du groupe de la promotion de rattachement. | A1 |
+| `code` | Code module | code | oui | oui | 32 caractères au plus. | IM.1101 |
+| `libelle` | Libellé | texte | oui |  | 128 caractères au plus. | Mathématiques |
+| `annee` | Année scolaire | code |  | oui | Obligatoire si la promotion est renseignée. 32 caractères au plus. | 2026-2027 |
+| `promotion` | Promotion | code |  | oui | Code du groupe de la promotion de rattachement. 64 caractères au plus. | A1 |
 
 #### 12. `besoins` : Besoins
 
@@ -427,15 +471,15 @@ Identifiant métier : `annee`, `semestre`, `matiere`, `promotion`, `type`, `libe
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
-| `semestre` | Semestre | code | oui | oui |  | S1 |
-| `matiere` | Matière | code | oui | oui |  | IM.1101 |
-| `promotion` | Promotion de la matière | code |  | oui | Distingue deux matières de même code ; vide = la matière sans promotion, ou la seule qui porte ce code. | A1 |
-| `type` | Type de séance | code | oui | oui | Code d'un type de séance (liste configurable). | TD |
-| `libelle` | Libellé | texte |  | oui | Précision facultative ; distingue deux besoins par ailleurs identiques. | Partiel |
-| `groupes` | Groupes | liste de codes séparés par ; ou , | oui | oui |  | A1-G1 |
-| `enseignants` | Enseignants | liste de codes séparés par ; ou , |  |  | Identifiants. | ENS001 |
-| `duree` | Durée d'une séance | durée (2 h, 1 h 30, 90 min) | oui |  |  | 2 h |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
+| `semestre` | Semestre | code | oui | oui | 16 caractères au plus. | S1 |
+| `matiere` | Matière | code | oui | oui | 32 caractères au plus. | IM.1101 |
+| `promotion` | Promotion de la matière | code |  | oui | Distingue deux matières de même code ; vide = la matière sans promotion, ou la seule qui porte ce code. 64 caractères au plus. | A1 |
+| `type` | Type de séance | code | oui | oui | Code d'un type de séance (liste configurable). 32 caractères au plus. | TD |
+| `libelle` | Libellé | texte |  | oui | Précision facultative ; distingue deux besoins par ailleurs identiques. 128 caractères au plus. | Partiel |
+| `groupes` | Groupes | liste de codes séparés par ; ou , | oui | oui | 64 caractères au plus. | A1-G1 |
+| `enseignants` | Enseignants | liste de codes séparés par ; ou , |  |  | Identifiants. 64 caractères au plus. | ENS001 |
+| `duree` | Durée d'une séance | durée (2 h, 1 h 30, 90 min) | oui |  | Au plus 24 h. | 2 h |
 | `mode` | Mode de volume | une valeur de la liste |  |  | par_semaine : nombre de séances chaque semaine ; total : nombre de séances réparties dans la période ; ponctuel : une séance datée (colonne date). Valeurs : par_semaine, total, ponctuel. Vide : par_semaine. | par_semaine |
 | `nombre` | Nombre de séances | nombre entier |  |  | Vide : 1. | 1 |
 | `max_par_semaine` | Maximum par semaine | nombre entier |  |  | Mode total. Vide : 1. | 1 |
@@ -444,10 +488,10 @@ Identifiant métier : `annee`, `semestre`, `matiere`, `promotion`, `type`, `libe
 | `date` | Date ponctuelle | date JJ/MM/AAAA |  | oui | Mode ponctuel seulement. | 19/11/2026 |
 | `jour_impose` | Jour imposé | jour (lundi ... dimanche) |  |  |  | jeudi |
 | `debut_impose` | Heure de début imposée | heure (08:30, 8h30) |  |  |  | 13:45 |
-| `salle_imposee` | Salle imposée | code |  |  | Code de la salle ; « code@campus » si le code existe sur plusieurs campus. | N016 |
-| `campus_impose` | Campus imposé | code |  |  |  | NDC |
-| `types_salle` | Types de salle acceptés | liste de codes séparés par ; ou , |  |  | Vide = le type par défaut du type de séance. | INFO |
-| `equipements` | Équipements requis | liste de codes séparés par ; ou , |  |  |  | ORDINATEURS |
+| `salle_imposee` | Salle imposée | code |  |  | Code de la salle ; « code@campus » si le code existe sur plusieurs campus. 49 caractères au plus. | N016 |
+| `campus_impose` | Campus imposé | code |  |  | 16 caractères au plus. | NDC |
+| `types_salle` | Types de salle acceptés | liste de codes séparés par ; ou , |  |  | Vide = le type par défaut du type de séance. 32 caractères au plus. | INFO |
+| `equipements` | Équipements requis | liste de codes séparés par ; ou , |  |  | 32 caractères au plus. | ORDINATEURS |
 | `commentaire` | Commentaire | texte |  |  |  |  |
 
 #### 13. `indisponibilites` : Indisponibilités
@@ -459,14 +503,14 @@ Identifiant métier : `cible`, `ressource`, `annee`, `jour`, `date_debut`, `date
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
 | `cible` | Cible | une valeur de la liste | oui | oui | Valeurs : enseignant, salle, groupe. | enseignant |
-| `ressource` | Ressource | code | oui | oui | Identifiant de l'enseignant, code de la salle (« code@campus » si ambigu) ou code du groupe. | ENS004 |
-| `annee` | Année scolaire | code |  | oui | Obligatoire pour un groupe. | 2026-2027 |
+| `ressource` | Ressource | code | oui | oui | Identifiant de l'enseignant, code de la salle (« code@campus » si ambigu) ou code du groupe. 64 caractères au plus. | ENS004 |
+| `annee` | Année scolaire | code |  | oui | Obligatoire pour un groupe. 32 caractères au plus. | 2026-2027 |
 | `jour` | Jour | jour (lundi ... dimanche) |  | oui | Forme récurrente. | lundi |
 | `date_debut` | Premier jour | date JJ/MM/AAAA |  | oui | Forme datée. |  |
 | `date_fin` | Dernier jour | date JJ/MM/AAAA |  | oui | Forme datée, inclus. Vide : même valeur que date_debut. |  |
 | `debut` | Début | heure (08:30, 8h30) |  | oui | Vide : 00:00. | 13:45 |
 | `fin` | Fin | heure (08:30, 8h30) |  | oui | Vide : 24:00. | 18:00 |
-| `motif` | Motif | texte |  |  |  | Activité professionnelle |
+| `motif` | Motif | texte |  |  | 255 caractères au plus. | Activité professionnelle |
 | `dure` | Contrainte dure | oui / non |  |  | Toujours oui en V1. Vide : oui. |  |
 | `poids` | Poids | nombre entier |  |  | Préférences (versions futures). Vide : 0. |  |
 
@@ -478,15 +522,15 @@ Identifiant métier : `annee`, `code`.
 
 | Colonne | Libellé | Type | Obligatoire | Identifiant | Aide | Exemple |
 |---|---|---|---|---|---|---|
-| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). | 2026-2027 |
-| `code` | Code | code |  | oui | Code de la règle dans l'année ; vide = attribué à l'import (R001, R002...). Donner le code pour réimporter sans doublon ; un code garde son type. | R007 |
+| `annee` | Année scolaire | code | oui | oui | Libellé de l'année scolaire (feuille annees). 32 caractères au plus. | 2026-2027 |
+| `code` | Code | code |  | oui | Code de la règle dans l'année ; vide = attribué à l'import (R001, R002...). Donner le code pour réimporter sans doublon ; un code garde son type. 16 caractères au plus. | R007 |
 | `type` | Type de règle | une valeur de la liste | oui |  | Valeurs : JOURS_TRAVAILLES, PLAGE_HORAIRE, CRENEAUX_INTERDITS, CAMPUS, SALLES, PAUSE_DEJEUNER, PAUSE_MINIMALE, MAX_PAR_JOUR, JOURNEES_LIBRES, SANS_TROU, CAMPUS_PAR_JOUR, MATIERES_PAR_JOUR, ORDRE_SEMAINE, REPARTITION_MATIERE. | PAUSE_DEJEUNER |
 | `portee` | Portée | une valeur de la liste | oui |  | Valeurs : etablissement, groupe, enseignant, campus, type_seance, matiere, besoin. | groupe |
-| `cible` | Cible | code |  |  | Code du groupe, identifiant de l'enseignant, code du campus, du type de séance ou de la matière ; un besoin s'écrit « matière / type / groupes » (ex. « IM.1101 / CM / A1 ») ; vide pour l'établissement. | A2-G3 |
+| `cible` | Cible | code |  |  | Code du groupe, identifiant de l'enseignant, code du campus, du type de séance ou de la matière ; un besoin s'écrit « matière / type / groupes » (ex. « IM.1101 / CM / A1 ») ; vide pour l'établissement. 255 caractères au plus. | A2-G3 |
 | `parametres` | Paramètres | texte |  |  | « clé = valeur » séparés par des points-virgules, listes séparées par des virgules ; clés et valeurs selon le type (onglet Lisez-moi) ; vide = défauts. | mode = libre ; debut = 11:45 ; fin = 14:15 ; duree = 1 h 15 |
 | `niveau` | Niveau | une valeur de la liste |  |  | Vide = niveau par défaut du type. Valeurs : necessaire, important, facultatif. | important |
 | `etat` | État | une valeur de la liste |  |  | Valeurs : proposee, active, inactive. Vide : active. | active |
-| `semestre` | Semestre | code |  |  | Code du semestre ; semestre et dates vides = toute l'année. | S1 |
+| `semestre` | Semestre | code |  |  | Code du semestre ; semestre et dates vides = toute l'année. 16 caractères au plus. | S1 |
 | `date_debut` | Début de la période | date JJ/MM/AAAA |  |  | Période datée, au lieu d'un semestre. |  |
 | `date_fin` | Fin de la période | date JJ/MM/AAAA |  |  |  |  |
 | `commentaire` | Commentaire | texte |  |  |  | Demande de la responsable |
@@ -505,13 +549,13 @@ Identifiant métier : aucun.
 | `jour` | Jour | jour (lundi ... dimanche) |  |  | Séance hebdomadaire, si la date est vide. | lundi |
 | `debut` | Début | heure (08:30, 8h30) | oui |  |  | 08:30 |
 | `fin` | Fin | heure (08:30, 8h30) | oui |  |  | 10:30 |
-| `matiere` | Matière | code | oui |  | Code module. | IM.1101 |
-| `type` | Type de séance | code | oui |  | Code d'un type de séance ; AUTRE pour un événement spécial (conférence, forum). | CM |
-| `groupes` | Groupes | liste de codes séparés par ; ou , | oui |  |  | A1 |
-| `enseignants` | Enseignants | liste de codes séparés par ; ou , |  |  | Identifiants ; vide ou « à recruter » = enseignant fictif de la matière. | ENS001 |
-| `salle` | Salle | code |  |  | Code de la salle ; vide ou « à définir » = salle choisie par le générateur. | N016 |
+| `matiere` | Matière | code | oui |  | Code module. 32 caractères au plus. | IM.1101 |
+| `type` | Type de séance | code | oui |  | Code d'un type de séance ; AUTRE pour un événement spécial (conférence, forum). 32 caractères au plus. | CM |
+| `groupes` | Groupes | liste de codes séparés par ; ou , | oui |  | 64 caractères au plus. | A1 |
+| `enseignants` | Enseignants | liste de codes séparés par ; ou , |  |  | Identifiants ; vide ou « à recruter » = enseignant fictif de la matière. 64 caractères au plus. | ENS001 |
+| `salle` | Salle | code |  |  | Code de la salle ; vide ou « à définir » = salle choisie par le générateur. 49 caractères au plus. | N016 |
 | `statut` | Statut | une valeur de la liste |  |  | Vide = réalisée ; une séance annulée n'est pas comptée. Valeurs : realisee, planifiee, deplacee, annulee, a_programmer. | realisee |
-| `libelle` | Libellé | texte |  |  | Intitulé libre (événement spécial). | Forum entreprises |
+| `libelle` | Libellé | texte |  |  | Intitulé libre (événement spécial). 128 caractères au plus. | Forum entreprises |
 
 #### Types de règle et paramètres (colonnes `type` et `parametres` de `regles`)
 
@@ -571,6 +615,11 @@ retrouvés par leur identifiant métier, sans doublon.
 - Lignes **strictement identiques** : fusionnées.
 - Une occurrence issue d'une **règle de récurrence** (iCal) qui tombe un
   jour fermé du calendrier (férié, vacances) est retirée.
+- **Réimport sur un besoin existant** : ce qui change est nommé dans le
+  résumé des besoins (« mis à jour (volume, dates, enseignants) »). Si des
+  enseignants réels du besoin sont remplacés, par exemple par l'enseignant
+  fictif parce que le fichier ne nomme pas d'enseignant, un avertissement
+  les cite : l'affectation saisie à la main ne disparaît pas en silence.
 - Une séance qui ne respecte pas la grille ou les règles n'est **ni rejetée
   ni corrigée** : elle entre telle quelle et le vérificateur la signalera.
 - Une séance hors des dates du semestre choisi est mise de côté.
@@ -619,8 +668,24 @@ semaine type, créé / mis à jour / inchangé) avant toute écriture.
   depuis `LOCATION`, libellé depuis `SUMMARY`.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
   jours n'est pas une séance : il est signalé et non importé.
-- Une règle de récurrence qui donnerait plus de 1 000 occurrences (par
-  exemple toutes les minutes) n'est pas un cours : elle est refusée.
+- **Fuseau inconnu** (`TZID` qui n'est ni un fuseau connu ni décrit par un
+  `VTIMEZONE` du fichier) : l'heure est prise comme heure de Paris, et un
+  avertissement par fuseau le dit (à vérifier).
+- Une règle de récurrence qui donnerait plus de 1 000 occurrences sur le
+  semestre n'est pas un cours : elle est refusée. Une série ancienne
+  (hebdomadaire depuis 1800, quotidienne depuis 1998) est lue normalement :
+  seules ses occurrences du semestre comptent.
+- Une règle qui n'a pas la forme d'une règle de cours est refusée **avant
+  tout calcul** : répétition à l'heure, à la minute ou à la seconde ;
+  intervalle nul ou négatif ; valeur impossible (mois 13, 31 février,
+  9e lundi) ; `BYMONTHDAY`, `BYYEARDAY`, `BYWEEKNO` ou `BYSETPOS` dans une
+  répétition quotidienne ou hebdomadaire. Raison : `dateutil` cherche
+  l'occurrence suivante jusqu'à l'an 9999 sans rendre la main ; une telle
+  règle l'occupait de 2 à 20 s, et un intervalle nul ne s'arrêtait jamais,
+  base réservée.
+- Un événement dont les dates ne se calculent pas (durée immense, date
+  au-delà de l'an 9999, `RECURRENCE-ID` illisible) est écarté avec une
+  erreur ; le reste du fichier est lu.
 
 ## Exports
 
@@ -641,6 +706,9 @@ semaine type, créé / mis à jour / inchangé) avant toute écriture.
     `statut`, `libelle`) : il se réimporte comme emploi du temps existant.
   - L'iCal déclare le fuseau `Europe/Paris` (VTIMEZONE), porte un lieu, une
     description lisible et les propriétés `X-EDT-*` ; il se réimporte aussi.
+  - Si les dates du semestre ont changé depuis l'enregistrement de la
+    version (fin avancée), l'iCal hebdomadaire ignore les semaines sorties
+    du semestre et le journal le dit ; le reste s'exporte.
 
 ## Écrire un adaptateur pour un autre logiciel
 
@@ -664,6 +732,10 @@ intermédiaire ; il ne touche ni à la base ni à la reconstitution.
    fichier ou en-têtes) et appeler le lecteur à la place du tableau plat.
 3. Ajouter un petit fichier d'exemple **fictif** dans `tests/echange/fichiers/`
    et un test par particularité du format (encodage, fuseaux, statuts).
+   Un test de cas limite (fichier abîmé ou hostile) porte le marqueur
+   `cas_limite` et commence par une docstring « Cas : ... Risque : ... » ;
+   ses fichiers se construisent en mémoire avec `tests/echange/fabrique.py`
+   (CSV, classeur, archive, iCal).
 
 Le lecteur iCal (`edt.echange.ical`) est le premier adaptateur et sert de
 modèle.
@@ -682,8 +754,17 @@ modèle.
   sur les mêmes fichiers), et le journal garde le bilan.
 - Les bornes (section « Bornes ») protègent la mémoire et le processeur,
   pas le débit : rien ne limite le nombre d'imports qu'un visiteur lance à
-  la suite. Un import de 50 000 lignes valides prend une vingtaine de
-  secondes et occupe la base en écriture pendant ce temps.
+  la suite. Un import compte de l'ordre de 2 ms par ligne valide (10 000
+  enseignants simulés : 20 s environ, test `perf`) et réserve la base en
+  écriture pendant tout ce temps : une saisie lancée en même temps attend
+  10 s au plus, puis reçoit « base occupée ». Lire un fichier iCal fait
+  partie de ce temps.
+- Le tableur change un code numérique (« 0101 ») en nombre (101) sans que
+  le fichier en garde trace : le zéro de tête est perdu. Mettre la colonne
+  au format Texte avant la saisie.
+- Un texte qui contient littéralement `_x0001_` (de `_x0000_` à `_x001F_`)
+  est relu, depuis un classeur, comme le caractère de contrôle qu'il note :
+  c'est la convention d'Excel.
 - Une année créée par import ne reçoit ni semestre ni jour férié
   automatiquement : les décrire dans les feuilles `semestres` et
   `jours_fermes` (l'export les contient).
@@ -693,6 +774,7 @@ modèle.
 - La couche `date` n'exporte que les occurrences enregistrées : une version
   générée n'en a pas tant que le lot calendrier ne les instancie pas
   (utiliser la couche `hebdo`).
-- Les fichiers `.xls` (Excel 97-2003) ne sont pas lus : les enregistrer en
-  `.xlsx` ou `.csv`. Pas d'assistant de correspondance de colonnes : le
-  format est fixe et décrit dans le gabarit.
+- Les fichiers `.xls` (Excel 97-2003) et les classeurs protégés par mot de
+  passe ne sont pas lus : retirer le mot de passe, enregistrer en `.xlsx` ou
+  `.csv`. Pas d'assistant de correspondance de colonnes : le format est fixe
+  et décrit dans le gabarit.

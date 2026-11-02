@@ -95,10 +95,19 @@ def id_seance(besoin_id: int, rang: int) -> str:
 
 
 def decomposer_id_seance(identifiant: str) -> tuple[int, int]:
-    """Inverse de `id_seance` : renvoie `(besoin_id, rang)`."""
-    besoin, _, rang = identifiant.partition("-")
-    if not (besoin.isdigit() and rang.isdigit()):
-        raise ErreurDonneesInvalides(f"Identifiant de séance invalide : {identifiant!r}.")
+    """Inverse de `id_seance` : renvoie `(besoin_id, rang)`.
+
+    Seuls des chiffres décimaux ASCII sont admis de part et d'autre du tiret :
+    `isdigit()` accepterait « ² » ou des chiffres d'autres écritures, puis
+    `int()` lèverait une `ValueError` brute. Tout autre texte est une
+    `ErreurDonneesInvalides` qui nomme l'identifiant.
+    """
+    besoin, _, rang = str(identifiant).partition("-")
+    if not all(partie.isascii() and partie.isdecimal() for partie in (besoin, rang)):
+        raise ErreurDonneesInvalides(
+            f"Identifiant de séance invalide : {identifiant!r} (attendu « <besoin>-<rang> », "
+            "deux nombres entiers)."
+        )
     return int(besoin), int(rang)
 
 

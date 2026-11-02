@@ -13,6 +13,9 @@
   {{ ui.message(resultat.message, resultat.niveau, resultat.remarques) }}
   {{ edt.anomalies(resultat.anomalies) }}
   {%- endif %}
+  {%- if f.remarque %}
+  {{ ui.message(f.remarque, "attention") }}
+  {%- endif %}
   <input type="hidden" name="retour" value="{{ retour }}">
   {%- set rechargement = {"hx-get": adresse ~ "/formulaire", "hx-trigger": "change", "hx-include": "closest form", "hx-target": "#edt-formulaire", "hx-swap": "outerHTML"} %}
   {{ ui.champ("jour", "Jour", f.jour, type="select", requis=true, options=f.jours, attributs=rechargement) }}

@@ -35,16 +35,6 @@ def _identifiant(modele, **critere) -> int:
         return session.scalar(select(modele.id).filter_by(**critere))
 
 
-@pytest.fixture
-def version_reference(jeu_minimal, importer, fichier_exemple) -> int:
-    rapport = importer(
-        fichier_exemple("seances_existantes.csv"),
-        mode=ModeImport.REFERENCE,
-        semestre_id=jeu_minimal.semestre_id,
-    )
-    return rapport.version_id
-
-
 def test_csv_de_la_semaine_type(version_generee):
     fichier = _exporter(version_generee)
 
@@ -168,3 +158,36 @@ def test_ical_exporte_se_reimporte(version_reference, importer, jeu_minimal):
 
     assert not rapport.a_des_rejets, rapport.signalements
     assert rapport.bilan("besoins").compteurs == {"inchanges": 3}
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites de l'export (banque de tests)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_ical_hebdo_tolere_un_semestre_raccourci_apres_la_version(version_reference, caplog):
+    """Cas : la fin du semestre est avancée au 20/09/2026 après l'enregistrement d'une version.
+
+    Risque : « Semaine 3 absent(e) » : page 404 « Élément introuvable » qui ne parle
+    ni de la version ni des dates, alors que l'export CSV de la même version passe.
+    """
+    fin = dt.date(2026, 9, 20)
+    with session_base() as session:
+        version = session.get(m.VersionEdt, version_reference)
+        session.get(m.Semestre, version.semestre_id).date_fin = fin
+
+    with caplog.at_level("WARNING", logger="edt.echange.export_edt"):
+        fichier = _exporter(version_reference, "ics", "hebdo")
+
+    evenements = Calendar.from_ical(fichier.contenu).walk("VEVENT")
+    assert evenements  # les séances des semaines encore dans le semestre restent
+    for evenement in evenements:
+        assert evenement.decoded("dtstart").date() <= fin
+        limite = evenement.get("rrule", {}).get("UNTIL", [None])[0]
+        assert limite is None or limite.date() <= fin
+    assert any(
+        f"version {version_reference}" in message and "hors du semestre" in message
+        for message in caplog.messages
+    )
+    assert _lignes(_exporter(version_reference, "csv", "hebdo"))  # le CSV passe toujours

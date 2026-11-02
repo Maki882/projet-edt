@@ -5,14 +5,18 @@ Fenêtre des tests : au moins 1 h libre d'affilée entre 12 h 00 et 14 h 00.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
+
+import pytest
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
-from edt.verification import verifier, verifier_occurrences
+from edt.erreurs import ErreurDonneesInvalides
+from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
 from edt.verification.regles_dejeuner import plus_longue_pause
 
-from .fabrique import MARDI, Fabrique, codes, h, occurrence, placer
+from .fabrique import MARDI, MARDI_6_OCT, Fabrique, codes, h, occurrence, placer
 
 DEJEUNER = ["DEJEUNER"]
 FENETRE = {
@@ -172,3 +176,33 @@ def test_couche_datee():
     assert "le mardi 6 octobre 2026 (au plus 30 min libres d'affilée)" in anomalie.message
     dates_differentes = [meme_date[0], occurrence(seances[1], mardi_suivant, "13h30")]
     assert verifier_occurrences(instantane, dates_differentes, DEJEUNER) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_cycle_de_groupes_ne_rend_pas_le_verificateur_muet():
+    """Cas : deux groupes parents l'un de l'autre (import, retouche de la base), un cours de B à midi en déjeuner libre.
+
+    Risque : plus aucun groupe feuille, donc plus aucune personne : déjeuner, pause, maxima et
+    règles personnalisées ne vérifient plus rien, sans un mot.
+    """
+    f = Fabrique(**FENETRE)
+    a = f.groupe("A")
+    b = f.groupe("B", parent=a)
+    f.groupe("C")  # hors de la boucle
+    f.groupes[a - 1] = dataclasses.replace(f.groupes[a - 1], parent_id=b)  # parents croisés
+    cours = f.cours("Cours", [b], duree=120)
+    instantane, placements = f.construire(), [placer(cours, MARDI, "12h00")]
+    for verification in (
+        lambda: verifier(instantane, placements, DEJEUNER),
+        lambda: verifier_occurrences(instantane, [occurrence(cours, MARDI_6_OCT, "12h00")]),
+        lambda: calculer_indicateurs(instantane, placements, []),
+    ):
+        with pytest.raises(ErreurDonneesInvalides, match="boucle") as erreur:
+            verification()
+        assert "« A »" in erreur.value.message and "« B »" in erreur.value.message
+        assert "« C »" not in erreur.value.message

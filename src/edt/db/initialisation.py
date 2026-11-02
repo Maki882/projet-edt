@@ -4,6 +4,12 @@ Il n'y a pas de migrations : `initialiser_base(reset=True)` supprime tout et
 recrée. Sans `reset`, l'initialisation est **idempotente** : elle crée les
 tables manquantes et ajoute les données par défaut absentes, sans jamais
 modifier une ligne existante (on peut donc la relancer à chaque déploiement).
+Les listes par défaut (grille horaire, types de salle, équipements, types de
+séance) ne sont posées que dans une base **neuve** (qui n'a encore aucun
+paramètre enregistré) : une ligne supprimée exprès par l'utilisateur, ou une
+grille vidée pour être ressaisie, n'est pas ressuscitée au déploiement
+suivant. Un paramètre absent, lui, est toujours ajouté (paramètre nouveau
+d'une version).
 
 Schéma périmé
 -------------
@@ -33,9 +39,11 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import sqlite3
 from dataclasses import dataclass, field
+from pathlib import Path
 
-from sqlalchemy import Engine, MetaData, inspect, select
+from sqlalchemy import Engine, MetaData, UniqueConstraint, inspect, select
 from sqlalchemy import Enum as EnumSQL
 from sqlalchemy.engine import Inspector
 from sqlalchemy.exc import CompileError
@@ -54,7 +62,7 @@ from edt.db.modeles import (
     TypeSalle,
     TypeSeance,
 )
-from edt.db.moteur import obtenir_moteur, session_base
+from edt.db.moteur import chemin_base, obtenir_moteur, session_base
 from edt.domaine.calendrier import annee_scolaire_de, decoupage_par_defaut, jours_feries_entre
 from edt.domaine.enumerations import DemiJournee, NatureJourFerme
 from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, definitions
@@ -160,6 +168,31 @@ def creer_schema(moteur: Engine) -> None:
     Base.metadata.create_all(moteur)
 
 
+def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Path | None:
+    """Copie cohérente du fichier SQLite à côté de lui (« edt-<date>-<suffixe>.db »).
+
+    Utilise l'API de sauvegarde de SQLite : la copie inclut les écritures
+    encore dans le fichier -wal. Renvoie le chemin de la copie, ou `None` si
+    la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si la copie
+    échoue : on ne détruit pas une base qu'on n'a pas su sauvegarder.
+    """
+    chemin = chemin_base(url or str(obtenir_moteur(url).url))
+    if chemin is None or not chemin.exists():
+        return None
+    horodatage = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    copie = chemin.with_name(f"{chemin.stem}-{horodatage}-{suffixe}{chemin.suffix or '.db'}")
+    try:
+        with sqlite3.connect(chemin) as source, sqlite3.connect(copie) as cible:
+            source.backup(cible)
+    except (sqlite3.Error, OSError) as erreur:
+        raise ErreurRegleMetier(
+            f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
+            "remise à zéro annulée, rien n'a été modifié."
+        ) from erreur
+    journal.warning("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
+    return copie
+
+
 def supprimer_schema(moteur: Engine) -> None:
     """Supprime **toutes** les tables de la base, y compris celles d'un ancien schéma."""
     existant = MetaData()
@@ -190,14 +223,19 @@ def ecarts_schema(moteur: Engine) -> list[str]:
       contrainte (`colonne IN ('a', 'b')`) : une valeur ajoutée au modèle
       serait refusée par la base à l'enregistrement.
 
+    Puis les **unicités** (par colonnes) et les **index** (par nom, colonnes
+    et caractère unique) de chaque table : un index unique partiel absent
+    laisserait passer deux versions actives, une unicité absente des doublons.
+
     Liste vide = aucune table existante ne diffère du modèle. Ne sont **pas**
     des écarts : une table du modèle absente de la base (`creer_schema` la
     crée, voir `tables_manquantes`) et une table de la base inconnue du
     modèle (elle est simplement ignorée).
 
-    Limite assumée : les autres contraintes (unicités, clés étrangères,
-    contrôles entre colonnes) et les index ne sont pas comparés. Après un tel
-    changement du modèle, recréer la base avec `reset=True`.
+    Limite assumée : les clés étrangères (règle de suppression) et les
+    contrôles entre colonnes (CHECK autres que les énumérations) ne sont pas
+    comparés. Après un tel changement du modèle, recréer la base avec
+    `reset=True`.
     """
     inspecteur = inspect(moteur)
     presentes = set(inspecteur.get_table_names())
@@ -244,6 +282,47 @@ def ecarts_schema(moteur: Engine) -> list[str]:
                         + ", ".join(sorted(de_la_base - du_modele))
                     )
         ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
+        ecarts.extend(_ecarts_unicites_et_index(inspecteur, nom, table))
+    return ecarts
+
+
+def _ecarts_unicites_et_index(inspecteur: Inspector, nom: str, table) -> list[str]:
+    """Unicités (par colonnes) et index (par nom) du modèle absents de la base, ou en trop."""
+    ecarts: list[str] = []
+    du_modele = {
+        tuple(colonne.name for colonne in contrainte.columns)
+        for contrainte in table.constraints
+        if isinstance(contrainte, UniqueConstraint)
+    }
+    de_la_base = {
+        tuple(contrainte["column_names"]) for contrainte in inspecteur.get_unique_constraints(nom)
+    }
+    for colonnes in sorted(du_modele - de_la_base):
+        ecarts.append(f"table {nom} : unicité ({', '.join(colonnes)}) absente de la base")
+    for colonnes in sorted(de_la_base - du_modele):
+        ecarts.append(f"table {nom} : unicité ({', '.join(colonnes)}) en trop dans la base")
+
+    index_modele = {
+        index.name: (tuple(colonne.name for colonne in index.columns), bool(index.unique))
+        for index in table.indexes
+        if index.name
+    }
+    index_base = {
+        index["name"]: (tuple(index["column_names"]), bool(index["unique"]))
+        for index in inspecteur.get_indexes(nom)
+        if index["name"] and not index["name"].startswith("sqlite_")
+    }
+    for nom_index in sorted(set(index_modele) - set(index_base)):
+        ecarts.append(f"table {nom} : index {nom_index} absent de la base")
+    for nom_index in sorted(set(index_base) - set(index_modele)):
+        ecarts.append(f"table {nom} : index en trop : {nom_index}")
+    for nom_index in sorted(set(index_modele) & set(index_base)):
+        if index_modele[nom_index] != index_base[nom_index]:
+            colonnes, unique = index_base[nom_index]
+            ecarts.append(
+                f"table {nom} : index {nom_index} différent dans la base "
+                f"(colonnes {', '.join(colonnes)}, {'unique' if unique else 'non unique'})"
+            )
     return ecarts
 
 
@@ -375,11 +454,14 @@ def inserer_donnees_par_defaut(
     `aujourdhui` sert à choisir l'année scolaire à créer (défaut : la date du jour).
     Ne valide pas la transaction.
     """
+    # Une base neuve n'a encore aucun paramètre : c'est là, et là seulement, que les listes
+    # par défaut sont posées (voir l'en-tête du module).
+    neuve = session.scalar(select(Parametre.cle).limit(1)) is None
     ajouts = {
-        "creneau": _inserer_grille(session),
-        "type_salle": _inserer_types_salle(session),
-        "equipement": _inserer_equipements(session),
-        "type_seance": _inserer_types_seance(session),
+        "creneau": _inserer_grille(session, neuve),
+        "type_salle": _inserer_types_salle(session, neuve),
+        "equipement": _inserer_equipements(session, neuve),
+        "type_seance": _inserer_types_seance(session, neuve),
         "parametre": _inserer_parametres(session),
     }
     nb_annees = len(session.scalars(select(AnneeScolaire.id)).all())
@@ -388,9 +470,9 @@ def inserer_donnees_par_defaut(
     return ajouts
 
 
-def _inserer_grille(session: Session) -> int:
-    """La grille par défaut n'est posée que si la table des créneaux est vide."""
-    if session.scalar(select(Creneau.id).limit(1)) is not None:
+def _inserer_grille(session: Session, neuve: bool) -> int:
+    """La grille par défaut n'est posée que dans une base neuve (voir l'en-tête du module)."""
+    if not neuve or session.scalar(select(Creneau.id).limit(1)) is not None:
         return 0
     creneaux = [
         Creneau(jour=jour, debut_min=debut, fin_min=fin, demi_journee=demi_journee)
@@ -406,43 +488,40 @@ def _inserer_grille(session: Session) -> int:
     return len(creneaux)
 
 
-def _inserer_types_salle(session: Session) -> int:
-    presents = set(session.scalars(select(TypeSalle.code)))
-    nouveaux = [
-        TypeSalle(code=code, libelle=libelle)
-        for code, libelle in TYPES_SALLE
-        if code not in presents
-    ]
+def _inserer_types_salle(session: Session, neuve: bool) -> int:
+    """Les types de salle par défaut ne sont posés que dans une base neuve (voir l'en-tête)."""
+    if not neuve or session.scalar(select(TypeSalle.id).limit(1)) is not None:
+        return 0
+    nouveaux = [TypeSalle(code=code, libelle=libelle) for code, libelle in TYPES_SALLE]
     session.add_all(nouveaux)
     session.flush()
     return len(nouveaux)
 
 
-def _inserer_equipements(session: Session) -> int:
-    presents = set(session.scalars(select(Equipement.code)))
-    nouveaux = [
-        Equipement(code=code, libelle=libelle)
-        for code, libelle in EQUIPEMENTS
-        if code not in presents
-    ]
+def _inserer_equipements(session: Session, neuve: bool) -> int:
+    """Les équipements par défaut ne sont posés que dans une base neuve (voir l'en-tête)."""
+    if not neuve or session.scalar(select(Equipement.id).limit(1)) is not None:
+        return 0
+    nouveaux = [Equipement(code=code, libelle=libelle) for code, libelle in EQUIPEMENTS]
     session.add_all(nouveaux)
     session.flush()
     return len(nouveaux)
 
 
-def _inserer_types_seance(session: Session) -> int:
-    presents = set(session.scalars(select(TypeSeance.code)))
+def _inserer_types_seance(session: Session, neuve: bool) -> int:
+    """Les types de séance par défaut ne sont posés que dans une base neuve (voir l'en-tête)."""
+    if not neuve or session.scalar(select(TypeSeance.id).limit(1)) is not None:
+        return 0
     types_salle = {type_salle.code: type_salle for type_salle in session.scalars(select(TypeSalle))}
     nouveaux = [
         TypeSeance(
             code=code,
             libelle=libelle,
             samedi_autorise=samedi,
-            type_salle_defaut=types_salle[salle_defaut] if salle_defaut else None,
+            type_salle_defaut=types_salle.get(salle_defaut) if salle_defaut else None,
             couleur=couleur,
         )
         for code, libelle, samedi, salle_defaut, couleur in TYPES_SEANCE
-        if code not in presents
     ]
     session.add_all(nouveaux)
     session.flush()

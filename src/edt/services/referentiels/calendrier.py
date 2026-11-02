@@ -84,6 +84,41 @@ def _dates_ordonnees(v: Valeurs) -> dict[str, str]:
     return {}
 
 
+ANNEE_DEBUT_MIN, ANNEE_DEBUT_MAX = 2000, 2100
+"""Une année scolaire commence entre ces deux années (comme `creer_annee_par_defaut`)."""
+DUREE_ANNEE_MAX_JOURS = 731
+"""Deux ans : au-delà, une date de fin est une faute de frappe (« 2206 » pour « 2026 »)."""
+DUREE_SEMESTRE_MAX_JOURS = 366
+"""Un an."""
+
+
+def _duree_bornee(v: Valeurs, jours_max: int, message: str) -> dict[str, str]:
+    """Erreur sous la date de fin si la période dépasse `jours_max` jours.
+
+    Une période démesurée (« 31/12/9999 ») ferait déborder le calcul des
+    semaines et produirait des centaines de milliers de séances datées.
+    """
+    debut, fin = v.get("date_debut"), v.get("date_fin")
+    if debut and fin and (fin - debut).days > jours_max:
+        return {"date_fin": f"{message} (lu : du {_date(debut)} au {_date(fin)})."}
+    return {}
+
+
+def _valider_annee(v: Valeurs) -> dict[str, str]:
+    """Dates ordonnées, deux ans au plus, début entre 2000 et 2100."""
+    erreurs = {
+        **_dates_ordonnees(v),
+        **_duree_bornee(v, DUREE_ANNEE_MAX_JOURS, "Une année scolaire dure deux ans au plus"),
+    }
+    debut = v.get("date_debut")
+    if debut and not ANNEE_DEBUT_MIN <= debut.year <= ANNEE_DEBUT_MAX:
+        erreurs["date_debut"] = (
+            f"Une année scolaire doit commencer entre {ANNEE_DEBUT_MIN} et {ANNEE_DEBUT_MAX} "
+            f"(lu : {_date(debut)})."
+        )
+    return erreurs
+
+
 # --------------------------------------------------------------------------- #
 # Années scolaires
 # --------------------------------------------------------------------------- #
@@ -158,7 +193,7 @@ ANNEE_SCOLAIRE = Entite(
     recherche=(AnneeScolaire.libelle,),
     chargements=(selectinload(AnneeScolaire.semestres),),
     uniques=(Unicite(("libelle",), "Une année porte déjà ce libellé.", "libelle"),),
-    valider=lambda session, v, actuel: _dates_ordonnees(v),
+    valider=lambda session, v, actuel: _valider_annee(v),
     analyser=_analyser_annee,
     apres_creation=lambda session, annee: proposer_regles(session, annee.id),
     consequences=(
@@ -179,8 +214,10 @@ def creer_annee_par_defaut(session: Session, annee_debut: int) -> dict:
     Dates par défaut : voir `edt.domaine.calendrier.decoupage_par_defaut`.
     Lève `ErreurRegleMetier` si cette année existe déjà.
     """
-    if not 2000 <= annee_debut <= 2100:
-        raise ErreurRegleMetier(f"Année invalide : {annee_debut} (entre 2000 et 2100).")
+    if not ANNEE_DEBUT_MIN <= annee_debut <= ANNEE_DEBUT_MAX:
+        raise ErreurRegleMetier(
+            f"Année invalide : {annee_debut} (entre {ANNEE_DEBUT_MIN} et {ANNEE_DEBUT_MAX})."
+        )
     libelle = decoupage_par_defaut(annee_debut).libelle
     if session.scalar(select(AnneeScolaire.id).where(AnneeScolaire.libelle == libelle)):
         raise ErreurRegleMetier(f"L'année scolaire {libelle} existe déjà.")
@@ -260,6 +297,7 @@ SEMESTRE = Entite(
     valider=lambda session, v, actuel: {
         **_dans_l_annee(session, v, ("date_debut", "date_fin")),
         **_dates_ordonnees(v),
+        **_duree_bornee(v, DUREE_SEMESTRE_MAX_JOURS, "Un semestre dure un an au plus"),
     },
     consequences=(
         Decompte(

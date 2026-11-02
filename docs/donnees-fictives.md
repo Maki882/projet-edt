@@ -28,10 +28,20 @@ python -m edt jeu --taille petit --reference           # + témoin enregistré c
 | `edt.services.jeux.tailles_disponibles()` | les trois tailles et leur description, pour l'écran de configuration |
 
 `taille` est `"petit"`, `"moyen"`, `"grand"` ou une `ConfigurationJeu`.
-Même taille et même graine donnent **exactement** les mêmes lignes (un seul
-`random.Random(graine)`, Faker initialisé avec la graine, aucune donnée tirée
-de l'horloge, ordre d'insertion fixe). Seule la durée mesurée dans le rapport
-varie.
+`graine` est un entier de 0 à 2 147 483 647 (la borne du formulaire web) ; une
+graine négative est refusée, car `random.Random(-5)` redonnerait le jeu de la
+graine 5. `annee_debut` va de 2000 à 2100. Une valeur refusée lève
+`ErreurDonneesInvalides` avant toute écriture (`valider_demande`) ; la commande
+`jeu` la vérifie aussi **avant** la remise à zéro.
+
+Même taille et même graine donnent les mêmes données (un seul
+`random.Random(graine)`, aucune donnée tirée de l'horloge, ordre d'insertion
+fixe). Faker ne fournit que les **noms et prénoms** : une autre version de
+Faker change les noms, rien d'autre (le nombre de tirages ne dépend pas des
+noms proposés). Le test `test_empreinte_figee_du_jeu_petit_graine_0` fige une
+empreinte du jeu « petit » sans les noms : si elle change sans modification
+du générateur, le jeu dépend de la machine. Seule la durée mesurée dans le
+rapport varie.
 
 Le générateur réutilise les lignes posées par `initialiser_base` (grille,
 types de salle, équipements, types de séance, paramètres, année scolaire,
@@ -49,13 +59,13 @@ environ 1,5 s ; le seuil du test `perf` est de 60 s).
 | Semestres garnis | S1 | S1, S2 | S1, S2 |
 | Sites / salles | 2 / 14 | 3 / 34 | 3 / 99 |
 | Groupes / étudiants / inscriptions | 13 / 65 / 195 | 39 / 246 / 646 | 232 / 1 471 / 4 105 |
-| Enseignants (dont recrutés pendant le témoin) | 7 (1) | 34 (5) | 141 (9) |
+| Enseignants (dont recrutés pendant le témoin) | 7 (1) | 34 (5) | 143 (11) |
 | Matières | 7 | 30 | 154 |
 | Besoins (par semaine / total / ponctuel) | 23 (15 / 4 / 4) | 221 (119 / 50 / 52) | 1 177 (707 / 301 / 169) |
 | Séances hebdomadaires S1 / S2 | 23 / - | 111 / 110 | 602 / 575 |
-| Fermetures / indisponibilités | 22 / 4 | 60 / 26 | 160 / 168 |
-| Charge des demi-groupes S1 (moyenne / max) | 40 % / 52 % | 59 % / 80 % | 55 % / 75 % |
-| Charge des enseignants S1 (moyenne / max) | 14 % / 25 % | 14 % / 30 % | 18 % / 35 % |
+| Fermetures / indisponibilités | 22 / 4 | 60 / 26 | 160 / 170 |
+| Charge des demi-groupes S1 (moyenne / max) | 40 % / 52 % | 59 % / 80 % | 56 % / 80 % |
+| Charge des enseignants S1 (moyenne / max) | 14 % / 25 % | 14 % / 30 % | 19 % / 35 % |
 | Règles personnalisées (actives / inactives / proposées) | 9 (6 / 1 / 2) | 14 (11 / 1 / 2) | 16 (13 / 1 / 2) |
 | Besoins écartés | 0 | 0 | 0 |
 | Vérificateur sur le témoin | 0 erreur, 1 information | 0 erreur, 9 informations par semestre | 0 erreur, 51 / 41 informations |
@@ -146,7 +156,11 @@ globales) ; semaine d'intégration de la 1re année (« semaine spéciale ») ;
 stage en entreprise sur les quatre dernières semaines du S2 (A4 dans le jeu
 grand, A3 dans le moyen), partiels du S2 de cette promotion la semaine
 d'avant ; mercredi après-midi libéré pour le sport en années 1-2
-(indisponibilité récurrente de la promotion).
+(indisponibilité récurrente de la promotion). Un S2 de moins de six
+semaines n'a pas de stage (journalisé). La semaine d'intégration et les
+partiels ferment la semaine entière, du lundi au dimanche, comme les
+vacances : la semaine est retirée des semaines actives quels que soient les
+jours travaillés.
 
 ## Règles personnalisées
 
@@ -262,6 +276,19 @@ réunion le vendredi après-midi, maxima horaires supérieurs à la charge du
 témoin. Seuls les jours fériés de l'initialisation tombent sur des séances :
 la couche datée les replacera.
 
+**Relances.** Le placement glouton peut, pour une graine malheureuse, laisser
+un besoin sans place alors qu'il en existait une (graine 13 du jeu moyen).
+Le semestre est alors replacé de zéro avec un autre départage, dérivé de la
+graine (donc déterministe), jusqu'à quatre essais, et le meilleur est retenu.
+Le premier essai est celui d'avant les relances : un jeu sans écart au
+premier essai est inchangé. Aucun besoin écarté sur les graines 0 à 39 du
+jeu moyen ni 0 à 29 du grand.
+
+**Besoins impossibles d'avance.** Une conférence sans date ouverte ou des
+épreuves sans demi-journée ouverte (semestre minuscule, jours fériés) sont
+écartés avec leur raison, comme les besoins que le témoin ne peut pas
+placer : tout besoin préparé est créé ou écarté, jamais omis.
+
 **Sortie.** Le témoin n'est pas écrit en base : il est dans le rapport
 (`RapportJeu.temoin_par_semestre`, `identifiant de séance -> (jour, début,
 fin, salle)` ; `RapportJeu.placements(code)` le donne au format du
@@ -294,9 +321,35 @@ nombre d'enseignants fictifs, promotions en stage, épreuves par partiel, et
 interrupteurs `dst`, `partiels`, `evenements`, `etudiants` (sans étudiants,
 les groupes transverses sont déclarés chevauchants avec leur promotion).
 Une configuration incohérente lève `ErreurDonneesInvalides` avec la liste
-des problèmes. Un besoin qui ne trouve pas de place est **écarté**, compté et
-expliqué dans le rapport (jamais en silence) : c'est le signe qu'il manque
-des salles pour la configuration choisie.
+des problèmes : année hors de 1 à 5, classes d'apprentis hors du cycle
+ingénieur, site inconnu ou répété, **aucun site avec au moins une salle**,
+capacité d'amphithéâtre nulle ou négative, nombre de salles négatif, parts
+hors de 0 à 1. Un besoin qui ne trouve pas de place est **écarté**, compté
+et expliqué dans le rapport (jamais en silence) : c'est le signe qu'il manque
+des salles pour la configuration choisie. Au-delà de 800 enseignants (400
+noms de famille chez Faker, deux civilités), des homonymes apparaissent : les
+identifiants restent uniques.
+
+## Cas limites
+
+La banque `tests/synthese/test_cas_limites.py` (marqueur `cas_limite`, une
+docstring « Cas / Risque » par test) fige le comportement aux bords :
+
+| Situation | Comportement |
+|---|---|
+| Graine négative, trop grande ou non entière ; année hors de 2000-2100 | refus lisible avant toute écriture ; la commande ne touche pas à la base |
+| Configuration sans salle, salles négatives | refus à la construction de la configuration |
+| Une seule salle, pas d'amphithéâtre | jeu partiel : besoins écartés avec leur raison, témoin valide |
+| Une classe d'un étudiant (demi-groupe vide) | jeu complet et valide |
+| Semestre d'un jour, grille d'un créneau, samedi seul, dimanche sans créneau, pause de 2 h | jeu partiel cohérent ; taux de charge à 0 (journalisés) sans créneau un jour travaillé |
+| S2 trop court pour un stage | pas de stage, partiels gardés |
+| Grille vide, semestre manquant | refus lisible qui dit quoi faire |
+| Autre version de Faker, noms épuisés | même jeu hors noms ; homonymes admis, pas de boucle sans fin |
+| Graines 10 à 19 de chaque taille (test `perf`) | aucun besoin écarté, témoin et règles valides |
+
+Reste à corriger hors de ce lot (test `xfail` strict) : le service
+`recharger_jeu_fictif` remet la base à zéro avant que la génération ne
+refuse une graine ou une année ; il doit appeler `valider_demande` d'abord.
 
 ## Limites
 
@@ -327,4 +380,6 @@ des salles pour la configuration choisie.
 - **Apprentis** : semaine type « école » seulement (décision V1).
 - Le témoin est glouton : il prouve la faisabilité, pas la qualité. Ses
   indicateurs (trous, changements de campus) sont un plancher que le
-  solveur doit améliorer.
+  solveur doit améliorer. Malgré les relances, une graine peut encore
+  laisser un besoin écarté (expliqué dans le rapport) ; aucune n'a été
+  trouvée sur les graines essayées.

@@ -34,6 +34,14 @@ de la version pour celles qui existaient alors
 (`edt.services.niveaux.niveaux_regles_de_version`) ; une règle absente de
 `niveaux_regles` est ignorée. Elles ne sont vérifiées que si `REGLE` l'est
 (avec `contraintes_actives`, il faut le demander : `-c REGLE`).
+
+Cas limites : aucune contrainte à vérifier (liste vide, niveaux vides) est
+refusé (`ErreurDonneesInvalides`), car un rapport « valide » qui n'a rien
+vérifié tromperait ; une version sans aucune séance datée donne, pour ses
+séances datées, un avertissement `VOLUME` explicite plutôt qu'un rapport
+vide ; des niveaux enregistrés illisibles sont signalés avec la version et le
+calcul en cause ; une modification vers une salle inconnue est refusée
+(`ErreurIntrouvable`) au lieu de passer pour « salle à définir ».
 """
 
 from __future__ import annotations
@@ -63,6 +71,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMe
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
 from edt.services.niveaux import niveaux_de_version, niveaux_regles_de_version
+from edt.services.referentiels.operations import identifiant_possible
 from edt.verification import (
     Anomalie,
     Indicateurs,
@@ -242,6 +251,11 @@ def verifier_occurrences_version(
     recoupent, pour que les maxima hebdomadaires soient complets ; seules les
     anomalies qui concernent une séance de la période sont gardées.
     `nb_examines` compte les séances datées de la période.
+
+    Une version qui n'a **aucune** séance datée (instanciation jamais faite ou
+    échouée) donne un avertissement `VOLUME` explicite si `VOLUME` est
+    vérifiée (sinon un avertissement du journal) : un rapport vide la dirait
+    valide sans rien avoir vérifié.
     """
     if date_debut is not None and date_fin is not None and date_fin < date_debut:
         raise ErreurDonneesInvalides(
@@ -257,10 +271,11 @@ def verifier_occurrences_version(
         return (debut is None or debut <= date) and (fin is None or date <= fin)
 
     elargi_debut = None if date_debut is None else lundi_de(date_debut)
-    elargi_fin = None if date_fin is None else lundi_de(date_fin) + dt.timedelta(days=6)
+    elargi_fin = None if date_fin is None else _dimanche_de(date_fin)
     examinees = [o for o in toutes if dans(o.date, elargi_debut, elargi_fin)]
     periode = {o.id for o in examinees if dans(o.date, date_debut, date_fin)}
-    anomalies = [
+    anomalies = [] if toutes else _sans_seance_datee(version, codes, retenus)
+    anomalies += [
         anomalie
         for anomalie in verifier_occurrences(
             instantane, examinees, codes, niveaux=retenus, niveaux_regles=regles
@@ -312,9 +327,10 @@ def verifier_modification(
     Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
     de la version ; `contraintes_actives` seul les restreint à ces codes).
 
-    Lève `ErreurIntrouvable` si la version ou la séance n'existe pas,
-    `ErreurDonneesInvalides` si le placement proposé est mal formé ou si un
-    code de contrainte est inconnu.
+    Lève `ErreurIntrouvable` si la version, la séance ou la salle proposée
+    n'existe pas (une salle inconnue ne vaut pas « salle à définir » ici),
+    `ErreurDonneesInvalides` si le placement proposé est mal formé, si un code
+    de contrainte est inconnu ou si aucune contrainte n'est à vérifier.
     """
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
@@ -323,6 +339,11 @@ def verifier_modification(
     if seance_id not in {seance.id for seance in instantane.seances}:
         raise ErreurIntrouvable(
             f"La séance « {seance_id} » n'existe pas dans le semestre « {instantane.libelle} »."
+        )
+    if type(salle_id) is int and salle_id not in {salle.id for salle in instantane.salles}:
+        raise ErreurIntrouvable(
+            f"La salle n° {salle_id} n'existe pas dans le semestre « {instantane.libelle} » : "
+            "choisir une salle de la liste."
         )
     propose = Placement(seance_id, jour, debut, fin, salle_id)
     enregistres = charger_placements(session, version.id)
@@ -407,7 +428,7 @@ def version_a_verifier(
     if semestre_id is None:
         semestre = semestre_par_defaut(session)
     else:
-        semestre = session.get(Semestre, semestre_id)
+        semestre = session.get(Semestre, semestre_id) if identifiant_possible(semestre_id) else None
         if semestre is None:
             raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     version_active = session.scalar(
@@ -427,7 +448,13 @@ def version_a_verifier(
 
 
 def _version(session: Session, version_id: int) -> VersionEdt:
-    version = session.get(VersionEdt, version_id)
+    """La version `version_id`, ou `ErreurIntrouvable`.
+
+    Un identifiant hors des bornes de la base (nul, négatif, ou au-delà de
+    2**63 - 1) n'est pas demandé à SQLite, qui lèverait `OverflowError` : il
+    n'existe pas (`identifiant_possible`).
+    """
+    version = session.get(VersionEdt, version_id) if identifiant_possible(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     return version
@@ -438,7 +465,7 @@ def _choisir(
     version: VersionEdt,
     contraintes_actives: Iterable[str] | None,
     niveaux: Niveaux | None,
-) -> tuple[Niveaux | None, tuple[str, ...]]:
+) -> tuple[Niveaux, tuple[str, ...]]:
     """Niveaux à appliquer et codes vérifiés, triés.
 
     - `niveaux` s'il est donné (`contraintes_actives` est alors ignoré) ;
@@ -447,35 +474,114 @@ def _choisir(
       pour les autres : contraintes non vérifiées). Un code demandé que le
       calcul avait ignoré est vérifié à son niveau par défaut du catalogue,
       ce qui est journalisé en INFO.
+
+    Lève `ErreurDonneesInvalides` si aucune contrainte n'est à vérifier (un
+    rapport « valide » qui n'a rien vérifié tromperait) ou si les niveaux
+    enregistrés avec le calcul de la version sont illisibles (l'erreur nomme
+    la version et le calcul).
     """
     if niveaux is not None:
         retenus = valider_niveaux(niveaux)
-        return retenus, tuple(sorted(retenus))
-    de_version = niveaux_de_version(session, version.id)
-    if contraintes_actives is None:
-        retenus = valider_niveaux(de_version)
-        return retenus, tuple(sorted(retenus))
-    defauts = niveaux_par_defaut()
-    demandes = [CodeContrainte(code) for code in _codes(contraintes_actives)]
-    ignores = [code for code in demandes if code not in de_version]
-    if ignores:
-        journal.info(
-            "Version %d : contrainte(s) demandée(s) mais ignorée(s) par son calcul, vérifiée(s) "
-            "à leur niveau par défaut : %s",
-            version.id,
-            ", ".join(f"{code} ({defauts[code]})" for code in ignores),
+    else:
+        try:
+            de_version = niveaux_de_version(session, version.id)
+        except ErreurDonneesInvalides as erreur:
+            raise _illisibles(version, "Les niveaux des contraintes", erreur) from erreur
+        if contraintes_actives is None:
+            retenus = valider_niveaux(de_version)
+        else:
+            defauts = niveaux_par_defaut()
+            demandes = [CodeContrainte(code) for code in _codes(contraintes_actives)]
+            ignores = [code for code in demandes if code not in de_version]
+            if ignores:
+                journal.info(
+                    "Version %d : contrainte(s) demandée(s) mais ignorée(s) par son calcul, "
+                    "vérifiée(s) à leur niveau par défaut : %s",
+                    version.id,
+                    ", ".join(f"{code} ({defauts[code]})" for code in ignores),
+                )
+            retenus = valider_niveaux(
+                {code: de_version.get(code, defauts[code]) for code in demandes}
+            )
+    if not retenus:
+        raise ErreurDonneesInvalides(
+            f"Aucune contrainte à vérifier pour la version {version.id} « {version.libelle} » : "
+            "en choisir au moins une (un rapport « valide » qui n'aurait rien vérifié "
+            "tromperait)."
         )
-    retenus = valider_niveaux({code: de_version.get(code, defauts[code]) for code in demandes})
     return retenus, tuple(sorted(retenus))
 
 
 def _choisir_regles(
     session: Session, version: VersionEdt, niveaux_regles: Mapping[int, Niveau] | None
 ) -> dict[int, Niveau]:
-    """Niveaux des règles personnalisées : ceux donnés, sinon ceux de la version (validés)."""
+    """Niveaux des règles personnalisées : ceux donnés, sinon ceux de la version (validés).
+
+    Lève `ErreurDonneesInvalides` (qui nomme la version et le calcul) si la
+    copie des règles enregistrée avec le calcul est illisible.
+    """
     if niveaux_regles is None:
-        return niveaux_regles_de_version(session, version.id)
+        try:
+            return niveaux_regles_de_version(session, version.id)
+        except ErreurDonneesInvalides as erreur:
+            raise _illisibles(version, "Les niveaux des règles personnalisées", erreur) from erreur
     return valider_niveaux_regles(niveaux_regles)
+
+
+def _illisibles(
+    version: VersionEdt, quoi: str, erreur: ErreurDonneesInvalides
+) -> ErreurDonneesInvalides:
+    """L'erreur de lecture de niveaux enregistrés, qui nomme la version et son calcul.
+
+    Sans ce contexte, « Contrainte inconnue : 'PAUSES'. » ne dirait ni quelle
+    version ne peut plus être vérifiée, ni d'où vient le code fautif. Le
+    message d'origine passe dans les détails.
+    """
+    origine = f"la version {version.id} « {version.libelle} »"
+    if version.calcul_id is not None:
+        origine = f"le calcul {version.calcul_id} de {origine}"
+    return ErreurDonneesInvalides(
+        f"{quoi} enregistrés avec {origine} sont illisibles : la vérification est "
+        "impossible avec eux (relancer le calcul, ou vérifier avec des niveaux choisis).",
+        details=(erreur.message, *erreur.details),
+    )
+
+
+def _dimanche_de(date: dt.date) -> dt.date:
+    """Dimanche de la semaine de `date`, borné au dernier jour représentable (`date.max`)."""
+    lundi = lundi_de(date)
+    return lundi + dt.timedelta(days=min(6, (dt.date.max - lundi).days))
+
+
+def _sans_seance_datee(
+    version: VersionEdt, codes: Sequence[str], niveaux: Niveaux
+) -> list[Anomalie]:
+    """Signal d'une version sans aucune séance datée : avertissement `VOLUME`, ou journal."""
+    if CodeContrainte.VOLUME not in codes:
+        journal.warning(
+            "Version %d « %s » : aucune séance datée à vérifier ; VOLUME n'est pas vérifiée, "
+            "le rapport n'en dit donc rien (il ne prouve rien sur le calendrier réel).",
+            version.id,
+            version.libelle,
+        )
+        return []
+    journal.info(
+        "Version %d « %s » : aucune séance datée, signalé par un avertissement VOLUME.",
+        version.id,
+        version.libelle,
+    )
+    return [
+        Anomalie(
+            code=CodeContrainte.VOLUME,
+            gravite=Gravite.AVERTISSEMENT,
+            message=(
+                f"La version « {version.libelle} » n'a aucune séance datée : produire ses "
+                "séances datées (instanciation sur le calendrier) pour vérifier le calendrier "
+                "réel."
+            ),
+            niveau=niveaux.get(CodeContrainte.VOLUME),
+        )
+    ]
 
 
 def _codes(contraintes_actives: Iterable[str] | None) -> tuple[str, ...]:

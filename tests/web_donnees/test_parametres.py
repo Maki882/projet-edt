@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from edt.db.moteur import session_base
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
@@ -118,3 +120,30 @@ def test_enregistrement_puis_retour_aux_valeurs_par_defaut(client):
         parametres = lire_parametres(session)
         assert parametres == Parametres()
         assert parametres.temps_limite_s != 120 and parametres.objectif_actif is True
+
+
+@pytest.mark.cas_limite
+def test_parametres_refuses_pendant_un_calcul(site, calcul_retenu):
+    """Cas : pendant un calcul, on enregistre les paramètres ou on les remet à leur valeur par
+    défaut. Risque : le calcul, qui relit les paramètres pour contrôler et dater sa solution,
+    produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter),
+    alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul."""
+    with session_base() as session:
+        avant = lire_parametres(session)
+    page = site.get("/parametres")
+    assert f"calcul n° {calcul_retenu.id}" in page.text
+    assert f'href="/calculs/{calcul_retenu.id}"' in page.text
+
+    remise = site.post("/parametres/defaut")
+    assert remise.status_code == 409 and "Rien n&#39;a été enregistré" in remise.text
+    envoi = site.post("/parametres", data=_saisies(temps_limite_s="120"))
+    assert envoi.status_code == 409 and "calcul d&#39;emploi du temps est en cours" in envoi.text
+    assert 'name="temps_limite_s" value="120"' in envoi.text  # la saisie est conservée
+    with session_base() as session:
+        assert lire_parametres(session) == avant
+
+    assert calcul_retenu.liberer().reussi
+    apres = site.post("/parametres", data=_saisies(temps_limite_s="120"), follow_redirects=True)
+    assert "Paramètres enregistrés." in apres.text
+    with session_base() as session:
+        assert lire_parametres(session).temps_limite_s == 120
