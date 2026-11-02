@@ -1001,7 +1001,8 @@ Mécanisme retenu (`edt.services.generation`) :
 - chaque fois que l'on s'intéresse aux calculs en cours (`lancer_calcul`,
   `calcul_en_cours`, `demander_arret`, et `cloturer_calculs_interrompus` au
   démarrage du serveur), un calcul resté « en cours » est **clos en erreur**
-  (« Calcul interrompu par l'arrêt de l'application. ») si plus rien ne
+  (« Calcul interrompu : le processus qui l'exécutait s'est arrêté avant la
+  fin (redémarrage de l'application, ou mémoire épuisée ...) ») si plus rien ne
   l'exécute : son fil a disparu de ce processus, ou le processus noté
   n'existe plus, ou le calcul a dépassé son temps limite de plus de dix
   minutes (`DELAI_DE_GRACE_S`, pour le cas rare d'un numéro de processus
@@ -1009,6 +1010,11 @@ Mécanisme retenu (`edt.services.generation`) :
 - un calcul **vivant d'un autre processus n'est jamais clos** : une commande
   `generer` lancée sur le serveur pendant que le service calcule est refusée
   (« Un calcul est déjà en cours ») et ne touche pas au calcul du service ;
+- sur le serveur, la cause la plus fréquente d'un calcul abandonné est la
+  **limite de mémoire du service** (3 Go, `MemoryMax`) : le noyau tue le
+  processus au milieu d'un gros calcul. Le message de clôture le dit et
+  invite à relancer avec un temps limite plus court ou moins de fils, pour
+  que l'utilisateur ne relance pas le même calcul vers la même fin ;
 - la clôture renseigne `duree_s` (le temps couru depuis le lancement, pas
   « 0 s »), et si une **version du calcul existe sans aucune séance datée**
   (processus tué entre l'enregistrement de la version et l'instanciation),

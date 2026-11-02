@@ -123,7 +123,13 @@ _MESSAGES_PAR_DEFAUT = {
     EtatCalcul.ARRETE: "Calcul arrêté à la demande de l'utilisateur.",
 }
 
-MESSAGE_INTERROMPU = "Calcul interrompu par l'arrêt de l'application."
+MESSAGE_INTERROMPU = (
+    "Calcul interrompu : le processus qui l'exécutait s'est arrêté avant la fin (redémarrage de "
+    "l'application, ou mémoire épuisée : un calcul trop gros est tué par le système). S'il se "
+    "reproduit, relancer avec un temps limite plus court ou moins de fils de calcul."
+)
+"""Message d'un calcul resté « en cours » que plus rien n'exécute. Sur le serveur, la cause la
+plus fréquente est la limite de mémoire du service (3 Go) : le message dit quoi changer."""
 CLE_PROCESSUS = "pid"
 """Clé des statistiques d'un calcul en cours : numéro du processus qui l'exécute."""
 CLE_DEMARRAGE = "demarre_epoch"

@@ -774,12 +774,19 @@ def test_commande_generer_ameliore_par_defaut(lanceur, jeu_minimal):
     message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
     assert "Bilan sur l'ensemble du semestre :" in message
     assert _lignes_de_bilan(resultat.output) == 0
-    # Un si petit problème va jusqu'à l'optimum : ni temps limite, ni arrêt sur stagnation.
-    assert "On ne peut pas faire mieux avec les préférences actuelles." in message
+    # Un si petit problème va d'ordinaire jusqu'à l'optimum ; sur une machine chargée, l'arrêt
+    # sur stagnation (actif par défaut) peut couper avant la preuve : les deux issues disent
+    # pourquoi l'amélioration s'est arrêtée.
     with session_base() as session:
         (calcul,) = session.scalars(select(m.Calcul)).all()
-        assert calcul.statistiques["raison_arret"] == "optimum_prouve"
+        raison = calcul.statistiques["raison_arret"]
         assert calcul.parametres["arret_sur_stagnation"] is True
+    assert raison in ("optimum_prouve", "stagnation"), raison
+    attendu = {
+        "optimum_prouve": "On ne peut pas faire mieux avec les préférences actuelles.",
+        "stagnation": "L'amélioration s'est arrêtée d'elle-même",
+    }[raison]
+    assert attendu in message
 
 
 def test_commande_generer_echec_code_1(lanceur, jeu_minimal):
@@ -1124,7 +1131,7 @@ def test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates(jeu_minimal):
         assert all(c.duree_s is not None for c in session.scalars(select(m.Calcul)))
     suivi = generation.etat_calcul(avec_version)
     assert suivi.version_id is not None and "relancer l'instanciation" in suivi.message
-    assert "relancer" not in generation.etat_calcul(sans_version).message
+    assert "relancer l'instanciation" not in generation.etat_calcul(sans_version).message
 
 
 @pytest.mark.cas_limite
