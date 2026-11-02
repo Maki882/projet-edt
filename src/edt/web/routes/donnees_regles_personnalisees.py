@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import QueryParams
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.contraintes import Niveau
 from edt.domaine.regles import (
     CATALOGUE_TYPES,
@@ -43,7 +44,6 @@ from edt.services import regles as service_regles
 from edt.services.parametres import lire_parametres
 from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
 from edt.services.referentiels.description import options_reference
-from edt.services.referentiels.operations import identifiant_possible
 from edt.services.referentiels.personnes import REF_ANNEE, annee_par_defaut
 from edt.web.dependances import SessionRequete
 from edt.web.donnees.ecrans import CIBLE_LISTE, Formulaire
@@ -97,7 +97,7 @@ def adresse_sure(brute: object, defaut: str) -> str:
 
 def _detail(session: Session, numero: int) -> service_regles.RegleDetail:
     """La règle n° `numero` ; « introuvable » aussi pour un numéro impossible (« 999...9 »)."""
-    if not identifiant_possible(numero):
+    if not identifiant_valide(numero):
         raise ErreurIntrouvable(f"Règle n° {numero} introuvable : elle a peut-être été supprimée.")
     return service_regles.lire_par_id(session, numero)
 
@@ -123,7 +123,7 @@ def _annee(session: Session, valeur: object) -> m.AnneeScolaire:
     ident = entier_naturel(texte)
     annee = (
         session.get(m.AnneeScolaire, ident)
-        if ident is not None and identifiant_possible(ident)
+        if ident is not None and identifiant_valide(ident)
         else None
     )
     if annee is None:

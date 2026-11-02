@@ -26,10 +26,9 @@ import pytest
 from sqlalchemy import delete, func, select
 
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.moteur import IDENTIFIANT_MAX, identifiant_valide, session_base
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services.emploi_du_temps import modifications, vues
-from edt.services.emploi_du_temps.identifiants import IDENTIFIANT_MAX, identifiant_possible
 
 from .conftest import (
     CINQ_MILLE_CHIFFRES,
@@ -50,9 +49,9 @@ def test_bornes_des_identifiants():
     Risque : un identifiant qu'aucune ligne SQLite ne peut porter atteint la base
     (OverflowError, erreur 500), ou `True` passe pour l'identifiant 1.
     """
-    assert identifiant_possible(1) and identifiant_possible(IDENTIFIANT_MAX)
+    assert identifiant_valide(1) and identifiant_valide(IDENTIFIANT_MAX)
     for impossible in (0, -1, IDENTIFIANT_MAX + 1, int(ENORME), True, "12", None, 1.0):
-        assert not identifiant_possible(impossible), impossible
+        assert not identifiant_valide(impossible), impossible
 
 
 @pytest.mark.cas_limite

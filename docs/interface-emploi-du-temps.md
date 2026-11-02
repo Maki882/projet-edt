@@ -29,7 +29,7 @@ jamais remplacée par une liste vide.
 | `src/edt/services/emploi_du_temps/memoire.py` | mémoire des vérifications, pré-vérifications et récapitulatif tant que la base ne change pas |
 | `src/edt/services/emploi_du_temps/prechauffage.py` | recalcul en arrière-plan de cette mémoire après un calcul ou une activation |
 | `src/edt/services/emploi_du_temps/regles_personnalisees.py` | règles personnalisées sur ces écrans : tableau de la page Générer, règles appliquées et entorses d'un calcul, déjeuner de la personne affichée, jours permis d'une séance |
-| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base ; paramètre d'adresse vide = non précisé ; nombres écrits lus en chiffres ASCII (`entier_ecrit`) ; saisies recopiées coupées (`apercu`) |
+| `src/edt/services/emploi_du_temps/identifiants.py` | identifiants reçus (adresse, formulaire, cookie) bornés avant la base par la garde commune `edt.db.moteur.identifiant_valide` ; paramètre d'adresse vide = non précisé ; nombres écrits lus en chiffres ASCII (`entier_ecrit`) ; saisies recopiées coupées (`apercu`) |
 | `src/edt/services/emploi_du_temps/tableau_de_bord.py` | ce que l'accueil affiche : prochaine étape, version active, points à traiter, calcul sans solution |
 | `src/edt/web/routes/calculs.py` | onglet « Générer » (`/calculs`, `/versions`) |
 | `src/edt/web/routes/emploi_du_temps.py` | onglet « Emploi du temps » (`/emploi-du-temps`) |
@@ -479,7 +479,8 @@ dans `tests/web_edt/conftest.py`.
   ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`
   (lien mal copié, `-1`, vingt chiffres) donné à la base lèverait
   `OverflowError`. Chaque service vérifie l'identifiant reçu avant de
-  l'interroger (`exiger_identifiant`, `obtenir`) : hors bornes, c'est
+  l'interroger (`exiger_identifiant`, `obtenir`, qui appliquent la garde
+  commune `edt.db.moteur.identifiant_valide`) : hors bornes, c'est
   « introuvable » (404), comme un identifiant inconnu. Dans l'adresse de la
   grille, une cible hors bornes ou inconnue affiche la première classe en le
   disant ; une séance (`seance=h…`, `o…`) introuvable ouvre la page sans
