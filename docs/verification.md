@@ -616,6 +616,9 @@ Cas limites, pour les trois fonctions :
 - **salle inconnue proposée** à `verifier_modification` : `ErreurIntrouvable`
   (une salle disparue d'une version enregistrée vaut, elle, « salle à
   définir »).
+- **identifiant hors des bornes de la base** (version ou semestre nul,
+  négatif ou au-delà de 2**63 - 1) : `ErreurIntrouvable` « … n'existe pas »
+  (garde `identifiant_possible` des référentiels), jamais `OverflowError`.
 
 - `verifier_version` : semaine type de la version et ses indicateurs.
 - `verifier_occurrences_version` : séances datées de la version. Avec une

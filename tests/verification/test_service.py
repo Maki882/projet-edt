@@ -357,3 +357,24 @@ def test_liste_de_contraintes_vide_refusee(version_id, session):
     for appel in appels:
         with pytest.raises(ErreurDonneesInvalides, match="Aucune contrainte à vérifier"):
             appel()
+
+
+@pytest.mark.cas_limite
+def test_identifiant_hors_bornes_de_la_base_introuvable(jeu_minimal, session):
+    """Cas : un identifiant de version ou de semestre hors des bornes de la base (2**70, saisi dans une adresse ou la commande).
+
+    Risque : `OverflowError` de SQLite (erreur 500, trace dans la commande) au lieu de
+    « n'existe pas ».
+    """
+    hors_bornes = 2**70
+    appels = (
+        lambda: version_a_verifier(session, version_id=hors_bornes),
+        lambda: version_a_verifier(session, semestre_id=hors_bornes),
+        lambda: verifier_version(session, hors_bornes),
+        lambda: verifier_occurrences_version(session, hors_bornes),
+        lambda: verifier_modification(session, hors_bornes, "1-1", LUNDI, 510, 630, None),
+        lambda: version_a_verifier(session, version_id=0),  # nul ou négatif : de même
+    )
+    for appel in appels:
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            appel()

@@ -71,6 +71,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMe
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
 from edt.services.niveaux import niveaux_de_version, niveaux_regles_de_version
+from edt.services.referentiels.operations import identifiant_possible
 from edt.verification import (
     Anomalie,
     Indicateurs,
@@ -427,7 +428,7 @@ def version_a_verifier(
     if semestre_id is None:
         semestre = semestre_par_defaut(session)
     else:
-        semestre = session.get(Semestre, semestre_id)
+        semestre = session.get(Semestre, semestre_id) if identifiant_possible(semestre_id) else None
         if semestre is None:
             raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     version_active = session.scalar(
@@ -447,7 +448,13 @@ def version_a_verifier(
 
 
 def _version(session: Session, version_id: int) -> VersionEdt:
-    version = session.get(VersionEdt, version_id)
+    """La version `version_id`, ou `ErreurIntrouvable`.
+
+    Un identifiant hors des bornes de la base (nul, négatif, ou au-delà de
+    2**63 - 1) n'est pas demandé à SQLite, qui lèverait `OverflowError` : il
+    n'existe pas (`identifiant_possible`).
+    """
+    version = session.get(VersionEdt, version_id) if identifiant_possible(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     return version
