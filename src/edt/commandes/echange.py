@@ -23,7 +23,8 @@ from typing import Annotated
 import typer
 
 from edt.db.moteur import session_base
-from edt.erreurs import ErreurDonneesInvalides
+from edt.echange.donnees import ENTIER_SQLITE_MAX
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.echange import FichierEnvoye, FichierProduit, ModeImport
 
@@ -78,6 +79,8 @@ def exporter_edt(
     sortie: Annotated[Path | None, typer.Option(help="Fichier ou dossier de destination.")] = None,
 ) -> None:
     """Exporte l'emploi du temps d'une version en CSV ou en iCal (tout, ou une ressource)."""
+    if not 0 < version <= ENTIER_SQLITE_MAX:  # au-delà, la base lèverait OverflowError
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version} n'existe pas.")
     with session_base() as session:
         filtre = service.resoudre_filtre(
             session, version, groupe=groupe, enseignant=enseignant, salle=salle

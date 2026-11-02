@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import time
 
 import pytest
 from sqlalchemy import func, select
+from tests.echange.fabrique import compter, csv_envoye, messages, seul
 
 from edt.db import modeles as m
 from edt.db.initialisation import initialiser_base
 from edt.db.moteur import fabrique_sessions, session_base
 from edt.domaine.enumerations import Accessibilite, EtatCalcul, Gravite
+from edt.echange import donnees
 from edt.echange.format import FEUILLES
+from edt.echange.lecture import LigneTypee
 from edt.echange.transaction import simulation_possible
+from edt.echange.valeurs import cle_code
 from edt.erreurs import ErreurCalculEnCours, ErreurRegleMetier
 from edt.services import echange as service
 from edt.services.echange import FichierEnvoye
@@ -22,11 +27,6 @@ from edt.services.generation import CLE_PROCESSUS
 
 def _csv(nom: str, texte: str) -> FichierEnvoye:
     return FichierEnvoye(nom, texte.encode("utf-8"))
-
-
-def _compter(modele) -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(modele))
 
 
 def _salle(code: str) -> m.Salle:
@@ -115,13 +115,13 @@ def test_import_partiel_et_rapport_exact(jeu_minimal, importer, fichier_exemple)
 
 
 def test_simulation_n_ecrit_rien(jeu_minimal, importer, fichier_exemple):
-    avant = _compter(m.Salle)
+    avant = compter(m.Salle)
 
     rapport = importer(fichier_exemple("salles_avec_erreurs.csv"), simuler=True)
 
     assert rapport.simulation
     assert rapport.bilan("salles").compteurs == {"crees": 2, "rejetes": 4}
-    assert _compter(m.Salle) == avant
+    assert compter(m.Salle) == avant
 
 
 def test_reimport_sans_doublon(jeu_minimal, importer, fichier_exemple):
@@ -130,7 +130,7 @@ def test_reimport_sans_doublon(jeu_minimal, importer, fichier_exemple):
     rapport = importer(fichier_exemple("salles_avec_erreurs.csv"))
 
     assert rapport.bilan("salles").compteurs == {"inchanges": 2, "rejetes": 4}
-    assert _compter(m.Salle) == jeu_minimal.nb_salles + 2
+    assert compter(m.Salle) == jeu_minimal.nb_salles + 2
 
 
 def test_mise_a_jour_par_identifiant_metier(jeu_minimal, importer):
@@ -260,7 +260,7 @@ def test_tout_remplacer_exige_une_confirmation(jeu_minimal, importer):
     campus = _csv("campus.csv", "code;nom\nNDC;Notre-Dame-des-Champs\n")
     with pytest.raises(ErreurRegleMetier, match="confirmer"):
         importer(campus, tout_remplacer=True)
-    assert _compter(m.Salle) == jeu_minimal.nb_salles
+    assert compter(m.Salle) == jeu_minimal.nb_salles
 
 
 def test_tout_remplacer_vide_puis_importe(jeu_minimal, importer, exporter):
@@ -287,7 +287,7 @@ def test_tout_remplacer_en_simulation_ne_supprime_rien(jeu_minimal, importer):
         _csv("campus.csv", "code;nom\nNDC;Notre-Dame\n"), simuler=True, tout_remplacer=True
     )
     assert rapport.bilan("tout remplacer").nombre("supprimes") > 0
-    assert _compter(m.Salle) == jeu_minimal.nb_salles
+    assert compter(m.Salle) == jeu_minimal.nb_salles
 
 
 # --------------------------------------------------------------------------- #
@@ -319,4 +319,242 @@ def test_point_de_sauvegarde_ne_valide_pas_la_transaction(base):
         with simulation_possible(session, simuler=False):
             session.add(m.Campus(code="SP", nom="Point de sauvegarde"))
         session.rollback()
-    assert _compter(m.Campus) == 0
+    assert compter(m.Campus) == 0
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites de l'import des données (banque de tests)
+# --------------------------------------------------------------------------- #
+
+ENTETE_BESOIN = "annee;semestre;matiere;type;groupes;duree;jour_impose;debut_impose;libelle"
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("format_", ["xlsx", "zip"])
+def test_export_xlsx_tolere_les_caracteres_de_controle(format_, jeu_minimal, importer):
+    """Cas : un libellé de matière contient un caractère de contrôle invisible (U+0001 collé).
+
+    Risque : openpyxl refusait la cellule (IllegalCharacterError) et tout l'export
+    XLSX de l'établissement échouait en 500 ; un réimport perdait le caractère.
+    """
+    libelle = "Mathématiques\x01avancées"
+    with session_base() as session:
+        session.scalar(select(m.Matiere).where(m.Matiere.code == "IM.1101")).libelle = libelle
+    with session_base() as session:
+        fichier = service.exporter_donnees(session, format_)
+
+    rapport = importer(FichierEnvoye(fichier.nom, fichier.contenu), simuler=True)
+
+    assert rapport.bilan("matieres").compteurs == {"inchanges": 6}  # caractère restitué
+    avertissement = seul(rapport.signalements, Gravite.AVERTISSEMENT)
+    assert "U+0001" in avertissement.message and avertissement.colonne == "libelle"
+
+
+@pytest.mark.cas_limite
+def test_caractere_de_controle_importe_est_garde_et_signale(base, importer):
+    """Cas : un CSV dont un libellé contient U+0001 (copier-coller depuis un autre logiciel).
+
+    Risque : valeur corrigée en silence (perte), ou caractère invisible gardé sans
+    que personne ne le sache.
+    """
+    rapport = importer(csv_envoye("matieres.csv", "code;libelle", "IF.9001;Matière\x01fictive"))
+
+    assert rapport.bilan("matieres").compteurs == {"crees": 1}
+    avertissement = seul(rapport.signalements, Gravite.AVERTISSEMENT)
+    assert (avertissement.ligne, avertissement.colonne) == (2, "libelle")
+    assert "U+0001" in avertissement.message
+    with session_base() as session:
+        gardé = session.scalar(select(m.Matiere.libelle).where(m.Matiere.code == "IF.9001"))
+    assert gardé == "Matière\x01fictive"
+
+
+@pytest.mark.cas_limite
+def test_besoin_dont_le_debut_impose_et_la_duree_depassent_minuit_est_rejete(jeu_minimal, importer):
+    """Cas : un besoin de 24 h imposé à 23:00, ou de 3 h imposé à 22:30.
+
+    Risque : durée et heure contrôlées séparément, le besoin entrait ; toute séance
+    placée à ce début violait la contrainte de plage horaire à l'enregistrement de
+    la version : plantage différé, au calcul, sans lien visible avec l'import.
+    """
+    fichier = csv_envoye(
+        "besoins.csv",
+        ENTETE_BESOIN,
+        "2026-2027;S1;IM.1101;TD;A1-G1;24 h;lundi;23:00;Veille fictive",
+        "2026-2027;S1;IM.1101;TD;A1-G1;3 h;mardi;22:30;Nocturne fictive",
+        "2026-2027;S1;IM.1101;TD;A1-G1;2 h;mercredi;22:00;Fin à minuit pile",  # accepté
+    )
+
+    rapport = importer(fichier, simuler=True)
+
+    assert rapport.bilan("besoins").compteurs == {"crees": 1, "rejetes": 2}
+    erreurs = [s for s in rapport.signalements if s.gravite is Gravite.ERREUR]
+    assert [(s.ligne, s.colonne) for s in erreurs] == [(2, "debut_impose"), (3, "debut_impose")]
+    assert erreurs[1].message == (
+        "Une séance de 3 h commençant à 22 h 30 dépasserait minuit : avancer l'heure de début "
+        "ou raccourcir la durée."
+    )
+
+
+@pytest.mark.cas_limite
+def test_salle_au_code_contenant_arobase_reste_referencable(
+    jeu_minimal, environnement, aujourdhui, importer, exporter
+):
+    """Cas : une salle de code « A@B » imposée à un besoin, puis export et réimport.
+
+    Risque : la référence était coupée au premier « @ » (salle « A » du campus
+    « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour.
+    """
+    salles = csv_envoye("salles.csv", "code;campus;capacite;type", "A@B;NDC;30;COURS")
+    besoins = csv_envoye(
+        "besoins.csv",
+        "annee;semestre;matiere;type;groupes;duree;salle_imposee;libelle",
+        "2026-2027;S1;IM.1101;TD;A1-G1;2 h;A@B;Séance en salle A@B",
+    )
+
+    rapport = importer([salles, besoins])
+
+    assert not rapport.a_des_rejets, rapport.signalements
+    assert rapport.bilan("besoins").compteurs == {"crees": 1}
+    with session_base() as session:
+        export = service.exporter_donnees(session, "zip")
+    vide = f"sqlite:///{(environnement / 'vide.db').as_posix()}"
+    initialiser_base(aujourdhui=aujourdhui, url=vide)
+    retour = importer(FichierEnvoye(export.nom, export.contenu), url=vide)
+    assert not retour.a_des_rejets, retour.signalements
+    apres, avant = exporter(vide), exporter()
+    assert apres["salles"] == avant["salles"]
+    assert apres["besoins"] == avant["besoins"]
+    assert [b["salle_imposee"] for b in avant["besoins"] if b["salle_imposee"]] == ["A@B"]
+
+
+@pytest.mark.cas_limite
+def test_durees_absurdes_signalees(jeu_minimal, importer):
+    """Cas : un trajet de 100 h entre deux campus, un maximum de 90 h par jour.
+
+    Risque : accepté sans borne, il rendait le calcul infaisable (trajet impossible)
+    ou n'avait aucun sens, sans lien visible avec l'import.
+    """
+    trajets = csv_envoye("trajets.csv", "campus_a;campus_b;duree", "NDC;ISSY;100 h")
+    enseignants = csv_envoye(
+        "enseignants.csv",
+        "identifiant;nom;max_par_jour;max_par_semaine",
+        "ENS001;Martin;90 h;",
+        "ENS002;Bernard;;200 h",
+        "ENS003;Dubois;24 h;168 h",  # juste aux bornes : accepté
+    )
+
+    rapport = importer([trajets, enseignants], simuler=True)
+
+    assert rapport.bilan("trajets").compteurs == {"rejetes": 1}
+    assert rapport.bilan("enseignants").nombre("rejetes") == 2
+    erreurs = {
+        (s.fichier, s.colonne): s.message
+        for s in rapport.signalements
+        if s.gravite is Gravite.ERREUR
+    }
+    assert erreurs == {
+        ("trajets.csv", "duree"): "Valeur trop grande : 100 h (au plus 12 h).",
+        ("enseignants.csv", "max_par_jour"): "Valeur trop grande : 90 h (au plus 24 h).",
+        ("enseignants.csv", "max_par_semaine"): "Valeur trop grande : 200 h (au plus 168 h).",
+    }
+
+
+ENTETE_GROUPE = "annee;code;libelle;nature;effectif;parent"
+
+
+def _chaine_de_groupes(nombre: int) -> list[str]:
+    """Lignes de `nombre` groupes en chaîne (CH0000 <- CH0001 <- ...), enfants d'abord."""
+    lignes = [
+        f"2026-2027;CH{i:04d};Chaîne {i};classe;10;{f'CH{i - 1:04d}' if i else ''}"
+        for i in range(nombre)
+    ]
+    return list(reversed(lignes))
+
+
+@pytest.mark.cas_limite
+def test_groupe_parent_de_lui_meme_rejete(jeu_minimal, importer):
+    """Cas : un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1).
+
+    Risque : l'auto-parenté finissait en IntegrityError générique, ou en boucle sans
+    fin dans le parcours des parents.
+    """
+    boucles = csv_envoye(
+        "groupes.csv",
+        ENTETE_GROUPE,
+        "2026-2027;BOUCLE;Boucle fictive;classe;10;BOUCLE",
+        "2026-2027;A1-G1;1re année, classe 1;classe;28;A1-G1",
+    )
+
+    rapport = importer(boucles)
+
+    assert rapport.bilan("groupes").compteurs == {"rejetes": 2}
+    erreurs = [s for s in rapport.signalements if s.gravite is Gravite.ERREUR]
+    assert [(s.ligne, s.colonne) for s in erreurs] == [(2, "parent"), (3, "parent")]
+    assert all(s.message.startswith("Parenté circulaire") for s in erreurs)
+    assert compter(m.Groupe) == jeu_minimal.nb_groupes
+
+
+@pytest.mark.cas_limite
+def test_ordre_des_parents_lineaire_sur_une_chaine_profonde():
+    """Cas : 20 000 groupes en chaîne, chaque enfant écrit avant son parent.
+
+    Risque : un ordonnancement récursif lèverait RecursionError au-delà de
+    1 000 niveaux, un algorithme quadratique prendrait des minutes.
+    """
+    lignes = [
+        LigneTypee(
+            "groupes.csv",
+            "groupes",
+            numero,
+            {"annee": "2026-2027", "code": f"CH{i:05d}", "parent": f"CH{i - 1:05d}" if i else None},
+            frozenset(),
+        )
+        for numero, i in enumerate(reversed(range(20_000)), start=2)
+    ]
+    cles = {id(ligne): (cle_code(ligne["annee"]), cle_code(ligne["code"])) for ligne in lignes}
+
+    debut = time.perf_counter()
+    ordre, circulaires = donnees._parents_d_abord(lignes, cles)
+
+    assert time.perf_counter() - debut < 1
+    assert [ligne["code"] for ligne in ordre] == [f"CH{i:05d}" for i in range(20_000)]
+    assert circulaires == set()
+
+
+@pytest.mark.perf
+@pytest.mark.cas_limite
+def test_hierarchie_profonde_et_auto_parente(jeu_minimal, importer):
+    """Cas : l'import réel de 1 500 groupes en chaîne, enfants avant parents, plus une boucle.
+
+    Risque : un import de hiérarchie profonde qui s'effondre (pile, temps) ou qui
+    laisse entrer la boucle ; mesuré de bout en bout, base comprise.
+    """
+    lignes = [*_chaine_de_groupes(1500), "2026-2027;BOUCLE;Boucle fictive;classe;10;BOUCLE"]
+
+    debut = time.perf_counter()
+    rapport = importer(csv_envoye("groupes.csv", ENTETE_GROUPE, *lignes), simuler=True)
+    duree = time.perf_counter() - debut
+
+    assert rapport.bilan("groupes").compteurs == {"crees": 1500, "rejetes": 1}
+    assert seul(rapport.signalements, Gravite.ERREUR).message.startswith("Parenté circulaire")
+    assert duree < 15, f"{duree:.1f} s"
+
+
+@pytest.mark.cas_limite
+def test_ical_en_mode_donnees_signale_le_mauvais_mode(jeu_minimal, importer, fichier_exemple):
+    """Cas : un agenda .ics envoyé avec le mode « données de l'établissement ».
+
+    Risque : correct aujourd'hui mais sans test ; une régression ignorerait
+    l'agenda en silence, l'utilisateur croyant son emploi du temps importé.
+    """
+    campus = csv_envoye("campus.csv", "code;nom", "ZZ;Campus fictif")
+
+    rapport = importer([fichier_exemple("agenda.ics"), campus], simuler=True)
+
+    erreur = seul(rapport.signalements, Gravite.ERREUR)
+    assert erreur.fichier == "agenda.ics"
+    assert "choisir un mode d'import d'emploi du temps" in erreur.message
+    assert "référence, verrous ou à replacer" in erreur.message
+    assert rapport.a_des_rejets and rapport.bilan("séances").compteurs == {}
+    assert rapport.bilan("campus").compteurs == {"crees": 1}  # le reste de l'envoi est lu
+    assert messages(rapport.signalements, Gravite.AVERTISSEMENT) == []

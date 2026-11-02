@@ -7,7 +7,14 @@ web) s'appliquent ; s'y ajoutent :
 - `importer(fichiers, ...)` : applique (ou simule) un import dans sa propre
   session validée, et renvoie le rapport ;
 - `exporter()` : l'export des données de la base, en valeurs typées ;
-- `version_generee` : une version produite par un calcul sur le jeu minimal.
+- `version_generee` : une version produite par un calcul sur le jeu minimal ;
+- `version_reference` : une version importée (mode référence) depuis
+  `seances_existantes.csv`, sans calcul : plus rapide.
+
+Banque de cas limites : un test de cas limite porte le marqueur
+`cas_limite` et commence par une docstring « Cas : ... Risque : ... » ; ses
+fichiers se construisent avec `tests/echange/fabrique.py` (CSV, classeur,
+archive, iCal, en mémoire et fictifs).
 """
 
 from __future__ import annotations
@@ -75,3 +82,14 @@ def version_generee(jeu_minimal) -> int:
     """Identifiant d'une version générée (moteur provisoire) sur le jeu minimal."""
     suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
     return generation.exiger_reussite(suivi).version_id
+
+
+@pytest.fixture
+def version_reference(jeu_minimal, importer, fichier_exemple) -> int:
+    """Identifiant d'une version importée en mode référence (sans calcul) sur le jeu minimal."""
+    rapport = importer(
+        fichier_exemple("seances_existantes.csv"),
+        mode=ModeImport.REFERENCE,
+        semestre_id=jeu_minimal.semestre_id,
+    )
+    return rapport.version_id

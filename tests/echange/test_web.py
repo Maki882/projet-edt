@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import datetime as dt
+import html
 import os
 
-from sqlalchemy import func, select
+import pytest
+from tests.echange.fabrique import compter
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -14,11 +16,6 @@ from edt.services.echange import ModeImport
 from edt.services.generation import CLE_PROCESSUS
 
 HTMX = {"HX-Request": "true"}
-
-
-def _compter(modele) -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(modele))
 
 
 def _envoi(fichier, **donnees):
@@ -53,7 +50,7 @@ def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fi
     assert "data:text/csv" not in page  # le rapport n'est pas encodé dans la page
     assert 'formaction="/import/rapport.csv"' in page
     assert 'formaction="/import/appliquer"' in page
-    assert _compter(m.Salle) == jeu_minimal.nb_salles
+    assert compter(m.Salle) == jeu_minimal.nb_salles
 
 
 def test_simulation_sans_htmx_rend_la_page_entiere(jeu_minimal, client, fichier_exemple):
@@ -66,7 +63,7 @@ def test_application(jeu_minimal, client, fichier_exemple):
 
     assert reponse.status_code == 200
     assert "Import appliqué" in reponse.text and "non importée(s)" in reponse.text
-    assert _compter(m.Salle) == jeu_minimal.nb_salles + 2
+    assert compter(m.Salle) == jeu_minimal.nb_salles + 2
 
 
 def test_import_d_emploi_du_temps_par_le_web(jeu_minimal, client, fichier_exemple):
@@ -83,7 +80,7 @@ def test_import_d_emploi_du_temps_par_le_web(jeu_minimal, client, fichier_exempl
         or "Version d'emploi du temps créée" in reponse.text
     )
     assert "Semaine type de A1" in reponse.text
-    assert _compter(m.VersionEdt) == 1
+    assert compter(m.VersionEdt) == 1
 
 
 def test_tout_remplacer_demande_confirmation(jeu_minimal, client, fichier_exemple):
@@ -94,13 +91,13 @@ def test_tout_remplacer_demande_confirmation(jeu_minimal, client, fichier_exempl
 
     refus = client.post("/import/appliquer", **_envoi(fichier, tout_remplacer="1"))
     assert refus.status_code == 409 and "confirmer" in refus.text
-    assert _compter(m.Salle) == jeu_minimal.nb_salles
+    assert compter(m.Salle) == jeu_minimal.nb_salles
 
     accord = client.post(
         "/import/appliquer", **_envoi(fichier, tout_remplacer="1", confirmer_remplacement="1")
     )
     assert accord.status_code == 200
-    assert _compter(m.Salle) == 0  # les salles du fichier visent un campus supprimé : rejetées
+    assert compter(m.Salle) == 0  # les salles du fichier visent un campus supprimé : rejetées
 
 
 def test_envoi_sans_fichier_ou_trop_gros(base, client):
@@ -169,3 +166,80 @@ def test_export_d_emploi_du_temps(version_generee, client):
     assert deux.status_code == 422
     assert client.get("/export/emploi-du-temps.csv", params={"version_id": 999}).status_code == 404
     assert client.get("/export/emploi-du-temps.csv").status_code == 422
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites des écrans d'échange (banque de tests)
+# --------------------------------------------------------------------------- #
+
+VERSIONS_INEXISTANTES = ["-7", "0", "9" * 18, str(2**63), "9" * 20, "9" * 5000]
+"""Négatif, nul, sous la borne de SQLite, juste au-delà, vingt chiffres, plus que int() n'en lit."""
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("format_", ["csv", "ics"])
+def test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable(format_, base, client):
+    """Cas : GET /export/emploi-du-temps.csv (ou .ics) avec version_id=-7, 0 ou vingt chiffres.
+
+    Risque : OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300
+    chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des
+    écrans Données (cas transmis par le lot web EDT).
+    """
+    for version in VERSIONS_INEXISTANTES:
+        reponse = client.get(f"/export/emploi-du-temps.{format_}", params={"version_id": version})
+        texte = html.unescape(reponse.text)
+        assert reponse.status_code == 404, (version[:30], texte[:300])
+        assert f"La version d'emploi du temps {version[:20]}" in texte
+        assert "n'existe pas" in texte and "inattendue" not in texte
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("format_", ["csv", "ics"])
+def test_ressource_hostile_dans_l_adresse_donne_une_erreur_lisible(
+    format_, version_reference, client
+):
+    """Cas : un filtre groupe, enseignant ou salle énorme ou négatif, ou un identifiant non numérique.
+
+    Risque : OverflowError dans la recherche du filtre : « erreur inattendue » 500
+    au lieu de « n'existe pas » (404), ou de « nombre attendu » (422) pour « ² ».
+    """
+    cas = [
+        ({"groupe_id": "9" * 20}, 404, "Le groupe 99999999999999999999 n'existe pas"),
+        ({"enseignant_id": "-1"}, 404, "L'enseignant -1 n'existe pas"),
+        ({"salle_id": str(2**63)}, 404, f"La salle {2**63} n'existe pas"),
+        ({"version_id": "²"}, 422, "nombre attendu"),  # chiffre selon isdigit, pas selon int()
+        ({"groupe_id": "A1-G1"}, 422, "nombre attendu"),
+    ]
+    for parametres, statut, attendu in cas:
+        reponse = client.get(
+            f"/export/emploi-du-temps.{format_}",
+            params={"version_id": version_reference, **parametres},
+        )
+        texte = html.unescape(reponse.text)
+        assert reponse.status_code == statut, (parametres, texte[:300])
+        assert attendu in texte and "inattendue" not in texte, parametres
+
+
+@pytest.mark.cas_limite
+def test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible(
+    jeu_minimal, client, fichier_exemple
+):
+    """Cas : un import d'emploi du temps envoyé avec semestre_id=99999999999999999999 ou -7.
+
+    Risque : OverflowError dans la recherche du semestre : « erreur inattendue »
+    au lieu de dire que la valeur est hors limites ou que le semestre n'existe pas.
+    """
+    fichier = fichier_exemple("seances_existantes.csv")
+
+    enorme = client.post(
+        "/import/simuler", headers=HTMX, **_envoi(fichier, mode="reference", semestre_id="9" * 20)
+    )
+    negatif = client.post(
+        "/import/simuler", headers=HTMX, **_envoi(fichier, mode="reference", semestre_id="-7")
+    )
+
+    assert enorme.status_code == 422
+    assert "Nombre hors limites" in html.unescape(enorme.text)
+    assert negatif.status_code == 404
+    assert "Le semestre -7 n'existe pas" in html.unescape(negatif.text)
+    assert compter(m.VersionEdt) == 0

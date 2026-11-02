@@ -16,6 +16,10 @@ la **valide aussitôt** (constaté et couvert par un test). `ouvrir_transaction`
 émet donc un BEGIN explicite avant le premier point de sauvegarde ; la
 transaction reste ensuite entre les mains de l'appelant (validée à la fin de
 la requête web ou du bloc `session_base`).
+
+Ce BEGIN est IMMEDIATE : l'import prend le verrou d'écriture dès le départ.
+Deux imports simultanés se suivent ainsi (le second attend le premier, dans
+la limite du délai d'attente de la base) au lieu que le second échoue.
 """
 
 from __future__ import annotations
@@ -36,8 +40,12 @@ def ouvrir_transaction(session: Session) -> None:
         return
     brute = connexion.connection.dbapi_connection
     if not brute.in_transaction:
-        connexion.exec_driver_sql("BEGIN")
-        journal.debug("Transaction SQLite ouverte explicitement avant les points de sauvegarde")
+        # IMMEDIATE : le verrou d'écriture est pris dès maintenant, en attendant au besoin
+        # (busy_timeout) qu'un autre import ou une autre écriture se termine. Un BEGIN
+        # différé lirait d'abord, puis échouerait aussitôt (« database is locked ») si une
+        # autre transaction avait validé entre-temps : SQLite n'attend pas dans ce cas.
+        connexion.exec_driver_sql("BEGIN IMMEDIATE")
+        journal.debug("Transaction SQLite ouverte (BEGIN IMMEDIATE) avant les points de sauvegarde")
 
 
 @contextmanager

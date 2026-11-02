@@ -19,6 +19,14 @@ Formats acceptés :
 - listes : valeurs séparées par un point-virgule ou une virgule ;
 - codes : espaces de début et de fin retirés, espaces multiples réduits ;
   la comparaison de deux codes ignore la casse (`cle_code`).
+
+Pièges de tableur reconnus et expliqués (jamais convertis en silence) : une
+date ou une heure dans une colonne de codes (« 1-2 » devenu le 2 janvier),
+une date ou une heure enregistrée comme nombre de série (46300, 0,354166),
+un entier hors limites (`ENTIER_MAX`). Les caractères de contrôle invisibles
+(`caracteres_de_controle`) sont signalés par la lecture des lignes ; le
+classeur XLSX les échappe en `_xHHHH_` (`echapper_controle`) et la lecture
+les restitue (`restituer_controle`), pour un aller-retour exact.
 """
 
 from __future__ import annotations
@@ -47,6 +55,12 @@ _DUREE_HEURES = re.compile(r"^(\d{1,3})\s*h\s*(?:(\d{1,2})\s*(?:min)?)?$", re.IG
 _DUREE_MINUTES = re.compile(r"^(\d{1,4})\s*min$", re.IGNORECASE)
 _DUREE_HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
 _ENTIER = re.compile(r"^[+-]?\d+$")
+_NOMBRE_DECIMAL = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
+_CONTROLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
+_CONTROLE_ECHAPPE = re.compile(r"_x(000[0-8]|000[bBcCeEfF]|001[0-9a-fA-F])_")
+
+ENTIER_MAX = 1_000_000
+"""Plus grand entier admis dans une cellule, en valeur absolue (capacités, effectifs, volumes)."""
 _SEPARATEURS_LISTE = re.compile(r"[;,\n]")
 
 _NOMBRE = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
@@ -113,8 +127,23 @@ def lire_texte(valeur: Any) -> str | None:
     return texte_cellule(valeur)
 
 
+def _refuser_date_du_tableur(valeur: Any) -> None:
+    """Une date ou une heure dans une colonne de codes vient d'une conversion du tableur."""
+    if isinstance(valeur, (dt.date, dt.time)):
+        quoi = (
+            f"une heure ({valeur:%H:%M})"
+            if isinstance(valeur, dt.time)
+            else f"une date ({valeur:%d/%m/%Y})"
+        )
+        raise ErreurDonneesInvalides(
+            f"La cellule contient {quoi} au lieu d'un code : le tableur a converti la saisie "
+            "(« 1-2 » devient le 2 janvier). Mettre la colonne au format Texte et ressaisir le code."
+        )
+
+
 def lire_code(valeur: Any) -> str | None:
     """Code ou identifiant : espaces de début et de fin retirés, espaces multiples réduits."""
+    _refuser_date_du_tableur(valeur)
     texte = texte_cellule(valeur)
     return None if texte is None else _ESPACES.sub(" ", texte)
 
@@ -126,10 +155,10 @@ def lire_entier(valeur: Any) -> int | None:
     if isinstance(valeur, bool):
         raise ErreurDonneesInvalides(f"Nombre entier attendu, pas {texte_cellule(valeur)!r}.")
     if isinstance(valeur, int):
-        return valeur
+        return _borner_entier(valeur)
     if isinstance(valeur, float):
         if valeur.is_integer():
-            return int(valeur)
+            return _borner_entier(int(valeur))
         raise ErreurDonneesInvalides(f"Nombre entier attendu, pas {valeur!r}.")
     texte = texte_cellule(valeur)
     if texte is None:
@@ -137,7 +166,22 @@ def lire_entier(valeur: Any) -> int | None:
     compact = texte.replace(" ", "")
     if not _ENTIER.match(compact):
         raise ErreurDonneesInvalides(f"Nombre entier attendu, pas {texte!r}.")
-    return int(compact)
+    if len(compact.lstrip("+-")) > 15:  # au-delà, inutile de convertir : hors limites
+        raise ErreurDonneesInvalides(_message_hors_limites(texte))
+    return _borner_entier(int(compact))
+
+
+def _borner_entier(nombre: int) -> int:
+    if abs(nombre) > ENTIER_MAX:
+        raise ErreurDonneesInvalides(_message_hors_limites(str(nombre)))
+    return nombre
+
+
+def _message_hors_limites(texte: str) -> str:
+    apercu = texte if len(texte) <= 30 else texte[:27] + "..."
+    return f"Nombre hors limites : {apercu} (au plus {ENTIER_MAX:,} en valeur absolue).".replace(
+        ",", " "
+    )
 
 
 def lire_booleen(valeur: Any) -> bool | None:
@@ -173,9 +217,16 @@ def lire_date(valeur: Any) -> dt.date | None:
         return valeur.date()
     if isinstance(valeur, dt.date):
         return valeur
+    if isinstance(valeur, dt.time):
+        raise ErreurDonneesInvalides(f"Date attendue, pas une heure ({valeur:%H:%M}).")
     texte = texte_cellule(valeur)
     if texte is None:
         return None
+    if isinstance(valeur, (int, float)) or _NOMBRE_DECIMAL.match(texte):
+        raise ErreurDonneesInvalides(
+            f"Date attendue, pas le nombre {texte} : le tableur a enregistré la date comme un "
+            "nombre de série. Mettre la colonne au format Date (JJ/MM/AAAA) et ressaisir la date."
+        )
     correspondance = _DATE_FR.match(texte)
     if correspondance:
         jour, mois, annee = (int(x) for x in correspondance.groups())
@@ -200,19 +251,36 @@ def lire_heure(valeur: Any) -> int | None:
         if valeur.second or valeur.microsecond:
             raise ErreurDonneesInvalides(f"Heure avec des secondes : {valeur.isoformat()}.")
         return valeur.hour * 60 + valeur.minute
-    if isinstance(valeur, (dt.date, int, float)):
+    if isinstance(valeur, (dt.date, bool)):
         raise ErreurDonneesInvalides(
             f"Heure attendue, pas {texte_cellule(valeur)!r} (formats acceptés : « 8h30 », « 08:30 »)."
         )
     texte = texte_cellule(valeur)
     if texte is None:
         return None
+    # Un nombre n'est une heure que s'il est une heure entière (« 8 » comme « 8 h ») ;
+    # entre 0 et 1, c'est une heure enregistrée en fraction de journée (0,354166).
+    if _NOMBRE_DECIMAL.match(texte) and not texte_est_une_heure(texte):
+        if 0 < float(texte.replace(",", ".")) < 1:
+            raise ErreurDonneesInvalides(
+                f"Heure attendue, pas le nombre {texte} : le tableur a enregistré l'heure comme "
+                "une fraction de journée. Mettre la colonne au format Heure (08:30) et ressaisir "
+                "l'heure."
+            )
+        raise ErreurDonneesInvalides(
+            f"Heure attendue, pas le nombre {texte} (formats acceptés : « 8h30 », « 08:30 »)."
+        )
     secondes = _HEURE_SECONDES.match(texte)
     if secondes:
         if int(secondes.group(3)):
             raise ErreurDonneesInvalides(f"Heure avec des secondes : {texte!r}.")
         texte = f"{secondes.group(1)}:{secondes.group(2)}"
     return texte_vers_minutes(texte)
+
+
+def texte_est_une_heure(texte: str) -> bool:
+    """Vrai pour une heure entière écrite seule (« 8 », « 18 ») : un nombre qui reste une heure."""
+    return texte.isdigit() and int(texte) <= 24
 
 
 def lire_duree(valeur: Any) -> int | None:
@@ -270,6 +338,7 @@ def lire_choix(valeur: Any, enumeration: type[StrEnum]) -> StrEnum | None:
 
 def lire_liste(valeur: Any) -> tuple[str, ...] | None:
     """Liste de codes séparés par « ; » ou « , » ; les doublons ne comptent qu'une fois."""
+    _refuser_date_du_tableur(valeur)
     texte = texte_cellule(valeur)
     if texte is None:
         return None
@@ -279,6 +348,28 @@ def lire_liste(valeur: Any) -> tuple[str, ...] | None:
         if code and cle_code(code) not in vus:
             vus[cle_code(code)] = code
     return tuple(vus.values()) or None
+
+
+def caracteres_de_controle(texte: str) -> list[str]:
+    """Caractères de contrôle invisibles d'un texte, en notation « U+0001 » (sans doublon).
+
+    La tabulation et les fins de ligne sont des caractères ordinaires d'une
+    cellule ; les autres caractères de contrôle ne s'affichent pas et sont
+    interdits dans un classeur.
+    """
+    return sorted({f"U+{ord(c):04X}" for c in _CONTROLE.findall(texte)})
+
+
+def echapper_controle(texte: str) -> str:
+    """Caractères de contrôle -> « _x0001_ », la notation du format XLSX (Excel fait de même)."""
+    return _CONTROLE.sub(lambda m: f"_x{ord(m.group(0)):04X}_", texte)
+
+
+def restituer_controle(texte: str) -> str:
+    """Inverse d'`echapper_controle`, pour un texte lu dans un classeur."""
+    if "_x" not in texte:
+        return texte
+    return _CONTROLE_ECHAPPE.sub(lambda m: chr(int(m.group(1), 16)), texte)
 
 
 # --------------------------------------------------------------------------- #
