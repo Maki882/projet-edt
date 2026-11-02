@@ -133,8 +133,10 @@ def test_dejeuner_libre_respecte():
     assert not dejeuner_libre_respecte([matin, apres_midi], fenetre)
 
 
+@pytest.mark.cas_limite
 def test_dejeuner_global_en_mode_libre(base_vierge):
-    """Avec une pause déjeuner libre pour tous, le témoin la laisse à chaque personne."""
+    """Cas : pause déjeuner réglée en mode libre pour tout l'établissement avant le chargement.
+    Risque : témoin qui prive une personne de sa pause (jeu invalide dès sa création)."""
     with session_base(base_vierge) as session:
         ecrire_parametre(session, "dejeuner_mode", "libre")
         ecrire_parametre(session, "dejeuner_debut_min", 11 * 60 + 45)
