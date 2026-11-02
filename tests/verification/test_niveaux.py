@@ -136,3 +136,40 @@ def test_indicateurs_ne_comptent_que_les_erreurs():
     assert dure.anomalies_bloquantes_par_code == ((PAUSE, 1),)
     souple = calculer_indicateurs(instantane, placements, niveaux={PAUSE: Niveau.IMPORTANT})
     assert souple.nb_anomalies_bloquantes == 0
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_prefixe_garde_la_majuscule_d_un_nom_propre():
+    """Cas : l'enseignant « Le Gall » dépasse un maximum à un niveau important, ou enfreint une règle personnalisée.
+
+    Risque : « Entorse à une règle importante : le Gall dépasse… » : nom propre déformé dans
+    l'interface, la commande et le JSON.
+    """
+    f = Fabrique()
+    n204 = f.salle("N204")
+    le_gall = f.enseignant("Le Gall", max_jour=60)
+    a = f.cours("TD 1", [f.groupe("A1-G1")], [le_gall])
+    b = f.cours("TD 2", [f.groupe("A1-G2")], [le_gall])
+    placements = [placer(a, MARDI, "8h30", n204), placer(b, MARDI, "10h45", n204)]
+    (anomalie,) = verifier(
+        f.construire(), placements, niveaux={CodeContrainte.MAX_ENSEIGNANT: Niveau.IMPORTANT}
+    )
+    assert anomalie.message.startswith("Entorse à une règle importante : Le Gall dépasse")
+    # Dans le message d'une règle personnalisée aussi, après « Règle R001 (...) : ».
+    f.regle("MAX_PAR_JOUR", "enseignant", le_gall, unite="seances", maximum=1)
+    (regle,) = verifier(f.construire(), placements, ["REGLE"])
+    assert regle.regle_code == "R001"
+    assert ") : Le Gall a plus de 1 séance le mardi" in regle.message
+    # Les débuts de phrase du vérificateur (noms communs) passent bien en minuscule.
+    assert prefixer("La salle N204 accueille…", Niveau.IMPORTANT).startswith(
+        "Entorse à une règle importante : la salle N204"
+    )
+    assert prefixer("Les groupes A1 et B1…", Niveau.FACULTATIF).startswith(
+        "Entorse à une règle facultative : les groupes"
+    )
+    assert prefixer("La Rochelle…", Niveau.IMPORTANT).endswith(": La Rochelle…")

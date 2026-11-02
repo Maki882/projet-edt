@@ -12,9 +12,13 @@ from edt.domaine.contraintes import CodeContrainte, Niveau, niveaux_par_defaut
 from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineVersion
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.niveaux import niveaux_de_version, niveaux_du_calcul
-from edt.services.verification import verifier_modification, verifier_version
+from edt.services.verification import (
+    verifier_modification,
+    verifier_occurrences_version,
+    verifier_version,
+)
 
-from .test_service import enregistrer_version
+from .versions import enregistrer_version
 
 MAX, PAUSE = CodeContrainte.MAX_ENSEIGNANT, CodeContrainte.PAUSE
 
@@ -241,3 +245,25 @@ def test_modification_entorse_nouvelle_a_une_regle_importante(jeu_minimal, sessi
         (Gravite.AVERTISSEMENT, Niveau.IMPORTANT)
     ]
     assert restreinte.valide
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_contrainte_desactivee_inconnue_nommee_dans_l_erreur(version_maximum_depasse, session):
+    """Cas : un ancien calcul a enregistré une contrainte désactivée au code inconnu (code disparu, retouche).
+
+    Risque : « Contrainte inconnue : 'PAS_UN_CODE'. » sans version ni calcul : une erreur de
+    vérification inexplicable dans À traiter.
+    """
+    attacher_calcul(session, version_maximum_depasse, {}, ["PAS_UN_CODE"])
+    calcul_id = session.get(m.VersionEdt, version_maximum_depasse).calcul_id
+    for verification in (verifier_version, verifier_occurrences_version):
+        with pytest.raises(ErreurDonneesInvalides) as erreur:
+            verification(session, version_maximum_depasse)
+        assert f"version {version_maximum_depasse}" in erreur.value.message
+        assert f"calcul {calcul_id}" in erreur.value.message
+        assert any("PAS_UN_CODE" in ligne for ligne in erreur.value.details)

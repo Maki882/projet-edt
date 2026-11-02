@@ -81,20 +81,28 @@ def test_semaine_type_valide():
 
 def test_occurrences_du_semestre_valides():
     instantane, placements = semestre_valide()
-    occurrences = []
+    toutes = []
     for placement in placements:
         seance = instantane.seance(placement.seance_id)
         for numero in sorted(seance.semaines):
             date = instantane.date_de(numero, placement.jour)
-            occurrences.append(
+            toutes.append(
                 occurrence(
                     seance,
                     date,
                     placement.debut,
                     placement.salle_id,
                     fin=placement.fin,
-                    identifiant=len(occurrences) + 1,
+                    identifiant=len(toutes) + 1,
                 )
             )
-    assert len(occurrences) == 6 * 15 + 7 + 8
+    # Comme l'instanciation, rien hors des dates du semestre : le samedi de la dernière
+    # semaine (19 décembre) suit son dernier jour (vendredi 18 décembre).
+    debut, fin = instantane.date_debut, instantane.date_fin
+    occurrences = [o for o in toutes if debut <= o.date <= fin]
+    assert len(occurrences) == 6 * 15 + 7 + 8 - 1
     assert verifier_occurrences(instantane, occurrences) == []
+    # Instanciée naïvement, la semaine type place le TP du samedi 19 décembre hors du semestre.
+    (hors,) = [o for o in toutes if o not in occurrences]
+    anomalies = verifier_occurrences(instantane, toutes)
+    assert [(str(a.code), a.occurrences) for a in anomalies] == [("JOUR_FERME", (hors.id,))]

@@ -18,10 +18,8 @@ from edt.domaine.instantane import Occurrence, Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier_occurrences
 
-from .fabrique import MARDI, Fabrique, codes, h, occurrence
+from .fabrique import MARDI, MARDI_6_OCT, MARDI_13_OCT, Fabrique, codes, h, occurrence
 
-MARDI_6_OCT = dt.date(2026, 10, 6)
-MARDI_13_OCT = dt.date(2026, 10, 13)
 MERCREDI_11_NOV = dt.date(2026, 11, 11)
 
 
@@ -239,7 +237,7 @@ def test_besoin_ou_seance_inconnus():
 
 @pytest.mark.parametrize(
     "changements",
-    [{"fin": h("8h00")}, {"debut": -1}, {"salle_id": 99}, {"seance_id": "2-1"}, {"date": None}],
+    [{"fin": h("8h00")}, {"debut": -1}, {"salle_id": "N204"}, {"seance_id": "2-1"}, {"date": None}],
 )
 def test_occurrences_invalides(changements):
     f, n204, _, _, maths, _ = base()
@@ -304,3 +302,110 @@ def test_seance_verrouillee_hors_grille_restee_a_sa_place_reste_une_information(
     anomalies = verifier_occurrences(f.construire(), [a_sa_place], ["HORAIRES", "DEJEUNER"])
     assert codes(anomalies) == ["HORAIRES", "DEJEUNER"]
     assert {a.gravite for a in anomalies} == {Gravite.INFORMATION}
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_occurrence_hors_du_semestre_signalee():
+    """Cas : séances datées avant le premier ou après le dernier jour du semestre (semestre raccourci, import qui déborde).
+
+    Risque : aucune anomalie (rapport « valide »), et les règles personnalisées, bornées aux
+    semaines du semestre, muettes sur ces dates.
+    """
+    # Semestre de la fabrique : du lundi 7 septembre au vendredi 18 décembre 2026. Hors de
+    # ses dates, le calendrier est fermé, comme pour l'instanciation : JOUR_FERME.
+    f, n204, _, _, maths, _ = base()
+    instantane = f.construire()
+    dates = {
+        1: dt.date(2026, 9, 1),  # avant le premier jour
+        2: dt.date(2026, 7, 7),  # bien avant
+        3: dt.date(2027, 3, 2),  # après le dernier jour
+        4: dt.date(2026, 12, 19),  # samedi de la dernière semaine, après le dernier jour
+        5: dt.date(2026, 9, 7),  # premier jour : dans le semestre
+        6: dt.date(2026, 12, 18),  # dernier jour : dans le semestre
+    }
+    occurrences = [
+        occurrence(maths, jour, "8h30", n204, identifiant=identifiant)
+        for identifiant, jour in dates.items()
+    ]
+    anomalies = verifier_occurrences(instantane, occurrences, ["JOUR_FERME"])
+    assert [(str(a.code), a.gravite, a.occurrences) for a in anomalies] == [
+        ("JOUR_FERME", Gravite.ERREUR, (2,)),
+        ("JOUR_FERME", Gravite.ERREUR, (1,)),
+        ("JOUR_FERME", Gravite.ERREUR, (4,)),
+        ("JOUR_FERME", Gravite.ERREUR, (3,)),
+    ]
+    assert anomalies[1].message == (
+        "La séance Mathématiques TD (A1-G1) a lieu le mardi 1er septembre 2026 de 8 h 30 à "
+        "10 h 30, en dehors du semestre « Semestre de test » (du lundi 7 septembre 2026 au "
+        "vendredi 18 décembre 2026) : la replacer dans le semestre ou la supprimer."
+    )
+    assert anomalies[1].date == dt.date(2026, 9, 1) and anomalies[1].seances == ("1-1",)
+    # Sans JOUR_FERME, rien : les autres règles vérifient ces séances comme les autres.
+    assert verifier_occurrences(instantane, occurrences, ["SALLE_UNIQUE"]) == []
+
+
+@pytest.mark.cas_limite
+def test_occurrence_dupliquee_signalee_comme_doublon():
+    """Cas : la même séance datée deux fois à la même date, heure et salle (réimport, instanciation reprise).
+
+    Risque : trois conflits « X et X » (salle, enseignant, groupe) pour un seul défaut, dont
+    la cause, le doublon, n'est jamais nommée.
+    """
+    f, n204, _, _, maths, _ = base()
+    instantane = f.construire()
+    copies = [occurrence(maths, MARDI_6_OCT, "8h30", n204, identifiant=i) for i in (1, 2)]
+    anomalies = verifier_occurrences(instantane, copies)
+    assert [(str(a.code), a.gravite, a.occurrences) for a in anomalies] == [
+        ("VOLUME", Gravite.ERREUR, (1, 2))
+    ]
+    assert anomalies[0].message == (
+        "La séance Mathématiques TD (A1-G1) a lieu 2 fois en même temps le mardi 6 octobre "
+        "2026 (de 8 h 30 à 10 h 30) : garder une seule de ces séances datées."
+    )
+    assert anomalies[0].date == MARDI_6_OCT and anomalies[0].seances == ("1-1",)
+    # Deux séances datées d'une même séance à des heures disjointes (rattrapage) : pas un doublon.
+    rattrapage = [copies[0], occurrence(maths, MARDI_6_OCT, "13h45", n204, identifiant=2)]
+    assert verifier_occurrences(instantane, rattrapage, ["VOLUME", "SALLE_UNIQUE"]) == []
+    # Sans VOLUME, les conflits des copies restent signalés : le doublon ne passe pas inaperçu.
+    assert codes(verifier_occurrences(instantane, copies, ["SALLE_UNIQUE"])) == ["SALLE_UNIQUE"]
+
+
+@pytest.mark.cas_limite
+def test_date_sous_forme_de_datetime_refusee():
+    """Cas : une séance datée reçue avec un `datetime` (date et heure) au lieu d'une date.
+
+    Risque : `TypeError` au tri des jours (erreur 500), ou conflit manqué entre ce
+    `datetime` et une séance du même jour, jamais égaux.
+    """
+    f, n204, _, _, maths, physique = base()
+    instantane = f.construire()
+    avec_heure = Occurrence(
+        1, maths.besoin.id, maths.id, dt.datetime(2026, 10, 6, 8, 30), 510, 630, n204
+    )
+    meme_jour = occurrence(physique, MARDI_6_OCT, "8h30", n204, identifiant=2)
+    with pytest.raises(ErreurDonneesInvalides) as erreur:
+        verifier_occurrences(instantane, [avec_heure, meme_jour])
+    assert "date absente ou invalide" in erreur.value.details[0]
+
+
+@pytest.mark.cas_limite
+def test_maxima_hebdomadaires_a_cheval_sur_deux_annees_civiles():
+    """Cas : un enseignant au maximum hebdomadaire a cours le 29 décembre 2026 et le 2 janvier 2027, même semaine réelle.
+
+    Risque : un regroupement par année civile couperait la semaine du Nouvel An et masquerait
+    le dépassement.
+    """
+    f, n204, n205, _, maths, physique = base(max_semaine=3 * 60)
+    occurrences = [
+        occurrence(maths, dt.date(2026, 12, 29), "8h30", n204, identifiant=1),
+        occurrence(physique, dt.date(2027, 1, 2), "8h30", n205, identifiant=2),
+    ]
+    (anomalie,) = verifier_occurrences(f.construire(), occurrences, ["MAX_ENSEIGNANT"])
+    assert anomalie.date == dt.date(2026, 12, 28)
+    assert anomalie.message.endswith("la semaine du lundi 28 décembre 2026 : 4 h de cours.")
+    assert anomalie.occurrences == (1, 2)

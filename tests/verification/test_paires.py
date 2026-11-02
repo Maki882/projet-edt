@@ -99,7 +99,7 @@ def test_inclusion_et_egalite_des_intervalles(debut, fin):
         {"fin": h("8h30")},
         {"fin": h("7h00")},
         {"debut": "8h30"},
-        {"salle_id": 99},
+        {"salle_id": "N204"},
     ],
 )
 def test_entrees_invalides(changements):
@@ -120,14 +120,27 @@ def test_toutes_les_entrees_invalides_sont_listees():
     assert len(erreur.value.details) == 2
 
 
+@pytest.mark.cas_limite
 def test_identifiant_duplique():
+    """Cas : la même séance placée deux fois au même créneau de la semaine type.
+
+    Risque : les deux copies en conflit « avec elles-mêmes » (salle, enseignant, groupe) :
+    trois erreurs de plus pour un seul défaut, le doublon.
+    """
     instantane, placements = scenario_hugo()
     anomalies = verifier(instantane, [placements[0], placements[0], placements[1]])
     volume = [a for a in anomalies if str(a.code) == "VOLUME"]
     assert len(volume) == 1
     assert "placée 2 fois" in volume[0].message
-    # Les deux placements sont vérifiés : ils se chevauchent sur toutes leurs ressources.
-    assert {"SALLE_UNIQUE", "ENSEIGNANT_UNIQUE", "GROUPE_UNIQUE"} <= set(codes(anomalies))
+    # Le doublon est nommé une fois, par VOLUME : pas de conflit entre les deux copies...
+    assert not set(codes(anomalies)) & set(CHEVAUCHEMENTS)
+    # ... mais chaque copie reste vérifiée face aux autres séances.
+    instantane, placements = scenario_hugo(TOUTES)
+    doublees = codes(verifier(instantane, [placements[0], placements[0], placements[1]]))
+    assert [doublees.count(code) for code in CHEVAUCHEMENTS] == [2, 2, 2]
+    # Sans VOLUME, le conflit des deux copies reste signalé : le doublon ne passe pas inaperçu.
+    sans_volume = verifier(instantane, [placements[0], placements[0]], CHEVAUCHEMENTS)
+    assert codes(sans_volume) == CHEVAUCHEMENTS
 
 
 def test_emploi_du_temps_vide():
@@ -392,3 +405,26 @@ def test_trajet_meme_campus_ou_salle_a_definir():
 def test_trajet_sans_personne_commune():
     f, placements = enchainement("10h45", campus_b=ISSY, meme_enseignant=False)
     assert verifier(f.construire(), placements, ["CAMPUS_TRAJET"]) == []
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_aucune_contrainte_a_verifier_journalisee(caplog):
+    """Cas : le vérificateur pur reçoit une liste de contraintes vide, ou des niveaux vides.
+
+    Risque : une liste vide renvoyée sans un mot, prise pour « emploi du temps valide » (les
+    services, eux, la refusent : voir test_service).
+    """
+    instantane, placements = scenario_hugo(TOUTES)
+    for verification in (
+        lambda: verifier(instantane, placements, []),
+        lambda: verifier(instantane, placements, niveaux={}),
+    ):
+        caplog.clear()
+        with caplog.at_level("WARNING", logger="edt.verification"):
+            assert verification() == []
+        assert "Aucune contrainte à vérifier" in caplog.text
