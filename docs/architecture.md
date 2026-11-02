@@ -140,10 +140,16 @@ calcul). Chaque connexion SQLite active les clés étrangères, le mode WAL
 (les lectures ne sont jamais bloquées par une écriture) et un délai
 d'attente sur verrou de 10 s (`DELAI_VERROU_MS`) : une écriture attend la
 fin d'une transaction courte au lieu d'échouer. Le pilote `sqlite3` ne gère
-plus les transactions (`isolation_level=None`) : SQLAlchemy émet `BEGIN` au
-début de chaque transaction, si bien qu'un point de sauvegarde
+plus les transactions (`isolation_level=None`) : SQLAlchemy émet le `BEGIN`
+au début de chaque transaction, si bien qu'un point de sauvegarde
 (`begin_nested`) libéré avant toute écriture reste annulé par le rollback
-de la transaction qui le contient.
+de la transaction qui le contient. Le `BEGIN` est **différé** par défaut
+(une transaction qui ne fait que lire ne prend aucun verrou, les lecteurs
+sont servis sous un verrou d'écriture long) ; un écrivain long et connu
+(l'import) appelle `transaction_immediate(session)` **avant sa première
+requête** pour ouvrir par `BEGIN IMMEDIATE` (verrou d'écriture pris
+d'emblée, autres écrivains sérialisés) ; appelée trop tard, elle lève
+`ErreurConfiguration` au lieu de laisser la transaction différée en silence.
 
 - `identifiant_valide(valeur)` : entier strictement positif dans les bornes
   de SQLite ; à appeler avant `session.get` sur un identifiant venu de
