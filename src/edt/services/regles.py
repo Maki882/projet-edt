@@ -242,13 +242,13 @@ def lister(
     """
     requete = select(m.Regle).where(m.Regle.annee_scolaire_id == annee_scolaire_id)
     if etat is not None:
-        requete = requete.where(m.Regle.etat == EtatRegle(etat))
+        requete = requete.where(m.Regle.etat == _membre(EtatRegle, etat, "etat"))
     if type_regle is not None:
-        requete = requete.where(m.Regle.type == TypeRegle(type_regle))
+        requete = requete.where(m.Regle.type == _membre(TypeRegle, type_regle, "type"))
     if niveau is not None:
-        requete = requete.where(m.Regle.niveau == Niveau(niveau))
+        requete = requete.where(m.Regle.niveau == _membre(Niveau, niveau, "niveau"))
     if origine is not None:
-        requete = requete.where(m.Regle.origine == OrigineRegle(origine))
+        requete = requete.where(m.Regle.origine == _membre(OrigineRegle, origine, "origine"))
     if enseignant_id is not None:
         requete = requete.where(m.Regle.enseignant_id == enseignant_id)
     if matiere_id is not None:
@@ -280,7 +280,7 @@ def regles_visant(session: Session, nature: NaturePortee | str, cible_id: int) -
     Sert à l'analyse de suppression d'une cible : la base refuse de la
     supprimer tant qu'une règle la vise.
     """
-    colonne = _COLONNES_CIBLE[NaturePortee(nature)]
+    colonne = _COLONNES_CIBLE[_membre(NaturePortee, nature, "nature")]
     if colonne is None:
         return []
     lignes = session.scalars(select(m.Regle).where(getattr(m.Regle, colonne) == cible_id)).all()
@@ -325,7 +325,12 @@ def creer(
     """
     # L'état et l'origine demandés priment le brouillon : le contrôle des doublons
     # ne vaut que pour une règle créée active.
-    brouillon = {**brouillon, "etat": EtatRegle(etat).value, "origine": OrigineRegle(origine).value}
+    _exiger_objet(brouillon, "brouillon")
+    brouillon = {
+        **brouillon,
+        "etat": _membre(EtatRegle, etat, "etat").value,
+        "origine": _membre(OrigineRegle, origine, "origine").value,
+    }
     regle, annee = _construire(session, brouillon, existante=None)
     code = regle.code or _prochain_code(session, annee.id)
     if _ligne_ou_none(session, annee.id, code) is not None:
@@ -349,10 +354,23 @@ def creer(
 def modifier(
     session: Session, annee_scolaire_id: int, code: str, changements: Mapping[str, Any]
 ) -> RegleDetail:
-    """Modification partielle d'une règle, revalidée en entier."""
+    """Modification partielle d'une règle, revalidée en entier.
+
+    L'année, le code et l'identifiant ne se modifient pas (`ErreurSaisie`) :
+    une règle qui change d'année se supprime et se recrée (ou se reprend).
+    """
+    _exiger_objet(changements, "changements")
     ligne = _ligne(session, annee_scolaire_id, code)
     detail = _detail(session, ligne, lire_parametres(session))
     brouillon = _brouillon_depuis_detail(detail)
+    figes = {
+        cle: f"« {cle} » ne se modifie pas : supprimer la règle et la recréer (ou la reprendre "
+        "dans l'autre année)."
+        for cle in ("annee", "code", "id")
+        if cle in changements and changements[cle] != brouillon.get(cle)
+    }
+    if figes:
+        raise ErreurSaisie(figes)
     for cle, valeur in changements.items():
         if cle == "parametres" and isinstance(valeur, Mapping):
             brouillon["parametres"] = {**brouillon["parametres"], **valeur}
@@ -387,7 +405,7 @@ def changer_etat(
     par champ (`ErreurSaisie`).
     """
     ligne = _ligne(session, annee_scolaire_id, code)
-    nouvel_etat = EtatRegle(etat)
+    nouvel_etat = _membre(EtatRegle, etat, "etat")
     if nouvel_etat is EtatRegle.ACTIVE:
         detail = _detail(session, ligne, lire_parametres(session))
         brouillon = {**_brouillon_depuis_detail(detail), "etat": EtatRegle.ACTIVE.value}
@@ -573,6 +591,7 @@ def _construire(
     session: Session, brouillon: Mapping[str, Any], existante: m.Regle | None
 ) -> tuple[Regle, m.AnneeScolaire]:
     """Brouillon → règle canonique et son année ; `ErreurSaisie` avec une erreur par champ."""
+    _exiger_objet(brouillon, "brouillon")
     erreurs: dict[str, str] = {}
     brouillon = dict(brouillon)
 
@@ -680,6 +699,8 @@ def _construire(
     code = brouillon.get("code")
     if code is not None and (not isinstance(code, str) or not code.strip()):
         code = None
+    if isinstance(code, str):
+        code = code.strip().upper()  # « r007 » et « R007 » sont le même code
     if erreurs or definition is None or annee is None or portee is None:
         raise ErreurSaisie(erreurs or {"regle": "Règle invalide."})
 
@@ -716,13 +737,21 @@ def _annee(session: Session, valeur: object) -> m.AnneeScolaire:
         if annee is None:
             raise ErreurIntrouvable("Aucune année scolaire n'existe : en créer une d'abord.")
         return annee
-    if isinstance(valeur, int) and not isinstance(valeur, bool):
-        return _annee_par_id(session, valeur)
-    annee = session.scalar(
-        select(m.AnneeScolaire).where(m.AnneeScolaire.libelle == str(valeur).strip())
-    )
+    annee = None
+    if isinstance(valeur, str):
+        annee = session.scalar(
+            select(m.AnneeScolaire).where(m.AnneeScolaire.libelle == valeur.strip())
+        )
+    elif isinstance(valeur, int) and not isinstance(valeur, bool) and identifiant_valide(valeur):
+        annee = session.get(m.AnneeScolaire, valeur)  # le formulaire web passe l'identifiant
     if annee is None:
-        raise ErreurIntrouvable(f"Année scolaire inconnue : « {valeur} ».")
+        existantes = ", ".join(
+            session.scalars(select(m.AnneeScolaire.libelle).order_by(m.AnneeScolaire.date_debut))
+        )
+        raise ErreurIntrouvable(
+            f"Année scolaire inconnue : « {valeur} » ; attendu son libellé, de la forme "
+            f"« 2026-2027 » (années existantes : {existantes or 'aucune'})."
+        )
     return annee
 
 
@@ -1124,9 +1153,34 @@ def _detail(session: Session, ligne: m.Regle, parametres: Parametres) -> RegleDe
 
 
 def _ligne_ou_none(session: Session, annee_scolaire_id: int, code: str) -> m.Regle | None:
+    code = str(code).strip().upper()
     return session.scalar(
         select(m.Regle).where(m.Regle.annee_scolaire_id == annee_scolaire_id, m.Regle.code == code)
     )
+
+
+def _exiger_objet(valeur: object, nom: str) -> None:
+    """Un brouillon ou des changements qui ne sont pas un objet JSON : `ErreurSaisie`, pas TypeError."""
+    if not isinstance(valeur, Mapping):
+        raise ErreurSaisie(
+            {
+                nom: "Un objet { type, portee, parametres, niveau, annee, periode } est attendu "
+                f"(lu : {type(valeur).__name__})."
+            }
+        )
+
+
+def _membre(enumeration: type, valeur: object, nom: str):
+    """Membre d'une énumération depuis une valeur libre ; `ErreurDonneesInvalides` sinon."""
+    if isinstance(valeur, enumeration):
+        return valeur
+    try:
+        return enumeration(valeur)
+    except ValueError:
+        admises = ", ".join(membre.value for membre in enumeration)
+        raise ErreurDonneesInvalides(
+            f"Filtre « {nom} » : valeur {valeur!r} inconnue ; valeurs admises : {admises}."
+        ) from None
 
 
 def _ligne(session: Session, annee_scolaire_id: int, code: str) -> m.Regle:

@@ -24,24 +24,41 @@ un verrou non bloquant les sérialise, et une seconde demande pendant la
 première est refusée tout de suite (`ErreurChargementEnCours`) au lieu de
 supprimer et recréer les tables en même temps qu'elle.
 `operation_en_cours()` dit si l'une d'elles tourne (pour expliquer une base
-momentanément occupée). Le serveur web tourne en un seul processus ; une
-commande lancée dans un autre processus n'est pas couverte par ce verrou.
+momentanément occupée). Le verrou est propre au processus ; pour qu'une
+commande lancée dans un autre processus (`edt jeu --reset`, `init-db
+--reset`) soit vue du serveur, l'opération pose aussi un **fichier
+marqueur** à côté de la base (`edt.db.operation`), retiré à la fin et ignoré
+passé `DUREE_MARQUEUR_S` (processus mort sans le retirer).
+
+Une panne de la génération après la remise à zéro est dite telle quelle :
+la base a été vidée et aucun jeu n'est chargé (`ErreurRegleMetier`, trace au
+journal), au lieu d'une exception brute qui laisse croire à un succès partiel.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import logging
+import os
 import threading
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from edt.db.initialisation import RapportInitialisation, base_initialisee, initialiser_base
-from edt.db.moteur import obtenir_moteur, session_base
-from edt.erreurs import ErreurCalculEnCours, ErreurRegleMetier
+from edt.config import charger_configuration
+from edt.db.initialisation import (
+    RapportInitialisation,
+    base_initialisee,
+    exiger_schema_a_jour,
+    initialiser_base,
+    tables_manquantes,
+)
+from edt.db.moteur import chemin_base, obtenir_moteur, session_base
+from edt.erreurs import ErreurCalculEnCours, ErreurEDT, ErreurRegleMetier
 from edt.services.generation import calcul_en_cours
 from edt.synthese.configuration import CONFIGURATIONS, ConfigurationJeu, configuration_nommee
 from edt.synthese.generateur import generer_jeu
@@ -52,19 +69,49 @@ journal = logging.getLogger(__name__)
 _verrou_base = threading.Lock()
 """Pris pendant tout chargement de jeu fictif ou toute remise à zéro (non réentrant)."""
 
+DUREE_MARQUEUR_S = 600.0
+"""Âge au-delà duquel un fichier marqueur d'opération est tenu pour périmé (processus mort)."""
+
 
 class ErreurChargementEnCours(ErreurRegleMetier):
     """Un chargement de jeu fictif ou une remise à zéro tourne déjà : un seul à la fois."""
 
 
-def operation_en_cours() -> bool:
-    """Vrai si un chargement de jeu fictif ou une remise à zéro est en train de tourner."""
-    return _verrou_base.locked()
+def fichier_marqueur(url: str | None = None) -> Path | None:
+    """Fichier posé à côté de la base pendant une opération (`<base>.operation`), ou `None`."""
+    chemin = chemin_base(url or charger_configuration().db_url)
+    return None if chemin is None else chemin.with_name(chemin.name + ".operation")
+
+
+def operation_en_cours(url: str | None = None) -> bool:
+    """Vrai si un chargement de jeu fictif ou une remise à zéro tourne, ici ou ailleurs.
+
+    « Ailleurs » : un autre processus a posé le fichier marqueur il y a moins
+    de `DUREE_MARQUEUR_S` secondes.
+    """
+    if _verrou_base.locked():
+        return True
+    marqueur = fichier_marqueur(url)
+    if marqueur is None:
+        return False
+    try:
+        age = time.time() - marqueur.stat().st_mtime
+    except OSError:
+        return False  # pas de marqueur (ou disparu entre-temps)
+    if age > DUREE_MARQUEUR_S:
+        journal.warning(
+            "Marqueur d'opération %s vieux de %.0f s : tenu pour périmé et ignoré", marqueur, age
+        )
+        return False
+    return True
 
 
 @contextmanager
-def _seul_a_la_fois(action: str) -> Iterator[None]:
-    """Exécute le bloc sous le verrou ; refuse tout de suite si une autre opération le tient."""
+def _seul_a_la_fois(action: str, url: str | None = None) -> Iterator[None]:
+    """Exécute le bloc sous le verrou ; refuse tout de suite si une autre opération le tient.
+
+    Pose le fichier marqueur pour les autres processus et le retire à la fin.
+    """
     if not _verrou_base.acquire(blocking=False):
         journal.warning(
             "Demande refusée (%s) : un chargement ou une remise à zéro est en cours", action
@@ -73,9 +120,21 @@ def _seul_a_la_fois(action: str) -> Iterator[None]:
             f"Impossible de {action} : un chargement de jeu de données ou une remise à zéro "
             "est déjà en cours. Attendre quelques secondes, puis recharger la page."
         )
+    marqueur = fichier_marqueur(url)
     try:
+        if marqueur is not None:
+            try:
+                marqueur.write_text(f"{os.getpid()} {action}", encoding="utf-8")
+            except OSError as erreur:
+                journal.warning("Marqueur d'opération %s non écrit : %s", marqueur, erreur)
+                marqueur = None
         yield
     finally:
+        if marqueur is not None:
+            try:
+                marqueur.unlink(missing_ok=True)
+            except OSError as erreur:
+                journal.warning("Marqueur d'opération %s non retiré : %s", marqueur, erreur)
         _verrou_base.release()
 
 
@@ -139,6 +198,13 @@ def _charger(
     annee_debut: int | None,
     enregistrer_reference: bool,
 ) -> RapportJeu:
+    moteur = session.get_bind()
+    exiger_schema_a_jour(moteur)  # schéma périmé : le remède est « --reset », pas « init-db »
+    if tables_manquantes(moteur):
+        raise ErreurRegleMetier(
+            "La base n'est pas initialisée : lancer d'abord « python -m edt init-db », "
+            "ou demander la remise à zéro."
+        )
     _exiger_aucun_calcul("charger un jeu fictif")
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     journal.info("Chargement du jeu fictif « %s » (graine %d) demandé", configuration.nom, graine)
@@ -160,7 +226,7 @@ def remettre_a_zero(
     `url` désigne la base (défaut : `EDT_DB_URL`). Refusé pendant un calcul
     et pendant un chargement ou une autre remise à zéro.
     """
-    with _seul_a_la_fois("remettre la base à zéro"):
+    with _seul_a_la_fois("remettre la base à zéro", url):
         return _remettre_a_zero(aujourdhui, url)
 
 
@@ -189,16 +255,32 @@ def recharger_jeu_fictif(
     zéro et le chargement se font sous le même verrou, sans interruption.
     """
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
-    with _seul_a_la_fois("charger un jeu fictif"):
+    with _seul_a_la_fois("charger un jeu fictif", url):
         if reinitialiser:
             _remettre_a_zero(aujourdhui, url)
         elif not base_initialisee(obtenir_moteur(url)):
+            exiger_schema_a_jour(obtenir_moteur(url))  # périmé : le remède est « --reset »
             raise ErreurRegleMetier(
                 "La base n'est pas initialisée : lancer d'abord « python -m edt init-db », "
                 "ou demander la remise à zéro."
             )
-        with session_base(url) as session:
-            return _charger(session, configuration, graine, annee_debut, enregistrer_reference)
+        try:
+            with session_base(url) as session:
+                return _charger(session, configuration, graine, annee_debut, enregistrer_reference)
+        except ErreurEDT:
+            raise  # refus métier : le message dit déjà tout, rien n'a été écrit
+        except Exception as erreur:
+            if not reinitialiser:
+                raise
+            journal.exception(
+                "Chargement du jeu « %s » en échec après la remise à zéro", configuration.nom
+            )
+            raise ErreurRegleMetier(
+                f"La base a été remise à zéro, mais le chargement du jeu « {configuration.nom} » "
+                f"a échoué ({type(erreur).__name__} : {erreur}) : aucun jeu n'est chargé, la base "
+                "est vide avec ses données par défaut. Réessayer le chargement (sans remise à "
+                "zéro) ; la trace est dans le journal."
+            ) from erreur
 
 
 def _exiger_aucun_calcul(action: str, url: str | None = None) -> None:
