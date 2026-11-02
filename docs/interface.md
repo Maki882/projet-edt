@@ -79,7 +79,7 @@ existantes ne changent pas. Les groupes connus sont `GROUPE_ETABLISSEMENT`,
 | `styles`   | feuilles de style propres à l'écran, dans l'en-tête              |
 | `scripts`  | scripts propres à l'écran, en fin de page                        |
 
-Le gabarit pose le bandeau « données fictives », la barre et ses onglets, la
+Le gabarit pose la barre et ses onglets, la
 sous-navigation, la zone de messages `#messages`, le pied de page et le
 panneau Assistant. La classe `js` est ajoutée à `<html>` quand JavaScript
 fonctionne (`.sans-js` masque alors ce qui ne sert que sans lui).

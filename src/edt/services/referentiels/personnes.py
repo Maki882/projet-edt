@@ -561,7 +561,7 @@ ETUDIANT = Entite(
     libelle=lambda e: f"{e.prenom + ' ' if e.prenom else ''}{e.nom} ({e.identifiant})",
     champs=(
         Champ("identifiant", "Identifiant", obligatoire=True, aide="Identifiant stable et unique."),
-        Champ("nom", "Nom", obligatoire=True, aide="Données fictives uniquement."),
+        Champ("nom", "Nom", obligatoire=True),
         Champ("prenom", "Prénom"),
         Champ(
             "groupes",
