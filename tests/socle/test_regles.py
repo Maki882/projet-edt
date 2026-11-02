@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import logging
 
 import pytest
 
@@ -47,6 +48,7 @@ from edt.domaine.regles import (
     phrase,
     resoudre_regle,
     types_non_couverts,
+    valeurs_resolues,
     valider_parametres,
     valider_portee,
     valider_regle,
@@ -1059,3 +1061,127 @@ def test_une_ouverture_datee_ne_vaut_pas_hors_de_sa_periode(etab):
     assert reglages.jours_de("6-1").standard == frozenset(range(5))
     assert reglages.jours_de("6-1", DEBUT + dt.timedelta(days=5)).standard == frozenset(range(5))
     assert reglages.jours_de("6-1", DEBUT + dt.timedelta(days=12)).standard == frozenset(range(6))
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : heures d'ouverture, règles incompatibles, règles incomplètes, homonymes
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("type_regle", "brouillon", "champ"),
+    [
+        (TypeRegle.PLAGE_HORAIRE, {"debut": "20:00", "fin": "22:00"}, "parametres.debut"),
+        (TypeRegle.PLAGE_HORAIRE, {"debut": "17:00", "fin": "19:00"}, "parametres.fin"),
+        (
+            TypeRegle.CRENEAUX_INTERDITS,
+            {"jours": ["lundi"], "debut": "22:00", "fin": "23:00"},
+            "parametres.debut",
+        ),
+        (
+            TypeRegle.PAUSE_DEJEUNER,
+            {"mode": "fixe", "debut": "06:00", "fin": "07:00"},
+            "parametres.fin",
+        ),
+    ],
+    ids=lambda x: x.value if isinstance(x, TypeRegle) else None,
+)
+def test_une_regle_hors_des_heures_d_ouverture_est_refusee_avec_le_champ_fautif(
+    type_regle, brouillon, champ
+):
+    """Cas : une règle d'horaires, de créneaux interdits ou de déjeuner cite une heure hors
+    des heures d'ouverture de l'établissement (8 h 30 - 18 h 00 par défaut).
+
+    Risque : règle acceptée alors que le paramètre global équivalent est refusé ; un déjeuner
+    « réservé » à 6 h ne protège rien, une plage 20 h - 22 h rend sa portée infaisable sans
+    nommer la règle.
+    """
+    with pytest.raises(ErreurSaisie) as capture:
+        valider_parametres(type_regle, brouillon, PARAMETRES)
+    assert champ in capture.value.erreurs
+    assert "8 h 30 - 18 h 00" in capture.value.erreurs[champ]
+    # Sans paramètres globaux, rien ne permet de juger : les valeurs canoniques sont rendues.
+    assert "debut" in valider_parametres(type_regle, brouillon)
+    # Un jour sans créneau reste permis par la conception : il est signalé, pas refusé.
+    assert valider_parametres(TypeRegle.JOURS_TRAVAILLES, {"jours": ["dimanche"]}, PARAMETRES) == {
+        "jours": ["dimanche"]
+    }
+
+
+@pytest.mark.cas_limite
+def test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes(etab, caplog):
+    """Cas : la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne
+    convient au TD.
+
+    Risque : `jours_permis()` vide sans un mot ; la pré-vérification ne savait dire que « la
+    grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles.
+    """
+    etab.regle(TypeRegle.JOURS_TRAVAILLES, groupe_portee(etab, 2), {"jours": ["lundi"]})
+    etab.regle(TypeRegle.JOURS_TRAVAILLES, enseignant_portee(etab, 1), {"jours": ["mardi"]})
+    with caplog.at_level(logging.WARNING, logger="edt.domaine.regles"):
+        reglages = etab.instantane().reglages
+
+    jours = reglages.jours_de("2-1")  # TD maths de la classe A1-G1, par M. Petit
+    assert jours.jours_permis() == frozenset()
+    assert [r.code for r in jours.regles_incompatibles] == ["R001", "R002"]
+    assert "2-1" in caplog.text and "R001, R002" in caplog.text
+    assert reglages.jours_de("4-1").regles_incompatibles == ()  # TD de A1-G2 par Mme Roux
+
+
+@pytest.mark.cas_limite
+def test_une_regle_sans_heures_a_une_phrase_ou_une_erreur_nommee_jamais_une_exception_brute():
+    """Cas : une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause
+    libre validée sans paramètres globaux.
+
+    Risque : `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondait
+    500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur
+    nomme le champ.
+    """
+    assert phrase(TypeRegle.PLAGE_HORAIRE, PROMO, {"jours": []}, PARAMETRES) == (
+        "La promotion A1 commence à 8 h 30 au plus tôt et finit à 18 h 00 au plus tard."
+    )
+    assert phrase(TypeRegle.PAUSE_DEJEUNER, CLASSE, {"mode": "libre"}, PARAMETRES) == (
+        "La classe A2-G3 a une pause déjeuner libre d'au moins 1 h entre 12 h 45 et 13 h 45."
+    )
+    with pytest.raises(ErreurDonneesInvalides, match="debut"):
+        phrase(TypeRegle.PLAGE_HORAIRE, PROMO, {"jours": []})
+    with pytest.raises(ErreurDonneesInvalides, match="duree"):
+        phrase(
+            TypeRegle.PAUSE_DEJEUNER, CLASSE, {"mode": "libre", "debut": "12:00", "fin": "14:00"}
+        )
+    with pytest.raises(ErreurDonneesInvalides, match="salles"):
+        phrase(TypeRegle.SALLES, PETIT, {"mode": "interdire"})
+    # Validation sans paramètres globaux : les heures absentes restent absentes, sans KeyError.
+    assert valider_parametres(TypeRegle.PAUSE_DEJEUNER, {"mode": "libre", "duree": 60}) == {
+        "mode": "libre",
+        "duree": 60,
+    }
+    assert valider_parametres(TypeRegle.PLAGE_HORAIRE, {"debut": "10:00"}) == {
+        "debut": "10:00",
+        "jours": [],
+    }
+
+
+@pytest.mark.cas_limite
+def test_des_salles_homonymes_sur_deux_campus_sont_toutes_resolues():
+    """Cas : deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle
+    SALLES qui cite « N105 ».
+
+    Risque : un dictionnaire code → identifiant n'en gardait qu'une : le solveur imposait la
+    mauvaise salle et le vérificateur signalait « en N105, hors des salles imposées (N105) ».
+    """
+    valeurs = valeurs_resolues(
+        TypeRegle.SALLES,
+        {"mode": "imposer", "salles": ["N105", "N016"]},
+        PARAMETRES,
+        {"salle": {"N105": [7, 3], "N016": 1}},
+    )
+    assert valeurs["salles"] == (3, 7, 1)
+    with pytest.raises(ErreurDonneesInvalides, match="désigne 2"):
+        valeurs_resolues(
+            TypeRegle.ORDRE_SEMAINE,
+            {"avant": "CM", "apres": "TD"},
+            PARAMETRES,
+            {"type_seance": {"CM": [1, 2], "TD": 3}},
+        )

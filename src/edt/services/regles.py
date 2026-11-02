@@ -36,6 +36,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.calendrier import annee_scolaire_de
 from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import JOURS, NatureGroupe
@@ -267,7 +268,7 @@ def lire(session: Session, annee_scolaire_id: int, code: str) -> RegleDetail:
 
 def lire_par_id(session: Session, regle_id: int) -> RegleDetail:
     """La règle d'identifiant `regle_id` ; lève `ErreurIntrouvable` sinon."""
-    ligne = session.get(m.Regle, regle_id)
+    ligne = session.get(m.Regle, regle_id) if identifiant_valide(regle_id) else None
     if ligne is None:
         raise ErreurIntrouvable(f"La règle {regle_id} n'existe pas.")
     return _detail(session, ligne, lire_parametres(session))
@@ -936,11 +937,18 @@ def _codes_connus(session: Session) -> dict[str, set[str]]:
     }
 
 
-def _identifiants(session: Session) -> dict[str, dict[str, int]]:
-    """Codes → identifiants des entités que les paramètres peuvent citer."""
+def _identifiants(session: Session) -> dict[str, dict]:
+    """Codes → identifiants des entités que les paramètres peuvent citer.
+
+    Une salle peut avoir un homonyme sur un autre campus : son code donne la
+    liste de tous ses identifiants.
+    """
+    salles: dict[str, list[int]] = {}
+    for code, identifiant in session.execute(select(m.Salle.code, m.Salle.id)):
+        salles.setdefault(code, []).append(identifiant)
     return {
         "campus": dict(session.execute(select(m.Campus.code, m.Campus.id)).all()),
-        "salle": dict(session.execute(select(m.Salle.code, m.Salle.id)).all()),
+        "salle": salles,
         "type_seance": dict(session.execute(select(m.TypeSeance.code, m.TypeSeance.id)).all()),
     }
 

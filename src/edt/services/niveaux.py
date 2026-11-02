@@ -29,6 +29,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from edt.db.modeles import Calcul, Regle, Semestre, VersionEdt
+from edt.db.moteur import identifiant_valide
 from edt.domaine.contraintes import (
     Niveau,
     Niveaux,
@@ -119,7 +120,7 @@ def niveaux_de_version(session: Session, version_id: int) -> Niveaux:
     avec un avertissement dans le journal. Lève `ErreurIntrouvable` si la
     version n'existe pas.
     """
-    version = session.get(VersionEdt, version_id)
+    version = session.get(VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     if version.calcul_id is None:
@@ -213,7 +214,7 @@ def niveaux_regles_de_version(session: Session, version_id: int) -> dict[int, Ni
     la version (aucun pour une version de référence : chaque règle à son
     niveau). Lève `ErreurIntrouvable` si la version n'existe pas.
     """
-    version = session.get(VersionEdt, version_id)
+    version = session.get(VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     semestre = session.get(Semestre, version.semestre_id)

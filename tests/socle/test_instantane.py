@@ -7,11 +7,13 @@ import datetime as dt
 import pytest
 from sqlalchemy import select
 
+from edt import cli
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import CibleIndisponibilite, ModeVolume, OrigineVersion
 from edt.erreurs import ErreurIntrouvable
-from edt.services.instantane import charger_instantane, charger_placements
+from edt.services.instantane import charger_instantane, charger_occurrences, charger_placements
+from edt.services.niveaux import niveaux_de_version, niveaux_regles_de_version
 from edt.synthese.generateur import generer_jeu
 
 from .test_depliage import semaines_ouvertes_de_reference
@@ -194,3 +196,58 @@ def test_semaines_actives_d_un_jeu_realiste_conformes_a_la_regle_de_reference(ba
     assert comparees > 100
     # Le jeu exerce la règle : selon les groupes et les fenêtres, les semaines ouvertes diffèrent.
     assert len(jeux_de_semaines) > 3
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : identifiants hors bornes, salles homonymes, versions actives, besoin sans groupe
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("identifiant", [2**63, 10**30, -1, 0])
+def test_un_identifiant_hors_des_entiers_sqlite_est_introuvable(
+    base, session, identifiant, lanceur
+):
+    """Cas : un identifiant de semestre ou de version au-delà de 2**63, négatif ou nul arrive
+    par une adresse web ou une option de commande.
+
+    Risque : `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors
+    que -1 donnait proprement « n'existe pas » ; tous doivent être introuvables.
+    """
+    for chargeur in (charger_instantane, charger_placements, charger_occurrences):
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            chargeur(session, identifiant)
+    # Même garde pour les niveaux d'une version.
+    for lecteur in (niveaux_de_version, niveaux_regles_de_version):
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            lecteur(session, identifiant)
+
+
+@pytest.mark.cas_limite
+@pytest.mark.xfail(
+    strict=True,
+    reason="à corriger par les lots solveur et vérification : src/edt/commandes/generation.py "
+    "(_semestre, ligne 196) et src/edt/services/verification.py (version_a_verifier) font "
+    "session.get sans garder l'identifiant par identifiant_valide",
+)
+@pytest.mark.parametrize(
+    ("commande", "identifiant"),
+    [
+        (["pre-verifier", "--semestre"], 2**63),
+        (["pre-verifier", "--semestre"], 10**30),
+        (["verifier", "--version"], 2**63),
+    ],
+    ids=["pre-verifier-2^63", "pre-verifier-10^30", "verifier-2^63"],
+)
+def test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas(
+    base, commande, identifiant, lanceur
+):
+    """Cas : `pre-verifier --semestre 99999999999999999999` ou `verifier --version 2**63`
+    (identifiant au-delà des entiers de SQLite).
+
+    Risque : `OverflowError` brute du pilote, code 2 « Erreur inattendue » avec trace, au lieu
+    du code 1 « n'existe pas » rendu pour -1.
+    """
+    resultat = lanceur.invoke(cli.app, [*commande, str(identifiant)])
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert "n'existe pas" in resultat.output and "Traceback" not in resultat.output

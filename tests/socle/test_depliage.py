@@ -5,6 +5,8 @@ from __future__ import annotations
 import datetime as dt
 import random
 
+import pytest
+
 from edt.domaine.calendrier import Semaine, semaines_entre
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.depliage import deplier, repartition_reguliere, semaines_ouvertes
@@ -233,3 +235,49 @@ def test_le_depliage_complet_suit_la_regle_de_reference():
                 assert un_besoin.id in sans_semaine and un_besoin.id not in par_besoin
             else:
                 assert par_besoin[un_besoin.id].semaines == {s.numero for s in attendues}
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites : ponctuel hors des dates du semestre, besoin sans groupe
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_ponctuel_hors_des_dates_du_semestre_est_un_probleme_de_depliage():
+    """Cas : le semestre commence un mercredi ; une séance ponctuelle est datée du lundi de la
+    même semaine (saisie avant un raccourcissement du semestre).
+
+    Risque : le dépliage jugeait à la semaine et acceptait, le solveur plaçait, puis
+    l'instanciation rejetait la date avec une raison vague : la cause réelle (hors semestre)
+    doit être dite avant le calcul.
+    """
+    debut, fin = dt.date(2026, 9, 9), dt.date(2026, 12, 18)  # un mercredi
+    semaines = semaines_entre(debut, fin)
+    lundi_avant = dt.date(2026, 9, 7)
+    ponctuel = besoin(1, mode_volume=ModeVolume.PONCTUEL, date_ponctuelle=lundi_avant)
+
+    resultat = deplier([ponctuel], semaines, [], periode=(debut, fin))
+    assert resultat.seances == ()
+    (probleme,) = resultat.problemes
+    assert probleme.code is CodeContrainte.VOLUME
+    assert "en dehors du semestre" in probleme.message and "09/09/2026" in probleme.message
+    # Sans les dates exactes, la semaine suffit (compatibilité des appelants) ; dans les dates,
+    # la séance est dépliée.
+    assert len(deplier([ponctuel], semaines, []).seances) == 1
+    dans = besoin(2, mode_volume=ModeVolume.PONCTUEL, date_ponctuelle=dt.date(2026, 9, 10))
+    assert len(deplier([dans], semaines, [], periode=(debut, fin)).seances) == 1
+
+
+@pytest.mark.cas_limite
+def test_un_besoin_sans_groupe_est_signale_et_non_deplie():
+    """Cas : un besoin dont la liste des groupes est vide (import partiel, groupe retiré par un
+    script) ; la base l'accepte, la conception non.
+
+    Risque : déplié avec un effectif nul (toute salle convient), planifié comme si de rien
+    n'était ; la demande incomplète doit être signalée, pas placée.
+    """
+    resultat = deplier([besoin(1, groupes=frozenset()), besoin(2)], SEMAINES, [])
+    assert [s.id for s in resultat.seances] == ["2-1"]
+    (probleme,) = resultat.problemes
+    assert probleme.besoin_id == 1 and probleme.code is CodeContrainte.VOLUME
+    assert "aucun groupe" in probleme.message

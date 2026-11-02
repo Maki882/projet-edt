@@ -1142,8 +1142,25 @@ def _coherence(
         for nom in ("debut", "fin")
         if isinstance(valeurs.get(nom), str)
     }
-    if code in (TypeRegle.PLAGE_HORAIRE, TypeRegle.CRENEAUX_INTERDITS) and "debut" in heures:
-        if heures["debut"] >= heures["fin"]:
+    avec_heures = code in (
+        TypeRegle.PLAGE_HORAIRE,
+        TypeRegle.CRENEAUX_INTERDITS,
+        TypeRegle.PAUSE_DEJEUNER,
+    ) and (code is not TypeRegle.PAUSE_DEJEUNER or valeurs.get("mode") != DEJEUNER_AUCUN)
+    if avec_heures and parametres is not None:
+        # Hors des heures d'ouverture, une règle n'a aucune séance à placer ou à interdire :
+        # elle serait trompeuse (déjeuner « réservé » à 6 h) ou rendrait sa portée infaisable.
+        for nom, minute in heures.items():
+            if not parametres.ouverture_min <= minute <= parametres.fermeture_min:
+                erreurs[f"parametres.{nom}"] = (
+                    f"{'Début' if nom == 'debut' else 'Fin'} à {minutes_vers_texte(minute)}, "
+                    "hors des heures d'ouverture de l'établissement "
+                    f"({minutes_vers_texte(parametres.ouverture_min)} - "
+                    f"{minutes_vers_texte(parametres.fermeture_min)}) : aucune séance ne peut "
+                    "s'y trouver."
+                )
+    if code in (TypeRegle.PLAGE_HORAIRE, TypeRegle.CRENEAUX_INTERDITS):
+        if "debut" in heures and "fin" in heures and heures["debut"] >= heures["fin"]:
             erreurs["parametres.fin"] = (
                 f"La fin doit venir après le début ({minutes_vers_texte(heures['debut'])})."
             )
@@ -1153,7 +1170,12 @@ def _coherence(
                 f"La fin du déjeuner doit venir après son début "
                 f"({minutes_vers_texte(heures['debut'])})."
             )
-        elif valeurs.get("mode") == DEJEUNER_LIBRE and "duree" in valeurs:
+        elif (
+            valeurs.get("mode") == DEJEUNER_LIBRE
+            and "duree" in valeurs
+            and "debut" in heures
+            and "fin" in heures
+        ):
             fenetre = heures["fin"] - heures["debut"]
             if valeurs["duree"] > fenetre:
                 erreurs["parametres.duree"] = (
@@ -1285,6 +1307,33 @@ def _majuscule(texte: str) -> str:
     return texte[:1].upper() + texte[1:]
 
 
+def _completer_pour_phrase(
+    definition: DefinitionType, valeurs: Mapping[str, Any], parametres: Parametres | None
+) -> dict[str, Any]:
+    """Valeurs canoniques complétées par les défauts (du type, puis globaux si donnés).
+
+    Un champ requis sans défaut connu lève `ErreurDonneesInvalides` qui le
+    nomme : une règle enregistrée incomplète ne fait jamais planter la liste.
+    """
+    complet = dict(valeurs)
+    for champ in definition.champs:
+        if not champ.concerne(complet) or complet.get(champ.nom) is not None:
+            continue
+        if champ.defaut_global is not None and parametres is not None:
+            complet[champ.nom] = _defaut_global_canonique(champ, parametres)
+        elif champ.defaut is not None:
+            complet[champ.nom] = (
+                list(champ.defaut) if isinstance(champ.defaut, list) else champ.defaut
+            )
+        elif champ.obligatoire or champ.defaut_global is not None:
+            raise ErreurDonneesInvalides(
+                f"Règle « {definition.libelle} » : paramètre « {champ.nom} » manquant"
+                + (" (paramètres globaux inconnus)" if champ.defaut_global else "")
+                + " ; la règle enregistrée est incomplète : la modifier."
+            )
+    return complet
+
+
 def _nombre(n: int) -> str:
     """« une », « deux », « trois »... jusqu'à six, sinon le chiffre."""
     return {1: "une", 2: "deux", 3: "trois", 4: "quatre", 5: "cinq", 6: "six"}.get(n, str(n))
@@ -1346,10 +1395,12 @@ def phrase(
 
     Les paramètres globaux, s'ils sont donnés, affinent la phrase : « ne
     travaille pas le samedi » plutôt que la liste des jours, « ferme à 17 h »
-    plutôt que les deux heures.
+    plutôt que les deux heures. Une règle enregistrée incomplète (heures
+    absentes) est complétée par les défauts du type et les paramètres
+    globaux ; sans eux, `ErreurDonneesInvalides` nomme le champ manquant.
     """
-    v = valeurs
     code = type_regle
+    v = _completer_pour_phrase(CATALOGUE_TYPES[code], valeurs, parametres)
     standard_jours = parametres.jours_travailles if parametres is not None else None
     if code is TypeRegle.JOURS_TRAVAILLES:
         jours = {jour_depuis_texte(j) for j in v.get("jours", ())}
@@ -1781,6 +1832,11 @@ class ReglesJours:
         """Campus visés par une règle de jours."""
         return frozenset(self.par_campus)
 
+    @property
+    def regles_incompatibles(self) -> tuple[RegleResolue, ...]:
+        """Les règles retenues quand elles ne laissent aucun jour permis (sinon vide)."""
+        return self.retenues if self.retenues and not self.jours_permis() else ()
+
 
 @dataclass(frozen=True)
 class ReglageDejeuner:
@@ -1838,13 +1894,16 @@ def valeurs_resolues(
     type_regle: TypeRegle,
     canoniques: Mapping[str, Any],
     parametres: Parametres,
-    identifiants: Mapping[str, Mapping[str, int]] | None = None,
+    identifiants: Mapping[str, Mapping[str, int | Collection[int]]] | None = None,
 ) -> dict[str, Any]:
     """Paramètres canoniques convertis pour le calcul (numéros, minutes, identifiants).
 
-    `identifiants` : `{"campus": {code: id}, "salle": {code: id},
+    `identifiants` : `{"campus": {code: id}, "salle": {code: id ou ids},
     "type_seance": {code: id}}`. Un code sans identifiant lève
-    `ErreurDonneesInvalides`. Les champs absents prennent le défaut global.
+    `ErreurDonneesInvalides`. Un code qui désigne plusieurs lignes (salles
+    homonymes sur deux campus) donne tous leurs identifiants dans une liste de
+    codes (`SALLES` : « en N105 » vaut pour chaque N105) et est refusé pour un
+    code unique. Les champs absents prennent le défaut global.
     """
     definition = CATALOGUE_TYPES[type_regle]
     resolues: dict[str, Any] = {}
@@ -1866,13 +1925,20 @@ def valeurs_resolues(
         elif champ.sorte in (SorteChamp.CODES, SorteChamp.CODE):
             codes = valeur if champ.sorte is SorteChamp.CODES else [valeur]
             table = (identifiants or {}).get(champ.entite or "", {})
-            ids = []
+            ids: list[int] = []
             for code in codes:
                 if code not in table:
                     raise ErreurDonneesInvalides(
                         f"{champ.libelle} : {champ.entite} « {code} » inconnu."
                     )
-                ids.append(table[code])
+                trouves = table[code]
+                plusieurs = tuple(sorted(trouves)) if not isinstance(trouves, int) else (trouves,)
+                if champ.sorte is SorteChamp.CODE and len(plusieurs) != 1:
+                    raise ErreurDonneesInvalides(
+                        f"{champ.libelle} : {champ.entite} « {code} » désigne {len(plusieurs)} "
+                        "lignes ; préciser."
+                    )
+                ids.extend(plusieurs)
             resolues[champ.nom] = tuple(ids) if champ.sorte is SorteChamp.CODES else ids[0]
         elif champ.sorte is SorteChamp.MOMENTS:
             resolues[champ.nom] = tuple(moment_depuis_texte(m) for m in valeur)
@@ -2092,6 +2158,15 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
             candidates(jt, NaturePortee.TYPE_SEANCE, besoin.type_seance_id),
             axes_campus,
         )
+        incompatibles = jours[seance.id].regles_incompatibles
+        if incompatibles:
+            journal.warning(
+                "Séance %s (%s) : aucun jour permis, les règles de jours retenues sont "
+                "incompatibles entre elles : %s",
+                seance.id,
+                besoin.libelle,
+                ", ".join(r.code for r in incompatibles),
+            )
 
     toutes = frozenset(semaine.numero for semaine in instantane.semaines)
 
