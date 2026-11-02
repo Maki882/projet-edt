@@ -19,7 +19,10 @@ import tourne dans le processus.
 
 Les fichiers sont lus entièrement (tableaux, puis récurrences iCal) avant
 l'ouverture de la transaction de l'import : la base n'est réservée en
-écriture (`BEGIN IMMEDIATE`) que le temps d'écrire.
+écriture que le temps d'écrire (`edt.db.moteur.transaction_immediate`, appelé
+par `transaction.simulation_possible`). La session reçue ne doit donc avoir
+servi à rien : ce que l'import lit avant sa transaction (le semestre) se lit
+dans une session à part.
 """
 
 from __future__ import annotations
@@ -346,6 +349,25 @@ def appliquer_import(
         return _importer(session, fichiers, options, simuler=False)
 
 
+def _semestre_vise(session: Session, options: OptionsImport) -> tuple[int, dt.date, dt.date]:
+    """Semestre d'un import d'emploi du temps : identifiant, premier et dernier jour.
+
+    Lu dans une session à part, aussitôt fermée : la session de l'import ne
+    doit servir à rien avant l'ouverture de sa transaction, qui réserve la base
+    en écriture dès son début (`transaction.simulation_possible`) ; entre les
+    deux, les fichiers sont lus sans rien réserver.
+    """
+    with Session(session.get_bind()) as lecture:
+        semestre = (
+            donnees.obtenir_par_id(lecture, m.Semestre, options.semestre_id)
+            if options.semestre_id is not None
+            else semestre_par_defaut(lecture)
+        )
+        if semestre is None:
+            raise ErreurIntrouvable(f"Le semestre {options.semestre_id} n'existe pas.")
+        return semestre.id, semestre.date_debut, semestre.date_fin
+
+
 def compter_remplacement(session: Session) -> dict[str, int]:
     """Ce que « tout remplacer » supprimerait, par libellé (pour la demande de confirmation)."""
     return donnees.compter_donnees(session)
@@ -402,8 +424,9 @@ def _importer(
             calendriers.append((lu.nom, lu.texte_ical))
 
     # Tout ce qui se lit sans écrire est lu avant la transaction : le développement des
-    # récurrences iCal (jusqu'à DELAI_RECURRENCES secondes) ne réserve pas la base.
-    semestre = None
+    # récurrences iCal (jusqu'à DELAI_RECURRENCES secondes) ne réserve pas la base. La
+    # session de l'import, elle, ne sert pas avant sa transaction (voir _semestre_vise).
+    semestre_id = None
     bilan_seances = Bilan("séances")
     seances: list[SeanceLue] = []
     if options.mode is ModeImport.DONNEES:
@@ -417,13 +440,7 @@ def _importer(
                 )
             )
     else:
-        semestre = (
-            donnees.obtenir_par_id(session, m.Semestre, options.semestre_id)
-            if options.semestre_id is not None
-            else semestre_par_defaut(session)
-        )
-        if semestre is None:
-            raise ErreurIntrouvable(f"Le semestre {options.semestre_id} n'existe pas.")
+        semestre_id, debut_semestre, fin_semestre = _semestre_vise(session, options)
         for tableau in tableaux:
             seances.extend(lire_tableau_seances(tableau, bilan_seances, signalements))
         budget = BudgetRecurrences()  # un seul temps de calcul pour tous les fichiers iCal
@@ -431,7 +448,7 @@ def _importer(
             lues, signales = lire_ical(
                 nom,
                 texte,
-                (semestre.date_debut, semestre.date_fin),
+                (debut_semestre, fin_semestre),
                 max_seances=limites.lignes_restantes,
                 budget=budget,
             )
@@ -461,7 +478,7 @@ def _importer(
                 session,
                 seances,
                 options.mode,
-                semestre.id,
+                semestre_id,
                 semaine_type=options.semaine_type,
                 fichiers=[f.nom for f in fichiers],
                 bilan_seances=bilan_seances,

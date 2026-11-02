@@ -37,7 +37,7 @@ from edt.echange import ical, lecture, valeurs
 from edt.echange.format import FEUILLES
 from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
 from edt.echange.rapport import ListeSignalements, RapportImport, Signalement, rapport_csv
-from edt.echange.transaction import ouvrir_transaction
+from edt.echange.transaction import simulation_possible
 from edt.erreurs import ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.echange import ModeImport, OptionsImport
@@ -432,12 +432,12 @@ def test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule(jeu_minimal, impo
 def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
     """Cas : une autre connexion veut écrire pendant qu'un import a ouvert sa transaction.
 
-    Risque : avec un BEGIN différé, l'import lisait sans verrou puis échouait
-    aussitôt « database is locked » si une autre écriture avait validé entre-temps
-    (SQLite n'attend pas dans ce cas) ; BEGIN IMMEDIATE fait attendre son tour.
+    Risque : en transaction différée (BEGIN émis par le moteur), l'import lisait
+    sans verrou puis échouait aussitôt « database is locked » si une autre écriture
+    avait validé entre-temps (SQLite n'attend pas dans ce cas). simulation_possible
+    ouvre la transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE).
     """
-    with session_base() as session:
-        ouvrir_transaction(session)
+    with session_base() as session, simulation_possible(session, simuler=True):
         autre = sqlite3.connect(environnement / "edt.db", timeout=0)
         try:
             with pytest.raises(sqlite3.OperationalError, match="locked"):
@@ -450,8 +450,10 @@ def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
 def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
     """Cas : deux imports appliqués au même moment (deux onglets du navigateur).
 
-    Risque : le second échouait « base occupée » au lieu d'attendre la fin du
-    premier ; ou l'un écrasait l'autre.
+    Risque : en transaction différée, le second échouait « base occupée » au lieu
+    d'attendre la fin du premier, ou l'un écrasait l'autre. Chaque import ouvre sa
+    transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE) : le
+    second attend son tour, dans la limite du délai de verrou du socle.
     """
     depart = threading.Barrier(2)
     rapports, echecs = {}, []
