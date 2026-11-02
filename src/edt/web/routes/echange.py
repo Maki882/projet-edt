@@ -305,17 +305,34 @@ def _telecharger_edt(
     return _telecharger(fichier)
 
 
+DESIGNATIONS = {
+    "version_id": "La version d'emploi du temps",
+    "groupe_id": "Le groupe",
+    "enseignant_id": "L'enseignant",
+    "salle_id": "La salle",
+}
+"""Ce que désigne chaque paramètre d'identifiant, pour le message « n'existe pas »."""
+
+
 def _identifiant(texte: str | None, nom: str) -> int | None:
-    """Identifiant numérique d'un paramètre (vide = non renseigné)."""
+    """Identifiant numérique d'un paramètre (vide = non renseigné).
+
+    Un nombre qui ne peut être aucun identifiant (négatif, nul, au-delà des
+    entiers de la base) est rendu tel quel : l'export répond « n'existe pas »
+    (404), comme les écrans Données (`echange.donnees.obtenir_par_id`). Un
+    texte qui n'est pas un nombre est refusé (422).
+    """
     if texte is None or not texte.strip():
         if nom == "version_id":
             raise ErreurDonneesInvalides("Choisir la version d'emploi du temps à exporter.")
         return None
     texte = texte.strip()
-    if not (texte.isascii() and texte.isdigit()):  # « ² » passe isdigit, pas int()
+    chiffres = texte.removeprefix("-")
+    if not (chiffres.isascii() and chiffres.isdigit()):  # « ² » passe isdigit, pas int()
         raise ErreurDonneesInvalides(f"Paramètre {nom} invalide : {texte[:30]!r} (nombre attendu).")
-    if len(texte) > 18:  # aucun identifiant n'est si long (et `int` refuse 4 300 chiffres)
-        raise ErreurDonneesInvalides(f"Paramètre {nom} invalide : nombre trop grand.")
+    if len(chiffres) > 19:  # plus long que tout entier de la base (int() refuse 4 300 chiffres)
+        apercu = texte if len(texte) <= 30 else f"{texte[:27]}..."
+        raise ErreurIntrouvable(f"{DESIGNATIONS[nom]} {apercu} n'existe pas.")
     return int(texte)
 
 
