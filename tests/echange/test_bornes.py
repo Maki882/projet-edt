@@ -7,9 +7,11 @@ page qui gèle le serveur) et le refus propre est vérifié.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import csv
 import datetime as dt
 import io
+import itertools
 import sqlite3
 import threading
 import time
@@ -18,7 +20,15 @@ import zipfile
 import httpx
 import pytest
 from sqlalchemy import select
-from tests.echange.fabrique import archive_zip, classeur, compter, csv_envoye, erreurs, seul
+from tests.echange.fabrique import (
+    archive_zip,
+    calendrier_ical,
+    classeur,
+    compter,
+    csv_envoye,
+    erreurs,
+    seul,
+)
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -28,6 +38,7 @@ from edt.echange.format import FEUILLES
 from edt.echange.lecture import FichierEnvoye, Limites, lire_fichier
 from edt.echange.rapport import ListeSignalements, RapportImport, Signalement, rapport_csv
 from edt.echange.transaction import ouvrir_transaction
+from edt.erreurs import ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.echange import ModeImport, OptionsImport
 
@@ -519,3 +530,92 @@ def test_archive_aux_chemins_hostiles_lue_sans_ecriture_sur_disque(
     assert not (environnement / "etc").exists()
     noms = [a.fichier for a in rapport.apercus] + [s.fichier for s in rapport.signalements]
     assert noms and all(".." not in nom and ":" not in nom for nom in noms), noms
+
+
+@pytest.mark.cas_limite
+def test_lecture_ical_faite_avant_de_reserver_la_base(
+    jeu_minimal, importer, fichier_exemple, environnement, monkeypatch
+):
+    """Cas : un import d'emploi du temps iCal dont les récurrences prennent du temps à calculer.
+
+    Risque : lu dans la transaction (BEGIN IMMEDIATE), l'agenda réservait la base
+    pendant tout son calcul : une saisie simultanée attendait, puis échouait
+    « base occupée ».
+    """
+    ordre = []
+    lire_ical_reel, transaction_reelle = service.lire_ical, service.simulation_possible
+
+    def lire_ical_espion(*arguments, **options):
+        autre = sqlite3.connect(environnement / "edt.db", timeout=0)
+        try:
+            autre.execute("BEGIN IMMEDIATE")  # « database is locked » si la base est réservée
+            autre.rollback()
+        finally:
+            autre.close()
+        ordre.append("lecture iCal")
+        return lire_ical_reel(*arguments, **options)
+
+    @contextlib.contextmanager
+    def transaction_espion(*arguments, **options):
+        ordre.append("transaction")
+        with transaction_reelle(*arguments, **options):
+            yield
+
+    monkeypatch.setattr(service, "lire_ical", lire_ical_espion)
+    monkeypatch.setattr(service, "simulation_possible", transaction_espion)
+
+    importer(
+        fichier_exemple("agenda.ics"),
+        mode=ModeImport.A_REPLACER,
+        semestre_id=jeu_minimal.semestre_id,
+        simuler=True,
+    )
+
+    assert ordre == ["lecture iCal", "transaction"]
+
+
+@pytest.mark.cas_limite
+def test_budget_de_calcul_ical_partage_par_l_envoi(jeu_minimal, importer, monkeypatch):
+    """Cas : un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses.
+
+    Risque : avec un délai par fichier, un envoi de N fichiers hostiles occupait le
+    serveur N fois DELAI_RECURRENCES ; le délai vaut pour tout l'envoi.
+    """
+    secondes = itertools.count()  # horloge factice : chaque règle coûte deux « secondes »
+    monkeypatch.setattr(ical, "_horloge", lambda: next(secondes))
+    texte = calendrier_ical(
+        "DTSTART:20261005T083000\nDTEND:20261005T103000\nRRULE:FREQ=WEEKLY\n"
+        "X-EDT-MATIERE:IM.1101\nX-EDT-TYPE:CM\nX-EDT-GROUPES:A1"
+    )
+    fichiers = [FichierEnvoye(f"agenda{i}.ics", texte.encode()) for i in range(1, 5)]
+
+    rapport = importer(
+        fichiers, mode=ModeImport.A_REPLACER, semestre_id=jeu_minimal.semestre_id, simuler=True
+    )
+
+    refuses = {
+        s.fichier
+        for s in rapport.signalements
+        if s.gravite is Gravite.ERREUR and s.message.startswith("Fichier iCal refusé")
+    }
+    assert refuses == {"agenda3.ics", "agenda4.ics"}  # les deux premiers ont tout consommé
+
+
+@pytest.mark.cas_limite
+def test_service_appele_avec_un_identifiant_hors_base_repond_introuvable(
+    jeu_minimal, fichier_exemple
+):
+    """Cas : un appelant du service (commande, futur assistant) passe un identifiant de 10**20.
+
+    Risque : session.get levait OverflowError, « erreur inattendue » au lieu de
+    « n'existe pas » : les bornes des adresses et des options ne protègent pas un
+    appel direct du service.
+    """
+    options = OptionsImport(mode=ModeImport.REFERENCE, semestre_id=ENORME)
+    with session_base() as session:
+        with pytest.raises(ErreurIntrouvable, match=f"Le semestre {ENORME} n'existe pas"):
+            service.simuler_import(session, [fichier_exemple("seances_existantes.csv")], options)
+        with pytest.raises(ErreurIntrouvable, match=f"version d'emploi du temps {ENORME}"):
+            service.resoudre_filtre(session, ENORME)
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            service.exporter_emploi_du_temps(session, ENORME, groupe_id=-1)
