@@ -48,6 +48,7 @@ from edt.domaine.regles import (
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT
 from edt.services import regles as service_regles
 from edt.services.emploi_du_temps import memoire, presentation
+from edt.services.emploi_du_temps.identifiants import apercu, entier_ecrit
 from edt.services.instantane import charger_instantane
 
 journal = logging.getLogger(__name__)
@@ -390,16 +391,17 @@ def lire_choix_regles(
 
     Une règle sans champ garde son niveau. Lève `ErreurSaisieRegles` (avec
     les choix lisibles, à réafficher) pour un niveau inconnu ou un champ qui
-    vise une règle qui n'est pas (ou plus) active pour le semestre.
+    vise une règle qui n'est pas (ou plus) active pour le semestre (identifiant
+    illisible compris : « ² », 5 000 chiffres).
     """
     connues = {regle.id for regle in regles}
     erreurs: list[str] = []
     for nom in champs:
         brut = nom.removeprefix(PREFIXE_NIVEAU_REGLE).removeprefix(PREFIXE_IGNORER_REGLE)
-        if not brut.isdigit() or int(brut) not in connues:
+        if entier_ecrit(brut) not in connues:
             erreurs.append(
-                f"la règle « {brut} » n'est pas (ou plus) active pour ce semestre : recharger "
-                "la page."
+                f"la règle « {apercu(brut)} » n'est pas (ou plus) active pour ce semestre : "
+                "recharger la page."
             )
     choix: dict[int, Niveau | None] = {}
     for regle in regles:
@@ -413,7 +415,7 @@ def lire_choix_regles(
         try:
             choix[regle.id] = Niveau(valeur)
         except ValueError:
-            erreurs.append(f"niveau inconnu pour la règle {regle.code} (« {valeur} »).")
+            erreurs.append(f"niveau inconnu pour la règle {regle.code} (« {apercu(valeur)} »).")
             choix[regle.id] = regle.niveau
     if erreurs:
         journal.info("Niveaux des règles personnalisées refusés : %s", " ".join(erreurs))

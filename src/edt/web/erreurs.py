@@ -9,7 +9,8 @@ Aucun écran n'affiche d'erreur brute :
 - une violation d'intégrité de la base (doublon, élément encore utilisé)
   devient un refus expliqué ;
 - une panne du pilote de base (base occupée, non initialisée, fichier qui
-  n'est pas une base SQLite, inaccessible) devient un 503 qui dit quoi faire ;
+  n'est pas une base SQLite, en lecture seule, disque plein, inaccessible)
+  devient un 503 qui dit quoi faire ;
 - toute autre exception est interceptée par l'intergiciel
   (`edt.web.intergiciels`), journalisée avec sa trace, et rendue par la même
   page d'erreur avec l'identifiant de la requête.
@@ -152,8 +153,8 @@ async def _integrite(request: Request, erreur: IntegrityError) -> Response:
 
 
 async def _base_indisponible(request: Request, erreur: DatabaseError) -> Response:
-    """Base inutilisable : occupée (opération en cours, verrou), non initialisée, corrompue
-    ou inaccessible.
+    """Base inutilisable : occupée (opération en cours, verrou), non initialisée, corrompue,
+    en lecture seule, sur un disque plein, ou inaccessible.
 
     Pendant un chargement de jeu fictif ou une remise à zéro, les tables sont
     supprimées puis recréées : une requête qui tombe à ce moment-là reçoit
@@ -175,6 +176,7 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
             ),
         )
     journal.exception("Base de données indisponible sur %s", request.url.path)
+    titre = "Base de données indisponible"
     if "no such table" in cause:
         message = (
             "La base de données n'est pas prête : elle n'est pas initialisée. Lancer "
@@ -187,14 +189,27 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
             "ou il est corrompu. Restaurer une sauvegarde, ou recréer la base avec "
             "« python -m edt init-db --reset » (les données sont perdues), puis réessayer."
         )
+    elif "readonly" in cause or "read-only" in cause:
+        titre = "Base de données en lecture seule"
+        message = (
+            "La base de données est en lecture seule : rien n'a été enregistré. À faire par "
+            "l'administrateur du serveur : rendre le fichier de la base et son dossier "
+            "inscriptibles par l'utilisateur du service (SQLite y crée ses fichiers -wal et "
+            "-shm), puis réessayer ; « python -m edt doctor » vérifie l'écriture."
+        )
+    elif "is full" in cause:
+        titre = "Espace disque épuisé"
+        message = (
+            "Le disque de la base de données est plein : rien n'a été enregistré. À faire par "
+            "l'administrateur du serveur : libérer de l'espace disque (anciens journaux, "
+            "sauvegardes), puis réessayer ; « python -m edt doctor » vérifie l'écriture."
+        )
     else:
         message = (
             "La base de données n'est pas accessible. Réessayer dans quelques instants ; si "
             "le problème persiste, communiquer la référence ci-dessous à l'administrateur."
         )
-    return reponse_erreur(
-        request, statut=503, titre="Base de données indisponible", message=message
-    )
+    return reponse_erreur(request, statut=503, titre=titre, message=message)
 
 
 def installer_gestionnaires(app: FastAPI) -> None:

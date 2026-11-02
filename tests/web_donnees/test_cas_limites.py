@@ -30,7 +30,6 @@ from edt.services.referentiels import operations
 
 from .conftest import (
     HX,
-    LOT_WEB_EDT,
     compter,
     depuis,
     existe,
@@ -269,11 +268,6 @@ def test_hx_current_url_illisible_est_ignore(site, ids, caplog):
         assert any("HX-Current-URL" in r.getMessage() for r in caplog.records), adresse
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=LOT_WEB_EDT + "src/edt/web/routes/emploi_du_temps.py, _adresse_de_la_page "
-    "(urlsplit de HX-Current-URL sans garde ; edt.web.gabarits.adresse_courante le fait)",
-)
 def test_hx_current_url_illisible_dans_le_panneau_d_une_seance(site, version_generee):
     """Cas : le panneau d'une séance (grille de l'emploi du temps) demandé avec un
     HX-Current-URL illisible. Risque : erreur 500 au clic sur une séance."""
@@ -326,17 +320,7 @@ def test_fragments_sans_htmx_redirigent_vers_la_page(site, ids):
 
 @pytest.mark.parametrize(
     "adresse",
-    [
-        pytest.param(
-            "/a-traiter/compteur",
-            marks=pytest.mark.xfail(
-                strict=True, reason=LOT_WEB_EDT + "src/edt/web/routes/a_traiter.py (compteur)"
-            ),
-        ),
-        "/calculs/verifications",
-        "calcul_etat",  # corrigé par le lot web-edt
-        "formulaire_seance",  # corrigé par le lot web-edt
-    ],
+    ["/a-traiter/compteur", "/calculs/verifications", "calcul_etat", "formulaire_seance"],
 )
 def test_fragments_des_autres_ecrans_sans_htmx(site, version_generee, adresse):
     """Cas : un fragment des écrans Générer, Emploi du temps ou À traiter ouvert directement.
