@@ -32,8 +32,14 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import String, func, or_, select
 from sqlalchemy.orm import Session
 
-from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
-from edt.services.referentiels.conversion import ENTIER_MAX, ErreurChamp, canonique, convertir
+from edt.db.moteur import identifiant_valide
+from edt.erreurs import (
+    ErreurCalculEnCours,
+    ErreurDonneesInvalides,
+    ErreurIntrouvable,
+    ErreurRegleMetier,
+)
+from edt.services.referentiels.conversion import ErreurChamp, canonique, convertir
 from edt.services.referentiels.description import (
     Champ,
     Decompte,
@@ -50,6 +56,10 @@ journal = logging.getLogger(__name__)
 TAILLE_PAGE = 50
 """Nombre de lignes par page par défaut."""
 TAILLE_PAGE_MAX = 500
+
+LONGUEUR_TEXTE_LIBRE = 5000
+"""Longueur maximale d'un texte sans longueur de colonne (note, commentaire) : la base
+l'accepterait sans limite, mais un texte d'un mégaoctet alourdirait chaque page."""
 
 
 class ErreurSaisie(ErreurDonneesInvalides):
@@ -107,7 +117,8 @@ class AnalyseSuppression:
     emporterait ou modifierait ailleurs, et ce qui se passe ensuite ;
     `regles` : règles personnalisées qui visent l'élément ou le citent, que la
     suppression supprimerait ou modifierait (avec l'accord explicite de
-    l'utilisateur : voir `supprimer`).
+    l'utilisateur : voir `supprimer`) ; `calcul_id` : le calcul en cours, qui
+    interdit pour l'instant toute suppression (voir `blocage_calcul`).
     """
 
     entite: str
@@ -116,6 +127,7 @@ class AnalyseSuppression:
     blocages: tuple[Raison, ...]
     effets: tuple[Raison, ...]
     regles: tuple[RegleTouchee, ...] = ()
+    calcul_id: int | None = None
 
     @property
     def ids_regles(self) -> tuple[int, ...]:
@@ -158,12 +170,16 @@ def entite(code: str | Entite) -> Entite:
 
 
 def longueur_max(description: Entite, champ: Champ) -> int | None:
-    """Longueur maximale d'un champ texte : celle déclarée, sinon celle de la colonne."""
+    """Longueur maximale d'un champ texte : celle déclarée, sinon celle de la colonne.
+
+    Une colonne de texte sans longueur (`Text` : note, commentaire) est bornée
+    à `LONGUEUR_TEXTE_LIBRE` caractères.
+    """
     if champ.longueur_max is not None or champ.virtuel:
         return champ.longueur_max
     colonne = description.modele.__table__.columns.get(champ.nom)
     if colonne is not None and isinstance(colonne.type, String):
-        return colonne.type.length
+        return colonne.type.length or LONGUEUR_TEXTE_LIBRE
     return None
 
 
@@ -382,19 +398,15 @@ def _ligne(description: Entite, trouve: Any) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 
-def identifiant_possible(ident: object) -> bool:
-    """Vrai si `ident` peut être un identifiant en base (entier positif représentable).
-
-    Une adresse comme « /salles/99999999999999999999 » donne alors « introuvable »
-    au lieu d'une erreur de la base.
-    """
-    return isinstance(ident, int) and not isinstance(ident, bool) and 0 < ident <= ENTIER_MAX
-
-
 def objet(session: Session, code: str | Entite, ident: int) -> Any:
-    """L'objet ORM `ident` ; lève `ErreurIntrouvable` s'il n'existe pas."""
+    """L'objet ORM `ident` ; lève `ErreurIntrouvable` s'il n'existe pas.
+
+    Un identifiant qu'aucune ligne ne peut porter (« /salles/99999999999999999999 »,
+    garde commune `edt.db.moteur.identifiant_valide`) est « introuvable » sans
+    interroger la base, au lieu d'une erreur du pilote.
+    """
     description = entite(code)
-    trouve = session.get(description.modele, ident) if identifiant_possible(ident) else None
+    trouve = session.get(description.modele, ident) if identifiant_valide(ident) else None
     if trouve is None:
         raise ErreurIntrouvable(
             f"{description.nom_majuscule} n° {ident} introuvable : "
@@ -594,16 +606,45 @@ def modifier(
 # --------------------------------------------------------------------------- #
 
 
+def blocage_calcul() -> tuple[int, Raison] | None:
+    """Le calcul en cours et la raison qui interdit, pendant qu'il tourne, toute suppression.
+
+    Un calcul enregistre à sa fin des séances qui pointent vers les besoins,
+    salles, groupes... lus à son lancement : supprimer l'un d'eux entre-temps
+    ferait échouer l'enregistrement (contrainte d'intégrité) et perdre le
+    calcul. Un semestre ou une année supprimés emporteraient le calcul
+    lui-même, et avec lui le verrou « un seul calcul à la fois ».
+    """
+    from edt.services.generation import calcul_en_cours
+
+    suivi = calcul_en_cours()
+    if suivi is None:
+        return None
+    return suivi.id, Raison(
+        f"Un calcul d'emploi du temps est en cours (calcul n° {suivi.id}) : il enregistrera à "
+        "sa fin des séances qui s'appuient sur ces données. Attendre qu'il se termine, ou "
+        "l'arrêter, avant de supprimer.",
+        f"/calculs/{suivi.id}",
+        "Suivre le calcul",
+    )
+
+
 def analyser_suppression(session: Session, code: str | Entite, ident: int) -> AnalyseSuppression:
-    """Dit si l'élément peut être supprimé, et ce que la suppression emporterait."""
+    """Dit si l'élément peut être supprimé, et ce que la suppression emporterait.
+
+    Pendant un calcul, la suppression est refusée quel que soit l'élément
+    (`blocage_calcul`), en plus des refus qui lui sont propres.
+    """
     description = entite(code)
     trouve = objet(session, description, ident)
+    calcul = blocage_calcul()
 
     def raison(decompte: Decompte, nombre: int, texte: str) -> Raison:
         adresse = decompte.adresse(ident)
         return Raison(texte, adresse, decompte.libelle_lien(nombre) if adresse else "")
 
-    blocages = [
+    blocages = [calcul[1]] if calcul is not None else []
+    blocages += [
         raison(usage, nombre, f"{description.demonstratif} {usage.texte(nombre)}.")
         for usage in description.usages
         if (nombre := usage.compter(session, ident))
@@ -624,6 +665,7 @@ def analyser_suppression(session: Session, code: str | Entite, ident: int) -> An
         blocages=tuple(blocages),
         effets=tuple(effets),
         regles=tuple(regles_touchees(session, description.code, trouve)),
+        calcul_id=calcul[0] if calcul is not None else None,
     )
 
 
@@ -656,7 +698,8 @@ def supprimer(
     """Supprime un élément et renvoie son libellé.
 
     Lève `ErreurRegleMetier` **avant toute écriture** si l'élément est encore
-    utilisé (« Cette salle est imposée à 12 besoins. »).
+    utilisé (« Cette salle est imposée à 12 besoins. »), et `ErreurCalculEnCours`
+    (sous-classe) si un calcul tourne.
 
     Règles personnalisées (décision 3) : si des règles visent l'élément ou le
     citent, la suppression n'a lieu que si `regles_confirmees` donne exactement
@@ -666,6 +709,14 @@ def supprimer(
     """
     description = entite(code)
     analyse = analyser_suppression(session, description, ident)
+    if analyse.calcul_id is not None:
+        journal.warning(
+            "Suppression refusée (%s « %s ») : calcul n° %d en cours",
+            description.nom,
+            analyse.libelle,
+            analyse.calcul_id,
+        )
+        raise ErreurCalculEnCours(analyse.blocages[0].texte + " Rien n'a été supprimé.")
     if not analyse.possible:
         journal.warning(
             "Suppression refusée (%s « %s ») : %s",

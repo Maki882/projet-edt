@@ -69,6 +69,9 @@ from edt.domaine.regles import (
 
 LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI, SAMEDI, DIMANCHE = range(7)
 DEBUT_SEMESTRE = dt.date(2026, 9, 7)
+MARDI_6_OCT = dt.date(2026, 10, 6)
+MARDI_13_OCT = dt.date(2026, 10, 13)
+"""Dates repères du semestre de test (du lundi 7 septembre au vendredi 18 décembre 2026)."""
 NOTRE_DAME, ISSY = 1, 2
 
 TYPES_SALLE = (
@@ -488,6 +491,8 @@ __all__ = [
     "JEUDI",
     "LUNDI",
     "MARDI",
+    "MARDI_13_OCT",
+    "MARDI_6_OCT",
     "MERCREDI",
     "NOTRE_DAME",
     "SAMEDI",

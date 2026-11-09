@@ -13,9 +13,33 @@ from collections import Counter
 from collections.abc import Mapping
 from itertools import combinations
 
-from edt.domaine.enumerations import SAMEDI, CibleIndisponibilite, NatureJourFerme
+from edt.db.moteur import session_base
+from edt.domaine.enumerations import CibleIndisponibilite, NatureJourFerme
 from edt.domaine.instantane import Instantane, SeanceAPlacer
-from edt.synthese.rapport import PlaceTemoin
+from edt.services.instantane import charger_instantane
+from edt.synthese.rapport import PlaceTemoin, RapportJeu
+from edt.verification import verifier
+
+
+def problemes_du_temoin(url: str, rapport: RapportJeu) -> list[str]:
+    """Tout ce qu'on reproche au témoin d'un jeu, semestre par semestre (vide = valide).
+
+    Anomalies bloquantes du vérificateur officiel, écarts aux contraintes dures
+    (`violations`) et aux règles personnalisées (`violations_regles`).
+    """
+    problemes: list[str] = []
+    with session_base(url) as session:
+        for code, semestre_id in rapport.semestres.items():
+            instantane = charger_instantane(session, semestre_id)
+            temoin = rapport.temoin_par_semestre[code]
+            problemes += [
+                f"[{code}] {a.code} : {a.message}"
+                for a in verifier(instantane, rapport.placements(code))
+                if a.bloquante
+            ]
+            problemes += [f"[{code}] {v}" for v in violations(instantane, temoin)]
+            problemes += [f"[{code}] {v}" for v in violations_regles(instantane, temoin)]
+    return problemes
 
 
 def violations(instantane: Instantane, temoin: Mapping[str, PlaceTemoin]) -> list[str]:
@@ -63,12 +87,14 @@ def _unitaires(inst: Instantane, seance: SeanceAPlacer, place: PlaceTemoin) -> l
         fin_demi = _fin_demi_journee(inst, place.jour, place.debut)
         if fin_demi is not None and place.fin > fin_demi:
             erreurs.append(f"{nom} : déborde de sa demi-journée (HORAIRES)")
-    if place.jour > SAMEDI or (place.jour == SAMEDI and not b.samedi_autorise):
-        erreurs.append(f"{nom} : jour {place.jour} interdit (JOURS)")
-    if place.debut < p.dejeuner_fin_min and p.dejeuner_debut_min < place.fin:
-        erreurs.append(f"{nom} : recoupe le déjeuner (DEJEUNER)")
     # Salle.
     salle = inst.salle(place.salle_id)
+    # Jours permis (jours travaillés, case « samedi autorisé », règles) et déjeuner fixe.
+    if place.jour not in inst.reglages.jours_de(seance.id).jours_permis(salle.campus_id):
+        erreurs.append(f"{nom} : jour {place.jour} interdit (JOURS)")
+    plage = p.plage_dejeuner
+    if plage is not None and place.debut < plage[1] and plage[0] < place.fin:
+        erreurs.append(f"{nom} : recoupe le déjeuner (DEJEUNER)")
     if salle.capacite < b.effectif:
         erreurs.append(f"{nom} : {salle.code} trop petite (CAPACITE)")
     if b.types_salle_acceptes and salle.type_salle_id not in b.types_salle_acceptes:

@@ -43,9 +43,10 @@ from edt.erreurs import ErreurConfiguration
 from edt.journal import configurer_journalisation
 from edt.services.generation import cloturer_calculs_interrompus
 from edt.web import routes
+from edt.web.dependances import ROUTES_ECRITURE_DELEGUEE
 from edt.web.erreurs import installer_gestionnaires
 from edt.web.gabarits import DOSSIER_STATIQUE
-from edt.web.intergiciels import IntergicielJournal
+from edt.web.intergiciels import IntergicielHead, IntergicielJournal
 from edt.web.menu import EntreeMenu, construire_menu
 
 journal = logging.getLogger(__name__)
@@ -64,7 +65,15 @@ def modules_de_routes() -> list[str]:
 
 @asynccontextmanager
 async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
-    """Au démarrage du serveur : clôt les calculs qu'un arrêt précédent a laissés « en cours »."""
+    """Au démarrage du serveur : clôt les calculs qu'un arrêt précédent a laissés « en cours ».
+
+    Une base corrompue, verrouillée par un autre processus ou inaccessible ne
+    fait pas échouer le démarrage : le serveur doit pouvoir répondre « base
+    indisponible » (et `/sante` dire « dégradé ») plutôt que de laisser le
+    gestionnaire de services boucler sur des redémarrages. La panne est
+    journalisée ; la clôture des calculs est simplement reportée au prochain
+    lancement de calcul.
+    """
     config = charger_configuration()
     journal.info(
         "Application EDT %s démarrée (environnement %s, base %s)",
@@ -72,11 +81,27 @@ async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
         config.env,
         config.db_url_affichable,
     )
-    if base_initialisee(obtenir_moteur()):
-        cloturer_calculs_interrompus()
+    try:
+        prete = base_initialisee(obtenir_moteur())
+    except Exception:
+        journal.exception(
+            "Base de données indisponible au démarrage (%s) : le serveur démarre quand même "
+            "et répondra « base indisponible » jusqu'à sa réparation",
+            config.db_url_affichable,
+        )
+        prete = False
+    if prete:
+        try:
+            cloturer_calculs_interrompus()
+        except Exception:
+            journal.warning(
+                "Clôture des calculs interrompus reportée : la base est occupée ou indisponible "
+                "au démarrage ; elle se fera au prochain lancement de calcul",
+                exc_info=True,
+            )
     else:
         journal.warning(
-            "La base n'est pas prête (non initialisée, ou schéma périmé) : "
+            "La base n'est pas prête (non initialisée, schéma périmé ou inaccessible) : "
             "lancer « python -m edt verifier-schema » puis « python -m edt init-db »."
         )
     yield
@@ -84,7 +109,11 @@ async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
 
 
 def creer_app() -> FastAPI:
-    """Crée l'application FastAPI : journalisation, routes découvertes, menu, erreurs."""
+    """Crée l'application FastAPI : journalisation, routes découvertes, menu, erreurs.
+
+    Toute route GET répond aussi à HEAD, sans corps (`IntergicielHead`) : la
+    supervision et `curl -I` ne voient pas un 405 « Action non permise ».
+    """
     config = charger_configuration()
     configurer_journalisation(config)
 
@@ -100,6 +129,7 @@ def creer_app() -> FastAPI:
     app.mount("/static", StaticFiles(directory=DOSSIER_STATIQUE), name="static")
 
     entrees: list[EntreeMenu] = []
+    noms_des_routes: set[str] = set()
     for nom_module in modules_de_routes():
         module = importlib.import_module(nom_module)
         routeur = getattr(module, ATTRIBUT_ROUTEUR, None)
@@ -114,10 +144,29 @@ def creer_app() -> FastAPI:
                 f"Le module {nom_module} : « {ATTRIBUT_MENU} » doit être une liste d'EntreeMenu."
             )
         app.include_router(routeur)
+        noms_des_routes.update(route.name for route in routeur.routes if hasattr(route, "name"))
         entrees.extend(menu)
         journal.debug("Routes chargées : %s (%d entrée(s) de menu)", nom_module, len(menu))
 
+    _verifier_routes_a_ecriture_deleguee(noms_des_routes)
     app.state.menu = construire_menu(entrees)
     installer_gestionnaires(app)
+    # Le dernier ajouté enveloppe les autres : le journal voit la méthode reçue (HEAD).
+    app.add_middleware(IntergicielHead)
     app.add_middleware(IntergicielJournal)
     return app
+
+
+def _verifier_routes_a_ecriture_deleguee(noms_des_routes: set[str]) -> None:
+    """Chaque nom de `ROUTES_ECRITURE_DELEGUEE` doit désigner une route des modules chargés.
+
+    Une route renommée sans mettre la liste à jour prendrait le verrou d'écriture
+    d'emblée et bloquerait jusqu'au délai le service de génération qu'elle appelle.
+    """
+    inconnues = sorted(ROUTES_ECRITURE_DELEGUEE - noms_des_routes)
+    if inconnues:
+        raise ErreurConfiguration(
+            "edt.web.dependances.ROUTES_ECRITURE_DELEGUEE cite des routes inexistantes "
+            f"({', '.join(inconnues)}) : mettre la liste à jour avec les noms des routes "
+            "dont la session ne fait que lire."
+        )

@@ -437,8 +437,12 @@ def verifier_pause_minimale(
 
 
 def minuscule_article(texte: str) -> str:
-    """Après « : », « Le groupe… » devient « le groupe… » ; un nom propre est gardé."""
-    if texte.startswith(("Le ", "Les ")):
+    """Après « : », « Le groupe… » devient « le groupe… » ; un nom propre est gardé.
+
+    Seuls « Le groupe » et « Les groupes » (sujets de `sujet_personnes`) passent
+    en minuscule : l'enseignant « Le Gall » garde sa majuscule.
+    """
+    if texte.startswith(("Le groupe ", "Les groupes ")):
         return texte[:1].lower() + texte[1:]
     return texte
 

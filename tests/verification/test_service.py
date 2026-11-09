@@ -1,16 +1,9 @@
 """Intégration : service de vérification sur le jeu minimal du socle (base SQLite temporaire).
 
-L'emploi du temps ci-dessous est construit à la main pour le jeu minimal
-(`edt.db.jeux`) et enregistré comme version de référence. Il respecte toutes
-les contraintes de la semaine type, y compris des cas délicats : deux
-séances au même créneau sur des semaines disjointes (CM de physique et
-partiel), un changement de campus séparé par le déjeuner, un DST imposé de
-trois heures, des salles accessibles pour les groupes liés au groupe PMR.
-
-Instancié naïvement sur le calendrier (chaque séance, chaque semaine active,
-sans replacement), il donne en revanche des anomalies datées attendues : le
-mercredi 11 novembre est férié et la salle L115 est en travaux du 2 au
-6 novembre.
+La version vérifiée est l'emploi du temps saisi à la main de `versions.py`
+(fixture `version_id` de `conftest.py`) : sa semaine type est valide ; ses
+séances datées, instanciées naïvement, donnent un jour férié et une salle en
+travaux.
 """
 
 from __future__ import annotations
@@ -23,7 +16,7 @@ from sqlalchemy import func, select
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.enumerations import Gravite, OrigineVersion
+from edt.domaine.enumerations import Gravite
 from edt.domaine.heures import texte_vers_minutes
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.instantane import charger_instantane
@@ -36,88 +29,7 @@ from edt.services.verification import (
 )
 from edt.verification import Anomalie
 
-LUNDI, MARDI, MERCREDI, JEUDI, VENDREDI = range(5)
-
-EMPLOI_DU_TEMPS = {
-    # (libellé du besoin, rang) : (jour, début, salle)
-    ("CM Mathématiques - A1", 1): (LUNDI, "8h30", "N016"),
-    ("CM Algorithmique - A1", 1): (LUNDI, "10h45", "N016"),
-    ("TD Mathématiques - A1-G1", 1): (LUNDI, "13h45", "N105"),
-    ("TD Mathématiques - A1-G2", 1): (LUNDI, "16h00", "N204"),
-    # Semaines 1 à 7 et semaine 19 : même créneau, même salle, sans conflit.
-    ("CM Physique - A1", 1): (MARDI, "8h30", "N016"),
-    ("Partiel d'algorithmique - A1", 1): (MARDI, "8h30", "N016"),
-    ("CM Physique - A1", 2): (MARDI, "10h45", "N016"),
-    ("TP Algorithmique - A1-G2a", 1): (MARDI, "13h45", "N310"),
-    ("TP Algorithmique - A1-G2b", 1): (MARDI, "16h00", "N310"),
-    # A1-G1a requiert une salle accessible : L012, à Issy.
-    ("TP Algorithmique - A1-G1a", 1): (MERCREDI, "8h30", "L012"),
-    ("TP Algorithmique - A1-G1b", 1): (MERCREDI, "10h45", "L012"),
-    # A1-G1b quitte Issy à 12 h 45 et a anglais à 13 h 45 à Notre-Dame : 1 h de trajet.
-    ("LANGUE Anglais - A1-ANG-B2", 1): (MERCREDI, "13h45", "N105"),
-    ("PROJET Projet d'intégration - A1-G1, A1-G2", 1): (MERCREDI, "16h00", "N016"),
-    ("CM Électronique - A1", 1): (JEUDI, "8h30", "N016"),
-    ("Devoir surveillé de mathématiques - A1", 1): (JEUDI, "13h45", "N016"),
-    ("TP Électronique - A1-G1", 1): (VENDREDI, "8h30", "L115"),
-    ("TP Électronique - A1-G2", 1): (VENDREDI, "10h45", "L115"),
-}
-
-
-def enregistrer_version(session, semestre_id: int, *, occurrences: bool = False) -> int:
-    """Enregistre EMPLOI_DU_TEMPS comme version active ; renvoie son identifiant.
-
-    Avec `occurrences`, instancie aussi chaque séance chaque semaine active
-    (sans replacement des jours fermés).
-    """
-    instantane = charger_instantane(session, semestre_id)
-    besoins = {besoin.libelle: besoin for besoin in instantane.besoins}
-    salles = {salle.code: salle.id for salle in instantane.salles}
-    version = m.VersionEdt(
-        semestre_id=semestre_id,
-        numero=1,
-        libelle="Version saisie à la main",
-        origine=OrigineVersion.REFERENCE,
-        active=True,
-    )
-    lignes = []
-    for (libelle, rang), (jour, debut, code_salle) in EMPLOI_DU_TEMPS.items():
-        besoin = besoins[libelle]
-        seance = instantane.seance(f"{besoin.id}-{rang}")
-        debut_min = texte_vers_minutes(debut)
-        ligne = m.SeanceHebdo(
-            besoin_id=besoin.id,
-            rang=rang,
-            jour=jour,
-            debut_min=debut_min,
-            fin_min=debut_min + besoin.duree,
-            salle_id=salles[code_salle],
-            semaines=sorted(seance.semaines),
-        )
-        version.seances.append(ligne)
-        lignes.append((ligne, seance))
-    session.add(version)
-    session.flush()
-    if occurrences:
-        for ligne, seance in lignes:
-            for numero in sorted(seance.semaines):
-                session.add(
-                    m.Occurrence(
-                        version_id=version.id,
-                        seance_hebdo_id=ligne.id,
-                        besoin_id=ligne.besoin_id,
-                        date=instantane.date_de(numero, ligne.jour),
-                        debut_min=ligne.debut_min,
-                        fin_min=ligne.fin_min,
-                        salle_id=ligne.salle_id,
-                    )
-                )
-    session.commit()
-    return version.id
-
-
-@pytest.fixture
-def version_id(jeu_minimal, session) -> int:
-    return enregistrer_version(session, jeu_minimal.semestre_id, occurrences=True)
+from .versions import LUNDI, VENDREDI
 
 
 def test_semaine_type_construite_a_la_main_valide(version_id, session):
@@ -289,3 +201,180 @@ def test_rapport_serialisable(version_id, session):
     assert donnees["nb_erreurs"] == 6
     assert donnees["anomalies"][0]["gravite"] == "erreur"
     assert donnees["anomalies"][0]["date"] is not None
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_version_sans_seance_datee_signalee_explicitement(
+    version_sans_seances_datees, session, caplog
+):
+    """Cas : une version sans aucune séance datée (instanciation absente ou échouée) est vérifiée sur le calendrier.
+
+    Risque : rapport vide dit « valide » ; un écran afficherait « Aucune anomalie » pour un
+    calendrier qui n'existe pas.
+    """
+    rapport = verifier_occurrences_version(session, version_sans_seances_datees)
+    assert rapport.nb_examines == 0
+    (anomalie,) = rapport.anomalies
+    assert (str(anomalie.code), anomalie.gravite) == ("VOLUME", Gravite.AVERTISSEMENT)
+    assert anomalie.message == (
+        "La version « Version saisie à la main » n'a aucune séance datée : produire ses "
+        "séances datées (instanciation sur le calendrier) pour vérifier le calendrier réel."
+    )
+    assert rapport.par_code == {"VOLUME": 1}
+    # Sans VOLUME à vérifier, le signal reste dans le journal, pas dans le rapport.
+    with caplog.at_level("WARNING", logger="edt.services.verification"):
+        restreint = verifier_occurrences_version(
+            session, version_sans_seances_datees, contraintes_actives=["SALLE_UNIQUE"]
+        )
+    assert restreint.anomalies == ()
+    assert "aucune séance datée" in caplog.text
+
+
+@pytest.mark.cas_limite
+def test_seances_datees_apres_la_fin_d_un_semestre_raccourci(version_id, jeu_minimal, session):
+    """Cas : le semestre est raccourci de deux semaines après l'instanciation de la version.
+
+    Risque : les séances datées d'après la nouvelle fin passent sans anomalie, et les règles
+    personnalisées, bornées aux semaines du semestre, se taisent sur elles.
+    """
+    semestre = session.get(m.Semestre, jeu_minimal.semestre_id)
+    fin = semestre.date_fin - dt.timedelta(weeks=2)
+    semestre.date_fin = fin
+    session.commit()
+    apres = set(
+        session.scalars(
+            select(m.Occurrence.id).where(
+                m.Occurrence.version_id == version_id, m.Occurrence.date > fin
+            )
+        )
+    )
+    assert apres
+    rapport = verifier_occurrences_version(session, version_id, contraintes_actives=["JOUR_FERME"])
+    hors = [a for a in rapport.anomalies if "en dehors du semestre" in a.message]
+    assert {o for a in hors for o in a.occurrences} == apres
+    assert all(len(a.occurrences) == 1 and a.bloquante for a in hors)
+
+
+@pytest.mark.cas_limite
+def test_salle_supprimee_apres_le_calcul_degrade_en_salle_a_definir(
+    version_id, salle_n204_supprimee, session
+):
+    """Cas : la salle N204 est supprimée après l'enregistrement et l'instanciation de la version.
+
+    Risque : un avertissement « salle à définir » par séance datée (une quinzaine pour une
+    seule cause), ou une vérification impossible.
+    """
+    hebdo = verifier_version(session, version_id)
+    assert [(str(a.code), a.gravite) for a in hebdo.anomalies] == [
+        ("VOLUME", Gravite.AVERTISSEMENT)
+    ]
+    assert "TD Mathématiques - A1-G2" in hebdo.anomalies[0].message
+    assert "n'a pas encore de salle (salle à définir)" in hebdo.anomalies[0].message
+    assert hebdo.valide
+
+    datees = verifier_occurrences_version(session, version_id)
+    (a_definir,) = [a for a in datees.anomalies if str(a.code) == "VOLUME"]
+    nb_datees = session.scalar(
+        select(func.count())
+        .select_from(m.Occurrence)
+        .where(m.Occurrence.version_id == version_id, m.Occurrence.salle_id.is_(None))
+    )
+    # Un avertissement pour la séance, qui cite toutes ses séances datées, pas un par date.
+    assert nb_datees > 1 and len(a_definir.occurrences) == nb_datees
+    assert f"pour {nb_datees} séances datées" in a_definir.message
+
+
+@pytest.mark.cas_limite
+def test_salle_orpheline_nommee_sans_rendre_la_verification_impossible(
+    version_id, salle_n204_orpheline, session
+):
+    """Cas : la salle N204 est effacée sans que ses séances soient mises à vide (base importée, retouche SQL).
+
+    Risque : `ErreurDonneesInvalides` « salle inconnue » : plus aucune vérification de la
+    version (À traiter en erreur, commande en code 2).
+    """
+    hebdo = verifier_version(session, version_id)
+    (anomalie,) = hebdo.anomalies
+    assert (str(anomalie.code), anomalie.gravite) == ("VOLUME", Gravite.AVERTISSEMENT)
+    assert f"une salle qui n'existe plus (n° {salle_n204_orpheline})" in anomalie.message
+    assert "TD Mathématiques - A1-G2" in anomalie.message
+    assert anomalie.salles == ()
+    datees = verifier_occurrences_version(session, version_id)
+    (orpheline,) = [a for a in datees.anomalies if str(a.code) == "VOLUME"]
+    assert f"une salle qui n'existe plus (n° {salle_n204_orpheline})" in orpheline.message
+    # Une modification vers une salle inconnue est refusée : elle ne vaut pas « salle à définir ».
+    (seance,) = anomalie.seances
+    with pytest.raises(ErreurIntrouvable, match=f"salle n° {salle_n204_orpheline}"):
+        verifier_modification(session, version_id, seance, VENDREDI, 825, 945, salle_n204_orpheline)
+
+
+@pytest.mark.cas_limite
+def test_periode_aux_bornes_extremes_du_calendrier(version_id, session):
+    """Cas : séances datées vérifiées du 1er janvier de l'an 1 au 31 décembre 9999 (`date.min`, `date.max`).
+
+    Risque : `OverflowError` en étendant la période à la fin de sa semaine (erreur 500, ou
+    code 2 avec une trace pour `--au 9999-12-31`).
+    """
+    total = session.scalar(
+        select(func.count()).select_from(m.Occurrence).where(m.Occurrence.version_id == version_id)
+    )
+    rapport = verifier_occurrences_version(session, version_id, dt.date.min, dt.date.max)
+    assert rapport.nb_examines == total
+    assert rapport.periode == (dt.date.min, dt.date.max)
+    assert rapport.par_code == {"DISPO_SALLE": 2, "JOUR_FERME": 4}
+
+
+@pytest.mark.cas_limite
+def test_liste_de_contraintes_vide_refusee(version_id, session):
+    """Cas : un appelant transmet une liste de contraintes vide (aucune case cochée) ou des niveaux vides.
+
+    Risque : rapport « valide » sans rien avoir vérifié : une modification manuelle acceptée
+    sans contrôle.
+    """
+    ligne = session.scalar(
+        select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == version_id).limit(1)
+    )
+    appels = (
+        lambda: verifier_version(session, version_id, contraintes_actives=[]),
+        lambda: verifier_version(session, version_id, niveaux={}),
+        lambda: verifier_occurrences_version(session, version_id, contraintes_actives=[]),
+        lambda: verifier_modification(
+            session,
+            version_id,
+            f"{ligne.besoin_id}-{ligne.rang}",
+            VENDREDI,
+            825,
+            945,
+            None,
+            contraintes_actives=[],
+        ),
+    )
+    for appel in appels:
+        with pytest.raises(ErreurDonneesInvalides, match="Aucune contrainte à vérifier"):
+            appel()
+
+
+@pytest.mark.cas_limite
+def test_identifiant_hors_bornes_de_la_base_introuvable(jeu_minimal, session):
+    """Cas : un identifiant de version ou de semestre hors des bornes de la base (2**70, saisi dans une adresse ou la commande).
+
+    Risque : `OverflowError` de SQLite (erreur 500, trace dans la commande) au lieu de
+    « n'existe pas ».
+    """
+    hors_bornes = 2**70
+    appels = (
+        lambda: version_a_verifier(session, version_id=hors_bornes),
+        lambda: version_a_verifier(session, semestre_id=hors_bornes),
+        lambda: verifier_version(session, hors_bornes),
+        lambda: verifier_occurrences_version(session, hors_bornes),
+        lambda: verifier_modification(session, hors_bornes, "1-1", LUNDI, 510, 630, None),
+        lambda: version_a_verifier(session, version_id=0),  # nul ou négatif : de même
+    )
+    for appel in appels:
+        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+            appel()

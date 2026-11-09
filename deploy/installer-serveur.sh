@@ -16,9 +16,11 @@
 #      (root), /etc/edt (root:edt), /var/cache/edt/pip (root) ;
 #   4. /etc/edt/edt.env créé depuis edt.env.exemple s'il manque (jamais écrasé) ;
 #   5. lanceur /usr/local/bin/edt (« sudo edt doctor ») et unité edt.service ;
-#   6. nginx : page 502, partie commune, site « edt » en HTTP, ou en HTTPS si
-#      un certificat existe pour EDT_DOMAINE ; site par défaut désactivé.
-#      --nginx-seulement ne fait que cette étape (utilisé par activer-https.sh).
+#   6. sauvegarde quotidienne de la base : edt-sauvegarde.service et son
+#      minuteur edt-sauvegarde.timer (activé) ;
+#   7. nginx : pages 502 et 413, partie commune, site « edt » en HTTP, ou en
+#      HTTPS si un certificat existe pour EDT_DOMAINE ; site par défaut
+#      désactivé. --nginx-seulement ne fait que cette étape (activer-https.sh).
 # Il ne touche NI à la configuration SSH NI au pare-feu.
 # Paramètre : EDT_DOMAINE (défaut pts.jorund.xyz) :
 #   sudo env EDT_DOMAINE=autre.exemple.fr bash .../installer-serveur.sh
@@ -89,8 +91,9 @@ fi
 if ! [[ "$EDT_DOMAINE" =~ ^[A-Za-z0-9.-]+$ ]]; then
   echouer "EDT_DOMAINE invalide : « $EDT_DOMAINE »."
 fi
-for fichier in edt.service edt.env.exemple lanceur-edt.sh nginx-edt.conf nginx-edt-https.conf \
-  nginx-edt-application.conf erreur-502.html; do
+for fichier in edt.service edt-sauvegarde.service edt-sauvegarde.timer edt.env.exemple \
+  lanceur-edt.sh nginx-edt.conf nginx-edt-https.conf nginx-edt-application.conf \
+  erreur-502.html erreur-413.html; do
   if [ ! -e "$DOSSIER_SCRIPT/$fichier" ]; then
     echouer "fichier $DOSSIER_SCRIPT/$fichier absent : copiez le dossier deploy/ complet sur le serveur."
   fi
@@ -118,6 +121,7 @@ installer_nginx() {
   if [ -e "$SITE_DEFAUT" ] || [ -L "$SITE_DEFAUT" ]; then defaut_actif=1; fi
 
   install -o root -g root -m 644 "$DOSSIER_SCRIPT/erreur-502.html" /var/www/edt-erreurs/erreur-502.html
+  install -o root -g root -m 644 "$DOSSIER_SCRIPT/erreur-413.html" /var/www/edt-erreurs/erreur-413.html
   install -o root -g root -m 644 "$DOSSIER_SCRIPT/nginx-edt-application.conf" "$PARTIE_COMMUNE_NGINX"
   sed "s/@EDT_DOMAINE@/$EDT_DOMAINE/g" "$DOSSIER_SCRIPT/$modele" > "$SITE_NGINX.nouveau"
   chmod 644 "$SITE_NGINX.nouveau"
@@ -171,7 +175,8 @@ export DEBIAN_FRONTEND=noninteractive
 export NEEDRESTART_MODE=l   # needrestart : lister seulement, ne redémarrer aucun service
 apt-get -o DPkg::Lock::Timeout=300 update
 apt-get -o DPkg::Lock::Timeout=300 install -y --no-install-recommends \
-  nginx python3 python3-venv python3-dev build-essential sqlite3 curl ca-certificates openssl iproute2
+  nginx python3 python3-venv python3-dev build-essential sqlite3 curl ca-certificates openssl \
+  iproute2 procps
 if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
   echouer "le Python du système est trop ancien (3.11 minimum)."
 fi
@@ -234,6 +239,17 @@ else
   else
     avertir "après redémarrage, /sante ne répond pas 200 (dernier résultat : $code) : « sudo journalctl -u edt -n 50 » ou deploy/etat.sh."
   fi
+fi
+
+etape "Sauvegarde quotidienne de la base (edt-sauvegarde.timer)"
+install -o root -g root -m 644 "$DOSSIER_SCRIPT/edt-sauvegarde.service" /etc/systemd/system/edt-sauvegarde.service
+install -o root -g root -m 644 "$DOSSIER_SCRIPT/edt-sauvegarde.timer" /etc/systemd/system/edt-sauvegarde.timer
+systemctl daemon-reload
+systemctl enable --now edt-sauvegarde.timer
+prochaine="$(systemctl show -p NextElapseUSecRealtime --value edt-sauvegarde.timer)"
+info "Minuteur actif ; prochaine sauvegarde : ${prochaine:-calculée par systemd} (dans /var/lib/edt/sauvegardes, 14 gardées)."
+if [ ! -L /opt/edt/courant ]; then
+  info "Aucune version déployée : la sauvegarde est sautée tant que deploy/deployer.sh n'a pas été lancé."
 fi
 
 installer_nginx

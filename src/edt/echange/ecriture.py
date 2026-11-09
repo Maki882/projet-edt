@@ -28,7 +28,7 @@ from edt.echange.format import (
     TypeColonne,
     lignes_description,
 )
-from edt.echange.valeurs import neutraliser_formule
+from edt.echange.valeurs import echapper_controle, neutraliser_formule
 
 TITRE_LISEZ_MOI = "Lisez-moi"
 NOM_LISEZ_MOI_TXT = "LISEZ-MOI.txt"
@@ -140,6 +140,8 @@ def _texte_sur(texte: str) -> str:
     """Texte écrit dans une cellule du classeur, sans risque d'être pris pour une formule.
 
     openpyxl écrit en formule toute chaîne qui commence par « = » ; voir
-    `valeurs.neutraliser_formule`.
+    `valeurs.neutraliser_formule`. Un caractère de contrôle, interdit dans un
+    classeur (openpyxl refuserait tout l'export), s'écrit « _x0001_ » comme le
+    fait Excel, et la lecture le restitue (`valeurs.restituer_controle`).
     """
-    return neutraliser_formule(texte)
+    return neutraliser_formule(echapper_controle(texte))

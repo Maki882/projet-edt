@@ -68,6 +68,7 @@ Les journaux sont dans `logs/edt.log`, et un fichier par calcul dans
 python -m pytest                    # tous les tests
 python -m pytest -m "not perf"      # sans les tests de charge (ce que lance la CI)
 python -m pytest -m cas_limite      # la banque des cas limites seule (voir docs/banque-de-tests.md)
+python -m pytest -m integration     # les parcours de bout en bout (voir tests/integration/README.md)
 python -m ruff check .              # lint
 python -m ruff format --check .     # format
 ```

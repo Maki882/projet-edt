@@ -1,0 +1,22 @@
+{# Règles personnalisées quand aucune année scolaire n'existe : expliquer et mener au calendrier. #}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+
+{% block titre %}Règles personnalisées{% endblock %}
+
+{% block contenu %}
+<p class="introduction">
+  Les exceptions et exigences propres à votre établissement : « le groupe A1 ne travaille pas
+  le samedi », « la classe A2-G3 a une pause déjeuner d'au moins 1 h 15 ».
+</p>
+<section class="carte carte-attention">
+  <h2>Aucune année scolaire pour l'instant</h2>
+  <p>
+    Chaque règle vaut pour une année scolaire : créer une année dans Calendrier, puis revenir ici.
+    Les règles de base y seront déjà proposées.
+  </p>
+  <p class="ligne-boutons">
+    <a class="bouton bouton-principal" href="/calendrier">Ouvrir le calendrier</a>
+  </p>
+</section>
+{% endblock %}

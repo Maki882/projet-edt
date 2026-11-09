@@ -24,6 +24,7 @@ est dans `edt.services.generation` et ne dépend pas du moteur.
 
 from __future__ import annotations
 
+import math
 import threading
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
@@ -43,6 +44,12 @@ from edt.domaine.contraintes import (
 from edt.domaine.instantane import Instantane, Placement
 from edt.domaine.parametres import Parametres
 from edt.erreurs import ErreurDonneesInvalides
+
+TEMPS_LIMITE_MAX_S = 24 * 3600.0
+"""Temps limite le plus long accepté (un jour) : au-delà, comme pour l'infini, un calcul
+sans fin et des échéances d'abandon impossibles à calculer."""
+NB_WORKERS_MAX = 64
+"""Fils de calcul acceptés au plus (le moteur n'en utilise jamais plus que de cœurs)."""
 
 
 class StatutSolveur(StrEnum):
@@ -74,8 +81,10 @@ class OptionsSolveur:
     - `optimiser` : minimiser l'objectif de qualité au lieu de s'arrêter à la
       première solution valide ;
     - `graine` : graine aléatoire (une autre graine donne une autre solution) ;
-    - `nb_workers` : fils de calcul ; 0 laisse le moteur choisir, 1 avec une
-      graine fixe donne un résultat reproductible (mode déterministe des tests) ;
+      tout entier convient, le moteur la ramène dans les bornes de CP-SAT ;
+    - `nb_workers` : fils de calcul, au plus `NB_WORKERS_MAX` ; 0 laisse le
+      moteur choisir, 1 avec une graine fixe donne un résultat reproductible
+      (mode déterministe des tests) ;
     - `utiliser_indices` : partir des placements de la version précédente
       (`SeanceAPlacer.indice`) ;
     - `tolerer_violations_heritees` : accepter que des séances verrouillées
@@ -113,10 +122,25 @@ class OptionsSolveur:
             niveaux = {code: n for code, n in niveaux.items() if code not in desactivees}
         object.__setattr__(self, "niveaux", niveaux)
         object.__setattr__(self, "contraintes_desactivees", frozenset(CATALOGUE) - niveaux.keys())
-        if self.temps_limite_s <= 0:
-            raise ErreurDonneesInvalides("Le temps limite doit être strictement positif.")
-        if self.nb_workers < 0:
-            raise ErreurDonneesInvalides("Le nombre de fils de calcul ne peut pas être négatif.")
+        temps = self.temps_limite_s
+        if (
+            isinstance(temps, bool)
+            or not isinstance(temps, (int, float))
+            or not math.isfinite(temps)
+            or not 0 < temps <= TEMPS_LIMITE_MAX_S
+        ):
+            raise ErreurDonneesInvalides(
+                f"Le temps limite doit être un nombre de secondes entre 0 exclu et "
+                f"{TEMPS_LIMITE_MAX_S:g} (24 h) ; lu : {temps!r}."
+            )
+        fils = self.nb_workers
+        if isinstance(fils, bool) or not isinstance(fils, int) or not 0 <= fils <= NB_WORKERS_MAX:
+            raise ErreurDonneesInvalides(
+                f"Le nombre de fils de calcul doit être un entier entre 0 et {NB_WORKERS_MAX} ; "
+                f"lu : {fils!r}."
+            )
+        if isinstance(self.graine, bool) or not isinstance(self.graine, int):
+            raise ErreurDonneesInvalides(f"La graine doit être un entier ; lu : {self.graine!r}.")
 
     @classmethod
     def depuis_parametres(

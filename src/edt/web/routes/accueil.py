@@ -67,22 +67,31 @@ def accueil(request: Request) -> HTMLResponse:
 
 
 def base_a_signaler(etat: EtatBase) -> bool:
-    """Vrai si l'accueil doit parler de la base : panne, schéma périmé, base non initialisée ou vide.
+    """Vrai si l'accueil doit parler de la base : panne, écriture refusée, schéma périmé, base
+    non initialisée ou vide.
 
     Quand tout va bien, le bloc « État de la base de données » n'est pas affiché.
     """
-    return not etat.accessible or etat.schema_perime or not etat.initialisee or etat.vide
+    return (
+        not etat.accessible
+        or etat.inscriptible is False
+        or etat.schema_perime
+        or not etat.initialisee
+        or etat.vide
+    )
 
 
 @routeur.get("/sante", name="sante")
 def sante() -> JSONResponse:
     """Contrôle de santé pour la supervision et le déploiement.
 
-    Répond 200 avec `{"statut": "ok"}` quand la base est accessible et
-    initialisée, 503 avec `{"statut": "degrade"}` sinon.
+    Répond 200 avec `{"statut": "ok"}` quand la base est accessible,
+    initialisée et accepte l'écriture, 503 avec `{"statut": "degrade"}` sinon.
+    `base.inscriptible` vaut `null` quand l'écriture d'essai n'a pas pu être
+    tentée (base occupée par une autre écriture) : ce n'est pas une panne.
     """
     etat = diagnostiquer_base()
-    pret = etat.accessible and etat.initialisee
+    pret = etat.accessible and etat.initialisee and etat.inscriptible is not False
     return JSONResponse(
         {
             "statut": "ok" if pret else "degrade",
@@ -91,6 +100,7 @@ def sante() -> JSONResponse:
             "base": {
                 "accessible": etat.accessible,
                 "initialisee": etat.initialisee,
+                "inscriptible": etat.inscriptible,
                 "mode_journal": etat.mode_journal,
                 "ecarts_schema": list(etat.ecarts_schema),
             },

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import datetime as dt
 
+import pytest
+
 from edt.domaine.enumerations import Gravite, ModeVolume
 from edt.verification import verifier
 
@@ -190,10 +192,37 @@ def test_jour_sans_creneau():
     f, seance, n204 = une_seance()
     anomalies = jours(f, placer(seance, DIMANCHE, "8h30", n204))
     assert codes(anomalies) == ["JOURS"]
-    assert "la grille horaire n'a aucun créneau le dimanche" in anomalies[0].message
+    # La grille vide du dimanche relève de HORAIRES (test suivant) : JOURS ne dit que
+    # l'écart aux jours travaillés.
+    assert "le dimanche ne fait pas partie des jours travaillés" in anomalies[0].message
+    assert "aucun créneau" not in anomalies[0].message
 
 
 def test_jours_seance_imposee_information():
     f, seance, n204 = une_seance(debut_impose=h("8h30"))
     anomalies = jours(f, placer(seance, SAMEDI, "8h30", n204))
     assert anomalies[0].gravite is Gravite.INFORMATION
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_jour_sans_creneau_signale_une_seule_fois():
+    """Cas : une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée).
+
+    Risque : la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et
+    panneau À traiter redondant.
+    """
+    f, seance, n204 = une_seance()
+    dimanche = placer(seance, DIMANCHE, "8h30", n204)
+    anomalies = verifier(f.construire(), [dimanche], ["HORAIRES", "JOURS"])
+    assert codes(anomalies) == ["HORAIRES", "JOURS"]
+    assert ["aucun créneau" in a.message for a in anomalies] == [True, False]
+    assert "le dimanche ne fait pas partie des jours travaillés" in anomalies[1].message
+    # Un jour travaillé sans créneau (grille du mardi vidée) : HORAIRES seulement.
+    f.creneaux = tuple(c for c in f.creneaux if c.jour != MARDI)
+    mardi = placer(seance, MARDI, "8h30", n204)
+    assert codes(verifier(f.construire(), [mardi], ["HORAIRES", "JOURS"])) == ["HORAIRES"]

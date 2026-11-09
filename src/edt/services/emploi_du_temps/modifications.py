@@ -72,6 +72,7 @@ from edt.domaine.instantane import id_seance
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import raccords, regles_personnalisees
+from edt.services.emploi_du_temps.identifiants import apercu, exiger_identifiant, obtenir
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
@@ -83,6 +84,9 @@ MESSAGE_SEANCES_IMPORTEES = (
     "type les doublerait. Elles restent telles quelles ; pour les changer, déplacer ou annuler "
     "les séances datées une par une."
 )
+
+MOTIF_MAX = 2000
+"""Longueur maximale du motif d'annulation d'une séance datée (le champ du panneau la reprend)."""
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -115,7 +119,12 @@ class ChoixSalle:
 
 @dataclass(frozen=True)
 class FormulaireSeance:
-    """Valeurs et choix du formulaire de modification d'une séance hebdomadaire."""
+    """Valeurs et choix du formulaire de modification d'une séance hebdomadaire.
+
+    `remarque` : pourquoi le jour demandé n'a pas été retenu (jour non
+    proposé pour cette séance, ou aucun début de créneau ce jour-là où elle
+    tienne avant la fermeture) ; le jour actuel est alors gardé.
+    """
 
     bloc: Bloc
     version_id: int
@@ -127,6 +136,7 @@ class FormulaireSeance:
     fin: int
     salle_id: int | None
     exigences: str
+    remarque: str | None = None
 
 
 @dataclass(frozen=True)
@@ -244,12 +254,28 @@ def formulaire_seance(
     besoin = seance.besoin
     duree = seance.fin_min - seance.debut_min
     jours = _jours_possibles(session, seance, salle_id)
+    remarque = None
     jour = seance.jour if jour is None else jour
     if jour not in dict(jours):
+        if 0 <= jour < len(JOURS):
+            remarque = (
+                f"Le {JOURS[jour]} n'est pas proposé pour cette séance : jour actuel conservé."
+            )
+        else:
+            remarque = f"Jour inconnu ({jour}) : jour actuel conservé."
+        journal.info("Formulaire de la séance %d : %s", seance.id, remarque)
         jour = seance.jour
     debuts = _debuts_possibles(
         session, besoin, jour, duree, seance.debut_min if jour == seance.jour else None
     )
+    if not debuts:  # aucun créneau de la grille où la séance tienne ce jour-là
+        remarque = (
+            f"Aucun début de créneau le {JOURS[jour]} où cette séance de {duree} min "
+            "tienne avant la fermeture : jour actuel conservé."
+        )
+        journal.info("Formulaire de la séance %d : %s", seance.id, remarque)
+        jour = seance.jour
+        debuts = _debuts_possibles(session, besoin, jour, duree, seance.debut_min)
     if debut is None or debut not in dict(debuts):
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
@@ -268,6 +294,7 @@ def formulaire_seance(
         fin=fin,
         salle_id=salle_id,
         exigences=exigences.texte(session),
+        remarque=remarque,
     )
 
 
@@ -302,7 +329,7 @@ def modifier_placement(
             f"L'heure de début {minutes_vers_texte(debut) if 0 <= debut <= 1440 else debut} "
             f"n'est pas un début de créneau de la grille le {JOURS[jour]}."
         )
-    if salle_id is not None and session.get(m.Salle, salle_id) is None:
+    if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
         raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
     fin = debut + duree
 
@@ -365,7 +392,7 @@ def modifier_placement(
         seance.version_id,
     )
     remarques = _recalculer_seances_datees(session, seance.version_id)
-    salle = session.get(m.Salle, salle_id) if salle_id is not None else None
+    salle = obtenir(session, m.Salle, salle_id) if salle_id is not None else None
     message = f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" + (
         f", salle {salle.code}." if salle else ", sans salle."
     )
@@ -382,7 +409,7 @@ def modifier_placement(
 
 def definir_verrou(session: Session, seance_hebdo_id: int, verrou: bool) -> str:
     """Pose ou lève le verrou d'une séance ; renvoie la phrase à afficher."""
-    seance = session.get(m.SeanceHebdo, seance_hebdo_id)
+    seance = obtenir(session, m.SeanceHebdo, seance_hebdo_id)
     if seance is None:
         raise ErreurIntrouvable(f"La séance n° {seance_hebdo_id} n'existe pas (ou plus).")
     if seance.verrou == verrou:
@@ -473,7 +500,7 @@ def deplacer_occurrence(
             f"L'heure de début choisie n'est pas un début de créneau de la grille le "
             f"{JOURS[date.weekday()]}."
         )
-    if salle_id is not None and session.get(m.Salle, salle_id) is None:
+    if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
         raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
     if (date, debut, salle_id) == (occurrence.date, occurrence.debut_min, occurrence.salle_id) and (
         occurrence.statut != StatutOccurrence.A_PROGRAMMER
@@ -550,7 +577,7 @@ def deplacer_occurrence(
             anomalies=_triees(concernees),
         )
     journal.info("Occurrence %d déplacée de %s au %s %s", occurrence.id, ancien[0], date, debut)
-    salle = session.get(m.Salle, salle_id) if salle_id is not None else None
+    salle = obtenir(session, m.Salle, salle_id) if salle_id is not None else None
     return ResultatModification(
         enregistree=True,
         message=(
@@ -564,22 +591,33 @@ def deplacer_occurrence(
 
 
 def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None = None) -> str:
-    """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume)."""
-    occurrence = session.get(m.Occurrence, occurrence_id)
+    """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume).
+
+    Le motif est recopié dans la remarque de la séance : au-delà de `MOTIF_MAX`
+    caractères (envoi fabriqué, le champ du navigateur s'arrête avant), refus
+    sans rien changer.
+    """
+    motif = (motif or "").strip()
+    if len(motif) > MOTIF_MAX:
+        journal.info("Annulation refusée : motif de %d caractères", len(motif))
+        raise ErreurDonneesInvalides(
+            f"Motif trop long : {MOTIF_MAX} caractères au plus (lu : {len(motif)}). "
+            "La séance n'a pas été annulée."
+        )
+    occurrence = obtenir(session, m.Occurrence, occurrence_id)
     if occurrence is None:
         raise ErreurIntrouvable(f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
     if occurrence.statut == StatutOccurrence.ANNULEE:
         raise ErreurRegleMetier("Cette séance est déjà annulée.")
     occurrence.statut = StatutOccurrence.ANNULEE
     occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
-    motif = (motif or "").strip()
     if motif:
         note = f"Annulée : {motif}"
         occurrence.commentaire = (
             f"{occurrence.commentaire}\n{note}" if occurrence.commentaire else note
         )
     session.flush()
-    journal.info("Occurrence %d annulée (%s)", occurrence.id, motif or "sans motif")
+    journal.info("Occurrence %d annulée (%s)", occurrence.id, apercu(motif, 200) or "sans motif")
     return f"Séance du {occurrence.date:%d/%m/%Y} annulée."
 
 
@@ -593,7 +631,7 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
     séances datées ont été importées (avant toute écriture), et
     `raccords.ErreurRaccordIndisponible` si l'instanciation n'est pas livrée.
     """
-    if session.get(m.VersionEdt, version_id) is None:
+    if obtenir(session, m.VersionEdt, version_id) is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     if seances_datees_importees(session, version_id):
         raise ErreurRegleMetier(MESSAGE_SEANCES_IMPORTEES)
@@ -739,6 +777,7 @@ def _options_besoin():
 
 
 def _seance(session: Session, seance_hebdo_id: int) -> m.SeanceHebdo:
+    exiger_identifiant(seance_hebdo_id, f"La séance n° {seance_hebdo_id} n'existe pas (ou plus).")
     seance = session.scalar(
         select(m.SeanceHebdo)
         .where(m.SeanceHebdo.id == seance_hebdo_id)
@@ -750,6 +789,7 @@ def _seance(session: Session, seance_hebdo_id: int) -> m.SeanceHebdo:
 
 
 def _occurrence(session: Session, occurrence_id: int) -> m.Occurrence:
+    exiger_identifiant(occurrence_id, f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
     occurrence = session.scalar(
         select(m.Occurrence)
         .where(m.Occurrence.id == occurrence_id)
@@ -777,7 +817,8 @@ def _jours_possibles(
     """
     grille = set(session.scalars(select(m.Creneau.jour).distinct()))
     salle_id = seance.salle_id if salle_id is None else salle_id
-    campus_id = session.scalar(select(m.Salle.campus_id).where(m.Salle.id == salle_id))
+    salle = obtenir(session, m.Salle, salle_id)
+    campus_id = salle.campus_id if salle is not None else None
     permis = regles_personnalisees.jours_permis(
         session, seance.besoin.semestre_id, seance.besoin_id, seance.rang, campus_id
     )

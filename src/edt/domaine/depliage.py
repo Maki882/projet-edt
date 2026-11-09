@@ -35,6 +35,7 @@ complètement produit un `ProblemeDepliage` explicite.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
@@ -164,14 +165,18 @@ def deplier(
     semaines: Sequence[Semaine],
     jours_fermes: Iterable[JourFerme],
     jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
+    periode: tuple[dt.date, dt.date] | None = None,
 ) -> Depliage:
     """Déplie les besoins d'un semestre en séances hebdomadaires à placer.
 
     `semaines` sont les semaines du semestre (voir
     `edt.domaine.calendrier.semaines_entre`), `jours_fermes` les fermetures
     du calendrier, `jours_travailles` les jours travaillés de l'établissement
-    (`Parametres.jours_travailles`). Les séances sortent triées par besoin
-    puis par rang.
+    (`Parametres.jours_travailles`), `periode` les dates exactes du semestre
+    (une séance ponctuelle datée dans la première ou la dernière semaine mais
+    hors de ces dates est un problème, pas une séance). Un besoin sans aucun
+    groupe est un problème de dépliage : la demande est incomplète. Les
+    séances sortent triées par besoin puis par rang.
     """
     fermetures = tuple(jours_fermes)
     calendrier = _Fermetures(semaines, fermetures, jours_travailles)
@@ -179,8 +184,18 @@ def deplier(
     problemes: list[ProblemeDepliage] = []
 
     for besoin in sorted(besoins, key=lambda b: b.id):
+        if not besoin.groupes:
+            problemes.append(
+                ProblemeDepliage(
+                    besoin.id,
+                    CodeContrainte.VOLUME,
+                    f"{besoin.libelle} : aucun groupe n'est inscrit à ce besoin ; compléter la "
+                    "demande avant le calcul.",
+                )
+            )
+            continue
         if besoin.ponctuel:
-            _deplier_ponctuel(besoin, semaines, fermetures, seances, problemes)
+            _deplier_ponctuel(besoin, semaines, fermetures, seances, problemes, periode)
             continue
 
         ouvertes = calendrier.semaines_ouvertes(besoin)
@@ -232,6 +247,7 @@ def _deplier_ponctuel(
     fermetures: tuple[JourFerme, ...],
     seances: list[SeanceAPlacer],
     problemes: list[ProblemeDepliage],
+    periode: tuple[dt.date, dt.date] | None = None,
 ) -> None:
     jour = besoin.date_ponctuelle
     if jour is None:
@@ -244,12 +260,14 @@ def _deplier_ponctuel(
         )
         return
     semaine = semaine_de(jour, semaines)
-    if semaine is None:
+    hors_periode = periode is not None and not periode[0] <= jour <= periode[1]
+    if semaine is None or hors_periode:
+        bornes = f" (du {periode[0]:%d/%m/%Y} au {periode[1]:%d/%m/%Y})" if periode else ""
         problemes.append(
             ProblemeDepliage(
                 besoin.id,
                 CodeContrainte.VOLUME,
-                f"{besoin.libelle} : la date du {jour:%d/%m/%Y} est en dehors du semestre.",
+                f"{besoin.libelle} : la date du {jour:%d/%m/%Y} est en dehors du semestre{bornes}.",
             )
         )
         return

@@ -34,6 +34,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_hhmm
@@ -45,6 +46,7 @@ from edt.domaine.regles import (
     SorteChamp,
     erreurs_periode,
 )
+from edt.services.referentiels.conversion import entier_naturel
 from edt.services.referentiels.enseignements import libelle_besoin
 from edt.services.referentiels.personnes import NoeudGroupe, arbre_groupes
 from edt.services.regles import RegleDetail
@@ -54,6 +56,8 @@ PREFIXE_PARAMETRE = "p_"
 NATURES_AVEC_CIBLE: tuple[NaturePortee, ...] = tuple(
     nature for nature in NaturePortee if nature is not NaturePortee.ETABLISSEMENT
 )
+LONGUEUR_COMMENTAIRE = 2000
+"""Longueur maximale du commentaire d'une règle (contrôlée ici : le service ne la borne pas)."""
 CLE_BLOC_PARAMETRES = "_parametres"
 """Clé (dans les erreurs par champ) d'un message pour le bloc « Paramètres » entier."""
 PERIODES = (("annee", "Toute l'année"), ("semestre", "Un semestre"), ("dates", "Entre deux dates"))
@@ -245,6 +249,10 @@ def brouillon_depuis_formulaire(
     nature = str(formulaire.get("portee", "")).strip()
     cible = str(formulaire.get(f"cible_{nature}", "")).strip()
     portee = _nature(nature)
+    # Une cible est un identifiant choisi dans la liste ; un identifiant impossible
+    # (« 999...9 », champ fabriqué) part comme un code, que le service dira inconnu.
+    ident = entier_naturel(cible)
+    valeur_cible = ident if ident is not None and identifiant_valide(ident) else cible[:40]
     parametres: dict[str, Any] = {}
     for champ in definition.champs:
         nom = PREFIXE_PARAMETRE + champ.nom
@@ -266,7 +274,7 @@ def brouillon_depuis_formulaire(
         "annee": annee_scolaire_id,
         "portee": {
             "nature": nature,
-            "cible": int(cible) if cible.isascii() and cible.isdigit() else (cible or None),
+            "cible": valeur_cible if valeur_cible != "" else None,
         },
         "parametres": parametres,
         "niveau": str(formulaire.get("niveau", "")).strip() or None,
@@ -294,6 +302,9 @@ def controles_formulaire(definition: DefinitionType, formulaire: FormData) -> di
     mode = formulaire.get("periode")
     if mode == "semestre" and not str(formulaire.get("semestre", "")).strip():
         erreurs["semestre"] = "Choisir le semestre."
+    longueur = len(str(formulaire.get("commentaire", "") or "").strip())
+    if longueur > LONGUEUR_COMMENTAIRE:
+        erreurs["commentaire"] = f"{LONGUEUR_COMMENTAIRE} caractères au plus (lu : {longueur})."
     if mode == "dates" and not definition.periode_datable:
         une_date = dt.date(2000, 1, 1)
         erreurs.update(erreurs_periode(definition.code, None, une_date, None))
@@ -537,8 +548,8 @@ def rubriques_regle(
             valeur=str(valeurs.get("commentaire", "") or ""),
             requis=False,
             aide="Facultatif : qui l'a demandée, pourquoi.",
-            erreur=None,
-            attributs={"maxlength": 2000},
+            erreur=erreurs.get("commentaire"),
+            attributs={"maxlength": LONGUEUR_COMMENTAIRE},
             large=True,
         ),
     ]

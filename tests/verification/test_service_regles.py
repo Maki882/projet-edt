@@ -8,6 +8,7 @@ libre de A1-G1, importante).
 from __future__ import annotations
 
 import datetime as dt
+import logging
 
 import pytest
 from sqlalchemy import select
@@ -15,6 +16,7 @@ from sqlalchemy import select
 from edt.db import modeles as m
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineVersion
+from edt.domaine.regles import EtatRegle
 from edt.erreurs import ErreurDonneesInvalides
 from edt.services.niveaux import (
     RegleActuelle,
@@ -23,7 +25,7 @@ from edt.services.niveaux import (
 )
 from edt.services.verification import verifier_modification, verifier_version
 
-from .test_service import enregistrer_version
+from .versions import enregistrer_version
 
 DEBUT_CALCUL = dt.datetime(2026, 10, 6, 9, 0)
 AVANT, APRES = dt.datetime(2026, 10, 1), dt.datetime(2026, 10, 7)
@@ -175,3 +177,66 @@ def test_modification_qui_enfreint_une_regle(jeu_minimal, session):
         session, version_id, seance, 5, 8 * 60 + 30, 10 * 60 + 30, tp.salle_id, niveaux_regles={}
     )
     assert ignoree.valide
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+def calcul_citant_r001_et_une_regle_disparue(session, version_id: int) -> m.Regle:
+    """Attache à la version un calcul dont la copie des règles cite R001 et la règle n° 999."""
+    r001 = regle(session, "R001")
+    attacher_calcul(
+        session,
+        version_id,
+        {"regles": [{"id": r001.id, "niveau": "necessaire"}, {"id": 999, "niveau": "necessaire"}]},
+    )
+    return r001
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("disparition", ["desactivee", "supprimee"])
+def test_regle_supprimee_ou_desactivee_apres_le_calcul_ignoree_sans_erreur(
+    version_tp_le_samedi, session, disparition
+):
+    """Cas : une règle copiée par le calcul de la version est désactivée ou supprimée ensuite.
+
+    Risque : `KeyError` ou règle fantôme passée au vérificateur : la vérification de toutes
+    les anciennes versions casserait.
+    """
+    r001 = calcul_citant_r001_et_une_regle_disparue(session, version_tp_le_samedi)
+    if disparition == "desactivee":
+        r001.etat = EtatRegle.INACTIVE
+    else:
+        session.delete(r001)
+    session.commit()
+
+    # R001 et la règle n° 999 ne sont plus actives ; R002 existait avant le calcul sans y
+    # être appliquée : aucune règle à vérifier, et aucune erreur.
+    assert niveaux_regles_de_version(session, version_tp_le_samedi) == {}
+    rapport = verifier_version(session, version_tp_le_samedi)
+    assert rapport.niveaux_regles == {}
+    assert not [a for a in rapport.anomalies if a.code is CodeContrainte.REGLE]
+    assert rapport.valide  # le TP du samedi reste permis par le standard
+
+
+@pytest.mark.cas_limite
+def test_regles_du_calcul_introuvables_nommees_dans_le_journal(
+    version_tp_le_samedi, session, caplog
+):
+    """Cas : la copie des règles d'un calcul cite une règle qui n'est plus active (n° 999).
+
+    Risque : la règle disparaît de la vérification sans laisser de trace : impossible de
+    comprendre pourquoi une entorse d'hier n'est plus signalée.
+    """
+    calcul_citant_r001_et_une_regle_disparue(session, version_tp_le_samedi)
+    with caplog.at_level(logging.INFO, logger="edt.services"):
+        niveaux_regles_de_version(session, version_tp_le_samedi)
+    signalees = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.INFO and "introuvable" in r.getMessage()
+    ]
+    # Seule la règle n° 999 a disparu (R001 est toujours active).
+    assert len(signalees) == 1 and signalees[0].endswith(" : 999")

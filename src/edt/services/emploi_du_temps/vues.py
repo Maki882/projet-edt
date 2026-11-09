@@ -53,6 +53,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import presentation, raccords, regles_personnalisees
 from edt.services.emploi_du_temps.disposition import Axe, Disposition, Plage, disposer
+from edt.services.emploi_du_temps.identifiants import apercu, entier_ecrit, exiger_identifiant
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
     ResumeVersion,
@@ -103,15 +104,16 @@ class Cible:
 
     @classmethod
     def lire(cls, texte: str) -> Cible:
-        """Lit « groupe:12 », « enseignant:3 » ou « salle:7 »."""
-        nature, _, identifiant = texte.partition(":")
-        try:
-            return cls(NatureCible(nature), int(identifiant))
-        except ValueError as erreur:
+        """Lit « groupe:12 », « enseignant:3 » ou « salle:7 » (chiffres ASCII, `entier_ecrit`)."""
+        nature, _, chiffres = texte.partition(":")
+        identifiant = entier_ecrit(chiffres)
+        natures = {n.value: n for n in NatureCible}
+        if nature not in natures or identifiant is None:
             raise ErreurDonneesInvalides(
-                f"Choix d'affichage invalide : {texte!r} (attendu : un groupe, un enseignant ou "
-                "une salle de la liste)."
-            ) from erreur
+                f"Choix d'affichage invalide (« {apercu(texte)} ») : attendu un groupe, un "
+                "enseignant ou une salle de la liste."
+            )
+        return cls(natures[nature], identifiant)
 
     @classmethod
     def depuis(
@@ -465,6 +467,8 @@ def construire_vue(
       étendu seulement pour un demi-groupe ; voir `Perimetre`).
     """
     version = lire_version(session, version_id)
+    if cible is not None:
+        exiger_identifiant(cible.id, _CIBLE_INTROUVABLE[cible.nature].format(cible.id))
     semestre = exiger_semestre(session, version.semestre_id)
     semaines = semaines_entre(semestre.date_debut, semestre.date_fin)
     parametres = lire_parametres(session)
@@ -591,6 +595,7 @@ def construire_vue(
 
 def bloc_seance(session: Session, seance_hebdo_id: int) -> Bloc:
     """Le bloc d'une séance hebdomadaire (pour le panneau de détail)."""
+    exiger_identifiant(seance_hebdo_id, f"La séance n° {seance_hebdo_id} n'existe pas (ou plus).")
     seance = session.scalar(
         _avec_details_hebdo(select(m.SeanceHebdo).where(m.SeanceHebdo.id == seance_hebdo_id))
     )
@@ -603,6 +608,7 @@ def bloc_seance(session: Session, seance_hebdo_id: int) -> Bloc:
 
 def bloc_occurrence(session: Session, occurrence_id: int) -> Bloc:
     """Le bloc d'une occurrence datée (pour le panneau de détail)."""
+    exiger_identifiant(occurrence_id, f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
     occurrence = session.scalar(
         _avec_details_dates(select(m.Occurrence).where(m.Occurrence.id == occurrence_id))
     )
@@ -1098,25 +1104,33 @@ def _fermetures(
     return {jour: ", ".join(textes) for jour, textes in libelles.items()}
 
 
+_CIBLE_INTROUVABLE = {
+    NatureCible.GROUPE: "Le groupe n° {} n'existe pas pour ce semestre.",
+    NatureCible.ENSEIGNANT: "L'enseignant n° {} n'existe pas.",
+    NatureCible.SALLE: "La salle n° {} n'existe pas.",
+}
+"""Message d'une cible introuvable : hors bornes (`construire_vue`) ou absente (`_titre_cible`)."""
+
+
 def _titre_cible(session: Session, cible: Cible | None, annee_id: int) -> str:
     if cible is None:
         return ""
     if cible.nature is NatureCible.GROUPE:
         groupe = session.get(m.Groupe, cible.id)
         if groupe is None or groupe.annee_scolaire_id != annee_id:
-            raise ErreurIntrouvable(f"Le groupe n° {cible.id} n'existe pas pour ce semestre.")
+            raise ErreurIntrouvable(_CIBLE_INTROUVABLE[cible.nature].format(cible.id))
         return f"Groupe {groupe.code} - {groupe.libelle}"
     if cible.nature is NatureCible.ENSEIGNANT:
         enseignant = session.get(m.Enseignant, cible.id)
         if enseignant is None:
-            raise ErreurIntrouvable(f"L'enseignant n° {cible.id} n'existe pas.")
+            raise ErreurIntrouvable(_CIBLE_INTROUVABLE[cible.nature].format(cible.id))
         nom = f"{enseignant.prenom or ''} {enseignant.nom}".strip()
         return f"{enseignant.civilite + ' ' if enseignant.civilite else ''}{nom}"
     salle = session.scalar(
         select(m.Salle).options(joinedload(m.Salle.campus)).where(m.Salle.id == cible.id)
     )
     if salle is None:
-        raise ErreurIntrouvable(f"La salle n° {cible.id} n'existe pas.")
+        raise ErreurIntrouvable(_CIBLE_INTROUVABLE[cible.nature].format(cible.id))
     return f"Salle {salle.code} - {salle.campus.nom}, {salle.capacite} places"
 
 

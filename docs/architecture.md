@@ -50,7 +50,7 @@ src/edt/
   erreurs.py                   hiérarchie ErreurEDT
   commandes/                   un module par lot (objet `commandes`)
     base.py                    init-db, verifier-schema, jeu-minimal, serve,
-                               version, doctor
+                               version, doctor, sauvegarder, verifier-sauvegarde
     generation.py              generer, pre-verifier, instancier
   db/
     base.py                    base déclarative, nommage des contraintes
@@ -126,13 +126,73 @@ utilisables telles quelles (`edt.config.charger_configuration()`).
 | `EDT_LOG_LEVEL` | `INFO` | niveau de journalisation |
 
 Une valeur invalide lève `ErreurConfiguration` : jamais de repli silencieux.
-Les chemins relatifs se résolvent depuis le répertoire de lancement.
+`EDT_PORT` est un entier ASCII de 1 à 65535 (« ² » est refusé), `EDT_HOST`
+une adresse ou un nom d'hôte sans espace ni « / » (sa résolution est
+contrôlée par `doctor`), `EDT_DB_URL` une base **SQLite sur fichier** : une
+base en mémoire (`sqlite://`, `:memory:`), un autre pilote ou un schéma
+inconnu sont refusés avec le remède. Une valeur vide prend le défaut. Les
+chemins relatifs se résolvent depuis le répertoire de lancement.
+
+## Base de données : moteur, transactions, pannes
+
+`edt.db.moteur` crée un moteur par URL, partagé par tous les fils (serveur,
+calcul). Chaque connexion SQLite active les clés étrangères, le mode WAL
+(les lectures ne sont jamais bloquées par une écriture) et un délai
+d'attente sur verrou de 10 s (`DELAI_VERROU_MS`) : une écriture attend la
+fin d'une transaction courte au lieu d'échouer. Le pilote `sqlite3` ne gère
+plus les transactions (`isolation_level=None`) : SQLAlchemy émet le `BEGIN`
+au début de chaque transaction, si bien qu'un point de sauvegarde
+(`begin_nested`) libéré avant toute écriture reste annulé par le rollback
+de la transaction qui le contient. Le `BEGIN` est **différé** par défaut
+(une transaction qui ne fait que lire ne prend aucun verrou, les lecteurs
+sont servis sous un verrou d'écriture long) ; un écrivain long et connu
+(l'import) appelle `transaction_immediate(session)` **avant sa première
+requête** pour ouvrir par `BEGIN IMMEDIATE` (verrou d'écriture pris
+d'emblée, autres écrivains sérialisés) ; appelée trop tard, elle lève
+`ErreurConfiguration` au lieu de laisser la transaction différée en silence.
+Côté web, toute requête d'écriture (POST, PUT, PATCH, DELETE) ouvre sa
+transaction ainsi (`edt.web.dependances.session_requete`), car une transaction
+qui a déjà lu ne peut plus attendre son tour pour écrire (règle
+anti-interblocage de SQLite) : elle attend le délai de verrou, puis « base
+occupée » (503) ; GET et HEAD restent différés, et les routes dont le service
+écrit dans ses propres transactions (lancer, relancer, arrêter un calcul :
+`ROUTES_ECRITURE_DELEGUEE`) gardent une session différée, sans quoi ce
+service attendrait en vain le verrou tenu par la requête.
+
+- `identifiant_valide(valeur)` : entier strictement positif dans les bornes
+  de SQLite (`IDENTIFIANT_MAX`) ; à appeler avant `session.get` sur un
+  identifiant venu de l'extérieur (adresse, formulaire, option) pour
+  répondre « n'existe pas » au lieu de laisser le pilote lever
+  `OverflowError`. Garde commune : services et écrans l'importent d'ici,
+  jamais de copie locale.
+- `expliquer_erreur_base(erreur)` : phrase française et remède pour une
+  panne du pilote (base verrouillée par un autre processus, fichier en
+  lecture seule, fichier qui n'est pas une base SQLite, disque plein). La
+  ligne de commande la donne avec le code 1, les pages avec un 503.
+- `chemin_base(url)` : le fichier désigné par une URL SQLite.
+- Pendant une remise à zéro ou un chargement de jeu fictif
+  (`edt.services.jeux`), un fichier marqueur `<base>.operation` est posé à
+  côté de la base : un autre processus (le serveur) répond « base occupée,
+  réessayer » plutôt que « lancer init-db » ; un marqueur de plus de dix
+  minutes (processus mort) est ignoré. Une panne de la génération après la
+  remise à zéro est dite telle quelle (base vidée, aucun jeu chargé).
+- `python -m edt doctor` contrôle, en plus du schéma, qu'une écriture
+  réelle est possible (version utilisateur réécrite puis annulée : lecture
+  seule et verrou sont nommés), que `edt.log` s'ouvre, que `EDT_HOST` se
+  résout.
+- Le cycle de vie du serveur (`edt.web.app`) ne fait jamais échouer le
+  démarrage : une base corrompue ou verrouillée est journalisée, la clôture
+  des calculs interrompus est reportée, `/sante` répond « dégradé ».
 
 ## Schéma de la base : pas de migrations
 
 Il n'y a pas de migrations en V1. `python -m edt init-db` crée les tables
-manquantes et pose les données par défaut absentes, sans toucher au reste ;
-on peut le relancer à chaque déploiement. Il **ne modifie jamais une table
+manquantes et pose les données par défaut, sans toucher au reste ; on peut
+le relancer à chaque déploiement. Les listes par défaut (grille horaire,
+types de salle, équipements, types de séance) ne sont posées que dans une
+base **neuve** (sans aucun paramètre enregistré) : un type ou une grille
+supprimés exprès ne ressuscitent pas au déploiement suivant ; un paramètre
+absent, lui, est toujours ajouté. `init-db` **ne modifie jamais une table
 existante** : quand le modèle change (colonne ajoutée, retirée, renommée,
 changée de type), une base déjà créée devient **périmée** et l'application
 planterait à la première requête qui touche la colonne.
@@ -146,7 +206,7 @@ des phrases lisibles (« table salle : colonne etage absente de la base »,
 | Où | Ce qui se passe |
 |---|---|
 | `python -m edt init-db` | échoue (code 1) **sans rien modifier**, liste les écarts et indique la marche à suivre |
-| `python -m edt init-db --reset` | recrée la base au schéma du modèle et **efface les données** : c'est le seul remède |
+| `python -m edt init-db --reset` | recrée la base au schéma du modèle et **efface les données** : c'est le seul remède. Tapé dans un terminal, il demande confirmation (`--oui` l'évite ; un script n'est pas interrogé) ; il refuse d'agir pendant un calcul ; en production, il sauvegarde d'abord le fichier (`edt-<date>-avant-reset.db`, `sauvegarder_base`) |
 | `python -m edt verifier-schema` | code 0 et « schéma à jour » ; code 1 et la liste des écarts ; code 2 si la base est inaccessible. À appeler par le script de déploiement |
 | `python -m edt doctor` | une ligne « Schéma » : à jour, ou périmé avec le nombre d'écarts (contrôle en échec) |
 | `/sante` | répond 503 : `EtatBase.initialisee` est faux, `EtatBase.ecarts_schema` porte les écarts |
@@ -155,14 +215,17 @@ des phrases lisibles (« table salle : colonne etage absente de la base »,
 Ce qui est comparé : la présence de chaque colonne, le nom de son type SQL,
 son caractère obligatoire et, pour une énumération, la liste des valeurs
 que la base accepte (une valeur ajoutée au modèle serait refusée à
-l'enregistrement). La longueur d'un texte ne l'est pas (SQLite ne l'applique
-pas : `VARCHAR(32)` et `VARCHAR(64)` s'y comportent à l'identique). Une
-table du modèle pas encore créée n'est pas un écart : `init-db` la crée. Une
-table de la base inconnue du modèle est ignorée.
+l'enregistrement) ; puis les **unicités** (par colonnes) et les **index**
+(par nom, colonnes et caractère unique : un index unique partiel absent
+laisserait deux versions actives par semestre). La longueur d'un texte ne
+l'est pas (SQLite ne l'applique pas : `VARCHAR(32)` et `VARCHAR(64)` s'y
+comportent à l'identique). Une table du modèle pas encore créée n'est pas un
+écart : `init-db` la crée. Une table de la base inconnue du modèle est
+ignorée.
 
-Limite : les autres contraintes (unicités, clés étrangères, contrôles entre
-colonnes) et les index ne sont pas comparés. Après un tel changement du
-modèle, il faut penser soi-même à `init-db --reset`.
+Limite : les clés étrangères (règle de suppression) et les contrôles entre
+colonnes (`CHECK` autres que les énumérations) ne sont pas comparés. Après
+un tel changement du modèle, il faut penser soi-même à `init-db --reset`.
 
 ## Mécanismes d'extension
 
@@ -467,6 +530,13 @@ Ce qu'il faut savoir pour l'utiliser :
   chaque personne, son déjeuner (`ReglageDejeuner`) et sa pause
   (`ReglagePause`), chaque valeur avec sa `Source` (règle ou contrainte du
   catalogue). Voir « Les règles personnalisées » plus bas.
+- **Identifiants** : `charger_instantane`, `charger_placements` et
+  `charger_occurrences` répondent « n'existe pas » (`ErreurIntrouvable`) pour
+  tout identifiant hors des entiers de SQLite (`identifiant_valide`), jamais
+  une erreur du pilote. Deux versions actives pour un semestre (base créée
+  sans l'index unique partiel) sont refusées en nommant le remède.
+  `decomposer_id_seance` n'admet que des chiffres décimaux ASCII
+  (`ErreurDonneesInvalides` qui nomme l'identifiant, jamais `ValueError`).
 
 ### Le dépliage (`edt.domaine.depliage`)
 
@@ -476,6 +546,7 @@ def deplier(
     semaines: Sequence[Semaine],
     jours_fermes: Iterable[JourFerme],
     jours_travailles: Iterable[int] = JOURS_OUVRES_PAR_DEFAUT,
+    periode: tuple[date, date] | None = None,   # dates exactes du semestre
 ) -> Depliage:                       # Depliage(seances, problemes)
 def semaines_ouvertes(
     besoin: Besoin,
@@ -503,7 +574,11 @@ def repartition_reguliere(nombre: int, nb_semaines: int) -> list[int]:
   fenêtre, date hors semestre, date un jour fermé) n'est pas corrigé : il
   produit un `ProblemeDepliage` (`Instantane.problemes_depliage`) et le
   calcul est refusé tant que la contrainte concernée (`VOLUME` ou
-  `JOUR_FERME`) est active.
+  `JOUR_FERME`) est active. Avec `periode`, une séance ponctuelle datée
+  dans la première ou la dernière semaine mais hors des dates du semestre
+  est un problème (le calcul le dit avant l'instanciation). Un besoin sans
+  aucun groupe est un problème aussi : la demande est incomplète, elle n'est
+  pas planifiée avec un effectif nul.
 
 ### Les conflits entre groupes (`edt.services.conflits_groupes`)
 
@@ -754,7 +829,8 @@ donnée, ou la version active du semestre.
 ### Les paramètres (`edt.services.parametres`)
 
 ```python
-def lire_parametres(session: Session) -> Parametres:
+def lire_parametres(session: Session, *, tolerant: bool = False) -> Parametres:
+def anomalies_parametres(session: Session) -> dict[str, str]:   # clé → message, valeurs corrompues
 def lire_parametre(session: Session, cle: str) -> ValeurParametre:
 def ecrire_parametre(session: Session, cle: str, valeur: ValeurParametre) -> None:
 def ecrire_parametres(session: Session, valeurs: dict[str, ValeurParametre]) -> Parametres:
@@ -763,7 +839,12 @@ def reinitialiser_parametres(session: Session) -> Parametres:
 
 Les paramètres, leurs bornes et leurs valeurs par défaut sont les champs de
 `edt.domaine.parametres.Parametres` ; `definitions()` les décrit pour l'écran
-de configuration et `convertir_texte(cle, texte)` convertit une saisie.
+de configuration et `convertir_texte(cle, texte)` convertit une saisie. Une
+valeur **corrompue** en base (« quinze » pour une durée) fait lever la
+lecture stricte en nommant le paramètre ; l'écriture et la réinitialisation
+lisent en mode `tolerant` (défaut à la place, avertissement) pour que la
+base reste réparable depuis son écran, qui peut afficher
+`anomalies_parametres`.
 Un paramètre **à choix** (`DefinitionParametre.type == "choix"`, `choix` =
 couples valeur/libellé) est une chaîne parmi une liste fermée ; la table
 `parametre` la stocke en JSON comme les entiers et les booléens. Un paramètre
@@ -901,6 +982,25 @@ Ce qu'il faut savoir :
   et absent des valeurs canoniques. `decrire_catalogue()` expose `portees`
   par paramètre et `periode_datable` par type pour les formulaires et
   l'assistant.
+- **Heures d'ouverture** : les heures d'une règle `PLAGE_HORAIRE` ou
+  `PAUSE_DEJEUNER` doivent être dans les heures d'ouverture de l'établissement
+  (erreur par champ quand `valider_parametres` reçoit les paramètres
+  globaux) : hors d'elles, la règle serait trompeuse ou rendrait sa portée
+  infaisable. Un créneau interdit (`CRENEAUX_INTERDITS`) peut déborder des
+  heures d'ouverture, il n'interdit rien de plus ; entièrement hors d'elles,
+  il est refusé.
+- **Règle incomplète** : une règle enregistrée sans ses heures (import
+  ancien) a une phrase complétée par les défauts du type et des paramètres
+  globaux ; sans eux, `phrase` lève `ErreurDonneesInvalides` en nommant le
+  champ, jamais `KeyError`.
+- **Salles homonymes** : `identifiants["salle"]` associe un code à **tous**
+  ses identifiants (deux « N105 » sur deux campus) ; une règle `SALLES` qui
+  cite le code vaut pour chacune. Un code unique (`ORDRE_SEMAINE`) qui
+  désignerait plusieurs lignes est refusé.
+- **Jours incompatibles** : quand les règles retenues d'une séance ne
+  laissent aucun jour, `resoudre_reglages` le journalise (WARNING) avec la
+  séance et les codes, et `ReglesJours.regles_incompatibles` les expose aux
+  pré-vérifications.
 
 ### Sémantique des contraintes
 
@@ -979,6 +1079,14 @@ niveaux souples, provisoires jusqu'au calibrage du lot solveur.
 - Niveaux : `INFO` pour ce qu'un exploitant veut suivre (requête, calcul,
   import), `WARNING` pour un refus métier ou une situation anormale gérée,
   `ERROR` avec trace (`journal.exception`) pour l'inattendu.
+- Robustesse : un fichier journal impossible à ouvrir (dossier qui porte son
+  nom, droits) est une `ErreurConfiguration` qui nomme le chemin,
+  `EDT_LOG_DIR` et les droits (message affiché une fois, code 1) ; `doctor`
+  tourne quand même en repli console (`journalisation_de_secours`) et le dit.
+  Le fichier tournant supporte un autre processus qui écrit le même fichier
+  (rotation refusée tolérée, fichier tourné par autrui rouvert). Les journaux
+  de calcul les plus anciens sont purgés au-delà de `NB_JOURNAUX_CALCUL`
+  (50) à chaque nouveau calcul.
 
 ## Erreurs
 
@@ -999,6 +1107,7 @@ niveaux souples, provisoires jusqu'au calibrage du lot solveur.
 | `ErreurTempsDepasse` | pas de solution dans le temps imparti | 422 | 1 |
 | `ErreurNonLivre` | fonction d'un lot pas encore livré | 501 | 1 |
 | `ErreurConfiguration` | variable d'environnement ou dossier invalide | 500 | 1 |
+| `sqlalchemy.exc.DatabaseError` | panne du pilote de base : occupée, non initialisée, fichier corrompu, lecture seule, disque plein (`expliquer_erreur_base`) | 503 | 1 |
 | autre exception | erreur de programmation : trace dans le journal | 500 | 2 |
 
 ## Où ajouter...
@@ -1013,7 +1122,8 @@ niveaux souples, provisoires jusqu'au calibrage du lot solveur.
 | un **service** | un module de `edt/services/` : fonctions typées qui reçoivent la session |
 | un **écran** | un module de `edt/web/routes/` et ses gabarits (voir plus haut) |
 | une **commande** | un module de `edt/commandes/` (voir plus haut) |
-| un **test** | `tests/<lot>/test_*.py` (dossier avec un `__init__.py` vide, comme `tests/socle/`), avec les fixtures de `tests/conftest.py` ; un test long porte `@pytest.mark.perf` |
+| un **test** | `tests/<lot>/test_*.py` (dossier avec un `__init__.py` vide, comme `tests/socle/`), avec les fixtures de `tests/conftest.py` et celles du lot (`tests/<lot>/conftest.py`) ; un test long porte `@pytest.mark.perf` |
+| un **test de cas limite** (banque durable, `docs/banque-de-tests.md`) | marqueur `@pytest.mark.cas_limite`, docstring « Cas : <scénario>. Risque : <ce qui casserait sans le test>. », aides du conftest du lot plutôt que du code dupliqué (socle : `lanceur`, `compter`, `delai_verrou_court`, `verrou_ecriture`, `lecture_seule`, `corrompre_base`) ; un défaut qui relève d'un autre lot reste un test `@pytest.mark.xfail(strict=True, reason="à corriger par le lot <nom> : <fichier>")`. Déterministe (ni horloge, ni ordre des tests, ni solution CP-SAT), rapide (sinon `perf`), nommé en français par le cas |
 
 ## Vérifier son travail
 

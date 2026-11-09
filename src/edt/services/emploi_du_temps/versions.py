@@ -20,6 +20,7 @@ from edt.domaine.enumerations import EtatCalcul, OrigineVersion, StatutOccurrenc
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.emploi_du_temps import presentation, regles_personnalisees
+from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
 from edt.services.parametres import lire_parametres
 
 journal = logging.getLogger(__name__)
@@ -136,6 +137,7 @@ def exiger_semestre(session: Session, semestre_id: int) -> ResumeSemestre:
 
 def annee_du_semestre(session: Session, semestre_id: int) -> int:
     """Identifiant de l'année scolaire du semestre (les groupes sont rattachés à l'année)."""
+    exiger_identifiant(semestre_id, f"Le semestre n° {semestre_id} n'existe pas.")
     annee_id = session.scalar(
         select(m.Semestre.annee_scolaire_id).where(m.Semestre.id == semestre_id)
     )
@@ -146,7 +148,7 @@ def annee_du_semestre(session: Session, semestre_id: int) -> int:
 
 def lire_version(session: Session, version_id: int) -> ResumeVersion:
     """Résumé d'une version ; lève `ErreurIntrouvable` si elle n'existe pas."""
-    version = session.get(m.VersionEdt, version_id)
+    version = obtenir(session, m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     return _resumes_versions(session, [version])[0]
@@ -242,7 +244,7 @@ def _niveaux_modifies(calcul: m.Calcul, dejeuner_actif: bool) -> tuple[str, ...]
 
 def activer_version(session: Session, version_id: int) -> ResumeVersion:
     """Rend la version active pour son semestre (l'ancienne version active est désactivée)."""
-    version = session.get(m.VersionEdt, version_id)
+    version = obtenir(session, m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     if version.active:
@@ -268,7 +270,7 @@ def activer_version(session: Session, version_id: int) -> ResumeVersion:
 
 def supprimer_version(session: Session, version_id: int) -> str:
     """Supprime une version non active (ses séances partent avec elle) ; renvoie son libellé."""
-    version = session.get(m.VersionEdt, version_id)
+    version = obtenir(session, m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
     if version.active:

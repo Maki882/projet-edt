@@ -21,7 +21,8 @@ from sqlalchemy.orm import Session
 
 from edt.domaine.calendrier import annee_scolaire_de
 from edt.domaine.regles import EtatRegle
-from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
+from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
+from edt.services import generation
 from edt.services.parametres import reinitialiser_parametres
 from edt.services.referentiels.calendrier import (
     ANNEE_SCOLAIRE,
@@ -32,11 +33,13 @@ from edt.services.referentiels.calendrier import (
     creer_annee_par_defaut,
     preremplir_jours_feries,
 )
+from edt.services.referentiels.conversion import entier_naturel
 from edt.services.referentiels.operations import ErreurSaisie
 from edt.services.referentiels.reglages import (
     ParametreAffiche,
     enregistrer_parametres_saisis,
     parametres_affichables,
+    parametres_invalides,
 )
 from edt.services.regles import lister as lister_regles
 from edt.web.dependances import SessionRequete
@@ -164,16 +167,17 @@ def calendrier(request: Request, session: SessionRequete) -> Response:
 def ajouter_annee(request: Request, session: SessionRequete, formulaire: Formulaire) -> Response:
     """Crée une année scolaire avec ses deux semestres et ses jours fériés."""
     brute = str(formulaire.get("annee_debut", "")).strip()
-    if not (brute.isascii() and brute.isdigit()):
-        journal.info("Ajout d'une année refusé : année de début « %s » invalide", brute)
+    annee_debut = entier_naturel(brute)
+    if annee_debut is None:
+        journal.info("Ajout d'une année refusé : année de début « %s » invalide", brute[:30])
         return rediriger(
             request,
             "/calendrier",
-            f"Année de début invalide : « {brute} ». Saisir une année, par exemple 2027.",
+            f"Année de début invalide : « {brute[:30]} ». Saisir une année, par exemple 2027.",
             "erreur",
         )
     try:
-        annee = creer_annee_par_defaut(session, int(brute))
+        annee = creer_annee_par_defaut(session, annee_debut)
     except ErreurRegleMetier as refus:
         return rediriger(request, "/calendrier", refus.message, "erreur")
     return rediriger(
@@ -230,20 +234,49 @@ def _rendre_parametres(
     request: Request,
     session: SessionRequete,
     saisies: dict[str, str] | None = None,
-    erreur: ErreurDonneesInvalides | None = None,
+    erreur: ErreurDonneesInvalides | ErreurCalculEnCours | None = None,
 ) -> Response:
     parametres = parametres_affichables(session)
+    if isinstance(erreur, ErreurCalculEnCours):
+        statut = 409
+    else:
+        statut = 422 if erreur is not None else 200
+    # Valeurs enregistrées invalides (base abîmée) : signalées sous leur champ, la page reste
+    # ouverte pour les réenregistrer ; une erreur de la saisie en cours passe devant.
+    invalides = parametres_invalides(session)
     return rendre(
         request,
         "donnees/parametres.html",
         {
             "rubriques": _rubriques_parametres(parametres),
             "saisies": saisies or {},
-            "erreurs": erreur.champs if isinstance(erreur, ErreurSaisie) else {},
+            "erreurs": {**invalides, **(erreur.champs if isinstance(erreur, ErreurSaisie) else {})},
+            "invalides": invalides,
             "erreur": erreur,
             "unites": UNITES,
+            # Prévenir avant la saisie (le refus, lui, s'affiche à la place).
+            "calcul_en_cours": generation.calcul_en_cours() if erreur is None else None,
         },
-        statut=422 if erreur is not None else 200,
+        statut=statut,
+    )
+
+
+def _refus_pendant_un_calcul() -> ErreurCalculEnCours | None:
+    """Refus de changer les paramètres pendant un calcul, ou None s'il n'y en a pas.
+
+    Un calcul a lu les paramètres à son lancement et les relit pour contrôler
+    puis dater sa solution : les changer entre-temps donnerait une version
+    vérifiée avec d'autres réglages que ceux du calcul (comme la pause
+    déjeuner réglée depuis « Générer », refusée elle aussi).
+    """
+    suivi = generation.calcul_en_cours()
+    if suivi is None:
+        return None
+    journal.info("Paramètres non modifiés : calcul n° %d en cours", suivi.id)
+    return ErreurCalculEnCours(
+        f"Un calcul d'emploi du temps est en cours (calcul n° {suivi.id}) : les paramètres ne "
+        "changent pas pendant un calcul. Attendre qu'il se termine, ou l'arrêter, puis "
+        "enregistrer de nouveau. Rien n'a été enregistré."
     )
 
 
@@ -267,6 +300,9 @@ def enregistrer_parametres(
             saisies[parametre.cle] = ",".join(formulaire.getlist(parametre.cle))
         elif parametre.cle in formulaire:
             saisies[parametre.cle] = str(formulaire[parametre.cle])
+    refus = _refus_pendant_un_calcul()
+    if refus is not None:
+        return _rendre_parametres(request, session, saisies, refus)
     try:
         enregistrer_parametres_saisis(session, saisies)
     except ErreurDonneesInvalides as erreur:
@@ -278,6 +314,9 @@ def enregistrer_parametres(
 @routeur.post("/parametres/defaut", name="parametres_defaut")
 def parametres_par_defaut(request: Request, session: SessionRequete) -> Response:
     """Remet tous les paramètres à leur valeur par défaut."""
+    refus = _refus_pendant_un_calcul()
+    if refus is not None:
+        return _rendre_parametres(request, session, erreur=refus)
     reinitialiser_parametres(session)
     return rediriger(
         request, "/parametres", "Tous les paramètres ont repris leur valeur par défaut."

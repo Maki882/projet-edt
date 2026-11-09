@@ -61,6 +61,7 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.db.moteur import identifiant_valide
 from edt.domaine.calendrier import lundi_de
 from edt.domaine.contraintes import Niveau, Niveaux, niveaux_depuis_desactivees
 from edt.domaine.enumerations import OrigineOccurrence, StatutOccurrence
@@ -384,6 +385,8 @@ def _contexte(
     ceux de la version (`edt.services.niveaux.niveaux_regles_de_version`,
     même lecture que le vérificateur).
     """
+    if not identifiant_valide(version_id):
+        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     version = session.get(m.VersionEdt, version_id)
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")

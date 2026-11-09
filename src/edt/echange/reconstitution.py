@@ -164,6 +164,7 @@ class BesoinPrevu:
     creneaux: list[tuple[int, int, int | None]] = field(default_factory=list)
     besoin: m.Besoin | None = None
     action: Action | None = None
+    changements: tuple[str, ...] = ()
 
     @property
     def premiere(self) -> SeanceRetenue:
@@ -776,19 +777,63 @@ def _ecrire_besoin(
         prevu.besoin, prevu.action = besoin, Action.CREE
     else:
         besoin = existants[0]
-        change = False
+        changements = []
         for attribut, valeur in champs.items():
             if getattr(besoin, attribut) != valeur:
                 setattr(besoin, attribut, valeur)
-                change = True
+                changements.append(CHAMPS_DU_BESOIN[attribut])
         if {e.id for e in besoin.enseignants} != {e.id for e in s.enseignants}:
+            _signaler_enseignants_remplaces(besoin, s, signalements)
             besoin.enseignants = list(s.enseignants)
-            change = True
-        if change:
+            changements.append("enseignants")
+        if changements:
             besoin.source_fichier = s.source.fichier[:LONGUEUR_SOURCE]
             besoin.source_ligne = s.source.ligne
-        prevu.besoin, prevu.action = besoin, Action.MAJ if change else Action.INCHANGE
+        prevu.changements = tuple(dict.fromkeys(changements))
+        prevu.besoin, prevu.action = besoin, Action.MAJ if changements else Action.INCHANGE
     bilan.ajouter(prevu.action.value)
+
+
+CHAMPS_DU_BESOIN = {
+    "duree_min": "durée",
+    "mode_volume": "volume",
+    "nombre": "volume",
+    "max_par_semaine": "volume",
+    "date_debut": "dates",
+    "date_fin": "dates",
+    "jour_impose": "jour imposé",
+    "debut_impose_min": "heure imposée",
+    "salle_imposee_id": "salle imposée",
+}
+"""Nom lisible des champs d'un besoin qu'un réimport peut changer (résumé « mis à jour »)."""
+
+
+def _signaler_enseignants_remplaces(
+    besoin: m.Besoin, s: SeanceRetenue, signalements: list[Signalement]
+) -> None:
+    """Avertit quand un réimport retire au besoin des enseignants réels.
+
+    Un tableau sans colonne `enseignants` (ou un iCal sans `X-EDT-ENSEIGNANTS`)
+    donne l'enseignant fictif de la matière : sans ce message, l'affectation
+    saisie à la main disparaîtrait sans bruit au réimport.
+    """
+    gardes = {e.id for e in s.enseignants}
+    retires = sorted(
+        e.identifiant for e in besoin.enseignants if e.id not in gardes and not e.fictif
+    )
+    if not retires:
+        return
+    message = (
+        f"Besoin n° {besoin.id} ({s.matiere.code} {s.type_seance.code} "
+        f"{', '.join(g.code for g in s.groupes)}) : enseignant(s) {', '.join(retires)} "
+        f"remplacé(s) par {', '.join(e.identifiant for e in s.enseignants)}"
+    )
+    if all(e.fictif for e in s.enseignants):
+        message += (
+            " : le fichier ne nomme aucun enseignant connu pour ces séances. Réaffecter le "
+            "besoin après l'import si ce remplacement n'est pas voulu"
+        )
+    signalements.append(s.source.signalement(Gravite.AVERTISSEMENT, message, "enseignants"))
 
 
 def _creer_version(
@@ -932,5 +977,11 @@ def _resume(prevu: BesoinPrevu) -> dict[str, Any]:
         "creneaux": creneaux,
         "seances": len(prevu.sources),
         "special": prevu.special,
-        "etat": etats.get(prevu.action, "non importé") if prevu.action else "non importé",
+        "etat": (
+            f"mis à jour ({', '.join(prevu.changements)})"
+            if prevu.action is Action.MAJ and prevu.changements
+            else etats.get(prevu.action, "non importé")
+            if prevu.action
+            else "non importé"
+        ),
     }

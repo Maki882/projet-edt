@@ -40,8 +40,9 @@ from dataclasses import dataclass
 
 from edt.domaine.contraintes import CodeContrainte, Niveau, Niveaux
 from edt.domaine.enumerations import CibleIndisponibilite
-from edt.domaine.heures import plage_vers_texte
+from edt.domaine.heures import MINUTES_PAR_JOUR, plage_vers_texte
 from edt.domaine.instantane import Besoin, Instantane, Occurrence, Placement
+from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur.regles import Regles
 
 journal = logging.getLogger(__name__)
@@ -189,8 +190,11 @@ def instancier(
     """Produit les séances datées de la semaine type `placements`.
 
     Chaque placement désigne une séance de l'instantané (`ErreurIntrouvable`
-    sinon) et donne une occurrence par semaine active de cette séance. Les
-    occurrences sortent triées par date, heure puis séance.
+    sinon) et tient dans une journée (jour de 0 à 6, `0 <= début < fin <=
+    1440`, sinon `ErreurDonneesInvalides` qui nomme la séance : une séance
+    hebdomadaire importée hors bornes ne donne pas d'occurrence débordant sur
+    le lendemain) ; il donne une occurrence par semaine active de cette
+    séance. Les occurrences sortent triées par date, heure puis séance.
 
     `en_place` : séances datées qui gardent leur place quoi qu'il arrive
     (saisies à la main, importées). Une occurrence de la semaine type qui
@@ -209,6 +213,14 @@ def instancier(
     a_replacer: list[OccurrenceARevoir] = []
     for placement in placements:
         seance = instantane.seance(placement.seance_id)
+        if not (
+            0 <= placement.jour <= 6 and 0 <= placement.debut < placement.fin <= MINUTES_PAR_JOUR
+        ):
+            raise ErreurDonneesInvalides(
+                f"Le placement de la séance {seance.id} (« {seance.besoin.libelle} ») est "
+                f"incohérent : jour {placement.jour}, de {placement.debut} à {placement.fin} "
+                "minutes. Corriger la semaine type avant de produire les séances datées."
+            )
         for numero in sorted(seance.semaines):
             occurrence = Occurrence(
                 id=None,

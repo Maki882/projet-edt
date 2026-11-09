@@ -11,13 +11,14 @@
 #
 # Déroulement (détail dans docs/deploiement.md) :
 #   1. contrôles locaux : outils, clé, référence git, arbre de travail ;
-#   2. contrôles du serveur : connexion, sudo, installation faite ;
+#   2. contrôles du serveur : connexion, sudo, installation faite et à jour ;
 #   3. envoi du code : git archive <commit> | ssh ... tar -x
-#      vers /opt/edt/versions/<date>-<sha>/code ;
-#   4. sur le serveur (deploy/deployer-distant.sh) : venv et dépendances,
-#      chargement, arrêt du service, sauvegarde de la base, init-db,
-#      verifier-schema, bascule du lien /opt/edt/courant, redémarrage, attente
-#      de /sante (30 s) ; en cas d'échec : journal + retour arrière automatique ;
+#      vers /opt/edt/versions/<date UTC>-<sha>/code, puis témoin envoi-termine ;
+#   4. sur le serveur (deploy/deployer-distant.sh) : aucune commande « sudo edt »
+#      en cours, venv et dépendances, chargement, arrêt du service, sauvegarde
+#      de la base, init-db, verifier-schema, bascule du lien /opt/edt/courant,
+#      redémarrage, attente de /sante (30 s) ; en cas d'échec : journal + retour
+#      arrière automatique ;
 #   5. vérification informative de l'URL publique (n'annule rien).
 #
 # Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
@@ -96,7 +97,9 @@ fi
 
 # Nom de version et informations transmises au serveur : uniquement des
 # caractères sûrs, car ils passent dans une ligne de commande ssh.
-VERSION="$(date '+%Y%m%d-%H%M%S')-$SHA_COURT"
+# Horodatage en UTC : pas d'heure répétée au passage à l'heure d'hiver, et
+# l'ordre des noms suit l'ordre des déploiements (la rotation s'y fie).
+VERSION="$(date -u '+%Y%m%d-%H%M%S')-$SHA_COURT"
 if ! AUTEUR="$(git -C "$RACINE" config user.name)"; then
   info "git user.name non configuré : auteur noté « inconnu »."
   AUTEUR="inconnu"
@@ -126,38 +129,79 @@ etape "Connexion au serveur $SSH_CIBLE"
 verifier_connexion
 
 etape "Vérification de l'installation du serveur"
-# Le serveur renvoie aussi l'empreinte des fichiers posés par
-# installer-serveur.sh, comparée ensuite à celle de ce dossier deploy/.
-if ! EMPREINTES_SERVEUR="$(executer_script_distant verification-installation <<'DISTANT'
+# Fichiers que installer-serveur.sh copie tels quels : source dans deploy/ puis
+# destination sur le serveur. Leurs empreintes sont comparées pour signaler une
+# installation à refaire. Non comparés : edt.env.exemple (copié une seule fois,
+# jamais écrasé) et les sites nginx (nom de domaine substitué à l'installation).
+FICHIERS_INSTALLES=(
+  edt.service                /etc/systemd/system/edt.service
+  edt-sauvegarde.service     /etc/systemd/system/edt-sauvegarde.service
+  edt-sauvegarde.timer       /etc/systemd/system/edt-sauvegarde.timer
+  lanceur-edt.sh             /usr/local/bin/edt
+  nginx-edt-application.conf /etc/nginx/snippets/edt-application.conf
+  erreur-502.html            /var/www/edt-erreurs/erreur-502.html
+  erreur-413.html            /var/www/edt-erreurs/erreur-413.html
+)
+SOURCES=()
+DESTINATIONS=()
+for (( i = 0; i < ${#FICHIERS_INSTALLES[@]}; i += 2 )); do
+  SOURCES+=("${FICHIERS_INSTALLES[i]}")
+  DESTINATIONS+=("${FICHIERS_INSTALLES[i + 1]}")
+done
+# Le serveur renvoie une empreinte (ou « absent ») par destination, dans l'ordre.
+if ! EMPREINTES_SERVEUR="$(executer_script_distant verification-installation "${DESTINATIONS[@]}" <<'DISTANT'
 set -euo pipefail
-installes=(/etc/systemd/system/edt.service /etc/nginx/snippets/edt-application.conf
-  /usr/local/bin/edt /var/www/edt-erreurs/erreur-502.html)
 manquant=0
-for chemin in /etc/edt/edt.env /opt/edt/versions /var/lib/edt/sauvegardes /var/log/edt-deploiements \
-  /etc/nginx/sites-enabled/edt "${installes[@]}"; do
+for chemin in /etc/edt/edt.env /etc/systemd/system/edt.service /opt/edt/versions \
+  /var/lib/edt/sauvegardes /var/log/edt-deploiements /etc/nginx/sites-enabled/edt; do
   if [ ! -e "$chemin" ]; then
     echo "manquant sur le serveur : $chemin" >&2
     manquant=1
   fi
 done
 if [ "$manquant" = 1 ]; then exit 1; fi
-sha256sum "${installes[@]}" | cut -d' ' -f1
+for chemin in "$@"; do
+  if [ -e "$chemin" ]; then sha256sum "$chemin" | cut -d' ' -f1; else echo "absent"; fi
+done
 DISTANT
 )"; then
-  erreur "le serveur n'est pas (complètement) installé ou pas à jour : lancez deploy/installer-serveur.sh (docs/deploiement.md, « Première installation »)."
+  erreur "le serveur n'est pas (complètement) installé : lancez deploy/installer-serveur.sh (docs/deploiement.md, « Première installation »)."
   exit 1
 fi
-EMPREINTES_LOCALES="$(cd "$DOSSIER_DEPLOY" && sha256sum edt.service nginx-edt-application.conf lanceur-edt.sh erreur-502.html | cut -d' ' -f1)"
-if [ "$EMPREINTES_SERVEUR" = "$EMPREINTES_LOCALES" ]; then
+EMPREINTES_LOCALES="$(cd "$DOSSIER_DEPLOY" && sha256sum "${SOURCES[@]}" | cut -d' ' -f1)"
+mapfile -t SERVEUR <<< "$EMPREINTES_SERVEUR"
+mapfile -t LOCALES <<< "$EMPREINTES_LOCALES"
+DIFFERENTS=()
+for i in "${!SOURCES[@]}"; do
+  if [ "${SERVEUR[i]:-absent}" != "${LOCALES[i]}" ]; then DIFFERENTS+=("${SOURCES[i]}"); fi
+done
+if [ "${#DIFFERENTS[@]}" -eq 0 ]; then
   info "Installation du serveur : ok, à jour."
 else
-  avertir "edt.service, nginx-edt-application.conf, lanceur-edt.sh ou erreur-502.html diffère entre le serveur et ce dossier deploy/ : relancez installer-serveur.sh pour appliquer la version du dépôt (docs/deploiement.md, section 3, étapes 1 et 2). Le déploiement continue avec la configuration actuelle du serveur."
+  avertir "${DIFFERENTS[*]} : absent(s) du serveur ou différent(s) de ce dossier deploy/ : relancez installer-serveur.sh pour appliquer la version du dépôt (docs/deploiement.md, section 3, étapes 1 et 2). Le déploiement continue avec la configuration actuelle du serveur."
 fi
 
 etape "Envoi du code ($SHA_COURT) vers $DOSSIER_VERSION_DISTANT/code"
+# Le témoin envoi-termine n'est écrit qu'après une extraction complète : un
+# envoi coupé laisse un dossier sans témoin, refusé par le serveur puis
+# supprimé par le déploiement réussi suivant.
+CODE_ENVOI=0
 git -C "$RACINE" archive --format=tar "$SHA" \
-  | ssh_serveur "sudo -n mkdir '$DOSSIER_VERSION_DISTANT' '$DOSSIER_VERSION_DISTANT/code' && sudo -n tar -x --no-same-owner --no-same-permissions -f - -C '$DOSSIER_VERSION_DISTANT/code'"
-info "Code envoyé."
+  | ssh_serveur "if sudo -n test -e '$DOSSIER_VERSION_DISTANT'; then exit 3; fi
+sudo -n mkdir '$DOSSIER_VERSION_DISTANT' '$DOSSIER_VERSION_DISTANT/code' \
+  && sudo -n tar -x --no-same-owner --no-same-permissions -f - -C '$DOSSIER_VERSION_DISTANT/code' \
+  && sudo -n touch '$DOSSIER_VERSION_DISTANT/envoi-termine'" || CODE_ENVOI=$?
+case "$CODE_ENVOI" in
+  0) info "Code envoyé." ;;
+  3)
+    erreur "le dossier $DOSSIER_VERSION_DISTANT existe déjà sur le serveur (même commit déployé dans la même seconde ?) : relancez deploy/deployer.sh."
+    exit 1
+    ;;
+  *)
+    erreur "envoi du code interrompu ou refusé (code $CODE_ENVOI) : rien n'est en service de cette version ; le dossier incomplet sera supprimé par le prochain déploiement réussi. Relancez deploy/deployer.sh."
+    exit 1
+    ;;
+esac
 
 etape "Déploiement sur le serveur"
 info "(Une coupure de la connexion ou Ctrl+C n'interrompt pas le travail côté serveur, qui va au bout.)"

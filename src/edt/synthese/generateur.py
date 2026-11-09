@@ -71,7 +71,12 @@ from edt.services.instantane import charger_instantane
 from edt.services.parametres import lire_parametres
 from edt.services.regles import lister as lister_regles
 from edt.synthese import catalogue as cat
-from edt.synthese.configuration import ConfigurationJeu, configuration_nommee
+from edt.synthese.configuration import (
+    ConfigurationJeu,
+    configuration_nommee,
+    valider_annee_debut,
+    valider_graine,
+)
 from edt.synthese.rapport import (
     BesoinEcarte,
     PlaceTemoin,
@@ -117,6 +122,12 @@ PLAFONDS: dict[StatutEnseignant, int] = {
 """Plafond hebdomadaire d'enseignement visé par statut, pour le choix des enseignants du témoin."""
 SERVICE_VISE = 11 * H
 """Service hebdomadaire moyen visé pour dimensionner le vivier initial."""
+SEMAINES_STAGE = 4
+"""Durée du stage de fin de semestre 2 (semaines), quand le semestre en compte au moins six."""
+ESSAIS_TEMOIN = 4
+"""Placements complets au plus d'un semestre quand le témoin laisse des besoins sans place."""
+ESSAIS_NOM_UNIQUE = 50
+"""Tirages de nom au plus pour éviter un homonyme parmi les enseignants (au-delà, il est admis)."""
 TYPES_SEANCE_REQUIS = ("CM", "TD", "TP", "PROJET", "LANGUE", "DST", "EXAMEN", "AUTRE")
 SEMAINES_CONFERENCE = tuple(range(3, 15))
 """Semaines où peut se tenir la conférence métiers d'une promotion (la date est choisie par le témoin)."""
@@ -139,9 +150,13 @@ def generer_jeu(
       d'emploi du temps « référence » (non active) de chaque semestre.
 
     La base doit être initialisée (`initialiser_base`) et vide de
-    référentiels : sinon `ErreurRegleMetier`. Ne valide pas la transaction
-    (`session.flush()` seulement) : c'est l'appelant qui valide.
+    référentiels : sinon `ErreurRegleMetier`. Une graine hors de 0 à
+    `GRAINE_MAX` ou une année hors de `ANNEE_DEBUT_MIN` à `ANNEE_DEBUT_MAX`
+    lève `ErreurDonneesInvalides` avant toute écriture (`valider_demande`).
+    Ne valide pas la transaction (`session.flush()` seulement) : c'est
+    l'appelant qui valide.
     """
+    valider_demande(graine, annee_debut)
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     debut = time.perf_counter()
     journal.info("Génération du jeu fictif « %s » (graine %d) : début", configuration.nom, graine)
@@ -155,6 +170,16 @@ def generer_jeu(
         len(rapport.besoins_ecartes),
     )
     return rapport
+
+
+def valider_demande(graine: object, annee_debut: object = None) -> None:
+    """Refuse une graine ou une année de début hors bornes (`ErreurDonneesInvalides`).
+
+    À appeler avant toute action destructrice (remise à zéro) : la génération
+    la refait de toute façon, mais trop tard pour protéger la base.
+    """
+    valider_graine(graine)
+    valider_annee_debut(annee_debut)
 
 
 # --------------------------------------------------------------------------- #
@@ -336,7 +361,10 @@ class _Generateur:
         self.parametres: Parametres = lire_parametres(s)
         creneaux = list(s.scalars(select(m.Creneau).order_by(m.Creneau.jour, m.Creneau.debut_min)))
         if not creneaux:
-            raise ErreurDonneesInvalides("La grille horaire est vide : initialiser la base.")
+            raise ErreurDonneesInvalides(
+                "La grille horaire est vide : ajouter des créneaux à la grille, ou "
+                "réinitialiser la base pour retrouver la grille par défaut."
+            )
         self.grille = Grille(
             (CreneauGrille(c.jour, c.debut_min, c.fin_min, c.demi_journee) for c in creneaux),
             self.parametres,
@@ -737,18 +765,28 @@ class _Generateur:
             groupes = [promotion.groupe, *promotion.rattaches]
             if promotion.annee == 1 and "S1" in self.config.semestres:
                 premiere = self.semaines["S1"][0]
+                # Semaine entière (lundi-dimanche) : fermée quels que soient les jours travaillés.
                 fermer(
                     premiere.lundi,
-                    premiere.date_du(4),
+                    premiere.dimanche,
                     "Semaine d'intégration",
                     NatureJourFerme.SEMAINE_SPECIALE,
                     groupes,
                 )
             stage = promotion.annee in self.config.annees_stage and "S2" in self.config.semestres
+            if stage and len(self.semaines["S2"]) < SEMAINES_STAGE + 2:
+                journal.warning(
+                    "Semestre 2 trop court (%d semaines) pour un stage de %d semaines : "
+                    "pas de stage pour %s",
+                    len(self.semaines["S2"]),
+                    SEMAINES_STAGE,
+                    promotion.code,
+                )
+                stage = False
             if stage:
                 semaines = self.semaines["S2"]
                 fermer(
-                    semaines[-4].lundi,
+                    semaines[-SEMAINES_STAGE].lundi,
                     self.semestres["S2"].date_fin,
                     "Stage en entreprise",
                     NatureJourFerme.AUTRE,
@@ -758,14 +796,14 @@ class _Generateur:
                 continue
             for code in self.config.semestres:
                 semaines = self.semaines[code]
-                indice = len(semaines) - (5 if code == "S2" and stage else 1)
+                indice = len(semaines) - (SEMAINES_STAGE + 1 if code == "S2" and stage else 1)
                 while indice > 0 and self._semaine_fermee(semaines[indice]):
                     indice -= 1
                 semaine = semaines[indice]
                 self.semaine_partiels[(promotion.annee, code)] = semaine
                 fermer(
                     semaine.lundi,
-                    semaine.date_du(4),
+                    semaine.dimanche,
                     f"Partiels du semestre {code[1]}",
                     NatureJourFerme.EXAMENS,
                     groupes,
@@ -808,6 +846,33 @@ class _Generateur:
 
     def _date_ouverte(self, jour: dt.date, groupes: Sequence[int]) -> bool:
         return not any(f.concerne(jour, groupes, ponctuelle=True) for f in self.fermetures)
+
+    def _dates_possibles(
+        self,
+        code: str,
+        semaine: Semaine,
+        groupes: Sequence[int],
+        jours: Sequence[int] | None = None,
+    ) -> tuple[dt.date, ...]:
+        """Dates où une séance ponctuelle de ces groupes peut avoir lieu dans la semaine.
+
+        Une date possible est un jour travaillé (ou l'un des `jours` donnés),
+        **dans les dates du semestre** (une semaine du bord peut déborder du
+        semestre) et ouverte pour ces groupes (pas fériée, pas en vacances).
+        Le générateur ne crée aucun besoin ponctuel hors de ces dates : sans
+        date possible, le besoin est écarté avec sa raison.
+        """
+        semestre = self.semestres[code]
+        return tuple(
+            semaine.date_du(j)
+            for j in (self.jours_travailles if jours is None else jours)
+            if semestre.date_debut <= semaine.date_du(j) <= semestre.date_fin
+            and self._date_ouverte(semaine.date_du(j), groupes)
+        )
+
+    def _periode(self, code: str) -> tuple[dt.date, dt.date]:
+        """Dates exactes du semestre, pour le dépliage (comme l'instantané)."""
+        return self.semestres[code].date_debut, self.semestres[code].date_fin
 
     def _creer_indisponibilites_groupes(self) -> None:
         """Après-midi du mercredi libéré pour le sport (cycle intégré) : respecté par le témoin."""
@@ -855,6 +920,13 @@ class _Generateur:
         self.matieres.append(matiere)
         self.matieres_par_libelle[(promotion.annee, f"S{s}", libelle)] = matiere
         return matiere
+
+    def _retirer(self, spec: _Spec, raison: str) -> None:
+        """Retire le dernier besoin préparé, impossible d'avance : écarté, compté et expliqué."""
+        if self.specs[-1] is not spec:
+            raise ErreurEDT("Incohérence interne du générateur : retrait d'un besoin non dernier.")
+        self.specs.pop()
+        self._ecarter(spec, raison)
 
     def _ajouter(self, **champs) -> _Spec:
         spec = _Spec(cle=len(self.specs), **champs)
@@ -993,8 +1065,7 @@ class _Generateur:
                 )
                 spec.nombre = min(spec.nombre, len(ouvertes) * spec.max_par_semaine)
                 if spec.nombre == 0:
-                    self.specs.pop()
-                    self._ecarter(spec, "aucune semaine de cours ouverte dans sa fenêtre")
+                    self._retirer(spec, "aucune semaine de cours ouverte dans sa fenêtre")
 
     @staticmethod
     def _priorite(ens: cat.Enseignement, groupes: tuple, barrette: str | None) -> int:
@@ -1050,23 +1121,24 @@ class _Generateur:
         semaine = self.semaine_partiels[(promotion.annee, code)]
         groupes_promo = [promotion.groupe.id]
         creneaux = [
-            (semaine.date_du(j), debut, duree)
-            for j in self.jours_travailles
-            if self._date_ouverte(semaine.date_du(j), groupes_promo)
+            (jour, debut, duree)
+            for jour in self._dates_possibles(code, semaine, groupes_promo)
             for debut, duree in cat.EPREUVES_PARTIEL
         ]
         if not creneaux:
             journal.warning("Partiels %s %s : aucune demi-journée ouverte", promotion.code, code)
-            return
         decalage = promotion.annee - 3
         for filiere, liste in matieres.items():
             for i, matiere in enumerate(liste[: self.config.epreuves_par_partiel]):
-                jour, debut, duree = creneaux[(decalage + 3 * i) % len(creneaux)]
+                if creneaux:
+                    jour, debut, duree = creneaux[(decalage + 3 * i) % len(creneaux)]
+                else:
+                    jour, (debut, duree) = semaine.lundi, cat.EPREUVES_PARTIEL[0]
                 cibles = [(c.groupe, duree, "Partiel") for c in promotion.classes_de(filiere)]
                 if filiere == "classique":
                     cibles.append((promotion.tiers_temps, duree * 4 // 3, "Partiel (tiers-temps)"))
                 for groupe, duree_cible, libelle in cibles:
-                    self._ajouter(
+                    spec = self._ajouter(
                         semestre=code,
                         promotion=promotion,
                         matiere=matiere,
@@ -1080,6 +1152,12 @@ class _Generateur:
                         debut_impose=debut,
                         libelle=libelle,
                     )
+                    if not creneaux:
+                        self._retirer(
+                            spec,
+                            "aucune demi-journée ouverte dans la semaine des partiels "
+                            "(jours fériés, fermés ou non travaillés)",
+                        )
 
     def _preparer_evenements(self, promotion: _Promotion, code: str, s: int) -> None:
         semaines = self.semaines[code]
@@ -1088,6 +1166,7 @@ class _Generateur:
         )
         if promotion.annee == 1 and code == "S1":
             premiere = semaines[0]
+            ouvertes = self._dates_possibles(code, premiere, [promotion.groupe.id])
             amphis = sorted(
                 (
                     x
@@ -1096,7 +1175,9 @@ class _Generateur:
                 ),
                 key=lambda x: (-x.capacite, x.code),
             )
-            self._ajouter(
+            # L'amphi de rentrée a lieu le premier jour possible de la semaine d'intégration,
+            # les rencontres avec les tuteurs les jours suivants.
+            amphi = self._ajouter(
                 semestre=code,
                 promotion=promotion,
                 matiere=matiere,
@@ -1106,14 +1187,22 @@ class _Generateur:
                 profil="amphi",
                 priorite=0,
                 mode=ModeVolume.PONCTUEL,
-                date_ponctuelle=premiere.lundi,
+                date_ponctuelle=ouvertes[0] if ouvertes else premiere.lundi,
                 debut_impose=10 * H,
                 salle_imposee=amphis[0] if amphis else None,
                 libelle="Amphi de rentrée",
             )
-            jours = tuple(premiere.date_du(j) for j in range(1, 5))
+            if not ouvertes:
+                self._retirer(
+                    amphi, "aucune date ouverte du semestre dans la semaine d'intégration"
+                )
             for classe in promotion.classes_de("classique"):
-                self._ajouter(
+                dates = tuple(
+                    jour
+                    for jour in self._dates_possibles(code, premiere, [classe.groupe.id])
+                    if jour not in ouvertes[:1]
+                )
+                rencontre = self._ajouter(
                     semestre=code,
                     promotion=promotion,
                     matiere=matiere,
@@ -1123,28 +1212,38 @@ class _Generateur:
                     profil="cours",
                     priorite=9,
                     mode=ModeVolume.PONCTUEL,
-                    dates_possibles=jours,
+                    dates_possibles=dates,
                     libelle="Rencontre avec le tuteur de classe",
                 )
+                if not dates:
+                    self._retirer(
+                        rencontre,
+                        "aucune date ouverte du semestre dans la semaine d'intégration "
+                        "(hors du jour de l'amphi de rentrée)",
+                    )
         dates = tuple(
-            semaines[n - 1].date_du(j)
+            jour
             for n in _semaines_bornees(SEMAINES_CONFERENCE, len(semaines))
-            for j in self.jours_travailles
-            if self._date_ouverte(semaines[n - 1].date_du(j), [promotion.groupe.id])
+            for jour in self._dates_possibles(code, semaines[n - 1], [promotion.groupe.id])
         )
-        if dates:
-            self._ajouter(
-                semestre=code,
-                promotion=promotion,
-                matiere=matiere,
-                type_seance="AUTRE",
-                groupes=(promotion.groupe,),
-                duree=2 * H,
-                profil="amphi",
-                priorite=2,
-                mode=ModeVolume.PONCTUEL,
-                dates_possibles=dates,
-                libelle="Conférence métiers",
+        spec = self._ajouter(
+            semestre=code,
+            promotion=promotion,
+            matiere=matiere,
+            type_seance="AUTRE",
+            groupes=(promotion.groupe,),
+            duree=2 * H,
+            profil="amphi",
+            priorite=2,
+            mode=ModeVolume.PONCTUEL,
+            dates_possibles=dates,
+            libelle="Conférence métiers",
+        )
+        if not dates:
+            self._retirer(
+                spec,
+                "aucune date ouverte pour toute la promotion entre les semaines "
+                f"{SEMAINES_CONFERENCE[0]} et {SEMAINES_CONFERENCE[-1]} du semestre",
             )
 
     def _confier_aux_fictifs(self) -> None:
@@ -1208,12 +1307,22 @@ class _Generateur:
     def _fabriquer_enseignant(
         self, cle: int, discipline: str, statut: StatutEnseignant
     ) -> EnseignantTemoin:
-        while True:
-            femme = self.rng.random() < 0.5
-            civilite = "Mme" if femme else "M."
+        # La civilité est tirée une fois : le nombre de tirages du générateur ne dépend
+        # pas des noms que propose Faker (le jeu ne change pas avec sa liste de noms).
+        femme = self.rng.random() < 0.5
+        civilite = "Mme" if femme else "M."
+        for _ in range(ESSAIS_NOM_UNIQUE):
             nom = self.faker.last_name()
             if (civilite, nom) not in self._noms_pris:
                 break
+        else:
+            journal.info(
+                "Plus de nom libre après %d essais : homonyme accepté (%s %s, clé %d)",
+                ESSAIS_NOM_UNIQUE,
+                civilite,
+                nom,
+                cle,
+            )
         self._noms_pris.add((civilite, nom))
         prenom = self.faker.first_name_female() if femme else self.faker.first_name_male()
         indispos: list[tuple[int, int, int]] = []
@@ -1332,6 +1441,7 @@ class _Generateur:
                 semaines,
                 self.fermetures,
                 self.parametres.jours_travailles,
+                self._periode(spec.semestre),
             )
             if depliage.problemes:
                 return "; ".join(p.message for p in depliage.problemes)
@@ -1422,18 +1532,18 @@ class _Generateur:
         )
 
     def _placer_semestre(self, code: str) -> None:
+        """Place les besoins du semestre dans le témoin ; écarte ceux qui ne trouvent pas de place.
+
+        Le placement est glouton : un ordre de départage malheureux peut laisser
+        un besoin sans place alors qu'il en existait une. Dans ce cas, le
+        semestre est replacé de zéro avec un autre départage (déterministe,
+        dérivé de la graine), jusqu'à `ESSAIS_TEMOIN` fois, et le meilleur essai
+        est retenu. Le premier essai utilise le générateur commun : un jeu sans
+        écart au premier essai ne change pas.
+        """
         specs = [spec for spec in self.specs if spec.semestre == code]
         self.exigences = ExigencesRegles(
             self.regles, code, self.parametres, self.lignees, self.feuilles, self.lies
-        )
-        temoin = Temoin(
-            self.grille,
-            self.trajets,
-            self.vivier,
-            self.rng,
-            self.indispos_groupes,
-            dejeuners=self.exigences.dejeuners(),
-            maxima_jour=self.exigences.maxima(),
         )
         demandes: dict[int, Demande] = {}
         for spec in specs:
@@ -1451,23 +1561,63 @@ class _Generateur:
             key=lambda u: (min(s.priorite for s in u), -max(s.effectif for s in u), u[0].cle),
         )
         recrutes = self.vivier.nb_recrutes
+        meilleur: tuple[dict[int, Resultat], list[tuple[_Spec, str]]] | None = None
+        for essai in range(ESSAIS_TEMOIN):
+            rng = self.rng if essai == 0 else random.Random(f"{self.graine}/{code}/{essai}")
+            places, ecarts = self._essai_temoin(demandes, ordre, rng)
+            if meilleur is None or len(ecarts) < len(meilleur[1]):
+                meilleur = (places, ecarts)
+            if not ecarts:
+                break
+            journal.info(
+                "Témoin %s, essai %d : %d besoin(s) sans place, nouvel essai avec un autre départage",
+                code,
+                essai + 1,
+                len(ecarts),
+            )
+        places, ecarts = meilleur
+        self.resultats.update(places)
+        par_cle = {spec.cle: spec for spec in specs}
+        for cle, resultat in places.items():
+            spec = par_cle[cle]
+            if spec.dates_possibles:
+                spec.date_ponctuelle = spec.dates_possibles[resultat.option]
+        for spec, raison in ecarts:
+            self._ecarter(spec, raison)
+        journal.info(
+            "Témoin %s : %d besoins placés sur %d, %d enseignant(s) recruté(s)",
+            code,
+            len(places),
+            len(specs),
+            self.vivier.nb_recrutes - recrutes,
+        )
+
+    def _essai_temoin(
+        self,
+        demandes: dict[int, Demande],
+        ordre: list[list[_Spec]],
+        rng: random.Random,
+    ) -> tuple[dict[int, Resultat], list[tuple[_Spec, str]]]:
+        """Un placement complet du semestre : les places trouvées et les besoins sans place."""
+        temoin = Temoin(
+            self.grille,
+            self.trajets,
+            self.vivier,
+            rng,
+            self.indispos_groupes,
+            dejeuners=self.exigences.dejeuners(),
+            maxima_jour=self.exigences.maxima(),
+        )
+        places: dict[int, Resultat] = {}
+        ecarts: list[tuple[_Spec, str]] = []
         for unite in ordre:
             resultats = temoin.placer_barrette([demandes[s.cle] for s in unite])
             for spec, resultat in zip(unite, resultats, strict=True):
                 if resultat.place:
-                    self.resultats[spec.cle] = resultat
-                    if spec.dates_possibles:
-                        spec.date_ponctuelle = spec.dates_possibles[resultat.option]
+                    places[spec.cle] = resultat
                 else:
-                    self._ecarter(spec, resultat.raison or "raison inconnue")
-        places = sum(1 for s in specs if s.cle in self.resultats)
-        journal.info(
-            "Témoin %s : %d besoins placés sur %d, %d enseignant(s) recruté(s)",
-            code,
-            places,
-            len(specs),
-            self.vivier.nb_recrutes - recrutes,
-        )
+                    ecarts.append((spec, resultat.raison or "raison inconnue"))
+        return places, ecarts
 
     def _ecarter(self, spec: _Spec, raison: str) -> None:
         journal.warning("Besoin écarté [%s] %s : %s", spec.semestre, spec.description, raison)
@@ -1646,6 +1796,7 @@ class _Generateur:
                 self.semaines[code],
                 self.fermetures,
                 self.parametres.jours_travailles,
+                self._periode(code),
             )
             obtenu = {s.id: sum(1 << n for n in s.semaines) for s in depliage.seances}
             if depliage.problemes or obtenu != attendu:

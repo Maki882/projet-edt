@@ -9,13 +9,17 @@ Chaque ligne importée est elle-même isolée dans un point de sauvegarde : si
 la base la refuse malgré la validation (contrainte non prévue), seule cette
 ligne est annulée et le rapport le dit ; les autres lignes entrent.
 
-Particularité du pilote `sqlite3` de Python : il n'ouvre une transaction
-qu'avant un INSERT, UPDATE ou DELETE. Un SAVEPOINT émis avant toute écriture
-ouvre alors lui-même la transaction, et le RELEASE de ce point de sauvegarde
-la **valide aussitôt** (constaté et couvert par un test). `ouvrir_transaction`
-émet donc un BEGIN explicite avant le premier point de sauvegarde ; la
-transaction reste ensuite entre les mains de l'appelant (validée à la fin de
-la requête web ou du bloc `session_base`).
+La transaction de l'import réserve la base en écriture dès son ouverture :
+`simulation_possible` la commence par `edt.db.moteur.transaction_immediate`
+(le moteur émet alors BEGIN IMMEDIATE). Deux imports simultanés se suivent
+ainsi, le second attendant le premier dans la limite du délai d'attente de
+la base. Une transaction différée qui a lu puis veut écrire n'attend pas, elle :
+elle échoue aussitôt « database is locked » si une autre a validé entre-temps.
+La session ne doit avoir servi à rien avant ; le moteur refuse sinon
+(`ErreurConfiguration`), et le service lit à part ce dont il a besoin.
+
+Les points de sauvegarde restent annulables par la transaction qui les
+contient : le moteur gère lui-même BEGIN et COMMIT (voir `edt.db.moteur`).
 """
 
 from __future__ import annotations
@@ -26,27 +30,20 @@ from contextlib import contextmanager
 
 from sqlalchemy.orm import Session
 
+from edt.db.moteur import transaction_immediate
+
 journal = logging.getLogger(__name__)
-
-
-def ouvrir_transaction(session: Session) -> None:
-    """Garantit qu'une vraie transaction est ouverte avant d'utiliser des points de sauvegarde."""
-    connexion = session.connection()
-    if connexion.dialect.name != "sqlite":
-        return
-    brute = connexion.connection.dbapi_connection
-    if not brute.in_transaction:
-        connexion.exec_driver_sql("BEGIN")
-        journal.debug("Transaction SQLite ouverte explicitement avant les points de sauvegarde")
 
 
 @contextmanager
 def simulation_possible(session: Session, simuler: bool) -> Iterator[None]:
-    """Exécute le bloc ; si `simuler`, annule tout ce qu'il a écrit (même en cas de succès).
+    """Exécute le bloc dans une transaction qui réserve la base en écriture dès son début.
 
-    En cas d'erreur, le point de sauvegarde est annulé et l'erreur remonte.
+    Si `simuler`, tout ce que le bloc a écrit est annulé, même en cas de succès.
+    En cas d'erreur, le point de sauvegarde est annulé et l'erreur remonte. La
+    session ne doit avoir servi à rien dans sa transaction en cours.
     """
-    ouvrir_transaction(session)
+    transaction_immediate(session)
     point = session.begin_nested()
     try:
         yield

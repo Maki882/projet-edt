@@ -112,15 +112,25 @@ def diagnostiquer(preparation: Preparation) -> list[Anomalie]:
     anomalies.extend(preparation.anomalies)
     for conflit in preparation.conflits_verrous:
         if preparation.tolerer:
-            conflit = Anomalie(
+            complement = " Cette violation héritée est tolérée à votre demande."
+            gravite = Gravite.AVERTISSEMENT
+        else:
+            # Le service refuse le calcul sur ces anomalies : le conseil doit être dedans.
+            complement = (
+                " Pour garder ces séances verrouillées telles quelles, cocher « tolérer les "
+                "violations héritées » ; sinon corriger l'un des verrous."
+            )
+            gravite = Gravite.ERREUR
+        anomalies.append(
+            Anomalie(
                 conflit.code,
-                Gravite.AVERTISSEMENT,
-                f"{conflit.message} Cette violation héritée est tolérée à votre demande.",
+                gravite,
+                f"{conflit.message}{complement}",
                 seances=conflit.seances,
                 jour=conflit.jour,
                 besoins=conflit.besoins,
             )
-        anomalies.append(conflit)
+        )
     # Les charges se mesurent au temps ouvert par la grille : si `HORAIRES` n'est pas dure
     # (ignorée ou souple), les séances peuvent en sortir et seuls les maxima des enseignants
     # restent certains.
@@ -161,9 +171,12 @@ def _dans_la_grille(seance: SeancePreparee) -> bool:
 
     Une séance à horaire fixe est comptée à part (elle occupe sa plage) ; une
     séance à heure imposée peut sortir de la grille : pour que la borne reste
-    certaine, elle n'entre pas dans la demande.
+    certaine, elle n'entre pas dans la demande. Une séance sans aucun horaire
+    possible (domaine vide, verrou intenable) est déjà une impossibilité dite
+    par la préparation : la compter ici ne ferait qu'ajouter des charges
+    parasites (« pour 0 min disponibles »).
     """
-    return not seance.horaire_fixe and seance.besoin.debut_impose is None
+    return bool(seance.debuts) and not seance.horaire_fixe and seance.besoin.debut_impose is None
 
 
 def _pire_semaine(
@@ -468,8 +481,8 @@ def _charges_des_salles(preparation: Preparation, blocs: Sequence[Plage]) -> lis
     instantane, regles = preparation.instantane, preparation.regles
     par_famille: dict[frozenset[int], list[SeancePreparee]] = defaultdict(list)
     for seance in preparation.seances:
-        if seance.verrouillee or seance.besoin.debut_impose is not None:
-            continue  # créneau fixé ou imposé, peut-être hors grille : hors de cette borne
+        if not seance.debuts or seance.verrouillee or seance.besoin.debut_impose is not None:
+            continue  # sans horaire (déjà refusée), fixé ou imposé : hors de cette borne
         salles = frozenset(s.id for s in regles.salles_compatibles(seance.besoin).salles)
         if salles:
             par_famille[salles].append(seance)

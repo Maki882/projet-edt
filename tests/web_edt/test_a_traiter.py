@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 from sqlalchemy import func, select
 
 from edt.db import modeles as m
@@ -10,7 +11,13 @@ from edt.domaine.enumerations import Gravite, StatutOccurrence
 from edt.domaine.instantane import id_seance
 from edt.verification.contrat import Anomalie
 
-from .conftest import date_avec_seances, identifiant_groupe, seance_du_besoin
+from .conftest import (
+    HX,
+    creer_version_vide,
+    date_avec_seances,
+    identifiant_groupe,
+    seance_du_besoin,
+)
 
 
 def test_sans_emploi_du_temps_actif(jeu_minimal, client):
@@ -23,7 +30,7 @@ def test_sans_verificateur_l_absence_est_dite(version_generee, client, sans_veri
 
     assert "Les vérifications automatiques ne sont pas encore disponibles" in page
     assert "Aucune anomalie" not in page
-    assert client.get("/a-traiter/compteur").text.strip() == ""
+    assert client.get("/a-traiter/compteur", headers=HX).text.strip() == ""
 
 
 def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
@@ -91,7 +98,7 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
     assert "Jour fermé et aucun autre créneau libre" in page
     assert f"seance=o{a_programmer_id}" in page
     # Erreurs et avertissements (3) + séances à programmer ; les informations ne comptent pas.
-    assert f">{3 + deja + 1}</span>" in client.get("/a-traiter/compteur").text
+    assert f">{3 + deja + 1}</span>" in client.get("/a-traiter/compteur", headers=HX).text
 
 
 def test_avec_le_vrai_verificateur(version_generee, client):
@@ -127,17 +134,53 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
     faux_verificateur.hebdo = [Anomalie("SALLE_UNIQUE", Gravite.ERREUR, "Salle prise deux fois.")]
 
     for _ in range(3):
-        assert ">1</span>" in client.get("/a-traiter/compteur").text
+        assert ">1</span>" in client.get("/a-traiter/compteur", headers=HX).text
     assert len(appels) == 1  # calculé une seule fois tant que rien ne change
 
     with session_base() as session:
         occurrence = session.scalar(select(m.Occurrence).limit(1))
         occurrence.statut = StatutOccurrence.A_PROGRAMMER  # une occurrence change
-    assert ">2</span>" in client.get("/a-traiter/compteur").text
+    assert ">2</span>" in client.get("/a-traiter/compteur", headers=HX).text
     assert len(appels) == 2
 
     with session_base() as session:
         seance = session.scalar(select(m.SeanceHebdo).limit(1))
         seance.verrou = not seance.verrou  # une séance change
-    client.get("/a-traiter/compteur")
+    client.get("/a-traiter/compteur", headers=HX)
     assert len(appels) == 3
+
+
+@pytest.mark.cas_limite
+def test_option_tous_les_semestres_affiche_tous_les_semestres(
+    version_generee, client, faux_verificateur
+):
+    """Cas : option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse
+    gardée en favori sur Générer, l'historique et la grille.
+    Risque : la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » :
+    impossible de revenir à tous les semestres.
+    """
+    with session_base() as session:
+        autre = session.scalar(
+            select(m.Semestre.id).where(m.Semestre.id != version_generee.semestre_id).limit(1)
+        )
+        assert autre is not None, "la base par défaut a deux semestres"
+        libelles = {s.id: s.libelle for s in session.scalars(select(m.Semestre))}
+    creer_version_vide(autre, active=True, libelle="Version du second semestre")
+
+    page = client.get("/a-traiter?semestre_id=")
+    assert page.status_code == 200
+    assert '<option value="" selected>Tous les semestres</option>' in page.text
+    for libelle in libelles.values():  # les deux semestres ont une version active
+        assert f"<h2>{libelle}" in page.text
+    seul = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
+    assert f"<h2>{libelles[autre]}" not in seul
+
+    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut.
+    for adresse in (
+        "/calculs?semestre_id=",
+        "/versions?semestre_id=",
+        "/emploi-du-temps?semestre_id=",
+    ):
+        reponse = client.get(adresse)
+        assert reponse.status_code == 200, adresse
+        assert "Saisie invalide" not in reponse.text, adresse

@@ -7,16 +7,19 @@ Adresses :
   (par gravité puis par contrainte, chaque ligne menant à la séance dans
   l'emploi du temps) et séances à programmer ;
 - `GET /a-traiter/compteur` : petit fragment avec le nombre d'éléments à
-  traiter, prévu pour être affiché dans l'onglet du menu.
+  traiter, prévu pour être affiché dans l'onglet du menu ; ouvert sans HTMX
+  (adresse saisie, lien), il mène à la page.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 
 from edt.services.emploi_du_temps import anomalies, compteur, presentation, versions
+from edt.services.emploi_du_temps.identifiants import EntierFacultatif
 from edt.web.dependances import SessionRequete
-from edt.web.gabarits import rendre
+from edt.web.gabarits import est_htmx, rendre
 from edt.web.menu import EntreeMenu
 
 SECTION_A_TRAITER = "À traiter"
@@ -30,8 +33,8 @@ MENU = [
 
 
 @routeur.get("", name="a_traiter")
-def page(request: Request, session: SessionRequete, semestre_id: int | None = None):
-    """Ce qui reste à traiter dans les emplois du temps actifs."""
+def page(request: Request, session: SessionRequete, semestre_id: EntierFacultatif = None):
+    """Ce qui reste à traiter dans les emplois du temps actifs (`semestre_id` vide : tous)."""
     if semestre_id is not None:
         versions.exiger_semestre(session, semestre_id)
     return rendre(
@@ -51,8 +54,11 @@ def fragment_compteur(request: Request, session: SessionRequete):
     """Nombre d'éléments à traiter (fragment pour l'onglet du menu ; vide s'il n'y a rien).
 
     Mémorisé tant que la base ne change pas (`compteur.compteur_a_traiter`) :
-    l'appeler depuis chaque page ne coûte presque rien.
+    l'appeler depuis chaque page ne coûte presque rien. Ouvert sans HTMX, il
+    mène à la page « À traiter » au lieu d'un nombre nu.
     """
+    if not est_htmx(request):
+        return RedirectResponse("/a-traiter", status_code=303)
     resultat = compteur.compteur_a_traiter(session)
     return rendre(
         request,

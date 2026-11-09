@@ -53,6 +53,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
+from edt.db.moteur import transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     CodeContrainte,
@@ -85,6 +86,12 @@ from edt.services.emploi_du_temps import (
     presentation,
     raccords,
     regles_personnalisees,
+)
+from edt.services.emploi_du_temps.identifiants import (
+    apercu,
+    entier_ecrit,
+    exiger_identifiant,
+    obtenir,
 )
 from edt.services.emploi_du_temps.versions import (
     ResumeSemestre,
@@ -668,7 +675,7 @@ def lire_saisie_dejeuner(
     if mode is None:
         return None
     if mode not in (DEJEUNER_FIXE, DEJEUNER_LIBRE, DEJEUNER_AUCUN):
-        journal.info("Pause déjeuner refusée : choix « %s » inconnu", mode)
+        journal.info("Pause déjeuner refusée : choix « %s » inconnu", apercu(mode))
         libelles = " ou ".join(f"« {libelle} »" for _, libelle in MODES_DEJEUNER)
         raise ErreurSaisieDejeuner({CHAMP_MODE_DEJEUNER: f"Choisir {libelles}."}, None)
     return ChoixDejeuner(mode, (debut or "").strip(), (fin or "").strip(), (duree or "").strip())
@@ -704,8 +711,8 @@ def changements_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Va
             except ErreurDonneesInvalides as erreur:
                 journal.debug("Heure %s du déjeuner illisible : %s", nom, erreur.message)
                 erreurs[champ] = (
-                    f"Heure {nom} du déjeuner illisible (« {texte} ») : l'écrire par exemple "
-                    f"{exemple}."
+                    f"Heure {nom} du déjeuner illisible (« {apercu(texte)} ») : l'écrire par "
+                    f"exemple {exemple}."
                 )
         duree = courants.dejeuner_duree_min
         if choix.mode == DEJEUNER_LIBRE:
@@ -736,9 +743,11 @@ def _duree_dejeuner(texte: str) -> int | str:
     attendu = f"un nombre de minutes entre {minimum} et {maximum}, par exemple 60"
     if not texte:
         return f"Indiquer la durée minimale de la pause : {attendu}."
-    if not (texte.isascii() and texte.isdigit()):
-        return f"Durée minimale illisible (« {texte} ») : indiquer {attendu}."
-    duree = int(texte)
+    duree = entier_ecrit(texte)
+    if duree is None:
+        if texte.isascii() and texte.isdigit():  # plus de chiffres qu'aucune durée
+            return f"Durée minimale hors bornes : indiquer {attendu}."
+        return f"Durée minimale illisible (« {apercu(texte)} ») : indiquer {attendu}."
     if not minimum <= duree <= maximum:
         return f"Durée minimale de {duree} min hors bornes : indiquer {attendu}."
     return duree
@@ -766,6 +775,9 @@ def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Vale
             "pause déjeuner."
         )
     with Session(session.get_bind()) as transaction, transaction.begin():
+        # Lit puis écrit : verrou pris d'emblée, pour attendre un import en cours au lieu
+        # d'échouer « database is locked » (voir edt.web.dependances).
+        transaction_immediate(transaction)
         ecrire_parametres(transaction, changements)
     journal.info(
         "Pause déjeuner réglée depuis l'écran « Générer » (%s)",
@@ -830,6 +842,24 @@ def demarrer_calcul(
     return generation.lancer_calcul(semestre_id, options)
 
 
+CALCUL_DEJA_TERMINE = "Ce calcul est déjà terminé : rien à arrêter."
+"""Ce que l'écran dit quand on demande l'arrêt d'un calcul déjà fini (deux onglets ouverts)."""
+
+
+def arreter_calcul(calcul_id: int) -> tuple[generation.SuiviCalcul, bool]:
+    """Demande l'arrêt d'un calcul ; renvoie son état et vrai s'il tournait encore.
+
+    Faux pour un calcul déjà terminé (réussi, impossible, arrêté…) : la
+    demande est sans effet et l'écran doit le dire, pas annoncer un arrêt.
+    Lève `ErreurIntrouvable` pour un calcul inconnu.
+    """
+    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
+    suivi = generation.demander_arret(calcul_id)
+    if not suivi.en_cours:
+        journal.info("Arrêt demandé pour le calcul %d, déjà terminé : sans effet", calcul_id)
+    return suivi, suivi.en_cours
+
+
 @dataclass(frozen=True)
 class Relance:
     """Un calcul relancé, et les règles personnalisées que le calcul d'origine ne connaissait pas.
@@ -857,7 +887,7 @@ def relancer_calcul(
     active (sinon le moteur, guidé par eux, peut redonner le même emploi du
     temps). Mêmes erreurs que `demarrer_calcul`.
     """
-    calcul = session.get(m.Calcul, calcul_id)
+    calcul = obtenir(session, m.Calcul, calcul_id)
     if calcul is None:
         raise ErreurIntrouvable(f"Le calcul n° {calcul_id} n'existe pas.")
     parametres = dict(calcul.parametres or {})
@@ -905,6 +935,7 @@ def resultat_calcul(
     session: Session, calcul_id: int, *, indicateurs: bool = True
 ) -> ResultatCalcul:
     """Le calcul `calcul_id` raconté en phrases (voir l'en-tête du module)."""
+    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
     suivi = generation.etat_calcul(calcul_id)
     calcul = session.get(m.Calcul, calcul_id)
     if calcul is None:

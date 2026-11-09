@@ -74,6 +74,8 @@
   <h2>État de la base de données</h2>
   {%- if not etat.accessible %}
     {{ ui.message("La base de données est inaccessible.", "erreur", [etat.erreur or "", "À faire par l'administrateur du serveur : vérifier la variable EDT_DB_URL puis lancer « python -m edt doctor »."]) }}
+  {%- elif etat.inscriptible is false %}
+    {{ ui.message("La base de données refuse les écritures : aucune modification ne peut être enregistrée.", "erreur", [etat.ecriture_impossible or "", "À faire par l'administrateur du serveur : rendre le fichier de la base et son dossier inscriptibles par l'utilisateur du service (ou libérer de l'espace disque), puis lancer « python -m edt doctor »."]) }}
   {%- elif etat.ecarts_schema %}
     {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre, par l'administrateur du serveur : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
   {%- elif not etat.initialisee %}

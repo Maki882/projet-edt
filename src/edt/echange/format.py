@@ -19,6 +19,7 @@ tableau plat d'un emploi du temps existant (import d'emploi du temps).
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -116,7 +117,10 @@ class Colonne:
     - `defaut_de` : nom d'une autre colonne dont la valeur est reprise quand la
       cellule est vide (dernier jour = premier jour) ;
     - `export_seulement` : colonne écrite par l'export pour information (la
-      phrase d'une règle), ignorée à l'import.
+      phrase d'une règle), ignorée à l'import ;
+    - `maximum` : plus grande valeur admise (nombre, ou minutes d'une durée) ;
+    - `longueur` : plus grand nombre de caractères d'un texte ou de chaque code
+      d'une liste, celui de la colonne du modèle (`LONGUEURS`).
     """
 
     nom: str
@@ -131,6 +135,8 @@ class Colonne:
     minimum: int | None = None
     defaut_de: str | None = None
     export_seulement: bool = False
+    maximum: int | None = None
+    longueur: int | None = None
 
     def __post_init__(self) -> None:
         if (self.type is TypeColonne.CHOIX) != (self.choix is not None):
@@ -144,11 +150,31 @@ class Colonne:
             resultat = v.lire_choix(valeur, self.choix)
         else:
             resultat = _LECTEURS[self.type](valeur)
-        if self.minimum is not None and resultat is not None and resultat < self.minimum:
+        if resultat is None:
+            return None
+        if self.minimum is not None and resultat < self.minimum:
             raise ErreurDonneesInvalides(
-                f"Valeur trop petite : {resultat} (minimum : {self.minimum})."
+                f"Valeur trop petite : {self._afficher(resultat)} "
+                f"(au moins {self._afficher(self.minimum)})."
             )
+        if self.maximum is not None and resultat > self.maximum:
+            raise ErreurDonneesInvalides(
+                f"Valeur trop grande : {self._afficher(resultat)} "
+                f"(au plus {self._afficher(self.maximum)})."
+            )
+        if self.longueur is not None:
+            for texte in resultat if isinstance(resultat, tuple) else (resultat,):
+                if isinstance(texte, str) and len(texte) > self.longueur:
+                    raise ErreurDonneesInvalides(
+                        f"Texte trop long : {len(texte)} caractères, {self.longueur} au plus "
+                        f"(« {texte[:20]}... »)."
+                    )
         return resultat
+
+    def _afficher(self, valeur: Any) -> str:
+        if self.type is TypeColonne.DUREE:
+            return v.ecrire_duree(valeur)
+        return str(valeur)
 
     def ecrire(self, valeur: Any) -> str:
         """Texte de la valeur typée, tel qu'il s'écrit dans un CSV."""
@@ -173,6 +199,10 @@ class Colonne:
             morceaux.append(f"Vide : même valeur que {self.defaut_de}.")
         if self.export_seulement:
             morceaux.append("Export seulement : ignorée à l'import.")
+        if self.maximum is not None and self.type is TypeColonne.DUREE:
+            morceaux.append(f"Au plus {self._afficher(self.maximum)}.")
+        if self.longueur is not None:
+            morceaux.append(f"{self.longueur} caractères au plus.")
         return " ".join(morceaux)
 
 
@@ -737,6 +767,98 @@ FEUILLES: tuple[Feuille, ...] = (
 )
 """Les feuilles des données de l'établissement, dans l'ordre de traitement."""
 
+LONGUEURS: dict[tuple[str, str], int] = {
+    ("annees", "libelle"): 32,
+    ("semestres", "annee"): 32,
+    ("semestres", "code"): 16,
+    ("semestres", "libelle"): 64,
+    ("campus", "code"): 16,
+    ("campus", "nom"): 128,
+    ("campus", "prefixe_salle"): 16,
+    ("trajets", "campus_a"): 16,
+    ("trajets", "campus_b"): 16,
+    ("salles", "code"): 32,
+    ("salles", "campus"): 16,
+    ("salles", "type"): 32,
+    ("salles", "batiment"): 64,
+    ("salles", "equipements"): 32,
+    ("enseignants", "identifiant"): 64,
+    ("enseignants", "civilite"): 16,
+    ("enseignants", "nom"): 128,
+    ("enseignants", "prenom"): 128,
+    ("groupes", "annee"): 32,
+    ("groupes", "code"): 64,
+    ("groupes", "libelle"): 128,
+    ("groupes", "parent"): 64,
+    ("groupes", "chevauche"): 64,
+    ("jours_fermes", "annee"): 32,
+    ("jours_fermes", "libelle"): 128,
+    ("jours_fermes", "groupe"): 64,
+    ("etudiants", "identifiant"): 64,
+    ("etudiants", "nom"): 128,
+    ("etudiants", "prenom"): 128,
+    ("inscriptions", "annee"): 32,
+    ("inscriptions", "etudiant"): 64,
+    ("inscriptions", "groupe"): 64,
+    ("matieres", "code"): 32,
+    ("matieres", "libelle"): 128,
+    ("matieres", "annee"): 32,
+    ("matieres", "promotion"): 64,
+    ("besoins", "annee"): 32,
+    ("besoins", "semestre"): 16,
+    ("besoins", "matiere"): 32,
+    ("besoins", "promotion"): 64,
+    ("besoins", "type"): 32,
+    ("besoins", "libelle"): 128,
+    ("besoins", "groupes"): 64,
+    ("besoins", "enseignants"): 64,
+    ("besoins", "salle_imposee"): 49,  # « code@campus » : 32 + 1 + 16
+    ("besoins", "campus_impose"): 16,
+    ("besoins", "types_salle"): 32,
+    ("besoins", "equipements"): 32,
+    ("indisponibilites", "ressource"): 64,
+    ("indisponibilites", "annee"): 32,
+    ("indisponibilites", "motif"): 255,
+    ("regles", "annee"): 32,
+    ("regles", "code"): 16,
+    ("regles", "cible"): 255,  # un besoin s'écrit « matière / type / groupes »
+    ("regles", "semestre"): 16,
+    ("seances", "matiere"): 32,
+    ("seances", "type"): 32,
+    ("seances", "groupes"): 64,
+    ("seances", "enseignants"): 64,
+    ("seances", "salle"): 49,
+    ("seances", "libelle"): 128,
+}
+"""Plus grand nombre de caractères par colonne : celui de la colonne du modèle
+(`edt.db.modeles`, vérifié par un test), ou du code référencé. SQLite ne
+l'impose pas : sans cette borne, un texte de plusieurs milliers de caractères
+entrerait et déformerait listes, menus et noms de fichiers."""
+
+MAXIMA: dict[tuple[str, str], int] = {
+    ("trajets", "duree"): 12 * 60,
+    ("enseignants", "max_par_jour"): 24 * 60,
+    ("enseignants", "max_par_semaine"): 7 * 24 * 60,
+    ("besoins", "duree"): 24 * 60,
+}
+"""Plus grande durée admise, en minutes (au-delà, la valeur n'a pas de sens)."""
+
+
+def _borner(feuille_: Feuille) -> Feuille:
+    """La feuille avec les bornes de `LONGUEURS` et `MAXIMA` posées sur ses colonnes."""
+    colonnes = tuple(
+        dataclasses.replace(
+            colonne,
+            longueur=LONGUEURS.get((feuille_.nom, colonne.nom), colonne.longueur),
+            maximum=MAXIMA.get((feuille_.nom, colonne.nom), colonne.maximum),
+        )
+        for colonne in feuille_.colonnes
+    )
+    return dataclasses.replace(feuille_, colonnes=colonnes)
+
+
+FEUILLES = tuple(_borner(f) for f in FEUILLES)
+
 FEUILLE_SEANCES = Feuille(
     "seances",
     "Séances",
@@ -800,6 +922,7 @@ FEUILLE_SEANCES = Feuille(
         ),
     ),
 )
+FEUILLE_SEANCES = _borner(FEUILLE_SEANCES)
 """Le tableau plat d'un emploi du temps existant (import d'emploi du temps)."""
 
 NOMS_LISEZ_MOI = frozenset({"lisez_moi", "lisezmoi", "explications", "aide", "readme", "lire_moi"})
@@ -829,7 +952,8 @@ def identifier_feuille(
     c'est la feuille dont toutes les colonnes obligatoires sont présentes et
     qui reconnaît le plus d'en-têtes, si elle est seule dans ce cas.
     """
-    mot = v.cle_mot(re.sub(r"\.[a-z0-9]+$", "", nom.rsplit("/", 1)[-1], flags=re.IGNORECASE))
+    base = re.split(r"[/\\]", nom)[-1]  # dernier élément d'un chemin d'archive
+    mot = v.cle_mot(re.sub(r"\.[a-z0-9]+$", "", base, flags=re.IGNORECASE))
     par_nom = []
     for candidate in feuilles:
         for forme in (candidate.nom, v.cle_mot(candidate.titre)):

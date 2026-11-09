@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
+from edt.db.modeles import Parametre
 from edt.db.moteur import session_base
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
@@ -13,7 +16,7 @@ from edt.domaine.parametres import (
     Parametres,
     definitions,
 )
-from edt.services.parametres import lire_parametres
+from edt.services.parametres import anomalies_parametres, lire_parametres
 
 MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
 
@@ -118,3 +121,54 @@ def test_enregistrement_puis_retour_aux_valeurs_par_defaut(client):
         parametres = lire_parametres(session)
         assert parametres == Parametres()
         assert parametres.temps_limite_s != 120 and parametres.objectif_actif is True
+
+
+@pytest.mark.cas_limite
+def test_parametres_refuses_pendant_un_calcul(site, calcul_retenu):
+    """Cas : pendant un calcul, on enregistre les paramètres ou on les remet à leur valeur par
+    défaut. Risque : le calcul, qui relit les paramètres pour contrôler et dater sa solution,
+    produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter),
+    alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul."""
+    with session_base() as session:
+        avant = lire_parametres(session)
+    page = site.get("/parametres")
+    assert f"calcul n° {calcul_retenu.id}" in page.text
+    assert f'href="/calculs/{calcul_retenu.id}"' in page.text
+
+    remise = site.post("/parametres/defaut")
+    assert remise.status_code == 409 and "Rien n&#39;a été enregistré" in remise.text
+    envoi = site.post("/parametres", data=_saisies(temps_limite_s="120"))
+    assert envoi.status_code == 409 and "calcul d&#39;emploi du temps est en cours" in envoi.text
+    assert 'name="temps_limite_s" value="120"' in envoi.text  # la saisie est conservée
+    with session_base() as session:
+        assert lire_parametres(session) == avant
+
+    assert calcul_retenu.liberer().reussi
+    apres = site.post("/parametres", data=_saisies(temps_limite_s="120"), follow_redirects=True)
+    assert "Paramètres enregistrés." in apres.text
+    with session_base() as session:
+        assert lire_parametres(session).temps_limite_s == 120
+
+
+@pytest.mark.cas_limite
+def test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran(site):
+    """Cas : une valeur de paramètre corrompue en base (« quinze » pour la pause entre deux
+    séances), puis l'utilisateur ouvre /parametres et enregistre. Risque : l'écran, seul moyen
+    de la corriger, ne s'ouvre plus (422), ne dit pas quelle valeur est en cause, ou refuse
+    l'enregistrement qui la répare."""
+    with session_base() as session:
+        session.get(Parametre, "pause_min").valeur = "quinze"
+    page = site.get("/parametres")
+    assert page.status_code == 200
+    erreur = re.search(r'id="erreur-pause_min">([^<]+)<', page.text).group(1)
+    assert erreur.startswith("Valeur enregistrée invalide (un nombre entier est attendu")
+    assert "1 paramètre enregistré est invalide" in page.text
+    defaut = next(d.defaut for d in definitions() if d.cle == "pause_min")
+    assert f'name="pause_min" value="{defaut}"' in page.text  # la valeur par défaut est proposée
+
+    repare = site.post("/parametres", data=_saisies(), follow_redirects=True)
+    assert "Paramètres enregistrés." in repare.text
+    with session_base() as session:
+        assert anomalies_parametres(session) == {}
+        assert lire_parametres(session).pause_min == defaut
+    assert 'id="erreur-pause_min"' not in site.get("/parametres").text

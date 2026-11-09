@@ -1,0 +1,19 @@
+# =============================================================================
+# deploy/edt-sauvegarde.timer — déclenche edt-sauvegarde.service chaque nuit.
+# Installé et activé par installer-serveur.sh. État et prochaine exécution :
+#   systemctl list-timers edt-sauvegarde.timer
+# =============================================================================
+
+[Unit]
+Description=EDT - déclenche la sauvegarde quotidienne de la base
+Documentation=file:/opt/edt/courant/code/docs/deploiement.md
+
+[Timer]
+# Chaque nuit à 3 h 30, heure de Paris, à quelques minutes près.
+OnCalendar=*-*-* 03:30:00 Europe/Paris
+RandomizedDelaySec=15min
+# Une sauvegarde manquée (serveur éteint à l'heure prévue) est faite au démarrage.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

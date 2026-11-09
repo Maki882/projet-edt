@@ -22,9 +22,7 @@ from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.parametres import ecrire_parametres
 from edt.verification.contrat import Anomalie
 
-from .conftest import DELAI, identifiant_groupe, seance_du_besoin
-
-HX = {"HX-Request": "true"}
+from .conftest import DELAI, HX, identifiant_groupe, seance_du_besoin
 
 
 def _regles(semestre_id: int) -> dict[str, service_regles.RegleDetail]:

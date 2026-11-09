@@ -43,21 +43,35 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 - Une erreur métier (`edt.erreurs`) n'est levée que si l'entrée est trop
   incohérente pour être vérifiée : code de contrainte inconnu, placement mal
   formé (jour hors de 0 à 6, heure hors de la journée, fin qui ne suit pas le
-  début, salle inconnue), occurrence mal formée (de même, plus identifiant en
-  double ou séance d'un autre besoin), indisponibilité sans jour ni période.
+  début, identifiant de salle qui n'est pas un entier), occurrence mal formée
+  (de même, plus date qui n'est pas exactement un `datetime.date`,
+  identifiant en double ou séance d'un autre besoin), indisponibilité sans
+  jour ni période, arbre des groupes qui boucle (l'erreur nomme les groupes
+  de la boucle : sans groupe feuille, les règles par personne se tairaient).
   Le message liste **tous** les défauts (`details`), pas seulement le premier.
+- Une salle **inconnue** de l'instantané (supprimée depuis le calcul, base
+  importée) n'est pas un défaut de structure : la séance est vérifiée comme
+  une séance sans salle (avertissement « salle à définir » qui nomme la salle
+  disparue ; journalisé en avertissement même si `VOLUME` n'est pas vérifiée).
+- Un identifiant de séance ne se lit qu'en chiffres ASCII (« 12-1 », pas
+  « ²-1 ») : un identifiant illisible désigne une séance inconnue, jamais une
+  `ValueError`.
 - `contraintes_actives=None` vérifie tous les codes actifs par défaut du
   catalogue ; sinon seulement les codes fournis (validés). Jamais de code hors
-  catalogue.
+  catalogue. Aucun code (liste vide, niveaux vides) : rien n'est vérifié, et
+  la liste vide renvoyée s'accompagne d'un avertissement du journal (les
+  services de vérification refusent ce cas).
 - Une violation entre deux séances produit **une** anomalie par code, qui cite
   les deux séances dans l'ordre chronologique (pas deux anomalies symétriques).
 - La liste est **triée** de façon déterministe (gravité, ordre du catalogue,
   date ou jour, séances, puis message) et ne dépend pas de l'ordre des
   placements reçus.
 - Rien n'est écarté en silence : une séance placée deux fois est signalée et
-  ses deux placements sont vérifiés ; un placement d'une séance inconnue est
-  signalé (`VOLUME`) ou, si `VOLUME` n'est pas demandé, journalisé en
-  avertissement.
+  ses deux placements sont vérifiés face aux autres séances (deux copies qui
+  se chevauchent ne sont pas en conflit « avec elles-mêmes » : le doublon est
+  signalé une fois, par `VOLUME` ; sans `VOLUME`, leurs conflits restent
+  signalés) ; un placement d'une séance inconnue est signalé (`VOLUME`) ou,
+  si `VOLUME` n'est pas demandé, journalisé en avertissement.
 - Chaque appel écrit une ligne de journal (`logging`, niveau INFO) : nombre de
   placements, d'anomalies, de bloquantes, durée.
 
@@ -92,7 +106,7 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 | `CAMPUS_TRAJET` | Idem, quand les deux séances ont une salle sur deux campus différents : écart d'au moins `Instantane.trajet(a, b)` (matrice, sinon `trajet_defaut_min`). Écart égal : valide. | Erreur |
 | `DEJEUNER` | Selon `dejeuner_mode` (voir « Pause déjeuner » plus bas). **Fixe** (`plage_dejeuner`) : la séance ne recoupe pas la plage réservée `[X, Y[`. **Libre** (`fenetre_dejeuner`) : chaque jour où une personne a une séance qui recoupe la fenêtre `[X, Y]`, elle y a un intervalle libre d'au moins N minutes. **Aucun** : la règle ne s'applique pas, rien n'est relevé même si `DEJEUNER` est active. | Erreur ; Information si imposée (en mode libre : si toutes les séances en cause sont imposées) |
 | `HORAIRES` | (a) début ≥ ouverture et fin ≤ fermeture ; (b) début parmi `debuts_de_creneau(jour)` ; (c) fin ≤ fin du dernier créneau de la demi-journée du créneau de début, ce jour-là ; (d) `fin - debut` = durée du besoin ; (e) jour imposé, début imposé, date ponctuelle respectés. Une anomalie par séance et par gravité, qui énumère les écarts. | (a)(b)(c) : Erreur, Information si imposée ; (d)(e) : toujours Erreur |
-| `JOURS` | Le jour a au moins un créneau dans la grille ; le samedi est réservé aux besoins `samedi_autorise`. | Erreur ; Information si imposée |
+| `JOURS` | Le jour est un jour travaillé de l'établissement (le standard) ; le samedi est réservé aux besoins `samedi_autorise`. Un jour sans créneau dans la grille relève de `HORAIRES` (b) seulement : la même cause n'est pas signalée deux fois. | Erreur ; Information si imposée |
 | `ACCESSIBILITE` | Si le besoin requiert l'accessibilité, `Instantane.salle_accessible(salle)` est vrai. | Erreur |
 | `CAPACITE` | Capacité de la salle ≥ effectif du besoin. | Erreur |
 | `TYPE_SALLE` | Type de la salle parmi les types acceptés (liste vide : tous) ; salle imposée respectée ; campus imposé respecté. Le message nomme les types (`Instantane.libelle_type_salle`). | Erreur |
@@ -102,7 +116,9 @@ indicateurs = calculer_indicateurs(instantane, placements, anomalies)
 | `DISPO_GROUPE` | Idem pour chaque groupe du besoin et chaque groupe lié (`groupes_lies`) : l'indisponibilité d'une promotion vaut pour ses demi-groupes et inversement. | Erreur |
 | `MAX_ENSEIGNANT` | Pour chaque enseignant non fictif, somme des durées placées par semaine ≤ `max_minutes_semaine` et par (semaine, jour) ≤ `max_minutes_jour`. Une anomalie par enseignant pour l'hebdomadaire, une par enseignant et par jour de la semaine type pour le journalier, qui détaillent les semaines en cause. Égalité permise. | Erreur |
 | `VOLUME` | Chaque séance de l'instantané a exactement un placement ; un placement désigne une séance connue ; chaque problème de dépliage est rapporté tel quel avec son propre code (`VOLUME` ou `JOUR_FERME`). | Erreur |
-| `VOLUME` | Séance placée sans salle : « salle à définir » ; aucune règle de salle ne s'applique à elle. | Avertissement |
+| `VOLUME` | Séance placée sans salle, ou dans une salle qui n'existe plus (nommée dans le message) : « salle à définir » ; aucune règle de salle ne s'applique à elle. Dans la couche datée, un avertissement par séance, qui cite toutes ses séances datées sans salle. | Avertissement |
+| `VERROU` | Une séance verrouillée est placée au jour et aux heures du verrou, et dans sa salle si le verrou en fixe une. | Erreur |
+| `JOUR_FERME` | Couche datée seulement (voir plus bas) : date fermée pour le besoin, ou hors des dates du semestre. | Erreur |
 
 Un placement d'une séance que les besoins ne demandent plus (cas typique :
 semestre ou période d'un besoin raccourcis après le calcul) nomme le besoin,
@@ -112,8 +128,6 @@ salle N016, n'est plus demandée : la période du besoin ou celle du semestre a
 été raccourcie, ou le nombre de séances demandées a diminué. Relancer le
 calcul pour remettre l'emploi du temps en accord avec les besoins. »
 L'identifiant technique reste dans le champ `seances`, pas dans le message.
-| `VERROU` | Une séance verrouillée est placée au jour et aux heures du verrou, et dans sa salle si le verrou en fixe une. | Erreur |
-| `JOUR_FERME` | Couche datée seulement (voir plus bas). | Erreur |
 
 ### Pause déjeuner
 
@@ -182,7 +196,10 @@ Mêmes règles, avec ces différences :
 - `JOUR_FERME` : une occurrence qui a lieu à une date où
   `Instantane.fermeture(date, besoin)` renvoie une fermeture est une erreur
   (une séance ponctuelle reste permise pendant des examens ou une semaine
-  spéciale) ;
+  spéciale) ; de même une occurrence **hors du semestre** (avant `date_debut`
+  ou après `date_fin` : semestre raccourci, import qui déborde, samedi qui
+  suit un vendredi de fin), comme pour l'instanciation, qui n'y place jamais
+  de séance ; le message donne les dates du semestre ;
 - `HORAIRES` (e) : un besoin ponctuel impose sa date ; un besoin à jour
   imposé impose le jour de la semaine ;
 - `VERROU` : seule une occurrence **planifiée** d'une séance verrouillée doit
@@ -192,7 +209,18 @@ Mêmes règles, avec ces différences :
   pas vérifiée) ; une occurrence rattachée à une séance hebdomadaire absente
   du semestre est un avertissement (elle est vérifiée sans son verrou). Le
   nombre d'occurrences par séance n'est pas contrôlé : la liste reçue peut
-  n'être qu'une partie du semestre.
+  n'être qu'une partie du semestre. Plusieurs occurrences d'une même séance
+  qui se chevauchent à la même date sont un **doublon** : une erreur qui les
+  cite toutes (« … a lieu 2 fois en même temps le … : garder une seule de ces
+  séances datées »), sans conflit « avec elle-même » ; deux occurrences d'une
+  même séance à des heures disjointes (rattrapage) n'en sont pas un ;
+- « salle à définir » (`VOLUME`, avertissement) : **un** avertissement par
+  séance (et par salle disparue), qui cite toutes ses occurrences sans salle
+  et leur période (« … n'a pas encore de salle pour 15 séances datées, du …
+  au … ») : une salle supprimée ne noie pas le panneau des anomalies ;
+- la date d'une occurrence doit être exactement un `datetime.date` : un
+  `datetime` (date et heure) ne se compare pas aux dates et ne leur est
+  jamais égal, il est refusé (`ErreurDonneesInvalides`).
 
 ## L'anomalie
 
@@ -322,7 +350,11 @@ test est de 2 secondes.
 `Indicateurs` figé, sérialisable par `vers_dict()`. Si `anomalies` est
 absent, `verifier` est appelé avec les contraintes par défaut. Les
 placements d'une séance inconnue sont ignorés (le vérificateur les signale) ;
-une séance placée deux fois compte deux fois dans les mesures d'occupation.
+une séance placée deux fois compte deux fois dans les mesures d'occupation ;
+une salle disparue ne compte pas dans l'utilisation des salles. Comme le
+vérificateur, le calcul lève `ErreurDonneesInvalides` si l'arbre des groupes
+boucle. Une grille vide donne une utilisation des salles `None` (aucune
+minute offerte), sans division par zéro.
 
 **Unité des préférences.** Les quatre termes de l'objectif sont comptés
 **semaine par semaine** sur tout le semestre : une situation qui se répète sur
@@ -390,8 +422,10 @@ nécessaires (`SALLE_UNIQUE`, `ENSEIGNANT_UNIQUE`, `GROUPE_UNIQUE`, `VERROU`,
   l'avertissement « salle à définir » (`VOLUME`) n'est pas remonté en erreur ;
 - `Anomalie.niveau` porte le niveau appliqué ; le début du message vient
   de `edt.verification.PREFIXES_ENTORSE` (stable, l'interface peut s'y fier)
-  et, après les deux-points, un article de début de phrase passe en
-  minuscule (« … : la salle N204… », mais « … : Mme Martin… ») ;
+  et, après les deux-points, un début de phrase du vérificateur passe en
+  minuscule (« La séance », « La salle », « Le groupe », « Les groupes » :
+  « … : la salle N204… ») ; tout autre début garde sa majuscule, nom propre
+  compris (« … : Mme Martin… », « … : Le Gall… ») ;
 - un niveau autre que « nécessaire » sur une contrainte non modifiable, un
   code ou un niveau inconnu lèvent `ErreurDonneesInvalides`.
 
@@ -521,7 +555,10 @@ type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
 - règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
 - règle absente de la copie : à son niveau si elle a été créée ou modifiée
   (activation comprise) après le début du calcul, sinon ignorée (elle
-  existait et n'a pas été appliquée).
+  existait et n'a pas été appliquée) ;
+- règle copiée mais absente des règles actives (supprimée ou désactivée
+  depuis) : ignorée, et ses identifiants sont journalisés (INFO), pour qu'une
+  entorse d'hier qui n'est plus signalée s'explique.
 
 Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
 
@@ -583,6 +620,29 @@ sans `niveaux`.
   semestre donné ; sinon celle du semestre proposé par défaut
   (`semestre_par_defaut`). `ErreurIntrouvable` si rien ne correspond.
 
+Cas limites, pour les trois fonctions :
+
+- **aucune contrainte à vérifier** (liste vide, niveaux vides, ou calcul qui
+  les ignorait toutes) : `ErreurDonneesInvalides` « Aucune contrainte à
+  vérifier… » ; un rapport « valide » qui n'aurait rien vérifié tromperait ;
+- **niveaux enregistrés illisibles** (contrainte désactivée au code inconnu
+  dans un ancien calcul, copie des règles mal formée) :
+  `ErreurDonneesInvalides` qui nomme le calcul et la version, avec le message
+  d'origine en détail ;
+- **version sans aucune séance datée** (`verifier_occurrences_version`) :
+  avertissement `VOLUME` « La version « … » n'a aucune séance datée :
+  produire ses séances datées (instanciation sur le calendrier) pour vérifier
+  le calendrier réel. » si `VOLUME` est vérifiée, sinon un avertissement du
+  journal ; `nb_examines` vaut 0 ;
+- **période aux bornes du calendrier** (`date.min`, `date.max`) : la semaine
+  de la borne est complétée sans dépasser le 31 décembre 9999 ;
+- **salle inconnue proposée** à `verifier_modification` : `ErreurIntrouvable`
+  (une salle disparue d'une version enregistrée vaut, elle, « salle à
+  définir »).
+- **identifiant hors des bornes de la base** (version ou semestre nul,
+  négatif ou au-delà de 2**63 - 1) : `ErreurIntrouvable` « … n'existe pas »
+  (garde commune `edt.db.moteur.identifiant_valide`), jamais `OverflowError`.
+
 `RapportVerification` est une dataclass figée : `anomalies`, `indicateurs`
 (ou `None`), `nb_erreurs`, `nb_avertissements`, `nb_informations`,
 `par_code` (nombre d'anomalies de toutes gravités par code, dans l'ordre du
@@ -615,6 +675,23 @@ indicateurs (semaine type) et le verdict. Codes de sortie :
 | 1 | au moins une erreur |
 | 2 | vérification impossible : version ou semestre introuvable, pas de version active, code de contrainte inconnu, donnée enregistrée mal formée, `--du`/`--au` sans `--datees`, ou aucune séance datée à vérifier (une liste vide ne vaut pas « valide ») |
 
+## Tests et banque des cas limites
+
+Les tests du lot sont dans `tests/verification/` :
+
+- `fabrique.py` : instantanés écrits à la main, sans base, pour le
+  vérificateur pur (dates repères `MARDI_6_OCT`, `MARDI_13_OCT`) ;
+- `versions.py` et `conftest.py` : l'emploi du temps saisi à la main du jeu
+  minimal et les fixtures des services (`version_id`,
+  `version_sans_seances_datees`, `salle_n204_supprimee`,
+  `salle_n204_orpheline`).
+
+Les tests des **cas limites** portent le marqueur `cas_limite` et une
+docstring « Cas : … Risque : … » ; `pytest -m cas_limite tests/verification`
+les lance seuls. Un défaut qui relève d'un autre lot y reste en
+`xfail(strict=True)`, la raison nommant le lot et le fichier à corriger : le
+test échouera (XPASS) le jour de la correction, pour qu'on retire la marque.
+
 ## Ajouter une règle
 
 1. Ajouter le code au catalogue (`src/edt/domaine/contraintes.py`), par PR,
@@ -636,6 +713,7 @@ indicateurs (semaine type) et le verdict. Codes de sortie :
 4. Ajouter dans `tests/verification/` un cas valide, un cas en violation et
    les cas limites qui comptent (égalité, semaines disjointes, enseignant
    fictif, séance imposée, contrainte désactivée), avec la fabrique
-   `tests/verification/fabrique.py`.
+   `tests/verification/fabrique.py` ; chaque cas limite porte le marqueur
+   `cas_limite` et sa docstring « Cas : … Risque : … ».
 5. Implémenter la même règle dans le solveur, avec la même sémantique.
 6. Compléter le tableau des règles ci-dessus.

@@ -4,14 +4,28 @@ from __future__ import annotations
 
 import time
 
-from tests.solveur.fabrique import C1, C2, LUNDI, MARDI, NIVEAUX_DURS, Fabrique, H, grille
+import pytest
+from tests.solveur.fabrique import (
+    C1,
+    C2,
+    LUNDI,
+    MARDI,
+    NIVEAUX_DURS,
+    OPTIONS,
+    Fabrique,
+    H,
+    grille,
+    options,
+    verifier_solution,
+)
 from tests.solveur.generateur import generer
 from tests.solveur.test_niveaux import niveaux_avec
 
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.contraintes import CodeContrainte as C
 from edt.domaine.enumerations import CibleIndisponibilite, Gravite, ModeVolume
-from edt.solveur import preverification
+from edt.erreurs import ErreurDonneesInvalides
+from edt.solveur import StatutSolveur, preverification, resoudre
 
 
 def pre_verifier(instantane, contraintes_desactivees=(), **reglages):
@@ -243,8 +257,123 @@ def test_probleme_de_depliage():
 
 
 def test_rapide_sur_un_etablissement_complet():
+    """Un établissement complet (800 séances) : moins d'une seconde machine au repos (0,7 s) ;
+    borne large pour une machine chargée, qui arrête quand même une explosion quadratique."""
     instantane, _ = generer(800, graine=1)
     debut = time.perf_counter()
     anomalies = pre_verifier(instantane)
-    assert time.perf_counter() - debut < 1
+    assert time.perf_counter() - debut < 5
     assert not erreurs(anomalies)  # le générateur produit des problèmes satisfiables
+
+
+# --------------------------------------------------------------------------- #
+# Cas limites (banque de tests : `pytest -m cas_limite`)
+# --------------------------------------------------------------------------- #
+
+
+@pytest.mark.cas_limite
+def test_une_seance_sans_horaire_ne_produit_pas_de_fausse_charge():
+    """Cas : grille du lundi, une salle, l'enseignante indisponible tout le lundi, un besoin.
+
+    Risque : trois impossibilités au lieu d'une, dont deux charges parasites « ... pour 0 min
+    disponibles : c'est impossible » qui envoient corriger la charge du groupe ou de l'enseignant.
+    """
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle()
+    martin = f.enseignant("Mme Martin")
+    f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, martin, jour=LUNDI)
+    f.besoin([f.groupe("A1")], [martin])
+    anomalies = pre_verifier(f.instantane())
+    (erreur,) = erreurs(anomalies)
+    assert erreur.code is C.DISPO_ENSEIGNANT and "indisponibilité de Mme Martin" in erreur.message
+    assert not avertissements(anomalies)
+    assert not any("0 min" in a.message for a in anomalies)
+
+
+def _une_seance_verrouillee(jour=LUNDI, salle=1, duree=2 * H, duree_verrou=None):
+    """Grille du lundi, une salle, une séance verrouillée à 8 h 30 telle quelle (sans validation)."""
+    f = Fabrique(creneaux=LUNDI_SEUL)
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant("Mme Martin")], duree=duree)
+    f.verrou("1-1", jour, C1, salle, fin=None if duree_verrou is None else C1 + duree_verrou)
+    return f.instantane()
+
+
+@pytest.mark.cas_limite
+def test_verrou_incoherent_ou_contredisant_son_besoin_est_nomme():
+    """Cas : séance verrouillée au jour 7, verrou sur une salle absente, verrou de 2 h sur un besoin
+    passé à 1 h 30 (version importée ou besoin modifié après coup), avec et sans la grille.
+
+    Risque : refus sans nommer la cause, charges parasites en prime, ou verrou appliqué en silence
+    avec la mauvaise durée quand la grille (HORAIRES) est ignorée.
+    """
+    attendus = [
+        (_une_seance_verrouillee(jour=7), "est incohérent"),
+        (_une_seance_verrouillee(salle=99), "désigne une salle (n° 99) qui n'existe pas"),
+        (
+            _une_seance_verrouillee(duree=90, duree_verrou=120),
+            "dure 2 h au lieu des 1 h 30 demandées",
+        ),
+    ]
+    for instantane, attendu in attendus:
+        anomalies = pre_verifier(instantane)
+        (erreur,) = erreurs(anomalies)
+        assert erreur.code is C.VERROU and attendu in erreur.message, erreur.message
+        assert erreur.seances == ("1-1",)
+        assert not avertissements(anomalies)
+        resultat = resoudre(instantane, OPTIONS)
+        assert resultat.statut is StatutSolveur.INFAISABLE and attendu in resultat.message
+    # La grille ignorée, la durée du verrou reste opposée à celle du besoin : jamais de verrou
+    # appliqué en silence avec une autre durée.
+    instantane, attendu = attendus[2]
+    (erreur,) = erreurs(pre_verifier(instantane, contraintes_desactivees={C.HORAIRES}))
+    assert attendu in erreur.message
+    resultat = resoudre(instantane, options(contraintes_desactivees=frozenset({C.HORAIRES})))
+    assert resultat.statut is StatutSolveur.INFAISABLE and attendu in resultat.message
+
+
+@pytest.mark.cas_limite
+def test_indisponibilite_incoherente_refuse_le_calcul():
+    """Cas : indisponibilité récurrente d'enseignant à début ≥ fin (13 h - 9 h) ou au jour 7
+    (import ou saisie ancienne).
+
+    Risque : indisponibilité ignorée en silence (jamais de recoupement) ou plantage ; le calcul
+    doit être refusé en la nommant, en pré-vérification comme au calcul.
+    """
+    for champs in ({"jour": LUNDI, "debut": 13 * H, "fin": 9 * H}, {"jour": 7}):
+        f = Fabrique()
+        f.salle()
+        martin = f.enseignant("Mme Martin")
+        f.indisponibilite(CibleIndisponibilite.ENSEIGNANT, martin, **champs)
+        f.besoin([f.groupe("A1")], [martin])
+        instantane = f.instantane()
+        attendu = "L'indisponibilité n° 1 est incohérente"
+        with pytest.raises(ErreurDonneesInvalides, match=attendu):
+            pre_verifier(instantane)
+        with pytest.raises(ErreurDonneesInvalides, match=attendu):
+            resoudre(instantane, OPTIONS)
+
+
+@pytest.mark.cas_limite
+def test_grille_vide_refusee_en_clair():
+    """Cas : aucun créneau enregistré et un besoin à placer, la grille active puis ignorée.
+
+    Risque : refus incompréhensible ou plantage (minimum d'une liste vide) ; la grille ignorée,
+    une séance posée un jour sans créneau, que le vérificateur refuse (« défaut du moteur »).
+    """
+    f = Fabrique(creneaux=())
+    f.salle()
+    f.besoin([f.groupe("A1")], [f.enseignant()])
+    instantane = f.instantane()
+    (erreur,) = erreurs(pre_verifier(instantane))
+    assert erreur.code is C.JOURS
+    assert "la grille horaire n'offre aucun jour de cours permis" in erreur.message
+    resultat = resoudre(instantane, OPTIONS)
+    assert resultat.statut is StatutSolveur.INFAISABLE
+    assert "la grille horaire n'offre aucun jour de cours permis" in resultat.message
+    # La grille ignorée et les jours de cours (JOURS) toujours exigés : aucun jour n'a de
+    # créneau, le refus demeure ; JOURS ignorée aussi, une solution existe et passe l'oracle.
+    sans_grille = options(contraintes_desactivees=frozenset({C.HORAIRES}))
+    assert resoudre(instantane, sans_grille).statut is StatutSolveur.INFAISABLE
+    libre = options(contraintes_desactivees=frozenset({C.HORAIRES, C.JOURS}))
+    verifier_solution(instantane, resoudre(instantane, libre), {C.HORAIRES, C.JOURS})
