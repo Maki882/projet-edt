@@ -427,6 +427,12 @@ def demander_arret(calcul_id: int) -> SuiviCalcul:
     if not identifiant_valide(calcul_id):
         raise ErreurIntrouvable(f"Le calcul {calcul_id} n'existe pas.")
     with _verrou, session_base() as session:
+        # Lit puis écrit (`arret_demande`, clôture d'un abandonné) : verrou d'écriture pris
+        # d'emblée. Sinon, le fil du calcul, réveillé par `arret.set()`, peut valider son état
+        # final entre la lecture et l'écriture, et SQLite refuse aussitôt (« database is
+        # locked », sans attendre) l'écriture sur un instantané périmé. Il attend ici notre
+        # validation (délai de verrou du moteur).
+        transaction_immediate(session)
         calcul = session.get(Calcul, calcul_id)
         if calcul is None:
             raise ErreurIntrouvable(f"Le calcul {calcul_id} n'existe pas.")
@@ -488,6 +494,8 @@ def cloturer_calculs_interrompus() -> int:
     l'en-tête du module). Renvoie le nombre de calculs clôturés.
     """
     with _verrou, session_base() as session:
+        # Lit puis écrit : verrou pris d'emblée (voir `demander_arret`).
+        transaction_immediate(session)
         return _cloturer_abandonnes(session)
 
 
@@ -939,6 +947,9 @@ def _instancier(version_id: int, statistiques: dict, config: Configuration) -> s
     """
     try:
         with session_base(config.db_url) as session:
+            # Lit la version puis remplace ses séances datées : verrou pris d'emblée, sinon une
+            # écriture validée entre-temps (requête web) ferait échouer l'instanciation aussitôt.
+            transaction_immediate(session)
             rapport = instancier_version(session, version_id)
     except Exception:
         journal.exception("Échec de l'instanciation de la version %d", version_id)

@@ -250,6 +250,7 @@ Complément bbe664d (neuf cas transmis par le web données et le socle, xfail le
 | Lecture (GET, HEAD) servie pendant qu'un verrou d'écriture est tenu | `tests/web_edt/test_cas_limites.py::test_une_lecture_est_servie_pendant_un_autre_ecrivain` | couvert (4a34b8d) |
 | Verrou tenu au-delà du délai : page 503 « base occupée », séance non annulée | `tests/web_edt/test_cas_limites.py::test_verrou_tenu_au_dela_du_delai_donne_la_page_base_occupee` | corrigé (4a34b8d) |
 | Double clic sur « Lancer le calcul » | `tests/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret` | couvert (antérieur) |
+| « Arrêter le calcul » quand un autre écrivain (le fil du calcul réveillé par l'arrêt) valide entre la lecture et l'écriture de `demander_arret` : plus de 503 « base occupée » (vu en CI sous Linux) | `tests/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture` | corrigé (`demander_arret` en `BEGIN IMMEDIATE`) |
 | Rendu sur téléphone, impression, grille très chargée | — | manuel : rendu visuel |
 | Coupure réseau pendant le suivi d'un calcul | — | manuel : comportement du navigateur |
 

@@ -21,19 +21,23 @@ calcul terminé (`test_calculs.py`). Comportements attendus :
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 import pytest
 from sqlalchemy import delete, func, select
 
+from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db.moteur import IDENTIFIANT_MAX, session_base
-from edt.domaine.enumerations import StatutOccurrence
+from edt.db.moteur import IDENTIFIANT_MAX, chemin_base, session_base
+from edt.domaine.enumerations import EtatCalcul, StatutOccurrence
 from edt.erreurs import ErreurIntrouvable
+from edt.services import generation
 from edt.services.emploi_du_temps import modifications, vues
 from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
 
 from .conftest import (
     CINQ_MILLE_CHIFFRES,
+    DELAI,
     ENORME,
     HX,
     autre_ecrivain,
@@ -426,6 +430,62 @@ def test_relance_pendant_un_calcul_mene_au_calcul_en_cours(version_generee, clie
         assert "Un calcul est déjà en cours" in client.get(f"/calculs/{en_cours}").text
         with session_base() as session:  # le calcul de la version générée et celui en cours
             assert session.scalar(select(func.count()).select_from(m.Calcul)) == 2
+
+
+class _ArretSuiviDUneEcriture:
+    """Signal d'arrêt d'un calcul : à sa levée, une autre connexion écrit dans la base et valide
+    aussitôt, sans attendre le verrou (`timeout=0`).
+
+    Rejoue de façon déterministe la course vue en CI sous Linux : le fil du calcul, réveillé par
+    l'arrêt, enregistre son état final avant que `demander_arret` ait écrit. Note dans `refusee`
+    si l'écriture a trouvé le verrou pris (elle n'attend jamais : pas de blocage du test).
+    """
+
+    def __init__(self, arret, calcul_id: int) -> None:
+        self._arret = arret
+        self._calcul_id = calcul_id
+        self.refusee: bool | None = None
+
+    def set(self) -> None:
+        brute = sqlite3.connect(
+            chemin_base(charger_configuration().db_url), timeout=0, isolation_level=None
+        )
+        try:
+            brute.execute("BEGIN IMMEDIATE")
+            brute.execute(
+                "UPDATE calcul SET message = 'écriture d''un autre écrivain' WHERE id = ?",
+                (self._calcul_id,),
+            )
+            brute.execute("COMMIT")
+            self.refusee = False
+        except sqlite3.OperationalError as erreur:
+            assert "locked" in str(erreur)
+            self.refusee = True
+        finally:
+            brute.close()
+        self._arret.set()
+
+
+@pytest.mark.cas_limite
+def test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture(jeu_minimal, monkeypatch):
+    """Cas : « Arrêter le calcul » pendant qu'un autre écrivain (le fil du calcul qui enregistre
+    son état final, réveillé par l'arrêt) valide entre la lecture du calcul et l'écriture de la
+    demande d'arrêt.
+    Risque : `demander_arret` lit dans une transaction différée puis écrit sur un instantané
+    périmé : SQLite répond aussitôt « database is locked » sans attendre, la page renvoie 503 et
+    la demande d'arrêt est perdue (vu en CI sous Linux, où le fil réveillé valide plus vite).
+    """
+    with calcul_qui_tourne(jeu_minimal.semestre_id, monkeypatch) as calcul_id:
+        actif = generation._actifs[calcul_id]
+        espion = _ArretSuiviDUneEcriture(actif.arret, calcul_id)
+        monkeypatch.setitem(
+            generation._actifs, calcul_id, generation._CalculActif(fil=actif.fil, arret=espion)
+        )
+        suivi = generation.demander_arret(calcul_id)
+        assert suivi.arret_demande
+        assert espion.refusee is not None  # le signal a bien été levé
+        fin = generation.attendre_calcul(calcul_id, DELAI)
+        assert fin.etat is EtatCalcul.ARRETE and fin.arret_demande
 
 
 @pytest.mark.cas_limite
