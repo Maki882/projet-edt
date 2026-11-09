@@ -3,7 +3,7 @@
 Document du dossier de rendu (module PTS Informatique). Il présente la
 stratégie de test du projet EDT et, en détail, les tests d'intégration du
 dossier `tests/integration/`. Résumé visuel pour une présentation orale :
-[`tests/integration/README.md`](../tests/integration/README.md).
+[`tests/integration/README.md`](README.md).
 
 ## 1. Objectifs
 
