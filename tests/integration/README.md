@@ -3,7 +3,7 @@
 Six scénarios courts qui font tourner **l'application entière**, comme un
 utilisateur s'en servirait, sur une vraie base SQLite temporaire. Version
 complète (stratégie de test, sorties réelles, limites) :
-[`docs/tests-integration.md`](../../docs/tests-integration.md).
+[`DOCUMENTATION.md`](DOCUMENTATION.md).
 
 ## 1. Unitaire ou intégration : quelle différence ?
 

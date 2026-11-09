@@ -37,7 +37,7 @@ ou une panne plausible relevés par une campagne ; sa docstring commence par
 Les tests d'intégration assemblent les vrais composants (web, services,
 solveur, vérificateur, base SQLite temporaire) sans rien simuler ; ils se
 lancent par `python -m pytest -m integration` et font partie de la CI. Voir
-[tests-integration.md](tests-integration.md).
+[tests/integration/DOCUMENTATION.md](../tests/integration/DOCUMENTATION.md).
 
 ## Conventions
 
