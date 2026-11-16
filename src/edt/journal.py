@@ -190,7 +190,9 @@ class _FichierTournant(RotatingFileHandler):
 
         Passer par `journal.warning` rappellerait ce gestionnaire pendant sa propre rotation.
         """
-        avis = journal.makeRecord(journal.name, logging.WARNING, __file__, 0, message, arguments, None)
+        avis = journal.makeRecord(
+            journal.name, logging.WARNING, __file__, 0, message, arguments, None
+        )
         avis.contexte = "-"
         self.stream.write(self.format(avis) + self.terminator)
 
