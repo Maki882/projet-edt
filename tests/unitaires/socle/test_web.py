@@ -82,10 +82,14 @@ def test_redirection_htmx_vers_une_adresse_non_ascii(adresse, attendue):
         ("/calculs/12/etat", 404, False),  # une erreur reste au niveau INFO
         ("/calculs/12", 200, False),
         ("/calculs/12/etat/autre", 200, False),
+        ("/assistant/echanges/abc123", 204, True),  # suivi d'un échange avec l'assistant
+        ("/assistant/echanges/abc123", 404, False),
+        ("/assistant/panneau", 200, False),
     ],
 )
 def test_suivi_d_un_calcul_journalise_en_debug(chemin, statut, silencieux):
-    """Cas : la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul.
+    """Cas : la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, et
+    le panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange.
 
     Risque : une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements.
     """

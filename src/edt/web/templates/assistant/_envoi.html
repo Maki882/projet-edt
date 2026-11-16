@@ -1,0 +1,5 @@
+{#- Réponse à un envoi accepté : bulle de l'utilisateur, bulle d'attente, compteur à jour. #}
+{%- if annonce %}<p class="assistant-annonce-info" role="status">{{ annonce }}</p>{% endif %}
+{% include "assistant/_tour.html" %}
+{% include "assistant/_attente.html" %}
+{%- with hors_bande = true %}{% include "assistant/_compteur.html" %}{% endwith %}

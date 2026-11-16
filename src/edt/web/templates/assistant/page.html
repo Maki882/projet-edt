@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{#- L'assistant dans une page entière, pour un navigateur sans JavaScript (GET /assistant).
+    Pendant un échange, la page se recharge toutes les deux secondes. #}
+{% block titre %}Assistant{% endblock %}
+{% block styles %}{% if vue.echange %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block contenu %}
+{%- if not etat.disponible %}
+<div class="carte"><p>{{ etat.raison_texte }}</p><p class="discret">Le reste de l'application fonctionne normalement.</p></div>
+{%- else %}
+<div id="assistant-conversation" class="assistant-conversation page-assistant carte">
+  {% include "assistant/_conversation.html" %}
+</div>
+{%- endif %}
+{% endblock %}

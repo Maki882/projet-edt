@@ -1,0 +1,5 @@
+{#- Bulle d'attente d'un échange (`echange`, `version`, `etape`, `limite_ms`) : interroge le
+    serveur chaque seconde ; il répond 204 tant que l'étape ne change pas. #}
+<div class="assistant-bulle assistant-bulle-attente" id="echange-{{ echange.jeton }}"
+     hx-get="/assistant/echanges/{{ echange.jeton }}?vu={{ version }}" hx-trigger="every 1s"
+     hx-swap="outerHTML" data-limite-ms="{{ limite_ms }}"><span class="assistant-qui">Assistant : </span>{{ etape }}</div>

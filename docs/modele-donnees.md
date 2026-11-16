@@ -844,3 +844,27 @@ renseignée, aucune pour l'établissement, sur le modèle de `indisponibilite`) 
 date_fin`). Index sur chaque clé de cible et sur (`annee_scolaire_id`,
 `etat`, `type`). Le service refuse en plus deux règles actives d'un même type
 de réglage, de même cible et de périodes qui se recoupent.
+
+### Tables : Assistant
+
+#### `assistant_consommation`
+
+Consommation de l'assistant conversationnel pour un jour, sur tout le site
+(`docs/assistant.md`). Une ligne par jour, mise à jour après chaque appel au
+modèle ; sert aux limites du jour, qui survivent ainsi à un redémarrage.
+Aucun texte de conversation ni adresse n'y est enregistré. Classe ORM :
+`AssistantConsommation`.
+
+| Colonne | Type | Obligatoire | Description |
+|---|---|---|---|
+| `jour` | date | oui | Clé primaire : jour (heure du serveur) |
+| `echanges` | entier | oui | Échanges commencés |
+| `appels` | entier | oui | Appels au modèle |
+| `jetons_entree` | entier | oui | Jetons d'entrée hors cache |
+| `jetons_cache_lus` | entier | oui | Jetons lus en cache |
+| `jetons_cache_ecrits` | entier | oui | Jetons écrits en cache |
+| `jetons_sortie` | entier | oui | Jetons de sortie (réflexion comprise) |
+| `cout_microdollars` | entier | oui | Coût estimé, en millionièmes de dollar |
+| `modifie_le` | date et heure | oui | Dernière mise à jour |
+
+Contrôle : `consommation_positive` (chaque compteur est positif ou nul).

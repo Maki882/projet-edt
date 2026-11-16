@@ -56,7 +56,21 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **923 fonctions de test** dans 8 composants, dont 242 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 038 fonctions de test** dans 9 composants, dont 268 marquées `cas_limite` et 20 marquées `perf`.
+
+### `assistant/` : Assistant (115 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`assistant/test_boucle.py`](assistant/test_boucle.py) | Boucle d'un échange avec le faux client : arrêts, outils, historique, bornes, arguments | 15 |
+| [`assistant/test_configuration.py`](assistant/test_configuration.py) | Configuration de l'assistant : défauts, variables invalides, clé absente ou en double | 11 |
+| [`assistant/test_consignes.py`](assistant/test_consignes.py) | Consignes système : figées, sans donnée variable, avec tout le catalogue des règles | 4 |
+| [`assistant/test_conversations.py`](assistant/test_conversations.py) | Conversations et propositions : échange dans son fil, limites, confirmation, refus, secret | 21 |
+| [`assistant/test_erreurs_api.py`](assistant/test_erreurs_api.py) | Matrice des erreurs du service : chaque cas, son message, son journal, sa pause | 3 |
+| [`assistant/test_limites.py`](assistant/test_limites.py) | Limites et coûts : prix d'un appel, réservation, compteurs du jour en base et en mémoire | 10 |
+| [`assistant/test_occupation.py`](assistant/test_occupation.py) | Occupation d'un créneau : plage d'un moment, salles libres, séances d'une ressource | 16 |
+| [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas stricts, outils de lecture, propositions sans écriture | 26 |
+| [`assistant/test_validations.py`](assistant/test_validations.py) | Validations sans écriture utilisées par les propositions de l'assistant | 9 |
 
 ### `echange/` : Import et export (145 fonctions)
 

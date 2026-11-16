@@ -1,0 +1,27 @@
+{#- Contenu de #assistant-conversation : fil, puis formulaires (GET /assistant/panneau). #}
+{%- if annonce %}<p class="assistant-annonce-info" role="status">{{ annonce }}</p>{% endif %}
+<div id="assistant-fil" class="assistant-fil" role="log" aria-live="polite" aria-relevant="additions"
+     aria-label="Conversation avec l'assistant" tabindex="0">
+  {%- if not vue.tours %}
+  <div class="assistant-accueil">
+    <p>Posez vos questions sur les salles, les enseignants, les groupes, les règles et l'emploi
+      du temps, ou demandez une règle ou une indisponibilité : l'assistant la propose, vous la
+      confirmez d'un clic.</p>
+    <p>Exemples de demandes :</p>
+    <ul class="assistant-exemples">
+      {%- for exemple in exemples %}
+      <li><button type="button" class="assistant-exemple" data-exemple="{{ exemple }}">« {{ exemple }} »</button></li>
+      {%- endfor %}
+    </ul>
+  </div>
+  {%- endif %}
+  {%- for tour in vue.tours %}
+  {% include "assistant/_tour.html" %}
+  {%- endfor %}
+  {%- if vue.echange %}
+  {%- with echange = vue.echange, version = vue.echange.version, etape = vue.echange.etape %}
+  {% include "assistant/_attente.html" %}
+  {%- endwith %}
+  {%- endif %}
+</div>
+{% include "assistant/_saisie.html" %}
