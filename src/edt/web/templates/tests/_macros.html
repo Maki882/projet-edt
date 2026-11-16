@@ -55,7 +55,7 @@
     {%- endif %}
   </div>
   <div class="banc-test-duree">{% if l.resultat %}{{ duree(l.resultat.duree_s) }}{% endif %}</div>
-  <div class="banc-test-date">{% if l.resultat %}<span class="banc-libelle-mobile">Dernière exécution : </span>{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">-</span>{% endif %}</div>
+  <div class="banc-test-date"><span class="banc-libelle">Dernière exécution</span> {% if l.resultat %}{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">jamais</span>{% endif %}</div>
   <div class="banc-test-action">
     {%- if l.test.perf %}
     <span class="banc-par-commande" title="Test long : il se lance par la commande python -m edt tests --test {{ l.test.cle }}">Par la commande</span>

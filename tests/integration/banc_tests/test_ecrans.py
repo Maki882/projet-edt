@@ -10,6 +10,7 @@ from tests.outils.banc_tests.depot import CLE_CHARGE, CLE_ECHEC, CLE_LENT, CLE_R
 from edt.services.banc_tests import execution as ex
 from edt.services.banc_tests import resultats as res
 from edt.services.banc_tests.tableau import identifiant_html
+from edt.web.gabarits import DOSSIER_STATIQUE
 
 HTMX = {"HX-Request": "true"}
 DATE_AFFICHEE = re.compile(r"\d{2}/\d{2}/\d{4} à \d{2} h \d{2}")
@@ -84,6 +85,16 @@ def test_lancement_suivi_et_resultats_par_la_route_web(client, depot):
     assert "Ignoré : raison de démonstration" in page
     assert "3 cas, 1 en échec" in page
     assert DATE_AFFICHEE.search(page)
+    # La date de chaque test porte son libellé, visible sur ordinateur comme sur téléphone.
+    assert re.search(
+        r'<div class="banc-test-date"><span class="banc-libelle">Dernière exécution</span> '
+        + DATE_AFFICHEE.pattern,
+        page,
+    )
+    feuille = (DOSSIER_STATIQUE / "css" / "tests.css").read_text(encoding="utf-8")
+    hors_media = feuille.split("@media", 1)[0]
+    regle = re.search(r"\.banc-libelle \{([^}]*)\}", hors_media)
+    assert regle is not None and "display: none" not in regle.group(1)
     assert re.search(r"Dernière exécution complète : le " + DATE_AFFICHEE.pattern, page)
     assert "Journal complet de l'exécution" in page
     assert "2 failed" in client.get("/tests/journal").text
