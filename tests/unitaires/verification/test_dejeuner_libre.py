@@ -204,12 +204,36 @@ def test_cycle_de_groupes_ne_rend_pas_le_verificateur_muet():
     f.groupes[a - 1] = dataclasses.replace(f.groupes[a - 1], parent_id=b)  # parents croisés
     cours = f.cours("Cours", [b], duree=120)
     instantane, placements = f.construire(), [placer(cours, MARDI, "12h00")]
-    for verification in (
-        lambda: verifier(instantane, placements, DEJEUNER),
-        lambda: verifier_occurrences(instantane, [occurrence(cours, MARDI_6_OCT, "12h00")]),
-        lambda: calculer_indicateurs(instantane, placements, []),
-    ):
+    verifications = {
+        "semaine type": lambda: verifier(instantane, placements, DEJEUNER),
+        "séances datées": lambda: verifier_occurrences(
+            instantane, [occurrence(cours, MARDI_6_OCT, "12h00")]
+        ),
+        "indicateurs avec anomalies": lambda: calculer_indicateurs(instantane, placements, []),
+        "indicateurs seuls": lambda: calculer_indicateurs(instantane, placements),
+    }
+    for nom, verification in verifications.items():
         with pytest.raises(ErreurDonneesInvalides, match="boucle") as erreur:
             verification()
-        assert "« A »" in erreur.value.message and "« B »" in erreur.value.message
-        assert "« C »" not in erreur.value.message
+        message = erreur.value.message
+        assert "« A »" in message and "« B »" in message, nom
+        assert "« C »" not in message, nom
+
+
+@pytest.mark.cas_limite
+def test_groupe_son_propre_parent_nomme_seul():
+    """Cas : un groupe est déclaré son propre parent (retouche de la base, import).
+
+    Risque : boucle d'un seul groupe non détectée (vérificateur muet sur ce groupe), ou
+    message qui cite d'autres groupes que le fautif.
+    """
+    f = Fabrique(**FENETRE)
+    a = f.groupe("A")
+    b = f.groupe("B", parent=a)
+    f.groupes[a - 1] = dataclasses.replace(f.groupes[a - 1], parent_id=a)
+    cours = f.cours("Cours", [b], duree=120)
+
+    with pytest.raises(ErreurDonneesInvalides, match="boucle") as erreur:
+        verifier(f.construire(), [placer(cours, MARDI, "12h00")], DEJEUNER)
+    assert "« A » est son propre parent" in erreur.value.message
+    assert "« B »" not in erreur.value.message

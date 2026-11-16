@@ -124,10 +124,12 @@ def calculer_indicateurs(
     changements de campus des groupes n'auraient plus de sens).
     """
     placements = tuple(placements)
-    valider_groupes(instantane)
     valider_placements(instantane, placements)
     if anomalies is None:
+        # `verifier` valide l'arbre des groupes (`Contexte`) : inutile de le refaire ici.
         anomalies = verifier(instantane, placements, niveaux=niveaux, niveaux_regles=niveaux_regles)
+    else:
+        valider_groupes(instantane)
     elements, inconnus = construire_elements(instantane, placements)
     if inconnus:
         journal.debug("Indicateurs : %d placement(s) de séance inconnue ignoré(s).", len(inconnus))

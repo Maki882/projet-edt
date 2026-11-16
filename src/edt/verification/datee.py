@@ -99,8 +99,9 @@ def verifier_occurrences(
     pas (défaut : toutes les règles actives de l'instantané, à leur niveau).
     Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
     suivent toujours le niveau de leur règle.
-    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
-    une occurrence est mal formée.
+    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu, si
+    une occurrence est mal formée ou si l'arbre des groupes boucle
+    (`valider_groupes`).
     """
     chrono = time.perf_counter()
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)

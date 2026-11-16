@@ -1,4 +1,4 @@
-"""Règles personnalisées du temps B : emploi du temps par jour ou par semaine, relations.
+"""Règles personnalisées sur l'emploi du temps par jour ou par semaine, et relations entre séances.
 
 Pour chaque type : un cas satisfait, un cas violé (message, séances, unité),
 la gravité selon le niveau retenu, la règle ignorée, et les séances datées.
@@ -26,7 +26,6 @@ from edt.domaine.enumerations import Gravite
 from edt.verification import verifier, verifier_occurrences
 
 REGLE = CodeContrainte.REGLE
-MARDI_6_OCT = dt.date(2026, 10, 6)
 
 
 def regles(anomalies):

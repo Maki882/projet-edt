@@ -89,8 +89,9 @@ def verifier(
     Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
     suivent toujours le niveau de leur règle.
 
-    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
-    un placement est mal formé ; `ErreurIntrouvable` si l'instantané
+    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu, si
+    un placement est mal formé ou si l'arbre des groupes boucle
+    (`valider_groupes`) ; `ErreurIntrouvable` si l'instantané
     lui-même est incohérent (enseignant ou groupe d'un besoin absent...).
     """
     chrono = time.perf_counter()

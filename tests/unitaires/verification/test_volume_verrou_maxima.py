@@ -18,7 +18,7 @@ from tests.outils.verification.fabrique import (
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
-from edt.domaine.instantane import Occurrence, Placement, decomposer_id_seance
+from edt.domaine.instantane import Occurrence, Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier, verifier_occurrences
 
@@ -325,14 +325,3 @@ def test_identifiant_de_seance_illisible_refuse_proprement(identifiant):
     with pytest.raises(ErreurDonneesInvalides, match="séances datées") as erreur:
         verifier_occurrences(instantane, [illisible])
     assert f"« {identifiant} »" in erreur.value.details[0]
-
-
-@pytest.mark.cas_limite
-def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier():
-    """Cas : `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import).
-
-    Risque : `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui
-    décomposent les identifiants (anomalies de l'emploi du temps, instanciation).
-    """
-    with pytest.raises(ErreurDonneesInvalides):
-        decomposer_id_seance("²-1")

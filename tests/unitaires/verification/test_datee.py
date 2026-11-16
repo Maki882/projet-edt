@@ -408,6 +408,8 @@ def test_maxima_hebdomadaires_a_cheval_sur_deux_annees_civiles():
     le dépassement.
     """
     f, n204, n205, _, maths, physique = base(max_semaine=3 * 60)
+    # Les deux dates sont après la fin du semestre de la fabrique (18 décembre) : seule
+    # MAX_ENSEIGNANT est vérifiée, sinon JOUR_FERME les signalerait aussi.
     occurrences = [
         occurrence(maths, dt.date(2026, 12, 29), "8h30", n204, identifiant=1),
         occurrence(physique, dt.date(2027, 1, 2), "8h30", n205, identifiant=2),
