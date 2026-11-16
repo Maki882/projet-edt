@@ -2,7 +2,10 @@
 
 Le formulaire est rechargé à chaque changement du jour ou de l'heure ; HTMX renvoie alors tout
 le formulaire, salle déjà sélectionnée comprise. Ces tests rejouent ce rechargement par le
-client HTTP, avec le vrai vérificateur, sur la version produite par le moteur.
+client HTTP, avec le vrai vérificateur. Le premier part de la version saisie à la main du jeu
+minimal, la même sur toutes les machines : une version produite par le moteur varie d'un
+système à l'autre et n'offre pas toujours le cas cherché. Le second balaie la version produite
+par le moteur, quelle qu'elle soit.
 """
 
 from __future__ import annotations
@@ -11,12 +14,20 @@ import re
 
 import pytest
 from sqlalchemy import select
+from tests.outils.verification.versions import enregistrer_version
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.services.emploi_du_temps import modifications
 
 HX = {"HX-Request": "true"}
+
+
+@pytest.fixture
+def version_saisie(jeu_minimal) -> int:
+    """Version active du jeu minimal saisie à la main (`EMPLOI_DU_TEMPS`) : déterministe."""
+    with session_base() as session:
+        return enregistrer_version(session, jeu_minimal.semestre_id)
 
 
 def _option_choisie(fragment: str, nom: str) -> str:
@@ -28,9 +39,24 @@ def _option_choisie(fragment: str, nom: str) -> str:
     return choisie.group(1)
 
 
-def _heure_possible_ou_la_salle_actuelle_est_occupee(session, version_id: int):
-    """(séance, jour, début, salle actuelle) : à cette heure annoncée « possible », la salle
-    actuelle de la séance est occupée par une autre séance de la version."""
+def _annonce(session, seance_id: int, jour: int, debut: int) -> tuple[bool, bool]:
+    """(heure annoncée « possible », salle actuelle occupée) pour la séance à ce jour et cette
+    heure."""
+    seance = session.get(m.SeanceHebdo, seance_id)
+    formulaire = modifications.formulaire_seance(session, seance_id, jour=jour, debut=debut)
+    possible = formulaire.jour == jour and "(possible" in dict(formulaire.debuts).get(debut, "")
+    occupee = any(s.id == seance.salle_id and not s.libre for s in formulaire.salles)
+    return possible, occupee
+
+
+def _occuper_la_salle_actuelle_a_une_heure_possible(session, version_id: int):
+    """Construit le cas dans la version saisie : (séance, jour, début, salle actuelle).
+
+    Cherche une séance et une autre séance, placée dans une autre salle à une heure où la
+    première est annoncée « possible », puis loge la seconde dans la salle de la première. À
+    cette heure, la salle actuelle de la première est alors occupée, et l'heure reste
+    « possible » avec une autre salle. Rien ne dépend du moteur : le cas est le même partout.
+    """
     seances = session.scalars(
         select(m.SeanceHebdo)
         .where(m.SeanceHebdo.version_id == version_id, m.SeanceHebdo.salle_id.is_not(None))
@@ -38,26 +64,25 @@ def _heure_possible_ou_la_salle_actuelle_est_occupee(session, version_id: int):
     ).all()
     for seance in seances:
         for autre in seances:
-            if autre.id == seance.id or autre.salle_id != seance.salle_id:
+            if autre.id == seance.id or autre.salle_id == seance.salle_id:
                 continue
             if (autre.jour, autre.debut_min) == (seance.jour, seance.debut_min):
                 continue
-            formulaire = modifications.formulaire_seance(
-                session, seance.id, jour=autre.jour, debut=autre.debut_min
-            )
-            annonces = dict(formulaire.debuts)
-            occupee = any(s.id == seance.salle_id and not s.libre for s in formulaire.salles)
-            if (
-                formulaire.jour == autre.jour
-                and "(possible" in annonces.get(autre.debut_min, "")
-                and occupee
-            ):
+            if not _annonce(session, seance.id, autre.jour, autre.debut_min)[0]:
+                continue
+            salle_d_origine = autre.salle_id
+            autre.salle_id = seance.salle_id
+            session.flush()
+            if _annonce(session, seance.id, autre.jour, autre.debut_min) == (True, True):
+                session.commit()
                 return seance.id, autre.jour, autre.debut_min, seance.salle_id
+            autre.salle_id = salle_d_origine
+            session.flush()
     return None
 
 
 @pytest.mark.cas_limite
-def test_heure_possible_choisie_puis_enregistree_reussit(version_generee, client):
+def test_heure_possible_choisie_puis_enregistree_reussit(version_saisie, client):
     """Cas : l'utilisateur choisit une heure « (possible) » ; HTMX recharge le formulaire en
     renvoyant la salle actuelle de la séance, occupée à cette heure par une autre séance.
 
@@ -65,8 +90,8 @@ def test_heure_possible_choisie_puis_enregistree_reussit(version_generee, client
     déplacement (« Une séance par salle »), alors que l'heure était annoncée possible.
     """
     with session_base() as session:
-        cas = _heure_possible_ou_la_salle_actuelle_est_occupee(session, version_generee.version_id)
-    assert cas is not None, "le jeu minimal doit offrir une salle occupée à une heure possible"
+        cas = _occuper_la_salle_actuelle_a_une_heure_possible(session, version_saisie)
+    assert cas is not None, "la version saisie doit permettre de construire le cas"
     seance_id, jour, debut, salle_actuelle = cas
     adresse = f"/emploi-du-temps/seances/{seance_id}"
     envoye = {
