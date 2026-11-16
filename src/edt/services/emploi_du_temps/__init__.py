@@ -23,5 +23,5 @@ Modules :
 - `tableau_de_bord` : l'état de l'établissement pour l'accueil.
 
 Le détail (disposition des blocs, raccords, ajout d'une vue) est
-dans `docs/interface-emploi-du-temps.md`.
+dans `docs/interface.md`.
 """

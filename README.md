@@ -1,119 +1,143 @@
-# Projet EDT — générateur d'emplois du temps ISEP
+# EDT, générateur d'emplois du temps
 
-Application qui construit automatiquement les emplois du temps de l'ISEP à partir
-des cours, classes, enseignants, salles et contraintes fournis, en garantissant
-qu'aucune contrainte obligatoire n'est violée.
+EDT construit automatiquement l'emploi du temps d'une école d'ingénieurs à
+partir de ses salles, groupes, enseignants, matières et besoins en séances.
+Il s'adresse au responsable de scolarité. Il place chaque séance sur un
+jour, un horaire et une salle. Il ne supprime jamais une règle pour réussir :
+quand aucun emploi du temps n'est possible, il le dit et explique pourquoi.
+L'emploi du temps produit se consulte par groupe, enseignant ou salle, se
+retouche à la main et s'exporte vers un agenda.
 
-Projet scolaire 2026-2027, réalisé en équipe. Toutes les données sont fictives.
+Toutes les données sont fictives. L'application n'a pas d'écran de connexion.
 
-## Documentation
+![Accueil de l'application](docs/images/accueil.png)
 
-- [Spécification fonctionnelle](docs/spec.md) (ébauche d'origine)
-- [Décisions de cadrage de la V1](docs/decisions.md) : fait autorité pour le code
-- [Architecture](docs/architecture.md) : couches, extension, contrats partagés
-- [Modèle de données](docs/modele-donnees.md) : diagramme de classes et tables
-- [Solveur](docs/solveur.md) : formulation, objectif, séances datées, mesures, limites
-- [Consignes de travail et conventions](AGENTS.md)
+![Emploi du temps d'une classe](docs/images/emploi-du-temps.png)
 
-## Installer
+## Équipe
+
+Projet du module PTS Informatique, ISEP, année 2026-2027 : Axel, Nassim
+Khiri, Kerime, Hugo.
+
+## Démonstration
+
+Démonstration en ligne : adresse communiquée par l'équipe.
+
+Elle tourne sur un établissement fictif complet. Pour essayer
+l'application sur votre poste, suivez le démarrage en cinq minutes
+ci-dessous.
+
+## Livrables du cours
+
+1. [Spécifications fonctionnelles](docs/livrets/1-specifications-fonctionnelles.md) :
+   ce que fait l'application, ses fonctionnalités classées, le diagramme de
+   classes.
+2. [Spécifications techniques et organisation](docs/livrets/2-specifications-techniques-et-organisation.md) :
+   technologies, architecture, organisation de l'équipe.
+3. [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md) : le mode
+   d'emploi, écran par écran.
+
+## Ce que fait l'application
+
+- Saisir ou importer l'établissement : campus, salles, groupes, enseignants,
+  matières, besoins en séances, indisponibilités, calendrier.
+- Régler les règles d'un emploi du temps, chacune nécessaire, importante ou
+  facultative, et ajouter des règles personnalisées (« la classe A3-APP1 a
+  aussi cours le samedi »).
+- Générer l'emploi du temps d'un semestre, avec des vérifications préalables
+  et un suivi en direct.
+- Consulter le résultat en semaine type, en semaine datée ou au jour, et le
+  retoucher : chaque modification est vérifiée avant d'être enregistrée.
+- Traiter les points signalés (anomalies, séances à reprogrammer) et
+  exporter en CSV ou vers un agenda (iCal).
+- Poser des questions en langage courant à l'assistant
+  ([docs/assistant.md](docs/assistant.md)).
+
+## Démarrage en cinq minutes
 
 Il faut Python 3.11 ou plus récent. Depuis la racine du dépôt :
 
 ```sh
 python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"      # Linux et macOS : .venv/bin/python
-.venv/Scripts/python -m edt init-db
+.venv/Scripts/python -m pip install -e ".[dev]"   # Linux et macOS : .venv/bin/python
 ```
 
-La troisième commande crée la base `data/edt.db` avec son schéma et ses données
-par défaut (grille horaire, types de séance, calendrier de l'année). Il n'y a
-pas de migrations : si une mise à jour a changé les colonnes d'une table déjà
-créée, `init-db` s'arrête sans rien modifier, liste les écarts, et il faut
-relancer `python -m edt init-db --reset`, qui recrée la base et efface les
-données. Les exemples suivants supposent l'environnement virtuel activé
-(`.venv\Scripts\activate` sous Windows, `source .venv/bin/activate` ailleurs).
-
-## Lancer
+Activez ensuite l'environnement (`.venv\Scripts\activate` sous Windows,
+`source .venv/bin/activate` ailleurs), puis :
 
 ```sh
-python -m edt jeu-minimal      # facultatif : charge un petit établissement fictif
-python -m edt serve            # puis ouvrir http://127.0.0.1:8000
+python -m edt init-db              # crée la base data/edt.db et ses données par défaut
+python -m edt jeu --taille moyen   # charge un établissement fictif (une promotion complète)
+python -m edt serve                # lance le serveur web
 ```
 
-Toute fonctionnalité est aussi une commande :
+Ouvrez <http://127.0.0.1:8000> dans un navigateur. L'accueil indique la
+prochaine étape : dans l'onglet « Générer », lancez le calcul (une vingtaine
+de secondes sur ce jeu), puis consultez le résultat dans l'onglet « Emploi du
+temps ». Le même calcul se lance en ligne de commande avec
+`python -m edt generer`.
+
+`python -m edt doctor` vérifie l'installation (Python, OR-Tools, base,
+schéma, journaux, port). Les réglages (base, journaux, adresse et port
+d'écoute) se font par des variables d'environnement `EDT_*`, décrites dans
+[docs/architecture.md](docs/architecture.md#configuration).
+
+## Ligne de commande
+
+Toute fonctionnalité est aussi une commande ; `python -m edt <commande>
+--help` donne ses options.
 
 | Commande | Rôle |
 |---|---|
-| `python -m edt --help` | liste des commandes |
-| `python -m edt init-db [--reset]` | crée la base ; `--reset` efface tout d'abord |
-| `python -m edt verifier-schema` | compare la base au modèle : code 0 à jour, 1 périmée (écarts listés), 2 inaccessible |
-| `python -m edt jeu-minimal` | charge un tout petit jeu de données cohérent |
-| `python -m edt pre-verifier [--semestre 1]` | dit, avant tout calcul, ce qui rend un emploi du temps impossible ou difficile (code 1 si le calcul serait refusé) |
-| `python -m edt generer [--semestre 1] [--temps-limite 120] [--optimiser] [-d PAUSE]` | génère l'emploi du temps d'un semestre, le contrôle, l'enregistre et produit ses séances datées (code 1 si le calcul n'aboutit pas) |
-| `python -m edt instancier [--version 4]` | refait les séances datées d'une version et replace celles qui tombent un jour fermé |
-| `python -m edt serve [--port 8000] [--reload]` | lance le serveur web |
-| `python -m edt doctor` | vérifie l'installation (Python, OR-Tools, base, schéma, journaux, port) |
-| `python -m edt version` | affiche la version |
+| `init-db`, `verifier-schema` | créer la base ; vérifier que ses tables correspondent au modèle |
+| `jeu`, `jeu-minimal` | charger un établissement fictif (petit, moyen, grand) ; un très petit jeu |
+| `serve` | lancer le serveur web |
+| `pre-verifier`, `generer`, `instancier` | dire ce qui empêcherait un calcul ; générer l'emploi du temps d'un semestre ; produire ses séances datées |
+| `verifier` | lister les anomalies d'un emploi du temps enregistré |
+| `gabarit`, `importer`, `exporter-donnees`, `exporter-edt` | échanger des fichiers (XLSX, CSV, iCal) |
+| `sauvegarder`, `verifier-sauvegarde` | sauvegarder la base ; contrôler une sauvegarde |
+| `doctor`, `version` | vérifier l'installation ; afficher la version |
 
-Réglages par variables d'environnement, toutes facultatives : `EDT_DB_URL`
-(`sqlite:///data/edt.db`), `EDT_LOG_DIR` (`logs`), `EDT_HOST` (`127.0.0.1`),
-`EDT_PORT` (`8000`), `EDT_ENV` (`dev` ou `prod`), `EDT_LOG_LEVEL` (`INFO`).
-Les journaux sont dans `logs/edt.log`, et un fichier par calcul dans
-`logs/generations/`. En production, le serveur se lance avec
-`uvicorn edt.web.asgi:app`.
+## Tests
 
-## Tester
+Les tests sont rangés en deux familles : `tests/unitaires/` (un module exercé
+seul, par ses fonctions) et `tests/integration/` (plusieurs couches
+assemblées : requêtes web, ligne de commande, calcul complet). La règle de
+rangement est contrôlée automatiquement ; elle est décrite dans
+[tests/README.md](tests/README.md).
 
 ```sh
-python -m pytest                            # tous les tests
-python -m pytest -m "not perf"              # sans les tests de charge
-python -m pytest tests/unitaires            # les tests unitaires (ou -m unitaire)
-python -m pytest tests/integration          # les tests d'intégration (ou -m integration)
+python -m pytest -m "not perf"              # toute la suite, sans les tests de charge
+python -m pytest tests/unitaires            # les tests unitaires
+python -m pytest tests/integration          # les tests d'intégration
 python -m pytest tests/integration/parcours # les six parcours de bout en bout
-python -m pytest -m cas_limite              # la banque des cas limites seule (voir docs/banque-de-tests.md)
-python -m pytest tests/test_rangement.py    # contrôle du rangement unitaire / intégration
+python -m pytest -m cas_limite              # la banque des cas limites
+python -m pytest -m perf                    # les tests de charge (longs)
 python -m tests.outils.classement           # nombre de tests par famille et par composant
 python -m ruff check .                      # lint
 python -m ruff format --check .             # format
 ```
 
-Les tests sont rangés en deux familles : `tests/unitaires/` (un module exercé
-seul) et `tests/integration/` (plusieurs couches assemblées : web, ligne de
-commande, calcul complet). La règle, l'arborescence et les nombres sont dans
-[tests/README.md](tests/README.md). La CI lance le contrôle du rangement, puis
-les tests unitaires, puis les tests d'intégration (hors tests de charge).
+L'intégration continue (GitHub Actions, Python 3.11, 3.13 et 3.14) lance à
+chaque pull request le lint, le format, le contrôle du rangement, puis les
+tests unitaires et les tests d'intégration. Les tests créent leur base et
+leurs journaux dans des dossiers temporaires : ils ne touchent jamais `data/`
+ni `logs/`.
 
-Les tests créent leur base et leurs journaux dans des dossiers temporaires :
-ils ne touchent jamais `data/` ni `logs/`.
+## Documentation
 
-## Vérifier un emploi du temps
+La carte complète, avec le public de chaque document, est dans
+[docs/README.md](docs/README.md).
 
-Le vérificateur liste les anomalies d'un emploi du temps enregistré : salles,
-enseignants ou groupes occupés deux fois, pause, trajet entre campus,
-déjeuner, grille horaire, jours de cours, salle adaptée, disponibilités,
-maxima horaires, volume, verrous et jours fermés. Il ne modifie rien.
+| Pour… | Lire |
+|---|---|
+| utiliser l'application | [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md) |
+| comprendre ce qu'elle fait | [Spécifications fonctionnelles](docs/livrets/1-specifications-fonctionnelles.md), [Choix de conception](docs/decisions.md) |
+| lire ou modifier le code | [Architecture](docs/architecture.md), [Modèle de données](docs/modele-donnees.md), [Solveur](docs/solveur.md), [Vérificateur](docs/verification.md) |
+| installer le serveur | [Déploiement](docs/deploiement.md) |
 
-```sh
-python -m edt verifier                     # semaine type de la version active du semestre en cours
-python -m edt verifier --version 4 --datees --du 2026-11-02 --au 2026-11-08
-python -m edt verifier --semestre 1 -c SALLE_UNIQUE --json
-```
+## Contribuer
 
-Codes de sortie : `0` aucune erreur, `1` au moins une erreur, `2` vérification
-impossible (version introuvable, code inconnu, rien à vérifier...). Chaque
-anomalie a un code, une gravité (erreur, avertissement, information) et un
-message en clair.
-
-Ce module généralise le premier vérificateur de chevauchements écrit par
-l'équipe. Tests : `python -m pytest tests/unitaires/verification tests/integration/verification` (charge : `-m perf`).
-Règles, indicateurs et diagramme de classes : [docs/verification.md](docs/verification.md).
-
-## Contribuer au code
-
-1. Créer une branche depuis `main` : `feat/ma-fonctionnalite`.
-2. Committer en français, à l'impératif.
-3. Ouvrir une pull request et demander une relecture à un autre membre.
-
-Avant d'écrire du code, lire [`docs/architecture.md`](docs/architecture.md) :
-une commande s'ajoute dans `src/edt/commandes/`, un écran dans
-`src/edt/web/routes/`, sans modifier les fichiers des autres.
+Une branche par tâche, une pull request relue par un autre membre, la CI
+verte avant la fusion. Le détail (conventions de code et d'écriture, tests,
+ajout d'une commande ou d'un écran) est dans [CONTRIBUTING.md](CONTRIBUTING.md).

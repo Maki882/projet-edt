@@ -1,184 +1,154 @@
 # Interface web
 
-Ce document décrit la mise en page commune à tous les écrans, la façon de
-ranger un écran dans la navigation, le mécanisme générique qui donne ses
-écrans à chaque entité de l'espace « Données », et le panneau Assistant.
-Le socle (routes découvertes, `rendre`, `rediriger`, `SessionRequete`,
-erreurs) est décrit dans [`architecture.md`](architecture.md).
+Ce document décrit l'interface web : ses principes, la navigation, la mise en
+page commune, l'espace « Données » et son mécanisme générique, les onglets
+Générer, Emploi du temps et À traiter, l'accueil, les cas limites et la façon
+d'ajouter une vue. Il s'adresse aux développeurs ; le mode d'emploi de
+l'utilisateur est le [livret 3](livrets/3-guide-utilisateur.md). Le socle
+(routes découvertes, `rendre`, `rediriger`, `SessionRequete`, erreurs) est
+décrit dans [`architecture.md`](architecture.md).
 
-Public visé : un responsable de scolarité **non informaticien**. Règles
-suivies partout : vocabulaire métier, une phrase d'explication en tête de
-chaque liste, aucune trace technique à l'écran, erreurs de saisie affichées
-sous le champ concerné, saisie conservée après une erreur.
+## 1. Principes
 
-## 1. Navigation
+L'utilisateur est un responsable de scolarité **non informaticien**.
 
-La barre du haut porte **cinq onglets**, dans un ordre fixe. Chaque écran se
-range dans un onglet par la `section` de son entrée de menu
-(`edt/web/menu.py`, `ONGLETS`) :
+- Vocabulaire de la scolarité : aucun terme de solveur ni de base de données
+  à l'écran, un mot par notion (règle, séance, séance datée, groupe,
+  campus).
+- Une phrase d'explication en tête de chaque page.
+- Aucune trace technique à l'écran : une erreur inattendue affiche la
+  référence de l'incident, la trace va dans le journal.
+- Erreurs de saisie sous le champ concerné, saisie conservée, statut 422.
+- Une vérification qui n'a pas pu tourner est **dite**, jamais remplacée par
+  une liste vide.
+- Les écrans restent utilisables sans JavaScript (liens, formulaires, pages
+  complètes) ; HTMX évite des rechargements.
+- Les routes ne touchent pas l'ORM et n'appellent jamais `commit()` : elles
+  lisent les paramètres, appellent un service et choisissent la page.
 
-| Onglet          | Sections                                              | Ordre des entrées |
-|-----------------|-------------------------------------------------------|-------------------|
-| Accueil         | (aucune section)                                      | 0 - 99            |
-| Données         | `Référentiels`, `Planification`, `Configuration`, `Données` | 100 - 599   |
-| Générer         | `Générer` (`SECTION_GENERER`)                         | 600 - 699         |
-| Emploi du temps | `Emploi du temps` (`SECTION_EMPLOI_DU_TEMPS`)         | 300 - 399         |
-| À traiter       | `À traiter` (`SECTION_A_TRAITER`)                     | 700 - 799         |
+## 2. Navigation
 
-- Un onglet **sans entrée n'est pas affiché**. Son adresse est celle de sa
-  première entrée.
+La barre du haut porte **cinq onglets**, dans un ordre fixe : Accueil,
+Données, Générer, Emploi du temps, À traiter. Chaque écran se range dans un
+onglet par la `section` de son entrée de menu (`edt/web/menu.py`, `ONGLETS`) :
+
+| Onglet | Sections | Écrans |
+|---|---|---|
+| Accueil | (aucune) | `/` |
+| Données | `SECTION_REFERENTIELS`, `SECTION_PLANIFICATION`, `SECTION_CONFIGURATION`, `SECTION_DONNEES` | établissement, besoins, règles et calendrier, import et export, jeux de données |
+| Générer | `SECTION_GENERER` | `/calculs`, `/versions` |
+| Emploi du temps | `SECTION_EMPLOI_DU_TEMPS` | `/emploi-du-temps` |
+| À traiter | `SECTION_A_TRAITER` | `/a-traiter` |
+
+- L'`ordre` d'une entrée la place dans son onglet ; un onglet sans entrée
+  n'est pas affiché ; son adresse est celle de sa première entrée.
 - Un onglet de plusieurs entrées a une **sous-navigation** à gauche (une
   bande défilante sur un petit écran) et un **menu déroulant** au survol ou
-  au clavier, qui donne accès à toutes ses pages depuis n'importe où.
+  au clavier.
 - Dans l'onglet Données, les entrées sont regroupées sous des titres
-  parlants, dans cet ordre : « Établissement » (section Référentiels),
-  « Besoins et disponibilités » (Planification), « Règles et calendrier »
-  (Configuration), « Import et export » (Données), « Jeux de données ». Une
-  entrée choisit un autre groupe avec son champ `groupe`.
+  (`GROUPE_ETABLISSEMENT`, `GROUPE_BESOINS`, `GROUPE_REGLES`,
+  `GROUPE_IMPORT_EXPORT`, `GROUPE_JEUX`, dans cet ordre). Une entrée choisit
+  un autre groupe par son champ `groupe`.
 - Une entrée dont la section n'est rangée dans aucun onglet va dans l'onglet
   Données, sous un groupe portant le nom de sa section, et un avertissement
   est journalisé.
-- Sur un écran étroit, les cinq onglets passent sur deux rangées plutôt que
-  de défiler : aucun n'est caché.
-- Un onglet peut afficher un **compteur** (pastille rouge) chargé par HTMX :
-  `COMPTEURS_ONGLETS` de `menu.py` associe au titre de l'onglet l'adresse
-  d'un fragment qui renvoie `<span class="edt-compteur-onglet">N</span>`, ou
-  rien. Aujourd'hui : « À traiter » → `/a-traiter/compteur`. Sans JavaScript,
-  l'onglet reste un lien simple ; si le fragment échoue, l'échec est noté dans
-  la console sans bandeau d'erreur (`data-erreur-silencieuse`).
+- Un onglet peut afficher un **compteur** chargé par HTMX :
+  `COMPTEURS_ONGLETS` associe à l'onglet l'adresse d'un fragment
+  (« À traiter » → `/a-traiter/compteur`). Sans JavaScript, l'onglet reste un
+  lien simple ; si le fragment échoue, l'échec est noté dans la console, sans
+  bandeau d'erreur.
 - L'onglet actif est celui dont une entrée correspond à l'adresse affichée
   (l'entrée `/salles` couvre aussi `/salles/12`).
-
-### Ranger un écran
+- Sur un écran étroit, les cinq onglets passent sur deux rangées : aucun
+  n'est caché.
 
 ```python
 # src/edt/web/routes/calculs.py
-from edt.web.menu import SECTION_GENERER, EntreeMenu
-
-MENU = [EntreeMenu("Lancer un calcul", "/calculs", section=SECTION_GENERER, ordre=600)]
+MENU = [
+    EntreeMenu("Lancer un calcul", "/calculs", section=SECTION_GENERER, ordre=250),
+    EntreeMenu("Historique et versions", "/versions", section=SECTION_GENERER, ordre=260),
+]
 ```
 
-```python
-# un import dans l'onglet Données, groupe « Import et export »
-MENU = [EntreeMenu("Importer", "/import", section=SECTION_DONNEES, ordre=400)]
-```
+`EntreeMenu(libelle, url, section="", ordre=100, groupe="")`.
 
-`EntreeMenu(libelle, url, section="", ordre=100, groupe="")` ; les constantes
-existantes ne changent pas. Les groupes connus sont `GROUPE_ETABLISSEMENT`,
-`GROUPE_BESOINS`, `GROUPE_REGLES`, `GROUPE_IMPORT_EXPORT`, `GROUPE_JEUX`.
-
-## 2. Mise en page commune
+## 3. Mise en page commune
 
 ### Gabarit de base (`templates/base.html`)
 
-| Bloc       | Rôle                                                             |
-|------------|------------------------------------------------------------------|
-| `titre`    | titre de la page (onglet du navigateur et titre `h1`)            |
-| `actions`  | boutons à droite du titre                                        |
-| `contenu`  | corps de la page                                                 |
-| `styles`   | feuilles de style propres à l'écran, dans l'en-tête              |
-| `scripts`  | scripts propres à l'écran, en fin de page                        |
-
-Le gabarit pose la barre et ses onglets, la
-sous-navigation, la zone de messages `#messages`, le pied de page et le
-panneau Assistant. La classe `js` est ajoutée à `<html>` quand JavaScript
-fonctionne (`.sans-js` masque alors ce qui ne sert que sans lui).
-
-### Macros partagées (`templates/macros.html`, `{% import "macros.html" as ui %}`)
-
-| Macro | Rôle |
+| Bloc | Rôle |
 |---|---|
-| `ui.message(texte, niveau, details)` / `ui.messages(liste)` | message `succes`, `info`, `attention`, `erreur` |
-| `ui.etiquette(texte, niveau)` | pastille (niveaux ci-dessus et `neutre`) |
-| `ui.tableau(colonnes, lignes, vide)` | tableau simple ; avec `{% call(ligne) %}` : colonne d'actions |
-| `ui.cellule(valeur)` | contenu de cellule : tiret si vide, Oui / Non pour un booléen |
-| `ui.formulaire(action, ...)` | formulaire simple |
-| `ui.champ(nom, libelle, valeur, type, requis, aide, erreur, options, attributs, unite, conteneur, large)` | champ complet : libellé, aide, erreur liée par `aria-describedby` ; `type` `multiple` = liste de cases filtrable, `cases` = quelques cases sur une ligne (jours de la semaine, campus) |
-| `ui.bouton_suppression(action)` / `ui.bouton_action(action, libelle, classe, confirmation, champs)` | bouton qui envoie un POST, confirmation facultative |
-| `ui.pagination(page, nb_pages, url_page, cible)` | pagination ; `cible` : zone remplacée par HTMX |
-| `ui.couleur(code)` | petit carré de couleur |
+| `titre` | titre de la page (onglet du navigateur et titre principal) |
+| `actions` | boutons à droite du titre |
+| `contenu` | corps de la page |
+| `styles` | feuilles de style propres à l'écran |
+| `scripts` | scripts propres à l'écran, en fin de page |
 
-Les écrans « Données » ont en plus `templates/donnees/_ui.html`
-(`d.champ`, `d.rubriques`, `d.barre_liste`, `d.cellule`, `d.retour`).
+Le gabarit pose la barre et ses onglets, la sous-navigation, la zone de
+messages `#messages`, le pied de page (version et référence de la requête) et
+le panneau de l'assistant (section 10). La classe `js` est ajoutée à
+`<html>` quand JavaScript fonctionne.
 
-### Classes CSS réutilisables (`static/css/app.css`)
+### Macros et styles
 
-Aucune couleur en dur dans un écran : les variables `--marque`, `--succes`,
-`--attention`, `--erreur`, `--bordure`... sont dans `:root`.
-
-| Classe | Usage |
-|---|---|
-| `carte`, `carte-erreur`, `carte-attention`, `repliable` (sur `<details>`) | blocs de contenu |
-| `introduction` | phrase d'explication sous le titre |
-| `tableau-defilant` + `tableau`, `nombre`, `colonne-actions` | tableaux (défilement horizontal sur petit écran) |
-| `tableau-compact` (avec `cellule-texte`, `deux-lignes`, `liste-abregee`, `plus`, `abrege`) | listes longues : une ligne par cellule, deux au plus pour un texte libre, listes abrégées « +3 » avec le détail au survol, colonne d'actions toujours visible à droite pendant le défilement horizontal |
-| `tri`, `tri-croissant`, `tri-decroissant` | en-tête de colonne triable |
-| `pagination`, `pagination-pages` | pagination |
-| `formulaire`, `formulaire-large`, `grille-champs`, `champ-large`, `formulaire-actions`, `formulaire-ligne` | formulaires (grille de champs, formulaire compact sur une ligne) |
-| `bouton`, `bouton-principal`, `bouton-danger`, `bouton-danger-plein`, `bouton-petit` | boutons |
-| `barre-liste`, `barre-liste-resume` | recherche et filtres d'une liste |
-| `message-*`, `etiquette-*`, `compteurs`, `definitions` | états et chiffres |
-| `arbre`, `arbre-noeud`, `matrice` | arbre (groupes), matrice de saisie (trajets) |
-| `cases-en-ligne` | cases à cocher côte à côte (contrôle `cases`) |
-| `tableau-regles` (avec `cellule-empilee`), `ligne-proposee`, `apercu-regle`, `apercu-phrase`, `cartes-types`, `carte-type`, `exemples-regle`, `liste-regles-touchees` | règles personnalisées : liste, règle proposée surlignée, aperçu de la phrase, choix du type, règles touchées par une suppression |
-| `ligne-boutons`, `colonnes`, `liste-simple`, `discret`, `pre-ligne` | utilitaires |
+- `templates/macros.html` (`{% import "macros.html" as ui %}`) : `message`,
+  `messages`, `etiquette`, `couleur`, `cellule`, `tableau`, `formulaire`,
+  `champ` (libellé, aide, erreur liée par `aria-describedby`, listes de cases
+  filtrables), `bouton_suppression`, `bouton_action`, `pagination`.
+- `templates/donnees/_ui.html` : macros des écrans de données (`champ`,
+  `rubriques`, `barre_liste`, `cellule`, `retour`, `raisons`,
+  `regles_touchees`).
+- `templates/edt/_ui.html` : macros des écrans de l'emploi du temps
+  (`ressources` et `script` chargent `edt.css` et `edt.js`, `anomalies`,
+  `indicateurs`, `choix_semestre`, `perimetre`).
+- `static/css/app.css` : aucune couleur en dur dans un écran, les variables
+  (`--marque`, `--succes`, `--attention`, `--erreur`, `--bordure`…) sont dans
+  `:root` ; classes réutilisables pour les cartes, tableaux (défilement
+  horizontal sur petit écran, colonne d'actions toujours visible),
+  formulaires, boutons, étiquettes, arbre et matrice.
+- `static/css/edt.css` : grille de l'emploi du temps, panneau latéral,
+  feuille d'impression.
 
 ### Comportements communs (`static/js/app.js`)
 
-| Attribut ou classe | Effet |
+| Attribut | Effet |
 |---|---|
 | `data-confirmation="..."` sur un formulaire | confirmation avant l'envoi |
-| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché (et envoyé) seulement si `champ` vaut v1 ou v2 ; plusieurs conditions séparées par `;` doivent toutes tenir |
-| `data-attente="..."` sur un formulaire | boutons désactivés et texte d'attente pendant l'envoi (opérations longues) |
-| `.choix-multiple` | filtre au clavier d'une liste de cases à cocher |
-| `<details id="...">` dans une zone remplacée par HTMX | reste ouvert après le remplacement |
-| `data-arbre="clé"` + `<details data-noeud="...">` ; boutons `data-arbre-action="deplier\|replier"` `data-arbre-cible="id"` | arbre repliable, état conservé d'une page à l'autre (stockage local), « tout déplier » / « tout replier » (boutons masqués sans JavaScript) |
-| `data-erreur-silencieuse` sur un élément HTMX accessoire | son échec est noté dans la console, sans bandeau d'erreur |
+| `data-visible-si="champ:v1,v2"` sur un bloc | bloc affiché, et envoyé, seulement si `champ` vaut v1 ou v2 ; plusieurs conditions séparées par `;` doivent toutes tenir |
+| `data-attente="..."` sur un formulaire | boutons désactivés et texte d'attente pendant l'envoi |
+| `.choix-multiple` | filtre au clavier d'une liste de cases |
+| `data-arbre` et `<details data-noeud>` | arbre repliable, état conservé d'une page à l'autre |
+| `data-erreur-silencieuse` sur un élément HTMX accessoire | son échec est noté dans la console, sans bandeau |
 | erreurs HTMX | le fragment d'erreur renvoyé s'affiche dans `#messages` |
 
 Ces comportements s'appliquent aussi aux fragments chargés par HTMX.
+`static/js/edt.js` ajoute la recherche rapide des sélecteurs (sans tenir
+compte des accents) et l'envoi automatique des choix de l'emploi du temps.
 
-## 3. Le mécanisme générique de l'espace « Données »
+## 4. L'espace « Données »
+
+### Mécanisme générique
 
 Chaque entité est décrite **une fois**, de façon déclarative, dans
-`edt.services.referentiels` ; les services génériques et les écrans
-génériques s'en déduisent.
+`edt.services.referentiels` ; services et écrans génériques s'en déduisent.
 
+```mermaid
+flowchart LR
+    description["Description (Entite) : champs, colonnes, filtres, unicités, usages"]
+    --> operations["Services génériques : lister, lire, creer, modifier, analyser_suppression, supprimer"]
+    --> ecrans["Écrans génériques (Ecran) : liste, formulaire, suppression, édition dans la liste"]
 ```
-description (Entite)  ──▶  services génériques (operations)  ──▶  écrans génériques (Ecran)
- champs, colonnes,          lister, lire, creer, modifier,          liste, formulaire,
- filtres, règles            analyser_suppression, supprimer         suppression, ligne
-```
 
-### Décrire une nouvelle entité
+Ajouter une entité :
 
-1. Dans le module de sa famille (`lieux`, `personnes`, `enseignements`,
-   `calendrier`), déclarer un `Entite` :
-
-   ```python
-   EQUIPEMENT = Entite(
-       code="equipement", modele=Equipement,
-       nom="équipement", pluriel="équipements", feminin=False,
-       demonstratif="Cet équipement", nouveau="Nouvel équipement",
-       libelle=lambda e: e.libelle,
-       champs=(
-           Champ("code", "Code", obligatoire=True, aide="Par exemple « VIDEOPROJ »."),
-           Champ("libelle", "Libellé", obligatoire=True),
-       ),
-       colonnes=(
-           Colonne("code", "Code", lambda e: e.code, tri=Equipement.code),
-           Colonne("libelle", "Libellé", lambda e: e.libelle, tri=Equipement.libelle),
-       ),
-       tri_defaut="code",
-       recherche=(Equipement.code, Equipement.libelle),
-       uniques=(Unicite(("code",), "Un équipement porte déjà ce code.", "code"),),
-       usages=(Decompte(par_colonne(besoin_equipement.c.equipement_id),
-                        "est requis par 1 besoin", "est requis par {n} besoins"),),
-   )
-   ```
-
-2. L'ajouter à `ENTITES` dans `catalogue.py`.
-3. Déclarer son écran dans un module `edt/web/routes/donnees_*.py` :
+1. dans le module de sa famille (`lieux`, `personnes`, `enseignements`,
+   `calendrier`), déclarer un `Entite` : champs (`Champ`, avec leur
+   `TypeChamp`), colonnes de liste (`Colonne`), tri par défaut, recherche,
+   unicités (`Unicite`, contrôlées avant l'écriture), usages qui empêchent
+   une suppression (`Decompte`), conséquences d'une suppression, crochets
+   (`valider`, `preparer`, `apres_ecriture`, `apres_creation`, `analyser`) ;
+2. l'ajouter à `ENTITES` dans `catalogue.py` ;
+3. déclarer son écran dans un module `edt/web/routes/donnees_*.py` :
 
    ```python
    ECRAN = Ecran(EQUIPEMENT, "/equipements", introduction="...", edition_en_ligne=True)
@@ -186,352 +156,384 @@ description (Entite)  ──▶  services génériques (operations)  ──▶  
    MENU = [EntreeMenu("Équipements", "/equipements", section=SECTION_REFERENTIELS, ordre=130)]
    ```
 
-Types de champ (`TypeChamp`) et contrôle affiché :
+`routeur_ecran(ecran)` donne la liste (recherche `q`, `tri`, `sens`, `page`,
+un paramètre par filtre), le formulaire d'ajout (prérempli par les paramètres
+d'adresse qui portent le nom d'un champ), la création, la modification, la
+confirmation et la suppression, la ligne seule et son édition sur place.
 
-| Type | Saisie | Contrôle |
+Comportements garantis par le mécanisme :
+
+- **Suppression** : avec JavaScript, la ligne se remplace par une ligne de
+  confirmation qui dit ce que la suppression emportera, ou pourquoi elle est
+  refusée, avec un lien vers les éléments qui bloquent ; sans JavaScript, une
+  page de confirmation fait la même chose.
+- **Pendant un calcul, aucune suppression** : un calcul enregistre à sa fin
+  des séances qui pointent vers les données lues à son lancement.
+  `analyser_suppression` refuse donc toute suppression pendant un calcul,
+  avec un lien vers son suivi ; seules les règles personnalisées, que le
+  calcul copie à son lancement, restent supprimables.
+- **Ce qui vient du navigateur** : une adresse de retour n'est suivie que si
+  elle reste dans l'écran ; un nombre est lu en chiffres ASCII et borné ; un
+  identifiant hors bornes donne « introuvable » (404) ; un fragment demandé
+  sans HTMX renvoie (303) vers sa page entière.
+- **Listes** : un filtre à valeur par défaut (l'année ou le semestre en
+  cours) est rappelé dans le résumé ; une liste vide invite à ajouter un
+  élément ou à effacer la recherche ; avec HTMX, recherche, filtres, tri et
+  pagination ne remplacent que la zone de liste et l'adresse suit.
+- **Retour** : après un enregistrement ou une suppression, l'utilisateur
+  revient sur la liste d'où il venait (recherche, filtres, tri et page
+  compris).
+- **Bornes** : entiers bornés par le champ puis par ce que la base sait
+  enregistrer ; texte libre borné à 5 000 caractères, dans le navigateur
+  comme sur le serveur.
+
+Les services de `edt.services.referentiels` (`lister`, `lire`, `creer`,
+`modifier`, `analyser_suppression`, `supprimer`, `options`, `decrire`) ne
+valident pas la transaction et rendent des valeurs sérialisables ; une
+saisie refusée lève `ErreurSaisie`, dont `champs` donne le message de chaque
+champ fautif.
+
+### Écrans
+
+| Groupe | Adresses | Contenu |
 |---|---|---|
-| `TEXTE`, `TEXTE_LONG` | texte (longueur maximale déduite de la colonne) | `text`, `textarea` |
-| `ENTIER` | nombre, bornes `minimum` / `maximum`, `unite` | `number` |
-| `BOOLEEN` | case (absente = non) | `checkbox` |
-| `CHOIX` | une valeur de `choix` (`choix_enum`, `choix_jours`) | `select` |
-| `REFERENCE` / `REFERENCES` | identifiant(s) d'une autre table (`Reference`, avec `condition` facultative) | `select` / cases filtrables |
-| `DATE` | « 2026-09-07 » ou « 07/09/2026 » | `date` |
-| `HEURE` | « 08:30 », « 8 h 30 » → minutes | `time` |
-| `DUREE` | « 2 h », « 1 h 30 », « 90 min » → minutes | `text` |
-| `COULEUR` | « #2f6fad » | `color` |
+| Établissement | `/campus`, `/salles`, `/types-salle`, `/equipements`, `/enseignants`, `/groupes` (et `/groupes/arbre`), `/etudiants`, `/matieres`, `/types-seance` | campus et matrice des trajets, salles (filtres campus, type, accessibilité), listes configurables, enseignants, arbre des groupes repliable, étudiants fictifs et inscriptions, matières |
+| Besoins et disponibilités | `/besoins`, `/indisponibilites` | besoins : filtres, ajout rapide, duplication, formulaire selon le mode de volume, charge hebdomadaire des groupes ; indisponibilités récurrentes ou datées |
+| Règles et calendrier | `/calendrier`, `/regles`, `/grille`, `/parametres` | années, semestres, jours fermés et fériés ; règles personnalisées ; créneaux de la grille ; paramètres construits depuis `Parametres` |
+| Import et export | `/import`, `/export` | import simulé puis appliqué, rapport ; exports ([`import-export.md`](import-export.md)) |
+| Jeux de données | `/jeux` | chargement d'un établissement fictif (petit, moyen, grand, graine), remise à zéro |
 
-Possibilités de la description :
-
-- colonnes de liste (`Colonne`) : une valeur peut être une **liste**
-  (groupes, équipements) affichée « A1-G1, A1-G2 +3 » (`apercu` éléments,
-  liste complète au survol) ; `texte=True` pour un texte libre qui peut tenir
-  sur deux lignes (les autres colonnes restent sur une ligne) ; `detail` pour
-  le texte complet d'une valeur abrégée (volume d'un besoin : « 6 séances ·
-  14/09 → 15/11 », détail au survol) ; `filtre="semestre"` pour omettre la
-  colonne quand ce filtre est appliqué (elle serait identique partout) ;
-
-- `groupe` d'un champ : rubrique du formulaire (`fieldset`) ;
-- `visible_si=("mode_volume", ("total",))` : champ utile à un seul mode ;
-- `virtuel=True` + `lire` : champ de formulaire sans colonne, traduit par le
-  crochet `preparer` (les deux nombres d'un besoin, la forme d'une
-  indisponibilité, les chevauchements d'un groupe) ;
-- `filtres` (`Filtre`) : choix de filtre, condition SQL, valeur par défaut
-  (`defaut`), champ prérempli à l'ajout (`champ`) ;
-- `uniques` : contrôlés **avant** l'écriture, erreur sous le champ ;
-- `usages` : ce qui empêche une suppression (`ErreurRegleMetier` levée
-  avant d'atteindre la base, avec le décompte) ; `consequences` : ce que la
-  suppression emporte, et ce qui se passe ensuite (« 17 séances déjà placées
-  resteront sans salle : elles apparaîtront dans « À traiter » et
-  retrouveront une salle au prochain calcul ou par un replacement à la
-  main ») ;
-- `Decompte(compter, singulier, pluriel, lien=..., objets=...)` : `lien` est
-  l'adresse de la liste des éléments comptés, avec `{id}` pour l'élément à
-  supprimer, et `objets` les nomme pour le libellé du lien (« Voir ces
-  12 besoins »). Exemple : `lien=TOUS_SEMESTRES + "&salle_imposee={id}"`,
-  `objets=BESOINS` (`TOUS_SEMESTRES` = `/besoins?semestre=`, car le
-  décompte compte tous les semestres). Liens en place : salle imposée,
-  enseignant, matière, type de séance et groupe vers les besoins ; campus et
-  type de salle vers les salles. Les autres usages (campus imposé, types de
-  salle et équipements demandés par un besoin) n'ont pas de filtre
-  correspondant : le refus reste sans lien ;
-- crochets `valider` (contrôles entre champs), `preparer`,
-  `apres_ecriture`, `apres_creation` (après un ajout seulement, dans la même
-  transaction : une année scolaire créée reçoit ses règles proposées),
-  `analyser` (refus et conséquences calculés, en textes ou en
-  `operations.Raison` avec un lien).
-
-### Écran générique (`edt.web.donnees.ecrans.Ecran`)
-
-`routeur_ecran(ecran)` donne : la liste (`GET <p>`, paramètres `q`, `tri`,
-`sens=desc`, `page`, un paramètre par filtre), le formulaire d'ajout
-(`GET <p>/nouveau`, prérempli par les paramètres d'adresse qui portent le nom
-d'un champ), la création (`POST <p>`), la modification (`GET`/`POST <p>/<n>`),
-la confirmation et la suppression (`GET`/`POST <p>/<n>/supprimer`), la ligne
-seule et son édition sur place (`<p>/<n>/ligne`, `<p>/<n>/ligne/edition`),
-la confirmation et la suppression sur place (`GET <p>/<n>/ligne/suppression`,
-`POST <p>/<n>/ligne/supprimer`).
-
-**Suppression.** Avec JavaScript, « Supprimer » remplace la ligne par une
-ligne de confirmation : ce que la suppression emportera (« Supprimer
-définitivement » / « Annuler »), ou pourquoi elle est refusée, avec un lien
-vers les éléments qui bloquent (« Fermer » rend la ligne). La confirmation
-supprime puis rafraîchit la zone de liste (compte et page à jour) et affiche
-le message dans `#messages` (échange HTMX « hors bande »). Sans JavaScript, le
-même lien ouvre la page de confirmation, qui fait la même chose.
-`AnalyseSuppression` porte des `Raison(texte, lien, libelle_lien)` : `blocages`
-et `effets` (`refus` et `consequences` en donnent les textes), et `regles` :
-les règles personnalisées touchées (voir « Supprimer une cible visée par des
-règles » au § 4).
-
-**Pendant un calcul, aucune suppression.** Un calcul enregistre à sa fin des
-séances qui pointent vers les besoins, salles, groupes... lus à son
-lancement ; supprimer l'un d'eux entre-temps ferait échouer l'enregistrement,
-et supprimer le semestre ou l'année emporterait le calcul lui-même (et le
-verrou « un seul calcul à la fois »). Tant qu'un calcul tourne,
-`analyser_suppression` refuse donc toute suppression (`blocage_calcul`,
-`AnalyseSuppression.calcul_id`) : la confirmation dit « Suppression impossible
-pendant le calcul » avec un lien « Suivre le calcul », et `supprimer` lève
-`ErreurCalculEnCours` avant toute écriture. Les règles personnalisées, que le
-calcul copie à son lancement, restent supprimables.
-
-**Ce qui vient du navigateur.** Une adresse de retour (`retour`, `_retour`)
-n'est suivie que si elle reste dans l'écran et ne contient aucun caractère de
-contrôle (`gabarits.adresse_locale`) ; `rediriger` écarte en dernier recours
-une adresse qui en contient, au lieu de la recopier dans `HX-Redirect`.
-L'en-tête `HX-Current-URL` illisible est ignoré et journalisé
-(`gabarits.adresse_courante`). Un nombre écrit en chiffres passe par
-`conversion.entier_naturel`, qui ne lève jamais d'exception : au-delà de 30
-chiffres, le nombre est « invalide » sans même être converti (Python refuse
-d'en lire plus de 4 300) ; un identifiant d'adresse de plus de 30 chiffres ne
-correspond à aucune page (404). Un fragment (`/ligne`,
-`/ligne/edition`, `/ligne/suppression`) demandé sans HTMX renvoie (303) vers
-sa page entière : la fiche, ou la confirmation ; un enregistrement depuis la
-ligne sans HTMX revient à la liste.
-
-- Un filtre qui a une valeur par défaut (l'année ou le semestre en cours) est
-  rappelé dans le résumé (« 0 groupe (Année : 2026-2027) ») mais ne compte pas
-  comme un filtre posé : une liste vide invite alors à ajouter un élément ou
-  à choisir une autre valeur ; une liste vidée par une recherche ou un filtre
-  posé propose de les effacer. Une valeur de filtre absente de ses choix, un
-  numéro de page ou un identifiant aberrant donnent un message, pas une
-  erreur.
-- Les entiers saisis sont bornés : par le champ (`maximum`, par exemple
-  100 000 places ou étudiants) puis par ce que la base sait enregistrer ;
-  seuls les chiffres 0 à 9 sont acceptés. Un texte sans longueur de colonne
-  (note, commentaire) est borné à 5 000 caractères (`LONGUEUR_TEXTE_LIBRE`),
-  le navigateur comme le serveur.
-- La liste fonctionne sans JavaScript (liens et bouton « Filtrer ») ; avec
-  HTMX, recherche, filtres, tri et pagination remplacent seulement la zone
-  `#zone-liste` (en-tête `HX-Target: zone-liste`) et l'adresse suit.
-- Une saisie refusée réaffiche le formulaire (statut 422) avec les messages
-  sous les champs et les valeurs saisies ; rien n'est écrit.
-- Retour : « Modifier » et « Supprimer » portent l'adresse de la liste
-  (paramètre `retour`, limité aux pages de l'écran : recherche, filtres, tri
-  et page). Après un enregistrement ou une suppression, on revient sur cette
-  liste ; si sa page a disparu, à la dernière page qui existe. « Annuler »
-  ramène là d'où l'on venait : la liste, ou la fiche quand la suppression a
-  été demandée depuis la fiche (`depuis=fiche`). L'adresse d'une liste
-  omet les filtres vides sans valeur par défaut et le tri par défaut.
-- Options d'un écran : `introduction`, `gabarit_liste` (étendre
-  `donnees/liste.html`, blocs `avant_liste` et `apres_liste`),
-  `contexte_liste`, `edition_en_ligne`, `actions_ligne` (« Dupliquer »),
-  `liens`, `parent`, `titre_page`, `complement_zone` (gabarit ajouté au bas
-  de la zone de liste, donc rafraîchi avec elle : la charge hebdomadaire des
-  besoins), `suite_creation(session, cree)` (ce qu'une création a entraîné :
-  `SuiteCreation(texte, adresse)`, phrase ajoutée au message et page où aller
-  ensuite à la place de la liste).
-- Mesures de référence (jeu grand, 1 280 px de large) : une ligne de liste
-  fait 37 px (une ligne de texte) ou 58 px (deux lignes).
-
-## 4. Les écrans de l'espace « Données »
-
-| Groupe | Adresse | Écran |
-|---|---|---|
-| Établissement | `/campus` | campus (édition sur place) et matrice des trajets (`POST /campus/trajets`) |
-| | `/salles` | salles : type, capacité, étage, équipements, accessibilité ; filtres campus, type, accessibilité |
-| | `/types-salle`, `/equipements`, `/types-seance` | listes configurables (édition sur place) |
-| | `/enseignants` | enseignants, statut, maxima (« 6 h »), enseignant fictif |
-| | `/groupes`, `/groupes/arbre` | groupes (liste filtrable et arbre repliable promotion > classe > demi-groupe, groupes à part regroupés par nature), chevauchements, salle accessible requise |
-| | `/etudiants` | étudiants (fictifs) et inscriptions |
-| | `/matieres` | matières, code module, promotion |
-| Besoins et disponibilités | `/besoins` | besoins : filtres semestre, promotion, groupe (et ses sous-groupes), matière, type, enseignant, salle imposée, volume ; ajout rapide ; duplication (`POST /besoins/<n>/dupliquer`) ; charge hebdomadaire des groupes concernés par les filtres (repliée, les plus chargés d'abord, 60 au plus) ; formulaire par mode de volume |
-| | `/indisponibilites` | enseignant, salle ou groupe ; chaque semaine ou période datée ; plage horaire |
-| Règles et calendrier | `/regles` | règles personnalisées de l'année : voir ci-dessous |
-| | `/calendrier` | années et semestres ; ajout d'une année par défaut (`POST /calendrier/annees/par-defaut`, qui propose aussi les règles de base : « 4 règles proposées, à revoir dans Règles personnalisées ») ; une année créée par le formulaire générique (`POST /calendrier/annees`) mène à ses règles proposées (`/regles?annee=<n>&etat=proposee`, « 4 règles personnalisées proposées pour cette année, ci-dessous ») ; fériés (`POST /calendrier/annees/<n>/feries`) ; sous-écrans `/calendrier/annees`, `/calendrier/semestres`, `/calendrier/jours-fermes` ; une année commence entre 2000 et 2100 et dure deux ans au plus, un semestre un an au plus (au-delà, faute de frappe : « 2227 » pour « 2027 ») |
-| | `/grille` | créneaux de la grille (édition sur place) |
-| | `/parametres` | paramètres construits depuis `Parametres` (libellé, description, unité, bornes) : un entier devient un champ numérique (une heure : « 08:30 »), un oui / non une case, un ensemble de jours (`type == "jours"` : les jours travaillés de l'établissement) sept cases du lundi au dimanche, envoyées « 0,1,2,3,4 » au service (aucune case cochée : « au moins un jour est attendu » sous le champ), un paramètre **à choix** (`type == "choix"`, comme le mode de la pause déjeuner : horaires déterminés, pause libre bornée, pas de pause) une liste déroulante avec les libellés du contrat ; les champs utiles à un seul mode sont masqués selon ce mode (`VISIBLE_SI` de `reglages.py`) ; une incohérence du déjeuner s'affiche sous le champ fautif ; `POST /parametres/defaut` ; pendant un calcul, la page le signale et tout enregistrement est refusé (409, saisie conservée) : le calcul relit les paramètres pour contrôler sa solution |
-| Jeux de données | `/jeux` | établissement fictif petit / moyen / grand (`edt.services.jeux`), graine, version de référence ; remise à zéro |
-
-Page `/jeux` : la base n'est touchée qu'au travers de
-`edt.services.jeux.recharger_jeu_fictif` et `remettre_a_zero`, qui ouvrent
-leurs propres sessions (ces routes n'ont pas de `SessionRequete`). Un
-chargement dans une base qui contient déjà des données, et toute remise à
-zéro, exigent une case de confirmation qui liste ce qui sera effacé. Pendant
-un calcul, les deux actions sont refusées avec un message clair. Une seule
-de ces opérations tourne à la fois : une seconde demande pendant la première
-(deux personnes qui cliquent en même temps) est refusée tout de suite avec
-« un chargement ou une remise à zéro est déjà en cours », sans toucher à la
-base ; une page demandée pendant ce temps reçoit « base de données occupée,
-réessayer », jamais le conseil d'initialiser la base.
+- **Paramètres** : chaque paramètre devient un champ selon son type (nombre,
+  heure, case, liste de choix, cases des jours) ; les champs utiles à un seul
+  mode de la pause déjeuner sont masqués selon le mode. Pendant un calcul,
+  tout enregistrement est refusé (409, saisie conservée) : le calcul relit
+  les paramètres pour contrôler sa solution.
+- **Jeux de données** : un chargement dans une base non vide et toute remise
+  à zéro exigent une confirmation qui liste ce qui sera effacé ; refusés
+  pendant un calcul ; une seule de ces opérations à la fois, une page
+  demandée pendant ce temps reçoit « base occupée, réessayer ».
+- **Calendrier** : la création d'une année propose ses règles de base et la
+  reprise des règles de l'année précédente, en état « proposée ».
 
 ### Règles personnalisées (`/regles`)
 
-Données › Règles et calendrier › « Règles personnalisées »
-(`edt/web/routes/donnees_regles_personnalisees.py`). L'écran ne parle qu'au
-contrat `edt.services.regles` (`lister`, `lire_par_id`, `valider`, `creer`,
-`modifier`, `supprimer`, `changer_etat`, `activer`, `proposer_pour_annee`) ;
-le formulaire est construit par `edt.web.donnees.regles` depuis
-`CATALOGUE_TYPES`. Rien n'est propre à un type dans la couche web : un type
-ajouté au catalogue a son formulaire sans autre code.
+L'écran ne parle qu'au service `edt.services.regles` ; le formulaire est
+construit par `edt.web.donnees.regles` depuis `CATALOGUE_TYPES`. Rien n'est
+propre à un type dans la couche web : un type ajouté au catalogue a son
+formulaire sans autre code.
 
-**Liste.** Une année scolaire à la fois (`annee`, par défaut l'année en
-cours). Filtres `etat`, `type`, `niveau`, `origine`, `portee` (nature de la
-cible) et `groupe` (les règles d'un groupe **et** celles qu'il hérite de ses
-ancêtres) ; recherche `q`, sans tenir compte des accents ni de la casse, sur
-le code, la phrase, la cible et le commentaire ; 50 règles par page. Chaque
-ligne donne le code, la phrase (deux lignes au plus, entière au survol), le
-type et l'origine, la portée et la période, le niveau, l'état et les
-actions ; le tableau tient dans 1 280 px. Une règle **proposée** a son fond
-surligné, l'état « Proposée » et deux boutons : « Activer » et « Écarter »
-(elle devient inactive) ; une règle active a « Désactiver », une inactive
-« Activer ». Un bandeau compte les règles proposées de l'année (« sans effet
-tant qu'elles ne sont pas confirmées »), avec « Les voir » (toutes les
-proposées de l'année, sans les autres filtres ni la recherche) et « Tout
-confirmer » (`POST /regles/confirmer` : celles qui feraient doublon avec une
-règle active restent proposées et le message dit pourquoi). « Proposer les
-règles de base » (`POST /regles/proposer`) appelle `proposer_pour_annee` :
-règles de base et reprise de l'année précédente, en état proposé ; le
-message compte les créées, celles déjà présentes et celles à revoir (cible
-absente cette année). La liste fonctionne sans JavaScript ; avec HTMX,
-recherche, filtres et pagination remplacent `#zone-liste`.
-
-**Ajout guidé.** `GET /regles/nouveau` : étape 1, une carte par type
-(libellé, description, exemples de phrases, portées admises).
-`GET /regles/nouveau?type=PAUSE_DEJEUNER` : étape 2, le formulaire.
-
-| Rubrique | Champs |
-|---|---|
-| Portée | `portee` (natures admises par le type ; « l'établissement » seulement si le type l'admet) puis une liste par nature, `cible_<nature>`, affichée selon la nature choisie (`data-visible-si`) ; groupes en arbre (promotion, └ classe, └ demi-groupe), groupes à part ensuite |
-| Paramètres | un champ par `ChampRegle`, nommé `p_<nom>` (`PREFIXE_PARAMETRE`) : `JOURS` et campus en cases sur une ligne, salles et créneaux (`CODES`, `MOMENTS`) en liste de cases filtrable, `CHOIX` et `CODE` en liste déroulante, `HEURE` en « HH:MM », `DUREE` et `ENTIER` en nombre (bornes du schéma) ; `condition` du schéma → `data-visible-si` (durée de la pause : mode libre seulement) ; `defaut_global` rappelé dans l'aide (« Défaut de l'établissement : 12 h 45 ») ; un paramètre réservé à certaines portées (`ChampRegle.portees` : « Personnes concernées », établissement seulement) n'est affiché que pour elles et retiré du brouillon pour une autre portée, son bloc entier masqué s'il n'a que de tels paramètres |
-| Application | `niveau` (nécessaire, important, facultatif), `periode` (`annee` ; `semestre` avec `semestre` ; `dates` avec `date_debut` et `date_fin`, absent pour un type non datable : `periode_datable` faux, comme les pauses ; forcé, il est refusé avec le message du domaine sous la période), `commentaire` |
-
-L'aperçu (`POST /regles/apercu`) part à chaque changement : il passe le
-brouillon à `valider` et affiche la phrase telle qu'elle sera enregistrée,
-avec le niveau et la période, ou la liste de ce qui reste à corriger. Il est
-porté par la section `apercu-regle` (`hx-include="closest form"`,
-`from:closest form`), **pas** par le formulaire : HTMX valide un formulaire
-avant de l'envoyer et, tant qu'un champ requis est vide ou hors bornes,
-n'enverrait rien, sans rien dire. Un formulaire neuf commence par « La phrase
-de la règle s'affiche ici dès qu'elle est complète » ; une saisie refusée
-redemande l'aperçu au chargement.
-
-À l'enregistrement (`POST /regles/nouveau`, `POST /regles/<n>/modifier`),
-`ErreurSaisie.erreurs` (clés `portee.cible`, `parametres.duree`,
-`periode.semestre`...) est ramenée sous les champs par `erreurs_par_champ`
-(`parametres.X` → `p_X`, `portee.cible` → `cible_<nature>`) ; les erreurs
-globales d'un brouillon mal formé vont sous leur bloc (`portee` et `periode`
-sous leur choix, `parametres` ou un paramètre inconnu sous le titre du bloc
-« Paramètres ») et le reste (`origine`, doublon d'une règle active...) dans le
-bandeau : aucune n'est perdue. Statut
-422, saisie conservée, jamais d'erreur 500. La modification réutilise le même
-formulaire, prérempli (`valeurs_de_regle`) ; son aperçu est calculé comme si
-la règle était inactive, pour qu'elle ne fasse pas doublon avec elle-même
-(le contrôle complet a lieu à l'enregistrement).
-
-Sans aucune année scolaire, `/regles` et `/regles/nouveau` affichent « Aucune
-année scolaire pour l'instant » avec un lien vers le calendrier, pas une
-erreur. Un numéro de règle ou d'année impossible (vingt chiffres) donne
-« introuvable » ; le commentaire d'une règle est borné à 2 000 caractères
-(`LONGUEUR_COMMENTAIRE`, contrôlé par le formulaire : le service ne le borne
-pas) ; l'aperçu demandé sans HTMX renvoie vers le formulaire.
-
-**Suppression d'une règle.** Comme les autres listes : confirmation dans la
-ligne (`GET /regles/<n>/ligne/suppression`, `POST /regles/<n>/ligne/supprimer`)
-ou page de confirmation sans JavaScript (`GET`/`POST /regles/<n>/supprimer`),
-avec le conseil de la désactiver pour la garder sans effet.
+- **Liste** : une année scolaire à la fois ; filtres par état, type, niveau,
+  origine, portée et groupe (un groupe montre aussi les règles héritées de
+  ses ancêtres) ; recherche sans tenir compte des accents. Une règle
+  proposée est mise en évidence, avec ses actions « activer » et « écarter » ;
+  un bandeau compte les règles proposées de l'année et permet de toutes les
+  confirmer.
+- **Ajout guidé** : d'abord le choix du type (une carte par type, avec ses
+  exemples de phrases), puis le formulaire en trois rubriques : portée
+  (natures admises par le type), paramètres (un champ par `ChampRegle`),
+  application (niveau, période, commentaire).
+- **Aperçu** : à chaque changement, le brouillon passe par `valider` et la
+  phrase de la règle s'affiche telle qu'elle sera enregistrée, ou la liste de
+  ce qui reste à corriger. L'aperçu est porté par une section du formulaire,
+  pas par le formulaire lui-même : HTMX n'enverrait rien tant qu'un champ
+  requis est vide.
+- **Erreurs** : les erreurs du service (`ErreurSaisie.erreurs`, par chemin
+  JSON) reviennent sous le champ concerné ; aucune n'est perdue.
 
 **Supprimer une cible visée par des règles.** Supprimer un groupe, un
 enseignant, un campus, une salle, un type de séance, une matière, un besoin
-ou un semestre liste d'abord les règles touchées, chacune avec « Modifier » et
-« Supprimer » (retour vers la confirmation), et ce qu'il lui arrivera :
-« sera supprimée », ou « L115 sera retiré de ses salles » pour une règle qui
-cite l'élément dans ses paramètres (salles d'une règle de salles, campus
-d'une règle de campus) ; une règle qui ne vaudrait plus rien sans lui (seule
-salle citée, ordre « CM avant TD » sans CM) est supprimée. Le bouton devient
-« Supprimer cet enseignant et ses 2 règles » : une seule transaction, une ligne de
-journal par règle (« Règle R005 (2026-2027) supprimée avec enseignant
-« Mme Roux » »). Le formulaire envoie les identifiants vus (`_regles`) :
-si la liste a changé entre l'affichage et la confirmation, rien n'est
-supprimé et la page le dit. Un groupe vise aussi les règles de ses
-sous-groupes et de ses matières ; un semestre, celles de ses besoins.
+ou un semestre liste d'abord les règles touchées et ce qu'il leur arrivera
+(supprimée, ou l'élément retiré de ses paramètres). La confirmation supprime
+l'élément et ses règles dans une seule transaction, une ligne de journal par
+règle. Si la liste des règles a changé entre l'affichage et la confirmation,
+rien n'est supprimé et la page le dit. Ce calcul est fait par
+`edt.services.referentiels.regles_cibles`.
 
-`services/regles` ne donne ni les règles touchées par la suppression d'un
-élément quelconque ni le retrait d'un code des paramètres d'une règle : c'est
-fait côté référentiels, dans `edt.services.referentiels.regles_cibles`
-(`regles_touchees`, `appliquer`, table `PARAMETRES_CITANT`), avec
-`regles_visant`, `lire_par_id`, `modifier` et `supprimer` du contrat.
+## 5. Onglet « Générer »
 
-## 5. Services (`edt.services.referentiels`)
+| Adresse | Rôle |
+|---|---|
+| `GET /calculs?semestre_id=` | récapitulatif, vérifications préalables, règles et niveaux, règles personnalisées, pause déjeuner, options, lancement |
+| `GET /calculs/verifications` | fragment des vérifications, recalculé quand un niveau change |
+| `POST /calculs` | lit les niveaux, enregistre la pause déjeuner si elle a changé, lance le calcul et redirige vers son suivi |
+| `GET /calculs/{id}`, `GET /calculs/{id}/etat` | suivi puis résultat ; le fragment d'état est interrogé chaque seconde tant que le calcul tourne |
+| `POST /calculs/{id}/arreter`, `POST /calculs/{id}/relancer` | arrêt ; relance plus longue ou autre solution |
+| `GET /versions?semestre_id=` | historique des calculs et des versions |
+| `POST /versions/{id}/activer`, `POST /versions/{id}/supprimer` | activation ; suppression (refusée pour la version active) |
 
-Fonctions typées, sans validation de transaction, aux retours
-sérialisables : elles servent telles quelles à une API ou à un assistant.
+- **Récapitulatif** : besoins, séances de la semaine type, groupes,
+  enseignants et salles concernés, lus dans l'instantané du semestre comme
+  le calcul.
+- **Vérifications préalables** (`pre_verifier_semestre`) : groupées par
+  gravité. Une erreur empêche de lancer (la page est réaffichée en 409 avec
+  les choix de l'utilisateur) ; les avertissements sont comptés et
+  dépliables. Elles reçoivent les niveaux choisis.
+- **Règles et niveaux** : une ligne par règle du catalogue ; pour une règle
+  modifiable, un choix entre nécessaire, important et facultatif, le niveau
+  par défaut signalé ; les règles qui définissent le problème sont affichées
+  « toujours nécessaires », sans choix. Préremplissage : les niveaux du
+  dernier calcul du semestre, sinon ceux du catalogue. Un choix invalide
+  réaffiche la page en 422, sans rien lancer.
+- **Règles personnalisées** : les règles actives de l'année qui recoupent le
+  semestre, chacune avec un choix de niveau et une case pour l'ignorer le
+  temps d'un calcul (jamais préremplie). Au-delà de vingt règles, elles sont
+  regroupées par type et repliées. Une règle créée ou activée après un calcul
+  s'applique à son propre niveau lors d'une relance, et le message le dit.
+- **Pause déjeuner** : trois choix (horaires déterminés, pause libre bornée,
+  pas de pause, champ `dejeuner`), préremplis depuis les paramètres ; les
+  heures et la durée ne sont visibles que pour les modes qui les utilisent.
+  Au lancement, un choix différent des paramètres est enregistré dans sa
+  propre transaction, pour que les vérifications, le calcul et les calculs
+  suivants le voient. Une saisie refusée réaffiche la page en 422 sans rien
+  enregistrer ni lancer.
+- **Options** : durée de recherche (les deux durées affichées sont lues dans
+  les paramètres `temps_limite_s` et `temps_limite_long_s`), recherche d'un
+  emploi du temps plus confortable (optimisation, cochée par défaut),
+  proposition d'une autre solution (nouvelle graine, sans partir de la
+  version active).
+- **Un seul calcul à la fois** : si un calcul tourne, `/calculs` montre son
+  suivi ; un second lancement mène au suivi du calcul en cours.
+- **Résultat** : succès (séances placées, bilan des séances datées, liens
+  vers l'emploi du temps et « À traiter », indicateurs, qualité) ; arrêté
+  avec une solution (meilleure solution conservée, version enregistrée) ;
+  refusé par les vérifications préalables (liste des impossibilités) ;
+  impossible (prouvé) ; pas trouvé dans le temps imparti (proposition de
+  relance plus longue) ; erreur (numéro du calcul et fichier journal, jamais
+  de trace). Dans tous les cas, les avertissements du calcul sont comptés et
+  dépliables, et seuls les niveaux qui s'écartent du défaut sont rappelés.
 
-```python
-lister(session, code, *, recherche="", tri=None, descendant=False, page=1, taille=50,
-       filtres=None) -> PageListe
-lire(session, code, ident) -> dict              # valeurs canoniques + id + nom_affiche
-creer(session, code, valeurs) -> dict
-modifier(session, code, ident, valeurs, *, partiel=False) -> dict
-analyser_suppression(session, code, ident) -> AnalyseSuppression   # refus, conséquences, règles
-supprimer(session, code, ident, *, regles_confirmees=None) -> str
-    # ErreurRegleMetier si encore utilisé, ou si des règles personnalisées sont touchées
-    # et que regles_confirmees (leurs id) ne correspond pas exactement ;
-    # ErreurCalculEnCours (sous-classe) pendant un calcul
-options(session, code, nom_champ) -> list[tuple[str, str]]
-decrire(code) -> dict                           # champs, types, choix, filtres, tris
+## 6. Onglet « Emploi du temps »
+
+Paramètres de `GET /emploi-du-temps` : `semestre_id`, `version_id` (la
+version active par défaut), au plus une cible (`groupe_id`, `enseignant_id`,
+`salle_id`, ou `cible=groupe:12`), `couche` (`hebdo` ou `date`), `affichage`
+(`semaine` ou `jour`), `date`, `jour`, `seance` (`h<id>` pour une séance de
+la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
+évidence et ouvrir son panneau, `etendu` pour la vue d'un groupe.
+
+- **Ouverture** : sans cible dans l'adresse, la page s'ouvre sur la dernière
+  cible consultée (témoin `edt_derniere_cible`), sinon sur la première classe
+  de l'année. Une cible inconnue est remplacée par la première classe, avec
+  un message.
+- **Sélecteurs** : semestre, version, « pour qui » (groupes par nature,
+  enseignants, salles par campus) avec recherche rapide.
+- **Trois affichages** : semaine type ; semaine datée (navigation, saut à
+  une date, jours fermés grisés avec leur libellé, séances annulées barrées,
+  déplacées en pointillés, séances « à programmer » listées sous la grille) ;
+  jour.
+- **Colonnes** : les jours travaillés de l'établissement, plus tout jour où
+  tombe une séance affichée (samedi ouvert par une règle ou un type de
+  séance).
+- **Vue d'un groupe** : restreinte (le groupe et ses ascendants, ce que
+  suivent tous ses étudiants ; défaut d'une promotion, d'une classe, d'un
+  groupe transverse) ou étendue (en plus ses descendants et les groupes qui
+  partagent une partie de ses étudiants, hachurés ; défaut d'un demi-groupe).
+  Un bandeau dit ce qui est affiché et ce qui ne l'est pas, et propose la
+  bascule.
+- **Bande du déjeuner** : celle de la personne affichée, d'après
+  `Instantane.reglages` : la plage réservée en horaires déterminés, la
+  fenêtre en pause libre, rien sans pause ; une valeur venue d'une règle la
+  nomme.
+- **Bloc** : horaire, matière, type, groupes, enseignants, salle ; couleur
+  stable par matière et liseré de la couleur du type de séance ; cadenas si
+  la séance est verrouillée ; marque colorée selon la gravité de ses
+  anomalies ; mention d'une séance qui n'a pas lieu chaque semaine.
+- **Panneau latéral** (clic sur un bloc ; sans JavaScript, la même page avec
+  `seance=`) : détail, exigences de salle, anomalies de la séance, puis
+  formulaire. Jour et heure parmi les débuts de la grille et les jours permis
+  de la séance ; salle parmi les **salles compatibles**, libres d'abord, les
+  occupées signalées avec la séance qui les occupe.
+- **Enregistrement** : `verifier_modification` est appelé avant toute
+  écriture. Une entorse à une règle nécessaire refuse le déplacement et
+  s'affiche en phrases ; une entorse à une règle importante ou facultative
+  accompagne le message de succès. Une retouche applique les mêmes règles,
+  aux mêmes niveaux, que le calcul de la version. Après un déplacement, les
+  séances datées de la version sont recalculées.
+- **Verrou** : verrouiller ou déverrouiller une séance.
+- **Séance datée** : déplacer cette séance seulement (date initiale
+  conservée), l'annuler avec un motif, programmer une séance « à
+  programmer ». Une retouche prend l'origine « saisie manuelle ».
+- **Recalculer les séances datées** : réapplique la semaine type, conserve
+  les retouches manuelles et le dit avant d'agir. Les séances datées
+  importées ne se recalculent jamais depuis la semaine type (elles seraient
+  doublées) : l'écran l'explique au lieu de proposer le bouton.
+- **Impression** : la feuille d'impression masque menus, sélecteurs et
+  panneau et imprime la grille en A4 paysage, avec ses couleurs et un titre.
+- **Exports** : `/export/emploi-du-temps.csv` et `/export/emploi-du-temps.ics`
+  pour la version, la couche et la cible affichées.
+
+## 7. Onglet « À traiter »
+
+`GET /a-traiter` (filtre `semestre_id` facultatif) : pour la version active
+de chaque semestre, les anomalies de la semaine type puis des séances
+datées, regroupées par gravité puis par règle (100 lignes au plus par
+règle, le total restant affiché), puis les séances « à programmer » avec
+leur raison. Chaque ligne mène à l'emploi du temps de la ressource
+concernée, la séance mise en évidence. Une anomalie d'une règle
+personnalisée porte le code de la règle en lien vers elle ; une anomalie
+d'une règle importante ou facultative porte son niveau.
+
+**Nombre de points à traiter** : une seule définition, `ATraiter.total`,
+reprise par la page, la pastille de l'onglet et l'accueil. Il compte les
+erreurs et les avertissements, sur la semaine type et les séances datées,
+et chaque séance « à programmer » une fois.
+
+Une version calculée en ligne de commande avec des règles ignorées
+(`generer -d CODE`) est vérifiée sur toutes les règles ; les écarts aux
+règles ignorées sont listés à part et ne comptent pas comme points à
+traiter.
+
+## 8. Accueil
+
+`GET /` montre ce dont l'utilisateur a besoin pour avancer, **sans
+statistiques**, pour le semestre du jour :
+
+1. **Prochaine étape** : une phrase et le lien vers l'écran qui y mène.
+2. **Emploi du temps du semestre** : le calcul en cours, ou la version
+   active et ses points à traiter, ou l'absence d'emploi du temps.
+3. **Dernier calcul**, seulement s'il s'est terminé sans emploi du temps
+   (impossible, refusé, temps dépassé, arrêté, erreur).
+4. **État de la base**, seulement en cas de problème (base inaccessible,
+   schéma périmé, base non initialisée, écritures refusées) ou de base vide,
+   avec la cause et le remède.
+
+| Situation | Prochaine étape |
+|---|---|
+| base vide | `/jeux` (charger un établissement fictif), ou `/import` |
+| salles ou groupes manquants | `/salles` ou `/groupes` |
+| calcul en cours | `/calculs/{id}` |
+| aucun besoin pour le semestre | `/besoins` |
+| pas de version | `/calculs?semestre_id=` (ou le dernier calcul en échec) |
+| anomalies ou séances à programmer | `/a-traiter?semestre_id=` |
+| sinon | `/emploi-du-temps?version_id=` |
+
+`/sante` rend l'état de l'application en JSON (base accessible,
+initialisée, inscriptible, écarts de schéma) pour la supervision ; toute
+page GET répond aussi à HEAD, sans corps (`IntergicielHead`).
+
+## 9. Fichiers des écrans de l'emploi du temps
+
+| Fichier (`src/edt/services/emploi_du_temps/`) | Rôle |
+|---|---|
+| `calculs.py` | préparation, lancement et résultat d'un calcul |
+| `vues.py` | séances d'une vue (version, cible, couche, période) |
+| `disposition.py` | position des blocs dans la grille (fonction pure) |
+| `modifications.py` | salles compatibles, déplacement vérifié, verrou, séances datées |
+| `versions.py` | semestres, versions, historique, activation, suppression |
+| `anomalies.py`, `compteur.py` | la liste « À traiter » et son compteur |
+| `tableau_de_bord.py` | ce que l'accueil affiche |
+| `regles_personnalisees.py` | règles personnalisées sur ces écrans |
+| `presentation.py` | mises en forme françaises (durées, semaines, couleur d'une matière) |
+| `identifiants.py` | identifiants reçus (adresse, formulaire, témoin) vérifiés avant la base |
+| `memoire.py`, `prechauffage.py` | mémoire des résultats coûteux et recalcul en arrière-plan |
+| `raccords.py` | seul point d'appel des pré-vérifications, du vérificateur et de l'instanciation |
+
+Routes : `web/routes/calculs.py`, `emploi_du_temps.py`, `a_traiter.py`,
+`accueil.py` ; gabarits : `web/templates/edt/`.
+
+## 10. Panneau de l'assistant
+
+Un bouton fixe, présent sur toutes les pages, ouvre le panneau de
+l'assistant conversationnel, qui recouvre la page sans la décaler. Son
+fonctionnement, ses garde-fous et ses limites sont décrits dans
+[`assistant.md`](assistant.md).
+
+## 11. Performance et mémoire
+
+Les écrans de consultation passent par `memoire.memoriser` : la
+vérification d'une version, les pré-vérifications et le récapitulatif d'un
+semestre sont gardés avec une **empreinte** de la base (fichier SQLite et son
+journal, versions actives, agrégats sur leurs séances). Toute écriture
+validée l'invalide ; le résultat est recalculé une fois, puis servi depuis la
+mémoire. Les modifications vérifient toujours sans mémoire, dans leur
+transaction. Après un calcul réussi ou l'activation d'une version,
+`prechauffage.lancer` refait ces calculs dans un fil d'arrière-plan unique.
+
+Sur le jeu moyen, une fois la mémoire remplie, l'accueil, Générer, l'emploi
+du temps d'une classe, À traiter et la liste des besoins répondent chacun en
+moins de 0,3 s sur un poste de développement. Le premier affichage après une
+écriture faite hors de ces écrans (calcul en ligne de commande, import) paie
+le chargement de l'instantané et la vérification.
+
+## 12. Disposition des blocs
+
+`disposition.disposer(plages, ouverture, fermeture)` reçoit des
+`Plage(cle, colonne, debut, fin)` (minutes depuis minuit, colonne = jour) et
+renvoie l'axe et une `Position` par clé, en pourcentages :
+
+1. **Axe** : de `min(ouverture, débuts)` à `max(fermeture, fins)`, arrondi à
+   l'heure pleine. Un DST de 8 h à 12 h avec une grille qui ouvre à 8 h 30
+   élargit l'axe à 8 h.
+2. **Grappes** : dans une colonne, les plages triées par début sont
+   regroupées tant qu'elles recoupent la grappe en cours (plages
+   semi-ouvertes).
+3. **Voies** : chaque plage prend la première voie libre de sa grappe, sinon
+   une nouvelle ; la grappe est découpée en colonnes de même largeur.
+4. **Élargissement** : un bloc s'étend vers la droite sur les voies voisines
+   libres pendant toute sa durée.
+
+Deux demi-groupes en TP au même moment occupent chacun la moitié de la
+colonne. Une colonne est au moins aussi large que son plus grand nombre de
+séances côte à côte (la grille défile), et un bloc étroit ne garde que
+matière, groupes et salle. Le calcul est testé seul
+(`tests/unitaires/web_edt/test_disposition.py`).
+
+## 13. Cas limites
+
+Aucune adresse de l'interface ne répond par une erreur 500 sur un chemin
+normal. Les tests de cas limites des écrans (marqueur `cas_limite`, docstring
+« Cas : … Risque : … ») sont rangés avec leur écran ; `test_cas_limites.py`
+réunit ceux qui traversent plusieurs écrans :
+
+```sh
+python -m pytest -m cas_limite tests/unitaires/web_donnees tests/integration/web_donnees
+python -m pytest -m cas_limite tests/unitaires/web_edt tests/integration/web_edt
 ```
 
-`identifiants(session, code, *, recherche="", filtres=None) -> list[int]`
-donne tous les éléments retenus (toutes pages).
+- **Identifiants hors bornes ou inconnus** (lien mal copié, `-1`, vingt
+  chiffres) : « introuvable » (404). Dans l'adresse de la grille, une cible
+  hors bornes affiche la première classe en le disant ; une séance
+  introuvable ouvre la page sans panneau, en le disant.
+- **Nombres écrits dans un texte** (`seance=h12`, `cible=groupe:12`,
+  champs de formulaire) : chiffres ASCII seulement, 30 chiffres significatifs
+  au plus (`entier_ecrit`) ; au-delà, « illisible » ou « hors bornes », jamais
+  une exception. Une saisie recopiée dans un message est coupée à
+  40 caractères.
+- **En-tête `HX-Current-URL` illisible** : ignoré et journalisé ; l'adresse de
+  retour par défaut est utilisée.
+- **Paramètre vide** (`?semestre_id=`) : vaut « non précisé ».
+- **Témoin de dernière cible** illisible : ignoré, journalisé, remplacé.
+- **Fragment ouvert sans HTMX** (suivi d'un calcul, vérifications, panneau
+  d'une séance, compteur, ligne d'une liste) : redirection vers la page
+  complète (303).
+- **Textes longs** : motif d'annulation et commentaire d'une règle bornés à
+  2 000 caractères, texte libre des données à 5 000, dans le navigateur
+  comme sur le serveur.
+- **Autre écrivain** (import ou chargement de jeu dans un autre onglet,
+  commande sur le serveur) : une écriture attend son tour jusqu'au délai de
+  verrou, puis « base occupée » (503) sans rien changer ; les pages restent
+  servies pendant ce temps.
+- **Arrêter un calcul déjà terminé** (deux onglets) : le message dit qu'il
+  n'y a rien à arrêter.
+- **Données vides** : une version sans séance s'affiche, se liste et
+  s'exporte ; un semestre sans grille laisse les écrans ouverts.
+- **Filtres inconnus** (`couche`, `affichage`, deux cibles à la fois,
+  `cible=bureau:3`) : page « saisie invalide » (422) qui nomme le paramètre.
 
-`code` : `campus`, `type_salle`, `equipement`, `salle`, `enseignant`,
-`groupe`, `etudiant`, `matiere`, `type_seance`, `besoin`, `indisponibilite`,
-`annee_scolaire`, `semestre`, `jour_ferme`, `creneau`. Services propres :
-`matrice_trajets`, `enregistrer_trajets`, `arbre_groupes`, `sous_arbre`,
-`dupliquer_besoin`, `charges_hebdomadaires`, `creer_annee_par_defaut`,
-`preremplir_jours_feries`, `apercu_calendrier`, `parametres_affichables`,
-`enregistrer_parametres_saisis`, `proposer_regles` (règles proposées à une année,
-renvoie leur nombre ; `creer_annee_par_defaut` le donne dans `regles_proposees`),
-`regles_touchees` et `appliquer_aux_regles` (règles touchées par une suppression). Une saisie refusée lève `ErreurSaisie`
-(sous-classe d'`ErreurDonneesInvalides`), dont `champs` donne le message de
-chaque champ fautif.
+## 14. Ajouter une vue
 
-## 6. Le panneau Assistant
+Exemple : une vue « par campus ».
 
-Un bouton fixe « Assistant », en bas à droite de toutes les pages, ouvre un
-panneau latéral qui recouvre la page sans la décaler. Il se ferme par sa
-croix, par le bouton ou par Échap ; le focus passe au panneau puis revient au
-bouton ; son état (ouvert ou fermé) est conservé d'une page à l'autre
-(stockage local du navigateur). Sans JavaScript, le lien ouvre le panneau par
-l'ancre `#assistant`.
+1. **Service** : ajouter `CAMPUS = "campus"` à `vues.NatureCible`, sa clause
+   dans `vues._filtre_cible` (les séances dont la salle est sur ce campus),
+   son titre dans `_titre_cible` et ses options dans `options_cibles`.
+   `construire_vue` fait le reste : lecture limitée à la période,
+   disposition, anomalies.
+2. **Route** : accepter `campus_id` dans `emploi_du_temps.page` et
+   `Cible.depuis`, et l'ajouter aux paramètres d'export.
+3. **Test** : un cas de plus dans
+   `test_trois_affichages_pour_un_groupe_un_enseignant_une_salle`.
 
-Aujourd'hui il affiche une explication (« Bientôt : posez vos questions et
-demandez des modifications en langage courant »), trois exemples de demandes
-et un champ de saisie désactivé.
-
-À brancher plus tard :
-
-1. une route `POST /assistant` (module `edt/web/routes/assistant.py`) qui
-   reçoit la question et renvoie un fragment de conversation ; dans
-   `base.html`, activer le champ et donner au formulaire
-   `hx-post="/assistant"` et `hx-target` vers une zone de réponses du
-   panneau ;
-2. côté service, exposer à l'assistant les fonctions de la section 5 comme
-   outils : `decrire` pour connaître les champs, `lister` pour chercher,
-   `creer` / `modifier(partiel=True)` / `supprimer` pour agir. Toute
-   modification proposée est montrée et **confirmée par l'utilisateur**
-   avant l'appel ; les erreurs métier (`ErreurSaisie`, `ErreurRegleMetier`)
-   reviennent à l'assistant comme messages à reformuler ;
-3. journaliser chaque demande et chaque action au niveau INFO, comme le
-   reste de l'application.
-
-## 7. Banque des cas limites (`tests/unitaires/web_donnees`, `tests/integration/web_donnees`)
-
-Les tests de cas limites de l'espace « Données » portent le marqueur
-`cas_limite` (`pytest -m cas_limite`) et commencent par « Cas : <le scénario>.
-Risque : <ce qui casserait sans ce test>. ». Ils sont rangés avec leur écran ;
-`test_cas_limites.py` réunit ceux qui traversent plusieurs écrans (calcul en
-cours, dates aberrantes, adresses et en-têtes fabriqués, fragments ouverts à
-la main, champs piégés), `test_performance.py` mesure l'établissement complet
-(marqueur `perf` en plus, exclu de la CI courante).
-
-Les fixtures et aides communes sont dans `tests/integration/web_donnees/conftest.py`
-et `tests/outils/web_donnees/` :
-`version_generee` (une version produite par un vrai calcul), `calcul_retenu`
-(un calcul en cours, retenu jusqu'à `liberer()`), `depuis(adresse)` (en-têtes
-d'une requête HTMX), `formulaire_de` (valeurs d'un élément telles que le
-navigateur les renverrait), `saisie_salle` / `saisie_besoin` / `saisie_regle`,
-`texte_visible`, `NOMBRE_TROP_GRAND`, `NOMBRE_DE_5000_CHIFFRES`. Un cas qui
-relève d'un autre lot reste en `xfail(strict=True)` avec, en raison, le
-fichier à corriger : quand il sera corrigé, le test passera et échouera
-(XPASS) pour qu'on retire la marque.
+Pour un nouvel *affichage* (un mois, par exemple), ajouter un membre à
+`Affichage`, calculer la période et les colonnes dans `construire_vue`, et
+réutiliser `disposer` : il ne connaît que des colonnes et des minutes.
