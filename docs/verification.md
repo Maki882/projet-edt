@@ -21,7 +21,7 @@ Code : `src/edt/verification/` (vérificateur pur), `src/edt/services/verificati
 Le vérificateur liste les **anomalies** d'un emploi du temps. Une liste vide
 signifie « emploi du temps valide ». Il est indépendant du solveur (il n'en
 importe rien) et ne lit pas la base : il ne connaît que l'instantané du
-semestre et ce qu'on lui donne à vérifier. Il sert :
+semestre et ce qui lui est donné à vérifier. Il sert :
 
 - d'**oracle** à tous les tests du solveur ;
 - à valider une **modification manuelle** avant de l'enregistrer ;
@@ -486,7 +486,8 @@ plafond et le même début de message que les contraintes du catalogue ; ses
 champs `regle_id`, `regle_code` et `regle_phrase` nomment la règle.
 
 **Message** : « Règle R007 (phrase de la règle) : l'écart. » Unité d'une
-anomalie (une par entorse, au sens du § 2.2 de la conception) : une par
+anomalie (une par entorse, au sens du § 2.2 de
+[regles-personnalisees.md](regles-personnalisees.md)) : une par
 séance (types de sorte séance), une par personne et par jour, une par
 personne et par semaine, ou une par paire, selon le type (tableau
 ci-dessous). Des personnes dans la même situation (mêmes séances, mêmes
@@ -593,7 +594,7 @@ def version_a_verifier(session, version_id=None, semestre_id=None) -> int
 
 Niveaux appliqués, pour les trois fonctions : `niveaux` s'il est donné ;
 sinon **les niveaux du calcul de la version** (`niveaux_de_version`), ce que
-fait l'interface (À traiter, accueil, grille) et la commande. Avec
+fait l'interface (page « Points à traiter », accueil, grille) et la commande. Avec
 `contraintes_actives` (option `-c` de la commande), ces niveaux sont
 **restreints** aux codes demandés, les autres contraintes n'étant pas
 vérifiées : restreindre la vérification ne change pas la gravité d'une
