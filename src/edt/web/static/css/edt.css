@@ -674,6 +674,11 @@
   display: inline;
 }
 
+/* Un titre qui suit une rangée de boutons ne la touche pas. */
+.edt-boutons + h3 {
+  margin-top: 1.5rem;
+}
+
 .edt-indicateurs .compteur-nombre {
   font-size: 1.35rem;
 }

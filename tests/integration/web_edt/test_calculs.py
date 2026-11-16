@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import re
 import threading
 
 import pytest
@@ -19,6 +21,7 @@ from edt.services.emploi_du_temps import calculs, prechauffage, presentation
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
+from edt.web.routes import calculs as routes_calculs
 
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 
@@ -48,6 +51,15 @@ def _durees() -> tuple[int, int]:
     with session_base() as session:
         parametres = lire_parametres(session)
     return parametres.temps_limite_s, parametres.temps_limite_long_s
+
+
+def _bouton_produire_au_bout_du_lien(client, page: str) -> bool:
+    """Vrai si le lien « Voir l'emploi du temps » de `page` mène au bouton qui produit les
+    séances datées (le message de la page renvoie à ce bouton)."""
+    (adresse,) = re.findall(r'href="([^"]+)">Voir l.emploi du temps<', page)
+    cible = client.get(html.unescape(adresse))
+    assert cible.status_code == 200, adresse
+    return ">Produire les séances datées</button>" in cible.text
 
 
 def _nb_calculs() -> int:
@@ -108,6 +120,10 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis(jeu_minima
     fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
     assert "<html" not in fragment
     assert "hx-trigger" not in fragment  # calcul fini : l'interrogation s'arrête
+    # Le bandeau « Calcul lancé. » de la page, périmé une fois le calcul fini, est vidé.
+    assert '<div id="messages" class="messages" aria-live="polite" hx-swap-oob="true"></div>' in (
+        fragment
+    )
 
 
 @pytest.mark.cas_limite
@@ -135,6 +151,7 @@ def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
         assert demarre.wait(DELAI)
         fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
         assert 'hx-trigger="every 1s"' in fragment
+        assert "hx-swap-oob" not in fragment  # « Calcul lancé. » reste pendant le calcul
         assert "Temps écoulé" in fragment and "Arrêter le calcul" in fragment
 
         page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
@@ -378,23 +395,29 @@ def test_double_clic_sur_supprimer_une_version(version_generee, client):
         generation.lancer_calcul(version_generee.semestre_id), DELAI
     )
     client.post(f"/versions/{version_generee.version_id}/activer")
-    reponses = [
-        client.post(f"/versions/{second.version_id}/supprimer", follow_redirects=False)
-        for _ in range(2)
-    ]
+    historique = f"/versions?semestre_id={version_generee.semestre_id}"
+    # L'adresse du formulaire, telle que la page de l'historique la donne.
+    (action,) = re.findall(
+        rf'action="(/versions/{second.version_id}/supprimer[^"]*)"', client.get(historique).text
+    )
+    reponses = [client.post(html.unescape(action), follow_redirects=False) for _ in range(2)]
     assert [r.status_code for r in reponses] == [303, 303]
-    assert reponses[1].headers["location"] == "/versions"
-    page = client.get("/versions")
+    # Le second envoi revient à l'historique du même semestre, pas au semestre par défaut.
+    assert reponses[1].headers["location"] == historique
+    page = client.get(historique)
     assert page.status_code == 200 and "déjà été supprimée" in page.text
 
 
 @pytest.mark.cas_limite
 def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
     """Cas : double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul
-    lancé par le premier démarre.
+    lancé par le premier démarre ; puis un autre onglet envoie d'autres réglages.
     Risque : bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le
-    calcul demandé tourne ; deux calculs lancés.
+    calcul demandé tourne ; deux calculs lancés ; ou « Calcul lancé. » pour des réglages qui
+    n'ont pas été appliqués.
     """
+    # Délai du double envoi très large : le test ne dépend pas de la charge de la machine.
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 3600.0)
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -412,11 +435,46 @@ def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
         assert second.headers["location"] == f"/calculs/{premier}"
         page = client.get(second.headers["location"]).text
         assert "Calcul lancé." in page and "déjà en cours" not in page
+        autres_reglages = _formulaire(jeu_minimal.semestre_id, duree="long", optimiser="1")
+        autre = client.post("/calculs", data=autres_reglages, follow_redirects=False)
+        assert autre.headers["location"] == f"/calculs/{premier}"
+        page = client.get(autre.headers["location"]).text
+        assert "Calcul lancé." not in page and "déjà en cours" in page
         assert _nb_calculs() == 1
     finally:
         generation.demander_arret(premier)
     assert demarre.wait(DELAI)
     assert generation.attendre_calcul(premier, DELAI).etat is EtatCalcul.ARRETE
+
+
+@pytest.mark.cas_limite
+def test_suivi_apres_la_recherche_ne_propose_plus_l_arret(jeu_minimal, client, monkeypatch):
+    """Cas : le moteur a trouvé son emploi du temps et rendu la main ; le calcul contrôle,
+    enregistre puis produit les séances datées, ce qui prend quelques secondes sur un grand
+    établissement.
+
+    Risque : le suivi dit encore « le calcul cherche à l'améliorer. Vous pouvez l'arrêter »,
+    alors que plus rien n'est cherché et qu'un arrêt n'aurait aucun effet.
+    """
+    retenue, liberee = threading.Event(), threading.Event()
+    reelle = generation.instancier_version
+
+    def instanciation_retenue(*args, **kwargs):
+        retenue.set()
+        liberee.wait(DELAI)
+        return reelle(*args, **kwargs)
+
+    monkeypatch.setattr(generation, "instancier_version", instanciation_retenue)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    try:
+        assert retenue.wait(DELAI)
+        fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
+        assert generation.etat_calcul(calcul_id).en_cours
+        assert "cherche à" not in fragment and f"/calculs/{calcul_id}/arreter" not in fragment
+        assert "La recherche est terminée" in fragment
+    finally:
+        liberee.set()
+    assert generation.attendre_calcul(calcul_id, DELAI).reussi
 
 
 def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
@@ -435,6 +493,7 @@ def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
         return dataclasses.replace(
             resultat,
             message=f"{resultat.message} {MESSAGE_SOLUTION_CONSERVEE}",
+            avertissements=(*resultat.avertissements, MESSAGE_SOLUTION_CONSERVEE),
             statistiques={**resultat.statistiques, "arrete_par_utilisateur": True},
         )
 
@@ -451,6 +510,10 @@ def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
     assert "Calcul arrêté : meilleure solution conservée" in page
     assert "la meilleure solution trouvée a été conservée" in page
     assert "Voir l&#39;emploi du temps" in page or "Voir l'emploi du temps" in page
+    # La phrase désigne l'emploi du temps, pas « il » (la solution) ; l'arrêt demandé n'est
+    # pas une situation tendue.
+    assert "Cet emploi du temps est maintenant la version active" in page
+    assert " Il est " not in page and "situations tendues" not in page
 
 
 def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
@@ -495,6 +558,28 @@ def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
 
 
 @pytest.mark.cas_limite
+def test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit(
+    jeu_minimal, client, monkeypatch
+):
+    """Cas : le calcul enregistre sa semaine type, puis la production des séances datées échoue ;
+    la page du calcul dit de les produire avec le bouton « Produire les séances datées ».
+
+    Risque : le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas
+    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique.
+    """
+
+    def instanciation_en_panne(session, version_id, *args, **kwargs):
+        raise RuntimeError("panne simulée")
+
+    monkeypatch.setattr(generation, "instancier_version", instanciation_en_panne)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    assert generation.attendre_calcul(calcul_id, DELAI).reussi
+    page = client.get(f"/calculs/{calcul_id}").text
+    assert "Produire les séances datées" in page
+    assert _bouton_produire_au_bout_du_lien(client, page)
+
+
+@pytest.mark.cas_limite
 @pytest.mark.parametrize("version_enregistree", [False, True], ids=["sans version", "avec version"])
 def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_enregistree):
     """Cas : le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours »
@@ -529,7 +614,8 @@ def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_e
     assert "<summary>Références pour obtenir de l'aide</summary>" in fragment
     if version_enregistree:
         assert "Aucun emploi du temps n&#39;a été enregistré" not in page
-        assert "Produire les séances datées" in page and "Voir l'emploi du temps" in page
+        assert "Produire les séances datées" in page
+        assert _bouton_produire_au_bout_du_lien(client, page)
     else:
         assert "Aucun emploi du temps n&#39;a été enregistré" in page
         assert "Voir l'emploi du temps" not in page

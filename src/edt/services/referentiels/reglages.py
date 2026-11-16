@@ -176,7 +176,7 @@ def _refuser_pendant_un_calcul() -> None:
     vérifiée avec d'autres réglages que ceux du calcul (la pause déjeuner
     réglée depuis « Générer » est refusée de même).
     """
-    suivi = generation.calcul_en_cours()
+    suivi = generation.calcul_en_cours(ecriture=True)
     if suivi is None:
         return
     journal.info("Paramètres non modifiés : calcul n° %d en cours", suivi.id)

@@ -48,7 +48,7 @@ def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fi
     page = reponse.text
     assert "<html" not in page  # fragment
     assert "rien n&#39;a été écrit" in page or "rien n'a été écrit" in page
-    assert "2 créé(s), 4 rejeté(s)" in page
+    assert "2 créés, 4 rejetés" in page
     assert "Campus « LYON » inconnu" in page
     assert "N401" in page  # aperçu des premières lignes
     assert "data:text/csv" not in page  # le rapport n'est pas encodé dans la page
@@ -68,7 +68,7 @@ def test_application(jeu_minimal, client, fichier_exemple, monkeypatch):
     reponse = client.post("/import/appliquer", **_envoi(fichier_exemple("salles_avec_erreurs.csv")))
 
     assert reponse.status_code == 200
-    assert "Import appliqué" in reponse.text and "non importée(s)" in reponse.text
+    assert "Import appliqué" in reponse.text and "non importée" in reponse.text
     assert compter(m.Salle) == jeu_minimal.nb_salles + 2
     assert len(prechauffages) == 1  # écrans suivants préparés après l'enregistrement
 
@@ -112,7 +112,7 @@ def test_simulation_d_une_image_sans_bouton_appliquer(base, client):
     """Cas : une image envoyée à l'import, puis simulée.
 
     Risque : page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien
-    ne serait écrit, et compte rendu « 0 ligne(s) non importée(s), 1 erreur(s) ».
+    ne serait écrit, et compte rendu « 0 ligne ou séance non importée, 1 erreur ».
     """
     envoi = {
         "files": [("fichiers", ("photo.png", b"\x89PNG\r\n\x1a\n" + bytes(300), "image/png"))],
@@ -123,7 +123,7 @@ def test_simulation_d_une_image_sans_bouton_appliquer(base, client):
     texte = html.unescape(reponse.text)
     assert "« photo.png » n'est pas un fichier de données lisible ici" in texte
     assert "Rien à appliquer" in texte and "Appliquer l'import" not in texte
-    assert "0 ligne(s)" not in texte and "1 erreur(s)" in texte
+    assert "0 ligne ou séance" not in texte and "1 erreur : voir le rapport" in texte
 
 
 def test_envoi_sans_fichier_ou_trop_gros(base, client):
@@ -273,3 +273,46 @@ def test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible(
     assert negatif.status_code == 404
     assert "Le semestre -7 n'existe pas" in html.unescape(negatif.text)
     assert compter(m.VersionEdt) == 0
+
+
+@pytest.mark.cas_limite
+def test_application_sans_htmx_d_un_fichier_refuse_ne_dit_pas_0_ligne_non_importee(base, client):
+    """Cas : un document qui n'est pas un fichier de données (PDF) envoyé à « Appliquer » sans
+    JavaScript (page complète) : le fichier entier est refusé.
+
+    Risque : le bandeau du haut annonce « Import appliqué : 0 ligne(s) ou séance(s) non
+    importée(s) », qui laisse croire que tout est entré.
+    """
+    envoi = {
+        "files": [("fichiers", ("faux.pdf", b"%PDF-1.4 bidon", "application/pdf"))],
+        "data": {"mode": "donnees"},
+    }
+    reponse = client.post("/import/appliquer", **envoi)
+    assert reponse.status_code == 200
+    texte = html.unescape(reponse.text)
+    assert "0 ligne ou séance" not in texte and "Rien n'a été importé" in texte
+
+
+@pytest.mark.cas_limite
+def test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger(
+    jeu_minimal, client
+):
+    """Cas : les données exportées (classeur Excel) sont réimportées telles quelles, puis
+    simulées : tout est inchangé.
+
+    Risque : « Rien à appliquer… Corriger les fichiers d'après le rapport » alors qu'il n'y a
+    rien à corriger, et un bilan qui nomme les feuilles par leur code (« jours_fermes »)
+    au lieu de leur titre.
+    """
+    classeur = client.get("/export/donnees.xlsx")
+    assert classeur.status_code == 200
+    envoi = {
+        "files": [("fichiers", ("donnees.xlsx", classeur.content, "application/octet-stream"))],
+        "data": {"mode": "donnees"},
+    }
+    reponse = client.post("/import/simuler", headers=HTMX, **envoi)
+    texte = html.unescape(reponse.text)
+    assert reponse.status_code == 200 and "Rien à appliquer" in texte, texte
+    assert "Corriger les fichiers" not in texte and "déjà ces données" in texte
+    # Le bilan nomme les feuilles du format ; l'aperçu garde le nom de l'onglet du fichier.
+    assert "<td>Jours fermés</td>" in texte and "<td>jours_fermes</td>" not in texte

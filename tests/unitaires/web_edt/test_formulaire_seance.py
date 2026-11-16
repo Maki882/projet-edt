@@ -36,7 +36,9 @@ def test_chaque_heure_annoncee_sans_changer_les_valeurs(seance, session, faux_ve
     assert mentions(formulaire) == attendu
     verifiees = [a for a in faux_verificateur.appels if a[0] == "modification"]
     assert len(verifiees) == len(valeurs) - 1  # une vérification par heure, sauf l'actuelle
-    assert all(appel[-1] is None for appel in verifiees)  # sans salle
+    for appel in verifiees:  # avec la salle que le formulaire propose à cette heure
+        a_cette_heure = modifications.formulaire_seance(session, seance.id, debut=appel[3])
+        assert appel[-1] == a_cette_heure.salle_id is not None
 
     faux_verificateur.modification = [Anomalie("GROUPE_UNIQUE", Gravite.ERREUR, "Conflit.")]
     refusees = modifications.formulaire_seance(session, seance.id)
@@ -61,3 +63,44 @@ def test_budget_depasse_ou_verificateur_absent(seance, session, faux_verificateu
     sans = modifications.formulaire_seance(session, seance.id)
     assert "possible" not in mentions(sans)
     assert sans.remarque_debuts.startswith("Les heures possibles n'ont pas pu être vérifiées")
+
+
+@pytest.mark.cas_limite
+def test_heure_annoncee_possible_est_acceptee_avec_la_salle_proposee(jeu_minimal, session):
+    """Cas : le TD de mathématiques du groupe A1-G1 (lundi 13 h 45 à Notre-Dame) est déplacé au
+    vendredi, où le groupe sort à 10 h 30 d'un TP à Issy ; à 10 h 45, le groupe et l'enseignant
+    sont libres, mais toutes les salles proposées sont à Notre-Dame, à une heure de trajet.
+
+    Risque : l'heure est annoncée « possible » (vérifiée sans salle), puis l'enregistrement est
+    refusé avec chacune des salles proposées : l'annonce trompe l'utilisateur.
+    """
+    from edt.domaine.instantane import id_seance
+    from edt.services.emploi_du_temps import raccords
+
+    version_id = enregistrer_version(session, jeu_minimal.semestre_id)
+    seance = session.scalar(  # TD de mathématiques de A1-G1, lundi 13 h 45 (salle N105)
+        select(m.SeanceHebdo).where(
+            m.SeanceHebdo.version_id == version_id,
+            m.SeanceHebdo.jour == 0,
+            m.SeanceHebdo.debut_min == 13 * 60 + 45,
+        )
+    )
+    vendredi = 4
+    formulaire = modifications.formulaire_seance(session, seance.id, jour=vendredi)
+    annonces = dict(zip((d for d, _ in formulaire.debuts), mentions(formulaire), strict=True))
+    assert annonces[10 * 60 + 45] == "refusé"
+    duree = seance.fin_min - seance.debut_min
+    for debut, mention in annonces.items():
+        salle_id = modifications.formulaire_seance(
+            session, seance.id, jour=vendredi, debut=debut
+        ).salle_id
+        verification = raccords.verifier_modification(
+            session,
+            version_id,
+            id_seance(seance.besoin_id, seance.rang),
+            vendredi,
+            debut,
+            debut + duree,
+            salle_id,
+        )
+        assert mention == ("possible" if verification.valide else "refusé"), debut

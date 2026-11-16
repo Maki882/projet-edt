@@ -1114,9 +1114,12 @@ main {
   border-radius: var(--rayon);
 }
 
+/* Largeur du contenu (« Semestre 1 (2026-2027) » en entier), 12rem au moins. */
 .barre-liste .champ {
   margin: 0;
-  flex: 0 1 12rem;
+  flex: 0 1 auto;
+  min-width: 12rem;
+  max-width: 100%;
 }
 
 .barre-liste .champ-recherche {

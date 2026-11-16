@@ -65,8 +65,8 @@ from edt.synthese.temoin import EnseignantTemoin
 journal = logging.getLogger(__name__)
 
 JOURNEE = 24 * 60
-RESPECT_POSEE = "posée dans le témoin"
-RESPECT_CONSTRUCTION = "respectée par construction du témoin"
+RESPECT_POSEE = "appliquée dans l'emploi du temps de référence"
+RESPECT_CONSTRUCTION = "respectée d'office par l'emploi du temps de référence"
 RESPECT_SANS_EFFET = "sans effet (proposée ou inactive)"
 
 TYPES_POSES = frozenset(

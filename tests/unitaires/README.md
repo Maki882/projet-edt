@@ -56,7 +56,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (136 fonctions)
 
@@ -81,7 +81,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | Onglets des tests dans le menu, et tableau d'une famille : état affiché de chaque test et comptes | 9 |
 | [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | Regroupement des comptes rendus de pytest par fonction de test, et historique des résultats sur disque | 8 |
 
-### `echange/` : Import et export (146 fonctions)
+### `echange/` : Import et export (148 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -90,8 +90,8 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`echange/test_format.py`](echange/test_format.py) | Le format d'échange : gabarit XLSX et ZIP, documentation générée depuis la description | 5 |
 | [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 19 |
 | [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 32 |
-| [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 12 |
-| [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 40 |
+| [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 13 |
+| [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 41 |
 | [`echange/test_regles.py`](echange/test_regles.py) | Feuille « regles » du format d'échange : gabarit, import, export, réimport, tout remplacer | 12 |
 
 ### `exploitation/` : Exploitation et déploiement (40 fonctions)
@@ -102,7 +102,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-### `socle/` : Domaine, base et services transverses (204 fonctions)
+### `socle/` : Domaine, base et services transverses (207 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -117,7 +117,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne | 14 |
 | [`socle/test_depliage.py`](socle/test_depliage.py) | Dépliage des besoins en séances hebdomadaires (les trois modes de volume) | 12 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Chargement de l'instantané d'un semestre depuis la base | 11 |
-| [`socle/test_jeux.py`](socle/test_jeux.py) | Jeux fictifs et remise à zéro : panne après remise à zéro, schéma périmé, marqueur | 11 |
+| [`socle/test_jeux.py`](socle/test_jeux.py) | Jeux fictifs et remise à zéro : panne après remise à zéro, schéma périmé, marqueur | 13 |
 | [`socle/test_journal.py`](socle/test_journal.py) | Journalisation : fichier non ouvrable, rotation partagée entre processus, purge des calculs | 6 |
 | [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 10 |
 | [`socle/test_niveaux.py`](socle/test_niveaux.py) | Niveaux des contraintes (nécessaire, important, facultatif) : contrat du catalogue | 7 |
@@ -125,9 +125,9 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`socle/test_regles.py`](socle/test_regles.py) | Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution | 31 |
 | [`socle/test_regles_service.py`](socle/test_regles_service.py) | Règles personnalisées, côté base et service : table, chargement, écriture, propositions | 29 |
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |
-| [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 5 |
+| [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 6 |
 
-### `solveur/` : Solveur CP-SAT et préparation du calcul (194 fonctions)
+### `solveur/` : Solveur CP-SAT et préparation du calcul (195 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -139,7 +139,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles : des options du calcul jusqu'au suivi et à la commande | 23 |
 | [`solveur/test_preverification.py`](solveur/test_preverification.py) | Pré-vérifications : impossibilités certaines et situations tendues, dites en clair | 19 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |
-| [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 7 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 8 |
 
 ### `synthese/` : Générateur de données fictives (62 fonctions)
 
@@ -187,7 +187,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Un entier démesuré passé au service est refusé avec un message | 1 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression, côté service : les conséquences d'une suppression sont expliquées | 1 |
 
-### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (34 fonctions)
+### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (35 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -196,7 +196,7 @@ Ce dossier compte **1 106 fonctions de test** dans 10 composants, dont 310 marqu
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Cas limites des services des écrans de l'emploi du temps : bornes des identifiants | 1 |
 | [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | Emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 |
 | [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | Disposition des blocs dans la grille (fonction pure) et mises en forme françaises | 9 |
-| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 |
+| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 3 |
 | [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | Mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : absence explicite, lecture du rapport, panne journalisée | 8 |
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 7 |

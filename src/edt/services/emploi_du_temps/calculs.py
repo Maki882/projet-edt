@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import json
 import logging
 import random
 import re
@@ -53,7 +54,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.db.moteur import transaction_immediate
+from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     CodeContrainte,
@@ -100,6 +101,7 @@ from edt.services.emploi_du_temps.versions import (
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.solveur.contrat import OptionsSolveur
+from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -275,6 +277,18 @@ class ChoixDejeuner:
     debut: str
     fin: str
     duree: str
+
+
+class ErreurMemeCalculEnCours(ErreurCalculEnCours):
+    """Le calcul en cours est celui qui est demandé : même semestre, mêmes réglages.
+
+    Cas d'un double envoi du formulaire. `suivi` est ce calcul ; l'écran dit qu'il est lancé,
+    au lieu d'avertir qu'un autre calcul tourne.
+    """
+
+    def __init__(self, message: str, suivi: generation.SuiviCalcul) -> None:
+        super().__init__(message)
+        self.suivi = suivi
 
 
 class ErreurSaisieDejeuner(ErreurDonneesInvalides):
@@ -948,7 +962,8 @@ def demarrer_calcul(
 
     Lève `ErreurSaisieDejeuner` si la pause déjeuner est mal saisie,
     `ErreurPreVerification` si une vérification préalable relève une
-    erreur, `ErreurCalculEnCours` si un calcul tourne déjà.
+    erreur, `ErreurCalculEnCours` si un calcul tourne déjà (`ErreurMemeCalculEnCours`
+    s'il a ce semestre et ces réglages).
     """
     exiger_semestre(session, semestre_id)
     if dejeuner is not None:
@@ -973,7 +988,33 @@ def demarrer_calcul(
         utiliser_indices=not autre_solution,
         niveaux_regles=niveaux_regles,
     )
-    return generation.lancer_calcul(semestre_id, options)
+    try:
+        return generation.lancer_calcul(semestre_id, options)
+    except ErreurCalculEnCours as erreur:
+        suivi = generation.calcul_en_cours()
+        if (
+            suivi is not None
+            and suivi.semestre_id == semestre_id
+            and _memes_reglages(suivi, options)
+        ):
+            raise ErreurMemeCalculEnCours(erreur.message, suivi) from erreur
+        raise
+
+
+def _memes_reglages(suivi: generation.SuiviCalcul, options: OptionsSolveur) -> bool:
+    """Vrai si le calcul `suivi` a été lancé avec ces options (graine tirée au sort exceptée).
+
+    Les paramètres enregistrés sont relus dans une session neuve : celle de la requête a pu
+    commencer sa lecture avant l'enregistrement du calcul.
+    """
+    with session_base() as session:
+        enregistres = session.scalar(select(m.Calcul.parametres).where(m.Calcul.id == suivi.id))
+    if not isinstance(enregistres, dict):
+        return False
+    demandes = json.loads(json.dumps(options.vers_dict()))
+    return all(
+        enregistres.get(cle) == valeur for cle, valeur in demandes.items() if cle != "graine"
+    )
 
 
 SEANCES_DATEES_A_PRODUIRE = (
@@ -1135,7 +1176,8 @@ def resultat_calcul(
         controle=controle,
         nb_a_programmer=nb_a_programmer,
         journal_nom=Path(suivi.fichier_journal).name if suivi.fichier_journal else None,
-        avertissements=tuple(suivi.avertissements),
+        # L'arrêt demandé est dit par le titre et la phrase : ce n'est pas une situation tendue.
+        avertissements=tuple(a for a in suivi.avertissements if a != MESSAGE_SOLUTION_CONSERVEE),
         impossibilites=tuple(statistiques.get("impossibilites") or ()),
         nb_seances=int(statistiques["nb_seances"])
         if issue == Issue.REUSSI and "nb_seances" in statistiques
@@ -1246,6 +1288,11 @@ def _phrases(
     if issue == Issue.EN_COURS:
         # Le temps écoulé est dit une seule fois, sous la phrase (gabarit du suivi).
         phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}."
+        if suivi.recherche_finie:
+            # Le moteur a rendu la main : plus rien à améliorer ni à arrêter.
+            debut = " Arrêt demandé : la recherche" if suivi.arret_demande else " La recherche"
+            phrase += debut + " est terminée, son résultat est contrôlé et enregistré."
+            return "Calcul en cours", phrase, None
         if suivi.premiere_solution_s is not None and not suivi.arret_demande:
             phrase += (
                 " Un emploi du temps est déjà trouvé (après "
@@ -1267,16 +1314,19 @@ def _phrases(
         if suivi.version_id is None:
             phrase += " La version produite a depuis été supprimée."
         elif version_active:
-            phrase += " Il est maintenant la version active du semestre."
+            phrase += " Cet emploi du temps est maintenant la version active du semestre."
         else:
-            phrase += " Il est enregistré comme une version du semestre (pas la version active)."
+            phrase += (
+                " Cet emploi du temps est enregistré comme une version du semestre (pas la "
+                "version active)."
+            )
         return titre, phrase, None
     if issue == Issue.REFUSE:
         return (
             "Calcul non lancé : points bloquants relevés avant la recherche",
-            "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
-            "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
-            "enregistré. Corriger les points ci-dessous, puis relancer.",
+            "Les vérifications préalables ont relevé des points bloquants : la recherche n'a pas "
+            "été lancée et aucun emploi du temps n'a été enregistré. Corriger les points "
+            "ci-dessous, puis relancer.",
             None,
         )
     if issue == Issue.IMPOSSIBLE:

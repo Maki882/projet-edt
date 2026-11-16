@@ -70,23 +70,23 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'intégration.
+Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `assistant` | 45 | 7 |
 | `banc_tests` | 19 | 10 |
-| `echange` | 58 | 12 |
+| `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
-| `socle` | 61 | 33 |
-| `solveur` | 20 | 19 |
+| `socle` | 64 | 35 |
+| `solveur` | 21 | 20 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 41 |
-| `web_edt` | 7 | 39 |
-| **Total** | **310** | **198** |
+| `web_edt` | 8 | 41 |
+| **Total** | **317** | **205** |
 
-### Tests unitaires (310 cas)
+### Tests unitaires (317 cas)
 
 #### `assistant` (45 cas)
 
@@ -206,7 +206,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Entrees mal formees ignorees une a une | une entrée du fichier des résultats a un état inconnu ou une date illisible. | tout l'historique perdu pour une seule ligne fausse. |
 | Ecriture impossible levee avec le chemin | dossier des journaux en lecture seule ou disque plein au moment d'enregistrer. | résultats perdus sans le dire. |
 
-#### `echange` (58 cas)
+#### `echange` (60 cas)
 
 [`tests/unitaires/echange/test_bornes.py`](../tests/unitaires/echange/test_bornes.py)
 
@@ -284,11 +284,13 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Reimport sans enseignants signale le remplacement des enseignants existants | un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001). | le besoin retrouvé serait « mis à jour » avec l'enseignant fictif à la place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue. |
+| Doublon fusionne seul n est pas une ecriture | un emploi du temps importé dont toutes les séances sont mises de côté ou annulées, sauf un doublon du fichier fusionné à la lecture avec sa première ligne. | « fusionné » compté comme une écriture : l'écran propose « Appliquer », annonce « Import appliqué » alors que rien n'est enregistré, et prépare les écrans pour rien. |
 
 [`tests/unitaires/echange/test_lecture.py`](../tests/unitaires/echange/test_lecture.py)
 
 | Test | Cas | Risque |
 |---|---|---|
+| Bom utf8 suivi d un octet invalide est une erreur | un fichier commence par la marque UTF-8 (BOM) mais contient ensuite un octet qui n'est pas de l'UTF-8 (un « é » en Windows-1252), en CSV, en iCal ou dans une archive. | le décodage lève une exception que rien ne rattrape, et l'import répond « erreur inattendue » au lieu d'un rapport qui nomme le fichier et dit comment le réenregistrer. |
 | Agenda ical dans une archive ignore avec le bon conseil | une archive ZIP contient des CSV et un agenda .ics. | l'agenda lu comme un tableau (« Tableau non reconnu ») ou ignoré sans un mot ; l'utilisateur ne sait pas qu'il faut l'envoyer à part. |
 | Fichier d un autre format refuse avec les formats acceptes | une image, un PDF, un programme, un texte renommé en .xlsx, une archive abîmée. | le fichier lu comme un CSV : « Encodage illisible : l'enregistrer en CSV UTF-8 » ou « Tableau non reconnu », conseils faux qui n'expliquent pas l'erreur. |
 | Fichier sans cellule remplie est signale comme vide | un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...). | rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » : l'utilisateur croirait son fichier pris en compte. |
@@ -358,7 +360,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (61 cas)
+#### `socle` (64 cas)
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
@@ -415,6 +417,8 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Jeu fictif sur schema perime indique le reset | une table a une colonne en trop (base d'une autre version) ; un jeu est chargé sans remise à zéro, par le service puis par le chemin direct. | « lancer init-db » conseillé alors qu'init-db refusera ; le chemin direct continuerait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ». |
 | Le jeu minimal nomme le code par defaut qui manque | un type de séance ou un équipement par défaut a été supprimé de la base avant `python -m edt jeu-minimal`. | `KeyError` (« Erreur inattendue », code 2) au milieu du chargement, ou un type de séance « TP » manquant masqué par le type de salle homonyme ; l'erreur doit nommer la liste, le code et le remède, avant toute écriture. |
 | Une operation d un autre processus est vue par son marqueur | `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le serveur sert des pages. | le verrou étant propre au processus, le serveur répondrait « base non initialisée : lancer init-db » (faux) pendant la recréation des tables ; le marqueur posé à côté de la base doit être vu, et un marqueur périmé ignoré. |
+| Une operation d un autre processus empeche d en commencer une | un autre processus charge un établissement fictif (son marqueur est posé à côté de la base) quand `init-db --reset` ou l'écran de configuration demande une remise à zéro. | le verrou étant propre au processus, la remise à zéro efface les tables sous le chargement en cours, puis retire le marqueur de l'autre processus : le serveur ne voit plus l'opération qui tourne encore. |
+| Marqueur au numero de processus demesure ne fait pas planter | le fichier marqueur, abîmé ou écrit à la main, porte un numéro de processus au-delà de ce que le système accepte (« 9999999999 charger »), sous Linux. | `os.kill` lève `OverflowError`, que rien ne rattrape : la page des jeux fictifs et le lancement d'un calcul répondent par une erreur tant que le marqueur reste. |
 | Une graine ou une annee invalides sont refusees avant la remise a zero | l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine ou une année de début hors bornes. | la base serait remise à zéro, puis la génération refuserait la demande : toutes les données perdues pour une faute de saisie. |
 | Un chargement attend un verrou d ecriture tenu brievement et reussit | un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou d'écriture quelques dixièmes de seconde. | avec un BEGIN différé, le chargement lirait puis échouerait aussitôt « database is locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ; ouvert en IMMEDIATE, il attend son tour et réussit. |
 | Une remise a zero donne un seul avertissement au journal | remise à zéro demandée depuis l'écran ou par `init-db --reset`, sans incident. | le journal, outil de diagnostic d'une démonstration, se remplit d'avertissements en double pour une action voulue ; un seul avertissement dit la suppression des données. |
@@ -488,10 +492,11 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Redirection htmx vers une adresse non ascii | une action envoyée par HTMX revient à une adresse dont la recherche contient « é » ou « 日 » (champ caché `retour`). | l'en-tête `HX-Redirect` n'accepte que le latin-1 : page 500 et écriture valide annulée au lieu de la redirection. |
-| Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, et le panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
-| Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script. |
+| Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, le panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange, et l'onglet des tests `/tests/<famille>/suivi` pendant une exécution. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
+| Requete annulee par l arret du serveur n est pas journalisee en 500 | le serveur s'arrête pendant qu'une page se prépare (préparation des premières pages au démarrage, ou visiteur en cours) : la requête est annulée (`CancelledError`). | le journal note « GET / -> 500 », une erreur qui n'a pas eu lieu, sans trace ni cause ; l'exploitant cherche une panne qui n'existe pas. |
+| Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script et les appels qui leur donnent leur effet. |
 
-#### `solveur` (20 cas)
+#### `solveur` (21 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
@@ -541,6 +546,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Regle dont la cible est hors bornes est invalide | brouillon de règle dont la cible est l'identifiant numérique 10^20. | OverflowError de SQLite au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles. |
 | Cloture renseigne la duree et nomme la version sans dates | calculs « en cours » abandonnés il y a sept minutes (processus tué), l'un juste après l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`. | « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une version active sans séances datées dont personne ne sait qu'il faut les produire. |
 | Calcul en cours ne s auto bloque pas sur un calcul abandonne | une requête d'écriture tient le verrou d'écriture (transaction immédiate et une écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête consulte `calcul_en_cours()` (import, remise à zéro, paramètres). | la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de la reporter et de répondre d'après ce qui a été lu. |
+| Controle d une ecriture n attend pas un lancement de calcul | une requête d'écriture tient le verrou d'écriture de la base et vérifie qu'aucun calcul ne tourne, pendant qu'un lancement de calcul tient le verrou du service de génération et attend, lui, le verrou de la base (clics simultanés sur « Enregistrer » et « Lancer »). | chacun attend l'autre ; les deux requêtes restent figées jusqu'au délai de verrou de la base, puis le lancement échoue « base occupée ». Le contrôle doit renoncer vite et refuser l'écriture avec un message qui dit d'attendre. |
 | Cloture sans attendre retablit le delai de verrou de la connexion | un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion dont le délai de verrou n'est pas celui par défaut. | le délai est remis à une constante lue à l'import du module, pas à la valeur que la connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé en silence pour toutes les requêtes servies ensuite par cette connexion. |
 
 #### `synthese` (31 cas)
@@ -704,7 +710,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (7 cas)
+#### `web_edt` (8 cas)
 
 [`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
 
@@ -729,6 +735,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Budget depasse ou verificateur absent | la vérification des heures dépasse son budget, ou le vérificateur est absent. | un formulaire qui met des secondes à se recharger à chaque changement de jour, ou une erreur qui empêche d'ouvrir le panneau de la séance. |
+| Heure annoncee possible est acceptee avec la salle proposee | le TD de mathématiques du groupe A1-G1 (lundi 13 h 45 à Notre-Dame) est déplacé au vendredi, où le groupe sort à 10 h 30 d'un TP à Issy ; à 10 h 45, le groupe et l'enseignant sont libres, mais toutes les salles proposées sont à Notre-Dame, à une heure de trajet. | l'heure est annoncée « possible » (vérifiée sans salle), puis l'enregistrement est refusé avec chacune des salles proposées : l'annonce trompe l'utilisateur. |
 
 [`tests/unitaires/web_edt/test_memoire.py`](../tests/unitaires/web_edt/test_memoire.py)
 
@@ -743,7 +750,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (198 cas)
+### Tests d'intégration (205 cas)
 
 #### `assistant` (7 cas)
 
@@ -781,7 +788,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Duree maximale depassee | un test bloqué (attente sans fin) pendant une exécution. | le serveur reste chargé indéfiniment et plus aucun test ne peut être lancé. |
 | Fichier qui ne se charge pas | un fichier de tests importe un module absent (dépendance manquante sur le serveur). | ses tests restent « jamais lancés » sans explication, ou toute l'exécution échoue. |
 
-#### `echange` (12 cas)
+#### `echange` (14 cas)
 
 [`tests/integration/echange/test_bornes.py`](../tests/integration/echange/test_bornes.py)
 
@@ -805,10 +812,12 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Simulation d une image sans bouton appliquer | une image envoyée à l'import, puis simulée. | page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien ne serait écrit, et compte rendu « 0 ligne(s) non importée(s), 1 erreur(s) ». |
+| Simulation d une image sans bouton appliquer | une image envoyée à l'import, puis simulée. | page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien ne serait écrit, et compte rendu « 0 ligne ou séance non importée, 1 erreur ». |
 | Export d une version negative nulle ou enorme dit introuvable | GET /export/emploi-du-temps.csv (ou .ics) avec version_id=-7, 0 ou vingt chiffres. | OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300 chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des écrans Données. |
 | Ressource hostile dans l adresse donne une erreur lisible | un filtre groupe, enseignant ou salle énorme ou négatif, ou un identifiant non numérique. | OverflowError dans la recherche du filtre : « erreur inattendue » 500 au lieu de « n'existe pas » (404), ou de « nombre attendu » (422) pour « ² ». |
 | Semestre enorme ou negatif a l import donne une erreur lisible | un import d'emploi du temps envoyé avec semestre_id=99999999999999999999 ou -7. | OverflowError dans la recherche du semestre : « erreur inattendue » au lieu de dire que la valeur est hors limites ou que le semestre n'existe pas. |
+| Application sans htmx d un fichier refuse ne dit pas 0 ligne non importee | un document qui n'est pas un fichier de données (PDF) envoyé à « Appliquer » sans JavaScript (page complète) : le fichier entier est refusé. | le bandeau du haut annonce « Import appliqué : 0 ligne(s) ou séance(s) non importée(s) », qui laisse croire que tout est entré. |
+| Simulation d un export reimporte tel quel ne conseille pas de corriger | les données exportées (classeur Excel) sont réimportées telles quelles, puis simulées : tout est inchangé. | « Rien à appliquer… Corriger les fichiers d'après le rapport » alors qu'il n'y a rien à corriger, et un bilan qui nomme les feuilles par leur code (« jours_fermes ») au lieu de leur titre. |
 
 #### `exploitation` (32 cas)
 
@@ -854,15 +863,17 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
 | Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
-#### `socle` (33 cas)
+#### `socle` (35 cas)
 
 [`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Une base verrouillee lecture seule ou corrompue donne un message clair et le code 1 | `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite. | trace brute et code 2, et le script de déploiement enchaînerait sur « --reset-base » (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et le remède, code 1. |
+| Base illisible le remede annonce permet d en sortir | le fichier de la base n'est plus une base SQLite (abîmé ou remplacé), et `init-db --reset --oui` est lancé pour la recréer, en développement puis en production. | en développement, le refus conseille cette même commande (l'utilisateur tourne en rond) ; en production, il conclut « libérer de l'espace disque ou corriger les droits », qui ne sert à rien. Le remède annoncé doit permettre de recréer la base. |
 | Init db reset exige une confirmation dans un terminal et aucun calcul en cours | `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne dans un autre processus, puis en production hors calcul. | base de production effacée par mégarde sans question ni sauvegarde, calcul en cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie « sauvegardes/edt-<date>-avant-reset.db » dans le troisième. |
 | Init db reset en production n efface rien si la sauvegarde echoue | `init-db --reset --oui` en production alors que la sauvegarde préalable échoue (disque plein, dossier « sauvegardes » non inscriptible). | la remise à zéro détruirait une base qui n'a pas été sauvegardée ; la commande doit s'arrêter avant, code 1, en nommant la sauvegarde et le remède, sans fichier partiel. |
+| Init db reset refuse en production n ecrit pas de sauvegarde | `init-db --reset --oui` en production, refusé parce qu'un calcul tourne ou qu'un autre processus charge un établissement fictif. | la copie « edt-<date>-avant-reset.db » est écrite avant le refus, sans être signalée ; chaque nouvel essai en ajoute une, qui chasse de la rotation les sauvegardes du déploiement. |
 | Init db reset est refuse pendant un chargement de jeu | `init-db --reset --oui` lancé pendant qu'un chargement de jeu fictif tient le verrou des opérations sur la base (écran de configuration, commande `jeu`). | tables supprimées sous le chargement en cours, et serveur qui ignore la remise à zéro (pas de fichier marqueur) ; la commande doit refuser, code 1, sans rien effacer. |
 | Init db reset non interactif ne pose pas de question | `init-db --reset` lancé par un script (déploiement), sans terminal, en développement. | une question posée à un script le bloquerait ou le ferait échouer ; en développement, pas de copie de sauvegarde qui encombre le dossier. |
 | Init db reset sans sauvegarde ne double pas celle du deploiement | `init-db --reset --oui --sans-sauvegarde` en production, lancé par le déploiement qui vient de faire et de vérifier sa propre sauvegarde. | une seconde copie brute de la base à chaque déploiement avec remise à zéro, qui remplit le disque du serveur. |
@@ -924,12 +935,13 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 | Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
 | Remise a zero par un autre processus donne base occupee | un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant que le serveur sert une requête. | « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé par l'autre processus doit faire répondre « occupée, réessayer ». |
 
-#### `solveur` (19 cas)
+#### `solveur` (20 cas)
 
 [`tests/integration/solveur/test_services.py`](../tests/integration/solveur/test_services.py)
 
 | Test | Cas | Risque |
 |---|---|---|
+| Calcul refuse pendant une execution des tests | une exécution des tests tourne, lancée par la ligne de commande (fichier de verrou du banc de tests au nom d'un autre processus vivant) ou depuis l'application (ce processus), et un calcul est demandé. | le calcul et pytest se partagent les processeurs du serveur ; le calcul atteint son temps limite plus vite et rend un emploi du temps moins bon, sans que rien ne le dise. |
 | Options hors bornes refusees par la commande | `generer --temps-limite nan`, `--temps-limite inf` ou `--fils 1000` (Typer accepte nan et inf comme flottants). | « Aucun emploi du temps trouvé en nan s » après quelques millisecondes, un calcul sans fin dont l'échéance d'abandon déborde, ou mille fils qui épuisent la mémoire du serveur. |
 | Temps limite enregistre illisible ne bloque pas le suivi | calcul « en cours » d'un autre processus vivant dont le temps limite enregistré vaut l'infini ou un texte (ligne ancienne ou corrompue). | `timedelta(seconds=inf)` lève OverflowError et `float("abc")` ValueError dans le contrôle des calculs abandonnés : `calcul_en_cours()` plante, et toutes les pages avec lui. |
 | Identifiant hors bornes est introuvable | identifiant 2^70 (hors bornes des entiers SQLite) donné au suivi, à l'arrêt, au lancement, aux pré-vérifications, à l'instanciation ou au replacement. | `session.get` lève OverflowError au lieu de répondre « introuvable » : page 500 « erreur inattendue » avec trace, alors que -1 est correctement refusé. |
@@ -1045,7 +1057,7 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (39 cas)
+#### `web_edt` (41 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1067,8 +1079,10 @@ Le catalogue compte 508 cas : 310 cas en tests unitaires et 198 cas en tests d'i
 |---|---|---|
 | Suivi sans rechargement second lancement refuse puis arret | double clic sur « Lancer le calcul » (second envoi pendant que le premier calcul tourne), suivi sans rechargement, puis arrêt depuis le suivi. | deux calculs en parallèle sur le même semestre, ou un formulaire de lancement proposé pendant le calcul ; le second envoi doit mener au suivi du calcul en cours, et l'arrêt laisser « Calcul arrêté » sans version enregistrée. |
 | Double clic sur supprimer une version | double clic sur « Supprimer » d'une version : deux envois identiques, le navigateur affiche la réponse du second. | page « Élément introuvable » (404) alors que la suppression demandée a bien eu lieu. |
-| Double clic sur lancer le calcul | double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul lancé par le premier démarre. | bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le calcul demandé tourne ; deux calculs lancés. |
+| Double clic sur lancer le calcul | double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul lancé par le premier démarre ; puis un autre onglet envoie d'autres réglages. | bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le calcul demandé tourne ; deux calculs lancés ; ou « Calcul lancé. » pour des réglages qui n'ont pas été appliqués. |
+| Suivi apres la recherche ne propose plus l arret | le moteur a trouvé son emploi du temps et rendu la main ; le calcul contrôle, enregistre puis produit les séances datées, ce qui prend quelques secondes sur un grand établissement. | le suivi dit encore « le calcul cherche à l'améliorer. Vous pouvez l'arrêter », alors que plus rien n'est cherché et qu'un arrêt n'aurait aucun effet. |
 | Arret d un calcul termine dit qu il est fini | « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé. | « Arrêt demandé » affiché : l'utilisateur croit avoir interrompu un calcul fini dont la version est déjà active. |
+| Calcul reussi sans seances datees mene au bouton qui les produit | le calcul enregistre sa semaine type, puis la production des séances datées échoue ; la page du calcul dit de les produire avec le bouton « Produire les séances datées ». | le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique. |
 | Calcul interrompu par un redemarrage | le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours » est clos ; il avait pu, ou non, enregistrer sa version avant ses séances datées. | page du calcul qui parle d'un « problème dans les données » ou affirme qu'aucun emploi du temps n'a été enregistré alors qu'une version active sans séances datées existe ; aucun moyen de relancer depuis la page. |
 | Prechauffage qui ne peut pas demarrer ne casse pas la page | le fil de préchauffage des écrans ne peut pas démarrer (plus de fil disponible) quand la page d'un calcul réussi s'affiche. | RuntimeError remontée dans la requête (page du calcul en erreur 500), et préchauffage tenu pour « en cours » à jamais : plus aucun préchauffage jusqu'au redémarrage. |
 | Retouches de la version active annoncees avant le calcul | une séance datée de la version active est annulée à la main, puis l'utilisateur revient sur Générer. | le nouveau calcul crée une version sans cette retouche et la séance annulée réapparaît, sans que personne ait été prévenu. |

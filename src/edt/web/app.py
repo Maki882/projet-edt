@@ -120,7 +120,8 @@ async def _cycle_de_vie(app: FastAPI) -> AsyncIterator[None]:
         )
     preparation = asyncio.create_task(_preparer(app, avec_pages=bool(prete)))
     yield
-    # Arrêt pendant la préparation : la page en cours se termine, les suivantes sont abandonnées.
+    # Arrêt pendant la préparation : la page en cours est abandonnée (son calcul, mené dans un
+    # fil, va à son terme sans être servi) et les suivantes ne sont pas préparées.
     preparation.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await preparation

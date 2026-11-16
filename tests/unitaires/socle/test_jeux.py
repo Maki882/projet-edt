@@ -7,6 +7,7 @@ import os
 import threading
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import select
@@ -16,7 +17,7 @@ from edt.db.initialisation import ErreurSchemaPerime, base_initialisee, sauvegar
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
-from edt.services import jeux
+from edt.services import generation, jeux
 from edt.services.jeux import (
     charger_jeu_fictif,
     fichier_marqueur,
@@ -133,6 +134,52 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
     rapport = remettre_a_zero(aujourdhui=aujourdhui)
     assert rapport.reinitialisee and vu_pendant == [True]
     assert not marqueur.exists() and not operation_en_cours()
+
+
+@pytest.mark.cas_limite
+def test_une_operation_d_un_autre_processus_empeche_d_en_commencer_une(
+    jeu_minimal, compter, aujourdhui
+):
+    """Cas : un autre processus charge un établissement fictif (son marqueur est posé à côté de
+    la base) quand `init-db --reset` ou l'écran de configuration demande une remise à zéro.
+
+    Risque : le verrou étant propre au processus, la remise à zéro efface les tables sous le
+    chargement en cours, puis retire le marqueur de l'autre processus : le serveur ne voit
+    plus l'opération qui tourne encore.
+    """
+    marqueur = fichier_marqueur()
+    contenu = f"{os.getppid()} charger un établissement fictif"  # processus vivant, autre
+    marqueur.write_text(contenu, encoding="utf-8")
+
+    with pytest.raises(jeux.ErreurChargementEnCours, match="déjà en cours"):
+        remettre_a_zero(aujourdhui=aujourdhui)
+    with pytest.raises(jeux.ErreurChargementEnCours):
+        recharger_jeu_fictif("petit", reinitialiser=True, aujourdhui=aujourdhui)
+
+    assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
+    assert marqueur.read_text(encoding="utf-8") == contenu and operation_en_cours()
+    marqueur.unlink()
+    assert remettre_a_zero(aujourdhui=aujourdhui).reinitialisee  # marqueur retiré : permis
+
+
+@pytest.mark.cas_limite
+def test_marqueur_au_numero_de_processus_demesure_ne_fait_pas_planter(base, monkeypatch):
+    """Cas : le fichier marqueur, abîmé ou écrit à la main, porte un numéro de processus
+    au-delà de ce que le système accepte (« 9999999999 charger »), sous Linux.
+
+    Risque : `os.kill` lève `OverflowError`, que rien ne rattrape : la page des jeux fictifs
+    et le lancement d'un calcul répondent par une erreur tant que le marqueur reste.
+    """
+
+    def kill_linux(pid: int, _signal: int) -> None:
+        if not -(2**31) <= pid < 2**31:  # conversion en pid_t, avant tout envoi
+            raise OverflowError("signed integer is greater than maximum")
+        raise ProcessLookupError(pid)
+
+    monkeypatch.setattr(generation, "os", SimpleNamespace(name="posix", kill=kill_linux))
+    fichier_marqueur().write_text("9999999999 charger", encoding="utf-8")
+    assert not operation_en_cours()  # numéro impossible : aucun processus ne le porte
+    assert not generation._processus_vivant(2**31)
 
 
 @pytest.mark.cas_limite

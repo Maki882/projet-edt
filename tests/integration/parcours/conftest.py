@@ -5,7 +5,7 @@ base SQLite dans un dossier temporaire (`environnement`), et peut demander
 `jeu_minimal` (base chargée du petit jeu de démonstration) ou `client`
 (navigateur simulé qui appelle la vraie application web).
 
-Ici, on ajoute seulement `sans_prechauffage` (automatique) : elle coupe le
+Ce dossier ajoute seulement `sans_prechauffage` (automatique) : elle coupe le
 préchauffage des écrans, un fil d'arrière-plan lancé après un calcul qui
 survivrait à la base temporaire du test. Ce n'est PAS une simulation :
 solveur, vérificateur et base restent les vrais.

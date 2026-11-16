@@ -1,7 +1,9 @@
 {#
   Suivi et résultat d'un calcul (fragment). Tant que le calcul tourne, le bloc s'interroge
   lui-même chaque seconde (HTMX) et se remplace par la réponse ; à la fin, la réponse n'a
-  plus de déclencheur : l'interrogation s'arrête. Variable : r (calculs.ResultatCalcul).
+  plus de déclencheur : l'interrogation s'arrête. Variables : r (calculs.ResultatCalcul) ;
+  vider_messages (réponse au suivi d'un calcul fini) : le bandeau de la page (« Calcul
+  lancé. »), devenu périmé, est vidé par un remplacement hors du bloc (hx-swap-oob).
 #}
 {% import "macros.html" as ui %}
 {% import "edt/_ui.html" as edt with context %}
@@ -18,6 +20,7 @@
   <div class="edt-progression" role="progressbar" aria-label="Calcul en cours"></div>
   <p class="discret">Temps écoulé : <strong>{{ r.temps_texte }}</strong>{% if r.limite_texte %} sur {{ r.limite_texte }} au plus{% endif %}. Cette page se met à jour toute seule.</p>
   <noscript><p><a class="bouton" href="/calculs/{{ r.suivi.id }}">Actualiser</a></p></noscript>
+  {%- if not r.suivi.recherche_finie %}
   <div class="edt-boutons">
     <form method="post" action="/calculs/{{ r.suivi.id }}/arreter" hx-post="/calculs/{{ r.suivi.id }}/arreter" hx-target="#suivi-calcul" hx-swap="outerHTML">
       <button type="submit" class="bouton bouton-danger"{% if r.suivi.arret_demande %} disabled{% endif %}>
@@ -25,6 +28,7 @@
     </form>
     <span class="discret">Si un emploi du temps a déjà été trouvé, le meilleur est conservé.</span>
   </div>
+  {%- endif %}
   {%- endif %}
 
   {%- if r.regles %}
@@ -87,7 +91,8 @@
   {%- endif %}
   <div class="edt-boutons">
     {%- if r.suivi.version_id %}
-    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {#- Sans séances datées, le bouton qui les produit n'existe que dans la vue datée. #}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}{% if r.datees and r.datees.erreur %}&amp;couche=date{% endif %}">Voir l'emploi du temps</a>
     {%- endif %}
     {%- if r.nb_a_programmer %}
     <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">{% if r.nb_a_programmer == 1 %}Programmer la séance restante{% else %}Programmer les {{ r.nb_a_programmer }} séances restantes{% endif %}</a>
@@ -121,7 +126,8 @@
   {%- elif r.issue == "erreur" %}
   <div class="edt-boutons">
     {%- if r.suivi.version_id %}
-    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {#- Version enregistrée sans ses séances datées : la vue datée porte le bouton qui les produit. #}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}&amp;couche=date">Voir l'emploi du temps</a>
     {%- endif %}
     <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
       <button type="submit" class="bouton{% if not r.suivi.version_id %} bouton-principal{% endif %}">Relancer le même calcul</button>
@@ -147,3 +153,6 @@
   </details>
   {%- endif %}
 </div>
+{%- if vider_messages %}
+<div id="messages" class="messages" aria-live="polite" hx-swap-oob="true"></div>
+{%- endif %}

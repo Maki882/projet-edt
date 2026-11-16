@@ -124,17 +124,17 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 |---|---:|---:|---:|
 | `assistant` | 136 | 31 | 167 |
 | `banc_tests` | 43 | 22 | 65 |
-| `echange` | 146 | 33 | 179 |
+| `echange` | 148 | 35 | 183 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 204 | 75 | 279 |
-| `solveur` | 194 | 52 | 246 |
+| `socle` | 207 | 77 | 284 |
+| `solveur` | 195 | 53 | 248 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 125 | 137 |
-| `web_edt` | 34 | 128 | 162 |
-| **Total** | **1 106** | **516** | **1 622** |
-| dont cas limites (`cas_limite`) | 310 | 198 | 508 |
+| `web_edt` | 35 | 130 | 165 |
+| **Total** | **1 113** | **523** | **1 636** |
+| dont cas limites (`cas_limite`) | 317 | 205 | 522 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.

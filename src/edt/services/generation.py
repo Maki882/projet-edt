@@ -198,6 +198,9 @@ class SuiviCalcul:
     - `premiere_solution_s` : calcul en cours qui a déjà un emploi du temps
       complet (gardé si l'utilisateur l'arrête), trouvé après ce nombre de
       secondes ; `None` sinon. Tenu en mémoire par le processus qui calcule ;
+    - `recherche_finie` : calcul en cours dont le moteur a rendu la main (contrôle,
+      enregistrement, séances datées) : un arrêt n'a plus d'effet. Tenu en mémoire
+      par le processus qui calcule ;
     - `statistiques` : mesures du moteur, plus `impossibilites` (raisons d'un
       refus), `indicateurs` (qualité de la solution) et `instanciation`
       (bilan des séances datées) quand ils existent.
@@ -220,6 +223,7 @@ class SuiviCalcul:
     niveaux_regles: dict[int, Niveau] | None = None
     regles: tuple[dict, ...] = ()
     premiere_solution_s: float | None = None
+    recherche_finie: bool = False
 
     @property
     def en_cours(self) -> bool:
@@ -231,15 +235,41 @@ class SuiviCalcul:
         """Vrai si le calcul a produit une version d'emploi du temps."""
         return self.etat is EtatCalcul.REUSSI
 
+    @property
+    def libelle(self) -> str:
+        """Résultat en quelques mots (voir `libelle_resultat`)."""
+        return libelle_resultat(self.etat, self.statistiques)
+
 
 @dataclass
 class _CalculActif:
     fil: threading.Thread
     arret: threading.Event
     premiere_solution_s: float | None = None
+    recherche_finie: bool = False
+
+
+LIBELLE_NON_LANCE = "Non lancé (points bloquants)"
+"""Résultat affiché d'un calcul refusé par les pré-vérifications : l'état « impossible » qu'il
+porte en base ne dit pas que la recherche n'a pas eu lieu."""
+
+
+def libelle_resultat(etat: EtatCalcul, statistiques: object) -> str:
+    """Résultat d'un calcul en quelques mots : le libellé de l'état, sauf pour un refus."""
+    if isinstance(statistiques, dict) and statistiques.get("refuse") is True:
+        return LIBELLE_NON_LANCE
+    return etat.libelle
 
 
 _verrou = threading.Lock()
+DELAI_VERROU_ECRITURE_S = 1.0
+"""Attente maximale de `_verrou` par un appelant qui tient déjà le verrou d'écriture de la base
+(voir `calcul_en_cours`). Les lectures le tiennent quelques millisecondes ; au-delà, c'est un
+lancement ou un arrêt de calcul qui attend lui-même la base."""
+MESSAGE_LANCEMENT_EN_COURS = (
+    "Un calcul d'emploi du temps est en cours de lancement ou d'arrêt : attendre quelques "
+    "secondes, puis réessayer."
+)
 _actifs: dict[int, _CalculActif] = {}
 _deja_signales: set[tuple[int, dt.datetime, str]] = set()
 """Lignes de calcul corrompues déjà signalées au journal (voir `_avertir_une_fois`)."""
@@ -268,8 +298,8 @@ def lancer_calcul(
 
     Lève `ErreurCalculEnCours` si un calcul tourne déjà (dans ce processus ou
     un autre, même lancé la même seconde), `ErreurRegleMetier` pendant un
-    chargement d'établissement fictif, une remise à zéro ou un import,
-    `ErreurIntrouvable` si le semestre n'existe pas.
+    chargement d'établissement fictif, une remise à zéro, un import ou une
+    exécution des tests, `ErreurIntrouvable` si le semestre n'existe pas.
     """
     # Imports locaux : `edt.services.jeux` et `edt.services.echange` importent ce module.
     from edt.services.echange import import_en_cours
@@ -279,11 +309,13 @@ def lancer_calcul(
         raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     config = charger_configuration()
     moteur = moteur or solveur.resoudre
-    # L'attente du verrou d'écriture de la base (plus bas) se fait en tenant `_verrou`. Toutes les
-    # fonctions de ce module prennent les deux verrous dans cet ordre (`_verrou`, puis la base) :
-    # aucun interblocage possible. Limite : quand un autre processus écrit longtemps, les appels
-    # qui prennent `_verrou` (`calcul_en_cours`, `demander_arret`) attendent avec le lancement,
-    # au plus le délai de verrou de la base.
+    # L'attente du verrou d'écriture de la base (plus bas) se fait en tenant `_verrou`. Les
+    # fonctions de ce module prennent les deux verrous dans cet ordre (`_verrou`, puis la base).
+    # Une requête d'écriture tient déjà la base quand elle vérifie qu'aucun calcul ne tourne :
+    # elle appelle `calcul_en_cours(ecriture=True)`, qui renonce au bout d'un délai court au lieu
+    # d'attendre ce lancement, qui l'attend. Limite : quand un autre processus écrit longtemps,
+    # les lectures qui prennent `_verrou` (`calcul_en_cours`, `demander_arret`) attendent avec le
+    # lancement, au plus le délai de verrou de la base.
     with _verrou:
         if operation_en_cours():
             journal.info(
@@ -295,6 +327,7 @@ def lancer_calcul(
                 "à zéro est en cours, les tables sont en train d'être recréées. Attendre sa fin, "
                 "puis réessayer."
             )
+        _refuser_pendant_les_tests(semestre_id)
         if import_en_cours():
             # L'inverse est déjà vrai : un import est refusé pendant un calcul.
             journal.info("Calcul refusé pour le semestre %d : import en cours", semestre_id)
@@ -345,6 +378,27 @@ def lancer_calcul(
 
     journal.info("Calcul %d lancé pour le semestre %d", calcul_id, semestre_id)
     return calcul_id
+
+
+def _refuser_pendant_les_tests(semestre_id: int) -> None:
+    """Lève `ErreurRegleMetier` si une exécution des tests tourne (ce processus ou un autre).
+
+    pytest et le calcul se partageraient les processeurs : le calcul atteindrait son temps
+    limite plus vite, avec un résultat moins bon. L'inverse est déjà vrai : les tests sont
+    refusés pendant un calcul. `tests_en_cours` ne prend aucun verrou : l'appel se fait sans
+    risque en tenant `_verrou`.
+    """
+    # Import local : le service des tests importe ce module.
+    from edt.services.banc_tests.execution import tests_en_cours
+
+    if not tests_en_cours():
+        return
+    journal.info("Calcul refusé pour le semestre %d : exécution des tests en cours", semestre_id)
+    raise ErreurRegleMetier(
+        "Impossible de lancer un calcul : une exécution des tests est en cours et occupe les "
+        "processeurs du serveur ; le calcul serait ralenti et son résultat moins bon. Attendre "
+        "sa fin, ou l'arrêter depuis l'onglet des tests, puis relancer le calcul."
+    )
 
 
 def pre_verifier_semestre(
@@ -417,7 +471,7 @@ def etat_calcul(calcul_id: int) -> SuiviCalcul:
         return _suivi(session, calcul)
 
 
-def calcul_en_cours() -> SuiviCalcul | None:
+def calcul_en_cours(*, ecriture: bool = False) -> SuiviCalcul | None:
     """Le calcul en cours, s'il y en a un.
 
     Un calcul abandonné par son processus ne compte pas. Il est clos au
@@ -425,8 +479,25 @@ def calcul_en_cours() -> SuiviCalcul | None:
     attendre** : cette fonction est appelée par des requêtes web d'écriture
     (import, remise à zéro, paramètres) qui tiennent déjà le verrou d'écriture
     dans le même fil, et l'attendre serait s'attendre soi-même jusqu'au délai.
+
+    `ecriture` : l'appelant tient le verrou d'écriture de la base. Un lancement
+    de calcul tient alors peut-être `_verrou` en attendant ce même verrou :
+    l'attente de `_verrou` est bornée à `DELAI_VERROU_ECRITURE_S`, puis
+    `ErreurCalculEnCours` est levée (l'appelant annule sa transaction et le
+    lancement passe). Sans `ecriture`, l'attente n'est pas bornée.
     """
-    with _verrou, session_base() as session:
+    if not _verrou.acquire(timeout=DELAI_VERROU_ECRITURE_S if ecriture else -1):
+        journal.info("Écriture refusée : un calcul est en cours de lancement ou d'arrêt")
+        raise ErreurCalculEnCours(MESSAGE_LANCEMENT_EN_COURS)
+    try:
+        return _calcul_en_cours()
+    finally:
+        _verrou.release()
+
+
+def _calcul_en_cours() -> SuiviCalcul | None:
+    """Corps de `calcul_en_cours`, à appeler en tenant `_verrou`."""
+    with session_base() as session:
         abandonnes = _calculs_abandonnes(session)
         ignores = {calcul.id for calcul in abandonnes}
         if abandonnes:
@@ -540,8 +611,13 @@ def _message_calcul_introuvable(calcul_id: object) -> str:
 
 
 def _processus_vivant(pid: int) -> bool:
-    """Vrai si un processus de numéro `pid` existe sur cette machine."""
-    if pid <= 0:
+    """Vrai si un processus de numéro `pid` existe sur cette machine.
+
+    Un numéro hors des bornes du système (fichier abîmé ou écrit à la main) ne désigne aucun
+    processus : sans cette garde, `os.kill` lève `OverflowError` sous Linux, et Windows tronque
+    le numéro, qui peut alors désigner un autre processus.
+    """
+    if not _pid_lisible(pid):
         return False
     if os.name == "nt":
         # Sous Windows, `os.kill(pid, 0)` tuerait le processus : il est interrogé sans y toucher.
@@ -910,6 +986,9 @@ def _calculer(
         return EtatCalcul.INFAISABLE, message, statistiques
 
     resultat = _appeler_moteur(moteur, calcul_id, instantane, options, arret)
+    actif = _actifs.get(calcul_id)
+    if actif is not None:
+        actif.recherche_finie = True
     statistiques = dict(resultat.statistiques)
     etat = _ETAT_PAR_STATUT[resultat.statut]
     message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
@@ -1242,11 +1321,18 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
         premiere_solution_s=_premiere_solution(calcul.id) if etat is EtatCalcul.EN_COURS else None,
+        recherche_finie=etat is EtatCalcul.EN_COURS and _recherche_finie(calcul.id),
         avertissements=_textes(statistiques.get("avertissements")),
         niveaux=_niveaux_du_calcul(calcul, parametres, desactivees),
         niveaux_regles=_niveaux_regles_du_calcul(calcul, parametres),
         regles=tuple(r for r in regles if isinstance(r, dict)) if isinstance(regles, list) else (),
     )
+
+
+def _recherche_finie(calcul_id: int) -> bool:
+    """Vrai si le moteur d'un calcul de ce processus a rendu la main."""
+    actif = _actifs.get(calcul_id)
+    return actif is not None and actif.recherche_finie
 
 
 def _premiere_solution(calcul_id: int) -> float | None:

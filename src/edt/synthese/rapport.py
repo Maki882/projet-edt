@@ -189,7 +189,7 @@ class RapportJeu:
             f"{c.get('trajet', 0)} trajets",
             f"  Personnes : {c.get('groupe', 0)} groupes, {c.get('etudiant', 0)} étudiants "
             f"({c.get('inscription', 0)} inscriptions), {c.get('enseignant', 0)} enseignants "
-            f"(dont {self.nb_recrutements} recrutés pendant le témoin)",
+            f"(dont {self.nb_recrutements} recrutés pour l'emploi du temps de référence)",
             f"  Enseignement : {c.get('matiere', 0)} matières, {self.nb_besoins} besoins ("
             + ", ".join(f"{mode} {n}" for mode, n in sorted(self.besoins_par_mode.items()))
             + ")",
@@ -209,15 +209,17 @@ class RapportJeu:
                 lignes.append(f"    salles {type_salle} : {taux}")
             anomalies = self.anomalies_temoin.get(charge.semestre, {})
             lignes.append(
-                "    vérificateur sur le témoin : "
+                "    vérificateur sur l'emploi du temps de référence : "
                 + ", ".join(
-                    f"{anomalies.get(g, 0)} {g}(s)"
+                    f"{anomalies.get(g, 0)} {g}{'s' if anomalies.get(g, 0) > 1 else ''}"
                     for g in ("erreur", "avertissement", "information")
                 )
             )
             indicateurs = self.indicateurs.get(charge.semestre)
             if indicateurs is not None:
-                lignes.append(f"    indicateurs du témoin : {_texte_indicateurs(indicateurs)}")
+                lignes.append(
+                    f"    indicateurs de l'emploi du temps de référence : {_texte_indicateurs(indicateurs)}"
+                )
         if self.regles:
             etats = Counter(r.etat for r in self.regles)
             lignes.append(
@@ -232,7 +234,7 @@ class RapportJeu:
                 )
         if self.versions_reference:
             lignes.append(
-                "  Versions de référence (témoin) : "
+                "  Versions de référence enregistrées : "
                 + ", ".join(
                     f"{code} n°{vid}" for code, vid in sorted(self.versions_reference.items())
                 )

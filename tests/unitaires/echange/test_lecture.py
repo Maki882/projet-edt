@@ -7,7 +7,7 @@ import io
 import zipfile
 
 import pytest
-from tests.outils.echange.fabrique import classeur, csv_envoye, messages, seul
+from tests.outils.echange.fabrique import archive_zip, classeur, csv_envoye, messages, seul
 
 from edt.domaine.enumerations import Gravite, NatureGroupe
 from edt.echange import valeurs as v
@@ -51,6 +51,25 @@ def test_repli_windows_1252_avec_avertissement():
 def test_utf16_avec_bom():
     tableaux, _ = _lire("campus.csv", TEXTE.replace(";", "\t").encode("utf-16"))
     assert tableaux[0].lignes[1].cellules == ("ISSY", "Issy-les-Moulineaux")
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("nom", ["salles.csv", "cours.ics", "donnees.zip"])
+def test_bom_utf8_suivi_d_un_octet_invalide_est_une_erreur(nom):
+    """Cas : un fichier commence par la marque UTF-8 (BOM) mais contient ensuite un octet qui
+    n'est pas de l'UTF-8 (un « é » en Windows-1252), en CSV, en iCal ou dans une archive.
+
+    Risque : le décodage lève une exception que rien ne rattrape, et l'import répond « erreur
+    inattendue » au lieu d'un rapport qui nomme le fichier et dit comment le réenregistrer.
+    """
+    contenu = b"\xef\xbb\xbfcode;nom;campus\nN\xe9;Salle;NDC\n"
+    if nom.endswith(".zip"):
+        contenu = archive_zip({"salles.csv": contenu})
+    lu, signalements = lire_fichier(FichierEnvoye(nom, contenu))
+    assert not lu.tableaux and lu.texte_ical is None
+    erreur = seul(signalements, Gravite.ERREUR)
+    assert "marque UTF-8" in erreur.message and "UTF-8" in erreur.message
+    assert erreur.fichier == (f"{nom}/salles.csv" if nom.endswith(".zip") else nom)
 
 
 def test_encodage_illisible_est_une_erreur():

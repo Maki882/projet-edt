@@ -46,10 +46,12 @@ introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
 Le formulaire de déplacement d'une séance de la semaine type annonce, pour
 chaque heure de début, si le déplacement serait accepté (« possible ») ou
-refusé, sans salle (le groupe, l'enseignant et les règles) : la liste des
-salles libres, rechargée à chaque changement d'heure, couvre la salle. Cette
-annonce tient dans `BUDGET_ANNOTATION_S` secondes ; au-delà, les heures
-suivantes restent sans mention.
+refusé avec la salle que le formulaire propose à cette heure (la salle
+actuelle si elle est libre, sinon la première salle libre) : « possible »
+garantit que l'enregistrement réussit sans toucher à la salle. Les règles
+qui dépendent de la salle (trajet entre campus, salle occupée, règles de
+salle) comptent donc. Cette annonce tient dans `BUDGET_ANNOTATION_S`
+secondes ; au-delà, les heures suivantes restent sans mention.
 
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
@@ -302,8 +304,8 @@ def formulaire_seance(
     if debut is None or debut not in dict(debuts):
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
-    debuts, remarque_debuts = _annoter_debuts(session, seance, jour, duree, debuts)
     exigences = _Exigences.du_besoin(session, besoin)
+    debuts, remarque_debuts = _annoter_debuts(session, seance, exigences, jour, duree, debuts)
     salles = _salles_hebdo(session, seance, exigences, jour, debut, fin)
     if salle_id is None or salle_id not in {s.id for s in salles}:
         salle_id = _salle_par_defaut(salles, seance.salle_id)
@@ -326,13 +328,15 @@ def formulaire_seance(
 def _annoter_debuts(
     session: Session,
     seance: m.SeanceHebdo,
+    exigences: _Exigences,
     jour: int,
     duree: int,
     debuts: tuple[tuple[int, str], ...],
 ) -> tuple[tuple[tuple[int, str], ...], str | None]:
     """Chaque heure de début suivie de « (possible) », « (refusé) » ou « (actuelle) ».
 
-    La vérification se fait sans salle, par le même raccord que l'enregistrement
+    La vérification se fait avec la salle proposée à cette heure (voir l'en-tête
+    du module), par le même raccord que l'enregistrement
     (`raccords.verifier_modification`) ; les valeurs ne changent pas. Au-delà
     de `BUDGET_ANNOTATION_S`, les heures suivantes restent sans mention. Si la
     vérification est impossible, aucune mention, et la raison est rendue.
@@ -353,9 +357,11 @@ def _annoter_debuts(
             )
             annotes.extend(debuts[position:])
             break
+        salles = _salles_hebdo(session, seance, exigences, jour, debut, debut + duree)
+        salle_id = _salle_par_defaut(salles, seance.salle_id)
         try:
             verification = raccords.verifier_modification(
-                session, seance.version_id, identifiant, jour, debut, debut + duree, None
+                session, seance.version_id, identifiant, jour, debut, debut + duree, salle_id
             )
         except ErreurEDT as erreur:
             journal.info(

@@ -94,7 +94,7 @@ def test_import_partiel_et_rapport_exact(jeu_minimal, importer, fichier_exemple)
 
     bilan = rapport.bilan("salles")
     assert bilan.compteurs == {"crees": 2, "rejetes": 4}
-    assert bilan.texte == "2 créé(s), 4 rejeté(s)"
+    assert bilan.texte == "2 créés, 4 rejetés"
     positions = [(s.gravite, s.fichier, s.ligne, s.colonne) for s in rapport.signalements]
     fichier = "salles_avec_erreurs.csv"
     assert positions == [

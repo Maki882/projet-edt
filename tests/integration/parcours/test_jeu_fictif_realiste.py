@@ -14,7 +14,7 @@ from edt.services.verification import verifier_occurrences_version, verifier_ver
 
 @pytest.mark.integration
 def test_jeu_petit_calcule_et_verifie(base):
-    """Scénario : on charge le jeu fictif « petit » (une promotion, deux classes) et on calcule.
+    """Scénario : le jeu fictif « petit » (une promotion, deux classes) est chargé puis calculé.
 
     Étapes :
     1. Charger le jeu avec le service utilisé par l'écran « Jeux de démonstration ».
