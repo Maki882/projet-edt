@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import threading
 
@@ -565,7 +566,7 @@ def test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit(
     la page du calcul dit de les produire avec le bouton « Produire les séances datées ».
 
     Risque : le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas
-    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique.
+    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qui lui est indiqué.
     """
 
     def instanciation_en_panne(session, version_id, *args, **kwargs):
@@ -721,3 +722,100 @@ def test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve(jeu_minimal, client, mo
     finally:
         liberer.set()
     assert generation.attendre_calcul(calcul_id, DELAI).etat is EtatCalcul.ARRETE
+
+
+@pytest.mark.cas_limite
+def test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif(
+    version_generee, client, monkeypatch, caplog
+):
+    """Cas : une exécution des tests tourne quand l'écran Générer est ouvert, puis « Lancer le
+    calcul », « Relancer le même calcul » ou « Proposer une autre solution » est envoyé.
+
+    Risque : page d'erreur « Opération refusée » avec une référence d'incident, comme pour une
+    panne, et aucun signe avant le clic que le calcul serait refusé.
+    """
+    from edt.services.banc_tests import execution
+
+    monkeypatch.setattr(execution, "tests_en_cours", lambda dossier=None: True)
+    semestre = version_generee.semestre_id
+    generer = html.unescape(client.get(f"/calculs?semestre_id={semestre}").text)
+    assert "Une exécution des tests est en cours" in generer  # prévenu avant le clic
+
+    envois = [
+        ("/calculs", _formulaire(semestre)),
+        (f"/calculs/{version_generee.calcul_id}/relancer", {}),
+        (f"/calculs/{version_generee.calcul_id}/relancer", {"autre_solution": "1"}),
+    ]
+    for adresse, donnees in envois:
+        caplog.clear()
+        reponse = client.post(adresse, data=donnees, follow_redirects=False)
+        assert reponse.status_code == 303, (adresse, reponse.text)
+        assert reponse.headers["location"] == f"/calculs?semestre_id={semestre}"
+        page = html.unescape(client.get(reponse.headers["location"]).text)
+        assert "une exécution des tests est en cours" in page and "Référence" not in page
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING], adresse
+    assert _nb_calculs() == 1  # seul le calcul de la fixture
+
+
+@pytest.mark.cas_limite
+def test_resultat_dit_les_memes_durees_que_le_suivi(version_generee, client):
+    """Cas : un calcul trouve un premier emploi du temps après 1 s, l'améliore, et s'arrête au
+    bout de 16 s ; un autre s'arrête « pas trouvé » au bout de 75 s pour un temps limite de 300 s.
+
+    Risque : le suivi a dit « déjà trouvé (après 1 s) » et le résultat dit « trouvé en 16 s » ;
+    ou le résultat dit « pas trouvé en 300 s » quand le calcul a duré 75 s : deux durées
+    contradictoires sous les yeux du public.
+    """
+    calcul_id = version_generee.calcul_id
+    with session_base() as session:
+        calcul = session.get(m.Calcul, calcul_id)
+        calcul.duree_s = 16.0
+        calcul.statistiques = {
+            **calcul.statistiques,
+            "duree_premiere_solution_s": 1.2,
+            "raison_arret": "stagnation",
+        }
+    page = html.unescape(client.get(f"/calculs/{calcul_id}").text)
+    assert "Un emploi du temps a été trouvé après 1 s, puis amélioré : calcul terminé en 16 s." in (
+        page
+    )
+
+    with session_base() as session:
+        calcul = session.get(m.Calcul, calcul_id)
+        calcul.etat = EtatCalcul.TEMPS_DEPASSE
+        calcul.duree_s = 75.0
+        calcul.parametres = {**calcul.parametres, "temps_limite_s": 300}
+        session.execute(delete(m.VersionEdt).where(m.VersionEdt.calcul_id == calcul_id))
+    page = html.unescape(client.get(f"/calculs/{calcul_id}").text)
+    assert "Aucun emploi du temps n'a été trouvé en 1 min 15 s (temps limite : 5 minutes)" in page
+
+
+@pytest.mark.cas_limite
+def test_double_envoi_de_relancer_dit_calcul_relance(version_generee, client, monkeypatch):
+    """Cas : « Relancer le même calcul » ou « Proposer une autre solution » envoyé deux fois de
+    suite (double clic sans JavaScript).
+
+    Risque : le second envoi répond par le bandeau orange « Un calcul est déjà en cours », qui
+    fait croire à un problème alors que le calcul demandé tourne.
+    """
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 3600.0)  # pas de délai réel
+    demarre = threading.Event()
+
+    def moteur_lent(instantane, options, arret=None):
+        demarre.set()
+        arret.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_lent)
+    adresse = f"/calculs/{version_generee.calcul_id}/relancer"
+    premier = client.post(adresse, data={"autre_solution": "1"}, follow_redirects=False)
+    relance = int(premier.headers["location"].rsplit("/", 1)[1])
+    try:
+        second = client.post(adresse, data={"autre_solution": "1"}, follow_redirects=False)
+        assert second.headers["location"] == f"/calculs/{relance}"
+        page = client.get(second.headers["location"]).text
+        assert "Calcul relancé." in page and "déjà en cours" not in page
+    finally:
+        generation.demander_arret(relance)
+    assert demarre.wait(DELAI)
+    generation.attendre_calcul(relance, DELAI)

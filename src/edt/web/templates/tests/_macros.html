@@ -3,6 +3,7 @@
   Variables attendues dans le contexte : t (TableauFamille), duree (texte d'une durée).
   - etat(ligne)                  pastille de l'état d'un test
   - compte(c)                    résumé « 12 réussis, 1 échec… » d'un groupe
+  - les_tests(n)                 « le test » ou « les N tests »
   - ligne(l, oob)                un test (remplacé tel quel par le suivi si oob)
   - entete_fichier(f, oob)       titre, résumé et bouton d'un fichier
   - resume_composant(c, oob)     résumé d'un composant (dans son <summary>)
@@ -27,6 +28,11 @@
 </span>
 {%- endmacro %}
 
+{#- « le test » ou « les N tests », accordé au nombre. #}
+{% macro les_tests(n) -%}
+{{ "le test" if n == 1 else "les " ~ n ~ " tests" }}
+{%- endmacro %}
+
 {% macro bouton(cible, libelle, titre, principal=false) -%}
 <button type="submit" form="form-lancer" name="cible" value="{{ cible }}" title="{{ titre }}"
   class="bouton bouton-petit banc-bouton{% if principal %} banc-bouton-principal{% endif %}"{% if t.indisponible %} disabled{% endif %}>{{ libelle }}</button>
@@ -49,7 +55,7 @@
     {%- endif %}
   </div>
   <div class="banc-test-duree">{% if l.resultat %}{{ duree(l.resultat.duree_s) }}{% endif %}</div>
-  <div class="banc-test-date">{% if l.resultat %}<span class="banc-libelle-mobile">Dernière exécution : </span>{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">-</span>{% endif %}</div>
+  <div class="banc-test-date"><span class="banc-libelle">Dernière exécution</span> {% if l.resultat %}{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">jamais</span>{% endif %}</div>
   <div class="banc-test-action">
     {%- if l.test.perf %}
     <span class="banc-par-commande" title="Test long : il se lance par la commande python -m edt tests --test {{ l.test.cle }}">Par la commande</span>
@@ -69,7 +75,7 @@
   <h3><code>{{ f.fichier.nom }}</code></h3>
   {{ compte(f.compte) }}
   <span class="banc-date">{% if f.complet_le %}Fichier lancé en entier le {{ f.complet_le|dateheure_fr }}{% else %}Fichier jamais lancé en entier{% endif %}</span>
-  {{ bouton("fichier:" ~ f.fichier.chemin, "Lancer ce fichier", "Lancer les " ~ f.compte.total ~ " tests du fichier") }}
+  {{ bouton("fichier:" ~ f.fichier.chemin, "Lancer ce fichier", "Lancer " ~ les_tests(f.compte.total) ~ " du fichier") }}
 </div>
 {%- endmacro %}
 
@@ -83,7 +89,7 @@
 {% macro resume_famille(oob=false) -%}
 <div class="banc-resume-famille" id="banc-resume-famille"{% if oob %} hx-swap-oob="true"{% endif %}>
   <p class="banc-resume-nombres">
-    <strong>{{ t.compte.total }} tests</strong> {{ compte(t.compte) }}
+    <strong>{{ t.compte.total }} test{{ "s" if t.compte.total > 1 }}</strong> {{ compte(t.compte) }}
   </p>
   <p class="banc-date">
     {%- if t.complet_le %}Dernière exécution complète : le {{ t.complet_le|dateheure_fr }}.

@@ -111,7 +111,7 @@ class TableauDeBord:
     """Ce que la page d'accueil affiche (voir l'en-tête du module).
 
     - `nb_a_traiter` : `ATraiter.total` de la version active (la même
-      définition que la page « À traiter »), `None` si une vérification n'a
+      définition que la page « Points à traiter »), `None` si une vérification n'a
       pas pu être faite ;
     - `nb_a_programmer` : séances datées à programmer, affichées seulement
       quand `nb_a_traiter` est inconnu ;
@@ -147,7 +147,7 @@ def tableau_de_bord(session: Session, aujourdhui: dt.date | None = None) -> Tabl
     nb_a_traiter = None
     nb_a_programmer = 0
     if version is not None:
-        # Même calcul que la page « À traiter » et la pastille de l'onglet (mémorisé).
+        # Même calcul que la page « Points à traiter » et la pastille de l'onglet (mémorisé).
         element = anomalies.a_traiter_version(session, semestre, version.id)
         nb_a_programmer = len(element.a_programmer)
         if element.complet:

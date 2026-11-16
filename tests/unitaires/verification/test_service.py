@@ -138,7 +138,7 @@ def test_modification_envisagee_sans_rien_enregistrer(version_id, jeu_minimal, s
 
 @pytest.mark.cas_limite
 def test_modification_d_une_seance_non_placee(version_sans_seances_datees, jeu_minimal, session):
-    """Cas : la séance à placer n'est pas dans la semaine type (geste normal de « À traiter »).
+    """Cas : la séance à placer n'est pas dans la semaine type (geste normal de « Points à traiter »).
 
     Risque : le placement proposé n'était pas ajouté, ou l'anomalie « n'est pas placée »
     d'avant passait pour introduite : une séance non placée restait impossible à placer.
@@ -397,7 +397,7 @@ def test_salle_orpheline_nommee_sans_rendre_la_verification_impossible(
     """Cas : la salle N204 est effacée sans que ses séances soient mises à vide (base importée, retouche SQL).
 
     Risque : `ErreurDonneesInvalides` « salle inconnue » : plus aucune vérification de la
-    version (À traiter en erreur, commande en code 2).
+    version (Points à traiter en erreur, commande en code 2).
     """
     hebdo = verifier_version(session, version_id)
     (anomalie,) = hebdo.anomalies

@@ -21,6 +21,7 @@ from tests.outils.web_donnees.aides import (
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
+from edt.domaine.contraintes import DEFINITION_NIVEAUX
 from edt.domaine.parametres import JOURS_TRAVAILLES_PAR_DEFAUT
 from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, TypeRegle
 from edt.services import regles as service_regles
@@ -114,6 +115,21 @@ def test_choix_du_type_puis_formulaire_tire_du_schema(site, ids):
     assert "from:closest form" in section and "load" not in section  # pas d'erreurs d'emblée
 
 
+@pytest.mark.cas_limite
+def test_niveaux_definis_comme_sur_l_ecran_generer(site, ids, jeu_minimal):
+    """Cas : le formulaire d'une règle personnalisée et l'écran Générer expliquent les niveaux.
+
+    Risque : deux définitions différentes (« jamais enfreinte, respectée au mieux » d'un côté,
+    « enfreinte seulement faute de mieux, avec un avertissement » de l'autre) : l'utilisateur
+    ne sait plus ce qu'« important » veut dire.
+    """
+    import html
+
+    regle = html.unescape(site.get(f"/regles/nouveau?annee={ids.annee}&type=JOURS_TRAVAILLES").text)
+    generer = html.unescape(site.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text)
+    assert DEFINITION_NIVEAUX in regle and DEFINITION_NIVEAUX in generer
+
+
 def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):
     page = site.get(f"/regles/nouveau?annee={ids.annee}&type=MAX_PAR_JOUR").text
     bloc = re.search(r'<div class="champ[^"]*"[^>]*>\s*<label for="champ-p_personnes"', page)
@@ -148,6 +164,37 @@ def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):
     # « Personnes concernées » seul paramètre du type : tout le bloc suit la portée.
     page = site.get(f"/regles/nouveau?annee={ids.annee}&type=CAMPUS_PAR_JOUR").text
     assert '<fieldset data-visible-si="portee:etablissement">\n  <legend>Paramètres' in page
+
+
+@pytest.mark.cas_limite
+def test_double_envoi_d_une_regle_ne_cree_pas_de_doublon(site, ids):
+    """Cas : le formulaire d'une nouvelle règle est envoyé deux fois de suite à l'identique
+    (double clic sans JavaScript, ou deux onglets).
+
+    Risque : deux règles identiques (R005 et R006 disent la même chose), que l'utilisateur
+    doit repérer puis supprimer à la main.
+    """
+    classe = identifiant(m.Groupe, m.Groupe.code, "A1-G2")
+    donnees = _nouvelle(
+        ids.annee,
+        "MAX_PAR_JOUR",
+        portee="groupe",
+        cible_groupe=str(classe),
+        p_personnes="enseignants",
+        p_unite="minutes",
+        p_maximum="300",
+        niveau="important",
+    )
+    with session_base() as session:
+        avant = session.scalar(select(func.count()).select_from(m.Regle))
+    premier = site.post("/regles/nouveau", data=donnees, follow_redirects=False)
+    second = site.post("/regles/nouveau", data=donnees, follow_redirects=False)
+    assert premier.status_code == second.status_code == 303
+    assert second.headers["location"] == premier.headers["location"]
+    page = site.get(second.headers["location"]).text
+    assert "Règle R005 déjà créée" in page
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Regle)) == avant + 1
 
 
 def test_type_non_datable_sans_mode_dates_et_dates_refusees(site, ids):

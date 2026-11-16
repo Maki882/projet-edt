@@ -19,7 +19,7 @@ Modules :
 - `modifications` : salles compatibles, déplacement, verrou, occurrences ;
 - `versions` : semestres, historique, activation et suppression de versions ;
 - `calculs` : préparation, lancement et lecture du résultat d'un calcul ;
-- `anomalies` : la liste « À traiter » ;
+- `anomalies` : la liste « Points à traiter » ;
 - `tableau_de_bord` : l'état de l'établissement pour l'accueil.
 
 Le détail (disposition des blocs, raccords, ajout d'une vue) est

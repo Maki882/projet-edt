@@ -4,7 +4,7 @@ Les deux onglets « Tests unitaires » et « Tests d'intégration » de l'interf
 web, et la commande `python -m edt tests`, passent par ce paquet :
 
 - `catalogue` : liste des tests, lue dans les fichiers de `tests/` sans les
-  exécuter (module `ast`), et cibles qu'on peut lancer (un test, un fichier,
+  exécuter (module `ast`), et cibles lançables (un test, un fichier,
   un composant, une famille) ;
 - `execution` : une exécution à la fois, dans un sous-processus pytest à
   l'environnement assaini, suivie en direct, arrêtable, bornée en durée ;

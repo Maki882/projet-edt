@@ -34,7 +34,7 @@ from sqlalchemy.orm import Session, selectinload
 from starlette.datastructures import FormData
 
 from edt.db import modeles as m
-from edt.domaine.contraintes import Niveau
+from edt.domaine.contraintes import DEFINITION_NIVEAUX, Niveau
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_hhmm
 from edt.domaine.parametres import Parametres
@@ -485,8 +485,7 @@ def rubriques_regle(
             type="select",
             valeur=str(valeurs.get("niveau", "")),
             requis=True,
-            aide=f"Nécessaire : jamais enfreinte. Important ou facultatif : respectée au mieux. "
-            f"Défaut de ce type : {niveau_defaut}.",
+            aide=f"{DEFINITION_NIVEAUX} Défaut de ce type : {niveau_defaut}.",
             erreur=erreurs.get("niveau"),
             options=tuple((n.value, n.libelle) for n in Niveau),
         ),

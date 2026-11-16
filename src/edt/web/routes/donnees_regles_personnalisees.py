@@ -413,6 +413,17 @@ def creer(request: Request, session: SessionRequete, formulaire: Formulaire) -> 
     try:
         if locales:
             raise ErreurSaisie(service_regles.valider(session, brouillon).erreurs)
+        # Second envoi du même formulaire (double clic sans JavaScript, deux onglets) : la
+        # règle existe déjà, rien n'est créé en double.
+        identique = service_regles.regle_identique(session, brouillon)
+        if identique is not None:
+            journal.info("Règle %s déjà créée : aucun doublon", identique.code)
+            return rediriger(
+                request,
+                retour,
+                f"Règle {identique.code} déjà créée avec ce contenu : rien n'a été ajouté.",
+                "info",
+            )
         detail = service_regles.creer(session, brouillon, origine=OrigineRegle.SAISIE)
     except ErreurSaisie as refus:
         session.rollback()

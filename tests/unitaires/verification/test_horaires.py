@@ -224,7 +224,7 @@ def test_jour_sans_creneau_signale_une_seule_fois():
     `HORAIRES` vérifiée ou ignorée.
 
     Risque : la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et
-    panneau À traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le
+    panneau Points à traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le
     moteur la compte (JOURS).
     """
     f, seance, n204 = une_seance()

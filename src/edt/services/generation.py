@@ -261,6 +261,11 @@ def libelle_resultat(etat: EtatCalcul, statistiques: object) -> str:
     return etat.libelle
 
 
+class ErreurLancementRefuse(ErreurRegleMetier):
+    """Calcul refusé parce qu'une autre opération occupe la base ou le serveur (chargement d'un
+    établissement fictif, remise à zéro, import, exécution des tests) : réessayer après elle."""
+
+
 _verrou = threading.Lock()
 DELAI_VERROU_ECRITURE_S = 1.0
 """Attente maximale de `_verrou` par un appelant qui tient déjà le verrou d'écriture de la base
@@ -292,7 +297,7 @@ def lancer_calcul(
 
     - `options` : réglages du calcul (défaut : tirés des paramètres globaux) ;
     - `moteur` : moteur à utiliser (défaut : `edt.solveur.resoudre`) ;
-    - `version_base_id` : version dont on reprend verrous et indices (défaut :
+    - `version_base_id` : version dont sont repris verrous et indices (défaut :
       la version active du semestre) ;
     - `activer` : rendre active la version produite en cas de succès.
 
@@ -322,7 +327,7 @@ def lancer_calcul(
                 "Calcul refusé pour le semestre %d : chargement ou remise à zéro en cours",
                 semestre_id,
             )
-            raise ErreurRegleMetier(
+            raise ErreurLancementRefuse(
                 "Impossible de lancer un calcul : un chargement d'établissement fictif ou une remise "
                 "à zéro est en cours, les tables sont en train d'être recréées. Attendre sa fin, "
                 "puis réessayer."
@@ -331,7 +336,7 @@ def lancer_calcul(
         if import_en_cours():
             # L'inverse est déjà vrai : un import est refusé pendant un calcul.
             journal.info("Calcul refusé pour le semestre %d : import en cours", semestre_id)
-            raise ErreurRegleMetier(
+            raise ErreurLancementRefuse(
                 "Impossible de lancer un calcul : un import de données est en cours et modifie "
                 "ce que le calcul lirait. Attendre la fin de l'import, puis relancer le calcul."
             )
@@ -394,7 +399,7 @@ def _refuser_pendant_les_tests(semestre_id: int) -> None:
     if not tests_en_cours():
         return
     journal.info("Calcul refusé pour le semestre %d : exécution des tests en cours", semestre_id)
-    raise ErreurRegleMetier(
+    raise ErreurLancementRefuse(
         "Impossible de lancer un calcul : une exécution des tests est en cours et occupe les "
         "processeurs du serveur ; le calcul serait ralenti et son résultat moins bon. Attendre "
         "sa fin, ou l'arrêter depuis l'onglet des tests, puis relancer le calcul."

@@ -200,7 +200,7 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
     assert "Entorses aux règles ignorées pour ce calcul (1)" in page
     assert "Aucun point à traiter" in page
     accueil = client.get("/").text
-    assert "Aucun point à traiter" in accueil  # même nombre que la page « À traiter »
+    assert "Aucun point à traiter" in accueil  # même nombre que la page « Points à traiter »
 
     # Une règle active reste bloquante.
     faux_verificateur.modification = [

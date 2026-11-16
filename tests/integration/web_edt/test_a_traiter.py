@@ -155,7 +155,7 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
 def test_option_tous_les_semestres_affiche_tous_les_semestres(
     version_generee, client, faux_verificateur, aujourdhui_fige
 ):
-    """Cas : option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse
+    """Cas : option « Tous les semestres » de « Points à traiter » (`semestre_id=` vide), même adresse
     gardée en favori sur Générer, l'historique et la grille.
     Risque : la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » :
     impossible de revenir à tous les semestres.

@@ -11,8 +11,9 @@ Ce dossier contient (nombres de tests et détail par fichier en section 6) :
 - **`parcours/`** : des scénarios de bout en bout, comme un utilisateur se
   servirait de l'application. C'est le point d'entrée pour un lecteur pressé
   (section 4) ;
-- **un dossier par composant** (`socle/`, `solveur/`, `verification/`,
-  `web_donnees/`, `web_edt/`, `echange/`, `synthese/`, `exploitation/`) : les
+- **un dossier par composant** (`assistant/`, `banc_tests/`, `echange/`,
+  `exploitation/`, `socle/`, `solveur/`, `synthese/`, `verification/`,
+  `web_donnees/`, `web_edt/`) : les
   écrans de chaque composant par HTTP, ses commandes par `CliRunner`, ses
   calculs complets (section 6).
 
@@ -191,11 +192,11 @@ la solution. Le déplacement est couvert par
 
 Chargement du jeu « petit » (une promotion de 1re année, deux classes, deux
 sites, salles spécialisées, vacataires, une absence d'enseignant, partiels ;
-23 besoins) par le service de l'écran « Jeux de démonstration », calcul de
+23 besoins) par le service de l'écran « Établissement fictif », calcul de
 chacun de ses semestres, vérification de la semaine type et des séances
 datées (283 séances datées) sans anomalie bloquante. L'optimisation est
-coupée (paramètre `objectif_actif`) : on veut un emploi du temps valide, pas
-le meilleur.
+coupée (paramètre `objectif_actif`) : un emploi du temps valide est attendu,
+pas le meilleur.
 
 ### 4.7 Sortie réelle de pytest
 
@@ -257,16 +258,16 @@ assert not [a for a in rapport.anomalies if a.regle_id == regle.id]
 assert jours_a1_g1 and LUNDI not in jours_a1_g1
 ```
 
-1. **Ce qu'on prépare.** La fixture `jeu_minimal` charge un petit
+1. **Préparation.** La fixture `jeu_minimal` charge un petit
    établissement dans la base temporaire du test. Le service des règles crée
    la règle « A1-G1 ne travaille que du mardi au vendredi », au niveau
-   nécessaire, comme le ferait l'écran « Règles ».
-2. **Ce qu'on appelle.** `calculer` (`tests/outils/parcours/aides.py`) lance
+   nécessaire, comme le ferait l'écran « Règles personnalisées ».
+2. **Appel.** `calculer` (`tests/outils/parcours/aides.py`) lance
    un vrai calcul par `lancer_calcul` et l'attend par `attendre_calcul` :
    chargement de l'instantané, solveur, contrôle, enregistrement de la
    version. C'est ce calcul complet qui fait de ce test un test
    d'intégration.
-3. **Ce qu'on vérifie.** Le vérificateur juge la version valide, a bien
+3. **Vérification.** Le vérificateur juge la version valide, a bien
    contrôlé la règle et ne lui trouve aucune entorse ; la base, relue
    directement, ne contient aucune séance de A1-G1 un lundi.
 4. **Pourquoi le test échouerait si le défaut revenait.** Si la règle
@@ -286,7 +287,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **531 fonctions de test** dans 11 composants, dont 213 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -345,13 +346,13 @@ Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marqué
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension | 27 |
 
-### `solveur/` : Calculs complets et commandes du solveur (53 fonctions)
+### `solveur/` : Calculs complets et commandes du solveur (54 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 |
-| [`solveur/test_services.py`](solveur/test_services.py) | Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 44 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 |
 
 ### `synthese/` : Commande des jeux fictifs (6 fonctions)
 
@@ -366,7 +367,7 @@ Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marqué
 |---|---|---:|
 | [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (125 fonctions)
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (127 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -379,18 +380,18 @@ Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marqué
 | [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau de l'assistant, aucune annonce | 6 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |
-| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 28 |
+| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 30 |
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 |
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (132 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (135 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`web_edt/test_a_traiter.py`](web_edt/test_a_traiter.py) | Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 |
 | [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 |
-| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 23 |
+| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 |
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 |
 | [`web_edt/test_dejeuner.py`](web_edt/test_dejeuner.py) | Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 |
 | [`web_edt/test_deplacement_possible.py`](web_edt/test_deplacement_possible.py) | Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 2 |
@@ -401,14 +402,6 @@ Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marqué
 | [`web_edt/test_revue.py`](web_edt/test_revue.py) | Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 |
 
 <!-- tests-integration : fin de la partie générée -->
-
-### `banc_tests/` : Lancement des tests depuis l'application (19 fonctions, 19 cas)
-
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 3 | 3 |
-| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 9 | 9 |
-| [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | exécution réelle des tests d'un dépôt factice dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 |
 
 ## 7. Stratégie de test du projet
 
@@ -429,8 +422,9 @@ Ce dossier compte **525 fonctions de test** dans 11 composants, dont 207 marqué
 
 Les nombres de tests de chaque niveau sont dans la vue d'ensemble de
 [`tests/README.md`](../README.md) (section 3). La CI
-(`.github/workflows/ci.yml`) enchaîne trois étapes : contrôle du rangement,
-tests unitaires, tests d'intégration, hors tests de charge.
+(`.github/workflows/ci.yml`) enchaîne, sous Python 3.11, 3.13 et 3.14 :
+`ruff check`, `ruff format --check`, contrôle du rangement, tests unitaires et
+tests d'intégration, hors tests de charge.
 
 Règles communes à tous les tests (voir [banque de tests](../../docs/banque-de-tests.md),
 « Conventions ») : noms en français, base SQLite dans un dossier temporaire
@@ -444,7 +438,7 @@ jamais de solution particulière du solveur attendue en dur.
   ne juge pas l'apparence. Un test dans un navigateur (Playwright, par
   exemple) serait l'étape suivante.
 - **Pas de site déployé** : tout tourne en mémoire, sans serveur, sans réseau,
-  sans le VPS (`https://pts.jorund.xyz`) ni nginx ; les fichiers de
+  sans le site déployé ni nginx ; les fichiers de
   déploiement sont contrôlés à part (`exploitation/` ici et dans
   `tests/unitaires/exploitation/` : scripts, unité systemd, nginx).
 - **Petits jeux seulement** dans les parcours : jeu minimal et jeu « petit »,

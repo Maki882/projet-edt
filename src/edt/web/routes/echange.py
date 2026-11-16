@@ -94,7 +94,7 @@ async def appliquer(
 ) -> HTMLResponse:
     """Applique l'import : les lignes valides entrent, les autres sont listées.
 
-    Si des données ont changé, les écrans suivants (accueil, « À traiter »,
+    Si des données ont changé, les écrans suivants (accueil, « Points à traiter »,
     Générer) sont préparés en arrière-plan, après l'enregistrement.
     """
     envois, options = await _lire_envoi(request)

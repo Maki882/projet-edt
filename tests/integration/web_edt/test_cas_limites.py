@@ -46,6 +46,7 @@ from edt.db.moteur import chemin_base, session_base
 from edt.domaine.enumerations import EtatCalcul, StatutOccurrence
 from edt.services import generation
 from edt.services.emploi_du_temps import modifications, vues
+from edt.web.routes import calculs as routes_calculs
 
 # --------------------------------------------------------------------------- #
 # Identifiants énormes, négatifs ou inconnus
@@ -56,7 +57,7 @@ from edt.services.emploi_du_temps import modifications, vues
 @pytest.mark.parametrize("g", [ENORME, "999999"], ids=["enorme", "inconnu"])
 def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, caplog, g):
     """Cas : lien mal copié ou périmé dont l'identifiant a vingt chiffres ou n'existe pas, sur
-    chaque adresse des onglets Générer, versions, Emploi du temps, À traiter (et négatif sur les
+    chaque adresse des onglets Générer, versions, Emploi du temps, Points à traiter (et négatif sur les
     paramètres d'adresse : dans un chemin, « -1 » ne correspond à aucune route).
     Risque : OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal,
     au lieu d'un « introuvable » (404) qui nomme l'élément manquant.
@@ -205,7 +206,7 @@ def test_cookie_de_cible_illisible_ou_enorme_est_ignore(version_generee, client,
 @pytest.mark.cas_limite
 def test_fragments_ouverts_sans_htmx_menent_a_la_page(reperes, client, faux_verificateur):
     """Cas : fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau
-    d'une séance, compteur d'« À traiter ») ouvert sans en-tête HX-Request : adresse saisie,
+    d'une séance, compteur de « Points à traiter ») ouvert sans en-tête HX-Request : adresse saisie,
     nouvel onglet, lien.
     Risque : un morceau de page nu, sans menu ni style, au lieu de la page complète.
     """
@@ -462,6 +463,9 @@ def test_relance_pendant_un_calcul_mene_au_calcul_en_cours(version_generee, clie
     Risque : deux calculs en parallèle sur le même semestre, ou une erreur, au lieu d'être mené
     au calcul en cours.
     """
+    # Le calcul en cours tourne depuis un moment : ce n'est pas un double envoi de la relance
+    # (même réglages à l'instant : « Calcul relancé. », voir test_calculs.py).
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 0.0)
     with calcul_qui_tourne(version_generee.semestre_id, monkeypatch) as en_cours:
         for donnees in ({"longue": "1"}, {"autre_solution": "1"}, {}):
             reponse = client.post(
@@ -611,7 +615,7 @@ def test_motif_d_annulation_borne(reperes, client, faux_verificateur, monkeypatc
 @pytest.mark.cas_limite
 def test_head_sur_les_ecrans_de_l_emploi_du_temps(version_generee, client):
     """Cas : HEAD (sonde de supervision, `curl -I`, vérificateur de liens) sur les pages
-    Générer, versions, grille, suivi d'un calcul et « À traiter », et sur une action POST.
+    Générer, versions, grille, suivi d'un calcul et « Points à traiter », et sur une action POST.
     Risque : 405 « Action non permise » sur toute page (FastAPI ne déclare que GET) ; ou une
     réponse HEAD qui porte la page entière.
     """
@@ -660,7 +664,7 @@ def test_une_ecriture_attend_son_tour_pendant_un_autre_ecrivain(reperes, client,
 
 @pytest.mark.cas_limite
 def test_une_lecture_est_servie_pendant_un_autre_ecrivain(version_generee, client):
-    """Cas : la grille, la page Générer et « À traiter » sont ouvertes (GET, HEAD) pendant
+    """Cas : la grille, la page Générer et « Points à traiter » sont ouvertes (GET, HEAD) pendant
     qu'un import tient le verrou d'écriture.
     Risque : une lecture qui prendrait le verrou d'emblée attendrait la fin de l'import (dix
     secondes au plus) puis répondrait « base occupée » : chaque onglet gelé pendant l'import.
@@ -732,7 +736,7 @@ def test_version_sans_seance_s_affiche_et_s_exporte(version_generee, client):
 @pytest.mark.cas_limite
 def test_version_active_vide_sur_a_traiter_et_l_accueil(version_generee, client, aujourdhui_fige):
     """Cas : la version active du semestre n'a aucune séance (import resté vide).
-    Risque : erreur 500 sur « À traiter » ou l'accueil, ou version vide présentée comme un
+    Risque : erreur 500 sur « Points à traiter » ou l'accueil, ou version vide présentée comme un
     emploi du temps sans défaut.
     """
     creer_version_vide(version_generee.semestre_id, active=True)

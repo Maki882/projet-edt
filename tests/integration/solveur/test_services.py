@@ -1502,3 +1502,27 @@ def test_le_vrai_moteur_signale_sa_premiere_solution(jeu_minimal, caplog):
     assert suivi.reussi, suivi.message
     assert _journalise(caplog, "premier emploi du temps complet après", logging.INFO)
     assert suivi.premiere_solution_s is None  # calcul fini : plus rien à annoncer
+
+
+@pytest.mark.cas_limite
+def test_un_avertissement_du_moteur_est_journalise_une_seule_fois(jeu_minimal, caplog):
+    """Cas : le moteur relève un avertissement (ici, un niveau demandé pour une règle
+    personnalisée inconnue du semestre) pendant un calcul lancé par le service.
+
+    Risque : le même avertissement écrit deux fois au journal (par le moteur, puis par le
+    service qui le relaie avec le numéro du calcul) : le journal double les vrais signaux.
+    """
+    from edt.domaine.contraintes import Niveau
+
+    caplog.set_level(logging.INFO)
+    options = dataclasses.replace(OPTIONS, niveaux_regles={999: Niveau.IMPORTANT})
+    suivi = generer(jeu_minimal.semestre_id, options)
+    assert suivi.reussi, suivi.message
+    avertis = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING
+        and "règle(s) personnalisée(s) inconnue(s)" in r.getMessage()
+    ]
+    assert len(avertis) == 1, [(r.name, r.getMessage()) for r in avertis]
+    assert avertis[0].name == "edt.services.generation"  # celui qui porte le numéro du calcul

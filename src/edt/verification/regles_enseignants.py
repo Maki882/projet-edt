@@ -1,7 +1,7 @@
 """Maxima horaires des enseignants (`MAX_ENSEIGNANT`).
 
-Pour chaque enseignant **non fictif** dont un maximum est renseigné, on
-additionne les durées placées (`fin - debut`) de ses séances :
+Pour chaque enseignant **non fictif** dont un maximum est renseigné, les
+durées placées (`fin - debut`) de ses séances sont additionnées :
 
 - semaine type : pour chaque semaine du semestre, les séances actives cette
   semaine-là (maximum hebdomadaire) ; pour chaque jour et chaque semaine,

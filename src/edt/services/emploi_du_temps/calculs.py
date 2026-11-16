@@ -939,6 +939,28 @@ def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Vale
 # --------------------------------------------------------------------------- #
 
 
+def avertissement_tests_en_cours() -> str | None:
+    """Ce que l'écran Générer dit avant le clic quand une exécution des tests tourne, ou `None`.
+
+    Un calcul lancé pendant les tests est refusé (`generation.lancer_calcul`) : l'écran le dit
+    d'avance, avec la durée déjà écoulée quand l'exécution est celle de ce processus.
+    """
+    # Import local : le service des tests importe le service de génération.
+    from edt.services.banc_tests import execution
+
+    if not execution.tests_en_cours():
+        return None
+    texte = (
+        "Une exécution des tests est en cours : un calcul lancé maintenant serait refusé, pour "
+        "ne pas partager les processeurs du serveur."
+    )
+    courante = execution.execution_courante()
+    if courante is not None and courante.en_cours:
+        ecoule = presentation.duree_secondes(courante.suivi().ecoule_s)
+        texte += f" Elle tourne depuis {ecoule} ({courante.cible.libelle})."
+    return texte + " Réessayer à la fin des tests, visible dans leur onglet."
+
+
 def demarrer_calcul(
     session: Session,
     semestre_id: int,
@@ -988,6 +1010,11 @@ def demarrer_calcul(
         utiliser_indices=not autre_solution,
         niveaux_regles=niveaux_regles,
     )
+    return _lancer(semestre_id, options)
+
+
+def _lancer(semestre_id: int, options: OptionsSolveur) -> int:
+    """Lance le calcul ; `ErreurMemeCalculEnCours` si celui qui tourne a ces réglages."""
     try:
         return generation.lancer_calcul(semestre_id, options)
     except ErreurCalculEnCours as erreur:
@@ -1104,7 +1131,7 @@ def relancer_calcul(
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
     )
-    return Relance(generation.lancer_calcul(calcul.semestre_id, options), nouvelles)
+    return Relance(_lancer(calcul.semestre_id, options), nouvelles)
 
 
 # --------------------------------------------------------------------------- #
@@ -1275,6 +1302,17 @@ def qualite_du_moteur(message: str | None) -> str | None:
     return " ".join(gardees) or None
 
 
+def _duree_premiere_solution(statistiques: Mapping) -> str | None:
+    """Instant de la première solution d'un calcul amélioré ensuite, en texte ; sinon `None`."""
+    brut = statistiques.get("duree_premiere_solution_s")
+    if not isinstance(brut, int | float) or statistiques.get("raison_arret") in (
+        None,
+        "premiere_solution",
+    ):
+        return None
+    return presentation.duree_secondes(brut)
+
+
 def _phrases(
     suivi: generation.SuiviCalcul,
     issue: str,
@@ -1304,6 +1342,14 @@ def _phrases(
         return "Calcul en cours", phrase, None
     if issue == Issue.REUSSI:
         phrase = f"Un emploi du temps a été trouvé en {temps}."
+        # Le suivi a dit « déjà trouvé (après N s) » : le résultat redit cet instant, puis la
+        # durée totale, amélioration comprise, au lieu d'une seule durée qui le contredirait.
+        premiere = _duree_premiere_solution(suivi.statistiques)
+        if premiere is not None and premiere != temps:
+            phrase = (
+                f"Un emploi du temps a été trouvé après {premiere}, puis amélioré : calcul "
+                f"terminé en {temps}."
+            )
         titre = "Emploi du temps généré"
         if arrete_avec_solution:
             titre = "Calcul arrêté : meilleure solution conservée"
@@ -1340,8 +1386,10 @@ def _phrases(
             None,
         )
     if issue == Issue.TEMPS_DEPASSE:
-        phrase = "Aucun emploi du temps n'a été trouvé"
-        phrase += f" en {limite}." if limite else " dans le temps imparti."
+        # Durée réelle, la même que l'en-tête du calcul : l'attribution des salles peut
+        # interrompre la recherche avant le temps limite.
+        phrase = f"Aucun emploi du temps n'a été trouvé en {temps}"
+        phrase += f" (temps limite : {limite})." if limite else "."
         phrase += (
             " Ce n'est pas une preuve qu'il n'en existe pas : une recherche plus longue peut "
             "aboutir. Aucun emploi du temps n'a été enregistré."

@@ -37,7 +37,7 @@ def test_deux_onglets_de_tests_colores_a_la_place_de_a_traiter():
 
     titres = [onglet.titre for onglet in menu]
     assert titres[-2:] == [ONGLET_TESTS_UNITAIRES, ONGLET_TESTS_INTEGRATION]
-    assert "À traiter" not in titres
+    assert "Points à traiter" not in titres
     classes = {onglet.titre: onglet.classe for onglet in menu}
     assert classes[ONGLET_TESTS_UNITAIRES] == "onglet-tests-unitaires"
     assert classes[ONGLET_TESTS_INTEGRATION] == "onglet-tests-integration"

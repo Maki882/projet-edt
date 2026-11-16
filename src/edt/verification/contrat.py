@@ -1,8 +1,8 @@
 """Contrat du vérificateur : type `Anomalie` et signatures des fonctions de vérification.
 
 Le vérificateur est **indépendant du solveur** : il ne lit que l'instantané
-(`edt.domaine.instantane.Instantane`) et les placements ou occurrences qu'on
-lui donne. Une liste vide signifie « emploi du temps valide ». Il sert
+(`edt.domaine.instantane.Instantane`) et les placements ou occurrences qui
+lui sont donnés. Une liste vide signifie « emploi du temps valide ». Il sert
 d'oracle aux tests du solveur, valide les modifications manuelles, audite un
 emploi du temps importé et alimente le panneau des anomalies.
 

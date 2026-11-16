@@ -53,7 +53,7 @@
         <span class="banc-composant-titre"><strong>{{ c.nom }}</strong>{% if c.description %} <span class="discret">- {{ c.description }}</span>{% endif %}</span>
         {{ banc.resume_composant(c) }}
       </summary>
-      <p class="banc-composant-action">{{ banc.bouton("composant:" ~ c.nom, "Lancer le composant " ~ c.nom, "Lancer les " ~ (c.compte.total - c.compte.charge) ~ " tests du composant") }}</p>
+      <p class="banc-composant-action">{{ banc.bouton("composant:" ~ c.nom, "Lancer le composant " ~ c.nom, "Lancer " ~ banc.les_tests(c.compte.total - c.compte.charge) ~ " du composant") }}</p>
       {%- for f in c.fichiers %}
       <section class="banc-fichier">
         {{ banc.entete_fichier(f) }}

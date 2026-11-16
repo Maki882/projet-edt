@@ -28,7 +28,7 @@ from edt.web.menu import (
 def test_onglets_dans_l_ordre_fixe_et_onglet_vide_omis():
     menu = construire_menu(
         [
-            EntreeMenu("À traiter", "/a-traiter", section=SECTION_A_TRAITER, ordre=700),
+            EntreeMenu("Points à traiter", "/a-traiter", section=SECTION_A_TRAITER, ordre=350),
             EntreeMenu("Vues", "/emploi-du-temps", section=SECTION_EMPLOI_DU_TEMPS, ordre=300),
             EntreeMenu("Salles", "/salles", section=SECTION_REFERENTIELS, ordre=110),
             EntreeMenu("Accueil", "/", ordre=0),
@@ -39,7 +39,7 @@ def test_onglets_dans_l_ordre_fixe_et_onglet_vide_omis():
         "Données",
         "Générer",
         "Emploi du temps",
-    ]  # « À traiter » est rangé dans « Générer » ; les onglets de tests, vides, sont omis
+    ]  # « Points à traiter » est rangé dans « Générer » ; les onglets de tests, vides, sont omis
 
 
 def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
@@ -52,7 +52,7 @@ def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
                 EntreeMenu("Besoins", "/besoins", section=SECTION_PLANIFICATION, ordre=200),
                 EntreeMenu("Salles", "/salles", section=SECTION_REFERENTIELS, ordre=110),
                 EntreeMenu("Mystère", "/mystere", section="Section inconnue", ordre=900),
-                EntreeMenu("Lancer", "/calculs", section=SECTION_GENERER, ordre=600),
+                EntreeMenu("Lancer", "/calculs", section=SECTION_GENERER, ordre=250),
             ]
         )
     donnees = next(onglet for onglet in menu if onglet.titre == ONGLET_DONNEES)
@@ -68,7 +68,7 @@ def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
     assert onglet_actif(menu, "/salles/12").titre == ONGLET_DONNEES
     assert onglet_actif(menu, "/calculs").titre == ONGLET_GENERER
     assert onglet_actif(menu, "/n-existe-pas") is None
-    assert "À traiter" not in [onglet.titre for onglet in menu]
+    assert "Points à traiter" not in [onglet.titre for onglet in menu]
 
 
 PANNEAU = "assistant/_panneau.html"

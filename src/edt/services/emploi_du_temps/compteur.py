@@ -39,7 +39,7 @@ def _calculer(session: Session) -> Compteur:
         complet=all(element.complet for element in liste),
     )
     journal.info(
-        "Compteur « À traiter » recalculé : %d élément(s)%s",
+        "Compteur « Points à traiter » recalculé : %d élément(s)%s",
         compteur.total,
         "" if compteur.complet else " (vérifications incomplètes)",
     )

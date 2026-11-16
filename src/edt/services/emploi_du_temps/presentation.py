@@ -15,6 +15,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
+from edt.domaine.contraintes import DEFINITION_NIVEAUX as DEFINITION_NIVEAUX  # pour les gabarits
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_texte
 from edt.verification.contrat import Anomalie
