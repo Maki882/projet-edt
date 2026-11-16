@@ -44,7 +44,7 @@ pas aux demandes sans rapport avec l'emploi du temps de l'établissement.
 
 Chaque proposition s'affiche dans une carte : sa nature (« Nouvelle règle », « Modifier
 R002 », « Désactiver R008 », « Indisponibilité »), la phrase de la règle (avant et après pour
-une modification), son niveau, sa période, et ce que l'on sait de ses effets (par exemple le
+une modification), son niveau, sa période, et ses effets connus (par exemple le
 nombre de séances déjà placées sur le créneau d'une indisponibilité).
 
 - **Confirmer** enregistre la proposition, revalidée entièrement : une règle créée par

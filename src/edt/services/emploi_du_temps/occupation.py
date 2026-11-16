@@ -51,7 +51,7 @@ _STATUTS_TENUS = (StatutOccurrence.PLANIFIEE, StatutOccurrence.DEPLACEE)
 
 @dataclass(frozen=True)
 class SalleVue:
-    """Une salle, telle qu'on la cite : code, campus, places, type."""
+    """Une salle telle qu'elle est citée : code, campus, places, type."""
 
     id: int
     code: str
