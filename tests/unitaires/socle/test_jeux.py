@@ -6,12 +6,13 @@ import logging
 import os
 import threading
 import time
+from pathlib import Path
 
 import pytest
 from sqlalchemy import select
 
 from edt.db import modeles as m
-from edt.db.initialisation import ErreurSchemaPerime, base_initialisee
+from edt.db.initialisation import ErreurSchemaPerime, base_initialisee, sauvegarder_base
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
@@ -271,3 +272,26 @@ def test_deux_chargements_de_deux_processus_sont_serialises_sous_le_verrou(base,
     assert len(reussis) == 1 and len(refus) == 1, resultats
     assert isinstance(refus[0], ErreurRegleMetier) and "contient déjà" in refus[0].message
     assert compter(m.Salle) > 0
+
+
+@pytest.mark.cas_limite
+def test_sauvegarde_impossible_reste_un_refus_meme_si_le_menage_echoue(
+    jeu_minimal, environnement, monkeypatch, caplog
+):
+    """Cas : la sauvegarde avant remise à zéro échoue parce que « sauvegardes » est un fichier,
+    et le retrait de la copie partielle échoue à son tour (sous Linux : « Not a directory »).
+
+    Risque : l'erreur du ménage remplace l'erreur métier, et la commande sort en « erreur
+    inattendue » au lieu de dire que la remise à zéro est annulée et pourquoi.
+    """
+    (environnement / "sauvegardes").write_text("pas un dossier", encoding="utf-8")
+
+    def retrait_impossible(chemin: Path, missing_ok: bool = False) -> None:
+        raise NotADirectoryError(20, "Not a directory", str(chemin))
+
+    with monkeypatch.context() as contexte, caplog.at_level(logging.WARNING):
+        contexte.setattr(Path, "unlink", retrait_impossible)
+        with pytest.raises(ErreurRegleMetier, match="remise à zéro annulée"):
+            sauvegarder_base()
+
+    assert "non retirée" in caplog.text
