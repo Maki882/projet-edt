@@ -999,6 +999,12 @@ def _horaire(
     return debut, fin
 
 
+def _semaines(numeros) -> str:
+    """« la semaine 21 », « les semaines 1 à 10 et 12 »."""
+    article = "la semaine" if len(numeros) == 1 else "les semaines"
+    return f"{article} {plages_de_semaines(numeros)}"
+
+
 def _salle_vue(salle: occupation.SalleVue, *, campus: bool = True) -> str:
     lieu = f"{salle.campus}, " if campus else ""
     return f"{salle.code} ({lieu}{salle.capacite} places, {salle.type_salle})"
@@ -1057,7 +1063,7 @@ def _salles_libres(session: Session, entree: Mapping[str, Any], contexte: Contex
         lignes.append("Libres certaines semaines seulement :")
         for salle, semaines in r.libres_certaines_semaines:
             lignes.append(
-                f"- {_salle_vue(salle)} : libre les semaines {plages_de_semaines(semaines)} "
+                f"- {_salle_vue(salle)} : libre {_semaines(semaines)} "
                 f"({len(semaines)} sur {r.nb_semaines})"
             )
     if r.occupees:
@@ -1066,7 +1072,7 @@ def _salles_libres(session: Session, entree: Mapping[str, Any], contexte: Contex
             semaines = (
                 ""
                 if not o.semaines or r.date is not None
-                else f" (semaines {plages_de_semaines(o.semaines)})"
+                else f" ({_semaines(o.semaines)})"
                 if len(o.semaines) < r.nb_semaines
                 else ""
             )

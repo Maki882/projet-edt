@@ -179,22 +179,37 @@ def exemples() -> tuple[str, ...]:
                 .order_by(m.Enseignant.nom, m.Enseignant.identifiant)
                 .limit(1)
             )
-            classe = session.scalar(
-                select(m.Groupe)
-                .where(
-                    m.Groupe.annee_scolaire_id == semestre.annee_scolaire_id,
-                    m.Groupe.nature == NatureGroupe.CLASSE,
+            besoins_td = list(
+                session.scalars(
+                    select(m.Besoin)
+                    .join(m.TypeSeance, m.Besoin.type_seance_id == m.TypeSeance.id)
+                    .where(m.Besoin.semestre_id == semestre.id, m.TypeSeance.code == "TD")
+                    .order_by(m.Besoin.id)
                 )
-                .order_by(m.Groupe.code)
-                .limit(1)
             )
-            td = session.scalar(
-                select(m.Besoin)
-                .join(m.TypeSeance, m.Besoin.type_seance_id == m.TypeSeance.id)
-                .where(m.Besoin.semestre_id == semestre.id, m.TypeSeance.code == "TD")
-                .order_by(m.Besoin.id)
-                .limit(1)
+            # Une matière de mathématiques si elle a un TD (l'exemple le plus parlant), et une
+            # classe qui n'a pas encore ce TD : la demande a un sens sur les données présentes.
+            td = next(
+                (b for b in besoins_td if "math" in b.matiere.libelle.casefold()),
+                besoins_td[0] if besoins_td else None,
             )
+            classes = list(
+                session.scalars(
+                    select(m.Groupe)
+                    .where(
+                        m.Groupe.annee_scolaire_id == semestre.annee_scolaire_id,
+                        m.Groupe.nature == NatureGroupe.CLASSE,
+                    )
+                    .order_by(m.Groupe.code)
+                )
+            )
+            deja = {
+                g.id
+                for b in besoins_td
+                if td is not None and b.matiere_id == td.matiere_id
+                for g in b.groupes
+            }
+            classe = next((c for c in classes if c.id not in deja), classes[0] if classes else None)
             choisis = [EXEMPLES_GENERIQUES[0]]
             if enseignant is not None:
                 choisis.append(f"{enseignant.nom_affiche} n'est pas disponible le mercredi matin.")

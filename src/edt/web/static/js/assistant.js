@@ -4,7 +4,8 @@
  *
  * 1. Chargement : la conversation est demandée au serveur (événement
  *    `edt:assistant-ouvert` sur #assistant-conversation) la première fois que
- *    le panneau s'ouvre, quel que soit l'ordre d'exécution des scripts.
+ *    le panneau s'ouvre, quel que soit l'ordre d'exécution des scripts et de
+ *    l'initialisation de HTMX.
  * 2. Saisie : Ctrl (ou Cmd) + Entrée envoie ; la zone est vidée quand le
  *    serveur a accepté le message (en-tête `X-Assistant-Accepte`) ; un clic
  *    sur un exemple ou sur « Renvoyer ma demande » remplit la zone.
@@ -53,6 +54,13 @@
     if (panneau.classList.contains("ouvert") || window.location.hash === "#assistant") {
       signalerOuverture();
     }
+    // Un événement déclenché avant que HTMX ait traité la page est perdu : il est redonné
+    // quand HTMX a fini (`htmx:load`) ; « once » empêche un second chargement.
+    document.addEventListener("htmx:load", function () {
+      if (panneau.classList.contains("ouvert") || window.location.hash === "#assistant") {
+        signalerOuverture();
+      }
+    });
   }
 
   /* ---- 2. Saisie ----------------------------------------------------------- */
