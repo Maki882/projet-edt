@@ -9,7 +9,9 @@ Ce fichier est à la racine de `tests/` : il ne porte ni le marqueur
 2. aucun fichier de tests n'existe hors de ces deux dossiers (sauf celui-ci) ;
 3. aucun module de tests n'importe un autre module de tests : les aides
    partagées vivent dans `tests/outils/` ;
-4. le classeur lui-même reconnaît les deux côtés sur de petits exemples.
+4. le classeur lui-même reconnaît les deux côtés sur de petits exemples ;
+5. chaque fichier `test_*.py` est cité dans le `README.md` de son dossier
+   (`tests/unitaires/README.md`, `tests/integration/README.md`).
 
 Lancer : `python -m pytest tests/test_rangement.py`.
 """
@@ -17,6 +19,7 @@ Lancer : `python -m pytest tests/test_rangement.py`.
 from __future__ import annotations
 
 import ast
+import re
 import textwrap
 from pathlib import Path
 
@@ -316,3 +319,42 @@ def test_le_classeur_signale_les_tests_mal_ranges_dans_les_deux_sens(depot: Path
     message_calcul = expliquer(fautifs[0], classement[fautifs[0]])
     assert "aucune preuve" in message_calcul
     assert "tests/unitaires/demo/" in message_calcul
+
+
+# --- 5. Chaque fichier de tests est cité dans le README de son dossier ------
+
+
+def fichiers_non_cites(dossier: Path) -> list[str]:
+    """Fichiers `test_*.py` de `dossier` absents de `dossier/README.md`.
+
+    Un fichier est cité par son chemin relatif au dossier, par exemple
+    `solveur/test_moteur.py`, non précédé d'une lettre, d'un `/` ou d'un `.`.
+    """
+    lisezmoi = dossier / "README.md"
+    texte = lisezmoi.read_text(encoding="utf-8") if lisezmoi.is_file() else ""
+    relatifs = sorted(f.relative_to(dossier).as_posix() for f in dossier.rglob("test_*.py"))
+    return [r for r in relatifs if not re.search(rf"(?<![\w/.]){re.escape(r)}", texte)]
+
+
+@pytest.mark.parametrize("dossier", list(DOSSIERS.values()))
+def test_chaque_fichier_de_tests_est_cite_dans_le_readme_de_son_dossier(dossier: str):
+    """Les documents `tests/unitaires/README.md` et `tests/integration/README.md` restent complets."""
+    manquants = fichiers_non_cites(TESTS / dossier)
+    assert not manquants, (
+        f"fichier(s) de tests absents de tests/{dossier}/README.md (ajouter une ligne au "
+        "tableau de son composant : chemin relatif au dossier, ce que vérifie le fichier, "
+        "nombre de tests) :\n" + "\n".join(f"  - {f}" for f in manquants)
+    )
+
+
+def test_le_controle_des_readme_signale_un_fichier_non_cite(tmp_path: Path):
+    """Un fichier cité passe ; un fichier absent, ou cité sous un autre chemin, est signalé."""
+    for chemin in ("solveur/test_moteur.py", "solveur/test_regles.py", "socle/test_regles.py"):
+        _ecrire(tmp_path, chemin, "def test_vide():\n    pass\n")
+    (tmp_path / "README.md").write_text(
+        "| [`solveur/test_moteur.py`](solveur/test_moteur.py) | moteur |\n"
+        "| `autre/socle/test_regles.py` | cité sous un autre chemin |\n",
+        encoding="utf-8",
+    )
+
+    assert fichiers_non_cites(tmp_path) == ["socle/test_regles.py", "solveur/test_regles.py"]
