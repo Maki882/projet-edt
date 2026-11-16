@@ -37,7 +37,7 @@ Chaque écran se range dans un onglet par la `section` de son entrée de menu
 | Onglet | Sections | Écrans |
 |---|---|---|
 | Accueil | (aucune) | `/` |
-| Données | `SECTION_REFERENTIELS`, `SECTION_PLANIFICATION`, `SECTION_CONFIGURATION`, `SECTION_DONNEES` | établissement, besoins, règles et calendrier, import et export, jeux de données |
+| Données | `SECTION_REFERENTIELS`, `SECTION_PLANIFICATION`, `SECTION_CONFIGURATION`, `SECTION_DONNEES` | établissement, besoins, règles et calendrier, import et export (dont l'établissement fictif), listes de référence |
 | Générer | `SECTION_GENERER`, `SECTION_A_TRAITER` | `/calculs`, `/versions`, `/a-traiter` (« Points à traiter ») |
 | Emploi du temps | `SECTION_EMPLOI_DU_TEMPS` | `/emploi-du-temps` |
 | Tests unitaires | `SECTION_TESTS_UNITAIRES` | `/tests/unitaires` |
@@ -50,9 +50,12 @@ Chaque écran se range dans un onglet par la `section` de son entrée de menu
   au clavier.
 - Dans l'onglet Données, les entrées sont regroupées sous des titres
   (`GROUPE_ETABLISSEMENT`, `GROUPE_BESOINS`, `GROUPE_REGLES`,
-  `GROUPE_IMPORT_EXPORT`, `GROUPE_JEUX`, dans cet ordre). Une entrée choisit
-  un autre groupe par son champ `groupe`. Dans l'onglet Générer, la section
-  À traiter rejoint le groupe « Générer ».
+  `GROUPE_IMPORT_EXPORT`, `GROUPE_JEUX`, `GROUPE_LISTES`, dans cet ordre).
+  Une entrée choisit un autre groupe par son champ `groupe` : « Types de
+  salle », « Équipements » et « Types de séance » vont dans « Listes de
+  référence » ; « Établissement fictif » reste dans « Import et export », et
+  le groupe « Jeux de données » n'a plus d'entrée. Dans l'onglet Générer, la
+  section À traiter (page « Points à traiter ») rejoint le groupe « Générer ».
 - Une entrée dont la section n'est rangée dans aucun onglet va dans l'onglet
   Données, sous un groupe portant le nom de sa section, et un avertissement
   est journalisé.
@@ -72,7 +75,7 @@ Chaque écran se range dans un onglet par la `section` de son entrée de menu
 ```python
 # src/edt/web/routes/calculs.py
 MENU = [
-    EntreeMenu("Lancer un calcul", "/calculs", section=SECTION_GENERER, ordre=250),
+    EntreeMenu("Générer un emploi du temps", "/calculs", section=SECTION_GENERER, ordre=250),
     EntreeMenu("Historique et versions", "/versions", section=SECTION_GENERER, ordre=260),
 ]
 ```
@@ -92,7 +95,8 @@ MENU = [
 | `scripts` | scripts propres à l'écran, en fin de page |
 
 Le gabarit pose la barre et ses onglets, la sous-navigation, la zone de
-messages `#messages`, le pied de page (version et référence de la requête) et
+messages `#messages`, le pied de page (nom et version de l'application ;
+l'identifiant de la requête n'apparaît que sur les pages d'erreur) et
 le panneau de l'assistant (section 10). La classe `js` est ajoutée à
 `<html>` quand JavaScript fonctionne.
 
@@ -204,18 +208,18 @@ champ fautif.
 
 | Groupe | Adresses | Contenu |
 |---|---|---|
-| Établissement | `/campus`, `/salles`, `/types-salle`, `/equipements`, `/enseignants`, `/groupes` (et `/groupes/arbre`), `/etudiants`, `/matieres`, `/types-seance` | campus et matrice des trajets, salles (filtres campus, type, accessibilité), listes configurables, enseignants, arbre des groupes repliable, étudiants fictifs et inscriptions, matières |
+| Établissement | `/campus`, `/salles`, `/enseignants`, `/groupes` (et `/groupes/arbre`), `/etudiants`, `/matieres` | campus et matrice des trajets, salles (filtres campus, type, accessibilité), enseignants, arbre des groupes repliable, étudiants fictifs et inscriptions, matières |
 | Besoins et disponibilités | `/besoins`, `/indisponibilites` | besoins : filtres, ajout rapide, duplication, formulaire selon le mode de volume, charge hebdomadaire des groupes ; indisponibilités récurrentes ou datées |
 | Règles et calendrier | `/calendrier`, `/regles`, `/grille`, `/parametres` | années, semestres, jours fermés et fériés ; règles personnalisées ; créneaux de la grille ; paramètres construits depuis `Parametres` |
-| Import et export | `/import`, `/export` | import simulé puis appliqué, rapport ; exports ([`import-export.md`](import-export.md)) |
-| Jeux de données | `/jeux` | chargement d'un établissement fictif (petit, moyen, grand, graine), remise à zéro |
+| Import et export | `/import`, `/export`, `/jeux` | import simulé puis appliqué, rapport ; exports ([`import-export.md`](import-export.md)) ; « Établissement fictif » : chargement d'un établissement fictif (petit, moyen, grand, numéro de variante), remise à zéro |
+| Listes de référence | `/types-salle`, `/equipements`, `/types-seance` | listes configurables : types de salle, équipements, types de séance |
 
 - **Paramètres** : chaque paramètre devient un champ selon son type (nombre,
   heure, case, liste de choix, cases des jours) ; les champs utiles à un seul
   mode de la pause déjeuner sont masqués selon le mode. Pendant un calcul,
   tout enregistrement est refusé (409, saisie conservée) : le calcul relit
   les paramètres pour contrôler sa solution.
-- **Jeux de données** : un chargement dans une base non vide et toute remise
+- **Établissement fictif** : un chargement dans une base non vide et toute remise
   à zéro exigent une confirmation qui liste ce qui sera effacé ; refusés
   pendant un calcul ; une seule de ces opérations à la fois, une page
   demandée pendant ce temps reçoit « base occupée, réessayer ».
@@ -301,9 +305,9 @@ rien n'est supprimé et la page le dit. Ce calcul est fait par
 - **Un seul calcul à la fois** : si un calcul tourne, `/calculs` montre son
   suivi ; un second lancement mène au suivi du calcul en cours.
 - **Résultat** : succès (séances placées, bilan des séances datées, liens
-  vers l'emploi du temps et « À traiter », indicateurs, qualité) ; arrêté
+  vers l'emploi du temps et « Points à traiter », indicateurs, qualité) ; arrêté
   avec une solution (meilleure solution conservée, version enregistrée) ;
-  refusé par les vérifications préalables (liste des impossibilités) ;
+  refusé par les vérifications préalables (liste des points bloquants) ;
   impossible (prouvé) ; pas trouvé dans le temps imparti (proposition de
   relance plus longue) ; erreur (numéro du calcul et fichier journal, jamais
   de trace). Dans tous les cas, les avertissements du calcul sont comptés et
@@ -427,7 +431,7 @@ page GET répond aussi à HEAD, sans corps (`IntergicielHead`).
 | `disposition.py` | position des blocs dans la grille (fonction pure) |
 | `modifications.py` | salles compatibles, déplacement vérifié, verrou, séances datées |
 | `versions.py` | semestres, versions, historique, activation, suppression |
-| `anomalies.py`, `compteur.py` | la liste « À traiter » et son compteur |
+| `anomalies.py`, `compteur.py` | la page « Points à traiter » et son compteur |
 | `tableau_de_bord.py` | ce que l'accueil affiche |
 | `regles_personnalisees.py` | règles personnalisées sur ces écrans |
 | `presentation.py` | mises en forme françaises (durées, semaines, couleur d'une matière) |
@@ -457,7 +461,7 @@ transaction. Après un calcul réussi ou l'activation d'une version,
 `prechauffage.lancer` refait ces calculs dans un fil d'arrière-plan unique.
 
 Sur le jeu moyen, une fois la mémoire remplie, l'accueil, Générer, l'emploi
-du temps d'une classe, À traiter et la liste des besoins répondent chacun en
+du temps d'une classe, Points à traiter et la liste des besoins répondent chacun en
 moins de 0,3 s sur un poste de développement. Le premier affichage après une
 écriture faite hors de ces écrans (calcul en ligne de commande, import) paie
 le chargement de l'instantané et la vérification.
@@ -579,10 +583,20 @@ test en cours), ses fichiers et ses tests.
   (`HX-Refresh`).
 - **Garde-fous** : une exécution à la fois (un second envoi mène au suivi en
   cours, sans erreur), refus pendant un calcul d'emploi du temps, durée
-  maximale, tests de charge exclus des lancements par groupe (ils se lancent
-  un par un), lancement désactivable (`EDT_TESTS_LANCEMENT=non`) ; dossier
-  `tests` absent, pytest absent ou fichier de résultats illisible donnent un
-  message, jamais une erreur.
+  maximale, tests de charge exclus des lancements par groupe, lancement
+  désactivable (`EDT_TESTS_LANCEMENT=non`) ; dossier `tests` absent, pytest
+  absent ou fichier de résultats illisible donnent un message, jamais une
+  erreur. Le site étant public, deux garde-fous de plus valent pour les
+  lancements depuis la page : les **tests de charge** n'y ont pas de bouton
+  (« Par la commande ») et se lancent par `python -m edt tests --test <clé>` ;
+  un **délai minimal** (`EDT_TESTS_DELAI_S`, 60 s par défaut) sépare la fin
+  d'une exécution (site ou commande) du lancement suivant depuis le site, et
+  le refus dit à quelle heure relancer.
+- **Après une exécution**, la page s'appuie sur l'historique enregistré, pas
+  sur l'exécution gardée en mémoire : des résultats écrits ensuite par la
+  commande `edt tests` s'affichent aussitôt.
+- **Limite connue** : sans écran de connexion, tout visiteur peut arrêter
+  l'exécution lancée par un autre (bouton « Arrêter l'exécution »).
 - **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
   exécution dans un sous-processus pytest, greffon, résultats, tableau d'une
   famille) ; la commande `python -m edt tests` passe par le même service.

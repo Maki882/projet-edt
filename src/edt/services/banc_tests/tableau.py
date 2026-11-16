@@ -3,6 +3,12 @@
 Pour chaque test, l'état affiché vient, dans cet ordre : du résultat rendu par
 l'exécution en cours ; de « en cours » ou « en attente » s'il fait partie de
 ce qu'elle lance ; du dernier résultat enregistré ; sinon « jamais lancé ».
+
+Une exécution terminée n'est plus lue en mémoire : l'historique, qu'elle a
+écrit avant de se dire terminée, fait foi. Ainsi les résultats enregistrés
+ensuite par la commande `edt tests` (autre processus) s'affichent aussitôt.
+Seul le dernier appel du suivi de cette exécution (`execution_suivie`) la
+montre encore, pour dire comment elle s'est terminée.
 Les comptes et les dates de dernière exécution complète sont donnés par
 fichier, par composant et pour la famille.
 """
@@ -167,11 +173,11 @@ class TableauFamille:
 def _etat(
     test: TestCatalogue, suivi: Suivi | None, historique: res.Historique
 ) -> tuple[str, ResultatTest | None]:
-    if suivi is not None:
+    if suivi is not None and suivi.en_cours:
         recent = suivi.resultats.get(test.cle)
         if recent is not None:
             return recent.etat, recent
-        if suivi.en_cours and test.cle in suivi.tests_cible:
+        if test.cle in suivi.tests_cible:
             precedent = historique.tests.get(test.cle)
             return (res.EN_COURS if test.cle == suivi.test_en_cours else res.EN_ATTENTE), precedent
     enregistre = historique.tests.get(test.cle)
@@ -180,12 +186,15 @@ def _etat(
     return res.JAMAIS, None
 
 
-def _suivi_de_la_famille(famille: str) -> Suivi | None:
+def _suivi_de_la_famille(famille: str, execution_suivie: str | None) -> Suivi | None:
+    """Exécution de ce processus à montrer : en cours, ou terminée si c'est celle que suit l'appelant."""
     courante = ex.execution_courante()
     if courante is None:
         return None
     suivi = courante.suivi()
     if suivi.famille not in (None, famille):
+        return None
+    if not suivi.en_cours and suivi.id != execution_suivie:
         return None
     return suivi
 
@@ -199,8 +208,13 @@ def _fichiers_par_composant(
     return dict(sorted(groupes.items()))
 
 
-def tableau_famille(famille: str, catalogue: Catalogue | None = None) -> TableauFamille:
+def tableau_famille(
+    famille: str, catalogue: Catalogue | None = None, *, execution_suivie: str | None = None
+) -> TableauFamille:
     """Le tableau de la famille `famille` (`unitaires` ou `integration`).
+
+    `execution_suivie` : identifiant d'exécution que suit le fragment de suivi ;
+    terminée, elle reste montrée à ce seul appelant.
 
     Ne lève pas pour un dépôt sans tests ou un historique illisible : l'écran
     affiche la raison. Une famille inconnue lève `KeyError` (l'appelant la
@@ -209,8 +223,9 @@ def tableau_famille(famille: str, catalogue: Catalogue | None = None) -> Tableau
     titre = FAMILLES[famille]
     catalogue = catalogue or lire_catalogue()
     ailleurs = ex.execution_ailleurs()
+    # Suivi d'abord, historique ensuite : une exécution vue terminée a déjà tout écrit.
+    suivi = _suivi_de_la_famille(famille, execution_suivie)
     historique = res.lire_historique()
-    suivi = _suivi_de_la_famille(famille)
 
     lignes_par_cle: dict[str, Ligne] = {}
     composants: list[ComposantVue] = []

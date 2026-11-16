@@ -52,6 +52,8 @@ ci-dessous.
   exporter en CSV ou vers un agenda (iCal).
 - Poser des questions en langage courant à l'assistant
   ([docs/assistant.md](docs/assistant.md)).
+- Lancer les tests du projet depuis les onglets « Tests unitaires » et « Tests
+  d'intégration », et lire le résultat et la date de dernière exécution de chacun.
 
 ## Démarrage en cinq minutes
 
@@ -102,7 +104,8 @@ Toute fonctionnalité est aussi une commande ; `python -m edt <commande>
 | `gabarit`, `importer`, `exporter-donnees`, `exporter-edt` | échanger des fichiers (XLSX, CSV, iCal) |
 | `sauvegarder`, `verifier-sauvegarde` | sauvegarder la base ; contrôler une sauvegarde |
 | `doctor`, `version` | vérifier l'installation ; afficher la version |
-| `tests` | lancer les tests du projet comme depuis l'application (`--famille`, `--composant`) ; code 1 en cas d'échec |
+| `tests` | lancer les tests du projet comme depuis l'application (`--famille`, `--composant`, `--test` pour un seul test, test de charge compris) ; code 1 en cas d'échec |
+| `assistant` | état de l'assistant (configuration, limites, consommation du jour) ; `--essai` : un appel d'essai au service ; `--question` : une question en langage courant ; code 1 si l'assistant n'est pas utilisable |
 
 ## Tests
 

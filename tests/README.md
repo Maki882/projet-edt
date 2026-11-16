@@ -123,7 +123,7 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | Composant | Unitaires | Intégration | Total |
 |---|---:|---:|---:|
 | `assistant` | 115 | 29 | 144 |
-| `banc_tests` | 36 | 19 | 55 |
+| `banc_tests` | 43 | 22 | 65 |
 | `echange` | 146 | 33 | 179 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
@@ -133,8 +133,8 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 125 | 137 |
 | `web_edt` | 34 | 128 | 162 |
-| **Total** | **1 078** | **511** | **1 589** |
-| dont cas limites (`cas_limite`) | 285 | 194 | 479 |
+| **Total** | **1 085** | **514** | **1 599** |
+| dont cas limites (`cas_limite`) | 291 | 196 | 487 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
@@ -192,7 +192,7 @@ charge en sont exclus.
 Les tests se lancent aussi depuis l'application, onglets « Tests unitaires »
 et « Tests d'intégration » (un test, un fichier, un composant ou toute la
 famille, avec le résultat et la date de chaque test), ou par la commande
-`python -m edt tests [--famille unitaires|integration] [--composant <nom>]`,
+`python -m edt tests [--famille unitaires|integration] [--composant <nom>] [--test <clé>]`,
 qui enregistre les mêmes résultats (voir `docs/interface.md`, section 15).
 
 ## 5. Où ranger un nouveau test

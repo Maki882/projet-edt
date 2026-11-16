@@ -351,6 +351,12 @@ main:has(.banc-integration) .entete-page h1 {
   display: none;
 }
 
+.banc-par-commande {
+  color: var(--texte-discret);
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
 .banc-detail {
   grid-column: 1 / -1;
   flex: 1 1 100%;

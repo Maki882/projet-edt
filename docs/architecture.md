@@ -41,7 +41,11 @@ Règles qui en découlent :
 - aucun état global en mémoire, sauf le suivi des calculs en cours
   (`edt.services.generation`) et la mémoire des écrans, invalidée à chaque
   écriture (`edt.services.emploi_du_temps.memoire`) : tout le reste est en
-  base ;
+  base ; deux autres exceptions : l'assistant garde en mémoire ses
+  conversations, ses compteurs par adresse et sa pause après un refus de clé
+  (`edt.services.assistant`, voir [`assistant.md`](assistant.md)), et le
+  lanceur de tests garde l'exécution en cours (`edt.services.banc_tests`) ;
+  tout cela est perdu au redémarrage ;
 - seule exception à l'ordre des couches : les commandes `init-db` et
   `jeu-minimal` appellent directement `edt.db.initialisation` et
   `edt.db.jeux`, outils d'administration de la base.
@@ -141,6 +145,7 @@ les mêmes règles (valeur invalide refusée, valeur vide au défaut) :
 | `EDT_TESTS_RACINE` | le dossier courant s'il contient `tests/unitaires` et `pyproject.toml`, sinon la racine déduite du code source | racine du dépôt dont les tests sont lancés |
 | `EDT_TESTS_DUREE_MAX_S` | `900` | durée maximale d'une exécution, en secondes ; au-delà, pytest et ses processus enfants sont arrêtés |
 | `EDT_TESTS_LANCEMENT` | `oui` | `non` désactive les boutons de lancement ; les résultats restent consultables |
+| `EDT_TESTS_DELAI_S` | `60` | délai minimal, en secondes, entre la fin d'une exécution et un lancement depuis le site (`0` : aucun) ; la commande n'y est pas soumise |
 
 Les tests tournent dans un sous-processus `python -m pytest` sans aucune
 variable `EDT_*` héritée : sa base et ses journaux sont dans un dossier
