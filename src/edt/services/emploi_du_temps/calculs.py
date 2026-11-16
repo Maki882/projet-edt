@@ -1010,6 +1010,11 @@ def demarrer_calcul(
         utiliser_indices=not autre_solution,
         niveaux_regles=niveaux_regles,
     )
+    return _lancer(semestre_id, options)
+
+
+def _lancer(semestre_id: int, options: OptionsSolveur) -> int:
+    """Lance le calcul ; `ErreurMemeCalculEnCours` si celui qui tourne a ces réglages."""
     try:
         return generation.lancer_calcul(semestre_id, options)
     except ErreurCalculEnCours as erreur:
@@ -1126,7 +1131,7 @@ def relancer_calcul(
     journal.info(
         "Relance du calcul %d (longue=%s, autre solution=%s)", calcul_id, longue, autre_solution
     )
-    return Relance(generation.lancer_calcul(calcul.semestre_id, options), nouvelles)
+    return Relance(_lancer(calcul.semestre_id, options), nouvelles)
 
 
 # --------------------------------------------------------------------------- #

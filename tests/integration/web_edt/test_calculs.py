@@ -788,3 +788,34 @@ def test_resultat_dit_les_memes_durees_que_le_suivi(version_generee, client):
         session.execute(delete(m.VersionEdt).where(m.VersionEdt.calcul_id == calcul_id))
     page = html.unescape(client.get(f"/calculs/{calcul_id}").text)
     assert "Aucun emploi du temps n'a été trouvé en 1 min 15 s (temps limite : 5 minutes)" in page
+
+
+@pytest.mark.cas_limite
+def test_double_envoi_de_relancer_dit_calcul_relance(version_generee, client, monkeypatch):
+    """Cas : « Relancer le même calcul » ou « Proposer une autre solution » envoyé deux fois de
+    suite (double clic sans JavaScript).
+
+    Risque : le second envoi répond par le bandeau orange « Un calcul est déjà en cours », qui
+    fait croire à un problème alors que le calcul demandé tourne.
+    """
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 3600.0)  # pas de délai réel
+    demarre = threading.Event()
+
+    def moteur_lent(instantane, options, arret=None):
+        demarre.set()
+        arret.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_lent)
+    adresse = f"/calculs/{version_generee.calcul_id}/relancer"
+    premier = client.post(adresse, data={"autre_solution": "1"}, follow_redirects=False)
+    relance = int(premier.headers["location"].rsplit("/", 1)[1])
+    try:
+        second = client.post(adresse, data={"autre_solution": "1"}, follow_redirects=False)
+        assert second.headers["location"] == f"/calculs/{relance}"
+        page = client.get(second.headers["location"]).text
+        assert "Calcul relancé." in page and "déjà en cours" not in page
+    finally:
+        generation.demander_arret(relance)
+    assert demarre.wait(DELAI)
+    generation.attendre_calcul(relance, DELAI)

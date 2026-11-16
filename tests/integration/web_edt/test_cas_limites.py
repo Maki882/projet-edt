@@ -46,6 +46,7 @@ from edt.db.moteur import chemin_base, session_base
 from edt.domaine.enumerations import EtatCalcul, StatutOccurrence
 from edt.services import generation
 from edt.services.emploi_du_temps import modifications, vues
+from edt.web.routes import calculs as routes_calculs
 
 # --------------------------------------------------------------------------- #
 # Identifiants énormes, négatifs ou inconnus
@@ -462,6 +463,9 @@ def test_relance_pendant_un_calcul_mene_au_calcul_en_cours(version_generee, clie
     Risque : deux calculs en parallèle sur le même semestre, ou une erreur, au lieu d'être mené
     au calcul en cours.
     """
+    # Le calcul en cours tourne depuis un moment : ce n'est pas un double envoi de la relance
+    # (même réglages à l'instant : « Calcul relancé. », voir test_calculs.py).
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 0.0)
     with calcul_qui_tourne(version_generee.semestre_id, monkeypatch) as en_cours:
         for donnees in ({"longue": "1"}, {"autre_solution": "1"}, {}):
             reponse = client.post(

@@ -386,6 +386,16 @@ def relancer(
         relance = calculs.relancer_calcul(
             session, calcul_id, longue=longue, autre_solution=autre_solution
         )
+    except calculs.ErreurMemeCalculEnCours as erreur:
+        # Double envoi de la relance : même semestre, mêmes réglages, lancé à l'instant.
+        if erreur.suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S:
+            return rediriger(request, f"/calculs/{erreur.suivi.id}", "Calcul relancé.")
+        return rediriger(
+            request,
+            f"/calculs/{erreur.suivi.id}",
+            "Un calcul est déjà en cours : voici son avancement.",
+            "attention",
+        )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
