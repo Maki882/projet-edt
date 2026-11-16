@@ -286,15 +286,15 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **514 fonctions de test** dans 11 composants, dont 196 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **516 fonctions de test** dans 11 composants, dont 198 marquées `cas_limite` et 4 marquées `perf`.
 
-### `assistant/` : Assistant en langage courant par le site et la ligne de commande (29 fonctions)
+### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`assistant/test_commande.py`](assistant/test_commande.py) | Commande `python -m edt assistant` : état, essai et question, avec le faux client | 8 |
 | [`assistant/test_panneau.py`](assistant/test_panneau.py) | Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 |
-| [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 16 |
+| [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 18 |
 
 ### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (22 fonctions)
 

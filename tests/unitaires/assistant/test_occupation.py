@@ -79,7 +79,7 @@ def test_salles_libres_le_jeudi_apres_midi(version_minimale, session):
     assert r.occupees == ()
     ((exception,),) = [r.exceptions]
     assert exception.salle.code == "L115" and exception.dates == (dt.date(2026, 11, 5),)
-    assert exception.motif == "Travaux"
+    assert exception.libelle == "indisponible (Travaux)"
 
 
 def test_filtres_capacite_campus_et_type(version_minimale, session):
@@ -381,3 +381,41 @@ def test_sans_version_active_aucune_seance(jeu_minimal, session):
         )
         == ()
     )
+
+
+@pytest.mark.cas_limite
+def test_seance_datee_deplacee_dans_une_salle_libre_signalee(jeu_minimal):
+    """Cas : la semaine type laisse N105 libre le jeudi après-midi, mais une séance datée a
+    été déplacée dans N105 un jeudi après-midi (replacement après un jour férié).
+
+    Risque : N105 annoncée « libre toutes les semaines » sans aucune exception datée ; la
+    salle est proposée ce jeudi-là alors qu'elle est prise.
+    """
+    from tests.outils.verification.versions import enregistrer_version
+
+    with session_base() as session:
+        version_id = enregistrer_version(session, jeu_minimal.semestre_id, occurrences=True)
+    with session_base() as session:
+        occurrence = session.scalar(
+            select(m.Occurrence)
+            .where(m.Occurrence.version_id == version_id)
+            .order_by(m.Occurrence.date)
+        )
+        occurrence.date = dt.date(2026, 11, 12)  # un jeudi
+        occurrence.debut_min, occurrence.fin_min = 14 * 60, 16 * 60
+        occurrence.salle_id = _id(session, m.Salle, code="N105")
+        occurrence.statut = "deplacee"
+    with session_base() as session:
+        r = occupation.salles_libres(
+            session,
+            semestre_id=jeu_minimal.semestre_id,
+            jour=JEUDI,
+            debut=APRES_MIDI[0],
+            fin=APRES_MIDI[1],
+            capacite_min=30,
+        )
+        assert "N105" in _codes(r.libres)
+        (exception,) = [e for e in r.exceptions if e.salle.code == "N105"]
+        assert exception.dates == (dt.date(2026, 11, 12),)
+        assert (exception.debut, exception.fin) == (14 * 60, 16 * 60)
+        assert "séance datée" in exception.libelle

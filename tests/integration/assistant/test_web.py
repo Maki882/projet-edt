@@ -92,6 +92,40 @@ def test_question_puis_reponse(site, faux_client):
     assert "premier point" in panneau and 'id="assistant-question"' in panneau
 
 
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("page", "attendue"),
+    [
+        ("/" + "数" * 85_000, None),
+        ("/salles?page=2&q=" + "x" * 300, "/salles"),
+        ("/regles/<script>", None),
+        ("https://autre.example.org/salles", None),
+        ("/emploi-du-temps", "/emploi-du-temps"),
+    ],
+    ids=["85000-caracteres", "parametres", "balise", "autre-site", "page-valide"],
+)
+def test_page_affichee_bornee_au_chemin_d_une_page(site, faux_client, caplog, page, attendue):
+    """Cas : le champ caché « page » est fabriqué : 85 000 caractères, une adresse avec
+    paramètres, un chemin avec balise, une adresse d'un autre site.
+
+    Risque : un texte arbitraire qui contourne la limite de 800 caractères, part en entier au
+    modèle (coût sous-estimé par la réservation) et dans le journal.
+    """
+    faux_client.reponses = [reponse_texte("ok")]
+    envoi = site.post("/assistant/messages", data={"message": "Bonjour", "page": page}, headers=HX)
+    assert envoi.headers.get("X-Assistant-Accepte") == "oui"
+    _attendre(site, _jeton(envoi))
+    systeme = faux_client.appels[0]["messages"][1]["content"]
+    assert len(systeme) < 300
+    if attendue is None:
+        assert "Page affichée" not in systeme
+    else:
+        assert f"Page affichée par l'utilisateur : {attendue}\n" in systeme + "\n"
+    debut = [r.getMessage() for r in caplog.records if "commencé" in r.getMessage()]
+    assert debut and all(len(ligne) < 300 for ligne in debut)
+    assert "数" not in caplog.text and "<script>" not in caplog.text
+
+
 def test_interrogation_sans_changement_repond_204(site, faux_client):
     faux_client.reponses = [reponse_texte("ok")]
     faux_client.bloquer()
@@ -336,3 +370,20 @@ def test_page_sans_javascript(site, faux_client):
         assert time.monotonic() < fin
         time.sleep(0.02)
     assert 'http-equiv="refresh"' not in site.get("/assistant").text
+
+
+@pytest.mark.cas_limite
+def test_le_cookie_de_conversation_est_renouvele_a_chaque_activite(site, faux_client):
+    """Cas : une démonstration de plus de 30 minutes sur une même conversation.
+
+    Risque : le cookie posé au premier message expire alors que la conversation vit encore
+    sur le serveur : la réponse en cours est « perdue », Confirmer répond « Cette
+    proposition n'existe plus », et le message suivant ouvre une autre conversation.
+    """
+    faux_client.reponses = [reponse_texte("un"), reponse_texte("deux")]
+    premier = _envoyer(site)
+    _attendre(site, _jeton(premier))
+    for reponse in (_envoyer(site, "Encore"), site.get("/assistant/panneau", headers=HX)):
+        cookie = reponse.headers.get("set-cookie", "")
+        assert "edt_assistant=" in cookie and "Max-Age=1800" in cookie, cookie
+        assert premier.cookies["edt_assistant"] in cookie

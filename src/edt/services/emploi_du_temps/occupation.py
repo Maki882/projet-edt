@@ -11,8 +11,10 @@ Trois questions, en lecture seule :
   cette semaine-là). Une salle est occupée par une séance qui recoupe le
   créneau ou par une indisponibilité de la salle (récurrente ce jour-là, ou
   datée). En semaine type, une salle occupée certaines semaines seulement est
-  rangée à part avec les semaines où elle est libre, et une indisponibilité
-  datée qui touche une salle libre est rendue comme exception datée ;
+  rangée à part avec les semaines où elle est libre ; une indisponibilité
+  datée, ou une séance datée (déplacée, replacée) qui prend une salle une
+  semaine où la semaine type la laisse libre, est rendue comme exception
+  datée ;
 - `seances_sur_creneau` : les séances d'un enseignant, d'une salle ou d'un
   groupe (et des groupes qui partagent ses étudiants) qui tombent sur un
   créneau récurrent ou sur une période datée : ce qu'une indisponibilité
@@ -77,13 +79,17 @@ class Occupation:
 
 @dataclass(frozen=True)
 class ExceptionDatee:
-    """Indisponibilité datée qui touche une salle autrement libre sur le créneau (semaine type)."""
+    """Ce qui prend, certains jours, une salle que la semaine type laisse libre sur le créneau.
+
+    Une indisponibilité datée (« indisponible (Travaux) ») ou une séance datée
+    déplacée ou replacée (« TD Mathématiques, A1-G1 (séance datée) »).
+    """
 
     salle: SalleVue
     dates: tuple[dt.date, ...]
     debut: int
     fin: int
-    motif: str | None
+    libelle: str
 
 
 @dataclass(frozen=True)
@@ -241,7 +247,24 @@ def _semaine_type(
                     dates,
                     max(debut, indisponibilite.debut_min),
                     min(fin, indisponibilite.fin_min),
-                    indisponibilite.motif,
+                    _libelle_indisponibilite(indisponibilite),
+                )
+            )
+    if _a_des_occurrences(session, version.id):
+        numeros = {semaine.date_du(jour): semaine.numero for semaine in semaines}
+        for occurrence in _occurrences(
+            session, version.id, semestre.date_debut, semestre.date_fin, debut, fin, salles=vues
+        ):
+            numero = numeros.get(occurrence.date)
+            if numero is None or numero not in toutes or numero in occupees[occurrence.salle_id]:
+                continue  # autre jour de la semaine, semaine fermée, ou séance de la semaine type
+            exceptions.append(
+                ExceptionDatee(
+                    vues[occurrence.salle_id],
+                    (occurrence.date,),
+                    occurrence.debut_min,
+                    occurrence.fin_min,
+                    f"{_libelle_seance(occurrence.besoin)} (séance datée)",
                 )
             )
     libres = [vue for vue in vues.values() if not occupees[vue.id]]

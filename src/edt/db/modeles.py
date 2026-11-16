@@ -1143,14 +1143,14 @@ MODELES: tuple[type[Base], ...] = (
 
 
 class AssistantConsommation(Base):
-    """Consommation de l'assistant conversationnel pour un jour, sur tout le site.
+    """Consommation de l'assistant conversationnel pour un jour (table inutilisée).
 
-    Une ligne par jour : échanges commencés, appels au modèle, jetons par
-    catégorie et coût estimé en micro-dollars (d'après l'usage rendu par le
-    service et `edt.services.assistant.configuration.PRIX_PAR_MODELE`). Sert
-    aux limites du jour (`EDT_ASSISTANT_MESSAGES_PAR_JOUR`,
-    `EDT_ASSISTANT_BUDGET_JOUR`), qui survivent ainsi à un redémarrage. Aucun
-    texte de conversation ni adresse n'y est enregistré.
+    Limite connue : l'application n'écrit ni ne lit cette table. La
+    consommation du jour est gardée hors de la base
+    (`edt.services.assistant.limites`, fichier sous `EDT_LOG_DIR`), pour
+    survivre à la remise à zéro de la base, qui supprime toutes les tables. La
+    table reste dans le modèle pour ne pas changer le schéma des bases
+    existantes ; aucun texte de conversation ni adresse n'y figure.
     """
 
     __tablename__ = "assistant_consommation"

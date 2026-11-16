@@ -38,8 +38,8 @@ def _envoyer(texte="Bonjour", identifiant=None, adresse=ADRESSE, page="/salles")
     return assistant.envoyer(identifiant, texte, page, adresse)
 
 
-def _echanger(texte="Bonjour", identifiant=None):
-    resultat = _envoyer(texte, identifiant)
+def _echanger(texte="Bonjour", identifiant=None, adresse=ADRESSE):
+    resultat = _envoyer(texte, identifiant, adresse=adresse)
     assert resultat.accepte, resultat.refus
     attendre(resultat.echange)
     return resultat
@@ -258,6 +258,65 @@ def test_erreur_inattendue_dans_le_fil_rendue_en_bulle(
 
 
 @pytest.mark.cas_limite
+def test_un_message_refuse_ne_cree_pas_de_conversation(base, faux_client, jour_fige, monkeypatch):
+    """Cas : une adresse au-delà de sa limite envoie des messages sans cookie, à la chaîne.
+
+    Risque : chaque refus crée une conversation vide ; le registre se remplit et évince les
+    conversations des autres visiteurs, propositions en attente comprises, sans aucun appel.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_ADRESSE", "1")
+    faux_client.reponses = [reponse_texte("ok")]
+    _echanger()
+    nombre = assistant._etat.registre.nombre()
+    for _ in range(5):
+        refus = _envoyer("Encore")
+        assert not refus.accepte and refus.conversation_id is None
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_JOUR", "1")
+    refus = _envoyer("Autre adresse", adresse="203.0.113.99")
+    assert not refus.accepte and refus.conversation_id is None
+    assert assistant._etat.registre.nombre() == nombre
+    assert len(faux_client.appels) == 1
+
+
+@pytest.mark.cas_limite
+def test_une_proposition_en_attente_n_est_jamais_evincee(
+    jeu_minimal, faux_client, jour_fige, monkeypatch
+):
+    """Cas : la mémoire est pleine ; la conversation de la démonstratrice a une proposition
+    en attente ; un autre visiteur commence une conversation.
+
+    Risque : au clic, « Cette proposition n'existe plus » : la conversation a été évincée.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_CONVERSATIONS_MAX", "1")
+    conversation, proposition = _proposer(faux_client, "proposer_regle", REGLE_CM)
+    faux_client.reponses = [reponse_texte("ok")]
+    refus = _envoyer("Autre visiteur", adresse="203.0.113.50")
+    assert not refus.accepte and "très sollicité" in refus.refus.texte
+    assert refus.conversation_id is None
+    assert assistant.confirmer(conversation, proposition.jeton).proposition.etat is (
+        EtatProposition.CONFIRMEE
+    )
+    accepte = _envoyer("Autre visiteur", adresse="203.0.113.50")  # plus rien en attente
+    assert accepte.accepte
+    attendre(accepte.echange)
+
+
+@pytest.mark.cas_limite
+def test_conversations_bornees_par_adresse(base, faux_client, jour_fige, monkeypatch):
+    """Cas : une même adresse ouvre conversation sur conversation (cookies effacés).
+
+    Risque : une seule adresse occupe toute la mémoire et évince les autres visiteurs.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE", "2")
+    faux_client.reponses = [reponse_texte(str(i)) for i in range(4)]
+    autre = _echanger("Autre visiteur", adresse="203.0.113.60")
+    premieres = [_echanger(f"Conversation {i}") for i in range(3)]
+    assert assistant.vue(premieres[0].conversation_id).perdue  # sa plus ancienne, pas une autre
+    assert not assistant.vue(premieres[2].conversation_id).perdue
+    assert not assistant.vue(autre.conversation_id).perdue
+
+
+@pytest.mark.cas_limite
 def test_conversations_expirees_et_place_limitee(base, faux_client, jour_fige, monkeypatch):
     """Cas : une conversation inactive depuis plus de 30 minutes ; la mémoire est pleine.
 
@@ -405,6 +464,198 @@ def test_proposition_d_un_echange_en_echec_abandonnee(jeu_minimal, faux_client, 
     resultat = _echanger()
     vue = assistant.vue(resultat.conversation_id)
     assert vue.tours[-1].role is RoleTour.ERREUR and vue.tours[-1].propositions == []
+
+
+def _proposer(faux_client, outil, entree, texte="Je vous propose.") -> tuple[str, object]:
+    faux_client.reponses = [reponse_outil(outil, entree), reponse_texte(texte)]
+    resultat = _echanger()
+    (proposition,) = assistant.vue(resultat.conversation_id).tours[-1].propositions
+    return resultat.conversation_id, proposition
+
+
+def _refusee_sans_ecriture(conversation, proposition, modele, avant) -> str:
+    resultat = assistant.confirmer(conversation, proposition.jeton).proposition
+    assert resultat.etat is EtatProposition.ECHOUEE, resultat.compte_rendu
+    assert resultat.compte_rendu.endswith("Rien n'a été enregistré.")
+    assert _nombre(modele) == avant
+    return resultat.compte_rendu
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_un_enseignant_qui_n_est_plus_celui_de_la_carte(
+    jeu_minimal, faux_client, jour_fige
+):
+    """Cas : la carte vise M. Bernard (ENS002) ; avant le clic, un visiteur recharge un
+    établissement fictif et l'identifiant numérique de M. Bernard désigne une autre personne,
+    qui garde le même identifiant métier.
+
+    Risque : « Confirmée » sur la carte de M. Bernard, et l'indisponibilité écrite pour un autre.
+    """
+    conversation, proposition = _proposer(
+        faux_client,
+        "proposer_indisponibilite",
+        {
+            "nature": "enseignant",
+            "code": "ENS002",
+            "forme": "recurrente",
+            "jour": "mercredi",
+            "date_debut": None,
+            "date_fin": None,
+            "moment": "matin",
+            "debut": None,
+            "fin": None,
+            "motif": None,
+        },
+    )
+    with session_base() as session:
+        bernard = session.scalar(select(m.Enseignant).where(m.Enseignant.identifiant == "ENS002"))
+        bernard.civilite, bernard.nom, bernard.prenom = "Mme", "Dumas", "Lucie"
+    avant = _nombre(m.Indisponibilite)
+    message_refus = _refusee_sans_ecriture(conversation, proposition, m.Indisponibilite, avant)
+    assert "ont changé depuis la proposition" in message_refus and "ENS002" in message_refus
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_apres_un_rechargement_de_la_base(jeu_minimal, faux_client, jour_fige):
+    """Cas : un visiteur remet la base à zéro et recharge les mêmes données entre la
+    proposition et le clic : le même identifiant désigne à nouveau « M. Bernard (ENS002) ».
+
+    Risque : une identité qui coïncide après un rechargement ne prouve pas que la carte et la
+    base parlent du même élément ; la carte ne doit pas écrire dans une base rechargée.
+    """
+    from edt.db.initialisation import initialiser_base
+    from edt.db.jeux import creer_jeu_minimal
+
+    conversation, proposition = _proposer(
+        faux_client,
+        "proposer_indisponibilite",
+        {
+            "nature": "enseignant",
+            "code": "ENS002",
+            "forme": "recurrente",
+            "jour": "mercredi",
+            "date_debut": None,
+            "date_fin": None,
+            "moment": "matin",
+            "debut": None,
+            "fin": None,
+            "motif": None,
+        },
+    )
+    initialiser_base(reset=True, aujourdhui=jour_fige)
+    with session_base() as session:
+        creer_jeu_minimal(session)
+    avant = _nombre(m.Indisponibilite)
+    message_refus = _refusee_sans_ecriture(conversation, proposition, m.Indisponibilite, avant)
+    assert "la base a été rechargée" in message_refus
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_une_salle_remplacee(version_minimale, faux_client, jour_fige):
+    """Cas : la salle de la carte a été supprimée puis une autre salle a pris son identifiant
+    (rechargement), ou elle a changé de code.
+
+    Risque : l'indisponibilité posée sur une autre salle que celle de la carte.
+    """
+    conversation, proposition = _proposer(
+        faux_client,
+        "proposer_indisponibilite",
+        {
+            "nature": "salle",
+            "code": "N204",
+            "forme": "datee",
+            "jour": None,
+            "date_debut": "2026-10-06",
+            "date_fin": None,
+            "moment": "journee",
+            "debut": None,
+            "fin": None,
+            "motif": None,
+        },
+    )
+    with session_base() as session:
+        session.scalar(select(m.Salle).where(m.Salle.code == "N204")).code = "N299"
+    avant = _nombre(m.Indisponibilite)
+    assert "N204" in _refusee_sans_ecriture(conversation, proposition, m.Indisponibilite, avant)
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_une_regle_qui_a_change(jeu_minimal, faux_client, jour_fige):
+    """Cas : la carte propose de désactiver R001 ; avant le clic, la règle R001 a été remplacée
+    (rechargement d'un établissement fictif) par une règle de même code et d'un autre contenu.
+
+    Risque : la carte confirme « Désactiver R001 » et désactive une autre règle.
+    """
+    conversation, proposition = _proposer(
+        faux_client, "proposer_etat_regle", {"code": "R001", "etat": "inactive"}
+    )
+    with session_base() as session:
+        regles.supprimer(session, jeu_minimal.annee_scolaire_id, "R001")
+        regles.creer(
+            session,
+            {
+                "code": "R001",
+                "type": "JOURS_TRAVAILLES",
+                "portee": {"nature": "groupe", "cible": "A1-G2"},
+                "parametres": {"jours": ["lundi", "mardi"]},
+                "annee": "2026-2027",
+            },
+        )
+    avant = _nombre(m.Regle)
+    _refusee_sans_ecriture(conversation, proposition, m.Regle, avant)
+    with session_base() as session:
+        assert regles.lire(session, jeu_minimal.annee_scolaire_id, "R001").etat is EtatRegle.ACTIVE
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_une_modification_sur_une_regle_modifiee_entre_temps(
+    jeu_minimal, faux_client, jour_fige
+):
+    """Cas : la carte propose « Modifier R002 » (avant, après) ; avant le clic, quelqu'un
+    modifie R002 à l'écran.
+
+    Risque : les changements fusionnés sur l'état courant donnent une règle que la carte
+    n'a jamais montrée.
+    """
+    conversation, proposition = _proposer(
+        faux_client,
+        "proposer_modification_regle",
+        {
+            "code": "R002",
+            "portee": None,
+            "parametres": {"duree": 90},
+            "niveau": None,
+            "periode": None,
+            "commentaire": None,
+        },
+    )
+    with session_base() as session:
+        regles.modifier(
+            session, jeu_minimal.annee_scolaire_id, "R002", {"parametres": {"debut": "11:30"}}
+        )
+        phrase = regles.lire(session, jeu_minimal.annee_scolaire_id, "R002").phrase
+    _refusee_sans_ecriture(conversation, proposition, m.Regle, _nombre(m.Regle))
+    with session_base() as session:
+        assert regles.lire(session, jeu_minimal.annee_scolaire_id, "R002").phrase == phrase
+
+
+@pytest.mark.cas_limite
+def test_confirmer_refuse_une_nouvelle_regle_dont_la_phrase_a_change(
+    jeu_minimal, faux_client, jour_fige
+):
+    """Cas : la carte propose une règle pour « la classe A1-G2 » ; avant le clic, le groupe
+    A1-G2 a changé de nature (rechargement).
+
+    Risque : une règle enregistrée dont la phrase n'est pas celle que l'utilisateur a lue.
+    """
+    regle = {**REGLE_CM, "portee": {"nature": "groupe", "cible": "A1-G2"}}
+    conversation, proposition = _proposer(faux_client, "proposer_regle", regle)
+    assert proposition.phrase.startswith("La classe A1-G2")
+    with session_base() as session:
+        groupe = session.scalar(select(m.Groupe).where(m.Groupe.code == "A1-G2"))
+        groupe.nature = "transverse"
+        groupe.parent_id = None
+    _refusee_sans_ecriture(conversation, proposition, m.Regle, _nombre(m.Regle))
 
 
 def test_proposition_inconnue(base):

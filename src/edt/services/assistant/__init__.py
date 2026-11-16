@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import threading
 import time
@@ -255,6 +256,26 @@ def _refus(message: str, conversation_id: str | None = None, **options) -> Resul
     return ResultatEnvoi(conversation_id, refus=Tour(RoleTour.ATTENTION, message), **options)
 
 
+PAGE_LONGUEUR_MAX = 200
+_MOTIF_PAGE = re.compile(r"/[A-Za-z0-9/_.\-]*")
+
+
+def page_affichee(page: object) -> str | None:
+    """Le chemin d'une page de l'application (« /salles »), ou `None`.
+
+    La page vient d'un champ du formulaire, donc du navigateur : seul un chemin
+    court, fait de lettres, chiffres, « / », « _ », « - » et « . », est gardé
+    (paramètres et ancre retirés). Elle part au modèle dans le message système
+    et dans le journal : un texte arbitraire n'y passe pas.
+    """
+    if not isinstance(page, str) or not page.startswith("/") or page.startswith("//"):
+        return None
+    chemin = page.split("?", 1)[0].split("#", 1)[0]
+    if len(chemin) > PAGE_LONGUEUR_MAX or "//" in chemin or not _MOTIF_PAGE.fullmatch(chemin):
+        return None
+    return chemin
+
+
 def verifier_texte(texte: object, config: ConfigurationAssistant) -> str:
     """Le message nettoyé ; `LimiteAtteinte` s'il est vide, trop long ou illisible."""
     from edt.services.assistant.limites import Limite
@@ -284,9 +305,12 @@ def envoyer(
 
     Ordre des contrôles : assistant disponible, pause, message, conversation
     (close, échange en cours, nombre de messages), échanges simultanés, limite
-    de l'adresse, limite du site et budget.
+    de l'adresse, limite du site et budget ; puis, seulement si tout est passé,
+    création de la conversation (place en mémoire). Un message refusé ne crée
+    donc aucune conversation et ne consomme aucune place.
     """
     config = _config()
+    page = page_affichee(page)
     if not config.disponible:
         return _refus(config.raison_texte, identifiant)
     if boucle.en_pause() is not None:
@@ -321,32 +345,31 @@ def envoyer(
                 "L'assistant est très sollicité : réessayez dans un instant.",
                 None if nouvelle else conversation.identifiant,
             )
+        identifiant_refus = None if nouvelle else conversation.identifiant
         try:
-            if conversation is None:
-                conversation = registre.creer(
-                    cle, config.conversations_max, config.expiration_min * 60
-                )
-            echange = Echange(
-                jeton=secrets.token_urlsafe(9),
-                conversation_id=conversation.identifiant,
-                texte=texte,
-                page=page,
-                debut=temps.maintenant(),
-            )
-            conversation.echange = echange  # réserve la place avant les contrôles en base
+            _etat.adresses.compter(cle, config)
         except LimiteAtteinte as limite:
-            return _refus(limite.message, None, perdue=perdue)
-    try:
-        _etat.adresses.compter(cle, config)
+            return _refus(limite.message, identifiant_refus)
         try:
             _etat.budget.ouvrir_echange(config)
-        except LimiteAtteinte:
+            if conversation is None:
+                conversation = registre.creer(
+                    cle,
+                    config.conversations_max,
+                    config.conversations_par_adresse,
+                    config.expiration_min * 60,
+                )
+        except LimiteAtteinte as limite:
             _etat.adresses.rendre(cle)
-            raise
-    except LimiteAtteinte as limite:
-        with conversation.verrou:
-            conversation.echange = None
-        return _refus(limite.message, conversation.identifiant, nouvelle=nouvelle, perdue=perdue)
+            return _refus(limite.message, identifiant_refus)
+        echange = Echange(
+            jeton=secrets.token_urlsafe(9),
+            conversation_id=conversation.identifiant,
+            texte=texte,
+            page=page,
+            debut=temps.maintenant(),
+        )
+        conversation.echange = echange
     tour = Tour(RoleTour.UTILISATEUR, texte)
     with conversation.verrou:
         conversation.nb_envois += 1
@@ -628,7 +651,7 @@ def essayer() -> ResultatEssai:
     """Un appel avec exactement les paramètres d'un échange (consignes, outils, repli, effort).
 
     Vérifie la clé, le modèle, l'en-tête bêta et l'acceptation des schémas
-    stricts. Son coût compte dans la consommation du jour.
+    des outils. Son coût compte dans la consommation du jour.
     """
     config = _config()
     if not config.disponible:
@@ -652,7 +675,7 @@ def essayer() -> ResultatEssai:
             **boucle.parametres_requete(messages, config, jetons_sortie=JETONS_ESSAI)
         )
     except Exception as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
-        _etat.budget.annuler(reservation)
+        boucle.compter_tentative_echouee(_etat.budget, reservation, erreur)
         issue = boucle.issue_de(erreur, float(config.delai_appel_s))
         message = boucle.MESSAGES.get(issue, boucle.MESSAGES[Issue.INTERNE])
         return ResultatEssai(False, issue, message, time.monotonic() - debut)

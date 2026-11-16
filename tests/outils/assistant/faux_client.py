@@ -12,6 +12,11 @@ du SDK. Aides :
 
 `FauxClient.bloquer()` retient la réponse suivante jusqu'à `liberer()` :
 de quoi observer un échange « en cours ».
+
+`client_sdk_simule(reponses)` construit au contraire le **vrai** client du SDK, posé sur
+un transport HTTP simulé (aucun réseau ; un identifiant factice passé au seul
+constructeur, rien dans l'environnement) : de quoi vérifier ce que le SDK fait de
+lui-même (reprises, attentes).
 """
 
 from __future__ import annotations
@@ -88,11 +93,45 @@ def reponse_outil(nom: str, entree: dict[str, Any], **usage: Any) -> BetaMessage
 
 
 def erreur_api(
-    classe: type[anthropic.APIStatusError], statut: int, message_api: str = "message de test"
+    classe: type[anthropic.APIStatusError],
+    statut: int,
+    message_api: str = "message de test",
+    entetes: dict[str, str] | None = None,
 ):
-    """Exception d'état HTTP du SDK, avec un identifiant de requête."""
-    reponse = httpx2.Response(statut, headers={"request-id": "req_test"}, request=REQUETE)
+    """Exception d'état HTTP du SDK, avec un identifiant de requête (et des en-têtes)."""
+    reponse = httpx2.Response(
+        statut, headers={"request-id": "req_test", **(entetes or {})}, request=REQUETE
+    )
     return classe(message_api, response=reponse, body=None)
+
+
+def reponse_http(statut: int, corps: dict[str, Any], entetes: dict[str, str] | None = None):
+    """Réponse HTTP du service simulé (corps JSON)."""
+    return httpx2.Response(
+        statut, headers={"request-id": "req_test", **(entetes or {})}, json=corps
+    )
+
+
+def corps_erreur(type_: str) -> dict[str, Any]:
+    return {"type": "error", "error": {"type": type_, "message": "message de test"}}
+
+
+def client_sdk_simule(reponses: list[httpx2.Response]) -> tuple[anthropic.Anthropic, list[str]]:
+    """Vrai client du SDK sur un transport simulé ; renvoie aussi la liste des requêtes reçues."""
+    requetes: list[str] = []
+
+    def repondre(requete: httpx2.Request) -> httpx2.Response:
+        requetes.append(requete.url.path)
+        if not reponses:
+            raise AssertionError("service simulé : plus aucune réponse prévue")
+        return reponses.pop(0)
+
+    client = anthropic.Anthropic(
+        api_key="identifiant-factice-jamais-envoye",
+        base_url="http://service-simule.invalid",
+        http_client=httpx2.Client(transport=httpx2.MockTransport(repondre)),
+    )
+    return client, requetes
 
 
 def delai_depasse() -> anthropic.APITimeoutError:

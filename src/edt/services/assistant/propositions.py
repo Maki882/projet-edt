@@ -9,6 +9,26 @@ dans une transaction courte prise d'emblée en écriture
 revalident tout : une donnée changée entre-temps (doublon, cible supprimée)
 donne une `ErreurEDT` et rien n'est écrit.
 
+Les services revalident la forme, pas l'identité : après un rechargement de
+la base (établissement fictif chargé par un visiteur, remise à zéro), un
+identifiant numérique ou un code de règle peut désigner un autre élément que
+celui de la carte. Avant d'écrire, `_ecrire` vérifie donc
+(`ChangementDepuisLaProposition` sinon) :
+
+- que la base n'a pas été rechargée depuis la proposition : chaque
+  proposition garde la génération de la base (`generation_base`, le numéro
+  de schéma de SQLite, qui change quand les tables sont supprimées et
+  recréées, jamais pour une simple écriture) ;
+- que la cible est toujours celle que la carte a montrée :
+
+- indisponibilité : l'élément de cet identifiant a toujours l'identité lue à
+  la proposition (`identite` : identifiant et nom d'un enseignant, code et
+  campus d'une salle, code, année et libellé d'un groupe) ;
+- état d'une règle : même identifiant et même phrase qu'à la proposition ;
+- modification d'une règle : la phrase obtenue est celle de la carte (sinon
+  l'exception annule la transaction) ;
+- nouvelle règle : la phrase de la règle revalidée est celle de la carte.
+
 | Nature | Écriture |
 |---|---|
 | `regle` | `regles.creer(..., origine=assistant, etat=active)` |
@@ -25,10 +45,13 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from edt.db import modeles as m
 from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.regles import EtatRegle, OrigineRegle
+from edt.erreurs import ErreurRegleMetier
 from edt.services import regles
 from edt.services.emploi_du_temps.presentation import adresse_regle
 from edt.services.referentiels import operations
@@ -113,6 +136,59 @@ class Proposition:
         return f"{self.code} ({self.nature.value}) : {self.phrase}"
 
 
+class ChangementDepuisLaProposition(ErreurRegleMetier):
+    """La cible de la proposition n'est plus celle que la carte a montrée : rien n'est écrit."""
+
+    def __init__(self, cible: str | None) -> None:
+        cause = (
+            "la base a été rechargée (établissement fictif chargé ou remise à zéro)"
+            if cible is None
+            else f"{cible} n'est plus l'élément visé par la carte"
+        )
+        super().__init__(
+            f"les données ont changé depuis la proposition ({cause}) : redemandez la proposition"
+        )
+
+
+def generation_base(session: Session) -> int:
+    """Génération de la base : change quand les tables sont recréées (voir l'en-tête)."""
+    return int(session.execute(text("PRAGMA schema_version")).scalar_one())
+
+
+def identite(objet: m.Enseignant | m.Salle | m.Groupe) -> dict[str, Any]:
+    """Ce qui identifie une ressource pour l'utilisateur, au-delà de son identifiant numérique.
+
+    `cle` : les valeurs comparées à la confirmation ; `texte` : la ressource
+    telle que la carte la nomme.
+    """
+    if isinstance(objet, m.Enseignant):
+        cle = [objet.identifiant, objet.civilite, objet.nom, objet.prenom]
+        texte = f"{objet.nom_affiche} ({objet.identifiant})"
+    elif isinstance(objet, m.Salle):
+        cle = [objet.code, objet.campus.code]
+        texte = f"la salle {objet.code} ({objet.campus.code})"
+    else:
+        cle = [objet.code, objet.annee_scolaire_id, objet.libelle]
+        texte = f"le groupe {objet.code}"
+    return {"modele": type(objet).__name__, "id": objet.id, "cle": cle, "texte": texte}
+
+
+_MODELES_IDENTIFIES = {"Enseignant": m.Enseignant, "Salle": m.Salle, "Groupe": m.Groupe}
+
+
+def _verifier_identite(session: Session, attendue: dict[str, Any]) -> None:
+    objet = session.get(_MODELES_IDENTIFIES[attendue["modele"]], attendue["id"])
+    if objet is None or identite(objet)["cle"] != attendue["cle"]:
+        raise ChangementDepuisLaProposition(attendue["texte"])
+
+
+def _verifier_regle(session: Session, proposition: Proposition, phrase: str) -> None:
+    donnees = proposition.donnees
+    detail = regles.lire(session, donnees["annee_id"], donnees["code"])
+    if detail.id != donnees["regle_id"] or detail.phrase != phrase:
+        raise ChangementDepuisLaProposition(f"la règle {donnees['code']} « {phrase} »")
+
+
 def enregistrer(proposition: Proposition) -> tuple[str, Lien | None]:
     """Écrit la proposition dans sa propre transaction ; renvoie le compte rendu et un lien.
 
@@ -127,9 +203,14 @@ def enregistrer(proposition: Proposition) -> tuple[str, Lien | None]:
 
 def _ecrire(session: Session, proposition: Proposition) -> tuple[str, Lien | None]:
     donnees = proposition.donnees
+    if donnees["generation"] != generation_base(session):
+        raise ChangementDepuisLaProposition(None)
     annee_id = donnees.get("annee_id")
     nature = proposition.nature
     if nature is NatureProposition.REGLE:
+        validation = regles.valider(session, donnees["brouillon"])
+        if validation.valide and validation.phrase != proposition.phrase:
+            raise ChangementDepuisLaProposition(f"« {proposition.phrase} »")
         detail = regles.creer(
             session, donnees["brouillon"], origine=OrigineRegle.ASSISTANT, etat=EtatRegle.ACTIVE
         )
@@ -139,12 +220,16 @@ def _ecrire(session: Session, proposition: Proposition) -> tuple[str, Lien | Non
         )
     if nature is NatureProposition.MODIFICATION:
         detail = regles.modifier(session, annee_id, donnees["code"], donnees["changements"])
+        if detail.phrase != proposition.phrase:
+            # L'exception annule la transaction : la modification n'est pas gardée.
+            raise ChangementDepuisLaProposition(f"la règle {detail.code}")
         return (
             f"Enregistrée : règle {detail.code} modifiée. Elle comptera ainsi au prochain calcul.",
             Lien(f"Voir la règle {detail.code}", adresse_regle(detail.code, annee_id)),
         )
     if nature is NatureProposition.ETAT:
         etat = EtatRegle(donnees["etat"])
+        _verifier_regle(session, proposition, proposition.phrase)
         detail = regles.changer_etat(session, annee_id, donnees["code"], etat)
         suite = (
             "Elle comptera au prochain calcul."
@@ -156,6 +241,7 @@ def _ecrire(session: Session, proposition: Proposition) -> tuple[str, Lien | Non
             f"Enregistrée : règle {detail.code} {verbe}. {suite}",
             Lien(f"Voir la règle {detail.code}", adresse_regle(detail.code, annee_id)),
         )
+    _verifier_identite(session, donnees["identite"])
     element = operations.creer(session, "indisponibilite", donnees["valeurs"])
     return (
         f"Enregistrée : indisponibilité n° {element['id']}. Elle comptera au prochain calcul ; "
