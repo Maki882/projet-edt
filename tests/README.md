@@ -149,6 +149,12 @@ L'intégration continue (`.github/workflows/ci.yml`) enchaîne trois étapes :
 contrôle du rangement, tests unitaires, tests d'intégration ; les tests de
 charge en sont exclus.
 
+Les tests se lancent aussi depuis l'application, onglets « Tests unitaires »
+et « Tests d'intégration » (un test, un fichier, un composant ou toute la
+famille, avec le résultat et la date de chaque test), ou par la commande
+`python -m edt tests [--famille unitaires|integration] [--composant <nom>]`,
+qui enregistre les mêmes résultats (voir `docs/interface.md`, section 15).
+
 ## 5. Où ranger un nouveau test
 
 ```mermaid

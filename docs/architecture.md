@@ -131,6 +131,22 @@ mémoire, un autre pilote ou un schéma inconnu sont refusés avec le remède.
 Une valeur vide prend le défaut. Les chemins relatifs partent du répertoire
 de lancement.
 
+Trois variables règlent le lancement des tests depuis l'application
+(onglets « Tests unitaires » et « Tests d'intégration », commande
+`python -m edt tests`) ; le service `edt.services.banc_tests` les lit avec
+les mêmes règles (valeur invalide refusée, valeur vide au défaut) :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `EDT_TESTS_RACINE` | le dossier courant s'il contient `tests/unitaires` et `pyproject.toml`, sinon la racine déduite du code source | racine du dépôt dont les tests sont lancés |
+| `EDT_TESTS_DUREE_MAX_S` | `900` | durée maximale d'une exécution, en secondes ; au-delà, pytest et ses processus enfants sont arrêtés |
+| `EDT_TESTS_LANCEMENT` | `oui` | `non` désactive les boutons de lancement ; les résultats restent consultables |
+
+Les tests tournent dans un sous-processus `python -m pytest` sans aucune
+variable `EDT_*` héritée : sa base et ses journaux sont dans un dossier
+temporaire effacé à la fin. Les résultats sont gardés dans
+`<EDT_LOG_DIR>/tests/` (`resultats.json`, `derniere-execution.log`).
+
 ## Base de données : moteur, transactions, pannes
 
 `edt.db.moteur` crée un moteur par adresse, partagé par tous les fils

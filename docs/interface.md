@@ -2,8 +2,9 @@
 
 Ce document décrit l'interface web : ses principes, la navigation, la mise en
 page commune, l'espace « Données » et son mécanisme générique, les onglets
-Générer, Emploi du temps et À traiter, l'accueil, les cas limites et la façon
-d'ajouter une vue. Il s'adresse aux développeurs ; le mode d'emploi de
+Générer et Emploi du temps, la page des points à traiter, l'accueil, les cas
+limites, la façon d'ajouter une vue et les onglets de tests. Il s'adresse aux
+développeurs ; le mode d'emploi de
 l'utilisateur est le [livret 3](livrets/3-guide-utilisateur.md). Le socle
 (routes découvertes, `rendre`, `rediriger`, `SessionRequete`, erreurs) est
 décrit dans [`architecture.md`](architecture.md).
@@ -28,17 +29,19 @@ L'utilisateur est un responsable de scolarité **non informaticien**.
 
 ## 2. Navigation
 
-La barre du haut porte **cinq onglets**, dans un ordre fixe : Accueil,
-Données, Générer, Emploi du temps, À traiter. Chaque écran se range dans un
-onglet par la `section` de son entrée de menu (`edt/web/menu.py`, `ONGLETS`) :
+La barre du haut porte **six onglets**, dans un ordre fixe : Accueil,
+Données, Générer, Emploi du temps, Tests unitaires, Tests d'intégration.
+Chaque écran se range dans un onglet par la `section` de son entrée de menu
+(`edt/web/menu.py`, `ONGLETS`) :
 
 | Onglet | Sections | Écrans |
 |---|---|---|
 | Accueil | (aucune) | `/` |
 | Données | `SECTION_REFERENTIELS`, `SECTION_PLANIFICATION`, `SECTION_CONFIGURATION`, `SECTION_DONNEES` | établissement, besoins, règles et calendrier, import et export, jeux de données |
-| Générer | `SECTION_GENERER` | `/calculs`, `/versions` |
+| Générer | `SECTION_GENERER`, `SECTION_A_TRAITER` | `/calculs`, `/versions`, `/a-traiter` (« Points à traiter ») |
 | Emploi du temps | `SECTION_EMPLOI_DU_TEMPS` | `/emploi-du-temps` |
-| À traiter | `SECTION_A_TRAITER` | `/a-traiter` |
+| Tests unitaires | `SECTION_TESTS_UNITAIRES` | `/tests/unitaires` |
+| Tests d'intégration | `SECTION_TESTS_INTEGRATION` | `/tests/integration` |
 
 - L'`ordre` d'une entrée la place dans son onglet ; un onglet sans entrée
   n'est pas affiché ; son adresse est celle de sa première entrée.
@@ -48,18 +51,22 @@ onglet par la `section` de son entrée de menu (`edt/web/menu.py`, `ONGLETS`) :
 - Dans l'onglet Données, les entrées sont regroupées sous des titres
   (`GROUPE_ETABLISSEMENT`, `GROUPE_BESOINS`, `GROUPE_REGLES`,
   `GROUPE_IMPORT_EXPORT`, `GROUPE_JEUX`, dans cet ordre). Une entrée choisit
-  un autre groupe par son champ `groupe`.
+  un autre groupe par son champ `groupe`. Dans l'onglet Générer, la section
+  À traiter rejoint le groupe « Générer ».
 - Une entrée dont la section n'est rangée dans aucun onglet va dans l'onglet
   Données, sous un groupe portant le nom de sa section, et un avertissement
   est journalisé.
 - Un onglet peut afficher un **compteur** chargé par HTMX :
   `COMPTEURS_ONGLETS` associe à l'onglet l'adresse d'un fragment
-  (« À traiter » → `/a-traiter/compteur`). Sans JavaScript, l'onglet reste un
-  lien simple ; si le fragment échoue, l'échec est noté dans la console, sans
-  bandeau d'erreur.
+  (« Générer » → `/a-traiter/compteur`, le nombre de points à traiter). Sans
+  JavaScript, l'onglet reste un lien simple ; si le fragment échoue, l'échec
+  est noté dans la console, sans bandeau d'erreur.
+- Un onglet peut avoir sa **couleur** : `CLASSES_ONGLETS` lui associe une
+  classe de `app.css` (turquoise foncé pour « Tests unitaires », violet pour
+  « Tests d'intégration »), visible sur toutes les pages.
 - L'onglet actif est celui dont une entrée correspond à l'adresse affichée
   (l'entrée `/salles` couvre aussi `/salles/12`).
-- Sur un écran étroit, les cinq onglets passent sur deux rangées : aucun
+- Sur un écran étroit, les six onglets passent sur deux rangées : aucun
   n'est caché.
 
 ```python
@@ -362,7 +369,7 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
 - **Exports** : `/export/emploi-du-temps.csv` et `/export/emploi-du-temps.ics`
   pour la version, la couche et la cible affichées.
 
-## 7. Onglet « À traiter »
+## 7. Page « Points à traiter » (onglet Générer)
 
 `GET /a-traiter` (filtre `semestre_id` facultatif) : pour la version active
 de chaque semestre, les anomalies de la semaine type puis des séances
@@ -374,7 +381,7 @@ personnalisée porte le code de la règle en lien vers elle ; une anomalie
 d'une règle importante ou facultative porte son niveau.
 
 **Nombre de points à traiter** : une seule définition, `ATraiter.total`,
-reprise par la page, la pastille de l'onglet et l'accueil. Il compte les
+reprise par la page, la pastille de l'onglet Générer et l'accueil. Il compte les
 erreurs et les avertissements, sur la semaine type et les séances datées,
 et chaque séance « à programmer » une fois.
 
@@ -537,3 +544,53 @@ Exemple : une vue « par campus ».
 Pour un nouvel *affichage* (un mois, par exemple), ajouter un membre à
 `Affichage`, calculer la période et les colonnes dans `construire_vue`, et
 réutiliser `disposer` : il ne connaît que des colonnes et des minutes.
+
+## 15. Onglets « Tests unitaires » et « Tests d'intégration »
+
+Les deux familles de tests du projet (voir [`tests/README.md`](../tests/README.md))
+se lancent depuis l'application, sans la quitter. Chaque page s'ouvre sur le
+bloc « Comment sont organisés ces tests » : deux ou trois phrases et un
+schéma SVG dessiné dans la page (`templates/tests/_schema_*.html`, avec titre
+et description pour les lecteurs d'écran). Viennent ensuite le résumé de la
+famille (réussis, échecs, ignorés, jamais lancés, date de la dernière
+exécution complète, bouton « Lancer tous les … »), le suivi de l'exécution,
+puis chaque composant (replié, déplié d'office s'il contient un échec ou un
+test en cours), ses fichiers et ses tests.
+
+| Adresse | Rôle |
+|---|---|
+| `GET /tests/unitaires`, `GET /tests/integration` | page d'une famille (`GET /tests` mène à la première) |
+| `POST /tests/{famille}/lancer` | champ `cible` : `famille`, `composant:<nom>`, `fichier:<chemin>` ou `test:<clé>` |
+| `GET /tests/{famille}/suivi?execution=…&depuis=N` | fragment interrogé chaque seconde pendant l'exécution |
+| `POST /tests/arreter` | arrêt de l'exécution en cours |
+| `GET /tests/journal` | sortie complète de pytest pour la dernière exécution (texte) |
+
+- **Un test** est une fonction de test : ses cas paramétrés sont lancés
+  ensemble et regroupés (échec si l'un échoue). Chaque ligne montre son état
+  (réussi, échec, ignoré avec la raison, jamais lancé, en cours, en
+  attente), sa durée, la date de sa dernière exécution et, pour un échec, le
+  message de l'assertion dans un bloc replié.
+- **Suivi en direct** : même mécanique que le suivi d'un calcul. Le fragment
+  de suivi se redemande chaque seconde ; il renvoie l'avancement (tests
+  terminés sur le total, réussis, échecs) et, par `hx-swap-oob`, les lignes
+  des tests terminés depuis le compte précédent (`depuis`) et les résumés de
+  leur fichier, de leur composant et de la famille. Une exécution que le
+  serveur ne connaît plus (redémarrage) fait recharger la page
+  (`HX-Refresh`).
+- **Garde-fous** : une exécution à la fois (un second envoi mène au suivi en
+  cours, sans erreur), refus pendant un calcul d'emploi du temps, durée
+  maximale, tests de charge exclus des lancements par groupe (ils se lancent
+  un par un), lancement désactivable (`EDT_TESTS_LANCEMENT=non`) ; dossier
+  `tests` absent, pytest absent ou fichier de résultats illisible donnent un
+  message, jamais une erreur.
+- **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
+  exécution dans un sous-processus pytest, greffon, résultats, tableau d'une
+  famille) ; la commande `python -m edt tests` passe par le même service.
+  Résultats : `<EDT_LOG_DIR>/tests/resultats.json`, hors de la base, que le
+  chargement d'un établissement fictif remet à zéro.
+- **Couleurs** : variables `--tests-unitaires` et `--tests-integration` de
+  `app.css` (onglets), reprises par `static/css/tests.css` (filet du titre,
+  bandeau, boutons, schéma).
+
+Fichiers : `web/routes/tests.py`, `web/templates/tests/`,
+`web/static/css/tests.css`.
