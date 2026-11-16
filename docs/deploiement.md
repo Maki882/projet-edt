@@ -478,12 +478,13 @@ Déroulement de `--reset-base` :
    d'intégrité de la sauvegarde : ok »). Si elle échoue, le déploiement s'arrête
    avant d'effacer quoi que ce soit (retour arrière) ;
 3. l'étape « Initialisation de la base » rappelle où est la sauvegarde, puis
-   `init-db --reset --oui` efface toutes les tables et recrée le schéma vide ;
-   si `init-db` de la version propose `--sans-sauvegarde`, le déploiement le
-   lui passe ; sinon, en production, `init-db --reset` écrit en plus une copie
-   brute à côté de la base, `/var/lib/edt/edt-<date>-avant-reset.db` (heure
-   locale, hors rotation) : elle double la sauvegarde vérifiée et peut être
-   supprimée après contrôle (`sudo rm /var/lib/edt/edt-<date>-avant-reset.db`) ;
+   `init-db --reset --oui --sans-sauvegarde` efface toutes les tables et
+   recrée le schéma vide, sans seconde copie : la sauvegarde vérifiée de
+   l'étape 2 suffit. Une version dont `init-db` n'a pas l'option
+   `--sans-sauvegarde` écrit en plus une copie brute de la base
+   (`edt-<date>-avant-reset.db`, à côté de la base ou dans
+   `/var/lib/edt/sauvegardes/`) : elle double la sauvegarde vérifiée et peut
+   être supprimée après contrôle ;
 4. la fin du déploiement rappelle que la base est vide : la repeupler
    (`sudo edt jeu …`).
 

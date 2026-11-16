@@ -270,6 +270,25 @@ def test_init_db_reset_non_interactif_ne_pose_pas_de_question(
 
 
 @pytest.mark.cas_limite
+def test_init_db_reset_sans_sauvegarde_ne_double_pas_celle_du_deploiement(
+    lanceur, jeu_minimal, environnement, monkeypatch, compter
+):
+    """Cas : `init-db --reset --oui --sans-sauvegarde` en production, lancé par le déploiement
+    qui vient de faire et de vérifier sa propre sauvegarde.
+
+    Risque : une seconde copie brute de la base à chaque déploiement avec remise à zéro, qui
+    remplit le disque du serveur.
+    """
+    monkeypatch.setenv("EDT_ENV", "prod")
+
+    resultat = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui", "--sans-sauvegarde"])
+
+    assert resultat.exit_code == 0, resultat.output
+    assert "Sauvegarde" not in resultat.output and compter(Salle) == 0
+    assert not list(environnement.rglob("edt-*-avant-reset.db"))
+
+
+@pytest.mark.cas_limite
 def test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture(
     lanceur, base, delai_verrou_court, verrou_ecriture
 ):
