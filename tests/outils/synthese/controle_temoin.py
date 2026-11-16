@@ -4,7 +4,7 @@ Lit l'instantané officiel du semestre (`charger_instantane`) et vérifie,
 règle par règle et sans rien réutiliser du moteur du témoin, que les places
 du témoin respectent les contraintes dures du projet. Renvoie la liste des
 violations en clair (vide = témoin valide). Volontairement simple et
-quadratique : à réserver aux jeux petit et moyen.
+quadratique : quelques secondes sur le jeu grand, réservé aux tests marqués perf.
 """
 
 from __future__ import annotations

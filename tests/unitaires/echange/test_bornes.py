@@ -405,6 +405,7 @@ def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
         fil.start()
     for fil in fils:
         fil.join(timeout=60)
+        assert not fil.is_alive(), "l'import ne s'est pas terminé"
 
     assert echecs == []
     assert {p: r.bilan("salles").compteurs for p, r in rapports.items()} == {
@@ -544,5 +545,5 @@ def test_service_appele_avec_un_identifiant_hors_base_repond_introuvable(
             service.simuler_import(session, [fichier_exemple("seances_existantes.csv")], options)
         with pytest.raises(ErreurIntrouvable, match=f"version d'emploi du temps {ENORME}"):
             service.resoudre_filtre(session, ENORME)
-        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
-            service.exporter_emploi_du_temps(session, ENORME, groupe_id=-1)
+        with pytest.raises(ErreurIntrouvable, match=f"version d'emploi du temps {ENORME}"):
+            service.exporter_emploi_du_temps(session, ENORME)

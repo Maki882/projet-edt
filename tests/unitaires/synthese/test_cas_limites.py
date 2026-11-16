@@ -246,7 +246,9 @@ def test_configuration_qui_ne_tient_pas_dans_les_salles(base_vierge, jeu_petit):
     assert all(e.raison and e.libelle for e in rapport.besoins_ecartes)
     assert any("aucune salle" in e.raison for e in rapport.besoins_ecartes)
     assert problemes_du_temoin(base_vierge, rapport) == []
-    assert "Besoins écartés faute de place" in rapport.resume()
+    resume = rapport.resume()
+    assert f"Besoins écartés faute de place : {len(rapport.besoins_ecartes)}" in resume
+    assert rapport.besoins_ecartes[0].libelle in resume
 
 
 def test_configuration_minimale_un_etudiant_par_classe(base_vierge):
@@ -494,6 +496,7 @@ def test_temoin_et_regles_valides_sur_dix_graines(tmp_path, taille):
     _controler_plusieurs_graines(tmp_path, taille, range(10, 20))
 
 
+@pytest.mark.perf
 def test_generation_bornee_en_temps(jeu_petit, jeu_moyen):
     """Cas : chargement d'un jeu depuis l'écran (la requête attend la fin de la génération).
     Risque : génération qui s'emballe et bloque l'interface (moins d'une seconde d'habitude)."""

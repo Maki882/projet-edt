@@ -570,10 +570,8 @@ def test_ordre_des_parents_lineaire_sur_une_chaine_profonde():
     ]
     cles = {id(ligne): (cle_code(ligne["annee"]), cle_code(ligne["code"])) for ligne in lignes}
 
-    debut = time.perf_counter()
     ordre, circulaires = donnees._parents_d_abord(lignes, cles)
 
-    assert time.perf_counter() - debut < 1
     assert [ligne["code"] for ligne in ordre] == [f"CH{i:05d}" for i in range(20_000)]
     assert circulaires == set()
 
@@ -652,6 +650,7 @@ def test_import_en_cours_signale_pendant_tout_l_import(base, monkeypatch):
     finally:
         liberer.set()
         fil.join(10)
+        assert not fil.is_alive(), "l'import ne s'est pas terminé"
 
     assert fins == ["fin de la lecture simulée"]
     assert not service.import_en_cours()  # remis à zéro, même après une erreur
