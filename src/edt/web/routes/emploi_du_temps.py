@@ -539,8 +539,8 @@ def annuler_occurrence(
     retour: Annotated[str, Form()] = "",
 ):
     """Annule une séance datée (après confirmation dans la page)."""
-    message = modifications.annuler_occurrence(session, occurrence_id, motif)
-    return rediriger(request, _retour(retour), message)
+    resultat = modifications.annuler_occurrence(session, occurrence_id, motif)
+    return rediriger(request, _retour(retour), resultat.message, resultat.niveau)
 
 
 @routeur.post("/versions/{version_id:int}/seances-datees", name="recalculer_seances_datees")

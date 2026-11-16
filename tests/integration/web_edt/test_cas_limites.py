@@ -286,8 +286,12 @@ def test_seance_annulee_ni_reannulee_ni_deplacee(reperes, client, faux_verificat
     adresse = f"/emploi-du-temps/occurrences/{reperes.occurrence}"
     assert client.post(f"{adresse}/annuler", data={"motif": "Grève"}).status_code == 200
 
-    deux_fois = client.post(f"{adresse}/annuler", data={"motif": "Grève"})
-    assert deux_fois.status_code == 409 and "déjà annulée" in deux_fois.text
+    # Second envoi (double clic) : retour à la grille avec un message d'information.
+    deux_fois = client.post(f"{adresse}/annuler", data={"motif": "Grève"}, follow_redirects=False)
+    assert deux_fois.status_code == 303
+    assert deux_fois.headers["location"].startswith("/emploi-du-temps")
+    page = client.get(deux_fois.headers["location"]).text
+    assert "était déjà annulée" in page and "Opération refusée" not in page
     deplacee = client.post(
         f"{adresse}/deplacer", data={"date": date.isoformat(), "debut": debut}, headers=HX
     )

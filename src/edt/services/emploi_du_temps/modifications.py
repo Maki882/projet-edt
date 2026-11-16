@@ -612,12 +612,15 @@ def deplacer_occurrence(
     )
 
 
-def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None = None) -> str:
+def annuler_occurrence(
+    session: Session, occurrence_id: int, motif: str | None = None
+) -> ResultatModification:
     """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume).
 
     Le motif est recopié dans la remarque de la séance : au-delà de `MOTIF_MAX`
     caractères (envoi fabriqué, le champ du navigateur s'arrête avant), refus
-    sans rien changer.
+    sans rien changer. Une séance déjà annulée (double clic, deux onglets)
+    reste telle quelle : le résultat le dit, sans erreur.
     """
     motif = (motif or "").strip()
     if len(motif) > MOTIF_MAX:
@@ -630,7 +633,12 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
     if occurrence is None:
         raise ErreurIntrouvable(f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
     if occurrence.statut == StatutOccurrence.ANNULEE:
-        raise ErreurRegleMetier("Cette séance est déjà annulée.")
+        journal.info("Occurrence %d déjà annulée : rien n'a changé", occurrence.id)
+        return ResultatModification(
+            enregistree=False,
+            message=f"La séance du {occurrence.date:%d/%m/%Y} était déjà annulée.",
+            niveau="info",
+        )
     occurrence.statut = StatutOccurrence.ANNULEE
     occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
     if motif:
@@ -640,7 +648,9 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
         )
     session.flush()
     journal.info("Occurrence %d annulée (%s)", occurrence.id, apercu(motif, 200) or "sans motif")
-    return f"Séance du {occurrence.date:%d/%m/%Y} annulée."
+    return ResultatModification(
+        enregistree=True, message=f"Séance du {occurrence.date:%d/%m/%Y} annulée.", niveau="succes"
+    )
 
 
 def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcul:

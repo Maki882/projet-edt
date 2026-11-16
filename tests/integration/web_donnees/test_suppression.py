@@ -273,12 +273,12 @@ def test_rejeu_d_une_suppression_et_d_une_annulation(site, ids, version_generee)
     assert "introuvable" in rejeu.text
     assert _id_salle("L012") is None and _id_salle("L115") is None
 
-    # Annulation d'une séance datée rejouée : refus explicite, une seule annulation.
+    # Annulation d'une séance datée rejouée : message d'information, une seule annulation.
     occurrence = occurrence_prevue(version_generee)
     annuler = f"/emploi-du-temps/occurrences/{occurrence}/annuler"
     assert site.post(annuler, data={"motif": "grève"}, follow_redirects=False).status_code == 303
     deja = site.post(annuler, data={"motif": "grève"})
-    assert deja.status_code == 409 and "déjà annulée" in deja.text
+    assert deja.status_code == 200 and "était déjà annulée" in deja.text
     with session_base() as session:
         assert session.get(Occurrence, occurrence).commentaire == "Annulée : grève"
 
