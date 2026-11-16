@@ -18,9 +18,10 @@ Verrou d'écriture : une requête d'écriture (POST, PUT, PATCH, DELETE) ouvre
 sa transaction par `BEGIN IMMEDIATE` (`edt.db.moteur.transaction_immediate`),
 avant toute lecture. SQLite refuse aussitôt, sans attendre, qu'une
 transaction qui a déjà lu se mette à écrire pendant qu'une autre connexion
-écrit (sa règle contre les interblocages) : une modification faite pendant
-un import ou un chargement de jeu, dans un autre onglet, échouait
-« database is locked ». En prenant le verrou d'emblée, la requête attend
+écrit (sa règle contre les interblocages) : sans verrou pris d'emblée, une
+modification faite pendant un import ou un chargement de jeu, dans un autre
+onglet, échouerait « database is locked ». En prenant le verrou d'emblée, la
+requête attend
 son tour (`DELAI_VERROU_MS`, 10 s), puis la page « base occupée » (503) le
 dit. GET et HEAD restent différés : ils sont servis pendant qu'un verrou
 d'écriture est tenu.
