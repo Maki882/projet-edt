@@ -9,6 +9,7 @@ import pytest
 from tests.outils.socle.extension_cli import NOM_MODULE_ESSAI
 
 from edt import cli
+from edt.commandes import base as module_base
 from edt.erreurs import ErreurConfiguration
 
 
@@ -17,6 +18,36 @@ def test_module_de_commandes_sans_objet_commandes_refuse(monkeypatch):
     monkeypatch.setattr(cli, "modules_de_commandes", lambda: [NOM_MODULE_ESSAI])
     with pytest.raises(ErreurConfiguration, match="commandes"):
         cli.construire_app()
+
+
+@pytest.mark.cas_limite
+def test_une_ancienne_sauvegarde_indelebile_n_empeche_pas_la_rotation(
+    tmp_path, monkeypatch, caplog
+):
+    """Cas : la rotation des sauvegardes rencontre un fichier ancien tenu par un autre
+    programme (antivirus, explorateur de fichiers sous Windows).
+
+    Risque : `sauvegarder` sortirait en « Erreur inattendue » (code 2) alors que la
+    sauvegarde du jour est faite et vérifiée ; le fichier tenu est signalé, les autres
+    anciens sont supprimés.
+    """
+    noms = [f"quotidienne-2026110{jour}T000000Z.db" for jour in range(1, 5)]
+    for nom in noms:
+        (tmp_path / nom).write_text("sauvegarde", encoding="utf-8")
+    tenu = tmp_path / noms[0]
+    suppression = type(tenu).unlink
+
+    def unlink_refuse(chemin, *arguments, **options):
+        if chemin == tenu:
+            raise PermissionError("fichier tenu par un autre programme")
+        return suppression(chemin, *arguments, **options)
+
+    monkeypatch.setattr(type(tenu), "unlink", unlink_refuse)
+    supprimees = module_base._faire_tourner(tmp_path, "quotidienne", garder=2)
+
+    assert supprimees == [noms[1]]
+    assert sorted(f.name for f in tmp_path.glob("*.db")) == [noms[0], *noms[2:]]
+    assert "non supprimée" in caplog.text and noms[0] in caplog.text
 
 
 def test_point_d_entree_renvoie_le_code_de_sortie(base):

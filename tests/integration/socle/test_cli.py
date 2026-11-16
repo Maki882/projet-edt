@@ -266,6 +266,23 @@ def test_init_db_reset_non_interactif_ne_pose_pas_de_question(
 
 
 @pytest.mark.cas_limite
+def test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture(
+    lanceur, base, delai_verrou_court, verrou_ecriture
+):
+    """Cas : `doctor` est lancé pendant qu'un autre processus écrit (calcul, chargement).
+
+    Risque : doctor attendrait le délai de verrou puis conclurait « écriture impossible »
+    (code 1) pour une base saine ; l'écriture d'essai est dite non vérifiée, avec le remède.
+    """
+    with verrou_ecriture():
+        resultat = lanceur.invoke(cli.app, ["doctor"])
+
+    assert resultat.exit_code == 0, resultat.output
+    (ligne,) = [x for x in resultat.output.splitlines() if "] Écriture" in x]
+    assert "ATTENTION" in ligne and "non vérifiée" in ligne and "doctor" in ligne
+
+
+@pytest.mark.cas_limite
 def test_doctor_signale_une_base_en_lecture_seule(lanceur, base, environnement, lecture_seule):
     """Cas : `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule).
 

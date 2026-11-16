@@ -35,7 +35,6 @@ from edt.db.initialisation import (
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import (
     chemin_base,
-    expliquer_erreur_base,
     obtenir_moteur,
     session_base,
     transaction_immediate,
@@ -436,23 +435,21 @@ def _controler_base(etat: EtatBase | str) -> tuple[str, str]:
 
 
 def _controler_ecriture(etat: EtatBase | str) -> tuple[str, str]:
-    """La base accepte-t-elle une écriture ? (lecture seule, verrou, disque plein)."""
+    """La base accepte-t-elle une écriture ? Résultat de l'écriture d'essai du diagnostic.
+
+    `services.etat.verifier_ecriture` l'a tentée sans attendre de verrou : une base occupée
+    par une autre écriture n'est pas une panne.
+    """
     if isinstance(etat, str) or not etat.accessible:
         return ATTENTION, "Écriture non vérifiée : la base est inaccessible"
-    try:
-        brute = obtenir_moteur().raw_connection()
-        try:
-            # BEGIN IMMEDIATE prend le verrou d'écriture (attente puis « locked » s'il est tenu) ;
-            # en mode WAL, seule une écriture réelle révèle un fichier en lecture seule :
-            # réécrire la version utilisateur à l'identique écrit l'en-tête, puis ROLLBACK.
-            brute.execute("BEGIN IMMEDIATE")
-            version = brute.execute("PRAGMA user_version").fetchone()[0]
-            brute.execute(f"PRAGMA user_version = {int(version)}")
-            brute.rollback()
-        finally:
-            brute.close()
-    except Exception as erreur:  # erreur SQLAlchemy ou du pilote sqlite3 brut
-        return ECHEC, f"Écriture dans la base impossible : {expliquer_erreur_base(erreur)}"
+    if etat.inscriptible is None:
+        return (
+            ATTENTION,
+            "Écriture non vérifiée : une autre écriture occupe la base (calcul, chargement, "
+            "import) ; relancer « python -m edt doctor » une fois celle-ci terminée",
+        )
+    if not etat.inscriptible:
+        return ECHEC, f"Écriture dans la base impossible : {etat.ecriture_impossible}"
     return OK, "Écriture dans la base possible (écriture d'essai annulée)"
 
 
@@ -586,10 +583,19 @@ def _faire_tourner(dossier: Path, prefixe: str, garder: int) -> list[str]:
         return []
     sauvegardes = sorted(dossier.glob(f"{prefixe}-*.db"), key=lambda chemin: chemin.name)
     anciennes = sauvegardes[: max(0, len(sauvegardes) - garder)]
+    supprimees = []
     for chemin in anciennes:
-        chemin.unlink()
+        try:
+            chemin.unlink()
+        except OSError as erreur:
+            # La sauvegarde du jour est faite et vérifiée : un fichier ancien tenu par un autre
+            # programme (antivirus, explorateur) ne la fait pas passer pour un échec.
+            journal.warning("Ancienne sauvegarde %s non supprimée : %s", chemin, erreur)
+            typer.echo(f"  ancienne sauvegarde non supprimée : {chemin.name} ({erreur})", err=True)
+            continue
         journal.info("Ancienne sauvegarde supprimée : %s", chemin)
-    return [chemin.name for chemin in anciennes]
+        supprimees.append(chemin.name)
+    return supprimees
 
 
 def _verifier_integrite(copie: Path, fichier: Path) -> int:
