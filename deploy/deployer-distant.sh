@@ -16,8 +16,9 @@
 #   arrêt du service, plus aucun processus de l'utilisateur edt, sauvegarde de
 #   la base, init-db, verifier-schema, bascule du lien /opt/edt/courant,
 #   démarrage, GET /sante → 200 en 30 s maximum.
-# FINALISATION : version marquée réussie, nettoyage (5 versions, 10 sauvegardes,
-#   versions jamais mises en service et sauvegardes partielles d'un échec antérieur).
+# FINALISATION : version marquée réussie, page d'accueil préparée, nettoyage
+#   (5 versions, 10 sauvegardes, versions jamais mises en service et
+#   sauvegardes partielles d'un échec antérieur).
 #
 # Retour arrière : 50 dernières lignes du journal du service, base restaurée,
 # lien remis sur la version précédente, redémarrage. Sans version précédente
@@ -452,8 +453,17 @@ EOF
 etape "Environnement Python et dépendances"
 python3 -m venv "$DOSSIER_VERSION/venv"
 info "Installation du paquet edt et de ses dépendances (journal détaillé : $DOSSIER_VERSION/installation-pip.log)"
+# contraintes.txt fixe la version de chaque paquet : le serveur reçoit celles
+# que le contrôle automatique a testées, jamais une version parue depuis.
+contraintes=()
+if [ -e "$DOSSIER_CODE/contraintes.txt" ]; then
+  contraintes=(-c "$DOSSIER_CODE/contraintes.txt")
+  info "Versions fixées par contraintes.txt."
+else
+  avertir "cette version n'a pas de contraintes.txt : pip installe les dernières versions compatibles avec pyproject.toml, que le contrôle automatique n'a peut-être pas testées."
+fi
 "$PYTHON_VENV" -m pip install --no-input --disable-pip-version-check --progress-bar off \
-  --log "$DOSSIER_VERSION/installation-pip.log" "$DOSSIER_CODE"
+  --log "$DOSSIER_VERSION/installation-pip.log" "${contraintes[@]}" "$DOSSIER_CODE"
 "$PYTHON_VENV" -m pip freeze --all > "$DOSSIER_VERSION/paquets-installes.txt"
 nombre_paquets="$(wc -l < "$DOSSIER_VERSION/paquets-installes.txt")"
 info "$nombre_paquets paquets installés (liste : $DOSSIER_VERSION/paquets-installes.txt)."
@@ -566,6 +576,16 @@ fi
 PHASE="finalisation"
 etape "Finalisation"
 horodatage_iso > "$DOSSIER_VERSION/$MARQUE_REUSSITE"
+# Page d'accueil demandée une fois (en plus de la préparation d'edt.service) :
+# le premier visiteur après le déploiement n'attend pas les calculs à froid.
+# Un échec est signalé, la version reste en service.
+debut_accueil=$SECONDS
+if code_accueil="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "http://127.0.0.1:$PORT_APP/")" \
+  && [ "$code_accueil" = "200" ]; then
+  info "Page d'accueil préparée en $((SECONDS - debut_accueil)) s."
+else
+  avertir "la page d'accueil n'a pas répondu 200 (résultat : ${code_accueil:-aucune réponse}) : le premier visiteur pourra attendre ; la version reste en service."
+fi
 printf 'mise_en_service=%s\n' "$(horodatage_iso)" >> "$FICHIER_INFOS"
 if version_appli="$(lancer_comme_app "$PYTHON_VENV" -m edt version)"; then
   info "Version annoncée par l'application : $version_appli"

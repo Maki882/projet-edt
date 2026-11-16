@@ -214,15 +214,16 @@ Ce que fait `deployer.sh` (chaque étape est affichée et horodatée) :
    - **préparation**, l'ancienne version reste en ligne : verrou, envoi complet,
      fichiers de la base à l'utilisateur `edt`, **aucune commande `sudo edt`
      ni autre processus de l'application hors du service** (sinon refus, avec
-     la liste des processus), venv propre à la version, `pip install`,
-     chargement de l'application avec la configuration de production (elle
+     la liste des processus), venv propre à la version, `pip install` aux
+     versions exactes de `contraintes.txt` (section 15), chargement de l'application avec la configuration de production (elle
      indique elle-même la base qu'elle utilise), contrôle du port 8000 ;
    - **bascule** : arrêt du service (au plus 20 s d'attente, puis arrêt forcé),
      nouveau contrôle qu'aucun processus de l'application ne tient la base,
      sauvegarde vérifiée de la base, `edt init-db`, `edt verifier-schema`,
      bascule du lien `/opt/edt/courant`, démarrage, `GET http://127.0.0.1:8000/sante`
      → 200 en 30 s au plus ;
-   - **finalisation** : version marquée réussie, `edt version` et `edt doctor`
+   - **finalisation** : version marquée réussie, page d'accueil demandée une
+     fois (échec signalé, sans effet sur la version), `edt version` et `edt doctor`
      (informatifs), nettoyage (5 versions, 10 sauvegardes de déploiement,
      versions jamais mises en service, sauvegardes partielles), historique ;
 5. vérification de l'URL publique depuis le poste : un échec est signalé, rien
@@ -238,8 +239,9 @@ Un seul déploiement à la fois : un second est refusé par le verrou du serveur
 
 **Démarrage du service.** Dès que l'application écoute, le service demande
 lui-même sa page d'accueil (`ExecStartPost` de `edt.service`) : le premier
-visiteur n'attend pas le chargement initial. Cette requête est bornée à 50 s et
-son échec n'empêche pas le démarrage.
+visiteur n'attend pas le chargement initial, après un déploiement comme après
+un redémarrage automatique. Cette requête est bornée à 50 s et son échec
+n'empêche pas le démarrage.
 
 **Heures.** Les noms de version sont horodatés par l'horloge du serveur, et les
 noms de sauvegarde aussi, en **heure UTC** : pas d'heure répétée au passage à
@@ -558,7 +560,10 @@ non initialisée, schéma périmé, ou écriture refusée (`base.inscriptible` �
 `edt.service`, à adapter à la mémoire du serveur) : au-delà, le noyau le tue,
 systemd note « killed by the OOM killer » (et le plus souvent « oom-kill ») et
 le redémarre trois secondes plus tard ; un calcul en cours est perdu et clos
-« interrompu par l'arrêt de l'application ». `deploy/etat.sh` compte ces arrêts
+« interrompu par l'arrêt de l'application ». Repère : un calcul du jeu fictif
+« grand » occupe jusqu'à 2 Go et près de 2 cœurs pendant 5 minutes ; les
+commandes `sudo edt` et la sauvegarde quotidienne tournent dans leurs propres
+unités, hors de cette limite, mais sur la même mémoire du serveur. `deploy/etat.sh` compte ces arrêts
 sur 7 jours. Remède : relancer le calcul avec un temps limite plus court ou
 moins de fils de calcul (`--fils`), ou réduire le périmètre ; procédure de
 vérification en section 13.6.
@@ -627,9 +632,11 @@ suivante la remplace).
 dépendances » ; l'ancienne version reste en ligne). Lire le message de pip et
 `/opt/edt/versions/<version>/installation-pip.log`. Causes : pas de paquet
 précompilé pour la version de Python du serveur (compilation : `build-essential`
-et `python3-dev` sont installés ; sinon fixer une version compatible dans
-`pyproject.toml`), version introuvable sur PyPI, serveur sans Internet, disque
-plein (`df -h /`).
+et `python3-dev` sont installés ; sinon rafraîchir `contraintes.txt`, section
+15), version introuvable sur PyPI, serveur sans Internet, disque plein
+(`df -h /`). Une version sans `contraintes.txt` est installée avec les
+dernières versions compatibles, et le déploiement l'annonce par un
+avertissement.
 
 **Assistant « non configuré » ou « indisponible ».** `deploy/etat.sh` dit si la
 clé est installée ; `serveur -t 'sudo edt assistant --essai'` dit si elle est
@@ -676,6 +683,7 @@ section 2, défini dans chaque fenêtre Git Bash, à la racine du dépôt.
 | Fichiers à root, fuseaux horaires | en partie (contrôles présents) | 13.3, 13.9 |
 | Clé de l'assistant : lecture, écriture, droits, aucune trace | oui | 13.10 |
 | Commandes du guide : sudo, lignes entières, cible SSH | oui | non |
+| Versions fixées (`contraintes.txt`) pour le contrôle automatique et le déploiement | oui | non |
 
 ### 13.1 Déploiement pendant une commande « sudo edt »
 
@@ -889,3 +897,36 @@ de main (gestionnaire de mots de passe), jamais copiée dans un fichier du poste
   `nginx -t` refuse la nouvelle configuration, l'ancienne est remise automatiquement.
 - **Autre serveur ou autre nom de domaine** : modifier `deploy/serveur.env`,
   puis, pour le domaine, refaire les étapes 1 à 3 de la section 3.
+
+## 15. Versions des dépendances
+
+`pyproject.toml` donne les bornes de chaque dépendance ; `contraintes.txt`, à
+la racine du dépôt, fixe la version exacte de chaque paquet installé
+(dépendances directes et indirectes, exécution et développement). Toutes les
+installations l'utilisent : le contrôle automatique et le poste
+(`python -m pip install -e ".[dev]" -c contraintes.txt`), et le déploiement
+(`deployer-distant.sh`). Le serveur reçoit ainsi exactement les versions que le
+contrôle automatique a testées, jamais une version parue entre-temps. Un test
+vérifie que chaque dépendance de `pyproject.toml` y a sa ligne, dans ses bornes.
+
+**Rafraîchir le fichier** (nouvelle dépendance, correctif de sécurité, version
+de Python nouvelle), sur une branche :
+
+1. dans un environnement neuf, sous Linux de préférence, installer les
+   dernières versions compatibles, sans le fichier :
+
+   ```bash
+   python3.13 -m venv /tmp/edt-versions
+   /tmp/edt-versions/bin/python -m pip install -e ".[dev]"
+   /tmp/edt-versions/bin/python -m pytest -q -m "not perf"
+   /tmp/edt-versions/bin/python -m pip freeze --exclude-editable
+   ```
+
+2. reporter dans `contraintes.txt` chaque ligne `nom==version` affichée, en
+   gardant l'en-tête ; recommencer avec `python3.11` : un paquet dont la
+   version diffère selon Python (numpy aujourd'hui) reçoit une ligne par
+   version avec un marqueur (`numpy==2.4.6; python_version < "3.13"`) ; les
+   paquets propres à Windows (colorama) se relèvent de même sous Windows ;
+3. pousser la branche : le contrôle automatique installe le fichier sous
+   Python 3.11, 3.13 et 3.14 et lance tous les tests ; après fusion, le
+   prochain `deploy/deployer.sh` installe ces versions sur le serveur.
