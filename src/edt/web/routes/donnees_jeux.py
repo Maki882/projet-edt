@@ -20,6 +20,7 @@ from edt.services.emploi_du_temps import prechauffage
 from edt.services.etat import EtatBase, diagnostiquer_base
 from edt.services.jeux import (
     ErreurChargementEnCours,
+    operation_en_cours,
     recharger_jeu_fictif,
     remettre_a_zero,
     tailles_disponibles,
@@ -68,6 +69,16 @@ def _rendre(
     statut: int = 200,
 ) -> Response:
     etat = diagnostiquer_base()
+    messages = [message] if message else []
+    if message is None and operation_en_cours():
+        # Page rechargée pendant un chargement : le dire, plutôt qu'une base qui paraît vide.
+        messages.append(
+            Message(
+                "Un chargement d'établissement fictif ou une remise à zéro est en cours : "
+                "attendre quelques secondes, puis recharger la page.",
+                "attention",
+            )
+        )
     return rendre(
         request,
         "donnees/jeux.html",
@@ -80,7 +91,7 @@ def _rendre(
             "erreurs": erreurs or {},
         },
         statut=statut,
-        messages=[message] if message else (),
+        messages=messages,
     )
 
 

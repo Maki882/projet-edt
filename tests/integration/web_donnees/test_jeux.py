@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import httpx2
 import pytest
 from sqlalchemy import func, select
+from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan
 
 from edt.db.modeles import Besoin, Campus
 from edt.db.moteur import session_base
@@ -73,6 +74,28 @@ def test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran(client):
     assert f"de 0 à {GRAINE_MAX}" in reponse.text
     assert '<details class="repliable" open>\n      <summary>Options avancées' in reponse.text
     assert _compter(Campus) == 0
+
+
+@pytest.mark.cas_limite
+def test_page_rechargee_pendant_un_chargement_le_dit(client, generation_lente):
+    """Cas : la page des établissements fictifs est rechargée (F5) pendant un chargement.
+
+    Risque : la page montre une base vide ou à moitié recréée sans explication ; un second
+    clic relance un chargement qui sera refusé.
+    """
+    entre, liberer = generation_lente
+    fil, premier = _en_arriere_plan(
+        lambda: client.post("/jeux/charger", data={"taille": "petit", "graine": "1"})
+    )
+    assert entre.wait(DELAI_S)
+    pendant = html.unescape(client.get("/jeux").text)
+    liberer.set()
+    fil.join(DELAI_S)
+
+    assert "chargement d'établissement fictif ou une remise à zéro est en cours" in pendant
+    assert premier["valeur"].status_code == 200
+    apres = html.unescape(client.get("/jeux").text)
+    assert "est en cours" not in apres
 
 
 def test_rechargement_exige_une_confirmation_d_effacement(jeu_minimal, client):
