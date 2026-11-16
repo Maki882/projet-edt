@@ -11,6 +11,11 @@ Prérequis : le catalogue des contraintes et leurs niveaux
 commune décrite dans [architecture.md](architecture.md) (« Sémantique des
 contraintes ») et le vérificateur ([verification.md](verification.md)).
 
+Première lecture : « Principes », « Vue d'ensemble », « Formulation en deux
+phases » et « Déroulement d'un calcul » donnent le fonctionnement d'ensemble.
+Les autres sections sont des références à consulter au besoin : traduction
+de chaque contrainte et de chaque règle, séances datées, mesures, limites.
+
 ## Principes
 
 Le solveur place les séances d'un semestre. Il produit d'abord la **semaine
