@@ -45,7 +45,6 @@ from edt.services.assistant.conversations import Echange, RoleTour, Tour
 from edt.web.erreurs import reponse_erreur
 from edt.web.gabarits import (
     adresse_courante,
-    adresse_locale,
     est_htmx,
     gabarits,
     rediriger,
@@ -178,9 +177,7 @@ def _poser_cookie(request: Request, reponse: Response, identifiant: str | None) 
 def _page_courante(request: Request) -> str | None:
     """Chemin de la page affichée (`HX-Current-URL`), s'il reste dans l'application."""
     adresse = adresse_courante(request)
-    if adresse is None:
-        return None
-    return adresse.path if adresse_locale(adresse.path) else None
+    return None if adresse is None else assistant.page_affichee(adresse.path)
 
 
 def _fragment(request: Request, gabarit: str, contexte: dict, *, statut: int = 200) -> HTMLResponse:
@@ -241,7 +238,7 @@ def envoyer(
     resultat = assistant.envoyer(
         request.cookies.get(COOKIE),
         message,
-        page if adresse_locale(page) else None,
+        page,
         request.client.host if request.client else None,
     )
     if not est_htmx(request):

@@ -26,6 +26,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import logging
+import re
 import secrets
 import threading
 import time
@@ -255,6 +256,26 @@ def _refus(message: str, conversation_id: str | None = None, **options) -> Resul
     return ResultatEnvoi(conversation_id, refus=Tour(RoleTour.ATTENTION, message), **options)
 
 
+PAGE_LONGUEUR_MAX = 200
+_MOTIF_PAGE = re.compile(r"/[A-Za-z0-9/_.\-]*")
+
+
+def page_affichee(page: object) -> str | None:
+    """Le chemin d'une page de l'application (« /salles »), ou `None`.
+
+    La page vient d'un champ du formulaire, donc du navigateur : seul un chemin
+    court, fait de lettres, chiffres, « / », « _ », « - » et « . », est gardé
+    (paramètres et ancre retirés). Elle part au modèle dans le message système
+    et dans le journal : un texte arbitraire n'y passe pas.
+    """
+    if not isinstance(page, str) or not page.startswith("/") or page.startswith("//"):
+        return None
+    chemin = page.split("?", 1)[0].split("#", 1)[0]
+    if len(chemin) > PAGE_LONGUEUR_MAX or "//" in chemin or not _MOTIF_PAGE.fullmatch(chemin):
+        return None
+    return chemin
+
+
 def verifier_texte(texte: object, config: ConfigurationAssistant) -> str:
     """Le message nettoyé ; `LimiteAtteinte` s'il est vide, trop long ou illisible."""
     from edt.services.assistant.limites import Limite
@@ -287,6 +308,7 @@ def envoyer(
     de l'adresse, limite du site et budget.
     """
     config = _config()
+    page = page_affichee(page)
     if not config.disponible:
         return _refus(config.raison_texte, identifiant)
     if boucle.en_pause() is not None:

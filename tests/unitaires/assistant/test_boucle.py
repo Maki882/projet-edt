@@ -235,6 +235,21 @@ def test_budget_epuise_aucun_appel(base):
     assert "limite du jour" in resultat.message
 
 
+@pytest.mark.cas_limite
+def test_estimation_prudente_pour_un_texte_non_ascii():
+    """Cas : un texte fait de caractères non latins (« 数 »), qui comptent environ un jeton
+    chacun, bien plus que les 3 caractères par jeton du français.
+
+    Risque : réservation du budget et contrôle de la taille du contexte sous-estimés : un
+    appel bien plus cher que prévu, et un budget du jour qui n'est plus borné.
+    """
+    texte = "数" * 3000
+    estimes = boucle.estimer_jetons([{"role": "user", "content": texte}], 1000, 0)
+    assert estimes >= 1000 + 3000
+    francais = boucle.estimer_jetons([{"role": "user", "content": "a" * 3000}], 1000, 0)
+    assert francais <= 1000 + 1100
+
+
 def test_historique_d_une_conversation_prefixe_exact(base):
     faux = FauxClient([reponse_texte("Première réponse."), reponse_texte("Seconde réponse.")])
     premier, _ = _derouler(faux)

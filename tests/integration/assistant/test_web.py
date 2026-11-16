@@ -92,6 +92,40 @@ def test_question_puis_reponse(site, faux_client):
     assert "premier point" in panneau and 'id="assistant-question"' in panneau
 
 
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("page", "attendue"),
+    [
+        ("/" + "数" * 85_000, None),
+        ("/salles?page=2&q=" + "x" * 300, "/salles"),
+        ("/regles/<script>", None),
+        ("https://autre.example.org/salles", None),
+        ("/emploi-du-temps", "/emploi-du-temps"),
+    ],
+    ids=["85000-caracteres", "parametres", "balise", "autre-site", "page-valide"],
+)
+def test_page_affichee_bornee_au_chemin_d_une_page(site, faux_client, caplog, page, attendue):
+    """Cas : le champ caché « page » est fabriqué : 85 000 caractères, une adresse avec
+    paramètres, un chemin avec balise, une adresse d'un autre site.
+
+    Risque : un texte arbitraire qui contourne la limite de 800 caractères, part en entier au
+    modèle (coût sous-estimé par la réservation) et dans le journal.
+    """
+    faux_client.reponses = [reponse_texte("ok")]
+    envoi = site.post("/assistant/messages", data={"message": "Bonjour", "page": page}, headers=HX)
+    assert envoi.headers.get("X-Assistant-Accepte") == "oui"
+    _attendre(site, _jeton(envoi))
+    systeme = faux_client.appels[0]["messages"][1]["content"]
+    assert len(systeme) < 300
+    if attendue is None:
+        assert "Page affichée" not in systeme
+    else:
+        assert f"Page affichée par l'utilisateur : {attendue}\n" in systeme + "\n"
+    debut = [r.getMessage() for r in caplog.records if "commencé" in r.getMessage()]
+    assert debut and all(len(ligne) < 300 for ligne in debut)
+    assert "数" not in caplog.text and "<script>" not in caplog.text
+
+
 def test_interrogation_sans_changement_repond_204(site, faux_client):
     faux_client.reponses = [reponse_texte("ok")]
     faux_client.bloquer()

@@ -62,9 +62,19 @@ journal = logging.getLogger(__name__)
 BETA_REPLI = "server-side-fallback-2026-07-01"
 MARGE_ECHEANCE_S = 5
 CARACTERES_PAR_JETON = 3
-"""Estimation prudente (le français compte plutôt 3,5 à 4 caractères par jeton) : elle sert
-à réserver le budget et à refuser un contexte trop long avant l'appel, jamais à facturer."""
-TAILLE_PREFIXE_ESTIMEE = math.ceil((len(CONSIGNES) + len(OUTILS_JSON)) / CARACTERES_PAR_JETON)
+"""Caractères ASCII par jeton, estimation prudente (le français compte plutôt 3,5 à 4
+caractères par jeton). Un caractère non ASCII compte pour un jeton entier : un texte de
+caractères non latins compte à peu près un jeton par caractère. L'estimation sert à réserver
+le budget et à refuser un contexte trop long avant l'appel, jamais à facturer."""
+
+
+def jetons_estimes(texte: str) -> int:
+    """Jetons estimés d'un texte (voir `CARACTERES_PAR_JETON`) : jamais sous-estimés."""
+    non_ascii = sum(1 for caractere in texte if not caractere.isascii())
+    return math.ceil((len(texte) - non_ascii) / CARACTERES_PAR_JETON) + non_ascii
+
+
+TAILLE_PREFIXE_ESTIMEE = jetons_estimes(CONSIGNES) + jetons_estimes(OUTILS_JSON)
 
 
 class Issue(StrEnum):
@@ -203,22 +213,21 @@ def blocs_a_renvoyer(contenu: Sequence[Any]) -> list[Any]:
     ]
 
 
-def _taille(objet: Any) -> int:
-    """Caractères d'un message une fois sérialisé (estimation de la taille du contexte)."""
+def _serialise(objet: Any) -> str:
+    """Un message tel qu'il part au service (estimation de la taille du contexte)."""
 
     def simple(valeur: Any) -> Any:
         if hasattr(valeur, "model_dump"):
             return valeur.model_dump()
         return str(valeur)
 
-    return len(json.dumps(objet, ensure_ascii=False, default=simple))
+    return json.dumps(objet, ensure_ascii=False, default=simple)
 
 
 def estimer_jetons(messages: Sequence[Any], connus: int, depuis: int) -> int:
     """Jetons d'entrée estimés : ceux du dernier appel connu, plus les messages ajoutés depuis."""
     base = connus or TAILLE_PREFIXE_ESTIMEE
-    ajoutes = sum(_taille(message) for message in messages[depuis:])
-    return base + math.ceil(ajoutes / CARACTERES_PAR_JETON)
+    return base + sum(jetons_estimes(_serialise(message)) for message in messages[depuis:])
 
 
 # --------------------------------------------------------------------------- #

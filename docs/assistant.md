@@ -199,7 +199,8 @@ garde alors la consommation, le plus grand des deux faisant foi.
 3. La boucle (`boucle.derouler`), écrite à la main pour garder la main sur la dépense et la
    durée :
    - avant chaque appel : échéance de l'échange (90 s), taille estimée du contexte, budget
-     **réservé** pour le pire cas de cet appel ; délai de l'appel ramené à ce qui reste, une
+     **réservé** pour le pire cas de cet appel (taille estimée sans jamais la sous-estimer : 3
+     caractères ASCII par jeton, un jeton par caractère non ASCII) ; délai de l'appel ramené à ce qui reste, une
      reprise par le SDK seulement si elle tient avant l'échéance ;
    - paramètres fixes : modèle, `max_tokens`, consignes en `system` avec point de cache,
      douze outils stricts, `output_config.effort`, cache automatique de la fin de
@@ -215,7 +216,7 @@ garde alors la consommation, le plus grand des deux faisant foi.
    - l'historique est en **ajout seul** et l'échange n'y entre que s'il aboutit : un
      échange en échec ne laisse aucune trace dans ce qui est renvoyé au service.
 4. Un message système par tour (`role: "system"` après le message de l'utilisateur) donne
-   la date du jour, la page affichée (chemin seul) et les suites données aux propositions
+   la date du jour, la page affichée (son chemin seul, 200 caractères au plus, sinon rien) et les suites données aux propositions
    depuis l'échange précédent. Les consignes, elles, ne changent jamais (préfixe en cache).
 
 ## 5. Outils
