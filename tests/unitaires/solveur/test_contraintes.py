@@ -625,7 +625,7 @@ def test_volume_un_creneau_impose_a_plusieurs_seances_est_refuse():
     f = Fabrique()
     f.salle()
     f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2, jour_impose=JEUDI, debut_impose=C3)
-    impossible(f.instantane(), "le même jour et la même heure", "1-1", "1-2")
+    impossible(f.instantane(), "le même jour et la même heure", "séances n° 1 et 2")
 
 
 # --------------------------------------------------------------------------- #

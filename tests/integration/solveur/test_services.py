@@ -791,7 +791,7 @@ def test_commande_generer_echec_code_1(lanceur, jeu_minimal):
     assert resultat.exit_code == 1 and "le calcul serait refusé" in resultat.output
     resultat = lanceur.invoke(cli.app, ["generer", "--semestre", semestre])
     assert resultat.exit_code == 1, resultat.output
-    assert "Impossible (prouvé)" in resultat.output
+    assert generation.LIBELLE_NON_LANCE in resultat.output  # refusé avant la recherche
 
 
 # --------------------------------------------------------------------------- #
