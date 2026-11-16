@@ -328,6 +328,7 @@ def test_modification_refusee_par_une_erreur_du_verificateur(
 
     assert reponse.status_code == 200
     assert "n&#39;a pas été enregistrée" in reponse.text
+    assert "Choisir un autre jour, une autre heure ou une autre salle." in reponse.text  # remède
     assert "La salle N016 est déjà occupée" in reponse.text
     with session_base() as session:
         seance = session.get(m.SeanceHebdo, avant[0])

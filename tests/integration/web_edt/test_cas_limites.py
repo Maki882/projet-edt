@@ -763,3 +763,4 @@ def test_semestre_sans_grille_reste_utilisable(reperes, client, faux_verificateu
         headers=HX,
     )
     assert reponse.status_code == 422 and "ne peut pas être proposée" in reponse.text
+    assert "choisir un jour de la liste" in reponse.text  # le message dit quoi faire

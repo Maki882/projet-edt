@@ -321,9 +321,14 @@ def modifier_placement(
     besoin = seance.besoin
     duree = seance.fin_min - seance.debut_min
     if not 0 <= jour <= 6:
-        raise ErreurDonneesInvalides(f"Jour invalide : {jour} (attendu : 0 pour lundi à 6).")
+        raise ErreurDonneesInvalides(
+            f"Jour invalide ({jour}, attendu : 0 pour lundi à 6) : choisir un jour de la liste."
+        )
     if jour not in dict(_jours_possibles(session, seance, salle_id)):
-        raise ErreurDonneesInvalides(f"Cette séance ne peut pas être proposée le {JOURS[jour]}.")
+        raise ErreurDonneesInvalides(
+            f"Cette séance ne peut pas être proposée le {JOURS[jour]} (jour non travaillé, ou "
+            "exclu par une règle) : choisir un jour de la liste."
+        )
     debuts = dict(
         _debuts_possibles(
             session, besoin, jour, duree, seance.debut_min if jour == seance.jour else None
@@ -332,10 +337,13 @@ def modifier_placement(
     if debut not in debuts:
         raise ErreurDonneesInvalides(
             f"L'heure de début {minutes_vers_texte(debut) if 0 <= debut <= 1440 else debut} "
-            f"n'est pas un début de créneau de la grille le {JOURS[jour]}."
+            f"n'est pas un début de créneau de la grille le {JOURS[jour]} : choisir une heure "
+            "de la liste."
         )
     if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
-        raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
+        raise ErreurIntrouvable(
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
+        )
     fin = debut + duree
 
     deplacement = (jour, debut, salle_id) != (seance.jour, seance.debut_min, seance.salle_id)
@@ -379,7 +387,10 @@ def modifier_placement(
         )
         return ResultatModification(
             enregistree=False,
-            message="La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes.",
+            message=(
+                "La modification n'a pas été enregistrée : elle ne respecte pas les règles "
+                "suivantes. Choisir un autre jour, une autre heure ou une autre salle."
+            ),
             niveau="erreur",
             anomalies=_triees(retenues),
         )
@@ -494,7 +505,8 @@ def deplacer_occurrence(
     if not semestre.date_debut <= date <= semestre.date_fin:
         raise ErreurDonneesInvalides(
             f"La date du {date:%d/%m/%Y} est en dehors du semestre "
-            f"({semestre.date_debut:%d/%m/%Y} au {semestre.date_fin:%d/%m/%Y})."
+            f"({semestre.date_debut:%d/%m/%Y} au {semestre.date_fin:%d/%m/%Y}) : choisir une "
+            "date dans cette période."
         )
     duree = occurrence.fin_min - occurrence.debut_min
     garde = occurrence.debut_min if date.weekday() == occurrence.date.weekday() else None
@@ -503,10 +515,12 @@ def deplacer_occurrence(
     ):
         raise ErreurDonneesInvalides(
             f"L'heure de début choisie n'est pas un début de créneau de la grille le "
-            f"{JOURS[date.weekday()]}."
+            f"{JOURS[date.weekday()]} : choisir une heure de la liste."
         )
     if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
-        raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
+        raise ErreurIntrouvable(
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
+        )
     if (date, debut, salle_id) == (occurrence.date, occurrence.debut_min, occurrence.salle_id) and (
         occurrence.statut != StatutOccurrence.A_PROGRAMMER
     ):
@@ -577,7 +591,10 @@ def deplacer_occurrence(
         journal.info("Déplacement de l'occurrence %d refusé par le vérificateur", occurrence.id)
         return ResultatModification(
             enregistree=False,
-            message="Le déplacement n'a pas été enregistré : il ne respecte pas les règles suivantes.",
+            message=(
+                "Le déplacement n'a pas été enregistré : il ne respecte pas les règles "
+                "suivantes. Choisir une autre date, une autre heure ou une autre salle."
+            ),
             niveau="erreur",
             anomalies=_triees(concernees),
         )
