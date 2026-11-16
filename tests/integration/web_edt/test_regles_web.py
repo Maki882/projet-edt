@@ -10,6 +10,7 @@ décomptes d'entorses sont injectés quand le test a besoin d'un nombre précis.
 from __future__ import annotations
 
 from sqlalchemy import select
+from tests.outils.web_edt.aides import DELAI, HX, identifiant_groupe, seance_du_besoin
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -18,11 +19,9 @@ from edt.domaine.enumerations import SAMEDI, Gravite
 from edt.domaine.instantane import id_seance
 from edt.services import generation
 from edt.services import regles as service_regles
-from edt.services.emploi_du_temps import modifications, presentation, vues
+from edt.services.emploi_du_temps import modifications, vues
 from edt.services.parametres import ecrire_parametres
 from edt.verification.contrat import Anomalie
-
-from .conftest import DELAI, HX, identifiant_groupe, seance_du_besoin
 
 
 def _regles(semestre_id: int) -> dict[str, service_regles.RegleDetail]:
@@ -318,14 +317,6 @@ def test_anomalie_regle_affiche_la_phrase_et_le_lien(version_generee, client, fa
     panneau = client.get(f"/emploi-du-temps/seances/{identifiant}/panneau", headers=HX).text
     assert _lien("R002", _annee(version_generee.semestre_id)) in panneau
     assert "n&#39;a que 30 min de libre" in panneau
-
-
-def test_anomalie_sans_regle_citee_reste_telle_quelle():
-    simple = Anomalie(CodeContrainte.HORAIRES, Gravite.ERREUR, "Hors grille.")
-    assert presentation.regle_citee(simple) is None
-    sans_code = Anomalie(CodeContrainte.REGLE, Gravite.ERREUR, "Écart.", regle_id=4)
-    citee = presentation.regle_citee(sans_code)
-    assert citee.code == "règle n° 4" and citee.lien is None
 
 
 # --------------------------------------------------------------------------- #

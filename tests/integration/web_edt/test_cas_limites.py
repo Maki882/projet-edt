@@ -7,11 +7,14 @@ retombe sur un affichage par défaut, en le disant.
 
 Chaque test porte le marqueur `cas_limite` et sa docstring dit le cas et le
 risque (« Cas : … Risque : … »). Cette banque seule :
-`python -m pytest -m cas_limite tests/web_edt`.
+`python -m pytest -m cas_limite tests/unitaires/web_edt tests/integration/web_edt`
+(les bornes des identifiants, sans passer par les écrans, sont dans
+`tests/unitaires/web_edt/test_cas_limites.py`).
 
-Aides communes, dans `conftest.py` : `ENORME`, `HX`, `reperes`,
-`client_sans_trace`, `creer_version_vide`, `premiere_occurrence`,
-`calcul_qui_tourne`. Trois cas sont testés près de leur écran, avec le même
+Aides communes, dans `tests/outils/web_edt/aides.py` : `ENORME`, `HX`,
+`creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` ; fixtures
+`reperes` et `client_sans_trace` dans `tests/integration/web_edt/conftest.py`.
+Trois cas sont testés près de leur écran, avec le même
 marqueur : l'option « Tous les semestres » (`test_a_traiter.py`), le jour où
 une séance ne tient nulle part (`test_emploi_du_temps.py`), l'arrêt d'un
 calcul terminé (`test_calculs.py`). Comportements attendus :
@@ -25,17 +28,7 @@ import sqlite3
 
 import pytest
 from sqlalchemy import delete, func, select
-
-from edt.config import charger_configuration
-from edt.db import modeles as m
-from edt.db.moteur import IDENTIFIANT_MAX, chemin_base, session_base
-from edt.domaine.enumerations import EtatCalcul, StatutOccurrence
-from edt.erreurs import ErreurIntrouvable
-from edt.services import generation
-from edt.services.emploi_du_temps import modifications, vues
-from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
-
-from .conftest import (
+from tests.outils.web_edt.aides import (
     CINQ_MILLE_CHIFFRES,
     DELAI,
     ENORME,
@@ -45,43 +38,16 @@ from .conftest import (
     creer_version_vide,
 )
 
+from edt.config import charger_configuration
+from edt.db import modeles as m
+from edt.db.moteur import chemin_base, session_base
+from edt.domaine.enumerations import EtatCalcul, StatutOccurrence
+from edt.services import generation
+from edt.services.emploi_du_temps import modifications, vues
+
 # --------------------------------------------------------------------------- #
 # Identifiants énormes, négatifs ou inconnus
 # --------------------------------------------------------------------------- #
-
-
-class _SessionEspion:
-    """Session réduite à `get`, qui note chaque interrogation de la base (et n'en trouve aucune)."""
-
-    def __init__(self) -> None:
-        self.interrogations: list[object] = []
-
-    def get(self, modele, ident):
-        self.interrogations.append(ident)
-        return None
-
-
-@pytest.mark.cas_limite
-def test_bornes_des_identifiants(session):
-    """Cas : identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu
-    par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne
-    2^63 - 1, acceptée.
-    Risque : un identifiant qu'aucune ligne SQLite ne peut porter atteint la base
-    (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1.
-    """
-    impossibles = (0, -1, IDENTIFIANT_MAX + 1, int(ENORME), True, "12", None, 1.0)
-    espion = _SessionEspion()
-    for impossible in impossibles:
-        with pytest.raises(ErreurIntrouvable, match="Calcul introuvable"):
-            exiger_identifiant(impossible, "Calcul introuvable.")
-        assert obtenir(espion, m.Calcul, impossible) is None, impossible
-    assert espion.interrogations == []  # rien n'a atteint la base
-
-    assert exiger_identifiant(1, "Calcul introuvable.") == 1
-    assert exiger_identifiant(IDENTIFIANT_MAX, "Calcul introuvable.") == IDENTIFIANT_MAX
-    assert obtenir(espion, m.Calcul, IDENTIFIANT_MAX) is None
-    assert espion.interrogations == [IDENTIFIANT_MAX]  # la borne, elle, est cherchée
-    assert obtenir(session, m.Calcul, IDENTIFIANT_MAX) is None  # et SQLite l'accepte
 
 
 @pytest.mark.cas_limite

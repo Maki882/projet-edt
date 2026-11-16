@@ -11,14 +11,13 @@ from __future__ import annotations
 import logging
 
 from sqlalchemy import func, select
+from tests.outils.web_edt.aides import DELAI, identifiant_groupe
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, DEJEUNER_LIBRE, Parametres
 from edt.services import generation
 from edt.services.parametres import ecrire_parametres, lire_parametres
-
-from .conftest import DELAI, identifiant_groupe
 
 H = 60
 PLAGE_PAR_DEFAUT = (12 * H + 45, 13 * H + 45)

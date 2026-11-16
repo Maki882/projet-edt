@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
+from tests.outils.web_edt.aides import DELAI
 
 from edt import solveur
 from edt.db import modeles as m
@@ -23,8 +24,6 @@ from edt.services.emploi_du_temps import modifications, raccords
 from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.solveur.contrat import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
-
-from .conftest import DELAI
 
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 FIXES = [

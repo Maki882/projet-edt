@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import delete, func, select, update
+from tests.outils.web_edt.aides import HX, autre_place, seance_du_besoin
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -19,8 +20,6 @@ from edt.services.emploi_du_temps import (
     tableau_de_bord,
 )
 from edt.verification.contrat import Anomalie
-
-from .conftest import HX, autre_place, seance_du_besoin
 
 
 def _nb_occurrences(version_id: int) -> int:

@@ -11,7 +11,7 @@ import threading
 import time
 
 import pytest
-from sqlalchemy import delete, select
+from tests.outils.web_edt.aides import DELAI
 
 from edt import solveur
 from edt.config import charger_configuration
@@ -24,8 +24,6 @@ from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
-
-from .conftest import DELAI
 
 DELAI_SANS_ATTENTE_S = 5.0
 """Bien moins que l'attente sur verrou de la base (10 s) : `/sante` n'a pas attendu."""
@@ -43,28 +41,6 @@ def test_base_vide_propose_un_etablissement_fictif(client):
     # Base vide : le bloc de la base apparaît, avec l'invitation à charger un jeu.
     assert "État de la base de données" in page
     assert "La base ne contient encore aucune donnée" in page
-
-
-def test_donnees_incompletes_l_etape_mene_a_l_ecran_qui_manque(session, aujourdhui):
-    type_salle = session.scalars(select(m.TypeSalle)).first()
-    campus = m.Campus(code="NDC", nom="Notre-Dame-des-Champs")
-    session.add(m.Salle(code="N001", campus=campus, capacite=30, type_salle=type_salle))
-    session.flush()
-
-    etape = tableau_de_bord(session, aujourdhui).prochaine_etape
-
-    assert (etape.lien, etape.libelle_lien) == ("/groupes", "Saisir les groupes")
-    assert "les groupes manquent" in etape.phrase
-
-
-def test_sans_besoin_l_etape_mene_aux_besoins(jeu_minimal, session, aujourdhui_fige):
-    session.execute(delete(m.Besoin))
-    session.flush()
-
-    etape = tableau_de_bord(session, aujourdhui_fige).prochaine_etape
-
-    assert etape.lien == "/besoins"
-    assert ("/import", "Importer des besoins") in etape.autres_liens
 
 
 def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, aujourdhui_fige):
