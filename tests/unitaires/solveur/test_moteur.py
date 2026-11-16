@@ -106,6 +106,28 @@ def test_statistiques_et_journal(caplog):
     assert "Fin du calcul : solution" in journal
 
 
+def test_les_pre_verifications_ne_sont_journalisees_qu_une_fois(caplog):
+    """Une situation tendue : dite dans le résultat, résumée au journal du moteur, mais pas
+    répétée en avertissement (le service des calculs l'a déjà journalisée)."""
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    for _ in range(3):
+        f.salle()
+    classe = f.groupe("A1")
+    for _ in range(4):
+        f.besoin([classe], [f.enseignant()])
+    instantane = f.instantane()
+    with caplog.at_level(logging.DEBUG, logger="edt.solveur.moteur"):
+        resultat = resoudre(instantane, OPTIONS)
+    verifier_solution(instantane, resultat)
+    assert any("8 h de cours par semaine" in a for a in resultat.avertissements)
+    du_moteur = [r for r in caplog.records if r.name == "edt.solveur.moteur"]
+    assert not [r for r in du_moteur if r.levelno >= logging.WARNING]
+    assert any(
+        r.levelno == logging.INFO and "0 erreur(s), 1 avertissement(s)" in r.getMessage()
+        for r in du_moteur
+    )
+
+
 def test_mode_reproductible():
     instantane, _ = generer(40, graine=5)
     reglages = options(graine=11, nb_workers=1)

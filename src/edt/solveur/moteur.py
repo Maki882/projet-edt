@@ -281,9 +281,15 @@ def resoudre(
         avertissements.append(avertissement)
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
+    # Le service des calculs journalise déjà chaque anomalie en avertissement ou en erreur
+    # (`edt.services.generation`) : ici, un bilan, et le détail au niveau DEBUG seulement.
+    journal.info(
+        "Pré-vérifications du calcul : %d erreur(s), %d avertissement(s)",
+        len(erreurs),
+        len(anomalies) - len(erreurs),
+    )
     for anomalie in anomalies:
-        niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
-        journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
+        journal.debug("Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
     avertissements.extend(anomalie.message for anomalie in erreurs)
     avertissements.extend(anomalie.message for anomalie in anomalies if not anomalie.bloquante)
     stats["duree_preparation_s"] = round(time.perf_counter() - debut, 3)
