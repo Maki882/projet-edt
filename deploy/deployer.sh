@@ -21,8 +21,9 @@
 #      arrière automatique ;
 #   5. vérification informative de l'URL publique (n'annule rien).
 #
-# Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
-# (valeurs par défaut et explications dans deploy/commun.sh).
+# Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE,
+# lus dans deploy/serveur.env (modèle deploy/serveur.env.exemple ; détail dans
+# deploy/commun.sh).
 # Code de sortie : 0 si la nouvelle version est en service (éventuellement
 # avec avertissements), non nul sinon.
 # =============================================================================
@@ -95,23 +96,18 @@ if [ -z "$BRANCHES_DISTANTES" ]; then
   avertir "le commit $SHA_COURT n'est sur aucune branche distante connue (git push oublié ?) : l'équipe ne le retrouvera pas sur GitHub."
 fi
 
-# Nom de version et informations transmises au serveur : uniquement des
-# caractères sûrs, car ils passent dans une ligne de commande ssh.
-# Horodatage en UTC : pas d'heure répétée au passage à l'heure d'hiver, et
-# l'ordre des noms suit l'ordre des déploiements (la rotation s'y fie).
-VERSION="$(date -u '+%Y%m%d-%H%M%S')-$SHA_COURT"
+# Informations transmises au serveur : uniquement des caractères sûrs, car
+# elles passent dans une ligne de commande ssh.
 if ! AUTEUR="$(git -C "$RACINE" config user.name)"; then
   info "git user.name non configuré : auteur noté « inconnu »."
   AUTEUR="inconnu"
 fi
 AUTEUR="$(printf '%s' "$AUTEUR" | LC_ALL=C tr -c 'A-Za-z0-9._-' '_')"
 REF_NETTOYEE="$(printf '%s' "$REF" | LC_ALL=C tr -c 'A-Za-z0-9._/-' '_')"
-DOSSIER_VERSION_DISTANT="/opt/edt/versions/$VERSION"
-info "Nom de la version : $VERSION"
 
 if [ "$RESET_BASE" = 1 ]; then
   etape "Confirmation de la remise à zéro de la base"
-  avertir "--reset-base : la base de PRODUCTION de $EDT_DOMAINE ($EDT_SSH_HOTE) va être EFFACÉE puis recréée vide (à repeupler ensuite, par exemple avec « sudo edt jeu ... »). Une sauvegarde est faite juste avant (/var/lib/edt/sauvegardes)."
+  avertir "--reset-base : la base de PRODUCTION de $EDT_DOMAINE ($EDT_SSH_HOTE) va être EFFACÉE puis recréée vide (à repeupler ensuite, par exemple avec « sudo edt jeu ... »). Une sauvegarde vérifiée est faite juste avant, dans /var/lib/edt/sauvegardes ; si elle échoue, rien n'est effacé."
   printf 'Pour confirmer, tapez exactement EFFACER puis Entrée : '
   if ! read -r REPONSE; then
     erreur "aucune réponse lue : remise à zéro annulée, rien n'a été fait."
@@ -127,6 +123,19 @@ fi
 # -----------------------------------------------------------------------------
 etape "Connexion au serveur $SSH_CIBLE"
 verifier_connexion
+
+# Nom de version horodaté par l'horloge du SERVEUR, en UTC : la rotation des
+# versions se fie à l'ordre des noms, qui suit ainsi l'ordre des déploiements
+# quel que soit le poste qui les lance ; pas d'heure répétée au passage à
+# l'heure d'hiver.
+if ! HORODATAGE_SERVEUR="$(ssh_serveur "date -u '+%Y%m%d-%H%M%S'")" \
+  || ! [[ "$HORODATAGE_SERVEUR" =~ ^[0-9]{8}-[0-9]{6}$ ]]; then
+  erreur "lecture de l'heure du serveur impossible (réponse : « ${HORODATAGE_SERVEUR:-aucune} ») : rien n'a été envoyé."
+  exit 1
+fi
+VERSION="$HORODATAGE_SERVEUR-$SHA_COURT"
+DOSSIER_VERSION_DISTANT="/opt/edt/versions/$VERSION"
+info "Nom de la version : $VERSION"
 
 etape "Vérification de l'installation du serveur"
 # Fichiers que installer-serveur.sh copie tels quels : source dans deploy/ puis
@@ -231,3 +240,6 @@ fi
 etape "Terminé"
 info "Version $VERSION en service (commit $SHA_COURT)."
 info "Santé locale sur le serveur : ok. URL publique : $ETAT_PUBLIC."
+if [ "$RESET_BASE" = 1 ]; then
+  info "La base est vide : chargez des données, par exemple « sudo edt jeu --taille moyen » sur le serveur (docs/deploiement.md, « Lancer une commande de l'application »). L'ancienne base est dans /var/lib/edt/sauvegardes (nom affiché à l'étape « Sauvegarde de la base »)."
+fi

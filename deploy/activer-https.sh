@@ -5,7 +5,7 @@
 # À lancer SUR LE SERVEUR, en root, APRÈS installer-serveur.sh, depuis la même
 # copie du dossier deploy/ :
 #   sudo bash ~/edt-installation/deploy/activer-https.sh
-#   sudo env EDT_CERTBOT_EMAIL=prenom.nom@example.org bash ~/edt-installation/deploy/activer-https.sh
+#   sudo env EDT_CERTBOT_EMAIL=exploitation@example.org bash ~/edt-installation/deploy/activer-https.sh
 #
 #   1. vérifie, SANS RIEN MODIFIER, que EDT_DOMAINE pointe sur ce serveur et
 #      que nginx y sert /.well-known/acme-challenge/ sur le port 80 ;
@@ -18,24 +18,29 @@
 # IDEMPOTENT : certificat encore valide = rien de demandé à Let's Encrypt
 # (--keep-until-expiring) ; seul le « --dry-run » contacte le serveur de test.
 #
-# Paramètres (variables d'environnement) :
-#   EDT_DOMAINE        nom de domaine (défaut pts.jorund.xyz)
+# Paramètres, lus dans serveur.env à côté de ce script (deploy/serveur.env,
+# copié avec le dossier deploy/) ; une variable d'environnement l'emporte :
+#   EDT_DOMAINE        nom de domaine (obligatoire)
 #   EDT_CERTBOT_EMAIL  adresse de contact du compte Let's Encrypt (avis liés au
-#                      compte ; Let's Encrypt n'envoie plus d'alertes d'expiration
-#                      depuis juin 2025) ; vide = inscription sans adresse
+#                      compte ; Let's Encrypt n'envoie aucune alerte
+#                      d'expiration) ; vide = inscription sans adresse
 #   EDT_IP_PUBLIQUE    adresse IPv4 publique du serveur, si la détection
 #                      automatique (adresses des interfaces) ne convient pas
 # =============================================================================
 set -euo pipefail
 set -o errtrace
 
-EDT_DOMAINE="${EDT_DOMAINE:-pts.jorund.xyz}"
-EDT_CERTBOT_EMAIL="${EDT_CERTBOT_EMAIL:-}"
-EDT_IP_PUBLIQUE="${EDT_IP_PUBLIQUE:-}"
-export EDT_DOMAINE   # transmis à installer-serveur.sh --nginx-seulement
-
 DOSSIER_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DOSSIER_SCRIPT
+# shellcheck source=deploy/configuration.sh
+. "$DOSSIER_SCRIPT/configuration.sh"
+EDT_DOMAINE="${EDT_DOMAINE:-}"
+EDT_CERTBOT_EMAIL="${EDT_CERTBOT_EMAIL:-}"
+EDT_IP_PUBLIQUE="${EDT_IP_PUBLIQUE:-}"
+charger_configuration_serveur "$DOSSIER_SCRIPT/serveur.env"
+exiger_parametres EDT_DOMAINE
+export EDT_DOMAINE   # transmis à installer-serveur.sh --nginx-seulement
+
 readonly DOSSIER_ACME="/var/www/certbot"
 readonly CERTIFICAT="/etc/letsencrypt/live/$EDT_DOMAINE/fullchain.pem"
 readonly CROCHET="/etc/letsencrypt/renewal-hooks/deploy/edt-recharger-nginx.sh"

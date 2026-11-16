@@ -8,15 +8,15 @@
 # Affiche : état du service et de nginx (arrêts pour mémoire épuisée compris),
 # version déployée et versions disponibles, derniers déploiements, réponse de
 # /sante (sur le serveur), certificat HTTPS, espace disque et mémoire,
-# diagnostic de l'application (« edt doctor » : base utilisée, schéma),
-# fichiers de la base, sauvegardes (quotidienne récente, minuteur, fichiers
-# partiels), 30 dernières lignes du journal du service, puis l'URL publique
-# vue depuis ce poste. Ne modifie rien.
+# diagnostic de l'application (« edt doctor » : base utilisée, schéma ; sauté
+# pendant un déploiement), fichiers de la base, présence de la clé de
+# l'assistant (jamais son contenu), sauvegardes (quotidienne récente,
+# minuteur, fichiers partiels), 30 dernières lignes du journal du service,
+# puis l'URL publique vue depuis ce poste. Ne modifie rien.
 #
 # Code de sortie : 0 si tout va bien, 1 si un problème a été détecté (lignes
 # « !!! »), autre valeur si l'état n'a pas pu être lu.
-# Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE, EDT_DOMAINE
-# (voir deploy/commun.sh).
+# Paramètres : deploy/serveur.env (voir deploy/commun.sh).
 # =============================================================================
 set -euo pipefail
 set -o errtrace
@@ -26,7 +26,7 @@ DOSSIER_DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$DOSSIER_DEPLOY/commun.sh"
 trap 'sur_erreur $? $LINENO "$BASH_COMMAND" "${BASH_SOURCE[0]}"' ERR
 
-etape "Contrôles locaux et connexion à $SSH_CIBLE"
+etape "Contrôles locaux et connexion au serveur"
 verifier_poste_local
 verifier_connexion
 
@@ -41,8 +41,21 @@ set -euo pipefail
 trap 'echo "!!! erreur inattendue (ligne $LINENO de la partie serveur de etat.sh) : $BASH_COMMAND" >&2; exit 3' ERR
 DOMAINE="$1"
 PROBLEMES=0
+# Verrou pris en exclusif par un déploiement (deployer-distant.sh) et en
+# partagé par le lanceur « sudo edt » : s'il est pris, le lanceur refuse de
+# démarrer et le diagnostic de l'application est sauté.
+VERROU="/run/lock/edt-deploiement.lock"
+DEPLOIEMENT_EN_COURS=0
+if [ -e "$VERROU" ] && ! flock -s -n "$VERROU" true; then
+  DEPLOIEMENT_EN_COURS=1
+fi
 titre() { printf '\n[%s] [serveur] --- %s ---\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*"; }
 probleme() { printf '!!! %s\n' "$*"; PROBLEMES=$((PROBLEMES + 1)); }
+
+if [ "$DEPLOIEMENT_EN_COURS" = 1 ]; then
+  titre "Déploiement en cours"
+  echo "Un déploiement est en cours : le service et /sante peuvent être arrêtés quelques secondes (journal : /var/log/edt-deploiements/)."
+fi
 
 titre "Services"
 for unite in edt nginx; do
@@ -142,6 +155,8 @@ free -h
 titre "Base de données et diagnostic de l'application (sudo edt doctor)"
 if [ ! -x /usr/local/bin/edt ]; then
   probleme "lanceur /usr/local/bin/edt absent : relancez installer-serveur.sh"
+elif [ "$DEPLOIEMENT_EN_COURS" = 1 ]; then
+  echo "déploiement en cours : diagnostic de l'application sauté (relancez deploy/etat.sh après le déploiement)"
 elif ! /usr/local/bin/edt doctor; then
   probleme "« edt doctor » signale un échec (lignes ci-dessus)"
 fi
@@ -154,8 +169,15 @@ if [ -n "$etrangers" ]; then
   probleme "fichiers de /var/lib/edt qui n'appartiennent pas à edt (le service ne peut pas les modifier ; sudo chown edt:edt <fichier>) : $etrangers"
 fi
 
+# Existence du fichier seulement : son contenu (la clé) n'est jamais lu ici.
+if [ -e /etc/edt/assistant.env ]; then
+  echo "Assistant : clé installée (/etc/edt/assistant.env)"
+else
+  echo "Assistant : clé absente (deploy/installer-cle-assistant.sh pour l'installer)"
+fi
+
 titre "Sauvegardes de la base (/var/lib/edt/sauvegardes)"
-for prefixe in quotidienne edt manuelle; do
+for prefixe in quotidienne edt manuelle corrompue; do
   nombre=0
   derniere=""
   for fichier in /var/lib/edt/sauvegardes/"$prefixe"-*.db; do
@@ -178,10 +200,16 @@ fi
 if systemctl is-failed --quiet edt-sauvegarde.service; then
   probleme "la dernière sauvegarde quotidienne a échoué : sudo journalctl -u edt-sauvegarde -n 30"
 fi
+# Une sauvegarde quotidienne de moins de 2 jours n'est exigée que si une
+# version est en service depuis au moins 2 jours (témoin deploiement-reussi) :
+# juste après la première installation, le minuteur n'a pas encore tourné.
 if [ -L /opt/edt/courant ]; then
   recentes="$(find /var/lib/edt/sauvegardes -maxdepth 1 -name 'quotidienne-*.db' -mtime -2 -print)"
-  if [ -z "$recentes" ]; then
+  anciennes="$(find /opt/edt/versions -mindepth 2 -maxdepth 2 -name deploiement-reussi -mtime +1 -print)"
+  if [ -z "$recentes" ] && [ -n "$anciennes" ]; then
     probleme "aucune sauvegarde quotidienne de moins de 2 jours (sudo systemctl start edt-sauvegarde, puis sudo journalctl -u edt-sauvegarde)"
+  elif [ -z "$recentes" ]; then
+    echo "première sauvegarde quotidienne attendue à la prochaine exécution du minuteur (version en service depuis moins de 2 jours)"
   fi
 fi
 

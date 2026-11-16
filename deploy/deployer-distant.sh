@@ -45,6 +45,9 @@ readonly UTILISATEUR_APP="edt"
 readonly DOSSIER_VERSIONS="/opt/edt/versions"
 readonly LIEN_COURANT="/opt/edt/courant"
 readonly FICHIER_ENV="/etc/edt/edt.env"
+# Clé de l'assistant (installer-cle-assistant.sh) : facultative, lue comme le
+# fait le service (EnvironmentFile=-/etc/edt/assistant.env dans edt.service).
+readonly FICHIER_ASSISTANT="/etc/edt/assistant.env"
 readonly DOSSIER_DONNEES="/var/lib/edt"
 readonly DOSSIER_SAUVEGARDES="/var/lib/edt/sauvegardes"
 readonly DOSSIER_JOURNAUX_DEPLOIEMENT="/var/log/edt-deploiements"
@@ -206,12 +209,15 @@ retour_arriere() {
 # « set -e ») : chaque commande y est donc suivie de « || return 1 ».
 
 # Lance une commande dans les conditions du service : utilisateur edt,
-# variables de /etc/edt/edt.env lues par systemd lui-même, dossier du code de
-# la NOUVELLE version. Le code de sortie de la commande est transmis.
+# variables de /etc/edt/edt.env (et de /etc/edt/assistant.env s'il existe)
+# lues par systemd lui-même, dossier du code de la NOUVELLE version. Le code
+# de sortie de la commande est transmis.
 lancer_comme_app() {
+  local environnement=(-p EnvironmentFile="$FICHIER_ENV")
+  if [ -e "$FICHIER_ASSISTANT" ]; then environnement+=(-p EnvironmentFile="$FICHIER_ASSISTANT"); fi
   systemd-run --quiet --wait --pipe --collect --service-type=exec \
     --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
-    -p EnvironmentFile="$FICHIER_ENV" -p WorkingDirectory="$DOSSIER_CODE" \
+    "${environnement[@]}" -p WorkingDirectory="$DOSSIER_CODE" \
     -E PYTHONUNBUFFERED=1 "$@"
 }
 
@@ -510,9 +516,13 @@ PHASE="bascule"
 etape "Arrêt du service $SERVICE"
 systemctl stop "$SERVICE"
 info "Service arrêté (un calcul d'emploi du temps en cours est interrompu)."
-# Un processus démarré entre le contrôle de la préparation et l'arrêt (le
-# lanceur « sudo edt » est refusé pendant le déploiement, pas un sqlite3 lancé
-# à la main) : on ne touche pas à la base sous ses pieds.
+# Un processus démarré entre le contrôle de la préparation et l'arrêt : on ne
+# touche pas à la base sous ses pieds. Le lanceur « sudo edt » est refusé
+# pendant le déploiement (verrou) ; la sauvegarde quotidienne et un sqlite3
+# lancé à la main ne prennent pas ce verrou. Limite : un tel processus qui
+# démarre APRÈS ce contrôle (minuteur de 3 h 30 pendant la bascule) n'est pas
+# détecté ; la sauvegarde quotidienne lit alors la base pendant son
+# remplacement et peut échouer (unité en échec, signalée par etat.sh).
 autres="$(processus_hors_service)"
 if [ -n "$autres" ]; then
   echouer "un processus de l'application a démarré pendant le déploiement et tient la base ouverte :
@@ -524,6 +534,9 @@ etape "Sauvegarde de la base"
 sauvegarder_base
 
 etape "Initialisation de la base (python -m edt init-db${options_init:+ ${options_init[*]}})"
+if [ "$RESET_BASE" = 1 ]; then
+  info "Remise à zéro demandée : la base actuelle est sauvegardée dans « ${SAUVEGARDE:-aucune (pas de base)} » ; elle va être effacée puis recréée vide."
+fi
 BASE_MODIFIEE=1
 if ! lancer_comme_app "$PYTHON_VENV" -m edt init-db "${options_init[@]}"; then
   echouer "init-db a échoué (message de l'application ci-dessus). S'il parle de colonnes ou d'un schéma différent du modèle : $EXPLICATION_SCHEMA"

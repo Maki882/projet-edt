@@ -7,8 +7,9 @@
 #   sudo bash ~/edt-installation/deploy/installer-serveur.sh
 #   sudo bash ~/edt-installation/deploy/installer-serveur.sh --nginx-seulement
 #
-# IDEMPOTENT : à relancer après toute modification de edt.service, du lanceur
-# ou des fichiers nginx du dépôt (deployer.sh le signale).
+# IDEMPOTENT : à relancer après toute modification de edt.service, des unités
+# de sauvegarde (edt-sauvegarde.*), du lanceur, des fichiers nginx ou des
+# pages d'erreur du dépôt (deployer.sh le signale).
 #   1. apt : nginx, Python (venv, en-têtes de compilation), sqlite3, curl ;
 #   2. utilisateur système « edt » (sans shell, sans mot de passe) ;
 #   3. dossiers /opt/edt (code + venvs, root), /var/lib/edt (base, edt),
@@ -22,16 +23,21 @@
 #      HTTPS si un certificat existe pour EDT_DOMAINE ; site par défaut
 #      désactivé. --nginx-seulement ne fait que cette étape (activer-https.sh).
 # Il ne touche NI à la configuration SSH NI au pare-feu.
-# Paramètre : EDT_DOMAINE (défaut pts.jorund.xyz) :
-#   sudo env EDT_DOMAINE=autre.exemple.fr bash .../installer-serveur.sh
+# Paramètre obligatoire : EDT_DOMAINE, lu dans serveur.env à côté de ce script
+# (deploy/serveur.env, copié avec le dossier deploy/), ou passé ainsi :
+#   sudo env EDT_DOMAINE=edt.example.org bash .../installer-serveur.sh
 # =============================================================================
 set -euo pipefail
 set -o errtrace
 
-EDT_DOMAINE="${EDT_DOMAINE:-pts.jorund.xyz}"
-
 DOSSIER_SCRIPT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly DOSSIER_SCRIPT
+# shellcheck source=deploy/configuration.sh
+. "$DOSSIER_SCRIPT/configuration.sh"
+EDT_DOMAINE="${EDT_DOMAINE:-}"
+charger_configuration_serveur "$DOSSIER_SCRIPT/serveur.env"
+exiger_parametres EDT_DOMAINE
+
 readonly UTILISATEUR_APP="edt"
 readonly UNITE="/etc/systemd/system/edt.service"
 readonly FICHIER_ENV="/etc/edt/edt.env"
@@ -93,7 +99,7 @@ if ! [[ "$EDT_DOMAINE" =~ ^[A-Za-z0-9.-]+$ ]]; then
 fi
 for fichier in edt.service edt-sauvegarde.service edt-sauvegarde.timer edt.env.exemple \
   lanceur-edt.sh nginx-edt.conf nginx-edt-https.conf nginx-edt-application.conf \
-  erreur-502.html erreur-413.html; do
+  erreur-502.html erreur-413.html configuration.sh; do
   if [ ! -e "$DOSSIER_SCRIPT/$fichier" ]; then
     echouer "fichier $DOSSIER_SCRIPT/$fichier absent : copiez le dossier deploy/ complet sur le serveur."
   fi

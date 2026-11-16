@@ -31,3 +31,6 @@ logs/
 *.sqlite*
 *.log
 output/
+
+# Paramètres de l'installation (adresse du serveur, domaine, clé SSH) : modèle deploy/serveur.env.exemple
+deploy/serveur.env
