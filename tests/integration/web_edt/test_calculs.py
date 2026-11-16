@@ -442,6 +442,36 @@ def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
     assert generation.attendre_calcul(premier, DELAI).etat is EtatCalcul.ARRETE
 
 
+@pytest.mark.cas_limite
+def test_suivi_apres_la_recherche_ne_propose_plus_l_arret(jeu_minimal, client, monkeypatch):
+    """Cas : le moteur a trouvé son emploi du temps et rendu la main ; le calcul contrôle,
+    enregistre puis produit les séances datées, ce qui prend quelques secondes sur un grand
+    établissement.
+
+    Risque : le suivi dit encore « le calcul cherche à l'améliorer. Vous pouvez l'arrêter »,
+    alors que plus rien n'est cherché et qu'un arrêt n'aurait aucun effet.
+    """
+    retenue, liberee = threading.Event(), threading.Event()
+    reelle = generation.instancier_version
+
+    def instanciation_retenue(*args, **kwargs):
+        retenue.set()
+        liberee.wait(DELAI)
+        return reelle(*args, **kwargs)
+
+    monkeypatch.setattr(generation, "instancier_version", instanciation_retenue)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    try:
+        assert retenue.wait(DELAI)
+        fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
+        assert generation.etat_calcul(calcul_id).en_cours
+        assert "cherche à" not in fragment and f"/calculs/{calcul_id}/arreter" not in fragment
+        assert "La recherche est terminée" in fragment
+    finally:
+        liberee.set()
+    assert generation.attendre_calcul(calcul_id, DELAI).reussi
+
+
 def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
     """Arrêt demandé alors qu'une solution existe : réussite, et l'écran dit que c'est un arrêt."""
     import dataclasses

@@ -198,6 +198,9 @@ class SuiviCalcul:
     - `premiere_solution_s` : calcul en cours qui a déjà un emploi du temps
       complet (gardé si l'utilisateur l'arrête), trouvé après ce nombre de
       secondes ; `None` sinon. Tenu en mémoire par le processus qui calcule ;
+    - `recherche_finie` : calcul en cours dont le moteur a rendu la main (contrôle,
+      enregistrement, séances datées) : un arrêt n'a plus d'effet. Tenu en mémoire
+      par le processus qui calcule ;
     - `statistiques` : mesures du moteur, plus `impossibilites` (raisons d'un
       refus), `indicateurs` (qualité de la solution) et `instanciation`
       (bilan des séances datées) quand ils existent.
@@ -220,6 +223,7 @@ class SuiviCalcul:
     niveaux_regles: dict[int, Niveau] | None = None
     regles: tuple[dict, ...] = ()
     premiere_solution_s: float | None = None
+    recherche_finie: bool = False
 
     @property
     def en_cours(self) -> bool:
@@ -242,6 +246,7 @@ class _CalculActif:
     fil: threading.Thread
     arret: threading.Event
     premiere_solution_s: float | None = None
+    recherche_finie: bool = False
 
 
 LIBELLE_NON_LANCE = "Non lancé (points bloquants)"
@@ -981,6 +986,9 @@ def _calculer(
         return EtatCalcul.INFAISABLE, message, statistiques
 
     resultat = _appeler_moteur(moteur, calcul_id, instantane, options, arret)
+    actif = _actifs.get(calcul_id)
+    if actif is not None:
+        actif.recherche_finie = True
     statistiques = dict(resultat.statistiques)
     etat = _ETAT_PAR_STATUT[resultat.statut]
     message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
@@ -1313,11 +1321,18 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
         premiere_solution_s=_premiere_solution(calcul.id) if etat is EtatCalcul.EN_COURS else None,
+        recherche_finie=etat is EtatCalcul.EN_COURS and _recherche_finie(calcul.id),
         avertissements=_textes(statistiques.get("avertissements")),
         niveaux=_niveaux_du_calcul(calcul, parametres, desactivees),
         niveaux_regles=_niveaux_regles_du_calcul(calcul, parametres),
         regles=tuple(r for r in regles if isinstance(r, dict)) if isinstance(regles, list) else (),
     )
+
+
+def _recherche_finie(calcul_id: int) -> bool:
+    """Vrai si le moteur d'un calcul de ce processus a rendu la main."""
+    actif = _actifs.get(calcul_id)
+    return actif is not None and actif.recherche_finie
 
 
 def _premiere_solution(calcul_id: int) -> float | None:

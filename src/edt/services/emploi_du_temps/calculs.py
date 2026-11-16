@@ -1286,6 +1286,11 @@ def _phrases(
     if issue == Issue.EN_COURS:
         # Le temps écoulé est dit une seule fois, sous la phrase (gabarit du suivi).
         phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}."
+        if suivi.recherche_finie:
+            # Le moteur a rendu la main : plus rien à améliorer ni à arrêter.
+            debut = " Arrêt demandé : la recherche" if suivi.arret_demande else " La recherche"
+            phrase += debut + " est terminée, son résultat est contrôlé et enregistré."
+            return "Calcul en cours", phrase, None
         if suivi.premiere_solution_s is not None and not suivi.arret_demande:
             phrase += (
                 " Un emploi du temps est déjà trouvé (après "
