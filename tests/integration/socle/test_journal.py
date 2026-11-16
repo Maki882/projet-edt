@@ -21,7 +21,7 @@ def test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor
 
     Risque : `PermissionError` brute à chaque commande (code 2, « la trace est dans le
     journal » qui n'existe pas), message en double, boucle de redémarrage du service ;
-    doctor, censé diagnostiquer, ne démarrait pas.
+    doctor, censé diagnostiquer, ne démarrerait pas.
     """
     dossier = tmp_path / "journaux"
     (dossier / "edt.log").mkdir(parents=True)

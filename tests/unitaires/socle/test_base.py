@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 
 import pytest
@@ -326,7 +327,7 @@ def test_contraintes_de_controle_du_modele_et_maxima_positifs(
     lui-même).
 
     Risque : dernière ligne de défense avant un instantané incohérent ; un remaniement de
-    `modeles.py` perdrait ces CHECK sans signal, et les maxima négatifs rendaient
+    `modeles.py` perdrait ces CHECK sans signal, et des maxima négatifs rendraient
     `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde.
     """
     fabrique(session)
@@ -341,7 +342,7 @@ def test_un_code_aux_espaces_invisibles_est_le_meme_code(jeu_minimal, session, v
     """Cas : un code saisi ou importé porte une espace insécable, une espace de largeur nulle,
     des espaces aux bords ou une tabulation (collé depuis un traitement de texte).
 
-    Risque : « N105 » et « N105\u00a0 » passaient l'unicité et créaient un doublon invisible,
+    Risque : « N105 » et « N105\u00a0 » passeraient l'unicité et créeraient un doublon invisible,
     introuvable à la recherche ; le code doit être normalisé dès l'affectation.
     """
     salle = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
@@ -406,6 +407,30 @@ def test_init_db_relance_ne_recree_pas_un_referentiel_supprime_volontairement(ba
         # Un paramètre absent, lui, est toujours reposé (paramètre nouveau d'une version).
         session.delete(session.get(m.Parametre, "pause_min"))
     assert initialiser_base(aujourdhui=aujourdhui).ajouts["parametre"] == 1
+
+
+@pytest.mark.cas_limite
+def test_un_type_de_seance_par_defaut_sans_son_type_de_salle_est_signale(base, aujourdhui, caplog):
+    """Cas : base sans aucun paramètre ni type de séance, mais dont les types de salle sont
+    déjà saisis sans « AMPHI » (base remplie à la main, puis `init-db`).
+
+    Risque : le type de séance « CM » créé sans type de salle par défaut, sans un mot ; la
+    création continue, mais l'écart est journalisé avec les deux codes.
+    """
+    with session_base() as session:
+        session.execute(delete(m.Parametre))
+        session.execute(delete(m.TypeSeance))
+        session.delete(session.scalar(select(m.TypeSalle).where(m.TypeSalle.code == "AMPHI")))
+
+    with caplog.at_level(logging.WARNING, logger="edt.db.initialisation"):
+        rapport = initialiser_base(aujourdhui=aujourdhui)
+
+    assert rapport.ajouts["type_seance"] > 0
+    with session_base() as session:
+        cm = session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "CM"))
+        td = session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "TD"))
+        assert cm.type_salle_defaut is None and td.type_salle_defaut.code == "COURS"
+    assert "CM" in caplog.text and "AMPHI" in caplog.text
 
 
 @pytest.mark.cas_limite

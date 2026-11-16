@@ -53,9 +53,9 @@ Règles personnalisées et réglages
 - `reglages` : pour chaque séance, ses jours permis (standard et règles
   retenues par axe, campus compris) ; pour chaque personne, sa pause déjeuner
   et sa pause minimale, chacune avec sa source (une règle ou le paramètre
-  global). Le solveur et le vérificateur lisent ces valeurs et non plus
-  directement `Parametres.plage_dejeuner`, `fenetre_dejeuner`, `pause_min` ni
-  `Besoin.samedi_autorise` (conservés comme façades).
+  global). Le solveur et le vérificateur lisent ces valeurs pour appliquer les
+  règles ; `Parametres.plage_dejeuner`, `fenetre_dejeuner`, `pause_min` et
+  `Besoin.samedi_autorise` restent les valeurs de l'établissement.
 """
 
 from __future__ import annotations
@@ -94,16 +94,24 @@ def id_seance(besoin_id: int, rang: int) -> str:
     return f"{besoin_id}-{rang}"
 
 
+_CHIFFRES_MAX = 19
+"""Chiffres d'un entier SQLite (2**63 - 1) : au-delà, la partie ne désigne aucune ligne."""
+
+
 def decomposer_id_seance(identifiant: str) -> tuple[int, int]:
     """Inverse de `id_seance` : renvoie `(besoin_id, rang)`.
 
-    Seuls des chiffres décimaux ASCII sont admis de part et d'autre du tiret :
-    `isdigit()` accepterait « ² » ou des chiffres d'autres écritures, puis
-    `int()` lèverait une `ValueError` brute. Tout autre texte est une
+    Seuls des chiffres décimaux ASCII sont admis de part et d'autre du tiret,
+    au plus `_CHIFFRES_MAX` chacun : `isdigit()` accepterait « ² » ou des
+    chiffres d'autres écritures, et `int()` refuse plus de 4 300 chiffres ; les
+    deux lèveraient une `ValueError` brute. Tout autre texte est une
     `ErreurDonneesInvalides` qui nomme l'identifiant.
     """
     besoin, _, rang = str(identifiant).partition("-")
-    if not all(partie.isascii() and partie.isdecimal() for partie in (besoin, rang)):
+    if not all(
+        partie.isascii() and partie.isdecimal() and len(partie) <= _CHIFFRES_MAX
+        for partie in (besoin, rang)
+    ):
         raise ErreurDonneesInvalides(
             f"Identifiant de séance invalide : {identifiant!r} (attendu « <besoin>-<rang> », "
             "deux nombres entiers)."

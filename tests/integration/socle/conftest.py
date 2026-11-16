@@ -15,6 +15,7 @@ Les tests de cas limites portent le marqueur `cas_limite` et une docstring
 from __future__ import annotations
 
 import os
+import socket
 import stat
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -34,6 +35,17 @@ def lanceur() -> CliRunner:
 
 
 @pytest.fixture
+def port_libre(monkeypatch: pytest.MonkeyPatch) -> int:
+    """EDT_PORT réglé sur un port libre du poste : doctor n'avertit pas d'un port occupé."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as prise:
+        prise.bind(("127.0.0.1", 0))
+        port = prise.getsockname()[1]
+    monkeypatch.setenv("EDT_HOST", "127.0.0.1")
+    monkeypatch.setenv("EDT_PORT", str(port))
+    return port
+
+
+@pytest.fixture
 def lecture_seule():
     """Contexte : le fichier est en lecture seule le temps du bloc (droits rétablis ensuite)."""
 
@@ -41,6 +53,12 @@ def lecture_seule():
     def _lecture_seule(chemin: Path) -> Iterator[Path]:
         os.chmod(chemin, stat.S_IREAD)
         try:
+            # Un compte administrateur (root dans un conteneur) ignore ces droits : le test
+            # croirait éprouver la lecture seule sans qu'elle s'applique.
+            assert not os.access(chemin, os.W_OK), (
+                f"{chemin} reste inscriptible malgré la lecture seule (compte administrateur ?) : "
+                "lancer les tests avec un compte ordinaire"
+            )
             yield chemin
         finally:
             os.chmod(chemin, stat.S_IWRITE | stat.S_IREAD)

@@ -7,6 +7,8 @@ ancienne version du code, puis vérifient que rien ne se déclare « prêt » :
 
 from __future__ import annotations
 
+import contextlib
+
 import pytest
 from tests.outils.socle.schema import (
     COLONNE_ABSENTE,
@@ -42,6 +44,37 @@ def test_base_a_jour_sans_ecart(base):
     assert etat.ecarts_schema == ()
 
 
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("nb_connexions", [1, 2, 3, 4, 5])
+def test_une_remise_a_zero_avec_plusieurs_connexions_ouvertes_ne_cree_aucun_faux_ecart(
+    base, aujourdhui, nb_connexions
+):
+    """Cas : la base est remise à zéro (chargement d'un jeu depuis l'écran) dans un serveur
+    dont le groupe tient plusieurs connexions, ouvertes par des calculs et des pages.
+
+    Risque : la connexion qui a supprimé les tables garde en mémoire un schéma sans elles ;
+    une autre les recrée ; les PRAGMA de réflexion (`index_list`) ne relisent pas le schéma
+    et la croient vide : « table annee_scolaire : unicité (libelle) absente de la base »,
+    chargement refusé sur une base que la même opération vient de vider. Sans correctif,
+    l'écart apparaît avec trois connexions dans le groupe.
+    """
+    moteur = obtenir_moteur()
+    with contextlib.ExitStack() as pile:
+        connexions = [pile.enter_context(moteur.connect()) for _ in range(nb_connexions)]
+        for connexion in connexions:
+            connexion.exec_driver_sql("SELECT count(*) FROM annee_scolaire").all()
+
+    initialiser_base(reset=True, aujourdhui=aujourdhui)
+
+    assert ecarts_schema(moteur) == []
+
+
+def test_le_message_du_schema_perime_ne_dit_rien_modifie_que_si_c_est_garanti():
+    """« Rien n'a été modifié » est faux après une remise à zéro : il n'est dit que sur demande."""
+    assert "Rien n'a été modifié" not in str(ErreurSchemaPerime(["écart"]))
+    assert "Rien n'a été modifié" in str(ErreurSchemaPerime(["écart"], rien_modifie=True))
+
+
 def test_colonne_retiree_du_modele_signalee_en_trop(base):
     ajouter_colonne("besoin", "ancien_champ VARCHAR(10)")
 
@@ -72,7 +105,7 @@ def test_type_et_caractere_obligatoire_compares_mais_pas_la_longueur(base):
 
 
 def test_valeurs_d_une_enumeration_comparees(base):
-    # La base date d'avant l'ajout de « apres_midi » au modèle, et connaît encore « soir ».
+    # La base ne connaît pas « apres_midi », valeur du modèle, et connaît « soir », qu'il n'a pas.
     recreer_table(
         "creneau",
         definitions={
@@ -89,12 +122,12 @@ def test_valeurs_d_une_enumeration_comparees(base):
 
 @pytest.mark.cas_limite
 def test_un_index_unique_partiel_absent_est_un_ecart(base):
-    """Cas : la base date d'avant l'index unique partiel « une seule version active par semestre ».
+    """Cas : la base n'a pas l'index unique partiel « une seule version active par semestre ».
 
-    Risque : `verifier-schema` disait « à jour », deux versions pouvaient être actives et
-    l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma.
+    Risque : `verifier-schema` dirait « à jour », deux versions pourraient être actives et
+    l'instantané en choisirait une au hasard ; l'index absent doit être un écart de schéma.
     """
-    # Base créée avant l'index qui garantit une seule version active par semestre.
+    # Base sans l'index qui garantit une seule version active par semestre.
     with obtenir_moteur().begin() as connexion:
         connexion.exec_driver_sql("DROP INDEX uq_version_edt_active_par_semestre")
 

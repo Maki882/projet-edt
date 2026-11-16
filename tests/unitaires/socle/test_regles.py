@@ -1,8 +1,8 @@
 """Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution.
 
-Les cas de précédence des jours sont ceux de `docs/regles-personnalisees.md`
-(§ 1.3) : standard, groupe qui ferme, groupe qui ouvre le samedi, enseignant
-sans règle, deux lignées qui se croisent.
+Les cas de précédence des jours sont ceux de `docs/regles-personnalisees.md` :
+standard, groupe qui ferme, groupe qui ouvre le samedi, enseignant sans règle,
+deux lignées qui se croisent.
 """
 
 from __future__ import annotations
@@ -109,7 +109,7 @@ def test_regles_de_base_et_description_du_catalogue():
 
 
 def test_registre_des_implementations(monkeypatch):
-    # Registres vierges pour le test : les lots solveur et vérificateur remplissent les vrais.
+    # Registres vierges pour le test : le solveur et le vérificateur remplissent les vrais.
     import edt.domaine.regles as module_regles
 
     monkeypatch.setattr(module_regles, "REGISTRES", {"solveur": {}, "verificateur": {}})
@@ -583,9 +583,6 @@ def test_standard_sans_regle(etab):
     assert instantane.jours_travailles == frozenset(range(5))
     assert reglages.jours_de("2-1").jours_permis() == frozenset(range(5))
     assert reglages.jours_de("3-1").jours_permis() == frozenset(range(6))  # TP samedi autorisé
-    assert reglages.jours_de("2-1").entorses(SAMEDI) == (
-        pytest.approx(reglages.jours_de("2-1").entorses(SAMEDI)[0]),
-    )
     (source,) = reglages.jours_de("2-1").entorses(SAMEDI)
     assert source.est_standard and source.contrainte is CodeContrainte.JOURS
     assert reglages.jours_de("3-1").entorses(SAMEDI) == ()
@@ -863,12 +860,12 @@ def test_la_regle_resolue_garde_sa_periode_datee(jeu_minimal):
 
 
 # --------------------------------------------------------------------------- #
-# Corrections de la revue : validations, réglages datés, couche datée
+# Validations, réglages datés, couche datée
 # --------------------------------------------------------------------------- #
 
 
 def test_parmi_mixte_et_casse_des_choix():
-    # « mardi » et « mardi matin » : le jour entier absorbe sa demi-journée (plus de TypeError).
+    # « mardi » et « mardi matin » : le jour entier absorbe sa demi-journée, sans TypeError.
     valeurs = valider_parametres(
         TypeRegle.JOURNEES_LIBRES, {"unite": "journee", "parmi": ["mardi", "mardi matin", "lundi"]}
     )
@@ -1124,8 +1121,10 @@ def test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes(etab,
     """Cas : la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne
     convient au TD.
 
-    Risque : `jours_permis()` vide sans un mot ; la pré-vérification ne savait dire que « la
+    Risque : `jours_permis()` vide sans un mot ; la pré-vérification ne saurait dire que « la
     grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles.
+    Inversement, un avertissement par séance noierait le journal : un seul par ensemble de
+    règles, qui compte et cite les séances.
     """
     etab.regle(TypeRegle.JOURS_TRAVAILLES, groupe_portee(etab, 2), {"jours": ["lundi"]})
     etab.regle(TypeRegle.JOURS_TRAVAILLES, enseignant_portee(etab, 1), {"jours": ["mardi"]})
@@ -1136,6 +1135,10 @@ def test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes(etab,
     assert jours.jours_permis() == frozenset()
     assert [r.code for r in jours.regles_incompatibles] == ["R001", "R002"]
     assert "2-1" in caplog.text and "R001, R002" in caplog.text
+    avertissements = [r for r in caplog.records if "sans aucun jour permis" in r.getMessage()]
+    seances_sans_jour = [s for s, j in reglages.jours.items() if j.regles_incompatibles]
+    assert len(seances_sans_jour) > 1 and len(avertissements) == 1
+    assert avertissements[0].getMessage().startswith(f"{len(seances_sans_jour)} séance(s)")
     assert reglages.jours_de("4-1").regles_incompatibles == ()  # TD de A1-G2 par Mme Roux
 
 
@@ -1144,7 +1147,7 @@ def test_une_regle_sans_heures_a_une_phrase_ou_une_erreur_nommee_jamais_une_exce
     """Cas : une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause
     libre validée sans paramètres globaux.
 
-    Risque : `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondait
+    Risque : `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondrait
     500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur
     nomme le champ.
     """
@@ -1178,8 +1181,8 @@ def test_des_salles_homonymes_sur_deux_campus_sont_toutes_resolues():
     """Cas : deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle
     SALLES qui cite « N105 ».
 
-    Risque : un dictionnaire code → identifiant n'en gardait qu'une : le solveur imposait la
-    mauvaise salle et le vérificateur signalait « en N105, hors des salles imposées (N105) ».
+    Risque : un dictionnaire code → identifiant n'en garderait qu'une : le solveur imposerait la
+    mauvaise salle et le vérificateur signalerait « en N105, hors des salles imposées (N105) ».
     """
     valeurs = valeurs_resolues(
         TypeRegle.SALLES,

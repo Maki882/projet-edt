@@ -208,7 +208,7 @@ def test_regle_salles_avec_salles_homonymes_sur_deux_campus(jeu_minimal, session
     """Cas : une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la
     classe A1-G1.
 
-    Risque : la règle résolue ne visait qu'une des deux salles, au hasard de l'ordre de
+    Risque : la règle résolue ne viserait qu'une des deux salles, au hasard de l'ordre de
     lecture : résultat faux sans message ; les deux identifiants doivent être retenus.
     """
     ndc = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
@@ -234,7 +234,7 @@ def test_deux_versions_actives_sont_refusees_et_l_index_absent_est_un_ecart(jeu_
     """Cas : base créée sans l'index unique partiel « une version active par semestre » ; deux
     versions ont été activées.
 
-    Risque : l'instantané prenait la première ligne : verrous repris d'une version arbitraire,
+    Risque : l'instantané prendrait la première ligne : verrous repris d'une version arbitraire,
     affichage d'une version et calcul sur l'autre, sans message.
     """
     with obtenir_moteur().begin() as connexion:
@@ -280,7 +280,18 @@ def test_un_besoin_sans_groupe_est_signale_dans_l_instantane(jeu_minimal, sessio
 @pytest.mark.cas_limite
 @pytest.mark.parametrize(
     "identifiant",
-    ["1\u00b2-1", "12-\u00b2", "\u0661\u0662-3", "12-", "-3", "12-3-4", "douze", " 12-3"],
+    [
+        "1\u00b2-1",
+        "12-\u00b2",
+        "\u0661\u0662-3",
+        "12-",
+        "-3",
+        "12-3-4",
+        "douze",
+        " 12-3",
+        "9" * 5000 + "-1",
+        "1-" + "9" * 20,
+    ],
     ids=[
         "exposant-besoin",
         "exposant-rang",
@@ -290,16 +301,20 @@ def test_un_besoin_sans_groupe_est_signale_dans_l_instantane(jeu_minimal, sessio
         "trois-parties",
         "texte",
         "espace",
+        "5000-chiffres",
+        "rang-trop-long",
     ],
 )
 def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier(identifiant):
     """Cas : un identifiant de séance venu d'une adresse ou d'un fichier porte un chiffre
-    Unicode (« ² », chiffres d'une autre écriture) ou une forme bancale.
+    Unicode (« ² », chiffres d'une autre écriture), une forme bancale ou des milliers de
+    chiffres.
 
-    Risque : `isdigit()` acceptait « ² » puis `int()` levait une `ValueError` brute (500 / code
-    2) ; l'erreur doit être métier et nommer l'identifiant (cas transmis par le lot vérificateur).
+    Risque : `isdigit()` accepterait « ² », et `int()` lèverait une `ValueError` brute pour
+    ce chiffre comme au-delà de 4 300 chiffres (500 / code 2) ; l'erreur doit être métier
+    et nommer l'identifiant.
     """
     with pytest.raises(ErreurDonneesInvalides) as capture:
         decomposer_id_seance(identifiant)
-    assert repr(identifiant) in str(capture.value)
+    assert repr(identifiant)[:60] in str(capture.value)
     assert decomposer_id_seance("12-3") == (12, 3)

@@ -1,4 +1,4 @@
-"""Aides du lot socle pour simuler un schéma périmé (base créée par une ancienne version du code)."""
+"""Aides pour simuler un schéma périmé (base créée par une version précédente du code)."""
 
 from __future__ import annotations
 

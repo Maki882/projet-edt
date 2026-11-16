@@ -18,7 +18,7 @@ Règles de suppression (clés étrangères) :
 - **CASCADE** pour ce qui appartient à son parent (semestres d'une année,
   groupes enfants, lignes d'association d'un besoin, séances d'une version) ;
 - **NO ACTION** (suppression refusée par la base) pour ce qui est référencé
-  par une demande : on ne modifie jamais un besoin en silence. Supprimer un
+  par une demande : un besoin n'est jamais modifié en silence. Supprimer un
   groupe, un enseignant, une matière ou une salle imposée encore utilisés par
   un besoin est donc refusé ;
 - **SET NULL** pour une salle affectée à une séance déjà placée : la séance
@@ -595,10 +595,10 @@ class Indisponibilite(Provenance, Base):
     )
     motif: Mapped[str | None] = mapped_column(String(255), default=None, comment="Motif affiché")
     dure: Mapped[bool] = mapped_column(
-        Boolean, default=True, comment="Contrainte dure (toujours vrai en V1)"
+        Boolean, default=True, comment="Contrainte dure (oui par défaut, et toujours à la saisie)"
     )
     poids: Mapped[int] = mapped_column(
-        Integer, default=0, comment="Poids de la préférence (prévu pour les versions suivantes)"
+        Integer, default=0, comment="Poids de la préférence (non utilisé par le calcul)"
     )
 
     enseignant: Mapped[Enseignant | None] = relationship()
