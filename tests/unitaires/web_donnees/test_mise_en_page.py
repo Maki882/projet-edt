@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import logging
 
+import pytest
+from jinja2 import BaseLoader, DictLoader, TemplateNotFound
+
 from edt.web.gabarits import gabarits
 from edt.web.menu import (
     GROUPE_JEUX,
@@ -69,12 +72,54 @@ def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
     assert ONGLET_A_TRAITER not in [onglet.titre for onglet in menu]
 
 
-def test_blocs_styles_et_scripts_du_gabarit_de_base():
-    enfant = gabarits.env.from_string(
-        '{% extends "base.html" %}'
-        '{% block styles %}<link rel="stylesheet" href="/static/ecran.css">{% endblock %}'
-        '{% block scripts %}<script src="/static/ecran.js"></script>{% endblock %}'
+PANNEAU = "assistant/_panneau.html"
+ENFANT = (
+    '{% extends "base.html" %}'
+    '{% block styles %}<link rel="stylesheet" href="/static/ecran.css">{% endblock %}'
+    '{% block scripts %}<script src="/static/ecran.js"></script>{% endblock %}'
+)
+
+
+class _SansPanneau(BaseLoader):
+    """Les gabarits de l'application, moins le panneau de l'assistant."""
+
+    def get_source(self, environment, template):
+        if template == PANNEAU:
+            raise TemplateNotFound(template)
+        return gabarits.env.loader.get_source(environment, template)
+
+
+class _AvecPanneau(BaseLoader):
+    """Les gabarits de l'application, avec un panneau de l'assistant d'essai."""
+
+    def get_source(self, environment, template):
+        if template == PANNEAU:
+            return DictLoader({PANNEAU: '<aside id="assistant"></aside>'}).get_source(
+                environment, template
+            )
+        return gabarits.env.loader.get_source(environment, template)
+
+
+def _rendre(chargeur: BaseLoader) -> str:
+    environnement = gabarits.env.overlay(loader=chargeur, cache_size=0)
+    return environnement.from_string(ENFANT).render(
+        menu=(), chemin="/", messages=[], id_requete=None
     )
-    page = enfant.render(menu=(), chemin="/", messages=[], id_requete=None)
+
+
+def test_blocs_styles_et_scripts_du_gabarit_de_base_et_panneau_de_l_assistant():
+    page = _rendre(_AvecPanneau())
     assert page.index("/static/ecran.css") < page.index("</head>")
-    assert page.index("/static/ecran.js") > page.index('id="assistant"')
+    # Le panneau est inclus après le pied de page, avant les scripts propres à l'écran.
+    assert page.index("</footer>") < page.index('<aside id="assistant">')
+    assert page.index('<aside id="assistant">') < page.index("/static/ecran.js")
+
+
+@pytest.mark.cas_limite
+def test_gabarit_de_base_sans_panneau_de_l_assistant():
+    """Cas : le gabarit du panneau de l'assistant est absent (fonction retirée du déploiement).
+
+    Risque : toutes les pages en erreur 500 « gabarit introuvable ».
+    """
+    page = _rendre(_SansPanneau())
+    assert "</footer>" in page and "/static/ecran.js" in page and 'id="assistant"' not in page

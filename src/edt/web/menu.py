@@ -235,7 +235,11 @@ def construire_menu(entrees: Iterable[EntreeMenu]) -> tuple[Onglet, ...]:
 
 
 def onglet_actif(menu: Iterable[Onglet], chemin: str) -> Onglet | None:
-    """Onglet de la page affichée, ou `None` (page d'erreur, page hors menu)."""
+    """Onglet de la page affichée, ou `None` (page d'erreur, page hors menu).
+
+    Fonction globale des gabarits : `base.html` en tire l'onglet en surbrillance
+    et la sous-navigation.
+    """
     for onglet in menu:
         if onglet.est_actif(chemin):
             return onglet

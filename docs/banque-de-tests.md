@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'intégration.
+Le catalogue compte 371 cas : 214 cas en tests unitaires et 157 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
 | `exploitation` | 40 | 32 |
-| `socle` | 56 | 28 |
+| `socle` | 59 | 32 |
 | `solveur` | 19 | 16 |
 | `synthese` | 28 | 5 |
 | `verification` | 25 | 0 |
-| `web_donnees` | 1 | 36 |
-| `web_edt` | 1 | 30 |
-| **Total** | **209** | **152** |
+| `web_donnees` | 2 | 36 |
+| `web_edt` | 2 | 31 |
+| **Total** | **214** | **157** |
 
-### Tests unitaires (209 cas)
+### Tests unitaires (214 cas)
 
 #### `echange` (39 cas)
 
@@ -219,7 +219,7 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (56 cas)
+#### `socle` (59 cas)
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
@@ -336,6 +336,14 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 | Une remise a zero avec plusieurs connexions ouvertes ne cree aucun faux ecart | la base est remise à zéro (chargement d'un jeu depuis l'écran) dans un serveur dont le groupe tient plusieurs connexions, ouvertes par des calculs et des pages. | la connexion qui a supprimé les tables garde en mémoire un schéma sans elles ; une autre les recrée ; les PRAGMA de réflexion (`index_list`) ne relisent pas le schéma et la croient vide : « table annee_scolaire : unicité (libelle) absente de la base », chargement refusé sur une base que la même opération vient de vider. Sans correctif, l'écart apparaît avec trois connexions dans le groupe. |
 | Un index unique partiel absent est un ecart | la base n'a pas l'index unique partiel « une seule version active par semestre ». | `verifier-schema` dirait « à jour », deux versions pourraient être actives et l'instantané en choisirait une au hasard ; l'index absent doit être un écart de schéma. |
 | Une unicite absente ou en trop est un ecart | une table recréée par une ancienne version sans l'unicité du modèle (ou avec une autre). | doublons acceptés (ou refusés à tort) sans que rien ne signale le schéma périmé. |
+
+[`tests/unitaires/socle/test_web.py`](../tests/unitaires/socle/test_web.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Redirection htmx vers une adresse non ascii | une action envoyée par HTMX revient à une adresse dont la recherche contient « é » ou « 日 » (champ caché `retour`). | l'en-tête `HX-Redirect` n'accepte que le latin-1 : page 500 et écriture valide annulée au lieu de la redirection. |
+| Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
+| Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script. |
 
 #### `solveur` (19 cas)
 
@@ -530,7 +538,13 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 | Identifiant de seance illisible refuse proprement | un placement ou une séance datée porte un identifiant de séance aux chiffres non ASCII (« ²-1 », « ٣-1 »). | `str.isdigit` les accepte mais `int` lève `ValueError` : erreur 500 ou trace au lieu d'une anomalie ou d'une erreur métier. |
 | Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import). | `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui décomposent les identifiants (anomalies de l'emploi du temps, instanciation). |
 
-#### `web_donnees` (1 cas)
+#### `web_donnees` (2 cas)
+
+[`tests/unitaires/web_donnees/test_mise_en_page.py`](../tests/unitaires/web_donnees/test_mise_en_page.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Gabarit de base sans panneau de l assistant | le gabarit du panneau de l'assistant est absent (fonction retirée du déploiement). | toutes les pages en erreur 500 « gabarit introuvable ». |
 
 [`tests/unitaires/web_donnees/test_saisies_extremes.py`](../tests/unitaires/web_donnees/test_saisies_extremes.py)
 
@@ -538,7 +552,13 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (1 cas)
+#### `web_edt` (2 cas)
+
+[`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Le schema n est recompare au modele que s il change | l'accueil et `/sante` diagnostiquent la base à chaque affichage ; puis un autre processus modifie une table. | la comparaison complète du schéma au modèle refaite à chaque page (des dizaines de millisecondes), ou, mémorisée, un schéma périmé qui ne serait plus signalé. |
 
 [`tests/unitaires/web_edt/test_cas_limites.py`](../tests/unitaires/web_edt/test_cas_limites.py)
 
@@ -546,7 +566,7 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 |---|---|---|
 | Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
 
-### Tests d'intégration (152 cas)
+### Tests d'intégration (157 cas)
 
 #### `echange` (5 cas)
 
@@ -609,7 +629,7 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 | Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
 | Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
-#### `socle` (28 cas)
+#### `socle` (32 cas)
 
 [`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
 
@@ -662,13 +682,17 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Cycle de vie du serveur clot les calculs interrompus et journalise | démarrage puis arrêt du serveur sur une base prête, avec un calcul resté « en cours » depuis un processus disparu. | le cycle de vie n'était testé nulle part : journalisation du démarrage, clôture des calculs abandonnés et message d'arrêt pouvaient casser sans signal. |
+| Cycle de vie du serveur clot les calculs interrompus et journalise | démarrage puis arrêt du serveur sur une base prête, avec un calcul resté « en cours » depuis un processus disparu. | journalisation du démarrage, clôture des calculs abandonnés et message d'arrêt cassés sans signal. |
+| Une panne de preparation n empeche pas de servir | la préparation des premières pages au démarrage échoue (gabarit illisible, page qui lève une exception). | démarrage en échec, ou tâche de fond morte en silence ; la panne doit être journalisée et le serveur servir normalement. |
 | Cycle de vie sans base initialisee avertit sans echouer | le serveur démarre avant `init-db` (base vide). | démarrage en échec ou silence ; il doit démarrer et dire quoi lancer. |
 | Le serveur demarre et repond base indisponible malgre une base corrompue | `edt.db` a été tronqué ou remplacé (« file is not a database ») avant le démarrage du serveur. | « Application startup failed », cinq redémarrages puis 502 pour tout le monde et `/sante` jamais servi ; une fois servi, 500 « erreur inattendue » car `sqlite3.DatabaseError` n'est pas une `OperationalError`. |
 | Une route sur une base corrompue repond 503 avec le remede | une page qui écrit dans la base alors que le fichier n'est plus une base SQLite. | 500 « erreur inattendue » au lieu du 503 « base indisponible » qui nomme le remède. |
-| Le serveur demarre malgre une base verrouillee et reporte la cloture des calculs | un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné attend d'être clos. | la clôture (une écriture) faisait échouer le démarrage ; elle doit être reportée (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ». |
+| Le serveur demarre malgre une base verrouillee et reporte la cloture des calculs | un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné attend d'être clos. | la clôture (une écriture) fait échouer le démarrage ; elle doit être reportée (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ». |
 | Une panne du pilote de base est un 503 qui dit quoi faire | une route reçoit du pilote SQLite une erreur de verrou, de table absente ou de fichier illisible. | page 500 sans remède ; chaque cause doit donner un 503 avec sa marche à suivre. |
 | Une base en lecture seule ou un disque plein sont nommes | la base est en lecture seule (fichier copié en root) ou le disque est plein. | 503 générique « réessayer » : le travail saisi est perdu et rien ne nomme les droits ni l'espace disque. |
+| Base non initialisee une trace puis une ligne | la base n'est pas initialisée et plusieurs pages répondent 503 à la suite. | une trace complète par page, qui noie le journal (huit traces en une demi-seconde). |
+| Une erreur de programmation du pilote est une page 500 | le pilote de base signale une erreur de programmation (paramètres faux, curseur fermé) : un défaut du code, pas une panne de la base. | page 503 « réessayer dans quelques instants », conseil inopérant, au lieu de la page 500 qui donne la référence à communiquer. |
+| Un envoi trop volumineux donne une page qui dit quoi faire | l'application refuse un envoi trop volumineux (413). | page générique « Requête refusée » qui ne dit ni la cause ni le remède. |
 | Sante signale une base en lecture seule | `edt.db` est en lecture seule (droits), le déploiement a réussi. | `/sante` vert et supervision rassurée alors qu'aucune écriture n'est possible. |
 | Head repond comme get sans corps | la supervision (sonde, `curl -I`) envoie HEAD / et HEAD /sante. | 405 « Action non permise » partout : la supervision conclut à une panne permanente. |
 | Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
@@ -782,7 +806,7 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (30 cas)
+#### `web_edt` (31 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -795,7 +819,8 @@ Le catalogue compte 361 cas : 209 cas en tests unitaires et 152 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Base qui refuse l ecriture signalee sur l accueil et sante | la base refuse l'écriture (fichier copié en root, disque plein) alors qu'elle se lit. | accueil muet et `/sante` vert : la supervision est rassurée et chaque saisie de la journée échoue ensuite. |
-| Base occupee par une ecriture n est pas une panne | un autre processus tient le verrou d'écriture (calcul, import, commande) pendant que la supervision interroge `/sante` et qu'on ouvre l'accueil. | `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai d'attente sur verrou (dix secondes) ; l'écriture d'essai doit être sautée, sans attente. |
+| Base occupee par une ecriture n est pas une panne | un autre processus tient le verrou d'écriture (calcul, import, commande) pendant que la supervision interroge `/sante` et que l'accueil est ouvert. | `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai d'attente sur verrou (`DELAI_VERROU_MS`) ; l'écriture d'essai doit être sautée, sans attente. |
+| Le demarrage du serveur prepare l accueil | premier visiteur de l'accueil juste après le démarrage du serveur. | il attend la vérification de la version active et la compilation des gabarits (plusieurs secondes sur un serveur modeste) que la préparation du démarrage a déjà faites. |
 
 [`tests/integration/web_edt/test_calculs.py`](../tests/integration/web_edt/test_calculs.py)
 

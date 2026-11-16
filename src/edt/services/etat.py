@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 
 from sqlalchemy import Engine, func, select, text
@@ -20,6 +21,10 @@ from edt.db.initialisation import ecarts_schema, tables_manquantes
 from edt.db.moteur import expliquer_erreur_base, obtenir_moteur
 
 journal = logging.getLogger(__name__)
+
+_verrou_schema = threading.Lock()
+_ecarts_connus: dict[tuple[str, int], tuple[str, ...]] = {}
+"""Écarts de schéma déjà calculés, par base et version du schéma SQLite (`_ecarts_du_schema`)."""
 
 ENTITES_COMPTEES: tuple[tuple[str, type], ...] = (
     ("Campus", m.Campus),
@@ -35,7 +40,7 @@ ENTITES_COMPTEES: tuple[tuple[str, type], ...] = (
     ("Versions d'emploi du temps", m.VersionEdt),
     ("Calculs", m.Calcul),
 )
-"""Entités affichées sur la page d'accueil, avec leur libellé."""
+"""Entités comptées par le diagnostic (`EtatBase.compteurs`), avec leur libellé."""
 
 
 @dataclass(frozen=True)
@@ -123,18 +128,52 @@ def verifier_ecriture(moteur: Engine) -> tuple[bool | None, str | None]:
     return True, None
 
 
+def _ecarts_du_schema(moteur: Engine, version_schema: int | None) -> tuple[str, ...]:
+    """Écarts entre les tables et le modèle, recalculés seulement quand le schéma change.
+
+    Comparer chaque table au modèle (`ecarts_schema`) coûte des dizaines de
+    millisecondes, et l'accueil comme `/sante` le redemandent à chaque
+    affichage. SQLite incrémente `PRAGMA schema_version` à chaque création,
+    suppression ou modification de table (`init-db`, remise à zéro, `ALTER
+    TABLE` d'un autre processus) : le résultat est donc gardé par base et par
+    version du schéma. Limite : une base remplacée par un autre fichier au
+    même emplacement et au même numéro de version du schéma garderait les
+    écarts de l'ancienne jusqu'au redémarrage du serveur.
+    """
+    if version_schema is None:
+        return tuple(ecarts_schema(moteur))
+    cle = (str(moteur.url), version_schema)
+    with _verrou_schema:
+        connus = _ecarts_connus.get(cle)
+    if connus is None:
+        connus = tuple(ecarts_schema(moteur))
+        with _verrou_schema:
+            if len(_ecarts_connus) >= 32:
+                _ecarts_connus.clear()
+            _ecarts_connus[cle] = connus
+    return connus
+
+
 def diagnostiquer_base(moteur: Engine | None = None) -> EtatBase:
-    """Examine la base configurée sans jamais lever : toute panne est décrite dans le résultat."""
+    """Examine la base configurée sans jamais lever : toute panne est décrite dans le résultat.
+
+    L'écriture d'essai (`verifier_ecriture`, moins d'une milliseconde) est
+    refaite à chaque appel : c'est elle qui découvre une base devenue en
+    lecture seule ou un disque plein. La comparaison du schéma au modèle,
+    elle, n'est refaite que si le schéma a changé (`_ecarts_du_schema`).
+    """
     moteur = moteur or obtenir_moteur()
     url = url_affichable(moteur.url)
     try:
         with moteur.connect() as connexion:
             connexion.execute(text("SELECT 1"))
             mode_journal = None
+            version_schema = None
             if moteur.dialect.name == "sqlite":
                 mode_journal = connexion.execute(text("PRAGMA journal_mode")).scalar()
+                version_schema = int(connexion.execute(text("PRAGMA schema_version")).scalar())
         manquantes = tuple(tables_manquantes(moteur))
-        ecarts = tuple(ecarts_schema(moteur))
+        ecarts = _ecarts_du_schema(moteur, version_schema)
         initialisee = not manquantes and not ecarts
         inscriptible, ecriture_impossible = (
             verifier_ecriture(moteur) if moteur.dialect.name == "sqlite" else (None, None)
