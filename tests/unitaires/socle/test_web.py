@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import sys
 import types
 
@@ -12,7 +14,7 @@ from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
 from edt.erreurs import ErreurConfiguration
 from edt.web import app as module_app
 from edt.web.gabarits import DOSSIER_STATIQUE, rediriger
-from edt.web.intergiciels import est_silencieux
+from edt.web.intergiciels import IntergicielJournal, est_silencieux
 
 
 def test_module_de_routes_sans_routeur_refuse(base, monkeypatch):
@@ -100,6 +102,34 @@ def test_suivi_d_un_calcul_journalise_en_debug(chemin, statut, silencieux):
     Risque : une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements.
     """
     assert est_silencieux(chemin, statut) is silencieux
+
+
+@pytest.mark.cas_limite
+def test_requete_annulee_par_l_arret_du_serveur_n_est_pas_journalisee_en_500(caplog):
+    """Cas : le serveur s'arrête pendant qu'une page se prépare (préparation des premières
+    pages au démarrage, ou visiteur en cours) : la requête est annulée (`CancelledError`).
+
+    Risque : le journal note « GET / -> 500 », une erreur qui n'a pas eu lieu, sans trace ni
+    cause ; l'exploitant cherche une panne qui n'existe pas.
+    """
+
+    async def page_annulee(scope, receive, send):
+        raise asyncio.CancelledError
+
+    async def recevoir():
+        return {"type": "http.request"}
+
+    async def envoyer(message):
+        raise AssertionError("aucune réponse ne doit partir")
+
+    intergiciel = IntergicielJournal(page_annulee)
+    portee = {"type": "http", "method": "GET", "path": "/", "headers": []}
+    caplog.set_level(logging.DEBUG, logger="edt.web.requetes")
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(intergiciel(portee, recevoir, envoyer))
+    lignes = [r.getMessage() for r in caplog.records if r.name == "edt.web.requetes"]
+    assert lignes and not any("500" in ligne for ligne in lignes), lignes
+    assert any("GET / -> interrompue" in ligne for ligne in lignes), lignes
 
 
 @pytest.mark.cas_limite

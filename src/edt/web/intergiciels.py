@@ -21,6 +21,7 @@ corps retiré.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -95,6 +96,7 @@ class IntergicielJournal:
         debut = time.perf_counter()
         statut = 500
         reponse_commencee = False
+        interrompue = False
 
         async def envoyer(message: Message) -> None:
             nonlocal statut, reponse_commencee
@@ -123,10 +125,28 @@ class IntergicielJournal:
                     ),
                 )
                 await reponse(scope, receive, envoyer)
+        except asyncio.CancelledError:
+            # Arrêt du serveur ou client parti : la requête est abandonnée, ce n'est pas une
+            # erreur 500 (aucune réponse d'erreur n'est partie).
+            interrompue = not reponse_commencee
+            raise
         finally:
             duree_ms = (time.perf_counter() - debut) * 1000
-            niveau = logging.DEBUG if est_silencieux(scope["path"], statut) else logging.INFO
-            journal.log(
-                niveau, "%s %s -> %d en %.0f ms", scope["method"], scope["path"], statut, duree_ms
-            )
+            if interrompue:
+                journal.info(
+                    "%s %s -> interrompue en %.0f ms (arrêt du serveur ou client parti)",
+                    scope["method"],
+                    scope["path"],
+                    duree_ms,
+                )
+            else:
+                niveau = logging.DEBUG if est_silencieux(scope["path"], statut) else logging.INFO
+                journal.log(
+                    niveau,
+                    "%s %s -> %d en %.0f ms",
+                    scope["method"],
+                    scope["path"],
+                    statut,
+                    duree_ms,
+                )
             contexte_requete.reset(jeton)
