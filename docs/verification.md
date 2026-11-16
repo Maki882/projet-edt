@@ -1,13 +1,16 @@
 # Vérificateur d'emploi du temps
 
-Ce module généralise le premier vérificateur de chevauchements de l'équipe
-(`verifier_conflits.py`, écrit par Hugo et fusionné par la PR n° 1). Son
-principe, ses règles d'unicité des salles, des enseignants et des classes, et
-ses scénarios de test (ressources distinctes, chaque ressource en conflit,
-jours distincts, séances contiguës, inclusion et égalité des intervalles,
-entrées invalides, identifiant dupliqué, planning vide) sont repris ici,
-transposés au modèle du semestre (`Instantane`), et étendus à tout le
-catalogue des contraintes.
+Ce document décrit le vérificateur d'emploi du temps : ses règles, la forme
+de ses anomalies, son algorithme, ses indicateurs, sa prise en compte des
+niveaux et des règles personnalisées, son service et sa commande. Il
+s'adresse aux développeurs.
+
+Le vérificateur part des règles d'unicité des salles, des enseignants et des
+groupes, avec leurs scénarios de test (ressources distinctes, chaque
+ressource en conflit, jours distincts, séances contiguës, inclusion et
+égalité des intervalles, entrées invalides, identifiant dupliqué, planning
+vide), et les étend à tout le catalogue des contraintes, sur le modèle du
+semestre (`Instantane`).
 
 Code : `src/edt/verification/` (vérificateur pur), `src/edt/services/verification.py`
 (service sur la base), `src/edt/commandes/verification.py` (commande
@@ -177,7 +180,8 @@ Les indisponibilités **datées** ne sont pas vérifiées sur la semaine type :
 sinon une salle fermée une semaine interdirait son créneau tout le semestre.
 L'occurrence qui tombe dessus est signalée par la couche datée, puis replacée
 ou mise « à programmer ». Les indisponibilités dont `dure` est faux
-(préférences des versions suivantes) sont ignorées dans les deux couches.
+(possibles seulement par import, colonne `dure` à « non ») sont ignorées
+dans les deux couches.
 
 ## Couche datée (`verifier_occurrences`)
 
@@ -389,9 +393,9 @@ demi-groupes.
 
 Le terme « trous » de l'objectif se compte en **créneaux libres**, semaine par
 semaine, comme le décrit le catalogue des préférences (`PREFERENCES` :
-« créneaux libres entre deux séances d'un groupe ») ; décision validée par
-l'équipe. En minutes, avec un poids de 10, il écraserait les trois autres
-termes. Les trous en minutes restent un indicateur d'affichage.
+« créneaux libres entre deux séances d'un groupe »). Raison : en minutes,
+avec un poids de 10, il écraserait les trois autres termes. Les trous en
+minutes restent un indicateur d'affichage.
 
 ## Niveaux des contraintes
 
@@ -438,10 +442,10 @@ entorse à une règle importante ou facultative n'invalide pas l'emploi du temps
 
 - `niveaux_du_calcul(parametres, contraintes_desactivees)` (pur) :
   `parametres["niveaux"]` (code → « necessaire », « important » ou
-  « facultatif », écrit par le lot solveur dans `Calcul.parametres`) passé
+  « facultatif », écrit par le service de génération dans `Calcul.parametres`) passé
   par `normaliser_niveaux` (codes absents : niveau par défaut), puis sans les
   `contraintes_desactivees` éventuellement enregistrées en plus ; à défaut,
-  calcul antérieur aux niveaux : `niveaux_depuis_desactivees` (niveaux par
+  calcul enregistré sans niveaux : `niveaux_depuis_desactivees` (niveaux par
   défaut sans les contraintes désactivées) ; à défaut, `niveaux_par_defaut()`.
   Des niveaux enregistrés illisibles lèvent `ErreurDonneesInvalides`.
 - `niveaux_de_version(session, version_id)` : ceux du calcul qui a produit
@@ -449,14 +453,15 @@ entorse à une règle importante ou facultative n'invalide pas l'emploi du temps
   prend les niveaux par défaut, comme une version générée dont le calcul a
   été supprimé (avec un avertissement dans le journal).
 
-Chaque résolution est journalisée en DEBUG avec son origine. Conséquence
-pour une version produite avant les niveaux sans contrainte désactivée : les
-contraintes importantes par défaut (`PAUSE`, `DEJEUNER`, `EQUIPEMENT`,
-`MAX_ENSEIGNANT`) y sont désormais des avertissements, plus des erreurs.
+Chaque résolution est journalisée en DEBUG avec son origine. Une version
+dont le calcul n'a enregistré ni niveaux ni contrainte désactivée est donc
+vérifiée aux niveaux par défaut : les entorses aux contraintes importantes
+par défaut (`PAUSE`, `DEJEUNER`, `EQUIPEMENT`, `MAX_ENSEIGNANT`) y sont des
+avertissements, pas des erreurs.
 
 ## Règles personnalisées (code `REGLE`)
 
-Conception : `docs/regles-personnalisees.md` (§ 2.2 et § 4.4). Les règles
+Catalogue et sémantique des types : [regles-personnalisees.md](regles-personnalisees.md). Les règles
 actives de l'année (`Instantane.regles`, déjà résolues) sont vérifiées par
 un vérificateur par type, déclaré dans le registre du domaine
 (`@enregistrer("verificateur", TypeRegle.X)`, vue `VERIFICATEURS`) :
@@ -549,7 +554,7 @@ leur vérification ne restreint aucune période.
 `niveaux_regles_de_version(session, version_id)` prend les règles
 **actuelles** (actives de l'année) et `niveaux_regles_du_calcul` (pur) leur
 donne un niveau d'après `calcul.parametres["regles"]` (liste `{id, code,
-type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
+type, portee, parametres, niveau, phrase}` écrite par le service de génération) :
 
 - calcul sans cette copie, ou version de référence : chaque règle à son niveau ;
 - règle copiée : le niveau choisi alors (`niveau` vide : non appliquée, ignorée) ;
@@ -557,8 +562,9 @@ type, portee, parametres, niveau, phrase}` écrite par le lot solveur) :
   (activation comprise) après le début du calcul, sinon ignorée (elle
   existait et n'a pas été appliquée) ;
 - règle copiée mais absente des règles actives (supprimée ou désactivée
-  depuis) : ignorée, et ses identifiants sont journalisés (INFO), pour qu'une
-  entorse d'hier qui n'est plus signalée s'explique.
+  depuis) : ignorée, et ses identifiants sont journalisés (INFO), pour
+  expliquer qu'une entorse signalée lors d'une vérification précédente ne le
+  soit plus.
 
 Indicateur : `entorses_par_regle`, nombre d'anomalies de chaque règle.
 
@@ -626,7 +632,7 @@ Cas limites, pour les trois fonctions :
   les ignorait toutes) : `ErreurDonneesInvalides` « Aucune contrainte à
   vérifier… » ; un rapport « valide » qui n'aurait rien vérifié tromperait ;
 - **niveaux enregistrés illisibles** (contrainte désactivée au code inconnu
-  dans un ancien calcul, copie des règles mal formée) :
+  dans le calcul, copie des règles mal formée) :
   `ErreurDonneesInvalides` qui nomme le calcul et la version, avec le message
   d'origine en détail ;
 - **version sans aucune séance datée** (`verifier_occurrences_version`) :
@@ -677,9 +683,10 @@ indicateurs (semaine type) et le verdict. Codes de sortie :
 
 ## Tests et banque des cas limites
 
-Les tests du lot sont dans `tests/unitaires/verification/` (vérificateur et services
-appelés par leurs fonctions Python) et `tests/integration/verification/` (commande
-`verifier` par la ligne de commande). Aides partagées :
+Les tests du vérificateur sont dans `tests/unitaires/verification/`
+(vérificateur et services appelés par leurs fonctions Python) et
+`tests/integration/verification/` (commande `verifier` par la ligne de
+commande). Aides partagées :
 
 - `tests/outils/verification/fabrique.py` : instantanés écrits à la main,
   sans base, pour le vérificateur pur (dates repères `MARDI_6_OCT`,
@@ -690,15 +697,18 @@ appelés par leurs fonctions Python) et `tests/integration/verification/` (comma
   `salle_n204_supprimee`, `salle_n204_orpheline`).
 
 Les tests des **cas limites** portent le marqueur `cas_limite` et une
-docstring « Cas : … Risque : … » ; `pytest -m cas_limite tests/unitaires/verification tests/integration/verification`
-les lance seuls. Un défaut qui relève d'un autre lot y reste en
-`xfail(strict=True)`, la raison nommant le lot et le fichier à corriger : le
-test échouera (XPASS) le jour de la correction, pour qu'on retire la marque.
+docstring « Cas : … Risque : … » ; ils sont listés dans le catalogue de
+[banque-de-tests.md](banque-de-tests.md).
+
+```sh
+python -m pytest tests/unitaires/verification tests/integration/verification
+python -m pytest -m cas_limite tests/unitaires/verification tests/integration/verification
+```
 
 ## Ajouter une règle
 
-1. Ajouter le code au catalogue (`src/edt/domaine/contraintes.py`), par PR,
-   et le décrire dans `docs/decisions.md`.
+1. Ajouter le code au catalogue (`src/edt/domaine/contraintes.py`) et le
+   décrire dans [decisions.md](decisions.md).
 2. L'implémenter dans le module qui correspond à sa forme :
    - porte sur une séance : une fonction `_ma_regle(ctx, element)` dans
      `regles_seance.py`, appelée par `verifier_seances` ;
@@ -718,5 +728,6 @@ test échouera (XPASS) le jour de la correction, pour qu'on retire la marque.
    fictif, séance imposée, contrainte désactivée), avec la fabrique
    `tests/outils/verification/fabrique.py` ; chaque cas limite porte le marqueur
    `cas_limite` et sa docstring « Cas : … Risque : … ».
-5. Implémenter la même règle dans le solveur, avec la même sémantique.
+5. Implémenter la même règle dans le solveur, avec la même sémantique
+   ([solveur.md](solveur.md), « Ajouter une contrainte »).
 6. Compléter le tableau des règles ci-dessus.
