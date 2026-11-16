@@ -22,6 +22,10 @@ import zipfile
 from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
+from openpyxl import Workbook
+from openpyxl.comments import Comment
+from openpyxl.styles import Alignment, Font, PatternFill
+
 from edt.echange.format import (
     ENTETES_DESCRIPTION,
     Feuille,
@@ -76,10 +80,6 @@ def archive_zip(contenu: Contenu, lisez_moi: Sequence[str]) -> bytes:
 
 def classeur_xlsx(contenu: Contenu, lisez_moi: Sequence[str]) -> bytes:
     """Classeur XLSX : onglet « Lisez-moi », puis un onglet par feuille."""
-    from openpyxl import Workbook
-    from openpyxl.comments import Comment
-    from openpyxl.styles import Alignment, Font, PatternFill
-
     gras = Font(bold=True)
     fond_obligatoire = PatternFill("solid", fgColor="DDE7F3")
     classeur = Workbook()

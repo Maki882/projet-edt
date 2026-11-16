@@ -55,6 +55,8 @@ from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any
 
+from openpyxl import load_workbook
+
 from edt.domaine.enumerations import Gravite
 from edt.echange.format import Colonne, Feuille, TypeColonne, est_lisez_moi
 from edt.echange.rapport import Apercu, Bilan, Signalement
@@ -364,8 +366,6 @@ def lire_xlsx(
     fichier: FichierEnvoye, signalements: list[Signalement], limites: Limites | None = None
 ) -> list[Tableau]:
     """Un tableau par onglet (l'onglet d'explications est sauté)."""
-    from openpyxl import load_workbook
-
     limites = limites if limites is not None else Limites()
     if not _archive_acceptable(fichier, MAX_MEMBRES_CLASSEUR, "Classeur Excel", signalements):
         return []
