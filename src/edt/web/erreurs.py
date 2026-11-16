@@ -209,7 +209,7 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     """Base inutilisable : occupée (opération en cours, verrou), non initialisée, corrompue,
     en lecture seule, sur un disque plein, ou inaccessible.
 
-    Pendant un chargement de jeu fictif ou une remise à zéro, les tables sont
+    Pendant un chargement d'établissement fictif ou une remise à zéro, les tables sont
     supprimées puis recréées : une requête qui tombe à ce moment-là reçoit
     « occupée, réessayer », pas le conseil d'initialiser la base. Un fichier
     qui n'est pas une base SQLite (`sqlite3.DatabaseError`, qui n'est pas une
@@ -232,7 +232,7 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
             titre="Base de données occupée",
             message=(
                 "La base de données est momentanément occupée par une autre opération "
-                "(chargement d'un jeu de données, remise à zéro ou calcul). Rien n'a été "
+                "(chargement d'un établissement fictif, remise à zéro ou calcul). Rien n'a été "
                 "modifié : réessayer dans quelques secondes."
             ),
         )
@@ -246,9 +246,10 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     titre = "Base de données indisponible"
     if "no such table" in cause:
         message = (
-            "La base de données n'est pas prête : elle n'est pas initialisée. La remettre à "
-            "zéro dans Données > Jeux de données, ou faire lancer « python -m edt init-db » "
-            "par l'administrateur du serveur, puis réessayer."
+            "La base de données n'est pas prête : elle n'est pas initialisée. Charger un "
+            "établissement fictif depuis l'onglet Données (la base est préparée au passage), "
+            "ou faire lancer « python -m edt init-db » par l'administrateur du serveur, puis "
+            "réessayer."
         )
     elif "not a database" in cause or "malformed" in cause:
         message = (
