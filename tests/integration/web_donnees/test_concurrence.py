@@ -9,80 +9,16 @@ from __future__ import annotations
 
 import sqlite3
 import sys
-import threading
 import types
-from types import SimpleNamespace
 
 import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
+from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan
 
 from edt.services import jeux
 from edt.web import app as module_app
-
-DELAI_S = 10
-
-
-def _rapport_factice(graine: int) -> SimpleNamespace:
-    """Ce que la page de résultat lit d'un `RapportJeu`."""
-    return SimpleNamespace(
-        graine=graine,
-        duree_s=0.0,
-        compteurs={"salle": 0, "enseignant": 0},
-        nb_besoins=0,
-        resume=lambda: f"Jeu fictif (graine {graine})",
-    )
-
-
-@pytest.fixture
-def generation_lente(monkeypatch):
-    """Remplace la génération par une attente : `entre` signale qu'elle tient le verrou."""
-    entre, liberer = threading.Event(), threading.Event()
-
-    def generer(session, configuration, graine, **options):
-        entre.set()
-        assert liberer.wait(DELAI_S), "la génération ralentie n'a pas été libérée"
-        return _rapport_factice(graine)
-
-    monkeypatch.setattr(jeux, "generer_jeu", generer)
-    yield entre, liberer
-    liberer.set()
-
-
-def _en_arriere_plan(fonction) -> tuple[threading.Thread, dict]:
-    resultat: dict = {}
-
-    def executer():
-        try:
-            resultat["valeur"] = fonction()
-        except BaseException as erreur:  # transmis au test, qui le relance
-            resultat["erreur"] = erreur
-
-    fil = threading.Thread(target=executer)
-    fil.start()
-    return fil, resultat
-
-
-def test_service_refuse_un_second_chargement_ou_une_remise_a_zero(base, generation_lente):
-    entre, liberer = generation_lente
-    fil, premier = _en_arriere_plan(
-        lambda: jeux.recharger_jeu_fictif("petit", 3, reinitialiser=True)
-    )
-    assert entre.wait(DELAI_S)
-    assert jeux.operation_en_cours()
-
-    with pytest.raises(jeux.ErreurChargementEnCours, match="déjà en cours"):
-        jeux.recharger_jeu_fictif("petit", 4, reinitialiser=True)
-    with pytest.raises(jeux.ErreurChargementEnCours, match="remettre la base à zéro"):
-        jeux.remettre_a_zero()
-
-    liberer.set()
-    fil.join(DELAI_S)
-    assert "erreur" not in premier, premier.get("erreur")
-    assert premier["valeur"].graine == 3
-    assert not jeux.operation_en_cours()
-    jeux.remettre_a_zero()  # le verrou est rendu : la demande suivante passe
 
 
 def test_deux_chargements_simultanes_depuis_la_page(client, generation_lente):

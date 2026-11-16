@@ -20,15 +20,7 @@ import re
 
 import pytest
 from sqlalchemy import select
-
-from edt.db import modeles as m
-from edt.db.moteur import session_base
-from edt.domaine.regles import EtatRegle
-from edt.services import generation
-from edt.services import regles as service_regles
-from edt.services.referentiels import operations
-
-from .conftest import (
+from tests.outils.web_donnees.aides import (
     HX,
     compter,
     depuis,
@@ -40,6 +32,13 @@ from .conftest import (
     seance_placee,
     texte_visible,
 )
+
+from edt.db import modeles as m
+from edt.db.moteur import session_base
+from edt.domaine.regles import EtatRegle
+from edt.services import generation
+from edt.services import regles as service_regles
+from edt.services.referentiels import operations
 
 pytestmark = pytest.mark.cas_limite
 

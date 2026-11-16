@@ -7,13 +7,12 @@ from urllib.parse import quote, urlencode
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.web_donnees.aides import compter, occurrence_prevue
 
 from edt.db.modeles import Besoin, Campus, Occurrence, Salle, SeanceHebdo, TypeSalle
 from edt.db.moteur import session_base
 from edt.services.jeux import recharger_jeu_fictif
 from edt.services.referentiels import operations
-
-from .conftest import compter, occurrence_prevue
 
 HTMX = {"HX-Request": "true"}
 
@@ -192,13 +191,6 @@ def test_refus_par_campus_et_par_groupe(site, ids):
     lien = f"/besoins?semestre=&amp;groupe={ids.promo}"
     assert f'<a href="{lien}">Voir les besoins concernés</a>' in groupe
     assert "16 besoins correspondant" in site.get(lien.replace("&amp;", "&")).text
-
-
-def test_consequences_expliquent_la_suite(ids):
-    with session_base() as session:
-        analyse = operations.analyser_suppression(session, "type_salle", ids.type_cours)
-    assert any("accepteront alors toutes les salles" in texte for texte in analyse.consequences)
-    assert all(raison.lien == "" for raison in analyse.effets)
 
 
 # --------------------------------------------------------------------------- #

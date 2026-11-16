@@ -9,6 +9,7 @@ import re
 import pytest
 from sqlalchemy import func, select
 from starlette.datastructures import FormData
+from tests.outils.web_donnees.aides import NOMBRE_TROP_GRAND, saisie_regle
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -24,8 +25,6 @@ from edt.web.donnees.regles import (
     erreurs_par_champ,
     rubriques_regle,
 )
-
-from .conftest import NOMBRE_TROP_GRAND, saisie_regle
 
 HTMX = {"HX-Request": "true"}
 

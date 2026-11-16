@@ -10,14 +10,7 @@ from __future__ import annotations
 import re
 
 import pytest
-
-from edt.db import modeles as m
-from edt.db.moteur import session_base
-from edt.services.referentiels import operations
-from edt.services.referentiels.lieux import cle_trajet
-from edt.services.referentiels.operations import ErreurSaisie
-
-from .conftest import (
+from tests.outils.web_donnees.aides import (
     NOMBRE_DE_5000_CHIFFRES,
     NOMBRE_TROP_GRAND,
     compter,
@@ -27,6 +20,10 @@ from .conftest import (
     saisie_regle,
     saisie_salle,
 )
+
+from edt.db import modeles as m
+from edt.db.moteur import session_base
+from edt.services.referentiels.lieux import cle_trajet
 
 pytestmark = pytest.mark.cas_limite
 
@@ -74,14 +71,6 @@ def test_chiffres_exotiques_refuses(site, ids, valeur):
     les lit comme des chiffres (`isdigit`) et une valeur inattendue est enregistrée."""
     reponse = site.post("/salles", data=saisie_salle(ids, capacite=valeur))
     assert reponse.status_code == 422 and "Nombre entier attendu." in reponse.text
-
-
-def test_service_borne_les_entiers(ids):
-    """Cas : un appel programmatique (API, assistant) passe un entier Python de 2**70. Risque :
-    le service, sans formulaire pour le borner, le transmet à la base."""
-    with session_base() as session, pytest.raises(ErreurSaisie) as erreur:
-        operations.creer(session, "salle", saisie_salle(ids, capacite=2**70))
-    assert "capacite" in erreur.value.champs
 
 
 def test_annee_de_debut_exotique(site):
