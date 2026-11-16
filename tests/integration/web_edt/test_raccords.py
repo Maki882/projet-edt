@@ -1,5 +1,4 @@
-"""Raccords vers les lots en cours : vraies pré-vérifications et instanciation d'une
-version produite par un calcul complet."""
+"""Pré-vérifications et instanciation d'une version issue d'un calcul complet."""
 
 from __future__ import annotations
 

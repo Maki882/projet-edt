@@ -1,4 +1,4 @@
-"""Règles personnalisées du temps B : emploi du temps par jour ou par semaine, relations.
+"""Règles personnalisées sur l'emploi du temps d'un jour ou d'une semaine.
 
 Pour chaque type : un cas satisfait, un cas violé (message, séances, unité),
 la gravité selon le niveau retenu, la règle ignorée, et les séances datées.

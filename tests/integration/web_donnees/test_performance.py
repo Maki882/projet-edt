@@ -1,5 +1,4 @@
-"""Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand),
-inventaire n° 14.
+"""Temps et taille des pages sur l'établissement complet (`perf`).
 
 Le serveur sert une requête à la fois : une page de plusieurs secondes gèle
 tout le monde, et un tableau non paginé peut peser plusieurs mégaoctets. Ces

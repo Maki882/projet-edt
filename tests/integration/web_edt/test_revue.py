@@ -1,4 +1,4 @@
-"""Constats de la revue d'ensemble (lot web-edt, n° 20 à 28) et mémoire des écrans."""
+"""Constats de la revue d'ensemble et mémoire des écrans."""
 
 from __future__ import annotations
 

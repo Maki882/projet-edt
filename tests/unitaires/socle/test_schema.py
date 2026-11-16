@@ -1,4 +1,4 @@
-"""Schéma périmé : une table existante qui n'a plus les colonnes du modèle est signalée partout.
+"""Schéma périmé détecté (colonnes, index, unicités).
 
 Il n'y a pas de migrations. Ces tests simulent une base créée par une
 ancienne version du code, puis vérifient que rien ne se déclare « prêt » :

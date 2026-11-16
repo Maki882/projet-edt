@@ -1,4 +1,4 @@
-"""Règles de salle : ACCESSIBILITE, CAPACITE, TYPE_SALLE, EQUIPEMENT, et salle à définir (VOLUME)."""
+"""Règles de salle : accessibilité, capacité, type, équipement."""
 
 from __future__ import annotations
 

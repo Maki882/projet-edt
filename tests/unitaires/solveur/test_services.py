@@ -1,5 +1,4 @@
-"""Services du solveur sur le jeu minimal, sans calcul complet : pré-vérifications, graines,
-identifiants hors bornes, clôture des calculs abandonnés.
+"""Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture.
 
 Base SQLite temporaire (fixtures de `tests/conftest.py`) ; le moteur est appelé directement sur
 l'instantané chargé. Les tests de génération de bout en bout sont dans

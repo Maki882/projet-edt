@@ -1,4 +1,4 @@
-"""Règles personnalisées dans le solveur (temps A) : poseurs, réglages par personne, niveaux.
+"""Règles personnalisées dans le solveur : interdiction si nécessaire, comptage si souple.
 
 Chaque poseur du temps A est éprouvé des deux côtés : la règle nécessaire
 interdit (calcul refusé ou impossible, en nommant la règle), la règle

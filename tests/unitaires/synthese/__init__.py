@@ -1,1 +1,4 @@
-"""Tests unitaires du générateur de données fictives (`edt.synthese`)."""
+"""Générateur de données fictives.
+
+Jeux fictifs et emploi du temps témoin (`edt.synthese`).
+"""

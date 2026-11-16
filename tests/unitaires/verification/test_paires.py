@@ -1,4 +1,4 @@
-"""Règles entre deux séances : SALLE_UNIQUE, ENSEIGNANT_UNIQUE, GROUPE_UNIQUE, PAUSE, CAMPUS_TRAJET.
+"""Règles entre deux séances : salle, enseignant, groupe, pause, trajet entre campus.
 
 La première partie reprend, transposés à l'instantané, les scénarios du
 premier vérificateur de chevauchements de l'équipe (`tests/test_conflits.py`

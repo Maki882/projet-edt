@@ -1,4 +1,4 @@
-"""Raccords vers les lots en cours : absence explicite, lecture du rapport, panne journalisée."""
+"""Raccords vers les autres composants : absence explicite, rapport, panne journalisée."""
 
 from __future__ import annotations
 

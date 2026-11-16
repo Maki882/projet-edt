@@ -1,4 +1,4 @@
-"""Règles personnalisées (code `REGLE`) : un vérificateur par type, temps A.
+"""Un vérificateur par type de règle personnalisée.
 
 Chaque type : une entorse signalée, la gravité selon le niveau de la règle, la
 règle ignorée (absente de `niveaux_regles`) ; plus les réglages par personne

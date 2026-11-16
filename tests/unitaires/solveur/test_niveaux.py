@@ -1,4 +1,4 @@
-"""Niveaux de règles, temps 1 : la plomberie, des options du calcul jusqu'au suivi et à la commande.
+"""Circulation des niveaux de règles, des options du calcul jusqu'au suivi.
 
 Le moteur pose encore toutes les contraintes présentes en dur ; seule la
 circulation des niveaux est vérifiée ici (options, enregistrement, suivi,

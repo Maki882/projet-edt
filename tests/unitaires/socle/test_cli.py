@@ -1,4 +1,5 @@
-"""Ligne de commande : fonctions du module de commandes appelées directement (extension refusée, point d'entrée, sorties UTF-8, niveaux)."""
+"""Fonctions du module de commandes appelées directement : extension refusée, point d'entrée,
+sorties UTF-8."""
 
 from __future__ import annotations
 

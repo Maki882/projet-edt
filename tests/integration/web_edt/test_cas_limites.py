@@ -1,4 +1,4 @@
-"""Banque des cas limites des écrans de l'emploi du temps : Générer, versions, grille, À traiter.
+"""Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500.
 
 Une adresse mal copiée, un lien périmé, un cookie forgé, un fragment ouvert
 sans HTMX, une base sans grille ou une version vide ne doivent jamais produire

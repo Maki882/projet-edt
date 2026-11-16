@@ -1,4 +1,4 @@
-"""Banque des cas limites : saisies aberrantes dans l'espace « Données ».
+"""Saisies aberrantes : jamais d'erreur 500, toujours un message.
 
 Jamais d'erreur 500, toujours un message clair sous le champ ou sur la page
 (revue n° 18 et 19 ; inventaire des cas limites n° 7 et 8). Un cas qui relève

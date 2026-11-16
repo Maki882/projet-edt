@@ -1,5 +1,4 @@
-"""Banque des cas limites de l'espace « Données » : calcul en cours, dates aberrantes,
-adresses et en-têtes fabriqués, fragments ouverts à la main, champs libres piégés.
+"""Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués.
 
 Chaque test reproduit un scénario de l'inventaire des cas limites (son numéro
 est rappelé dans les titres de section) et commence par « Cas : ... Risque :

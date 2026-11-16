@@ -1,4 +1,4 @@
-"""Couche datée : `verifier_occurrences`."""
+"""Vérification des séances datées (`verifier_occurrences`)."""
 
 from __future__ import annotations
 

@@ -1,1 +1,4 @@
-"""Tests d'intégration du socle : ligne de commande, application web et calcul complet."""
+"""Commandes et application web du socle.
+
+Ligne de commande, application web et calcul complet.
+"""

@@ -1,4 +1,4 @@
-"""Un seul chargement de jeu fictif ou une seule remise à zéro à la fois, vérifié sur le service (revue n° 14).
+"""Un seul chargement de jeu ou une seule remise à zéro à la fois, sur le service.
 
 Le premier chargement est ralenti (génération remplacée par une attente) ;
 pendant qu'il tient le verrou, toute autre demande au service est refusée.

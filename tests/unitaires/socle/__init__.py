@@ -1,1 +1,4 @@
-"""Tests unitaires du socle : base, calendrier, règles, moteur, journal, appelés par leurs fonctions."""
+"""Domaine, base et services transverses.
+
+Base, calendrier, règles, moteur, journal et ligne de commande, appelés par leurs fonctions Python.
+"""

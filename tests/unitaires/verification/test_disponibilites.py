@@ -1,4 +1,4 @@
-"""Indisponibilités : DISPO_ENSEIGNANT, DISPO_SALLE, DISPO_GROUPE (semaine type)."""
+"""Indisponibilités des enseignants, des salles et des groupes."""
 
 from __future__ import annotations
 

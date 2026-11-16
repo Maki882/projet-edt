@@ -1,4 +1,4 @@
-"""Intégration : service de vérification sur le jeu minimal du socle (base SQLite temporaire).
+"""Service de vérification sur le jeu minimal (base temporaire).
 
 La version vérifiée est l'emploi du temps saisi à la main de `versions.py`
 (fixture `version_id` de `conftest.py`) : sa semaine type est valide ; ses
