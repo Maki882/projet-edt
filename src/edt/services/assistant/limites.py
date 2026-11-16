@@ -184,7 +184,7 @@ def cout_maximal_appel(jetons_entree: int, config: ConfigurationAssistant) -> in
 
 FICHIER_CONSOMMATION = "consommation.json"
 NB_ESSAIS_REMPLACEMENT = 5
-"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : on réessaie."""
+"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : il est retenté."""
 
 
 def dossier_consommation() -> Path:

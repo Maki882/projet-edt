@@ -186,10 +186,10 @@ sur un créneau en semaine type ou à une date, séances d'une ressource sur un 
 `edt.services.regles.valider_modification` (même fusion que `modifier`, sans écriture) et
 `edt.services.referentiels.operations.valider_creation` (mêmes contrôles que `creer`).
 
-**État en mémoire.** L'architecture n'admet pas d'état global en mémoire, sauf le suivi des
-calculs en cours ; l'assistant est la seconde exception : registre des conversations,
-compteurs par adresse, échanges en cours réservés, sel des empreintes d'adresse, pause après
-un refus de clé. Tout est perdu au redémarrage, ce que le
+**État en mémoire.** Comme le suivi des calculs, la mémoire des écrans et le lanceur de
+tests (voir [`architecture.md`](architecture.md)), l'assistant garde un état en mémoire :
+registre des conversations, compteurs par adresse, échanges en cours réservés, sel des
+empreintes d'adresse, pause après un refus de clé. Tout est perdu au redémarrage, ce que le
 panneau dit. La consommation du jour (échanges, appels,
 jetons, coût estimé) est aussi gardée dans un petit fichier,
 `<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit à un redémarrage
@@ -264,8 +264,8 @@ le nombre de lignes manquantes).
 Les schémas ont la forme du mode strict (chaque objet fermé, toutes les propriétés
 requises, null pour une valeur non précisée, aucune borne), mais aucun outil n'est déclaré
 `strict` : le service limite le mode strict, sur l'ensemble des schémas stricts d'une
-requête, à 16 paramètres à union (`anyOf` ou type en liste ; nos schémas ont 74
-paramètres nullables), 24 paramètres facultatifs et 20 outils, plus une limite interne de
+requête, à 16 paramètres à union (`anyOf` ou type en liste ; l'application en déclare
+74), 24 paramètres facultatifs et 20 outils, plus une limite interne de
 taille de la grammaire compilée, et refuse toute la requête au-delà (400). Le schéma guide
 le modèle ; l'exécution valide chaque argument : un argument absent compte comme null, un
 argument mal formé revient au modèle comme refus clair, qu'il corrige. Un test parcourt les
