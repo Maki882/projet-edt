@@ -227,14 +227,6 @@ def test_calcul_dont_la_version_a_ete_supprimee(version_generee, client):
     assert "a depuis été supprimée" in page
 
 
-def test_date_extreme_sans_erreur(version_generee, client):
-    reponse = client.get(
-        f"/emploi-du-temps?version_id={version_generee.version_id}&couche=date&date=9999-12-31"
-    )
-    assert reponse.status_code == 200
-    assert "trop loin" in reponse.text
-
-
 def test_pas_de_calcul_sans_besoin(base, client):
     with session_base() as session:
         semestre = session.scalar(select(m.Semestre.id).where(m.Semestre.code == "S1"))

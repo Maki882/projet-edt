@@ -86,7 +86,7 @@ MESSAGE_SEANCES_IMPORTEES = (
 )
 
 MOTIF_MAX = 2000
-"""Longueur maximale du motif d'annulation d'une séance datée (le champ du panneau la reprend)."""
+"""Longueur maximale du motif d'annulation d'une séance datée (`FormulaireOccurrence.motif_max`)."""
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -156,6 +156,11 @@ class FormulaireOccurrence:
     exigences: str
     fermeture: str | None
     modifiable: bool
+
+    @property
+    def motif_max(self) -> int:
+        """Longueur maximale du motif d'annulation (`MOTIF_MAX`), reprise par le champ du panneau."""
+        return MOTIF_MAX
 
 
 @dataclass(frozen=True)

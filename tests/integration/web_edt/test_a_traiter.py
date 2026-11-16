@@ -151,7 +151,7 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
 
 @pytest.mark.cas_limite
 def test_option_tous_les_semestres_affiche_tous_les_semestres(
-    version_generee, client, faux_verificateur
+    version_generee, client, faux_verificateur, aujourdhui_fige
 ):
     """Cas : option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse
     gardée en favori sur Générer, l'historique et la grille.
@@ -174,7 +174,12 @@ def test_option_tous_les_semestres_affiche_tous_les_semestres(
     seul = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
     assert f"<h2>{libelles[autre]}" not in seul
 
-    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut.
+    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut
+    # (celui qui contient le 5 octobre 2026), sélectionné dans la liste.
+    choisi = (
+        f'<option value="{version_generee.semestre_id}" selected>'
+        f"{libelles[version_generee.semestre_id]}</option>"
+    )
     for adresse in (
         "/calculs?semestre_id=",
         "/versions?semestre_id=",
@@ -183,3 +188,4 @@ def test_option_tous_les_semestres_affiche_tous_les_semestres(
         reponse = client.get(adresse)
         assert reponse.status_code == 200, adresse
         assert "Saisie invalide" not in reponse.text, adresse
+        assert choisi in reponse.text, adresse

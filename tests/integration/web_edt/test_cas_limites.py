@@ -12,18 +12,21 @@ risque (« Cas : … Risque : … »). Cette banque seule :
 `tests/unitaires/web_edt/test_cas_limites.py`).
 
 Aides communes, dans `tests/outils/web_edt/aides.py` : `ENORME`, `HX`,
-`creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` ; fixtures
-`reperes` et `client_sans_trace` dans `tests/integration/web_edt/conftest.py`.
-Trois cas sont testés près de leur écran, avec le même
-marqueur : l'option « Tous les semestres » (`test_a_traiter.py`), le jour où
-une séance ne tient nulle part (`test_emploi_du_temps.py`), l'arrêt d'un
-calcul terminé (`test_calculs.py`). Comportements attendus :
-`docs/interface-emploi-du-temps.md`, section « Cas limites ».
+`creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` ; fixture
+`reperes` dans `tests/integration/web_edt/conftest.py`.
+D'autres cas sont testés près de leur écran, avec le même marqueur :
+l'option « Tous les semestres » (`test_a_traiter.py`), le jour où une séance
+ne tient nulle part (`test_emploi_du_temps.py`), un second lancement pendant
+un calcul et l'arrêt d'un calcul terminé (`test_calculs.py`), la base en
+lecture seule et la base occupée par une écriture (`test_accueil.py`).
+Comportements attendus : `docs/interface-emploi-du-temps.md`, section
+« Cas limites ».
 """
 
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 
 import pytest
@@ -53,10 +56,11 @@ from edt.services.emploi_du_temps import modifications, vues
 @pytest.mark.cas_limite
 @pytest.mark.parametrize("g", [ENORME, "999999"], ids=["enorme", "inconnu"])
 def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, caplog, g):
-    """Cas : lien mal copié ou périmé dont l'identifiant a vingt chiffres, est négatif ou
-    n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, À traiter.
+    """Cas : lien mal copié ou périmé dont l'identifiant a vingt chiffres ou n'existe pas, sur
+    chaque adresse des onglets Générer, versions, Emploi du temps, À traiter (et négatif sur les
+    paramètres d'adresse : dans un chemin, « -1 » ne correspond à aucune route).
     Risque : OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal,
-    au lieu d'un « introuvable » (404).
+    au lieu d'un « introuvable » (404) qui nomme l'élément manquant.
     """
     formulaire = {"jour": 0, "debut": 510, "date": "2026-10-06", "verrou": "true"}
     salle_introuvable = {**formulaire, "salle_id": g}  # la séance existe, pas la salle choisie
@@ -76,6 +80,7 @@ def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, c
         (f"/calculs/verifications?semestre_id={g}", HX),
     ]
     envois = [
+        ("/calculs", None, {"semestre_id": g, "duree": "court"}),
         (f"/calculs/{g}/arreter", None, formulaire),
         (f"/calculs/{g}/relancer", None, formulaire),
         (f"/versions/{g}/activer", None, formulaire),
@@ -101,10 +106,24 @@ def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, c
         ]
     for adresse, reponse in reponses:
         assert reponse.status_code == 404, (adresse, reponse.status_code)
-        assert "n&#39;existe pas" in reponse.text or "introuvable" in reponse.text, adresse
+        assert "n&#39;existe pas" in reponse.text, adresse  # le message nomme l'élément
         assert "Traceback" not in reponse.text and "Overflow" not in reponse.text, adresse
     erreurs = [e.getMessage() for e in caplog.records if e.levelno >= logging.ERROR]
     assert not erreurs, erreurs
+    with session_base() as session:  # aucun calcul lancé sur un semestre introuvable
+        assert session.scalar(select(func.count()).select_from(m.Calcul)) == 1
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("valeur", ["abc", "1.5", "true"])
+def test_identifiant_qui_n_est_pas_un_entier_donne_saisie_invalide(version_generee, client, valeur):
+    """Cas : identifiant de version écrit en lettres, en décimal ou en booléen dans l'adresse de
+    la grille (lien abîmé, adresse retapée).
+    Risque : erreur 500, ou `true` lu comme la version n° 1.
+    """
+    reponse = client.get(f"/emploi-du-temps?version_id={valeur}")
+    assert reponse.status_code == 422
+    assert "Saisie invalide" in reponse.text and "version_id" in reponse.text
 
 
 @pytest.mark.cas_limite
@@ -312,6 +331,56 @@ def test_date_tres_ancienne_ou_lointaine_sans_erreur(version_generee, client):
         assert "trop loin" in page.text, date
 
 
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "retour",
+    [
+        "http://ailleurs.example/piege",
+        "//ailleurs.example/piege",
+        "/salles",
+        "/emploi-du-temps\r\nX-Injecte: 1",
+        "/emploi-du-temps\\..\\ailleurs",
+    ],
+    ids=["autre-site", "sans-protocole", "autre-onglet", "saut-de-ligne", "barre-inverse"],
+)
+def test_adresse_de_retour_fabriquee_ramene_a_l_emploi_du_temps(reperes, client, retour):
+    """Cas : champ `retour` d'une action de la grille fabriqué (lien piégé, formulaire recopié) :
+    autre site, adresse sans protocole, autre onglet, saut de ligne, barre oblique inverse.
+    Risque : redirection ouverte vers un autre site après un clic légitime, ou en-tête de
+    réponse injecté par le saut de ligne.
+    """
+    with session_base() as session:
+        seance = session.get(m.SeanceHebdo, reperes.seance)
+        occurrence = session.get(m.Occurrence, reperes.occurrence)
+        place_seance = {"jour": seance.jour, "debut": seance.debut_min, "salle_id": seance.salle_id}
+        place_occurrence = {
+            "date": occurrence.date.isoformat(),
+            "debut": occurrence.debut_min,
+            "salle_id": occurrence.salle_id or "",
+        }
+    envois = [
+        (f"/emploi-du-temps/seances/{reperes.seance}/verrou", {"verrou": "true"}),
+        (f"/emploi-du-temps/seances/{reperes.seance}/modifier", place_seance),
+        (f"/emploi-du-temps/occurrences/{reperes.occurrence}/deplacer", place_occurrence),
+        (f"/emploi-du-temps/versions/{reperes.version}/seances-datees", {}),
+    ]
+    for adresse, corps in envois:
+        for entetes in ({}, HX):
+            reponse = client.post(
+                adresse, data={**corps, "retour": retour}, headers=entetes, follow_redirects=False
+            )
+            if reponse.status_code == 200:  # panneau réaffiché : adresses gardées pour la suite
+                cibles = re.findall(r'name="retour" value="([^"]*)"', reponse.text)
+            else:
+                assert reponse.status_code in (204, 303), (adresse, entetes, reponse.status_code)
+                cibles = [reponse.headers.get("HX-Redirect") or reponse.headers.get("location")]
+            assert cibles, (adresse, entetes)
+            for cible in cibles:
+                assert cible.startswith("/emploi-du-temps"), (adresse, entetes, cible)
+                assert "ailleurs" not in cible and "\\" not in cible, (adresse, entetes, cible)
+            assert "x-injecte" not in reponse.headers, (adresse, entetes)
+
+
 # --------------------------------------------------------------------------- #
 # Filtres et paramètres inconnus
 # --------------------------------------------------------------------------- #
@@ -496,7 +565,7 @@ def test_saisies_de_cinq_mille_chiffres_au_lancement(jeu_minimal, client):
 
 
 @pytest.mark.cas_limite
-def test_motif_d_annulation_borne(reperes, client, faux_verificateur):
+def test_motif_d_annulation_borne(reperes, client, faux_verificateur, monkeypatch):
     """Cas : motif d'annulation d'une séance datée envoyé avec un caractère de plus que la limite
     (le navigateur borne le champ, pas un envoi fabriqué), puis exactement à la limite.
     Risque : 200 Ko enregistrés dans la remarque de la séance et réaffichés dans son panneau ;
@@ -506,6 +575,9 @@ def test_motif_d_annulation_borne(reperes, client, faux_verificateur):
     adresse = f"/emploi-du-temps/occurrences/{reperes.occurrence}"
     panneau = client.get(f"{adresse}/panneau", headers=HX).text
     assert f'maxlength="{limite}"' in panneau  # le champ du navigateur borne comme le serveur
+    monkeypatch.setattr(modifications, "MOTIF_MAX", 50)  # une seule borne, lue des deux côtés
+    assert 'maxlength="50"' in client.get(f"{adresse}/panneau", headers=HX).text
+    monkeypatch.setattr(modifications, "MOTIF_MAX", limite)
 
     trop = client.post(f"{adresse}/annuler", data={"motif": "x" * (limite + 1)})
     assert trop.status_code == 422
@@ -641,7 +713,7 @@ def test_version_sans_seance_s_affiche_et_s_exporte(version_generee, client):
     assert 'class="edt-bloc ' not in grille  # aucun bloc inventé
 
     csv = client.get(f"/export/emploi-du-temps.csv?version_id={vide}")
-    assert csv.status_code == 200 and csv.text.lstrip("﻿").startswith("jour;debut;fin")
+    assert csv.status_code == 200 and csv.text.lstrip("\ufeff").startswith("jour;debut;fin")
     assert len(csv.text.strip().splitlines()) == 1  # l'en-tête seul
     ics = client.get(f"/export/emploi-du-temps.ics?version_id={vide}")
     assert ics.status_code == 200
@@ -691,19 +763,3 @@ def test_semestre_sans_grille_reste_utilisable(reperes, client, faux_verificateu
         headers=HX,
     )
     assert reponse.status_code == 422 and "ne peut pas être proposée" in reponse.text
-
-
-# --------------------------------------------------------------------------- #
-# Exports (lot échange) : identifiant énorme
-# --------------------------------------------------------------------------- #
-
-
-@pytest.mark.cas_limite
-@pytest.mark.parametrize("extension", ["csv", "ics"])
-def test_export_d_une_version_enorme_dit_introuvable(jeu_minimal, client_sans_trace, extension):
-    """Cas : export CSV ou iCal d'une version de vingt chiffres (lien mal copié).
-    Risque : OverflowError de SQLite non rattrapée : erreur 500 au lieu d'un « introuvable » (404).
-    Corrigé par le lot échange ; `client_sans_trace` montre un retour du 500 comme un statut.
-    """
-    reponse = client_sans_trace.get(f"/export/emploi-du-temps.{extension}?version_id={ENORME}")
-    assert reponse.status_code == 404

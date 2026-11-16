@@ -7,19 +7,18 @@ Adresses :
   (par gravité puis par contrainte, chaque ligne menant à la séance dans
   l'emploi du temps) et séances à programmer ;
 - `GET /a-traiter/compteur` : petit fragment avec le nombre d'éléments à
-  traiter, prévu pour être affiché dans l'onglet du menu ; ouvert sans HTMX
-  (adresse saisie, lien), il mène à la page.
+  traiter, affiché dans l'onglet du menu (`edt.web.menu.COMPTEURS_ONGLETS`) ;
+  ouvert sans HTMX (adresse saisie, lien), il mène à la page.
 """
 
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
-from fastapi.responses import RedirectResponse
 
 from edt.services.emploi_du_temps import anomalies, compteur, presentation, versions
 from edt.services.emploi_du_temps.identifiants import EntierFacultatif
 from edt.web.dependances import SessionRequete
-from edt.web.gabarits import est_htmx, rendre
+from edt.web.gabarits import est_htmx, rediriger, rendre
 from edt.web.menu import EntreeMenu
 
 SECTION_A_TRAITER = "À traiter"
@@ -58,7 +57,7 @@ def fragment_compteur(request: Request, session: SessionRequete):
     mène à la page « À traiter » au lieu d'un nombre nu.
     """
     if not est_htmx(request):
-        return RedirectResponse("/a-traiter", status_code=303)
+        return rediriger(request, "/a-traiter")
     resultat = compteur.compteur_a_traiter(session)
     return rendre(
         request,

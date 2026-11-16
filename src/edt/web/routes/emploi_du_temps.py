@@ -14,9 +14,9 @@ pour ouvrir le panneau d'une séance `h<id>` ou d'une occurrence `o<id>`) :
 - `POST /emploi-du-temps/versions/{id}/seances-datees` : (re)calculer les
   séances datées d'une version (les retouches à la main sont conservées).
 
-Après une action, on revient sur la vue d'où l'on vient (`retour`, limité aux
-adresses de cet onglet). Les exports (CSV, iCal) sont servis par un autre
-lot, aux adresses `/export/emploi-du-temps.csv` et `.ics`.
+Après une action, la page revient sur la vue d'où vient la demande (`retour`,
+limité aux adresses de cet onglet). Les exports (CSV, iCal) sont servis par
+`edt.web.routes.echange`, aux adresses `/export/emploi-du-temps.csv` et `.ics`.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from typing import Annotated
 from urllib.parse import parse_qsl, urlencode
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
 
 from edt.domaine.enumerations import JOURS
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
@@ -353,7 +352,7 @@ def panneau_seance(
         f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}",
     )
     if not est_htmx(request):
-        return RedirectResponse(retour, status_code=303)
+        return rediriger(request, retour)
     return _rendre_panneau_seance(request, session, formulaire, retour)
 
 
@@ -376,9 +375,9 @@ def formulaire_seance(
         session, seance_id, jour=jour, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
     if not est_htmx(request):
-        return RedirectResponse(
+        return rediriger(
+            request,
             _retour(retour, f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}"),
-            status_code=303,
         )
     return rendre(
         request,
@@ -471,7 +470,7 @@ def panneau_occurrence(
         f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
     )
     if not est_htmx(request):
-        return RedirectResponse(retour, status_code=303)
+        return rediriger(request, retour)
     return _rendre_panneau_occurrence(request, session, formulaire, retour)
 
 
@@ -493,13 +492,13 @@ def formulaire_occurrence(
         session, occurrence_id, date=date, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
     if not est_htmx(request):
-        return RedirectResponse(
+        return rediriger(
+            request,
             _retour(
                 retour,
                 f"{ADRESSE}?version_id={formulaire.version_id}&couche=date"
                 f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
             ),
-            status_code=303,
         )
     return rendre(
         request,
