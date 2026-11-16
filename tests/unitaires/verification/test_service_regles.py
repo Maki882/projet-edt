@@ -12,6 +12,7 @@ import logging
 
 import pytest
 from sqlalchemy import select
+from tests.outils.verification.versions import enregistrer_version
 
 from edt.db import modeles as m
 from edt.domaine.contraintes import CodeContrainte, Niveau
@@ -24,8 +25,6 @@ from edt.services.niveaux import (
     niveaux_regles_du_calcul,
 )
 from edt.services.verification import verifier_modification, verifier_version
-
-from .versions import enregistrer_version
 
 DEBUT_CALCUL = dt.datetime(2026, 10, 6, 9, 0)
 AVANT, APRES = dt.datetime(2026, 10, 1), dt.datetime(2026, 10, 7)

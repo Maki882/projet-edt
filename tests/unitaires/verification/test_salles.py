@@ -5,11 +5,19 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import (
+    ISSY,
+    MARDI,
+    MARDI_6_OCT,
+    MARDI_13_OCT,
+    Fabrique,
+    codes,
+    occurrence,
+    placer,
+)
 
 from edt.domaine.enumerations import Accessibilite, Gravite
 from edt.verification import verifier, verifier_occurrences
-
-from .fabrique import ISSY, MARDI, MARDI_6_OCT, MARDI_13_OCT, Fabrique, codes, occurrence, placer
 
 REGLES_SALLE = ["ACCESSIBILITE", "CAPACITE", "TYPE_SALLE", "EQUIPEMENT", "VOLUME"]
 

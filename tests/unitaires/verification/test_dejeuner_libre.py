@@ -9,14 +9,21 @@ import dataclasses
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import (
+    MARDI,
+    MARDI_6_OCT,
+    Fabrique,
+    codes,
+    h,
+    occurrence,
+    placer,
+)
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
 from edt.verification.regles_dejeuner import plus_longue_pause
-
-from .fabrique import MARDI, MARDI_6_OCT, Fabrique, codes, h, occurrence, placer
 
 DEJEUNER = ["DEJEUNER"]
 FENETRE = {

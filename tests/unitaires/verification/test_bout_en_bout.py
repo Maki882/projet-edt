@@ -10,10 +10,21 @@ les occurrences obtenues en l'instanciant sur toutes les semaines.
 
 from __future__ import annotations
 
+from tests.outils.verification.fabrique import (
+    ISSY,
+    JEUDI,
+    LUNDI,
+    MARDI,
+    SAMEDI,
+    VENDREDI,
+    Fabrique,
+    h,
+    occurrence,
+    placer,
+)
+
 from edt.domaine.enumerations import Accessibilite, CibleIndisponibilite
 from edt.verification import verifier, verifier_occurrences
-
-from .fabrique import ISSY, JEUDI, LUNDI, MARDI, SAMEDI, VENDREDI, Fabrique, h, occurrence, placer
 
 
 def semestre_valide():

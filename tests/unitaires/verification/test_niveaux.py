@@ -5,14 +5,13 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import MARDI, Fabrique, h, occurrence, placer
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import PREFIXES_ENTORSE, calculer_indicateurs, verifier, verifier_occurrences
 from edt.verification.niveaux import prefixer
-
-from .fabrique import MARDI, Fabrique, h, occurrence, placer
 
 PAUSE, SALLE = CodeContrainte.PAUSE, CodeContrainte.SALLE_UNIQUE
 

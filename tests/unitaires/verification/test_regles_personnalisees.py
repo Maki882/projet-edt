@@ -10,13 +10,7 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
-
-from edt.domaine.contraintes import CodeContrainte, Niveau
-from edt.domaine.enumerations import Gravite
-from edt.domaine.regles import REGISTRES, ErreurSaisie, TypeRegle, types_non_couverts
-from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
-
-from .fabrique import (
+from tests.outils.verification.fabrique import (
     ISSY,
     LUNDI,
     MARDI,
@@ -27,6 +21,11 @@ from .fabrique import (
     occurrence,
     placer,
 )
+
+from edt.domaine.contraintes import CodeContrainte, Niveau
+from edt.domaine.enumerations import Gravite
+from edt.domaine.regles import REGISTRES, ErreurSaisie, TypeRegle, types_non_couverts
+from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
 
 REGLE = CodeContrainte.REGLE
 EN_SEMAINE = ["lundi", "mardi", "mercredi", "jeudi", "vendredi"]

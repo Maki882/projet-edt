@@ -6,6 +6,15 @@ import datetime as dt
 from dataclasses import replace
 
 import pytest
+from tests.outils.verification.fabrique import (
+    MARDI,
+    MARDI_6_OCT,
+    MARDI_13_OCT,
+    Fabrique,
+    codes,
+    h,
+    occurrence,
+)
 
 from edt.domaine.enumerations import (
     CibleIndisponibilite,
@@ -17,8 +26,6 @@ from edt.domaine.enumerations import (
 from edt.domaine.instantane import Occurrence, Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier_occurrences
-
-from .fabrique import MARDI, MARDI_6_OCT, MARDI_13_OCT, Fabrique, codes, h, occurrence
 
 MERCREDI_11_NOV = dt.date(2026, 11, 11)
 

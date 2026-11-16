@@ -6,6 +6,7 @@ import datetime as dt
 
 import pytest
 from sqlalchemy import select
+from tests.outils.verification.versions import enregistrer_version
 
 from edt.db import modeles as m
 from edt.domaine.contraintes import CodeContrainte, Niveau, niveaux_par_defaut
@@ -17,8 +18,6 @@ from edt.services.verification import (
     verifier_occurrences_version,
     verifier_version,
 )
-
-from .versions import enregistrer_version
 
 MAX, PAUSE = CodeContrainte.MAX_ENSEIGNANT, CodeContrainte.PAUSE
 

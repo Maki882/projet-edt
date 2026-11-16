@@ -5,12 +5,11 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import MARDI, MERCREDI, Fabrique, codes, placer
 
 from edt.domaine.enumerations import CibleIndisponibilite
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier
-
-from .fabrique import MARDI, MERCREDI, Fabrique, codes, placer
 
 ENSEIGNANT, SALLE, GROUPE = (
     CibleIndisponibilite.ENSEIGNANT,
