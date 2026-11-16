@@ -286,7 +286,20 @@ def decoder(contenu: bytes, nom: str, signalements: list[Signalement]) -> str | 
     Renvoie `None` (avec un signalement d'erreur) si aucun encodage ne convient.
     """
     if contenu.startswith(b"\xef\xbb\xbf"):
-        return contenu[3:].decode("utf-8", errors="strict")
+        try:
+            return contenu[3:].decode("utf-8", errors="strict")
+        except UnicodeDecodeError as erreur:
+            journal.info("Fichier %s : marque UTF-8 suivie d'un contenu non UTF-8", nom)
+            signalements.append(
+                _erreur(
+                    nom,
+                    "Encodage incohérent : le fichier commence par la marque UTF-8, mais son "
+                    "contenu n'est pas en UTF-8 (octet invalide en position "
+                    f"{erreur.start + 3}). L'enregistrer de nouveau en UTF-8 (« CSV UTF-8 » depuis un "
+                    "tableur).",
+                )
+            )
+            return None
     if contenu.startswith((b"\xff\xfe", b"\xfe\xff")):
         try:
             return contenu.decode("utf-16")
