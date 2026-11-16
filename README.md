@@ -102,7 +102,7 @@ Toute fonctionnalité est aussi une commande ; `python -m edt <commande>
 | `gabarit`, `importer`, `exporter-donnees`, `exporter-edt` | échanger des fichiers (XLSX, CSV, iCal) |
 | `sauvegarder`, `verifier-sauvegarde` | sauvegarder la base ; contrôler une sauvegarde |
 | `doctor`, `version` | vérifier l'installation ; afficher la version |
-| `tests` | lancer les tests du projet comme depuis l'application (`--famille`, `--composant`) ; code 1 en cas d'échec |
+| `tests` | lancer les tests du projet comme depuis l'application (`--famille`, `--composant`, `--test` pour un seul test, test de charge compris) ; code 1 en cas d'échec |
 
 ## Tests
 

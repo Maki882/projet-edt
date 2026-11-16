@@ -141,6 +141,7 @@ les mêmes règles (valeur invalide refusée, valeur vide au défaut) :
 | `EDT_TESTS_RACINE` | le dossier courant s'il contient `tests/unitaires` et `pyproject.toml`, sinon la racine déduite du code source | racine du dépôt dont les tests sont lancés |
 | `EDT_TESTS_DUREE_MAX_S` | `900` | durée maximale d'une exécution, en secondes ; au-delà, pytest et ses processus enfants sont arrêtés |
 | `EDT_TESTS_LANCEMENT` | `oui` | `non` désactive les boutons de lancement ; les résultats restent consultables |
+| `EDT_TESTS_DELAI_S` | `60` | délai minimal, en secondes, entre la fin d'une exécution et un lancement depuis le site (`0` : aucun) ; la commande n'y est pas soumise |
 
 Les tests tournent dans un sous-processus `python -m pytest` sans aucune
 variable `EDT_*` héritée : sa base et ses journaux sont dans un dossier

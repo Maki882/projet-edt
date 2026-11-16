@@ -579,10 +579,20 @@ test en cours), ses fichiers et ses tests.
   (`HX-Refresh`).
 - **Garde-fous** : une exécution à la fois (un second envoi mène au suivi en
   cours, sans erreur), refus pendant un calcul d'emploi du temps, durée
-  maximale, tests de charge exclus des lancements par groupe (ils se lancent
-  un par un), lancement désactivable (`EDT_TESTS_LANCEMENT=non`) ; dossier
-  `tests` absent, pytest absent ou fichier de résultats illisible donnent un
-  message, jamais une erreur.
+  maximale, tests de charge exclus des lancements par groupe, lancement
+  désactivable (`EDT_TESTS_LANCEMENT=non`) ; dossier `tests` absent, pytest
+  absent ou fichier de résultats illisible donnent un message, jamais une
+  erreur. Le site étant public, deux garde-fous de plus valent pour les
+  lancements depuis la page : les **tests de charge** n'y ont pas de bouton
+  (« Par la commande ») et se lancent par `python -m edt tests --test <clé>` ;
+  un **délai minimal** (`EDT_TESTS_DELAI_S`, 60 s par défaut) sépare la fin
+  d'une exécution (site ou commande) du lancement suivant depuis le site, et
+  le refus dit à quelle heure relancer.
+- **Après une exécution**, la page s'appuie sur l'historique enregistré, pas
+  sur l'exécution gardée en mémoire : des résultats écrits ensuite par la
+  commande `edt tests` s'affichent aussitôt.
+- **Limite connue** : sans écran de connexion, tout visiteur peut arrêter
+  l'exécution lancée par un autre (bouton « Arrêter l'exécution »).
 - **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
   exécution dans un sous-processus pytest, greffon, résultats, tableau d'une
   famille) ; la commande `python -m edt tests` passe par le même service.
