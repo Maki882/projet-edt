@@ -46,7 +46,7 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -281,20 +281,28 @@ def _charger(
 
 
 def remettre_a_zero(
-    *, aujourdhui: dt.date | None = None, url: str | None = None
+    *,
+    aujourdhui: dt.date | None = None,
+    url: str | None = None,
+    avant: Callable[[], object] | None = None,
 ) -> RapportInitialisation:
     """Supprime toutes les données puis recrée la base et ses données par défaut.
 
     `aujourdhui` choisit l'année scolaire recréée (défaut : la date du jour) ;
-    `url` désigne la base (défaut : `EDT_DB_URL`). Refusé pendant un calcul
-    et pendant un chargement ou une autre remise à zéro.
+    `url` désigne la base (défaut : `EDT_DB_URL`) ; `avant` est appelée une fois
+    les refus passés, juste avant l'effacement (sauvegarde de la base : rien
+    n'est écrit pour une demande refusée). Refusé pendant un calcul et pendant
+    un chargement ou une autre remise à zéro.
     """
     with _seul_a_la_fois("remettre la base à zéro", url):
-        return _remettre_a_zero(aujourdhui, url, "remettre la base à zéro")
+        return _remettre_a_zero(aujourdhui, url, "remettre la base à zéro", avant)
 
 
 def _remettre_a_zero(
-    aujourdhui: dt.date | None, url: str | None, action: str
+    aujourdhui: dt.date | None,
+    url: str | None,
+    action: str,
+    avant: Callable[[], object] | None = None,
 ) -> RapportInitialisation:
     """Remise à zéro refusée pendant un calcul ; `action` nomme la demande dans le refus.
 
@@ -302,6 +310,8 @@ def _remettre_a_zero(
     de la base d'avant la suppression des tables.
     """
     _exiger_aucun_calcul(action, url)
+    if avant is not None:
+        avant()
     journal.warning("Remise à zéro de la base demandée : toutes les données seront supprimées")
     rapport = initialiser_base(reset=True, aujourdhui=aujourdhui, url=url)
     obtenir_moteur(url).dispose()

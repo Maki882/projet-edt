@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import sqlite3
 import sys
 import types
@@ -262,6 +263,41 @@ def test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue(
     assert "sauvegarde de la base" in resultat.output and "remise à zéro annulée" in resultat.output
     assert compter(Salle) == jeu_minimal.nb_salles
     assert not list(environnement.rglob("*.partiel"))
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("occupation", ["calcul", "chargement"])
+def test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde(
+    lanceur, jeu_minimal, environnement, monkeypatch, compter, occupation
+):
+    """Cas : `init-db --reset --oui` en production, refusé parce qu'un calcul tourne ou qu'un
+    autre processus charge un établissement fictif.
+
+    Risque : la copie « edt-<date>-avant-reset.db » est écrite avant le refus, sans être
+    signalée ; chaque nouvel essai en ajoute une, qui chasse de la rotation les sauvegardes
+    du déploiement.
+    """
+    monkeypatch.setenv("EDT_ENV", "prod")
+    if occupation == "calcul":
+        pid_vivant = 4242
+        monkeypatch.setattr(generation, "_processus_vivant", lambda pid: pid == pid_vivant)
+        with session_base() as session:
+            session.add(
+                Calcul(
+                    semestre_id=jeu_minimal.semestre_id,
+                    etat=EtatCalcul.EN_COURS,
+                    demarre_le=dt.datetime.now(),
+                    statistiques={"pid": pid_vivant},
+                )
+            )
+    else:
+        jeux.fichier_marqueur().write_text(f"{os.getppid()} charger", encoding="utf-8")
+
+    resultat = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert compter(Salle) == jeu_minimal.nb_salles
+    assert not list(environnement.rglob("edt-*-avant-reset.db"))
 
 
 @pytest.mark.cas_limite
