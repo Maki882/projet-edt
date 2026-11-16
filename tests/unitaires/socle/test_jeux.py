@@ -9,7 +9,6 @@ import time
 
 import pytest
 from sqlalchemy import select
-from tests.conftest import AUJOURDHUI
 
 from edt.db import modeles as m
 from edt.db.initialisation import ErreurSchemaPerime, base_initialisee
@@ -28,7 +27,7 @@ from edt.services.jeux import (
 
 @pytest.mark.cas_limite
 def test_panne_de_generation_apres_remise_a_zero_est_dite(
-    jeu_minimal, monkeypatch, compter, caplog
+    jeu_minimal, monkeypatch, compter, caplog, aujourdhui
 ):
     """Cas : `recharger_jeu_fictif(..., reinitialiser=True)` et la génération du jeu plante
     (bogue, disque plein) après que la remise à zéro a été validée.
@@ -43,7 +42,7 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
     monkeypatch.setattr(jeux, "generer_jeu", generation_en_panne)
     with caplog.at_level(logging.ERROR, logger="edt.services.jeux"):
         with pytest.raises(ErreurRegleMetier) as capture:
-            recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=AUJOURDHUI)
+            recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=aujourdhui)
 
     message = capture.value.message
     assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
@@ -54,7 +53,7 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
 
 
 @pytest.mark.cas_limite
-def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter):
+def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter, aujourdhui):
     """Cas : une table a une colonne en trop (base d'une autre version) ; un jeu est chargé
     sans remise à zéro, par le service puis par le chemin direct.
 
@@ -65,7 +64,7 @@ def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter):
         connexion.exec_driver_sql("ALTER TABLE besoin ADD COLUMN ancien_champ VARCHAR(10)")
 
     with pytest.raises(ErreurSchemaPerime) as capture:
-        recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+        recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)
     assert "--reset" in str(capture.value) and "init-db »" not in capture.value.message
     with session_base() as session, pytest.raises(ErreurSchemaPerime):
         charger_jeu_fictif(session, "petit", 1)
@@ -101,7 +100,7 @@ def test_le_jeu_minimal_nomme_le_code_par_defaut_qui_manque(session, modele, cod
 
 @pytest.mark.cas_limite
 def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
-    base, environnement, monkeypatch
+    base, environnement, monkeypatch, aujourdhui
 ):
     """Cas : `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le
     serveur sert des pages.
@@ -129,7 +128,7 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
         return reelle(*args, **options)
 
     monkeypatch.setattr(jeux, "initialiser_base", initialisation_observee)
-    rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
+    rapport = remettre_a_zero(aujourdhui=aujourdhui)
     assert rapport.reinitialisee and vu_pendant == [True]
     assert not marqueur.exists() and not operation_en_cours()
 
@@ -139,7 +138,7 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
     ("graine", "annee_debut"), [(-1, None), (0, 1900)], ids=["graine négative", "année 1900"]
 )
 def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
-    jeu_minimal, compter, graine, annee_debut
+    jeu_minimal, compter, graine, annee_debut, aujourdhui
 ):
     """Cas : l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine
     ou une année de début hors bornes.
@@ -149,7 +148,7 @@ def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
     """
     with pytest.raises(ErreurDonneesInvalides):
         recharger_jeu_fictif(
-            "petit", graine, reinitialiser=True, annee_debut=annee_debut, aujourdhui=AUJOURDHUI
+            "petit", graine, reinitialiser=True, annee_debut=annee_debut, aujourdhui=aujourdhui
         )
     assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
     assert compter(m.Besoin) == jeu_minimal.nb_besoins
@@ -158,7 +157,7 @@ def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
 
 @pytest.mark.cas_limite
 def test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit(
-    base, compter, verrou_ecriture_bref
+    base, compter, verrou_ecriture_bref, aujourdhui
 ):
     """Cas : un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou
     d'écriture quelques dixièmes de seconde.
@@ -168,14 +167,14 @@ def test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit(
     ouvert en IMMEDIATE, il attend son tour et réussit.
     """
     verrou_ecriture_bref(0.4)
-    rapport = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)  # sans « locked »
+    rapport = recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)  # sans « locked »
 
     assert rapport.nb_besoins > 0 and compter(m.Salle) > 0
 
 
 @pytest.mark.cas_limite
 def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
-    jeu_minimal, compter, verrou_ecriture_bref
+    jeu_minimal, compter, verrou_ecriture_bref, aujourdhui
 ):
     """Cas : `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion
     écrit brièvement.
@@ -184,12 +183,14 @@ def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
     locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit.
     """
     verrou_ecriture_bref(0.4)
-    rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
+    rapport = remettre_a_zero(aujourdhui=aujourdhui)
     assert rapport.reinitialisee and compter(m.Salle) == 0 and base_initialisee(obtenir_moteur())
 
 
 @pytest.mark.cas_limite
-def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement(base, compter):
+def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement(
+    base, compter, aujourdhui
+):
     """Cas : deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux
     onglets).
 
@@ -203,7 +204,7 @@ def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_claireme
     def charger(nom: str) -> None:
         depart.wait(5)
         try:
-            resultats[nom] = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+            resultats[nom] = recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)
         except ErreurEDT as erreur:
             resultats[nom] = erreur
 
