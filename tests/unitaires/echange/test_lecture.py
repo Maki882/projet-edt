@@ -253,15 +253,70 @@ def test_classeur_valeurs_excel_typees():
     assert v.lire_entier(cellules[3]) == 40
 
 
-def test_archive_zip_de_csv():
+@pytest.mark.parametrize(
+    "lisez_moi", ["LISEZ-MOI.txt", "export/LISEZ-MOI.txt", r"export\LISEZ-MOI.txt"]
+)
+def test_archive_zip_de_csv(lisez_moi):
     tampon = io.BytesIO()
+    membre = zipfile.ZipInfo("LISEZ-MOI.txt")
+    membre.filename = lisez_moi  # écrit tel quel : ZipInfo changerait « \ » en « / » sous Windows
     with zipfile.ZipFile(tampon, "w") as archive:
         archive.writestr("campus.csv", TEXTE)
-        archive.writestr("LISEZ-MOI.txt", "explications")
+        archive.writestr(membre, "explications")
     tableaux, signalements = _lire("donnees.zip", tampon.getvalue())
     assert [t.nom for t in tableaux] == ["campus.csv"]
     assert tableaux[0].fichier == "donnees.zip/campus.csv"
     assert signalements == []
+
+
+@pytest.mark.cas_limite
+def test_agenda_ical_dans_une_archive_ignore_avec_le_bon_conseil():
+    """Cas : une archive ZIP contient des CSV et un agenda .ics.
+
+    Risque : l'agenda lu comme un tableau (« Tableau non reconnu ») ou ignoré sans un mot ;
+    l'utilisateur ne sait pas qu'il faut l'envoyer à part.
+    """
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as archive:
+        archive.writestr("campus.csv", TEXTE)
+        archive.writestr("agenda.ics", "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n")
+    tableaux, signalements = _lire("donnees.zip", tampon.getvalue())
+    assert [t.nom for t in tableaux] == ["campus.csv"]
+    erreur = seul(signalements, Gravite.ERREUR)
+    assert erreur.fichier == "donnees.zip/agenda.ics" and "s'envoie à part" in erreur.message
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("nom", "contenu", "attendu"),
+    [
+        ("image.png", b"\x89PNG\r\n\x1a\n" + bytes(range(256)), "Formats acceptés"),
+        ("document.pdf", b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + bytes(range(256)), "Formats acceptés"),
+        ("programme", b"MZ\x90\x00" + bytes(300), "Formats acceptés"),
+        ("faux.xlsx", b"ceci n'est pas un classeur", "n'est pas un classeur Excel valide"),
+        ("coupee.zip", b"debut d'une archive perdue", "n'est pas une archive ZIP valide"),
+    ],
+    ids=["image", "pdf", "binaire-sans-extension", "xlsx-renomme", "zip-abime"],
+)
+def test_fichier_d_un_autre_format_refuse_avec_les_formats_acceptes(nom, contenu, attendu):
+    """Cas : une image, un PDF, un programme, un texte renommé en .xlsx, une archive abîmée.
+
+    Risque : le fichier lu comme un CSV : « Encodage illisible : l'enregistrer en CSV UTF-8 »
+    ou « Tableau non reconnu », conseils faux qui n'expliquent pas l'erreur.
+    """
+    tableaux, signalements = _lire(nom, contenu)
+    assert not tableaux
+    erreur = seul(signalements, Gravite.ERREUR)
+    assert attendu in erreur.message and f"« {nom} »" in erreur.message
+    assert "Encodage" not in erreur.message
+
+
+def test_document_word_refuse_comme_autre_format():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+    tableaux, signalements = _lire("lettre.docx", tampon.getvalue())
+    assert not tableaux and "Formats acceptés" in seul(signalements, Gravite.ERREUR).message
 
 
 def test_ancien_format_excel_refuse_clairement():
@@ -314,7 +369,7 @@ def test_fichier_sans_cellule_remplie_est_signale_comme_vide(fichier, attendu, b
     """Cas : un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...).
 
     Risque : rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » :
-    l'utilisateur croyait son fichier pris en compte.
+    l'utilisateur croirait son fichier pris en compte.
     """
     lu, signalements = lire_fichier(fichier)
 
@@ -344,8 +399,8 @@ def test_fichier_d_en_tetes_seuls_dit_rien_a_traiter(base, importer):
 def test_classeur_protege_par_mot_de_passe_signale_clairement():
     """Cas : un classeur .xlsx enregistré avec un mot de passe (conteneur OLE2 chiffré).
 
-    Risque : annoncé « format Excel 97-2003 (.xls) », il laissait l'utilisateur,
-    qui envoie déjà un .xlsx, sans comprendre qu'il fallait retirer le mot de passe.
+    Risque : annoncé « format Excel 97-2003 (.xls) », il laisserait l'utilisateur,
+    qui envoie déjà un .xlsx, sans comprendre qu'il faut retirer le mot de passe.
     """
     lu, signalements = lire_fichier(FichierEnvoye("donnees.xlsx", OLE2 + b"\x00" * 600))
 
@@ -389,7 +444,7 @@ def test_cellule_date_dans_une_colonne_code_est_refusee_avec_explication(
     """Cas : un code « 1-2 » (ou « 8:30 ») que le tableur a converti en date ou en heure.
 
     Risque : « 2026-01-02 00:00:00 » enregistré comme code, sans avertissement ;
-    les références à ce groupe échouaient ensuite sans explication.
+    les références à ce groupe échoueraient ensuite sans explication.
     """
     fichier = classeur({nom_feuille: [entetes, cellules]})
 
@@ -405,7 +460,7 @@ def test_cellule_date_dans_une_colonne_code_est_refusee_avec_explication(
 def test_valeur_trop_longue_pour_sa_colonne_rejetee():
     """Cas : une feuille salles avec un code de 5 000 caractères, un bâtiment de 10 000.
 
-    Risque : SQLite n'impose pas la longueur VARCHAR : la ligne entrait et déformait
+    Risque : SQLite n'impose pas la longueur VARCHAR : la ligne entrerait et déformerait
     listes, menus et noms de fichiers d'export.
     """
     fichier = csv_envoye(

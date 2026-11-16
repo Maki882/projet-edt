@@ -281,7 +281,7 @@ def prevoir_regles(r: Reperes) -> list[ReglePrevue]:
 
 
 def regles_de_base() -> list[ReglePrevue]:
-    """Les règles de base du catalogue, proposées (sans effet tant qu'on ne les confirme pas)."""
+    """Les règles de base du catalogue, proposées (sans effet tant qu'elles ne sont pas confirmées)."""
     return [
         ReglePrevue(
             base.type,
@@ -306,7 +306,7 @@ def regle_horaire_enseignant(enseignant: EnseignantTemoin, fermeture: int) -> Re
         enseignant,
         {"debut": "09:00", "fin": f"{fermeture // 60:02d}:{fermeture % 60:02d}", "jours": []},
         Niveau.NECESSAIRE,
-        commentaire="Garde ses enfants le matin.",
+        commentaire="Contrainte de service déclarée par l'enseignant.",
     )
 
 

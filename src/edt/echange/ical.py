@@ -19,7 +19,7 @@ C'est un **adaptateur isolé** : il produit le même tableau intermédiaire
   reconstitution (`SeanceLue.recurrente`).
 - Champs : les propriétés `X-EDT-MATIERE`, `X-EDT-TYPE`, `X-EDT-GROUPES`,
   `X-EDT-ENSEIGNANTS`, `X-EDT-SALLE`, `X-EDT-STATUT` et `X-EDT-LIBELLE`
-  (écrites par notre export) priment ; à défaut, le type vient de
+  (écrites par l'export de l'application) priment ; à défaut, le type vient de
   `CATEGORIES`, la salle de `LOCATION`, le libellé de `SUMMARY`. Ce qui manque (matière, groupes)
   fait mettre la séance de côté par la reconstitution, avec un message.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
@@ -136,6 +136,10 @@ def vers_paris(valeur: dt.datetime) -> dt.datetime:
     return valeur.astimezone(PARIS).replace(tzinfo=None)
 
 
+DATES_INCALCULABLES = "ses dates ne se calculent pas"
+"""Motif du refus d'un événement dont datetime ou dateutil ne calcule pas les dates."""
+
+
 def lire_ical(
     nom: str,
     texte: str,
@@ -165,7 +169,12 @@ def lire_ical(
     try:
         calendrier = Calendar.from_ical(texte)
     except ValueError as erreur:
-        return [], [Signalement(Gravite.ERREUR, f"Fichier iCal illisible ({erreur}).", fichier=nom)]
+        journal.info("Fichier iCal %s illisible : %s", nom, erreur)
+        message = (
+            "Fichier iCal illisible : ce n'est pas un agenda au format iCal valide. L'exporter "
+            f"de nouveau depuis le logiciel d'agenda (détail technique : {erreur})."
+        )
+        return [], [Signalement(Gravite.ERREUR, message, fichier=nom)]
     debuts = [
         numero
         for numero, ligne in enumerate(texte.splitlines(), start=1)
@@ -237,6 +246,13 @@ def lire_ical(
             "de calcul (règles trop nombreuses, ou sans occurrence possible). Découper "
             "l'envoi ou simplifier ses règles."
         )
+    incalculables = sum(DATES_INCALCULABLES in s.message for s in signalements)
+    if incalculables:
+        journal.warning(
+            "Fichier iCal %s : %d événement(s) aux dates incalculables, non importés",
+            nom,
+            incalculables,
+        )
     journal.info(
         "Fichier iCal %s : %d événement(s), %d séance(s)", nom, len(evenements), len(seances)
     )
@@ -265,12 +281,15 @@ def _lire_ou_signaler(
     except (ValueError, OverflowError, IndexError) as erreur:
         # datetime ou dateutil : date au-delà de l'an 9999 (durée immense, fuseau), ou règle
         # que dateutil ne sait pas développer. L'événement est écarté, la lecture continue ;
-        # une ligne par événement au journal (la trace en DEBUG, pour ne pas le noyer).
-        journal.warning(
-            "Fichier iCal %s, événement ligne %s : dates incalculables (%r)", nom, ligne, erreur
+        # le détail va en DEBUG, `lire_ical` en fait le compte en une ligne.
+        journal.debug(
+            "Fichier iCal %s, événement ligne %s : dates incalculables (%r)",
+            nom,
+            ligne,
+            erreur,
+            exc_info=True,
         )
-        journal.debug("Trace de l'événement ligne %s", ligne, exc_info=True)
-        message = f"Événement illisible : ses dates ne se calculent pas ({erreur}) ; non importé."
+        message = f"Événement illisible : {DATES_INCALCULABLES} ({erreur}) ; non importé."
     signalements.append(Signalement(Gravite.ERREUR, message, nom, "événements", ligne))
     return []
 
@@ -494,7 +513,7 @@ def _verifier_regle(regle: Any, debut: dt.datetime) -> None:
     seule limite l'an 9999 : une règle sans occurrence possible (« le 31
     février », le mois 13) l'occupe plusieurs secondes, une répétition à
     l'heure ou à la minute jusqu'à vingt, et un intervalle nul ne s'arrête
-    jamais (constaté). Aucune de ces formes ne décrit un cours : elles sont
+    jamais. Aucune de ces formes ne décrit un cours : elles sont
     refusées avant tout calcul. Les combinaisons mensuelles ou annuelles
     impossibles restantes coûtent moins d'une seconde, sous `DELAI_RECURRENCES`.
     """

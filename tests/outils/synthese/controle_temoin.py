@@ -4,7 +4,7 @@ Lit l'instantané officiel du semestre (`charger_instantane`) et vérifie,
 règle par règle et sans rien réutiliser du moteur du témoin, que les places
 du témoin respectent les contraintes dures du projet. Renvoie la liste des
 violations en clair (vide = témoin valide). Volontairement simple et
-quadratique : à réserver aux jeux petit et moyen.
+quadratique : quelques secondes sur le jeu grand, réservé aux tests marqués perf.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ from edt.verification import verifier
 
 
 def problemes_du_temoin(url: str, rapport: RapportJeu) -> list[str]:
-    """Tout ce qu'on reproche au témoin d'un jeu, semestre par semestre (vide = valide).
+    """Tout ce qui est reproché au témoin d'un jeu, semestre par semestre (vide = valide).
 
     Anomalies bloquantes du vérificateur officiel, écarts aux contraintes dures
     (`violations`) et aux règles personnalisées (`violations_regles`).

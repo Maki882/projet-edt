@@ -17,21 +17,21 @@
     (CSV ou XLSX) ou de fichier iCal (.ics).
   </p>
   <p class="discret">
-    Commencer par « Simuler » : rien n'est écrit, l'aperçu, le bilan et le rapport s'affichent ;
-    appliquer ensuite. Les lignes valides entrent, les autres sont listées. Réimporter un fichier
+    Vérifier d'abord avec « Simuler l'import » (rien n'est enregistré), puis appliquer. Les lignes valides entrent, les autres sont listées. Réimporter un fichier
     met à jour sans créer de doublon. {{ taille_max_mo }} Mo au plus par envoi ; les fichiers ne
     sont pas conservés sur le serveur.
   </p>
 
   <form id="formulaire-import" class="formulaire" method="post" action="/import/simuler" enctype="multipart/form-data">
     {{ ui.champ("fichiers", "Fichiers", type="file", requis=true,
-                aide="Un ou plusieurs fichiers : " ~ extensions ~ ".",
+                aide="Un ou plusieurs fichiers : " ~ extensions_texte ~ ".",
                 attributs={"multiple": "multiple", "accept": extensions}) }}
     {{ ui.champ("mode", "Que contiennent les fichiers ?", valeur="donnees", type="select", options=modes,
-                aide="Référence : version pour comparaison. Verrous : séances que le générateur gardera à leur place. À replacer : seulement les besoins, le générateur placera tout.") }}
+                aide="Pour un emploi du temps existant, choisir comment le reprendre.") }}
     {{ ui.champ("semestre_id", "Semestre de l'emploi du temps", valeur=semestre_defaut, type="select", options=semestres,
-                aide="Seulement pour un emploi du temps existant.") }}
+                conteneur={"data-visible-si": "mode:reference,verrous,a_replacer"}) }}
     {{ ui.champ("semaine_type", "Semaine type imposée (facultatif)", type="date",
+                conteneur={"data-visible-si": "mode:reference,verrous,a_replacer"},
                 aide="Une date de la semaine à retenir comme semaine type ; vide = la semaine la plus fréquente de chaque promotion.") }}
     {{ ui.champ("tout_remplacer", "Tout remplacer : vider d'abord toutes les données de l'établissement (confirmation demandée avant d'appliquer)", type="checkbox") }}
     <div class="formulaire-actions">

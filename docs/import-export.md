@@ -520,8 +520,8 @@ Identifiant métier : `cible`, `ressource`, `annee`, `jour`, `date_debut`, `date
 | `debut` | Début | heure (08:30, 8h30) |  | oui | Vide : 00:00. | 13:45 |
 | `fin` | Fin | heure (08:30, 8h30) |  | oui | Vide : 24:00. | 18:00 |
 | `motif` | Motif | texte |  |  | 255 caractères au plus. | Activité professionnelle |
-| `dure` | Contrainte dure | oui / non |  |  | Toujours oui en V1. Vide : oui. |  |
-| `poids` | Poids | nombre entier |  |  | Préférences (versions futures). Vide : 0. |  |
+| `dure` | Contrainte dure | oui / non |  |  | Oui : respectée par le calcul. Non : ignorée par le calcul et la vérification. Vide : oui. |  |
+| `poids` | Poids | nombre entier |  |  | Conservé à l'import et à l'export, sans effet sur le calcul. Vide : 0. |  |
 
 #### 14. `regles` : Règles
 

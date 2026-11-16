@@ -13,8 +13,10 @@
   <h2>Import appliqué ({{ mode_libelle }})</h2>
   {% endif %}
 
-  {% if rapport.a_des_rejets %}
+  {% if rapport.a_des_rejets and rapport.nb_rejets %}
     {{ ui.message(rapport.nb_rejets ~ " ligne(s) ou séance(s) non importée(s), " ~ rapport.nb_erreurs ~ " erreur(s) : voir le rapport ci-dessous.", "attention") }}
+  {% elif rapport.a_des_rejets %}
+    {{ ui.message(rapport.nb_erreurs ~ " erreur(s) : voir le rapport ci-dessous.", "attention") }}
   {% else %}
     {{ ui.message("Aucune ligne rejetée.", "succes") }}
   {% endif %}
@@ -72,7 +74,10 @@
   {% endfor %}
   {% endif %}
 
-  {% if rapport.simulation %}
+  {% if rapport.simulation and not rapport.a_des_ecritures %}
+  <h3>Appliquer</h3>
+  {{ ui.message("Rien à appliquer : aucune ligne ne serait créée ni modifiée. Corriger les fichiers d'après le rapport, puis simuler de nouveau.", "info") }}
+  {% elif rapport.simulation %}
   <h3>Appliquer</h3>
   {% if tout_remplacer %}
     {{ ui.message("« Tout remplacer » supprimera d'abord ces données de l'établissement : "

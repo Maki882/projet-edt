@@ -252,7 +252,7 @@ def test_reimport_sans_enseignants_signale_le_remplacement_des_enseignants_exist
 ):
     """Cas : un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001).
 
-    Risque : le besoin retrouvé était « mis à jour » avec l'enseignant fictif à la
+    Risque : le besoin retrouvé serait « mis à jour » avec l'enseignant fictif à la
     place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue.
     """
     fichier = csv_envoye(

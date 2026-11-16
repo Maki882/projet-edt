@@ -88,7 +88,7 @@ LONGUEUR_SOURCE = 255
 def obtenir_par_id(session: Session, modele: type, identifiant: object) -> Any | None:
     """La ligne d'identifiant `identifiant`, ou `None` s'il ne peut désigner aucune ligne.
 
-    La garde est celle du socle (`edt.db.moteur.identifiant_valide`) : un
+    La garde est `edt.db.moteur.identifiant_valide` : un
     identifiant nul, négatif, booléen ou au-delà des entiers de SQLite répond
     « n'existe pas », là où `session.get` lèverait `OverflowError` pour un
     entier énorme venu d'une adresse ou de la ligne de commande.
@@ -303,17 +303,26 @@ class Contexte:
     def salle(self, reference: str, colonne: str) -> m.Salle:
         """Salle désignée par son code, ou par « code@campus » si le code est ambigu.
 
-        Le code exact est cherché d'abord : un code de salle peut lui-même
-        contenir « @ ». Sinon, la référence se coupe au dernier « @ ».
+        Un code de salle peut lui-même contenir « @ » : la référence est lue
+        comme un code exact, et aussi, coupée au dernier « @ », comme
+        « code@campus ». Si les deux lectures désignent une salle, la référence
+        est refusée comme ambiguë plutôt que résolue au hasard.
         """
         candidates = list(self.salles.get(cle_code(reference), ()))
-        if not candidates and "@" in reference:
+        if "@" in reference:
             code, _, campus = reference.rpartition("@")
-            candidates = [
+            qualifiees = [
                 s
                 for s in self.salles.get(cle_code(code), ())
                 if cle_code(s.campus.code) == cle_code(campus)
             ]
+            if candidates and qualifiees:
+                raise Rejet(
+                    colonne,
+                    f"Salle « {reference} » ambiguë : c'est le code d'une salle, et aussi la "
+                    f"salle « {code} » du campus {campus} ; renommer l'une des deux salles.",
+                )
+            candidates = candidates or qualifiees
         if not candidates:
             raise Rejet(colonne, f"Salle « {reference} » inconnue (feuille salles).")
         if len(candidates) > 1:
@@ -1409,7 +1418,8 @@ def importer_tableaux(
                 Signalement(
                     Gravite.ERREUR,
                     f"Tableau « {tableau.nom} » non reconnu : nommer l'onglet ou le fichier comme "
-                    f"une feuille du format ({', '.join(f.nom for f in FEUILLES)}). "
+                    f"une feuille du format ({', '.join(f.nom for f in FEUILLES)}), ou partir "
+                    "du gabarit vide (Données > Export). "
                     f"{len(tableau.lignes)} ligne(s) non importée(s).",
                     tableau.fichier,
                     tableau.nom,
@@ -1526,7 +1536,7 @@ def exporter_donnees(session: Session) -> list[tuple[Feuille, list[dict[str, Any
         "semestres": lambda: _exporter_semestres(session),
         "campus": lambda: _exporter_campus(session),
         "trajets": lambda: _exporter_trajets(session),
-        "salles": lambda: _exporter_salles(salles, reference_salle),
+        "salles": lambda: _exporter_salles(salles),
         "enseignants": lambda: _exporter_enseignants(session),
         "groupes": lambda: _exporter_groupes(session, groupes, groupes_par_id),
         "jours_fermes": lambda: _exporter_jours_fermes(session, groupes_par_id),
@@ -1590,9 +1600,7 @@ def _exporter_trajets(session: Session) -> Iterable[dict[str, Any]]:
     return sorted(lignes, key=lambda x: (x["campus_a"], x["campus_b"]))
 
 
-def _exporter_salles(
-    salles: Sequence[m.Salle], reference: dict[int, str]
-) -> Iterable[dict[str, Any]]:
+def _exporter_salles(salles: Sequence[m.Salle]) -> Iterable[dict[str, Any]]:
     for salle in sorted(salles, key=lambda s: (s.campus.code, s.code)):
         yield {
             "code": salle.code,

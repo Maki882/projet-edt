@@ -70,43 +70,56 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'intégration.
+Le catalogue compte 420 cas : 242 cas en tests unitaires et 178 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
-| `echange` | 39 | 5 |
+| `echange` | 57 | 12 |
 | `exploitation` | 40 | 32 |
 | `socle` | 59 | 32 |
 | `solveur` | 20 | 19 |
-| `synthese` | 28 | 5 |
+| `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
-| `web_donnees` | 2 | 36 |
+| `web_donnees` | 2 | 39 |
 | `web_edt` | 6 | 39 |
-| **Total** | **221** | **168** |
+| **Total** | **242** | **178** |
 
-### Tests unitaires (221 cas)
+### Tests unitaires (242 cas)
 
-#### `echange` (39 cas)
+#### `echange` (57 cas)
 
 [`tests/unitaires/echange/test_bornes.py`](../tests/unitaires/echange/test_bornes.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Entier hors bornes sqlite rejette la ligne sans planter | une capacité, un effectif ou un nombre de séances de 10**20 parmi des lignes valides. | OverflowError au flush de SQLite, non capturée : tout l'import échouait (erreur 500 ou code 2) et aucune ligne du fichier n'entrait. |
+| Archive bombe refusee avant decompression | une archive ZIP de 40 Ko qui ferait 21 Mo de retours à la ligne une fois décompressée. | la décompression remplit la mémoire du serveur avant tout contrôle de taille. |
+| Archive de plus de 50 fichiers refusee | une archive de 51 fichiers CSV. | des milliers de petits membres occupent le serveur ; le refus doit citer leur nombre. |
+| Membre abime signale sans planter | une archive dont un membre est abîmé (octet corrompu dans les données compressées). | erreur de décompression non capturée : tout l'import échoue, le membre sain compris. |
+| Classeur bombe refuse avant openpyxl | un classeur .xlsx dont une partie interne ferait 21 Mo une fois décompressée. | openpyxl décompresse tout en mémoire avant que la taille soit contrôlée. |
+| Le gabarit reste sous les bornes d un classeur | le gabarit vide produit par l'application, relu par la lecture. | une borne trop basse refuse le propre gabarit de l'application. |
+| Fichier de retours a la ligne refuse sans tout lire | 19 Mo de lignes vides dans un CSV. | toutes les lignes lues avant le refus : serveur occupé pour rien ; la lecture doit s'arrêter à `MAX_LIGNES_LUES`. |
+| Tableau trop long refuse avec un message clair | un tableau d'une ligne de plus que `MAX_LIGNES_TABLEAU`. | tableau tronqué en silence, ou refus sans dire quoi faire (découper l'envoi). |
+| Budget de lignes partage par l envoi | deux fichiers d'un même envoi qui, ensemble, dépassent le nombre de lignes admis. | la borne par fichier contournée en découpant un envoi hostile en plusieurs fichiers. |
+| Trop de colonnes et cellule geante | une ligne de 600 colonnes, puis une cellule de 200 000 caractères. | mémoire et page de résultat démesurées, ou erreur brute du lecteur CSV. |
+| Ical trop d evenements ou regle trop dense | un agenda iCal de trop d'événements, une règle à la minute, une règle quotidienne sans fin. | des millions d'occurrences développées : serveur occupé, mémoire épuisée. |
+| Signalements bornes et comptes | plus de signalements que la liste n'en garde. | les signalements omis disparaissent sans être comptés : le rapport sous-estime les erreurs. |
+| Formules neutralisees dans les csv et relues a l identique | un libellé qui commence par « = » (formule) exporté en CSV, puis réimporté. | la formule s'exécute à l'ouverture dans un tableur ; ou la neutralisation change la valeur au réimport. |
+| Import d emploi du temps limite aussi l ical | un import d'emploi du temps iCal au-delà de `MAX_EVENEMENTS` événements. | la borne du lecteur iCal ignorée par le chemin d'import d'un emploi du temps. |
+| Entier hors bornes sqlite rejette la ligne sans planter | une capacité, un effectif ou un nombre de séances de 10**20 parmi des lignes valides. | OverflowError au flush de SQLite, non capturée : tout l'import échouerait (erreur 500 ou code 2) et aucune ligne du fichier n'entrerait. |
 | Debordement d entier de sqlite rejette sa ligne seule | un entier au-delà de 2**63 atteint la base (borne de lecture levée pour le test). | sans filet, OverflowError au flush fait échouer tout l'import au lieu de la seule ligne fautive ; c'est la défense en profondeur derrière la borne. |
-| Import reserve la base des son ouverture | une autre connexion veut écrire pendant qu'un import a ouvert sa transaction. | en transaction différée (BEGIN émis par le moteur), l'import lisait sans verrou puis échouait aussitôt « database is locked » si une autre écriture avait validé entre-temps (SQLite n'attend pas dans ce cas). simulation_possible ouvre la transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE). |
-| Deux imports simultanes sont serialises sans erreur | deux imports appliqués au même moment (deux onglets du navigateur). | en transaction différée, le second échouait « base occupée » au lieu d'attendre la fin du premier, ou l'un écrasait l'autre. Chaque import ouvre sa transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE) : le second attend son tour, dans la limite du délai de verrou du socle. |
+| Import reserve la base des son ouverture | une autre connexion veut écrire pendant qu'un import a ouvert sa transaction. | en transaction différée (BEGIN émis par le moteur), l'import lirait sans verrou puis échouerait aussitôt « database is locked » si une autre écriture validait entre-temps (SQLite n'attend pas dans ce cas). simulation_possible ouvre la transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE). |
+| Deux imports simultanes sont serialises sans erreur | deux imports appliqués au même moment (deux onglets du navigateur). | en transaction différée, le second échouerait « base occupée » au lieu d'attendre la fin du premier, ou l'un écraserait l'autre. Chaque import ouvre sa transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE) : le second attend son tour, dans la limite du délai de verrou du socle. |
 | Import de dix mille lignes valides sous le seuil | un fichier de 10 000 enseignants valides, simulé (un point de sauvegarde par ligne). | une régression de performance (index perdu, requête par ligne) qui rendrait l'import d'un vrai établissement interminable, sans aucun test pour le voir. |
 | Archive aux chemins hostiles lue sans ecriture sur disque | une archive ZIP aux membres « ../../etc/campus.csv » et « C:\Windows\salles.csv ». | sûr tant que l'archive est lue en mémoire ; une évolution qui l'extrairait écrirait hors du dossier (zip slip), et le rapport afficherait des chemins trompeurs. |
-| Lecture ical faite avant de reserver la base | un import d'emploi du temps iCal dont les récurrences prennent du temps à calculer. | lu dans la transaction (BEGIN IMMEDIATE), l'agenda réservait la base pendant tout son calcul : une saisie simultanée attendait, puis échouait « base occupée ». |
-| Budget de calcul ical partage par l envoi | un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses. | avec un délai par fichier, un envoi de N fichiers hostiles occupait le serveur N fois DELAI_RECURRENCES ; le délai vaut pour tout l'envoi. |
-| Service appele avec un identifiant hors base repond introuvable | un appelant du service (commande, futur assistant) passe un identifiant de 10**20. | session.get levait OverflowError, « erreur inattendue » au lieu de « n'existe pas » : les bornes des adresses et des options ne protègent pas un appel direct du service. |
+| Lecture ical faite avant de reserver la base | un import d'emploi du temps iCal dont les récurrences prennent du temps à calculer. | lu dans la transaction (BEGIN IMMEDIATE), l'agenda réserverait la base pendant tout son calcul : une saisie simultanée attendrait, puis échouerait « base occupée ». |
+| Budget de calcul ical partage par l envoi | un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses. | avec un délai par fichier, un envoi de N fichiers hostiles occuperait le serveur N fois DELAI_RECURRENCES ; le délai vaut pour tout l'envoi. |
+| Service appele avec un identifiant hors base repond introuvable | un appelant du service (commande, script, assistant) passe un identifiant de 10**20. | session.get lèverait OverflowError, « erreur inattendue » au lieu de « n'existe pas » : les bornes des adresses et des options ne protègent pas un appel direct du service. |
 
 [`tests/unitaires/echange/test_export_edt.py`](../tests/unitaires/echange/test_export_edt.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Ical hebdo tolere un semestre raccourci apres la version | la fin du semestre est avancée au 20/09/2026 après l'enregistrement d'une version. | « Semaine 3 absent(e) » : page 404 « Élément introuvable » qui ne parle ni de la version ni des dates, alors que l'export CSV de la même version passe. |
+| Ical hebdo tolere un semestre raccourci apres la version | la fin du semestre est avancée au 20/09/2026 après l'enregistrement d'une version. | « Semaine 3 absent(e) » : page 404 « Élément introuvable » qui ne parle ni de la version ni des dates, alors que l'export CSV de la même version passe ; ou un avertissement par séance, des centaines de lignes de journal pour un export. |
 
 [`tests/unitaires/echange/test_format.py`](../tests/unitaires/echange/test_format.py)
 
@@ -120,43 +133,48 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Fuseau inconnu signale en avertissement | DTSTART et DTEND portent TZID=Mars/Phobos, fuseau inconnu et sans VTIMEZONE. | heure prise pour une heure de Paris sans un mot : séances décalées de plusieurs heures si l'agenda venait d'un autre fuseau. |
-| Recurrence ancienne bornee par la periode sans refus | une série quotidienne depuis 1998 ou hebdomadaire depuis 1800, lue sur 2026-2027. | les occurrences antérieures à la période comptaient dans la borne de 10 000 pas : « trop d'occurrences », et les séances du semestre étaient perdues. |
-| Regle de recurrence hostile refusee avant tout calcul | une règle à intervalle nul, trop fine ou sans occurrence possible (fichier abîmé ou hostile). | dateutil cherchait sans fin (INTERVAL=0) ou des secondes durant une occurrence inexistante, base réservée ; d'autres formes faisaient planter tout l'import (ValueError, IndexError). |
+| Recurrence ancienne bornee par la periode sans refus | une série quotidienne depuis 1998 ou hebdomadaire depuis 1800, lue sur 2026-2027. | les occurrences antérieures à la période compteraient dans la borne de 10 000 pas : « trop d'occurrences », et les séances du semestre seraient perdues. |
+| Regle de recurrence hostile refusee avant tout calcul | une règle à intervalle nul, trop fine ou sans occurrence possible (fichier abîmé ou hostile). | dateutil chercherait sans fin (INTERVAL=0) ou des secondes durant une occurrence inexistante, base réservée ; d'autres formes feraient planter tout l'import (ValueError, IndexError). |
 | Regle de cours ordinaire toujours admise | des règles de cours ordinaires ou rares (tous les quinze jours, le 1er lundi, le 29 février). | la vérification des règles hostiles, trop large, refuserait des séries légitimes et des séances seraient perdues. |
 | Evenement aux dates incalculables ecarte sans arreter la lecture | un événement à la durée immense, au-delà de l'an 9999 à Paris, ou au RECURRENCE-ID illisible. | OverflowError ou erreur d'icalendar non capturée : tout l'import planté (« erreur inattendue ») à cause d'un seul événement. |
-| Fichier aux recurrences trop couteuses refuse en entier | des règles qui, ensemble, épuisent le temps de calcul d'un fichier (DELAI_RECURRENCES). | un fichier de quelques kilo-octets aux règles impossibles (près d'une seconde chacune) occupait le serveur et réservait la base des minutes durant. |
+| Evenements aux dates incalculables comptes en une ligne de journal | un fichier hostile de nombreux événements aux dates incalculables. | une ligne d'avertissement par événement, jusqu'à 50 000 lignes de journal pour un seul envoi ; le rapport, lui, garde une erreur par événement. |
+| Fichier aux recurrences trop couteuses refuse en entier | des règles qui, ensemble, épuisent le temps de calcul d'un fichier (DELAI_RECURRENCES). | un fichier de quelques kilo-octets aux règles impossibles (près d'une seconde chacune) occuperait le serveur et réserverait la base des minutes durant. |
 
 [`tests/unitaires/echange/test_import_donnees.py`](../tests/unitaires/echange/test_import_donnees.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Export xlsx tolere les caracteres de controle | un libellé de matière contient un caractère de contrôle invisible (U+0001 collé). | openpyxl refusait la cellule (IllegalCharacterError) et tout l'export XLSX de l'établissement échouait en 500 ; un réimport perdait le caractère. |
+| Export xlsx tolere les caracteres de controle | un libellé de matière contient un caractère de contrôle invisible (U+0001 collé). | openpyxl refuserait la cellule (IllegalCharacterError) et tout l'export XLSX de l'établissement échouerait en 500 ; un réimport, du classeur comme des CSV de l'archive, perdrait le caractère. |
+| Notation de caractere ecrite telle quelle survit a l aller retour xlsx | un libellé contient, écrites telles quelles, les suites « _x000B_ » et « _x005F_ » (la notation des caractères spéciaux du format XLSX). | le réimport du classeur les prendrait pour des notations : le libellé changerait (caractère de contrôle invisible, « _ » isolé) et serait signalé à tort. |
 | Caractere de controle importe est garde et signale | un CSV dont un libellé contient U+0001 (copier-coller depuis un autre logiciel). | valeur corrigée en silence (perte), ou caractère invisible gardé sans que personne ne le sache. |
-| Besoin dont le debut impose et la duree depassent minuit est rejete | un besoin de 24 h imposé à 23:00, ou de 3 h imposé à 22:30. | durée et heure contrôlées séparément, le besoin entrait ; toute séance placée à ce début violait la contrainte de plage horaire à l'enregistrement de la version : plantage différé, au calcul, sans lien visible avec l'import. |
-| Salle au code contenant arobase reste referencable | une salle de code « A@B » imposée à un besoin, puis export et réimport. | la référence était coupée au premier « @ » (salle « A » du campus « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour. |
-| Durees absurdes signalees | un trajet de 100 h entre deux campus, un maximum de 90 h par jour. | accepté sans borne, il rendait le calcul infaisable (trajet impossible) ou n'avait aucun sens, sans lien visible avec l'import. |
-| Groupe parent de lui meme rejete | un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1). | l'auto-parenté finissait en IntegrityError générique, ou en boucle sans fin dans le parcours des parents. |
+| Besoin dont le debut impose et la duree depassent minuit est rejete | un besoin de 24 h imposé à 23:00, ou de 3 h imposé à 22:30. | durée et heure contrôlées séparément, le besoin entrerait ; toute séance placée à ce début violerait la contrainte de plage horaire à l'enregistrement de la version : plantage différé, au calcul, sans lien visible avec l'import. |
+| Salle au code contenant arobase reste referencable | une salle de code « A@B » imposée à un besoin, puis export et réimport. | la référence serait coupée au premier « @ » (salle « A » du campus « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour. |
+| Reference de salle a double lecture refusee comme ambigue | une salle de code « A@NDC » (campus ISSY) et deux salles « A » (NDC et ISSY) ; un besoin impose la salle « A@NDC », référence que l'export écrit pour la salle A de NDC. | la salle de code « A@NDC » serait choisie en silence au lieu de la salle A du campus NDC : salle imposée changée au réimport d'un export, sans un mot. |
+| Durees absurdes signalees | un trajet de 100 h entre deux campus, un maximum de 90 h par jour. | accepté sans borne, il rendrait le calcul infaisable (trajet impossible) ou n'aurait aucun sens, sans lien visible avec l'import. |
+| Groupe parent de lui meme rejete | un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1). | l'auto-parenté finirait en IntegrityError générique, ou en boucle sans fin dans le parcours des parents. |
 | Ordre des parents lineaire sur une chaine profonde | 20 000 groupes en chaîne, chaque enfant écrit avant son parent. | un ordonnancement récursif lèverait RecursionError au-delà de 1 000 niveaux, un algorithme quadratique prendrait des minutes. |
 | Hierarchie profonde et auto parente | l'import réel de 1 500 groupes en chaîne, enfants avant parents, plus une boucle. | un import de hiérarchie profonde qui s'effondre (pile, temps) ou qui laisse entrer la boucle ; mesuré de bout en bout, base comprise. |
-| Ical en mode donnees signale le mauvais mode | un agenda .ics envoyé avec le mode « données de l'établissement ». | correct aujourd'hui mais sans test ; une régression ignorerait l'agenda en silence, l'utilisateur croyant son emploi du temps importé. |
-| Import en cours signale pendant tout l import | un calcul est demandé depuis un autre onglet pendant qu'un import lit ses fichiers. | sans marqueur consultable, le lancement d'un calcul ne pouvait pas savoir qu'un import tournait (calcul sur des données en train de changer), alors que l'import, lui, refuse un calcul en cours. |
+| Ical en mode donnees signale le mauvais mode | un agenda .ics envoyé avec le mode « données de l'établissement ». | une régression ignorerait l'agenda en silence, l'utilisateur croyant son emploi du temps importé. |
+| Import en cours signale pendant tout l import | un calcul est demandé depuis un autre onglet pendant qu'un import lit ses fichiers. | sans marqueur consultable, le lancement d'un calcul ne pourrait pas savoir qu'un import tourne (calcul sur des données en train de changer), alors que l'import, lui, refuse un calcul en cours. |
 | Import sur une session deja engagee refuse clairement | un appelant lit avec la session, puis lui confie un import (simulation_possible). | la transaction, déjà ouverte en mode différé, ne réserverait pas la base : deux imports simultanés échoueraient au hasard « database is locked », sans que rien ne dise pourquoi. |
 
 [`tests/unitaires/echange/test_import_edt.py`](../tests/unitaires/echange/test_import_edt.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Reimport sans enseignants signale le remplacement des enseignants existants | un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001). | le besoin retrouvé était « mis à jour » avec l'enseignant fictif à la place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue. |
+| Reimport sans enseignants signale le remplacement des enseignants existants | un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001). | le besoin retrouvé serait « mis à jour » avec l'enseignant fictif à la place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue. |
 
 [`tests/unitaires/echange/test_lecture.py`](../tests/unitaires/echange/test_lecture.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Fichier sans cellule remplie est signale comme vide | un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...). | rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » : l'utilisateur croyait son fichier pris en compte. |
+| Agenda ical dans une archive ignore avec le bon conseil | une archive ZIP contient des CSV et un agenda .ics. | l'agenda lu comme un tableau (« Tableau non reconnu ») ou ignoré sans un mot ; l'utilisateur ne sait pas qu'il faut l'envoyer à part. |
+| Fichier d un autre format refuse avec les formats acceptes | une image, un PDF, un programme, un texte renommé en .xlsx, une archive abîmée. | le fichier lu comme un CSV : « Encodage illisible : l'enregistrer en CSV UTF-8 » ou « Tableau non reconnu », conseils faux qui n'expliquent pas l'erreur. |
+| Fichier sans cellule remplie est signale comme vide | un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...). | rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » : l'utilisateur croirait son fichier pris en compte. |
 | Fichier d en tetes seuls dit rien a traiter | un gabarit rempli de ses seuls en-têtes (aucune ligne de données). | confondu avec un fichier vide, il serait signalé en erreur ; il doit au contraire passer et dire « rien à traiter » pour sa feuille. |
-| Classeur protege par mot de passe signale clairement | un classeur .xlsx enregistré avec un mot de passe (conteneur OLE2 chiffré). | annoncé « format Excel 97-2003 (.xls) », il laissait l'utilisateur, qui envoie déjà un .xlsx, sans comprendre qu'il fallait retirer le mot de passe. |
-| Cellule date dans une colonne code est refusee avec explication | un code « 1-2 » (ou « 8:30 ») que le tableur a converti en date ou en heure. | « 2026-01-02 00:00:00 » enregistré comme code, sans avertissement ; les références à ce groupe échouaient ensuite sans explication. |
-| Valeur trop longue pour sa colonne rejetee | une feuille salles avec un code de 5 000 caractères, un bâtiment de 10 000. | SQLite n'impose pas la longueur VARCHAR : la ligne entrait et déformait listes, menus et noms de fichiers d'export. |
+| Classeur protege par mot de passe signale clairement | un classeur .xlsx enregistré avec un mot de passe (conteneur OLE2 chiffré). | annoncé « format Excel 97-2003 (.xls) », il laisserait l'utilisateur, qui envoie déjà un .xlsx, sans comprendre qu'il faut retirer le mot de passe. |
+| Cellule date dans une colonne code est refusee avec explication | un code « 1-2 » (ou « 8:30 ») que le tableur a converti en date ou en heure. | « 2026-01-02 00:00:00 » enregistré comme code, sans avertissement ; les références à ce groupe échoueraient ensuite sans explication. |
+| Valeur trop longue pour sa colonne rejetee | une feuille salles avec un code de 5 000 caractères, un bâtiment de 10 000. | SQLite n'impose pas la longueur VARCHAR : la ligne entrerait et déformerait listes, menus et noms de fichiers d'export. |
 | Colonne en double lue une seule fois et signalee une fois | en-têtes « code;campus;capacite;type;Capacité », capacité 30 puis 99. | deux avertissements contradictoires, et la seconde valeur rangée parmi les colonnes libres (extra) de la salle : trace trompeuse. |
 | Cellule fusionnee signalee comme telle | un onglet salles où le code N904 est fusionné sur deux lignes (A2:A3). | openpyxl rend vide la cellule absorbée : ligne 3 rejetée « Valeur obligatoire manquante » sans que la fusion, vraie cause, soit nommée. |
 | Nombre de serie excel refuse avec un indice | une date (46300) ou une heure (0,354166 pour 8 h 30) gardée en nombre par le tableur. | refus sans explication pour un non-informaticien, ou conversion silencieuse en une date ou une heure fausse. |
@@ -397,7 +415,7 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Calcul en cours ne s auto bloque pas sur un calcul abandonne | une requête d'écriture tient le verrou d'écriture (transaction immédiate et une écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête consulte `calcul_en_cours()` (import, remise à zéro, paramètres). | la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de la reporter et de répondre d'après ce qui a été lu. |
 | Cloture sans attendre retablit le delai de verrou de la connexion | un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion dont le délai de verrou n'est pas celui par défaut. | le délai est remis à une constante lue à l'import du module, pas à la valeur que la connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé en silence pour toutes les requêtes servies ensuite par cette connexion. |
 
-#### `synthese` (28 cas)
+#### `synthese` (31 cas)
 
 [`tests/unitaires/synthese/test_cas_limites.py`](../tests/unitaires/synthese/test_cas_limites.py)
 
@@ -407,8 +425,11 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Annee passee ou lointaine donne un jeu valide | jeu demandé pour une année passée ou lointaine (autres fériés, autres lundis). | calendrier ou témoin faux hors de l'année courante. |
 | Graine hors bornes refusee | graine négative, trop grande ou non entière. | `random.Random(-5)` redonne silencieusement le jeu de la graine 5. |
 | Graines extremes admises et deterministes | plus petite et plus grande graine admises. | jeu différent d'une génération à l'autre pour une même graine extrême. |
-| Borne de graine identique au formulaire web | même graine saisie à l'écran et en ligne de commande. | une graine acceptée par la commande refusée par l'interface, ou l'inverse. |
-| Service refuse une graine invalide avant la remise a zero | le service de rechargement (écran, futur assistant) reçoit une graine refusée avec la remise à zéro. | toutes les données perdues pour une faute de saisie. |
+| Service refuse une graine invalide avant la remise a zero | le service de rechargement (écran, assistant) reçoit une graine refusée avec la remise à zéro. | toutes les données perdues pour une faute de saisie. |
+| Refus apres la remise a zero dit que la base est videe | la remise à zéro est faite, puis le chargement est refusé (calcul lancé entre-temps par un autre processus, configuration refusée par le générateur). | le refus seul est affiché ; l'utilisateur croit ses données d'avant intactes alors que la base a été vidée et qu'aucun jeu n'est chargé. |
+| Schema recree par la remise a zero n est pas recontrole | charger un jeu avec remise à zéro, quand le contrôle du schéma signale à tort un écart juste après la recréation des tables (constaté sur le serveur réel après « Proposer une autre solution »). | la base est vidée, puis le chargement refusé « schéma périmé... Rien n'a été modifié » : base vide, message faux, et chaque nouvel essai échoue de même. |
+| Chargement refuse pendant un calcul nomme le chargement | « Charger » un jeu (avec remise à zéro) pendant un calcul. | le refus dit « Impossible de remettre la base à zéro » alors que l'utilisateur a demandé un chargement ; ou la base est vidée avant le refus. |
+| Marqueur d un processus arrete n immobilise pas le serveur | `python -m edt jeu --reset` interrompu (fenêtre fermée, Ctrl+C brutal) laisse son fichier marqueur à côté de la base. | pendant dix minutes, tout calcul et tout chargement sont refusés « opération en cours » sans issue, alors que plus rien ne tourne. |
 | Configuration sans salle refusee a la construction | configuration sur mesure sans site, ou avec un site sans aucune salle. | `IndexError` en pleine génération au lieu d'un refus qui liste le problème. |
 | Salles site negatives refusees | capacité d'amphithéâtre nulle ou négative, nombre de salles négatif. | `IntegrityError` SQLite brute, ou salles ignorées sans explication. |
 | Configuration qui ne tient pas dans les salles | une seule salle de cours pour toute une promotion (pas d'amphithéâtre). | plantage, besoins perdus en silence ou témoin faux au lieu d'écarts expliqués. |
@@ -421,7 +442,7 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Empreinte figee du jeu petit graine 0 | même taille et même graine sur une autre machine (CI en 3.11 et 3.13, serveur). | les jeux divergent sans que personne ne le voie. |
 | Jeu independant des noms proposes par faker | autre version de Faker (autre liste de noms), donc autres collisions de noms. | les tirages du générateur suivent les noms et tout le jeu change avec Faker. |
 | Noms epuises homonymes admis sans boucle infinie | plus d'enseignants que de noms distincts chez Faker (800 couples civilité-nom). | boucle infinie, la génération ne se termine jamais. |
-| Graine difficile du moyen sans besoin ecarte | graine 13 du jeu moyen, où un premier placement glouton laisse deux TP sans place. | jeu incomplet selon la graine, ou relance du témoin non déterministe. |
+| Graine difficile du moyen sans besoin ecarte | graine 13 du jeu moyen, où un premier placement glouton laisse deux TP sans place. | jeu incomplet selon la graine, relance du témoin non déterministe, ou recrues d'un essai écarté gardées dans le vivier et comptées au rapport. |
 | Temoin et regles valides sur trois graines du petit | autres graines que 0 (enseignants, vacataires et règles d'exemple tirés autrement). | règle d'exemple invalide ou témoin faux pour une graine que personne n'essaie. |
 | Temoin et regles valides sur dix graines | dix graines par taille (10 à 19). | besoin écarté, témoin faux ou règle d'exemple invalide pour une graine donnée (le jeu de démonstration se recharge souvent). |
 | Generation bornee en temps | chargement d'un jeu depuis l'écran (la requête attend la fin de la génération). | génération qui s'emballe et bloque l'interface (moins d'une seconde d'habitude). |
@@ -444,7 +465,7 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Jeu grand en moins d une minute | *docstring « Cas : … Risque : … » absente ou incomplète* | *docstring « Cas : … Risque : … » absente ou incomplète* |
+| Jeu grand en moins d une minute | chargement de l'établissement grand (le plus long) depuis l'écran ou la commande. | génération qui dérive au-delà d'une minute et bloque l'écran de chargement. |
 
 [`tests/unitaires/synthese/test_regles.py`](../tests/unitaires/synthese/test_regles.py)
 
@@ -593,9 +614,20 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 |---|---|---|
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 
-### Tests d'intégration (168 cas)
+### Tests d'intégration (178 cas)
 
-#### `echange` (5 cas)
+#### `echange` (12 cas)
+
+[`tests/integration/echange/test_bornes.py`](../tests/integration/echange/test_bornes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Import web d une archive bombe | une archive bombe envoyée par le formulaire d'import du site. | page d'erreur brute ou serveur bloqué au lieu d'un refus lisible dans une page légère. |
+| Page bornee et rapport complet telechargeable | un CSV de 1 500 lignes fautives (3 000 erreurs) simulé par le site. | page de plusieurs mégaoctets illisible ; ou rapport téléchargeable incomplet. |
+| Fichier de 19 mo refuse vite par le web | un fichier annees.csv de 19,5 Mo, 1 200 000 lignes invalides, envoyé au site. | le serveur analyse chaque ligne et renvoie une page géante au lieu de refuser le tableau. |
+| Un import ne gele pas les autres requetes | un import dont le rendu de la page prend du temps. | l'import tourne dans la boucle d'événements : tout le site ne répond plus pendant ce temps. |
+| Csv d emploi du temps neutralise | un libellé de besoin commençant par « + » dans l'export CSV d'un emploi du temps. | le tableur interprète le libellé comme une formule à l'ouverture. |
+| Export preselectionne la version active | une version plus récente que la version active existe (référence d'un autre semestre). | l'écran d'export présélectionne la mauvaise version : export d'un emploi du temps qui n'est pas celui en vigueur. |
 
 [`tests/integration/echange/test_commandes.py`](../tests/integration/echange/test_commandes.py)
 
@@ -608,7 +640,8 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Export d une version negative nulle ou enorme dit introuvable | GET /export/emploi-du-temps.csv (ou .ics) avec version_id=-7, 0 ou vingt chiffres. | OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300 chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des écrans Données (cas transmis par le lot web EDT). |
+| Simulation d une image sans bouton appliquer | une image envoyée à l'import, puis simulée. | page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien ne serait écrit, et compte rendu « 0 ligne(s) non importée(s), 1 erreur(s) ». |
+| Export d une version negative nulle ou enorme dit introuvable | GET /export/emploi-du-temps.csv (ou .ics) avec version_id=-7, 0 ou vingt chiffres. | OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300 chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des écrans Données. |
 | Ressource hostile dans l adresse donne une erreur lisible | un filtre groupe, enseignant ou salle énorme ou négatif, ou un identifiant non numérique. | OverflowError dans la recherche du filtre : « erreur inattendue » 500 au lieu de « n'existe pas » (404), ou de « nombre attendu » (422) pour « ² ». |
 | Semestre enorme ou negatif a l import donne une erreur lisible | un import d'emploi du temps envoyé avec semestre_id=99999999999999999999 ou -7. | OverflowError dans la recherche du semestre : « erreur inattendue » au lieu de dire que la valeur est hors limites ou que le semestre n'existe pas. |
 
@@ -768,7 +801,7 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Second chargement refuse avec un message clair | second chargement d'un jeu dans une base qui en contient déjà un. | doublons de codes (erreur d'unicité brute) ou mélange de deux jeux. |
 | Taille inconnue | taille de jeu mal orthographiée (« geant »). | `KeyError` brute au lieu de la liste des tailles disponibles. |
 
-#### `web_donnees` (36 cas)
+#### `web_donnees` (39 cas)
 
 [`tests/integration/web_donnees/test_cas_limites.py`](../tests/integration/web_donnees/test_cas_limites.py)
 
@@ -786,6 +819,14 @@ Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'i
 | Fragments sans htmx redirigent vers la page | l'adresse d'un fragment (ligne, confirmation dans la ligne, aperçu de règle) est ouverte directement : lien copié, historique, navigateur sans JavaScript. | un morceau de tableau nu, sans menu ni styles, dont les boutons perdent le contexte de la liste. |
 | Champs libres echappes sur les pages de donnees | un code de salle « <b>x</b> », un bâtiment « "><img onerror=...> », un libellé de groupe et un commentaire de règle « <script> », affichés dans les listes, fiches, confirmations, lignes HTMX et messages. | un seul \|safe oublié et du script s'exécute chez le responsable de scolarité. |
 | Champs libres echappes sur les pages de l emploi du temps | les mêmes textes piégés, plus un motif d'annulation « <script> », dans la grille, les panneaux de séance et l'export. | script exécuté au simple affichage de l'emploi du temps. |
+
+[`tests/integration/web_donnees/test_jeux.py`](../tests/integration/web_donnees/test_jeux.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Graine au dela de la borne du generateur refusee par l ecran | la graine saisie à l'écran vaut un de plus que la plus grande graine admise par le générateur (et par la commande `python -m edt jeu`). | l'écran accepte la graine, la génération la refuse ensuite ; ou l'écran refuse une graine que la commande accepte. Le message donne la borne exacte. |
+| Page rechargee pendant un chargement le dit | la page des établissements fictifs est rechargée (F5) pendant un chargement. | la page montre une base vide ou à moitié recréée sans explication ; un second clic relance un chargement qui sera refusé. |
+| Recharger apres une autre solution sur un vrai serveur | sur le serveur réel (uvicorn, autre processus), charger le jeu moyen, calculer, « Proposer une autre solution », puis recharger un jeu avec confirmation. | la base est vidée, puis le chargement refusé « Le schéma de la base ne correspond plus au modèle... Rien n'a été modifié » ; chaque essai suivant échoue de même jusqu'au redémarrage. Défaut intermittent, propre au processus du serveur (le client de test ne le reproduit pas) : ce test rejoue le parcours de la démonstration. |
 
 [`tests/integration/web_donnees/test_parametres.py`](../tests/integration/web_donnees/test_parametres.py)
 

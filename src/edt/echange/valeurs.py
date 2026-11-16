@@ -57,13 +57,15 @@ _DUREE_HHMM = re.compile(r"^(\d{1,2}):(\d{2})$")
 _ENTIER = re.compile(r"^[+-]?\d+$")
 _NOMBRE_DECIMAL = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
 _CONTROLE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
-_CONTROLE_ECHAPPE = re.compile(r"_x(000[0-8]|000[bBcCeEfF]|001[0-9a-fA-F])_")
+_CONTROLE_ECHAPPE = re.compile(r"_x(000[0-8]|000[bBcCeEfF]|001[0-9a-fA-F]|005[fF])_")
+"""Notations `_xHHHH_` restituées : les caractères de contrôle, et `_x005F_` (« _ » échappé)."""
+_LITTERAL_A_ECHAPPER = re.compile(r"_x(?=(?:000[0-8]|000[bBcCeEfF]|001[0-9a-fA-F]|005[fF])_)")
+"""Début d'une suite écrite telle quelle qui serait lue comme une notation `_xHHHH_`."""
 
 ENTIER_MAX = 1_000_000
 """Plus grand entier admis dans une cellule, en valeur absolue (capacités, effectifs, volumes)."""
 _SEPARATEURS_LISTE = re.compile(r"[;,\n]")
 
-_NOMBRE = re.compile(r"^[+-]?\d+(?:[.,]\d+)?$")
 DEBUTS_FORMULE = ("=", "+", "-", "@", chr(9), chr(13))
 """Débuts de texte qu'un tableur interprète comme une formule."""
 
@@ -361,7 +363,13 @@ def caracteres_de_controle(texte: str) -> list[str]:
 
 
 def echapper_controle(texte: str) -> str:
-    """Caractères de contrôle -> « _x0001_ », la notation du format XLSX (Excel fait de même)."""
+    """Caractères de contrôle -> « _x0001_ », la notation du format XLSX (Excel fait de même).
+
+    Une suite « _x000B_ » écrite telle quelle dans le texte devient
+    « _x005F_x000B_ » (le « _ » échappé), comme dans Excel : la lecture la
+    rend telle quelle au lieu d'y voir un caractère de contrôle.
+    """
+    texte = _LITTERAL_A_ECHAPPER.sub("_x005F_x", texte)
     return _CONTROLE.sub(lambda m: f"_x{ord(m.group(0)):04X}_", texte)
 
 
@@ -385,7 +393,11 @@ def neutraliser_formule(valeur: Any) -> Any:
     retire (`texte_cellule`) : ouvrir un export dans un tableur n'exécute
     rien. Un nombre (« -1 ») et toute autre valeur restent tels quels.
     """
-    if isinstance(valeur, str) and valeur.startswith(DEBUTS_FORMULE) and not _NOMBRE.match(valeur):
+    if (
+        isinstance(valeur, str)
+        and valeur.startswith(DEBUTS_FORMULE)
+        and not _NOMBRE_DECIMAL.match(valeur)
+    ):
         return "\u00a0" + valeur
     return valeur
 

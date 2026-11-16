@@ -1,4 +1,4 @@
-"""Fixtures des tests unitaires du lot « import et export ».
+"""Fixtures des tests unitaires de l'import et de l'export.
 
 Les fixtures partagées (`fichier_exemple`, `importer`, `version_reference`)
 viennent de `tests/outils/echange/fixtures.py` ; s'y ajoute, propre à ce côté :

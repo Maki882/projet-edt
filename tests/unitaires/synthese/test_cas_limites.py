@@ -22,6 +22,8 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import itertools
+import os
+from types import SimpleNamespace
 
 import pytest
 from faker import Faker
@@ -33,11 +35,11 @@ from tests.outils.synthese.empreinte import empreinte_semantique
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import NatureGroupe, NatureJourFerme
-from edt.erreurs import ErreurDonneesInvalides
+from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.parametres import ecrire_parametre
 from edt.services.regles import lister
-from edt.synthese import MOYEN, PETIT, ConfigPromotion, ConfigurationJeu, SallesSite
+from edt.synthese import MOYEN, PETIT, ConfigPromotion, ConfigurationJeu, SallesSite, generateur
 from edt.synthese.configuration import ANNEE_DEBUT_MAX, ANNEE_DEBUT_MIN, GRAINE_MAX
 from edt.synthese.generateur import ESSAIS_NOM_UNIQUE, generer_jeu
 
@@ -109,22 +111,99 @@ def test_graines_extremes_admises_et_deterministes(tmp_path, graine):
     assert premier.nb_besoins > 0 and premier.besoins_ecartes == ()
 
 
-def test_borne_de_graine_identique_au_formulaire_web():
-    """Cas : même graine saisie à l'écran et en ligne de commande.
-    Risque : une graine acceptée par la commande refusée par l'interface, ou l'inverse."""
-    from edt.web.routes.donnees_jeux import GRAINE_MAX as GRAINE_MAX_WEB
-
-    assert GRAINE_MAX == GRAINE_MAX_WEB
-
-
 def test_service_refuse_une_graine_invalide_avant_la_remise_a_zero(base):
-    """Cas : le service de rechargement (écran, futur assistant) reçoit une graine refusée
+    """Cas : le service de rechargement (écran, assistant) reçoit une graine refusée
     avec la remise à zéro. Risque : toutes les données perdues pour une faute de saisie."""
     jeux.recharger_jeu_fictif("petit")
     with pytest.raises(ErreurDonneesInvalides):
         jeux.recharger_jeu_fictif("petit", graine=-1, reinitialiser=True)
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Besoin)) > 0
+
+
+def test_refus_apres_la_remise_a_zero_dit_que_la_base_est_videe(jeu_minimal, monkeypatch):
+    """Cas : la remise à zéro est faite, puis le chargement est refusé (calcul lancé entre-temps
+    par un autre processus, configuration refusée par le générateur).
+
+    Risque : le refus seul est affiché ; l'utilisateur croit ses données d'avant intactes
+    alors que la base a été vidée et qu'aucun jeu n'est chargé.
+    """
+
+    def refus(*_args, **_options):
+        raise ErreurDonneesInvalides("refus simulé")
+
+    monkeypatch.setattr(jeux, "generer_jeu", refus)
+    with pytest.raises(ErreurRegleMetier) as capture:
+        jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+    message = capture.value.message
+    assert "remise à zéro" in message and "aucun établissement n'est chargé" in message
+    assert "refus simulé" in message
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == 0
+
+
+def test_schema_recree_par_la_remise_a_zero_n_est_pas_recontrole(jeu_minimal, monkeypatch):
+    """Cas : charger un jeu avec remise à zéro, quand le contrôle du schéma signale à tort un
+    écart juste après la recréation des tables (constaté sur le serveur réel après « Proposer
+    une autre solution »).
+
+    Risque : la base est vidée, puis le chargement refusé « schéma périmé... Rien n'a été
+    modifié » : base vide, message faux, et chaque nouvel essai échoue de même.
+    """
+    recreee = []
+    reelle = jeux.initialiser_base
+
+    def initialisation_suivie(*args, **options):
+        rapport = reelle(*args, **options)
+        recreee.append(True)
+        return rapport
+
+    def ecarts_apres_recreation(_moteur):
+        return ["table annee_scolaire : unicité (libelle) absente de la base"] if recreee else []
+
+    monkeypatch.setattr(jeux, "initialiser_base", initialisation_suivie)
+    monkeypatch.setattr("edt.db.initialisation.ecarts_schema", ecarts_apres_recreation)
+
+    rapport = jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+
+    assert recreee and rapport.nb_besoins > 0
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == rapport.nb_besoins
+
+
+def test_chargement_refuse_pendant_un_calcul_nomme_le_chargement(jeu_minimal, monkeypatch):
+    """Cas : « Charger » un jeu (avec remise à zéro) pendant un calcul.
+
+    Risque : le refus dit « Impossible de remettre la base à zéro » alors que l'utilisateur a
+    demandé un chargement ; ou la base est vidée avant le refus.
+    """
+    monkeypatch.setattr(jeux, "calcul_en_cours", lambda: SimpleNamespace(id=4, semestre_id=1))
+    with pytest.raises(ErreurCalculEnCours) as capture:
+        jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+    assert capture.value.message.startswith("Impossible de charger un établissement fictif")
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == 16
+
+
+def test_marqueur_d_un_processus_arrete_n_immobilise_pas_le_serveur(base, monkeypatch):
+    """Cas : `python -m edt jeu --reset` interrompu (fenêtre fermée, Ctrl+C brutal) laisse
+    son fichier marqueur à côté de la base.
+
+    Risque : pendant dix minutes, tout calcul et tout chargement sont refusés « opération en
+    cours » sans issue, alors que plus rien ne tourne.
+    """
+    marqueur = jeux.fichier_marqueur()
+    marqueur.write_text("4242 remettre la base à zéro", encoding="utf-8")
+    monkeypatch.setattr(jeux, "_processus_vivant", lambda pid: pid != 4242)
+    assert not jeux.operation_en_cours()  # processus arrêté : marqueur ignoré
+
+    marqueur.write_text(f"{os.getpid()} charger un jeu fictif", encoding="utf-8")
+    assert not jeux.operation_en_cours()  # numéro de ce processus, verrou libre : un reste
+
+    marqueur.write_text("4343 charger un jeu fictif", encoding="utf-8")
+    assert jeux.operation_en_cours()  # processus vivant : opération en cours
+    marqueur.write_text("illisible", encoding="utf-8")
+    assert jeux.operation_en_cours()  # dans le doute, l'opération est tenue pour active
 
 
 # --------------------------------------------------------------------------- #
@@ -167,7 +246,9 @@ def test_configuration_qui_ne_tient_pas_dans_les_salles(base_vierge, jeu_petit):
     assert all(e.raison and e.libelle for e in rapport.besoins_ecartes)
     assert any("aucune salle" in e.raison for e in rapport.besoins_ecartes)
     assert problemes_du_temoin(base_vierge, rapport) == []
-    assert "Besoins écartés faute de place" in rapport.resume()
+    resume = rapport.resume()
+    assert f"Besoins écartés faute de place : {len(rapport.besoins_ecartes)}" in resume
+    assert rapport.besoins_ecartes[0].libelle in resume
 
 
 def test_configuration_minimale_un_etudiant_par_classe(base_vierge):
@@ -354,13 +435,39 @@ def test_noms_epuises_homonymes_admis_sans_boucle_infinie(base_vierge, monkeypat
 # --------------------------------------------------------------------------- #
 
 
-def test_graine_difficile_du_moyen_sans_besoin_ecarte(tmp_path):
+def test_graine_difficile_du_moyen_sans_besoin_ecarte(tmp_path, monkeypatch):
     """Cas : graine 13 du jeu moyen, où un premier placement glouton laisse deux TP sans place.
-    Risque : jeu incomplet selon la graine, ou relance du témoin non déterministe."""
+    Risque : jeu incomplet selon la graine, relance du témoin non déterministe, ou recrues
+    d'un essai écarté gardées dans le vivier et comptées au rapport.
+
+    Si le catalogue change et que la graine 13 place tout au premier essai, choisir une
+    autre graine difficile (journal : « nouvel essai avec un autre départage »).
+    """
+    essais = []  # (recrues avant l'essai, recrues après, besoins sans place)
+    reel = generateur._Generateur._essai_temoin
+
+    def essai_observe(self, *args):
+        avant = self.vivier.nb_recrutes
+        places, ecarts = reel(self, *args)
+        essais.append((avant, self.vivier.nb_recrutes, len(ecarts)))
+        return places, ecarts
+
+    monkeypatch.setattr(generateur._Generateur, "_essai_temoin", essai_observe)
     rapport, empreinte = generer_dans(creer_base(tmp_path / "a"), "moyen", 13)
+    assert len(essais) > 2, "la graine 13 ne relance plus le témoin : en choisir une autre"
+    monkeypatch.undo()
     _, empreinte_bis = generer_dans(creer_base(tmp_path / "b"), "moyen", 13)
     assert rapport.besoins_ecartes == ()
     assert empreinte == empreinte_bis
+    # Essais d'un semestre : une suite qui finit au premier essai sans écart. Seules les
+    # recrues de l'essai retenu (ici le dernier de chaque semestre) comptent.
+    retenus, en_cours = [], []
+    for essai in essais:
+        en_cours.append(essai)
+        if essai[2] == 0:
+            retenus.append(en_cours[-1])
+            en_cours = []
+    assert rapport.nb_recrutements == sum(apres - avant for avant, apres, _ in retenus)
 
 
 def _controler_plusieurs_graines(tmp_path, taille, graines):
@@ -389,6 +496,7 @@ def test_temoin_et_regles_valides_sur_dix_graines(tmp_path, taille):
     _controler_plusieurs_graines(tmp_path, taille, range(10, 20))
 
 
+@pytest.mark.perf
 def test_generation_bornee_en_temps(jeu_petit, jeu_moyen):
     """Cas : chargement d'un jeu depuis l'écran (la requête attend la fin de la génération).
     Risque : génération qui s'emballe et bloque l'interface (moins d'une seconde d'habitude)."""

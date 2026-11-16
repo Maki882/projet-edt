@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime as dt
-from zoneinfo import ZoneInfo
 
 import pytest
 from icalendar import Calendar
@@ -14,8 +13,6 @@ from tests.outils.echange.export_edt import lignes_csv as _lignes
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
-
-PARIS = ZoneInfo("Europe/Paris")
 
 
 def _identifiant(modele, **critere) -> int:

@@ -13,6 +13,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul
 from edt.services.echange import ModeImport
+from edt.services.emploi_du_temps import prechauffage
 from edt.services.generation import CLE_PROCESSUS
 
 HTMX = {"HX-Request": "true"}
@@ -33,6 +34,9 @@ def test_menu_et_page_d_import(client):
     assert page.status_code == 200
     assert 'name="fichiers"' in page.text and 'hx-post="/import/simuler"' in page.text
     assert "Emploi du temps de référence" in page.text
+    # Semestre et semaine type ne s'affichent que pour un emploi du temps existant.
+    assert page.text.count('data-visible-si="mode:reference,verrous,a_replacer"') == 2
+    assert ".csv, .txt, .tsv, .xlsx, .zip ou .ics" in page.text
 
 
 def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fichier_exemple):
@@ -58,12 +62,15 @@ def test_simulation_sans_htmx_rend_la_page_entiere(jeu_minimal, client, fichier_
     assert reponse.status_code == 200 and "<html" in reponse.text and "Bilan" in reponse.text
 
 
-def test_application(jeu_minimal, client, fichier_exemple):
+def test_application(jeu_minimal, client, fichier_exemple, monkeypatch):
+    prechauffages = []
+    monkeypatch.setattr(prechauffage, "lancer", prechauffages.append)
     reponse = client.post("/import/appliquer", **_envoi(fichier_exemple("salles_avec_erreurs.csv")))
 
     assert reponse.status_code == 200
     assert "Import appliqué" in reponse.text and "non importée(s)" in reponse.text
     assert compter(m.Salle) == jeu_minimal.nb_salles + 2
+    assert len(prechauffages) == 1  # écrans suivants préparés après l'enregistrement
 
 
 def test_import_d_emploi_du_temps_par_le_web(jeu_minimal, client, fichier_exemple):
@@ -98,6 +105,25 @@ def test_tout_remplacer_demande_confirmation(jeu_minimal, client, fichier_exempl
     )
     assert accord.status_code == 200
     assert compter(m.Salle) == 0  # les salles du fichier visent un campus supprimé : rejetées
+
+
+@pytest.mark.cas_limite
+def test_simulation_d_une_image_sans_bouton_appliquer(base, client):
+    """Cas : une image envoyée à l'import, puis simulée.
+
+    Risque : page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien
+    ne serait écrit, et compte rendu « 0 ligne(s) non importée(s), 1 erreur(s) ».
+    """
+    envoi = {
+        "files": [("fichiers", ("photo.png", b"\x89PNG\r\n\x1a\n" + bytes(300), "image/png"))],
+        "data": {"mode": "donnees"},
+    }
+    reponse = client.post("/import/simuler", headers=HTMX, **envoi)
+    assert reponse.status_code == 200
+    texte = html.unescape(reponse.text)
+    assert "« photo.png » n'est pas un fichier de données lisible ici" in texte
+    assert "Rien à appliquer" in texte and "Appliquer l'import" not in texte
+    assert "0 ligne(s)" not in texte and "1 erreur(s)" in texte
 
 
 def test_envoi_sans_fichier_ou_trop_gros(base, client):
@@ -144,7 +170,11 @@ def test_page_et_telechargements_d_export(jeu_minimal, client):
 
 
 def test_export_d_emploi_du_temps(version_generee, client):
-    assert "Version 1" in client.get("/export").text
+    page = client.get("/export").text
+    assert "Version 1" in page
+    principal = page[page.index("<main") : page.index("</main>")]
+    assert principal.count("bouton-principal") == 1  # « Télécharger en CSV »
+    assert page.index("<h2>Emploi du temps</h2>") < page.index("<h2>Gabarit vide</h2>")
 
     csv = client.get(
         "/export/emploi-du-temps.csv",
@@ -183,7 +213,7 @@ def test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable(format_, 
 
     Risque : OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300
     chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des
-    écrans Données (cas transmis par le lot web EDT).
+    écrans Données.
     """
     for version in VERSIONS_INEXISTANTES:
         reponse = client.get(f"/export/emploi-du-temps.{format_}", params={"version_id": version})

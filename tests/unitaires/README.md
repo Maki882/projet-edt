@@ -56,19 +56,19 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **914 fonctions de test** dans 8 composants, dont 221 marquées `cas_limite` et 19 marquées `perf`.
+Ce dossier compte **923 fonctions de test** dans 8 composants, dont 242 marquées `cas_limite` et 20 marquées `perf`.
 
-### `echange/` : Import et export (139 fonctions)
+### `echange/` : Import et export (145 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`echange/test_bornes.py`](echange/test_bornes.py) | Bornes contre les fichiers hostiles : archive bombe, fichier trop long | 22 |
 | [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps importé en mode référence : iCal et CSV datés, relus et réimportés | 4 |
 | [`echange/test_format.py`](echange/test_format.py) | Le format d'échange : gabarit XLSX et ZIP, documentation générée depuis la description | 5 |
-| [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 18 |
-| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 29 |
+| [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 19 |
+| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 31 |
 | [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 12 |
-| [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 37 |
+| [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 40 |
 | [`echange/test_regles.py`](echange/test_regles.py) | Feuille « regles » du format d'échange : gabarit, import, export, réimport, tout remplacer | 12 |
 
 ### `exploitation/` : Exploitation et déploiement (40 fonctions)
@@ -118,11 +118,11 @@ Ce dossier compte **914 fonctions de test** dans 8 composants, dont 221 marquée
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |
 | [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 7 |
 
-### `synthese/` : Générateur de données fictives (59 fonctions)
+### `synthese/` : Générateur de données fictives (62 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | Entrées refusées lisiblement et avant toute écriture | 22 |
+| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | Entrées refusées lisiblement et avant toute écriture | 25 |
 | [`synthese/test_commande.py`](synthese/test_commande.py) | Service `edt.services.jeux` exercé directement (sans passer par la commande) | 3 |
 | [`synthese/test_generation.py`](synthese/test_generation.py) | Génération des jeux fictifs : configuration, déterminisme, unicités, effectifs, rapport | 10 |
 | [`synthese/test_performance.py`](synthese/test_performance.py) | Durée de génération du jeu « grand » (test de charge, exclu de la CI courante) | 1 |

@@ -1,4 +1,4 @@
-"""Écran « Données > Jeux de données » : charger un établissement fictif, remettre à zéro.
+"""Écran « Données > Établissement fictif » : charger un établissement fictif, remettre à zéro.
 
 Les deux actions passent par `edt.services.jeux`, qui ouvre ses propres
 sessions : une remise à zéro supprime les tables et ne doit jamais se faire
@@ -14,22 +14,26 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
+from edt.config import charger_configuration
 from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
+from edt.services.emploi_du_temps import prechauffage
 from edt.services.etat import EtatBase, diagnostiquer_base
 from edt.services.jeux import (
     ErreurChargementEnCours,
+    operation_en_cours,
     recharger_jeu_fictif,
     remettre_a_zero,
     tailles_disponibles,
 )
 from edt.services.referentiels.conversion import entier_naturel
+from edt.synthese.configuration import GRAINE_MAX
+from edt.synthese.rapport import RapportJeu
 from edt.web.donnees.ecrans import Formulaire
 from edt.web.gabarits import Message, rediriger, rendre
-from edt.web.menu import GROUPE_JEUX, SECTION_DONNEES, EntreeMenu
+from edt.web.menu import SECTION_DONNEES, EntreeMenu
 
 journal = logging.getLogger(__name__)
 
-GRAINE_MAX = 2**31 - 1
 TAILLE_PAR_DEFAUT = "moyen"
 ENTITES_SAISIES = (
     "Campus",
@@ -47,7 +51,7 @@ ENTITES_SAISIES = (
 
 routeur = APIRouter(prefix="/jeux")
 MENU = [
-    EntreeMenu("Jeux de données", "/jeux", section=SECTION_DONNEES, ordre=480, groupe=GROUPE_JEUX),
+    EntreeMenu("Établissement fictif", "/jeux", section=SECTION_DONNEES, ordre=430),
 ]
 
 
@@ -65,6 +69,16 @@ def _rendre(
     statut: int = 200,
 ) -> Response:
     etat = diagnostiquer_base()
+    messages = [message] if message else []
+    if message is None and operation_en_cours():
+        # Page rechargée pendant un chargement : le dire, plutôt qu'une base qui paraît vide.
+        messages.append(
+            Message(
+                "Un chargement d'établissement fictif ou une remise à zéro est en cours : "
+                "attendre quelques secondes, puis recharger la page.",
+                "attention",
+            )
+        )
     return rendre(
         request,
         "donnees/jeux.html",
@@ -77,8 +91,29 @@ def _rendre(
             "erreurs": erreurs or {},
         },
         statut=statut,
-        messages=[message] if message else (),
+        messages=messages,
     )
+
+
+def _nombre(n: int, singulier: str, pluriel: str) -> str:
+    return f"{n} {singulier if n <= 1 else pluriel}"
+
+
+def synthese(rapport: RapportJeu) -> list[str]:
+    """Ce qui a été chargé, en quatre lignes lisibles (le résumé complet reste replié)."""
+    c = rapport.compteurs.get
+    proposees = sum(1 for regle in rapport.regles if regle.etat == "proposee")
+    regles = _nombre(len(rapport.regles), "règle personnalisée", "règles personnalisées")
+    return [
+        f"{_nombre(c('campus', 0), 'campus', 'campus')}, {_nombre(c('salle', 0), 'salle', 'salles')}",
+        f"{_nombre(c('groupe', 0), 'groupe', 'groupes')}, "
+        f"{_nombre(c('etudiant', 0), 'étudiant', 'étudiants')}",
+        f"{_nombre(c('enseignant', 0), 'enseignant', 'enseignants')}, "
+        f"{_nombre(c('matiere', 0), 'matière', 'matières')}, "
+        f"{_nombre(rapport.nb_besoins, 'besoin', 'besoins')} d'enseignement",
+        f"{regles} d'exemple"
+        + (f", dont {_nombre(proposees, 'proposée', 'proposées')} à activer" if proposees else ""),
+    ]
 
 
 @routeur.get("", name="jeux")
@@ -100,7 +135,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
         erreurs["taille"] = "Choisir une taille."
     graine = entier_naturel(saisies["graine"])
     if graine is None or graine > GRAINE_MAX:
-        erreurs["graine"] = "Nombre entier positif attendu (0 par défaut)."
+        erreurs["graine"] = f"Nombre entier positif attendu : de 0 à {GRAINE_MAX} (0 par défaut)."
     etat = diagnostiquer_base()
     effacer = donnees_presentes(etat)
     if effacer and "confirmation" not in formulaire:
@@ -134,10 +169,12 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
         rapport.graine,
         rapport.duree_s,
     )
+    # Les écrans suivants (accueil, « À traiter », Générer) sont préparés pendant la lecture.
+    prechauffage.lancer(charger_configuration().db_url)
     return rendre(
         request,
         "donnees/jeux_resultat.html",
-        {"rapport": rapport, "resume": rapport.resume()},
+        {"rapport": rapport, "resume": rapport.resume(), "synthese": synthese(rapport)},
         messages=[
             Message(
                 f"Établissement fictif « {saisies['taille']} » chargé : "

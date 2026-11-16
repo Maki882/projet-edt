@@ -32,7 +32,7 @@ def test_deux_chargements_simultanes_depuis_la_page(client, generation_lente):
         "/jeux/charger", data={"taille": "moyen", "graine": "2", "confirmation": "1"}
     )
     assert second.status_code == 409
-    assert "un chargement de jeu de données ou une remise à zéro est déjà en cours" in second.text
+    assert "établissement fictif ou une remise à zéro est déjà en cours" in second.text
     assert "Base de données" not in second.text and "init-db" not in second.text
 
     zero = client.post("/jeux/remise-a-zero", data={"confirmation_zero": "1"})
