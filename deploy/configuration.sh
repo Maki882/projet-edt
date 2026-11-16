@@ -42,7 +42,6 @@ charger_configuration_serveur() {
   fi
   while IFS= read -r ligne || [ -n "$ligne" ]; do
     numero=$((numero + 1))
-    ligne="${ligne%$'\r'}"                       # fichier enregistré sous Windows
     ligne="${ligne#"${ligne%%[![:space:]]*}"}"   # blancs de début de ligne
     case "$ligne" in '' | '#'*) continue ;; esac
     if ! [[ "$ligne" =~ ^([A-Z][A-Z0-9_]*)=(.*)$ ]]; then
@@ -51,7 +50,8 @@ charger_configuration_serveur() {
     fi
     nom="${BASH_REMATCH[1]}"
     valeur="${BASH_REMATCH[2]}"
-    valeur="${valeur%"${valeur##*[![:space:]]}"}"   # blancs de fin de ligne
+    # Blancs de fin de ligne, dont le retour chariot d'un fichier enregistré sous Windows.
+    valeur="${valeur%"${valeur##*[![:space:]]}"}"
     if [[ " ${PARAMETRES_SERVEUR[*]} " != *" $nom "* ]]; then
       printf 'ERREUR : %s, ligne %d : paramètre inconnu « %s » (paramètres acceptés : %s).\n' \
         "$fichier" "$numero" "$nom" "${PARAMETRES_SERVEUR[*]}" >&2
