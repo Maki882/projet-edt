@@ -24,6 +24,7 @@ from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurRegleMetier
 from edt.services import generation
 from edt.web import app as module_app
+from edt.web import erreurs as module_erreurs
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import rediriger
 from edt.web.menu import SECTION_REFERENTIELS, EntreeMenu
@@ -118,7 +119,9 @@ def test_accueil_reste_lisible_sans_base_initialisee(environnement):
     assert reponse.status_code == 200
     assert "pas encore initialisée" in reponse.text
     # Le chargement d'un établissement fictif initialise la base : proposé à côté d'init-db.
-    assert '<a href="/jeux">charger un établissement fictif</a> (la base est préparée' in reponse.text
+    assert (
+        '<a href="/jeux">charger un établissement fictif</a> (la base est préparée' in reponse.text
+    )
 
     sante = client.get("/sante")
     assert sante.status_code == 503
@@ -393,6 +396,21 @@ def test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes(client_etendu,
     """
     reponse = client_etendu.get("/essai/panne-base", params={"cause": cause})
     assert reponse.status_code == 503 and mot in reponse.text
+
+
+@pytest.mark.cas_limite
+def test_base_non_initialisee_une_trace_puis_une_ligne(client_etendu, environnement, monkeypatch):
+    """Cas : la base n'est pas initialisée et plusieurs pages répondent 503 à la suite.
+
+    Risque : une trace complète par page, qui noie le journal (huit traces en une demi-seconde).
+    """
+    monkeypatch.setattr(module_erreurs, "_non_initialisee_signalee", False)
+    for _ in range(3):
+        reponse = client_etendu.get("/essai/panne-base", params={"cause": "no such table: salle"})
+        assert reponse.status_code == 503
+    journal = _journal(environnement)
+    assert journal.count("Traceback") == 1
+    assert journal.count("Base de données non initialisée sur /essai/panne-base") == 2
 
 
 @pytest.mark.cas_limite

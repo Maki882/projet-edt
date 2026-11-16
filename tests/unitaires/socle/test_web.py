@@ -12,6 +12,7 @@ from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
 from edt.erreurs import ErreurConfiguration
 from edt.web import app as module_app
 from edt.web.gabarits import rediriger
+from edt.web.intergiciels import est_silencieux
 
 
 def test_module_de_routes_sans_routeur_refuse(base, monkeypatch):
@@ -70,3 +71,22 @@ def test_redirection_htmx_vers_une_adresse_non_ascii(adresse, attendue):
     reponse = rediriger(requete, adresse, "Enregistré.")
     assert reponse.status_code == 204
     assert reponse.headers["HX-Redirect"] == attendue
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("chemin", "statut", "silencieux"),
+    [
+        ("/calculs/12/etat", 200, True),
+        ("/static/css/app.css", 200, True),
+        ("/calculs/12/etat", 404, False),  # une erreur reste au niveau INFO
+        ("/calculs/12", 200, False),
+        ("/calculs/12/etat/autre", 200, False),
+    ],
+)
+def test_suivi_d_un_calcul_journalise_en_debug(chemin, statut, silencieux):
+    """Cas : la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul.
+
+    Risque : une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements.
+    """
+    assert est_silencieux(chemin, statut) is silencieux

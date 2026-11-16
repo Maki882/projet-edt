@@ -107,6 +107,9 @@ NOMS_DE_CHAMPS = {
 ERREURS_DE_PROGRAMMATION = (ProgrammingError, InternalError, NotSupportedError)
 """Erreurs du pilote qui révèlent un défaut du code, pas une panne de la base : page 500."""
 
+_non_initialisee_signalee = False
+"""Vrai une fois la trace d'une base non initialisée journalisée (voir `_base_indisponible`)."""
+
 
 def veut_du_json(request: Request) -> bool:
     """Vrai si le client attend du JSON plutôt qu'une page."""
@@ -213,7 +216,11 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     `OperationalError`) reçoit le même traitement, avec son remède. Une erreur
     de programmation (`ERREURS_DE_PROGRAMMATION`) est relevée : l'intergiciel
     en fait la page 500 avec sa référence, au lieu d'un « réessayer » inopérant.
+
+    Journal : trace complète, sauf pour une base non initialisée déjà signalée
+    (chaque page en 503 ajouterait sinon la même trace) : une ligne suffit.
     """
+    global _non_initialisee_signalee
     if isinstance(erreur, ERREURS_DE_PROGRAMMATION):
         raise erreur
     cause = str(erreur.orig or erreur).lower()
@@ -229,7 +236,13 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
                 "modifié : réessayer dans quelques secondes."
             ),
         )
-    journal.exception("Base de données indisponible sur %s", request.url.path)
+    if "no such table" in cause and _non_initialisee_signalee:
+        journal.warning(
+            "Base de données non initialisée sur %s : %s", request.url.path, erreur.orig
+        )
+    else:
+        journal.exception("Base de données indisponible sur %s", request.url.path)
+        _non_initialisee_signalee = _non_initialisee_signalee or "no such table" in cause
     titre = "Base de données indisponible"
     if "no such table" in cause:
         message = (
