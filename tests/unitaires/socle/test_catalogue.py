@@ -33,20 +33,6 @@ from tests.outils.catalogue import (
 RACINE = Path(__file__).resolve().parents[3]
 """Racine du dépôt."""
 
-DOCSTRINGS_A_COMPLETER = frozenset(
-    {
-        "tests/unitaires/synthese/test_performance.py::test_jeu_grand_en_moins_d_une_minute",
-        "tests/integration/web_edt/test_calculs.py"
-        "::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret",
-    }
-)
-"""Tests `cas_limite` sans docstring « Cas : … Risque : … » au moment où le contrôle a été posé.
-
-Ils figurent dans le catalogue avec la mention `SANS_DOCSTRING`. Toute autre
-absence fait échouer `test_chaque_cas_limite_a_un_cas_et_un_risque`. Un test
-complété peut être retiré de cette liste.
-"""
-
 
 # --- 1. Le document est à jour ------------------------------------------------
 
@@ -78,9 +64,7 @@ def test_chaque_cas_limite_a_un_cas_et_un_risque():
     """Un test `cas_limite` sans « Cas : … » ou sans « Risque : … » dans sa docstring est signalé."""
     cas = analyser(RACINE)
     assert len(cas) > 100, f"seulement {len(cas)} cas limites trouvés : analyse cassée ?"
-    fautifs = [
-        c.identifiant for c in incomplets(cas) if c.identifiant not in DOCSTRINGS_A_COMPLETER
-    ]
+    fautifs = [c.identifiant for c in incomplets(cas)]
     assert not fautifs, (
         f"{len(fautifs)} test(s) `cas_limite` sans docstring « Cas : … Risque : … » complète :\n"
         + "\n".join(f"  - {f}" for f in fautifs)

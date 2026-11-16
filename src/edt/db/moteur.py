@@ -36,15 +36,14 @@ from __future__ import annotations
 
 import logging
 import threading
-import warnings
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import Connection, Engine, create_engine, event
 from sqlalchemy.engine import make_url
-from sqlalchemy.exc import DatabaseError, SAWarning
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.exc import DatabaseError
+from sqlalchemy.orm import Session, SessionTransaction, sessionmaker
 
 from edt.config import charger_configuration, url_affichable
 from edt.erreurs import ErreurConfiguration
@@ -59,15 +58,21 @@ IDENTIFIANT_MAX = 2**63 - 1
 OPTION_ECRITURE_IMMEDIATE = "edt_ecriture_immediate"
 """Option d'exécution SQLAlchemy : la transaction s'ouvre par `BEGIN IMMEDIATE` (voir l'en-tête)."""
 
+_CLE_TRANSACTION_ENGAGEE = "edt.db.moteur.transaction_engagee"
+"""Clé de `Session.info` : transaction racine qui a déjà sa connexion (voir `transaction_immediate`)."""
+
 _verrou = threading.Lock()
 _moteurs: dict[str, Engine] = {}
 
-# SQLAlchemy avertit (et ignore l'option) quand `transaction_immediate` vise une connexion déjà
-# établie : `transaction_immediate` contrôle ce cas et en fait une erreur. Le filtre est posé
-# une fois pour tout le processus, car `warnings.catch_warnings` n'est pas sûr entre fils.
-warnings.filterwarnings(
-    "ignore", message="Connection is already established for the given bind", category=SAWarning
-)
+
+@event.listens_for(Session, "after_begin")
+def _noter_connexion_engagee(
+    session: Session, transaction: SessionTransaction, _connexion: Connection
+) -> None:
+    """Retient que la transaction racine de `session` vient d'obtenir sa connexion."""
+    while transaction.parent is not None:
+        transaction = transaction.parent
+    session.info[_CLE_TRANSACTION_ENGAGEE] = transaction
 
 
 def identifiant_valide(valeur: object) -> bool:
@@ -82,6 +87,15 @@ def identifiant_valide(valeur: object) -> bool:
     )
 
 
+def base_verrouillee(erreur: BaseException) -> bool:
+    """Vrai si l'erreur du pilote signale une base verrouillée ou occupée par une autre connexion.
+
+    Accepte l'erreur enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
+    """
+    cause = str(getattr(erreur, "orig", None) or erreur).lower()
+    return "locked" in cause or "busy" in cause
+
+
 def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """Phrase française pour une erreur du pilote de base, avec le remède.
 
@@ -92,7 +106,7 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """
     cause = str(getattr(erreur, "orig", None) or erreur)
     minuscule = cause.lower()
-    if "locked" in minuscule or "busy" in minuscule:
+    if base_verrouillee(erreur):
         return (
             "La base de données est verrouillée par une autre commande ou un autre processus "
             "(service web, commande « edt » en cours, session sqlite3) : attendre sa fin ou "
@@ -154,14 +168,19 @@ def transaction_immediate(session: Session) -> None:
     La demande vaut pour la transaction en cours ; après validation, la
     connexion revient au pool sans l'option.
 
-    Lève `ErreurConfiguration` si la connexion de la session est déjà
-    engagée (une requête a déjà été exécutée) : SQLAlchemy ignore alors
-    l'option, le `BEGIN` différé est déjà émis et la transaction resterait
-    différée en silence.
+    Une seconde demande dans la même transaction (route web d'écriture, puis
+    service d'import) est sans effet. Lève `ErreurConfiguration` si la
+    connexion de la session est déjà engagée sans le verrou (une requête a
+    déjà été exécutée) : le `BEGIN` différé est déjà émis et la transaction
+    resterait différée en silence.
     """
-    # Connexion déjà établie : SQLAlchemy ignore l'option (avertissement filtré en tête du
-    # module), le cas est contrôlé juste après et devient une erreur.
-    connexion = session.connection(execution_options={OPTION_ECRITURE_IMMEDIATE: True})
+    # Une connexion déjà établie ne reçoit plus d'option : SQLAlchemy l'ignorerait en avertissant.
+    # Elle est alors relue telle quelle, et contrôlée juste après comme une connexion neuve.
+    racine = session.get_transaction()
+    if racine is not None and session.info.get(_CLE_TRANSACTION_ENGAGEE) is racine:
+        connexion = session.connection()
+    else:
+        connexion = session.connection(execution_options={OPTION_ECRITURE_IMMEDIATE: True})
     if not connexion.get_execution_options().get(OPTION_ECRITURE_IMMEDIATE):
         raise ErreurConfiguration(
             "Le verrou d'écriture immédiat se demande avant la première requête de la "

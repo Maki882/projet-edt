@@ -516,6 +516,35 @@ def test_durees_absurdes_signalees(jeu_minimal, importer):
     }
 
 
+@pytest.mark.cas_limite
+def test_maximum_d_enseignement_nul_signale(jeu_minimal, importer):
+    """Cas : un maximum d'enseignement de « 0 h » par jour ou par semaine, au lieu d'une
+    cellule vide.
+
+    Risque : lu sans erreur puis refusé par la base (maximum strictement positif) : échec
+    de l'import entier au lieu d'une ligne rejetée qui nomme la colonne.
+    """
+    enseignants = csv_envoye(
+        "enseignants.csv",
+        "identifiant;nom;max_par_jour;max_par_semaine",
+        "ENS001;Martin;0 h;",
+        "ENS002;Bernard;;0 h",
+    )
+
+    rapport = importer([enseignants], simuler=True)
+
+    assert rapport.bilan("enseignants").nombre("rejetes") == 2
+    erreurs = {
+        (s.fichier, s.colonne): s.message
+        for s in rapport.signalements
+        if s.gravite is Gravite.ERREUR
+    }
+    assert erreurs == {
+        ("enseignants.csv", "max_par_jour"): "Valeur trop petite : 0 min (au moins 1 min).",
+        ("enseignants.csv", "max_par_semaine"): "Valeur trop petite : 0 min (au moins 1 min).",
+    }
+
+
 ENTETE_GROUPE = "annee;code;libelle;nature;effectif;parent"
 
 

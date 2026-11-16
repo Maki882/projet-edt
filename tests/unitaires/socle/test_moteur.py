@@ -5,10 +5,11 @@ from __future__ import annotations
 import sqlite3
 import threading
 import time
+import warnings
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.exc import DatabaseError, OperationalError
+from sqlalchemy.exc import DatabaseError, OperationalError, SAWarning
 
 from edt.db import moteur as module_moteur
 from edt.db.modeles import Campus
@@ -207,6 +208,33 @@ def test_transaction_immediate_apres_une_requete_est_une_erreur_de_configuration
         transaction_immediate(session)
         session.add(Campus(code="DEUX", nom="Deux fois"))
     assert "DEUX" in _codes_campus()
+
+
+@pytest.mark.cas_limite
+def test_transaction_immediate_sans_avertissement_de_sqlalchemy(base, environnement):
+    """Cas : verrou immédiat demandé deux fois dans la même transaction (route web d'écriture,
+    puis service d'import), y compris dans un point de sauvegarde, ou après une première requête.
+
+    Risque : avertissement « execution_options ignored » à chaque import par l'écran, qui
+    encombre la sortie et fait douter que le verrou soit pris ; le verrou doit rester tenu.
+    """
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", SAWarning)
+        with session_base() as session:
+            transaction_immediate(session)
+            point = session.begin_nested()
+            transaction_immediate(session)
+            autre_ecrivain = sqlite3.connect(environnement / "edt.db", timeout=0)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    autre_ecrivain.execute("BEGIN IMMEDIATE")
+            finally:
+                autre_ecrivain.close()
+            point.rollback()
+        with session_base() as session:
+            session.scalar(select(func.count()).select_from(Campus))
+            with pytest.raises(ErreurConfiguration, match="avant la première requête"):
+                transaction_immediate(session)
 
 
 @pytest.mark.cas_limite

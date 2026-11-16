@@ -114,7 +114,8 @@ def _ascendants(groupe: int, parents: Mapping[int, int | None]) -> set[int]:
     while courant is not None:
         if courant == groupe or courant in lignee:
             raise ErreurDonneesInvalides(
-                f"L'arbre des groupes contient une boucle autour du groupe {groupe}."
+                f"L'arbre des groupes contient une boucle autour du groupe n° {groupe} : "
+                "corriger son groupe parent (Données › Groupes)."
             )
         if courant not in parents:
             raise ErreurDonneesInvalides(

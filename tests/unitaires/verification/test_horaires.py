@@ -220,10 +220,12 @@ def test_jours_seance_imposee_information():
 
 @pytest.mark.cas_limite
 def test_jour_sans_creneau_signale_une_seule_fois():
-    """Cas : une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée).
+    """Cas : une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée),
+    `HORAIRES` vérifiée ou ignorée.
 
     Risque : la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et
-    panneau À traiter redondant.
+    panneau À traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le
+    moteur la compte (JOURS).
     """
     f, seance, n204 = une_seance()
     dimanche = placer(seance, DIMANCHE, "8h30", n204)
@@ -235,3 +237,6 @@ def test_jour_sans_creneau_signale_une_seule_fois():
     f.creneaux = tuple(c for c in f.creneaux if c.jour != MARDI)
     mardi = placer(seance, MARDI, "8h30", n204)
     assert codes(verifier(f.construire(), [mardi], ["HORAIRES", "JOURS"])) == ["HORAIRES"]
+    # `HORAIRES` ignorée : JOURS le dit, comme le moteur (`Regles.violations_de_jour`).
+    (seule,) = verifier(f.construire(), [mardi], ["JOURS"])
+    assert seule.code == "JOURS" and "la grille horaire n'a aucun créneau le mardi" in seule.message

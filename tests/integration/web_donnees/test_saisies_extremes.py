@@ -59,6 +59,18 @@ def test_effectif_trop_grand(site, ids):
     assert reponse.status_code == 422 and "La valeur maximale est 100000." in reponse.text
 
 
+@pytest.mark.parametrize("champ", ["max_minutes_jour", "max_minutes_semaine"])
+def test_maximum_d_enseignement_nul_refuse_sous_le_champ(site, champ):
+    """Cas : un maximum d'enseignement saisi à « 0 h » (au lieu de laisser le champ vide).
+    Risque : accepté par l'écran puis refusé par la base (maximum strictement positif) : refus
+    global trompeur ou erreur 500 au lieu d'un message sous le champ."""
+    saisie = {"identifiant": "ENS0H", "nom": "Zéro", "statut": "vacataire", champ: "0 h"}
+    reponse = site.post("/enseignants", data=saisie)
+    assert reponse.status_code == 422, reponse.text[:300]
+    assert "La valeur minimale est" in erreur_sous_le_champ(reponse, champ)
+    assert compter(m.Enseignant, m.Enseignant.identifiant == "ENS0H") == 0
+
+
 def test_identifiant_trop_grand_dans_un_choix(site, ids):
     """Cas : une liste de choix (campus) renvoyée avec un identifiant de vingt chiffres. Risque :
     OverflowError à la recherche de l'élément choisi."""

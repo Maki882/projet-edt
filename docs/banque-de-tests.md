@@ -70,23 +70,23 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'intégration.
+Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `assistant` | 26 | 5 |
 | `banc_tests` | 13 | 8 |
-| `echange` | 57 | 12 |
+| `echange` | 58 | 12 |
 | `exploitation` | 40 | 32 |
-| `socle` | 59 | 32 |
+| `socle` | 61 | 33 |
 | `solveur` | 20 | 19 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
-| `web_donnees` | 2 | 39 |
-| `web_edt` | 6 | 39 |
-| **Total** | **281** | **191** |
+| `web_donnees` | 2 | 41 |
+| `web_edt` | 7 | 39 |
+| **Total** | **285** | **194** |
 
-### Tests unitaires (281 cas)
+### Tests unitaires (285 cas)
 
 #### `assistant` (26 cas)
 
@@ -181,7 +181,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Entrees mal formees ignorees une a une | une entrée du fichier des résultats a un état inconnu ou une date illisible. | tout l'historique perdu pour une seule ligne fausse. |
 | Ecriture impossible levee avec le chemin | dossier des journaux en lecture seule ou disque plein au moment d'enregistrer. | résultats perdus sans le dire. |
 
-#### `echange` (57 cas)
+#### `echange` (58 cas)
 
 [`tests/unitaires/echange/test_bornes.py`](../tests/unitaires/echange/test_bornes.py)
 
@@ -246,6 +246,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Salle au code contenant arobase reste referencable | une salle de code « A@B » imposée à un besoin, puis export et réimport. | la référence serait coupée au premier « @ » (salle « A » du campus « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour. |
 | Reference de salle a double lecture refusee comme ambigue | une salle de code « A@NDC » (campus ISSY) et deux salles « A » (NDC et ISSY) ; un besoin impose la salle « A@NDC », référence que l'export écrit pour la salle A de NDC. | la salle de code « A@NDC » serait choisie en silence au lieu de la salle A du campus NDC : salle imposée changée au réimport d'un export, sans un mot. |
 | Durees absurdes signalees | un trajet de 100 h entre deux campus, un maximum de 90 h par jour. | accepté sans borne, il rendrait le calcul infaisable (trajet impossible) ou n'aurait aucun sens, sans lien visible avec l'import. |
+| Maximum d enseignement nul signale | un maximum d'enseignement de « 0 h » par jour ou par semaine, au lieu d'une cellule vide. | lu sans erreur puis refusé par la base (maximum strictement positif) : échec de l'import entier au lieu d'une ligne rejetée qui nomme la colonne. |
 | Groupe parent de lui meme rejete | un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1). | l'auto-parenté finirait en IntegrityError générique, ou en boucle sans fin dans le parcours des parents. |
 | Ordre des parents lineaire sur une chaine profonde | 20 000 groupes en chaîne, chaque enfant écrit avant son parent. | un ordonnancement récursif lèverait RecursionError au-delà de 1 000 niveaux, un algorithme quadratique prendrait des minutes. |
 | Hierarchie profonde et auto parente | l'import réel de 1 500 groupes en chaîne, enfants avant parents, plus une boucle. | un import de hiérarchie profonde qui s'effondre (pile, temps) ou qui laisse entrer la boucle ; mesuré de bout en bout, base comprise. |
@@ -332,7 +333,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (59 cas)
+#### `socle` (61 cas)
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
@@ -358,6 +359,12 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 |---|---|---|
 | Variables d environnement invalides levent une erreur de configuration | une variable EDT_* porte une valeur hors domaine (port « ² », hôte avec espace, niveau de journal ou environnement inconnus). | `ValueError` brute au démarrage (code 2, trace) ou repli silencieux sur le défaut ; le message doit nommer la variable et la valeur lue. |
 | Valeurs vides ou entourees d espaces | variables présentes mais vides, ou avec espaces et casse libres. | une variable vide refusée au lieu de prendre son défaut, ou « PROD » non reconnu. |
+
+[`tests/unitaires/socle/test_conflits_groupes.py`](../tests/unitaires/socle/test_conflits_groupes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Une boucle de groupes est refusee avec le remede | deux groupes sont chacun le parent de l'autre (base modifiée hors de l'écran). | message qui constate la boucle sans dire quel champ corriger ni où. |
 
 [`tests/unitaires/socle/test_depliage.py`](../tests/unitaires/socle/test_depliage.py)
 
@@ -413,6 +420,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Sous un verrou tenu l ecriture echoue apres le delai et les lecteurs sont servis | un autre processus (sqlite3, commande) tient le verrou d'écriture longtemps. | sans mode WAL les lectures seraient bloquées aussi (/sante rouge à chaque import) ; sans délai borné l'écriture attendrait sans fin. Elle doit échouer après le délai, « locked », sans rien écrire, pendant que les lecteurs sont servis. |
 | Transaction immediate prend le verrou d ecriture des l ouverture | un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa transaction, avant toute lecture. | avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et deux imports pourraient commencer en même temps ; les lecteurs doivent rester servis. |
 | Transaction immediate apres une requete est une erreur de configuration | le verrou immédiat est demandé après une première requête de la transaction. | SQLAlchemy ignore alors l'option avec un simple avertissement : la transaction resterait différée en silence et l'import croirait tenir le verrou. |
+| Transaction immediate sans avertissement de sqlalchemy | verrou immédiat demandé deux fois dans la même transaction (route web d'écriture, puis service d'import), y compris dans un point de sauvegarde, ou après une première requête. | avertissement « execution_options ignored » à chaque import par l'écran, qui encombre la sortie et fait douter que le verrou soit pris ; le verrou doit rester tenu. |
 | Une transaction qui lit ne bloque pas les autres ecrivains | une transaction ordinaire a lu (BEGIN différé) pendant qu'un autre processus veut écrire. | si le défaut devenait IMMEDIATE, chaque page lue tiendrait le verrou d'écriture et bloquerait les écrivains ; la politique par défaut doit rester le BEGIN différé. |
 
 [`tests/unitaires/socle/test_parametres.py`](../tests/unitaires/socle/test_parametres.py)
@@ -590,7 +598,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Jour sans creneau signale une seule fois | une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée). | la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et panneau À traiter redondant. |
+| Jour sans creneau signale une seule fois | une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée), `HORAIRES` vérifiée ou ignorée. | la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et panneau À traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le moteur la compte (JOURS). |
 
 [`tests/unitaires/verification/test_indicateurs.py`](../tests/unitaires/verification/test_indicateurs.py)
 
@@ -671,7 +679,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (6 cas)
+#### `web_edt` (7 cas)
 
 [`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
 
@@ -708,8 +716,9 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
+| Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (191 cas)
+### Tests d'intégration (194 cas)
 
 #### `assistant` (5 cas)
 
@@ -816,7 +825,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
 | Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
-#### `socle` (32 cas)
+#### `socle` (33 cas)
 
 [`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
 
@@ -827,6 +836,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Init db reset en production n efface rien si la sauvegarde echoue | `init-db --reset --oui` en production alors que la sauvegarde préalable échoue (disque plein, dossier « sauvegardes » non inscriptible). | la remise à zéro détruirait une base qui n'a pas été sauvegardée ; la commande doit s'arrêter avant, code 1, en nommant la sauvegarde et le remède, sans fichier partiel. |
 | Init db reset est refuse pendant un chargement de jeu | `init-db --reset --oui` lancé pendant qu'un chargement de jeu fictif tient le verrou des opérations sur la base (écran de configuration, commande `jeu`). | tables supprimées sous le chargement en cours, et serveur qui ignore la remise à zéro (pas de fichier marqueur) ; la commande doit refuser, code 1, sans rien effacer. |
 | Init db reset non interactif ne pose pas de question | `init-db --reset` lancé par un script (déploiement), sans terminal, en développement. | une question posée à un script le bloquerait ou le ferait échouer ; en développement, pas de copie de sauvegarde qui encombre le dossier. |
+| Init db reset sans sauvegarde ne double pas celle du deploiement | `init-db --reset --oui --sans-sauvegarde` en production, lancé par le déploiement qui vient de faire et de vérifier sa propre sauvegarde. | une seconde copie brute de la base à chaque déploiement avec remise à zéro, qui remplit le disque du serveur. |
 | Doctor n attend pas une base occupee par une autre ecriture | `doctor` est lancé pendant qu'un autre processus écrit (calcul, chargement). | doctor attendrait le délai de verrou puis conclurait « écriture impossible » (code 1) pour une base saine ; l'écriture d'essai est dite non vérifiée, avec le remède. |
 | Doctor signale une base en lecture seule | `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule). | doctor dirait « Tout est prêt » alors qu'aucune écriture n'est possible ; il doit échouer en nommant la lecture seule. |
 | Commandes de calcul avec un identifiant inexistant | `generer`, `pre-verifier` ou `instancier` reçoivent un identifiant inexistant, nul ou négatif. | trace Python (code 2) ou ligne de calcul créée pour un semestre inexistant ; il faut le code 1, « n'existe pas », et aucun calcul enregistré. |
@@ -928,7 +938,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Second chargement refuse avec un message clair | second chargement d'un jeu dans une base qui en contient déjà un. | doublons de codes (erreur d'unicité brute) ou mélange de deux jeux. |
 | Taille inconnue | taille de jeu mal orthographiée (« geant »). | `KeyError` brute au lieu de la liste des tailles disponibles. |
 
-#### `web_donnees` (39 cas)
+#### `web_donnees` (41 cas)
 
 [`tests/integration/web_donnees/test_cas_limites.py`](../tests/integration/web_donnees/test_cas_limites.py)
 
@@ -951,6 +961,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
+| Page de resultat rechargee sans second chargement | F5 sur la page de résultat d'un chargement d'établissement fictif, puis ouverture d'une adresse de résultat périmée (autre chargement depuis, ou serveur redémarré). | le navigateur renvoie le formulaire (confirmation d'effacement comprise) et remet la base à zéro une seconde fois ; ou une adresse périmée affiche le compte rendu d'un autre chargement, ou une erreur. |
 | Graine au dela de la borne du generateur refusee par l ecran | la graine saisie à l'écran vaut un de plus que la plus grande graine admise par le générateur (et par la commande `python -m edt jeu`). | l'écran accepte la graine, la génération la refuse ensuite ; ou l'écran refuse une graine que la commande accepte. Le message donne la borne exacte. |
 | Page rechargee pendant un chargement le dit | la page des établissements fictifs est rechargée (F5) pendant un chargement. | la page montre une base vide ou à moitié recréée sans explication ; un second clic relance un chargement qui sera refusé. |
 | Recharger apres une autre solution sur un vrai serveur | sur le serveur réel (uvicorn, autre processus), charger le jeu moyen, calculer, « Proposer une autre solution », puis recharger un jeu avec confirmation. | la base est vidée, puis le chargement refusé « Le schéma de la base ne correspond plus au modèle... Rien n'a été modifié » ; chaque essai suivant échoue de même jusqu'au redémarrage. Défaut intermittent, propre au processus du serveur (le client de test ne le reproduit pas) : ce test rejoue le parcours de la démonstration. |
@@ -986,6 +997,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 |---|---|---|
 | Capacite trop grande | une capacité de vingt chiffres. | OverflowError de SQLite (erreur 500) ou capacité absurde enregistrée. |
 | Effectif trop grand | un effectif de groupe de vingt chiffres. | erreur 500 ou effectif absurde qui fausse le contrôle des capacités. |
+| Maximum d enseignement nul refuse sous le champ | un maximum d'enseignement saisi à « 0 h » (au lieu de laisser le champ vide). | accepté par l'écran puis refusé par la base (maximum strictement positif) : refus global trompeur ou erreur 500 au lieu d'un message sous le champ. |
 | Identifiant trop grand dans un choix | une liste de choix (campus) renvoyée avec un identifiant de vingt chiffres. | OverflowError à la recherche de l'élément choisi. |
 | Chiffres exotiques refuses | une capacité « ² », « ٣ » (chiffre arabe), « 1e3 » ou « 2**70 ». | Python les lit comme des chiffres (`isdigit`) et une valeur inattendue est enregistrée. |
 | Annee de debut exotique | « Ajouter l'année » avec une année de début « ² ». | int() lève ValueError, erreur 500 sur le calendrier. |

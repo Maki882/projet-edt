@@ -77,8 +77,8 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     court, long_ = _durees()
     assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
     assert f"Rechercher jusqu'à {presentation.duree_secondes(long_)}" in page
-    # Les vraies pré-vérifications ont tourné : pas d'encart « pas encore disponible ».
-    assert "pas encore disponible" not in page
+    # Les vraies pré-vérifications ont tourné : pas d'encart « installation incomplète ».
+    assert "installation incomplète" not in page
     assert "Vérifications avant le calcul" in page
     assert "Le calcul ne peut pas être lancé" not in page
 

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.solveur.en_base import calcul_abandonne
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -220,23 +221,8 @@ def test_semestre_inconnu(base):
         generation.lancer_calcul(9999)
 
 
-def _calcul_reste_en_cours(semestre_id: int) -> int:
-    """Calcul « en cours » que plus aucun processus n'exécute (application arrêtée en route)."""
-    import datetime as dt
-
-    with session_base() as session:
-        calcul = m.Calcul(
-            semestre_id=semestre_id,
-            etat=EtatCalcul.EN_COURS,
-            demarre_le=dt.datetime(2026, 10, 5, 9, 0),
-        )
-        session.add(calcul)
-        session.flush()
-        return calcul.id
-
-
 def test_calcul_interrompu_cloture_au_demarrage(jeu_minimal):
-    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+    abandonne = calcul_abandonne(jeu_minimal.semestre_id)
 
     assert generation.cloturer_calculs_interrompus() == 1
     suivi = generation.etat_calcul(abandonne)
@@ -249,7 +235,7 @@ def test_calcul_interrompu_cloture_au_demarrage(jeu_minimal):
 
 def test_calcul_interrompu_ne_bloque_pas_le_suivant(jeu_minimal):
     """Sans redémarrage du serveur : le calcul abandonné est clos par le lancement suivant."""
-    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+    abandonne = calcul_abandonne(jeu_minimal.semestre_id)
 
     suivant = generation.attendre_calcul(
         generation.lancer_calcul(jeu_minimal.semestre_id, SANS_AMELIORATION), DELAI

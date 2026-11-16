@@ -193,10 +193,18 @@ def _jours(ctx: Contexte, element: Element) -> Iterator[Anomalie]:
         return
     # Jours permis : `Instantane.reglages` (standard et règles par axe). Seule l'entorse au
     # standard relève de `JOURS` ; une règle enfreinte relève de `REGLE`, à son niveau. Un
-    # jour sans créneau dans la grille relève de `HORAIRES` (b), qui le signale déjà.
-    if not any(source.est_standard for source in ctx.entorses_jours(element)):
+    # jour sans créneau dans la grille n'est jamais un jour de cours : il relève de `HORAIRES`
+    # (b) quand elle est vérifiée, de `JOURS` sinon (même imputation que le moteur,
+    # `Regles.violations_de_jour`).
+    entorse_au_standard = any(source.est_standard for source in ctx.entorses_jours(element))
+    sans_grille = not ctx.actif(CodeContrainte.HORAIRES) and not ctx.instantane.debuts_de_creneau(
+        element.jour
+    )
+    if not entorse_au_standard and not sans_grille:
         return
-    if (
+    if not entorse_au_standard:
+        raison = f"la grille horaire n'a aucun créneau le {nom_jour(element.jour)}"
+    elif (
         element.jour == SAMEDI
         and not element.besoin.samedi_autorise
         and SAMEDI not in ctx.instantane.jours_travailles
