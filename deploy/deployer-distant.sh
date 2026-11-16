@@ -103,8 +103,8 @@ RESULTAT_RETOUR=""      # résultat du retour arrière, pour l'historique
 JOURNAL_DEPLOIEMENT=""
 
 # --- Gestion des erreurs -----------------------------------------------------
-# Toute commande en échec (hors condition testée) arrive ici : on dit quelle
-# étape a échoué et à quelle ligne, puis on agit selon la phase.
+# Toute commande en échec (hors condition testée) arrive ici : message qui
+# dit quelle étape a échoué et à quelle ligne, puis action selon la phase.
 sur_erreur() {
   local code=$1 ligne=$2 commande=$3
   case "$commande" in
@@ -223,8 +223,8 @@ lancer_comme_app() {
 
 # Processus de l'utilisateur edt qui ne font pas partie du service : commandes
 # « sudo edt … » (unités systemd-run), sauvegarde quotidienne, sqlite3 lancé à
-# la main... Ils tiennent la base ouverte : on ne la sauvegarde ni ne la
-# remplace sous leurs pieds. Affiche une ligne par processus (numéro, unité
+# la main... Ils tiennent la base ouverte : elle n'est ni sauvegardée ni
+# remplacée sous leurs pieds. Affiche une ligne par processus (numéro, unité
 # systemd, durée, commande) ; ne renvoie 1 que si la recherche elle-même échoue.
 processus_hors_service() {
   local pids pid cgroup unite commande code=0
@@ -408,7 +408,7 @@ info "Espace libre : $((espace_libre_ko / 1024)) Mo"
 
 # Un fichier de la base (ou un -wal, -shm) créé par root, par exemple par une
 # commande lancée hors du lanceur « sudo edt », empêcherait le service d'écrire :
-# on le dit avant de toucher à quoi que ce soit.
+# c'est signalé avant de toucher à quoi que ce soit.
 etrangers="$(find "$DOSSIER_DONNEES" -maxdepth 2 ! -user "$UTILISATEUR_APP" -print)"
 if [ -n "$etrangers" ]; then
   echouer "fichiers de $DOSSIER_DONNEES qui n'appartiennent pas à $UTILISATEUR_APP (créés par une commande lancée en root hors du lanceur « sudo edt » ?) : le service ne pourrait pas les modifier.
@@ -516,8 +516,8 @@ PHASE="bascule"
 etape "Arrêt du service $SERVICE"
 systemctl stop "$SERVICE"
 info "Service arrêté (un calcul d'emploi du temps en cours est interrompu)."
-# Un processus démarré entre le contrôle de la préparation et l'arrêt : on ne
-# touche pas à la base sous ses pieds. Le lanceur « sudo edt » est refusé
+# Un processus démarré entre le contrôle de la préparation et l'arrêt : la
+# base n'est pas touchée sous ses pieds. Le lanceur « sudo edt » est refusé
 # pendant le déploiement (verrou) ; la sauvegarde quotidienne et un sqlite3
 # lancé à la main ne prennent pas ce verrou. Limite : un tel processus qui
 # démarre APRÈS ce contrôle (minuteur de 3 h 30 pendant la bascule) n'est pas

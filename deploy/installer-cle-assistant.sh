@@ -120,7 +120,7 @@ essayer_assistant() {
       return 0
       ;;
     *)
-      erreur "« $LANCEUR assistant --help » a échoué (code $code) : déploiement en cours ? Relancer plus tard « sudo edt assistant --essai »."
+      erreur "« $LANCEUR assistant --help » a échoué (code $code) : déploiement en cours ? Relancer « sudo edt assistant --essai » une fois le déploiement terminé."
       return 1
       ;;
   esac

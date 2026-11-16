@@ -36,7 +36,7 @@ CODE_DISTANT=0
 # résultat ; une vérification en échec n'empêche pas les suivantes.
 executer_script_distant etat "$EDT_DOMAINE" <<'DISTANT' || CODE_DISTANT=$?
 set -euo pipefail
-# Erreur imprévue : on la signale avec sa ligne et on sort avec le code 3
+# Erreur imprévue : signalée avec sa ligne, sortie avec le code 3
 # (distinct du code 1 qui signifie « problèmes détectés »).
 trap 'echo "!!! erreur inattendue (ligne $LINENO de la partie serveur de etat.sh) : $BASH_COMMAND" >&2; exit 3' ERR
 DOMAINE="$1"
@@ -70,7 +70,7 @@ systemctl show edt -p SubState -p ActiveEnterTimestamp -p NRestarts -p MainPID -
 # écrit « A process of this unit has been killed by the OOM killer » puis, le plus
 # souvent, « Failed with result 'oom-kill' » (parfois 'signal'), et le redémarre ;
 # un calcul en cours est alors perdu. Chaque panne laisse au moins une des deux
-# lignes : on compte le plus grand des deux nombres.
+# lignes : le plus grand des deux nombres est retenu.
 if journal_oom="$(journalctl -u edt --since "-7d" --no-pager -o cat)"; then
   nb_oom="$(awk '/killed by the OOM killer/ { tue++ } /result .oom-kill./ { echec++ } END { n = (tue > echec) ? tue : echec; print n + 0 }' <<< "$journal_oom")"
   if [ "$nb_oom" -gt 0 ]; then

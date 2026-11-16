@@ -121,7 +121,7 @@ done <<< "$adresses_dns"
 info "Le DNS pointe bien sur ce serveur."
 
 # Un enregistrement AAAA (IPv6) est préféré par Let's Encrypt ; nginx n'écoute
-# pas en IPv6 dans cette configuration : on prévient.
+# pas en IPv6 dans cette configuration : le script prévient.
 if resolution_v6="$(getent ahostsv6 "$EDT_DOMAINE")"; then
   # Les adresses « ::ffff:a.b.c.d » ne sont que les adresses IPv4 réécrites.
   adresses_v6="$(printf '%s\n' "$resolution_v6" | awk '$1 !~ /^::ffff:/ { print $1 }' | sort -u)"
@@ -132,7 +132,7 @@ fi
 
 # -----------------------------------------------------------------------------
 etape "Vérification du port 80 (fichier de test temporaire)"
-# On sert un fichier de test exactement comme Let's Encrypt le demandera.
+# Fichier de test servi exactement comme Let's Encrypt le demandera.
 install -d -o root -g root -m 755 "$DOSSIER_ACME/.well-known" "$DOSSIER_ACME/.well-known/acme-challenge"
 jeton="edt-test-$(date '+%s')-$$"
 FICHIER_TEST="$DOSSIER_ACME/.well-known/acme-challenge/$jeton"

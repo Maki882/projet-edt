@@ -157,7 +157,7 @@ installer_nginx() {
   else
     systemctl start nginx
   fi
-  # Le rechargement de nginx est asynchrone : on réessaie pendant 5 s.
+  # Le rechargement de nginx est asynchrone : nouvel essai chaque seconde pendant 5 s.
   if code="$(attendre_code http://127.0.0.1/sante "$attendus" 5)"; then
     case "$code" in
       200) info "nginx répond sur le port 80 et l'application aussi (200)." ;;
@@ -264,4 +264,4 @@ etape "Terminé"
 info "Serveur prêt. Étapes suivantes (docs/deploiement.md) :"
 info "  1. HTTPS (sur le serveur) : sudo bash $DOSSIER_SCRIPT/activer-https.sh"
 info "  2. Déploiement (sur le poste) : deploy/deployer.sh"
-info "Ce script n'a touché ni à SSH ni au pare-feu (un pare-feu activé plus tard devra ouvrir 22, 80 et 443)."
+info "Ce script n'a touché ni à SSH ni au pare-feu (un pare-feu, s'il est activé, doit ouvrir 22, 80 et 443)."
