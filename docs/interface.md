@@ -515,7 +515,7 @@ et un champ de saisie désactivé.
 3. journaliser chaque demande et chaque action au niveau INFO, comme le
    reste de l'application.
 
-## 7. Banque des cas limites (`tests/web_donnees`)
+## 7. Banque des cas limites (`tests/unitaires/web_donnees`, `tests/integration/web_donnees`)
 
 Les tests de cas limites de l'espace « Données » portent le marqueur
 `cas_limite` (`pytest -m cas_limite`) et commencent par « Cas : <le scénario>.
@@ -525,7 +525,8 @@ cours, dates aberrantes, adresses et en-têtes fabriqués, fragments ouverts à
 la main, champs piégés), `test_performance.py` mesure l'établissement complet
 (marqueur `perf` en plus, exclu de la CI courante).
 
-Les fixtures et aides communes sont dans `tests/web_donnees/conftest.py` :
+Les fixtures et aides communes sont dans `tests/integration/web_donnees/conftest.py`
+et `tests/outils/web_donnees/` :
 `version_generee` (une version produite par un vrai calcul), `calcul_retenu`
 (un calcul en cours, retenu jusqu'à `liberer()`), `depuis(adresse)` (en-têtes
 d'une requête HTMX), `formulaire_de` (valeurs d'un élément telles que le

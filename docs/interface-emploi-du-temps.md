@@ -37,7 +37,7 @@ jamais remplacée par une liste vide.
 | `src/edt/web/routes/accueil.py` | accueil (`/`), sans statistiques ; `/sante` (clés `base.ecarts_schema` et `base.inscriptible` ajoutées) |
 | `src/edt/web/templates/edt/` | gabarits des trois onglets ; `_ui.html` : macros partagées |
 | `src/edt/web/static/css/edt.css`, `static/js/edt.js` | grille, panneau, impression ; recherche rapide, envoi automatique |
-| `tests/web_edt/` | tests de ces écrans et services |
+| `tests/unitaires/web_edt/`, `tests/integration/web_edt/` | tests de ces écrans et services (aides partagées : `tests/outils/web_edt/`) |
 
 Les routes ne touchent pas l'ORM et n'appellent jamais `commit()` : elles
 lisent les paramètres, appellent un service et choisissent la page. Les
@@ -468,12 +468,14 @@ une panne). Toute page GET répond aussi à HEAD, sans corps
 ## Cas limites
 
 Aucune adresse de ces onglets ne répond par une erreur 500 sur un chemin
-normal ; `tests/web_edt/test_cas_limites.py` les essaie. Ces tests forment la
+normal ; `test_cas_limites.py` (`tests/unitaires/web_edt/` et
+`tests/integration/web_edt/`) les essaie. Ces tests forment la
 banque des cas limites du lot (marqueur `cas_limite`, docstring « Cas : …
-Risque : … ») : `python -m pytest -m cas_limite tests/web_edt`. Les aides
+Risque : … ») : `python -m pytest -m cas_limite tests/unitaires/web_edt tests/integration/web_edt`. Les aides
 pour en écrire d'autres (identifiant `ENORME`, nombre `CINQ_MILLE_CHIFFRES`,
 `reperes`, `creer_version_vide`, `calcul_qui_tourne`, `client_sans_trace`,
-`autre_ecrivain`, `delai_verrou_court`) sont dans `tests/web_edt/conftest.py`.
+`autre_ecrivain`, `delai_verrou_court`) sont dans `tests/outils/web_edt/aides.py`
+et `tests/integration/web_edt/conftest.py`.
 
 - **Identifiants hors bornes ou inconnus** (`identifiants.py`) : SQLite range
   ses identifiants sur 64 bits signés ; un entier hors de `[1, 2^63 - 1]`
@@ -622,7 +624,7 @@ l'établissement complet en a jusqu'à 18 ; la grille défile), et un bloc
 étroit ne garde que matière, groupes et salle (requête de conteneur CSS). Le gabarit place les blocs en `top`/`height` (%) et en variables
 CSS `--edt-gauche`/`--edt-largeur` ; la hauteur d'une colonne vaut
 `durée de l'axe × --edt-minute`. Le calcul est testé seul
-(`tests/web_edt/test_disposition.py`).
+(`tests/unitaires/web_edt/test_disposition.py`).
 
 ## Raccords
 

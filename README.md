@@ -65,13 +65,23 @@ Les journaux sont dans `logs/edt.log`, et un fichier par calcul dans
 ## Tester
 
 ```sh
-python -m pytest                    # tous les tests
-python -m pytest -m "not perf"      # sans les tests de charge (ce que lance la CI)
-python -m pytest -m cas_limite      # la banque des cas limites seule (voir docs/banque-de-tests.md)
-python -m pytest -m integration     # les parcours de bout en bout (voir tests/integration/README.md)
-python -m ruff check .              # lint
-python -m ruff format --check .     # format
+python -m pytest                            # tous les tests
+python -m pytest -m "not perf"              # sans les tests de charge
+python -m pytest tests/unitaires            # les tests unitaires (ou -m unitaire)
+python -m pytest tests/integration          # les tests d'intégration (ou -m integration)
+python -m pytest tests/integration/parcours # les six parcours de bout en bout
+python -m pytest -m cas_limite              # la banque des cas limites seule (voir docs/banque-de-tests.md)
+python -m pytest tests/test_rangement.py    # contrôle du rangement unitaire / intégration
+python -m tests.outils.classement           # nombre de tests par famille et par composant
+python -m ruff check .                      # lint
+python -m ruff format --check .             # format
 ```
+
+Les tests sont rangés en deux familles : `tests/unitaires/` (un module exercé
+seul) et `tests/integration/` (plusieurs couches assemblées : web, ligne de
+commande, calcul complet). La règle, l'arborescence et les nombres sont dans
+[tests/README.md](tests/README.md). La CI lance le contrôle du rangement, puis
+les tests unitaires, puis les tests d'intégration (hors tests de charge).
 
 Les tests créent leur base et leurs journaux dans des dossiers temporaires :
 ils ne touchent jamais `data/` ni `logs/`.
@@ -95,7 +105,7 @@ anomalie a un code, une gravité (erreur, avertissement, information) et un
 message en clair.
 
 Ce module généralise le premier vérificateur de chevauchements écrit par
-l'équipe. Tests : `python -m pytest tests/verification` (charge : `-m perf`).
+l'équipe. Tests : `python -m pytest tests/unitaires/verification tests/integration/verification` (charge : `-m perf`).
 Règles, indicateurs et diagramme de classes : [docs/verification.md](docs/verification.md).
 
 ## Contribuer au code

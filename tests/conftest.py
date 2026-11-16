@@ -28,8 +28,25 @@ from edt.db.moteur import fabrique_sessions, liberer_moteurs, session_base
 from edt.journal import reinitialiser_journalisation
 from edt.services.parametres import ecrire_parametre
 
+# Les aides de tests/outils gardent des messages d'assertion détaillés, comme les modules de tests.
+pytest.register_assert_rewrite("tests.outils")
+
 AUJOURDHUI = dt.date(2026, 10, 5)
 """Date de référence des tests : l'année scolaire créée par défaut est 2026-2027."""
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Pose le marqueur `unitaire` ou `integration` d'après le dossier du test.
+
+    `pytest -m unitaire` et `pytest -m integration` choisissent ainsi une
+    famille sans que chaque test ait à porter le marqueur.
+    """
+    for item in items:
+        dossiers = item.path.parts
+        if "integration" in dossiers:
+            item.add_marker(pytest.mark.integration)
+        elif "unitaires" in dossiers:
+            item.add_marker(pytest.mark.unitaire)
 
 
 @pytest.fixture(autouse=True)

@@ -104,11 +104,18 @@ src/edt/
       accueil.py               / et /sante
     templates/                 base.html, macros.html, un dossier par écran
     static/                    css/app.css, js/htmx.min.js, js/app.js
-tests/
-  conftest.py                  fixtures communes (base temporaire, jeu minimal)
-  socle/                       tests du socle ; un dossier par lot ensuite
-  solveur/                     tests du solveur : fabrique d'instantanés, une
-                               contrainte par test, couche datée, services, charge
+tests/                         règle de classement et nombres : tests/README.md
+  conftest.py                  fixtures communes (base temporaire, jeu minimal),
+                               marqueurs unitaire / integration posés d'après le dossier
+  test_rangement.py            contrôle automatique du rangement des tests
+  unitaires/<composant>/       un module exercé seul, par ses fonctions Python
+                               (socle, solveur, verification, web_donnees, web_edt,
+                               echange, synthese, exploitation)
+  integration/<composant>/     plusieurs couches assemblées : HTTP, ligne de
+                               commande, autre processus, calcul complet
+  integration/parcours/        six scénarios de bout en bout
+  outils/<composant>/          aides et fixtures partagées (ex. fabrique
+                               d'instantanés du solveur) ; outils/classement.py
 ```
 
 ## Configuration
@@ -1122,8 +1129,8 @@ niveaux souples, provisoires jusqu'au calibrage du lot solveur.
 | un **service** | un module de `edt/services/` : fonctions typées qui reçoivent la session |
 | un **écran** | un module de `edt/web/routes/` et ses gabarits (voir plus haut) |
 | une **commande** | un module de `edt/commandes/` (voir plus haut) |
-| un **test** | `tests/<lot>/test_*.py` (dossier avec un `__init__.py` vide, comme `tests/socle/`), avec les fixtures de `tests/conftest.py` et celles du lot (`tests/<lot>/conftest.py`) ; un test long porte `@pytest.mark.perf` |
-| un **test de cas limite** (banque durable, `docs/banque-de-tests.md`) | marqueur `@pytest.mark.cas_limite`, docstring « Cas : <scénario>. Risque : <ce qui casserait sans le test>. », aides du conftest du lot plutôt que du code dupliqué (socle : `lanceur`, `compter`, `delai_verrou_court`, `verrou_ecriture`, `lecture_seule`, `corrompre_base`) ; un défaut qui relève d'un autre lot reste un test `@pytest.mark.xfail(strict=True, reason="à corriger par le lot <nom> : <fichier>")`. Déterministe (ni horloge, ni ordre des tests, ni solution CP-SAT), rapide (sinon `perf`), nommé en français par le cas |
+| un **test** | `tests/unitaires/<composant>/test_*.py` s'il exerce un module seul par ses fonctions Python, `tests/integration/<composant>/test_*.py` s'il passe par une requête HTTP, la ligne de commande, un autre processus ou un calcul complet (règle dans `tests/README.md`, contrôlée par `tests/test_rangement.py`) ; dossiers avec un `__init__.py` vide, comme `tests/unitaires/socle/` ; fixtures de `tests/conftest.py` et du `conftest.py` du dossier, aides partagées dans `tests/outils/<composant>/` ; un test long porte `@pytest.mark.perf` |
+| un **test de cas limite** (banque durable, `docs/banque-de-tests.md`) | marqueur `@pytest.mark.cas_limite`, docstring « Cas : <scénario>. Risque : <ce qui casserait sans le test>. », aides partagées plutôt que du code dupliqué (socle : `compter`, `delai_verrou_court`, `verrou_ecriture` dans `tests/outils/socle/fixtures.py` ; `lanceur`, `lecture_seule`, `corrompre_base` dans `tests/integration/socle/conftest.py`) ; un défaut qui relève d'un autre lot reste un test `@pytest.mark.xfail(strict=True, reason="à corriger par le lot <nom> : <fichier>")`. Déterministe (ni horloge, ni ordre des tests, ni solution CP-SAT), rapide (sinon `perf`), nommé en français par le cas |
 
 ## Vérifier son travail
 
