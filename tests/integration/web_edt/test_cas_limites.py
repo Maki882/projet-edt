@@ -18,7 +18,7 @@ Trois cas sont testés près de leur écran, avec le même
 marqueur : l'option « Tous les semestres » (`test_a_traiter.py`), le jour où
 une séance ne tient nulle part (`test_emploi_du_temps.py`), l'arrêt d'un
 calcul terminé (`test_calculs.py`). Comportements attendus :
-`docs/interface-emploi-du-temps.md`, section « Cas limites ».
+`docs/interface.md`, section « Cas limites ».
 """
 
 from __future__ import annotations
