@@ -4,10 +4,6 @@
 
 {% block titre %}Paramètres{% endblock %}
 
-{% block actions %}
-{{ ui.bouton_action("/parametres/defaut", "Revenir aux valeurs par défaut", classe="bouton bouton-danger", confirmation="Remettre TOUS les paramètres à leur valeur par défaut ?") }}
-{% endblock %}
-
 {% block contenu %}
 <p class="introduction">
   Réglages qui s'appliquent à tous les calculs. Chaque valeur est contrôlée : les bornes
@@ -26,6 +22,12 @@
 {%- endif %}
 <form class="formulaire formulaire-large" method="post" action="/parametres">
   {%- for titre, liste in rubriques %}
+  {%- set avancee = titre in rubriques_avancees %}
+  {%- if avancee %}
+  {%- set ouverte = liste|selectattr("cle", "in", erreurs)|list or liste|selectattr("cle", "in", invalides)|list %}
+  <details class="repliable"{% if ouverte %} open{% endif %}>
+    <summary>{{ titre }} (réglages avancés)</summary>
+  {%- endif %}
   <fieldset>
     <legend>{{ titre }}</legend>
     <div class="grille-champs">
@@ -50,9 +52,15 @@
       {%- endfor %}
     </div>
   </fieldset>
+  {%- if avancee %}
+  </details>
+  {%- endif %}
   {%- endfor %}
   <div class="formulaire-actions">
     <button type="submit" class="bouton bouton-principal">Enregistrer les paramètres</button>
   </div>
 </form>
+<div class="formulaire-actions">
+  {{ ui.bouton_action("/parametres/defaut", "Revenir aux valeurs par défaut", classe="bouton bouton-danger", confirmation="Remettre TOUS les paramètres à leur valeur par défaut ?") }}
+</div>
 {% endblock %}

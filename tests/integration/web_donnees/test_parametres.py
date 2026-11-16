@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from tests.outils.web_donnees.aides import erreur_sous_le_champ
+from tests.outils.web_donnees.aides import erreur_sous_le_champ, texte_visible
 
 from edt.db.modeles import Parametre
 from edt.db.moteur import session_base
@@ -210,3 +210,23 @@ def test_ancien_parametre_de_dejeuner_illisible_reste_reparable(site):
     with session_base() as session:
         assert anomalies_parametres(session) == {}
         assert lire_parametres(session).dejeuner_mode == DEJEUNER_FIXE
+
+
+def test_ecran_des_parametres_simple_a_lire(client):
+    """Libellés sans jargon, heures « 8 h 30 » dans l'aide, réglages du calcul en fin de page et
+    repliés ; un champ refusé dans un bloc replié rouvre ce bloc."""
+    page = client.get("/parametres").text
+    texte = texte_visible(client.get("/parametres")).lower()
+    for mot in ("solveur", "fils", "matrice", "ressource"):
+        assert mot not in texte, mot
+    assert "Par défaut : 8 h 30." in page and 'name="ouverture_min" value="08:30"' in page
+    assert re.findall(r"<legend>([^<]+)</legend>", page)[0] == "Journée"
+    assert re.search(r'<details class="repliable">\s*<summary>Calcul \(réglages avancés\)', page)
+    assert page.index("Enregistrer les paramètres") < page.index("Revenir aux valeurs par défaut")
+
+    refus = client.post("/parametres", data=_saisies(temps_limite_s="0"))
+    assert refus.status_code == 422
+    bloc = re.search(
+        r'<details class="repliable" open>\s*<summary>Calcul.*?</details>', refus.text, re.S
+    )
+    assert bloc is not None and 'id="erreur-temps_limite_s"' in bloc.group(0)

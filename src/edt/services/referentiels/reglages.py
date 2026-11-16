@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from edt.domaine.enumerations import JOURS
-from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
+from edt.domaine.heures import minutes_vers_hhmm, minutes_vers_texte, texte_vers_minutes
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
     DEJEUNER_LIBRE,
@@ -106,13 +106,15 @@ class ParametreAffiche:
         return str(valeur)
 
     def texte_lisible(self, valeur: ValeurParametre) -> str:
-        """Valeur telle qu'elle se lit : « oui », le libellé d'un choix, « 08:30 »."""
+        """Valeur telle qu'elle se lit : « oui », le libellé d'un choix, « 8 h 30 »."""
         if self.type == "bool":
             return "oui" if valeur else "non"
         if self.est_choix:
             return dict(self.choix).get(str(valeur), str(valeur))
         if self.est_jours and isinstance(valeur, tuple | list):
             return ", ".join(JOURS[jour] for jour in valeur)
+        if self.est_heure and isinstance(valeur, int) and not isinstance(valeur, bool):
+            return minutes_vers_texte(valeur)
         return self.en_texte(valeur)
 
 

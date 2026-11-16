@@ -66,10 +66,10 @@ def suite_creation_annee(session: Session, annee: Mapping[str, Any]) -> SuiteCre
     adresse = "/regles?" + urlencode({"annee": annee["id"], "etat": EtatRegle.PROPOSEE.value})
     texte = (
         "1 règle personnalisée proposée pour cette année, ci-dessous : sans effet tant "
-        "qu'elle n'est pas confirmée."
+        "qu'elle n'est pas activée."
         if nombre == 1
         else f"{nombre} règles personnalisées proposées pour cette année, ci-dessous : sans "
-        "effet tant qu'elles ne sont pas confirmées."
+        "effet tant qu'elles ne sont pas activées."
     )
     return SuiteCreation(texte, adresse)
 
@@ -108,7 +108,6 @@ ECRAN_GRILLE = Ecran(
 )
 
 GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Calcul", ("temps_limite_s", "temps_limite_long_s", "nb_workers")),
     (
         "Journée",
         (
@@ -123,6 +122,7 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     ("Lieux", ("trajet_defaut_min", "accessibilite_inconnue_acceptee")),
+    ("Calcul", ("temps_limite_s", "temps_limite_long_s", "nb_workers")),
     (
         "Qualité de l'emploi du temps",
         (
@@ -135,6 +135,10 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
 )
 """Rubriques de l'écran des paramètres ; un paramètre non cité va dans « Autres réglages »."""
+
+RUBRIQUES_AVANCEES = frozenset({"Calcul", "Qualité de l'emploi du temps"})
+"""Rubriques repliées par défaut (« réglages avancés ») ; ouvertes si l'un de leurs champs est
+signalé."""
 
 UNITES = {"s": "secondes", "min": "minutes"}
 
@@ -255,6 +259,7 @@ def _rendre_parametres(
             "invalides": invalides,
             "erreur": erreur,
             "unites": UNITES,
+            "rubriques_avancees": RUBRIQUES_AVANCEES,
             # Prévenir avant la saisie (le refus, lui, s'affiche à la place).
             "calcul_en_cours": generation.calcul_en_cours() if erreur is None else None,
         },
