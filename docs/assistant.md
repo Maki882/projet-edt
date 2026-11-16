@@ -70,6 +70,10 @@ Points à traiter (onglet Générer).
 - **Nouvelle conversation** : oublie la conversation en cours (pas pendant une réponse).
 - Une conversation compte au plus 10 messages (le panneau dit combien il en reste), et
   s'oublie après 30 minutes sans activité ou au redémarrage du serveur ; le panneau le dit.
+- Une conversation n'est créée que pour un message accepté. Quand la mémoire manque, la
+  conversation la moins récemment active est oubliée, jamais une conversation dont une
+  proposition attend Confirmer ou Refuser : le nouveau message est alors refusé (« très
+  sollicité »).
 - Le site limite le nombre de messages par adresse et par jour, et l'ensemble des messages
   et la dépense de la journée ; une limite atteinte est annoncée dans le fil, avec le moment où
   elle se lève.
@@ -110,6 +114,7 @@ répète.
 | `EDT_ASSISTANT_BUDGET_JOUR` | `2.00` | dépense estimée par jour pour tout le site, en dollars |
 | `EDT_ASSISTANT_SIMULTANES` | `2` | échanges en même temps |
 | `EDT_ASSISTANT_CONVERSATIONS_MAX` / `EDT_ASSISTANT_EXPIRATION_MIN` | `200` / `30` | conversations gardées en mémoire, minutes sans activité avant l'oubli |
+| `EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE` | `10` | conversations gardées par adresse IP (le jour d'une démonstration où une salle sort par une même adresse, le relever avec `EDT_ASSISTANT_MESSAGES_PAR_ADRESSE`) |
 | `EDT_ASSISTANT_JOURNAL_CONTENU` | `non` | `oui` : texte des messages et des réponses au niveau DEBUG (débogage local seulement) |
 
 La clé ne se place pas dans le fichier d'environnement général du service, que

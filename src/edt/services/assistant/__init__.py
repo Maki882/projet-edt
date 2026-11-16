@@ -305,7 +305,9 @@ def envoyer(
 
     Ordre des contrôles : assistant disponible, pause, message, conversation
     (close, échange en cours, nombre de messages), échanges simultanés, limite
-    de l'adresse, limite du site et budget.
+    de l'adresse, limite du site et budget ; puis, seulement si tout est passé,
+    création de la conversation (place en mémoire). Un message refusé ne crée
+    donc aucune conversation et ne consomme aucune place.
     """
     config = _config()
     page = page_affichee(page)
@@ -343,32 +345,31 @@ def envoyer(
                 "L'assistant est très sollicité : réessayez dans un instant.",
                 None if nouvelle else conversation.identifiant,
             )
+        identifiant_refus = None if nouvelle else conversation.identifiant
         try:
-            if conversation is None:
-                conversation = registre.creer(
-                    cle, config.conversations_max, config.expiration_min * 60
-                )
-            echange = Echange(
-                jeton=secrets.token_urlsafe(9),
-                conversation_id=conversation.identifiant,
-                texte=texte,
-                page=page,
-                debut=temps.maintenant(),
-            )
-            conversation.echange = echange  # réserve la place avant les contrôles en base
+            _etat.adresses.compter(cle, config)
         except LimiteAtteinte as limite:
-            return _refus(limite.message, None, perdue=perdue)
-    try:
-        _etat.adresses.compter(cle, config)
+            return _refus(limite.message, identifiant_refus)
         try:
             _etat.budget.ouvrir_echange(config)
-        except LimiteAtteinte:
+            if conversation is None:
+                conversation = registre.creer(
+                    cle,
+                    config.conversations_max,
+                    config.conversations_par_adresse,
+                    config.expiration_min * 60,
+                )
+        except LimiteAtteinte as limite:
             _etat.adresses.rendre(cle)
-            raise
-    except LimiteAtteinte as limite:
-        with conversation.verrou:
-            conversation.echange = None
-        return _refus(limite.message, conversation.identifiant, nouvelle=nouvelle, perdue=perdue)
+            return _refus(limite.message, identifiant_refus)
+        echange = Echange(
+            jeton=secrets.token_urlsafe(9),
+            conversation_id=conversation.identifiant,
+            texte=texte,
+            page=page,
+            debut=temps.maintenant(),
+        )
+        conversation.echange = echange
     tour = Tour(RoleTour.UTILISATEUR, texte)
     with conversation.verrou:
         conversation.nb_envois += 1

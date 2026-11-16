@@ -38,8 +38,8 @@ def _envoyer(texte="Bonjour", identifiant=None, adresse=ADRESSE, page="/salles")
     return assistant.envoyer(identifiant, texte, page, adresse)
 
 
-def _echanger(texte="Bonjour", identifiant=None):
-    resultat = _envoyer(texte, identifiant)
+def _echanger(texte="Bonjour", identifiant=None, adresse=ADRESSE):
+    resultat = _envoyer(texte, identifiant, adresse=adresse)
     assert resultat.accepte, resultat.refus
     attendre(resultat.echange)
     return resultat
@@ -255,6 +255,65 @@ def test_erreur_inattendue_dans_le_fil_rendue_en_bulle(
     assert tour.role is RoleTour.ERREUR and tour.reference == resultat.echange.reference
     assert "interrompu par une erreur inattendue" in caplog.text
     assert CLE_FACTICE not in caplog.text
+
+
+@pytest.mark.cas_limite
+def test_un_message_refuse_ne_cree_pas_de_conversation(base, faux_client, jour_fige, monkeypatch):
+    """Cas : une adresse au-delà de sa limite envoie des messages sans cookie, à la chaîne.
+
+    Risque : chaque refus crée une conversation vide ; le registre se remplit et évince les
+    conversations des autres visiteurs, propositions en attente comprises, sans aucun appel.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_ADRESSE", "1")
+    faux_client.reponses = [reponse_texte("ok")]
+    _echanger()
+    nombre = assistant._etat.registre.nombre()
+    for _ in range(5):
+        refus = _envoyer("Encore")
+        assert not refus.accepte and refus.conversation_id is None
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_JOUR", "1")
+    refus = _envoyer("Autre adresse", adresse="203.0.113.99")
+    assert not refus.accepte and refus.conversation_id is None
+    assert assistant._etat.registre.nombre() == nombre
+    assert len(faux_client.appels) == 1
+
+
+@pytest.mark.cas_limite
+def test_une_proposition_en_attente_n_est_jamais_evincee(
+    jeu_minimal, faux_client, jour_fige, monkeypatch
+):
+    """Cas : la mémoire est pleine ; la conversation de la démonstratrice a une proposition
+    en attente ; un autre visiteur commence une conversation.
+
+    Risque : au clic, « Cette proposition n'existe plus » : la conversation a été évincée.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_CONVERSATIONS_MAX", "1")
+    conversation, proposition = _proposer(faux_client, "proposer_regle", REGLE_CM)
+    faux_client.reponses = [reponse_texte("ok")]
+    refus = _envoyer("Autre visiteur", adresse="203.0.113.50")
+    assert not refus.accepte and "très sollicité" in refus.refus.texte
+    assert refus.conversation_id is None
+    assert assistant.confirmer(conversation, proposition.jeton).proposition.etat is (
+        EtatProposition.CONFIRMEE
+    )
+    accepte = _envoyer("Autre visiteur", adresse="203.0.113.50")  # plus rien en attente
+    assert accepte.accepte
+    attendre(accepte.echange)
+
+
+@pytest.mark.cas_limite
+def test_conversations_bornees_par_adresse(base, faux_client, jour_fige, monkeypatch):
+    """Cas : une même adresse ouvre conversation sur conversation (cookies effacés).
+
+    Risque : une seule adresse occupe toute la mémoire et évince les autres visiteurs.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE", "2")
+    faux_client.reponses = [reponse_texte(str(i)) for i in range(4)]
+    autre = _echanger("Autre visiteur", adresse="203.0.113.60")
+    premieres = [_echanger(f"Conversation {i}") for i in range(3)]
+    assert assistant.vue(premieres[0].conversation_id).perdue  # sa plus ancienne, pas une autre
+    assert not assistant.vue(premieres[2].conversation_id).perdue
+    assert not assistant.vue(autre.conversation_id).perdue
 
 
 @pytest.mark.cas_limite
