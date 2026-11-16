@@ -11,8 +11,13 @@ Il faut Python 3.11 ou plus récent et Git. Depuis la racine du dépôt :
 
 ```sh
 python -m venv .venv
-.venv/Scripts/python -m pip install -e ".[dev]"   # Linux et macOS : .venv/bin/python
+.venv/Scripts/python -m pip install -e ".[dev]" -c contraintes.txt   # Linux et macOS : .venv/bin/python
 ```
+
+`contraintes.txt` fixe la version exacte de chaque paquet, celle que le
+contrôle automatique teste ; `pyproject.toml` n'en donne que les bornes. Pour
+changer une version : [docs/deploiement.md](docs/deploiement.md), section
+« Versions des dépendances ».
 
 Après activation de l'environnement (`.venv\Scripts\activate` sous Windows,
 `source .venv/bin/activate` ailleurs) :
