@@ -72,7 +72,7 @@ def test_type_et_caractere_obligatoire_compares_mais_pas_la_longueur(base):
 
 
 def test_valeurs_d_une_enumeration_comparees(base):
-    # La base date d'avant l'ajout de « apres_midi » au modèle, et connaît encore « soir ».
+    # La base ne connaît pas « apres_midi », valeur du modèle, et connaît « soir », qu'il n'a pas.
     recreer_table(
         "creneau",
         definitions={

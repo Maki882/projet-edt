@@ -142,7 +142,7 @@ def test_le_mode_est_enregistre_et_relu_en_base(session):
 
 
 def _ancienne_base(session, horaires_determines: bool | None) -> None:
-    """Base d'avant `dejeuner_mode` : l'ancien booléen, ou rien du tout."""
+    """Base sans `dejeuner_mode` : la clé booléenne `dejeuner_horaires_determines`, ou rien."""
     session.delete(session.get(Parametre, "dejeuner_mode"))
     session.delete(session.get(Parametre, "dejeuner_duree_min"))
     if horaires_determines is not None:
@@ -221,7 +221,7 @@ def test_init_db_supprime_la_cle_morte_sans_toucher_au_mode_enregistre(session, 
 
 
 def test_ancienne_plage_vide_lue_comme_pas_de_pause(session, caplog):
-    """Base d'avant tout réglage, où une plage vide voulait dire « pas de déjeuner » : lisible."""
+    """Base sans aucun réglage du déjeuner, plage vide (« pas de déjeuner ») : lisible."""
     session.get(Parametre, "dejeuner_fin_min").valeur = 12 * H + 45
     _ancienne_base(session, None)
     with caplog.at_level(logging.WARNING, logger="edt.services.parametres"):

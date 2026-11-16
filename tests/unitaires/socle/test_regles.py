@@ -1,8 +1,8 @@
 """Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution.
 
-Les cas de précédence des jours sont ceux de `docs/regles-personnalisees.md`
-(§ 1.3) : standard, groupe qui ferme, groupe qui ouvre le samedi, enseignant
-sans règle, deux lignées qui se croisent.
+Les cas de précédence des jours sont ceux de `docs/regles-personnalisees.md` :
+standard, groupe qui ferme, groupe qui ouvre le samedi, enseignant sans règle,
+deux lignées qui se croisent.
 """
 
 from __future__ import annotations
