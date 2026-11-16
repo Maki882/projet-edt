@@ -9,7 +9,7 @@ import pytest
 from tests.outils.web_edt.aides import DELAI
 
 from edt.config import charger_configuration
-from edt.domaine.contraintes import CodeContrainte, Niveau
+from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
 from edt.domaine.parametres import DEJEUNER_AUCUN, DEJEUNER_FIXE, DEJEUNER_LIBRE
 from edt.services.emploi_du_temps import calculs, prechauffage, presentation
@@ -130,3 +130,9 @@ def test_prechauffage_sur_toute_base(request, environnement, monkeypatch, caplog
     assert lances[0]  # la seconde, si le premier fil tourne encore, est ignorée sans erreur
     attendu = "sans objet" if etat_de_la_base == "non initialisée" else "Écrans préchauffés"
     assert any(attendu in r.getMessage() for r in caplog.records)
+
+
+def test_descriptions_des_regles_sans_nom_technique():
+    """Le tableau « Règles » et « À traiter » affichent ces descriptions telles quelles."""
+    for code, entree in CATALOGUE.items():
+        assert "`" not in entree.description and "edt." not in entree.description, code

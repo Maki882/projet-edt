@@ -293,7 +293,7 @@ def test_max_enseignant_souple_compte_les_heures_au_dela():
     resultat = resoudre(instantane, options(niveaux=niveaux_avec(MAX_ENSEIGNANT="facultatif")))
     verifier_solution(instantane, resultat)
     assert resultat.statistiques["entorses"] == {"MAX_ENSEIGNANT": 2}  # 4 h pour 2 h : 2 h au-delà
-    assert "maxima horaires des enseignants : 2" in resultat.message
+    assert "heures maximales des enseignants : 2" in resultat.message
 
 
 def test_max_hebdomadaire_souple_est_un_avertissement_et_une_entorse_certaine():

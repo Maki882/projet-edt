@@ -146,8 +146,10 @@ def test_mode_optimise_fait_baisser_l_objectif_du_verificateur():
     assert 0 < stats["duree_premiere_solution_s"] <= stats["duree_s"]
     # Le message parle au responsable de planning : des trous et des samedis, pas de pénalité.
     assert (
-        f"Bilan sur l'ensemble du semestre : {apres.trous_creneaux} créneau(x) libre(s) entre "
-        f"deux cours dans les journées des groupes et {apres.seances_samedi} séance(s) le samedi."
+        f"Bilan sur l'ensemble du semestre : {apres.trous_creneaux} "
+        f"{'créneau libre' if apres.trous_creneaux <= 1 else 'créneaux libres'} entre deux cours "
+        f"dans les journées des groupes et {apres.seances_samedi} "
+        f"{'séance' if apres.seances_samedi <= 1 else 'séances'} le samedi."
     ) in optimise.message
     assert "pénalité" not in optimise.message.lower()
     assert "objectif" not in optimise.message.lower()
