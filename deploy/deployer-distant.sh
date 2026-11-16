@@ -510,6 +510,9 @@ if [ "$RESET_BASE" = 1 ]; then
     echouer "« python -m edt init-db --help » a échoué : $aide"
   fi
   if [[ "$aide" == *--oui* ]]; then options_init+=(--oui); fi
+  # La sauvegarde vérifiée vient d'être faite par ce script : si la version le
+  # permet, init-db n'en écrit pas une seconde à côté de la base.
+  if [[ "$aide" == *--sans-sauvegarde* ]]; then options_init+=(--sans-sauvegarde); fi
 fi
 
 pid_service="$(systemctl show -p MainPID --value "$SERVICE")"
