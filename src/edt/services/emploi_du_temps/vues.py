@@ -420,19 +420,54 @@ PREFERENCE_PAR_DEFAUT = (
 """Ordre de préférence pour ouvrir la page : une classe a un emploi du temps lisible."""
 
 
-def cible_par_defaut(session: Session, annee_scolaire_id: int) -> Cible | None:
-    """Première classe de l'année (sinon un demi-groupe, une promotion...), ou `None`."""
+def cible_par_defaut(
+    session: Session, annee_scolaire_id: int, version_id: int | None = None
+) -> Cible | None:
+    """La classe la plus chargée de l'année (sinon un demi-groupe, une promotion...), ou `None`.
+
+    Avec `version_id`, parmi les groupes de la nature préférée
+    (`PREFERENCE_PAR_DEFAUT`), celui dont l'emploi du temps compte le plus de
+    séances dans la semaine type de cette version (les siennes et celles de
+    ses ascendants, comme la grille les montre) : la page s'ouvre sur une
+    grille remplie, pas sur une classe d'apprentis presque vide. À égalité,
+    et sans version, l'ordre des codes.
+    """
     groupes = session.execute(
-        select(m.Groupe.id, m.Groupe.nature, m.Groupe.code).where(
+        select(m.Groupe.id, m.Groupe.nature, m.Groupe.code, m.Groupe.parent_id).where(
             m.Groupe.annee_scolaire_id == annee_scolaire_id
         )
     ).all()
     if not groupes:
         return None
+    propres: dict[int, int] = {}
+    if version_id is not None:
+        propres = dict(
+            session.execute(
+                select(m.besoin_groupe.c.groupe_id, func.count(m.SeanceHebdo.id))
+                .join(m.SeanceHebdo, m.SeanceHebdo.besoin_id == m.besoin_groupe.c.besoin_id)
+                .where(m.SeanceHebdo.version_id == version_id)
+                .group_by(m.besoin_groupe.c.groupe_id)
+            ).all()
+        )
+    parents = {identifiant: parent for identifiant, _, _, parent in groupes}
+
+    def nombre_de_seances(groupe: int) -> int:
+        total, vus, courant = 0, set(), groupe
+        while courant is not None and courant not in vus:  # un arbre qui boucle s'arrête
+            vus.add(courant)
+            total += propres.get(courant, 0)
+            courant = parents.get(courant)
+        return total
+
     rang = {nature: indice for indice, nature in enumerate(PREFERENCE_PAR_DEFAUT)}
-    _, _, choix = min(
-        (rang.get(NatureGroupe(nature), len(rang)), code, identifiant)
-        for identifiant, nature, code in groupes
+    *_, choix = min(
+        (
+            rang.get(NatureGroupe(nature), len(rang)),
+            -nombre_de_seances(identifiant),
+            code,
+            identifiant,
+        )
+        for identifiant, nature, code, _ in groupes
     )
     return Cible(NatureCible.GROUPE, choix)
 

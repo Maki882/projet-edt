@@ -130,7 +130,7 @@ def test_identifiant_qui_n_est_pas_un_entier_donne_saisie_invalide(version_gener
 @pytest.mark.parametrize("parametre", ["enseignant_id", "salle_id", "groupe_id"])
 def test_cible_enorme_dans_l_adresse_montre_la_premiere_classe(version_generee, client, parametre):
     """Cas : groupe, enseignant ou salle de vingt chiffres dans l'adresse de la grille.
-    Risque : erreur 500 au lieu de la première classe, affichée en disant que la cible
+    Risque : erreur 500 au lieu de la classe par défaut, affichée en disant que la cible
     demandée n'existe pas.
     """
     page = client.get(
@@ -138,7 +138,7 @@ def test_cible_enorme_dans_l_adresse_montre_la_premiere_classe(version_generee, 
     )
     assert page.status_code == 200
     assert f"n° {ENORME} n&#39;existe pas" in page.text
-    assert "Affichage de la première classe à la place" in page.text
+    assert "Affichage d&#39;une autre classe à la place" in page.text
 
 
 @pytest.mark.cas_limite
@@ -173,7 +173,9 @@ def test_cookie_de_cible_illisible_ou_enorme_est_ignore(version_generee, client,
     n'est pas effacé.
     """
     with session_base() as session:
-        defaut = vues.cible_par_defaut(session, version_generee.annee_scolaire_id).valeur
+        defaut = vues.cible_par_defaut(
+            session, version_generee.annee_scolaire_id, version_generee.version_id
+        ).valeur
     for valeur in (
         f"enseignant:{ENORME}",
         "salle:-5",

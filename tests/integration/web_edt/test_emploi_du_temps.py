@@ -441,7 +441,7 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
 def test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut(version_generee, client):
     reponse = client.get(f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id=9999")
     assert reponse.status_code == 200
-    assert "Affichage de la première classe à la place" in reponse.text
+    assert "Affichage d&#39;une autre classe à la place" in reponse.text
 
 
 def test_le_vrai_verificateur_refuse_un_conflit_de_groupe(version_generee, client):

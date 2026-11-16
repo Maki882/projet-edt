@@ -195,7 +195,8 @@ def page(
     """L'emploi du temps choisi, et le panneau d'une séance si `seance` est donné.
 
     Sans cible dans l'adresse, la page s'ouvre sur la dernière cible consultée
-    (cookie du navigateur), sinon sur la première classe de l'année.
+    (cookie du navigateur), sinon sur la classe la plus chargée de l'année
+    (`vues.cible_par_defaut`).
     """
     semestre, version = _resolution(session, semestre_id, version_id)
     contexte: dict = {
@@ -227,7 +228,7 @@ def page(
         choisie = _cible_retenue(request)
         origine = "retenue" if choisie is not None else "defaut"
     if choisie is None:
-        choisie = vues.cible_par_defaut(session, annee_id)
+        choisie = vues.cible_par_defaut(session, annee_id, version.id)
 
     def construire(cible_vue, etendu_vue):
         return vues.construire_vue(
@@ -246,14 +247,12 @@ def page(
     except ErreurIntrouvable as erreur:
         # Lien ancien, cible retenue d'une autre année, ou changement de semestre sans
         # JavaScript : la cible par défaut est montrée.
-        defaut = vues.cible_par_defaut(session, annee_id)
+        defaut = vues.cible_par_defaut(session, annee_id, version.id)
         if choisie == defaut:
             raise
         if origine == "demandee":
             messages.append(
-                Message(
-                    f"{erreur.message} Affichage de la première classe à la place.", "attention"
-                )
+                Message(f"{erreur.message} Affichage d'une autre classe à la place.", "attention")
             )
         else:
             journal.info("Dernière cible consultée introuvable ici (%s) : cible par défaut", erreur)
