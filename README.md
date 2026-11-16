@@ -29,13 +29,18 @@ ci-dessous.
 
 ## Livrables du cours
 
-1. [Spécifications fonctionnelles](docs/livrets/1-specifications-fonctionnelles.md) :
-   ce que fait l'application, ses fonctionnalités classées, le diagramme de
-   classes.
-2. [Spécifications techniques et organisation](docs/livrets/2-specifications-techniques-et-organisation.md) :
+1. [Spécifications fonctionnelles](docs/livrets/1-specifications-fonctionnelles.md)
+   ([PDF](docs/livrets/pdf/1-specifications-fonctionnelles.pdf)) : ce que fait
+   l'application, ses fonctionnalités classées, le diagramme de classes.
+2. [Spécifications techniques et organisation](docs/livrets/2-specifications-techniques-et-organisation.md)
+   ([PDF](docs/livrets/pdf/2-specifications-techniques-et-organisation.pdf)) :
    technologies, architecture, organisation de l'équipe.
-3. [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md) : le mode
-   d'emploi, écran par écran.
+3. [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md)
+   ([PDF](docs/livrets/pdf/3-guide-utilisateur.pdf)) : le mode d'emploi, écran
+   par écran.
+
+Les trois livrets en PDF sont aussi joints à la version 1.0.0 publiée sur
+GitHub (page « Releases » du dépôt).
 
 ## Ce que fait l'application
 
@@ -148,6 +153,6 @@ La carte complète, avec le public de chaque document, est dans
 
 ## Contribuer
 
-Une branche par tâche, une pull request relue par un autre membre, la CI
-verte avant la fusion. Le détail (conventions de code et d'écriture, tests,
+Une branche par tâche, une pull request par changement, la CI verte avant
+la fusion. Le détail (conventions de code et d'écriture, tests,
 ajout d'une commande ou d'un écran) est dans [CONTRIBUTING.md](CONTRIBUTING.md).

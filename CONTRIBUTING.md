@@ -34,8 +34,8 @@ se discute d'abord avec l'équipe, dans une tâche ou une pull request.
 ## 2. Travailler avec Git et GitHub
 
 La protection de branche n'est pas disponible sur ce dépôt : GitHub
-n'empêche pas techniquement de pousser sur `main`. La règle est donc une
-règle d'équipe, que chacun applique :
+n'empêche pas techniquement de pousser sur `main`. Les règles suivantes sont
+donc des règles d'équipe :
 
 - **Aucun envoi direct sur `main`.** Tout passe par une pull
   request.
@@ -51,9 +51,8 @@ règle d'équipe, que chacun applique :
   compte.** Un commit n'est attribué qu'à la personne qui l'a écrit.
 - **Une pull request est relue par un autre membre** avant sa fusion. Le
   relecteur lance les vérifications de la section « Comment vérifier » du
-  gabarit, commente ou approuve ; c'est lui qui fusionne. Une pull request
-  reste courte (une tâche, quelques centaines de lignes) pour rester
-  relisible.
+  gabarit, commente ou approuve, puis fusionne. Une pull request reste courte
+  (une tâche, quelques centaines de lignes) pour rester relisible.
 - **L'intégration continue doit être verte** avant la fusion. Elle tourne
   sur chaque pull request et sur chaque envoi vers `main`
   (`.github/workflows/ci.yml`), sous Python 3.11, 3.13 et 3.14 : lint, format,
@@ -61,7 +60,17 @@ règle d'équipe, que chacun applique :
   tests de charge).
 - Jamais de secret (clé, mot de passe, jeton, adresse de serveur), de base de
   données, de journal, d'environnement virtuel ni de fichier `~$*` dans un
-  commit : `.gitignore` les écarte, la relecture le vérifie.
+  commit : `.gitignore` les écarte.
+
+Ce qui a été appliqué dans ce projet est décrit dans le
+[livret 2](docs/livrets/2-specifications-techniques-et-organisation.md),
+sections 2.5 et 2.6. En résumé : après les premiers commits de mise en place, chaque
+changement passe par une branche et une pull request vérifiée par
+l'intégration continue ; en revanche, aucune tâche ni aucun jalon n'est ouvert
+sur GitHub, aucune approbation de pull request n'y est enregistrée, et presque
+toutes les pull requests ont été ouvertes et fusionnées par le même compte.
+Les règles de relecture, de tâches et de commits sous le compte de chacun
+restent celles à suivre pour la suite.
 
 ## 3. Conventions de code
 
@@ -159,10 +168,12 @@ l'interface et la documentation.
   « provisoire » : ce qui manque s'écrit comme une limite (« Limite : … »).
 - **Ton** : présent, phrases courtes, impersonnel dans la documentation
   technique ; vouvoiement et impératif dans le guide de l'utilisateur.
-- **Aucun nom de personne** (hors la liste de l'équipe dans le README), aucun
-  numéro de pull request ou de commit, aucun chemin de poste personnel,
-  aucune adresse de serveur, aucun nom de compte ou de clé. Dans un exemple :
-  `edt.example.org`, `203.0.113.10`, `/chemin/vers/le/depot`.
+- **Aucun nom de personne** (hors la liste de l'équipe dans le README, les
+  pages de garde des livrets et la partie « Organisation » du livret 2),
+  aucun numéro de pull request ou de commit ni nom de compte (hors le
+  livret 2, section 2), aucun chemin de poste personnel, aucune adresse de
+  serveur, aucun nom de clé. Dans un exemple : `edt.example.org`,
+  `203.0.113.10`, `/chemin/vers/le/depot`.
 - **Interface** : vocabulaire de la scolarité, pas de jargon technique, un
   mot par notion ; un message d'erreur dit ce qui s'est passé et quoi faire.
 - **Documentation** : un document de `docs/` par sous-système, un seul titre
