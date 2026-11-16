@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from edt.config import url_affichable
 from edt.db import modeles as m
 from edt.db.initialisation import ecarts_schema, tables_manquantes
-from edt.db.moteur import expliquer_erreur_base, obtenir_moteur
+from edt.db.moteur import base_verrouillee, expliquer_erreur_base, obtenir_moteur
 
 journal = logging.getLogger(__name__)
 
@@ -118,8 +118,7 @@ def verifier_ecriture(moteur: Engine) -> tuple[bool | None, str | None]:
         finally:
             brute.close()
     except (sqlite3.Error, SQLAlchemyError) as erreur:
-        cause = str(getattr(erreur, "orig", None) or erreur).lower()
-        if "locked" in cause or "busy" in cause:
+        if base_verrouillee(erreur):
             journal.info("Écriture d'essai non tentée : base occupée (%s)", erreur)
             return None, None
         explication = expliquer_erreur_base(erreur)

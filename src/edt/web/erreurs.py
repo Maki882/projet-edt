@@ -39,6 +39,7 @@ from sqlalchemy.exc import (
 )
 from starlette.exceptions import HTTPException as ErreurHTTP
 
+from edt.db.moteur import base_verrouillee
 from edt.erreurs import (
     ErreurConfiguration,
     ErreurDonneesInvalides,
@@ -227,7 +228,7 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     if isinstance(erreur, ERREURS_DE_PROGRAMMATION):
         raise erreur
     cause = str(erreur.orig or erreur).lower()
-    if operation_en_cours() or "locked" in cause or "busy" in cause:
+    if operation_en_cours() or base_verrouillee(erreur):
         journal.warning("Base de données occupée sur %s : %s", request.url.path, erreur.orig)
         return reponse_erreur(
             request,

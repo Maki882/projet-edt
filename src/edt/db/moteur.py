@@ -87,6 +87,15 @@ def identifiant_valide(valeur: object) -> bool:
     )
 
 
+def base_verrouillee(erreur: BaseException) -> bool:
+    """Vrai si l'erreur du pilote signale une base verrouillée ou occupée par une autre connexion.
+
+    Accepte l'erreur enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
+    """
+    cause = str(getattr(erreur, "orig", None) or erreur).lower()
+    return "locked" in cause or "busy" in cause
+
+
 def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """Phrase française pour une erreur du pilote de base, avec le remède.
 
@@ -97,7 +106,7 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """
     cause = str(getattr(erreur, "orig", None) or erreur)
     minuscule = cause.lower()
-    if "locked" in minuscule or "busy" in minuscule:
+    if base_verrouillee(erreur):
         return (
             "La base de données est verrouillée par une autre commande ou un autre processus "
             "(service web, commande « edt » en cours, session sqlite3) : attendre sa fin ou "
