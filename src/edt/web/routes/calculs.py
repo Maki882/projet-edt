@@ -30,7 +30,6 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
-from fastapi.responses import RedirectResponse
 
 from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
@@ -178,7 +177,7 @@ def fragment_verifications(
     """
     versions.exiger_semestre(session, semestre_id)
     if not est_htmx(request):
-        return RedirectResponse(f"/calculs?semestre_id={semestre_id}", status_code=303)
+        return rediriger(request, f"/calculs?semestre_id={semestre_id}")
     choix_regles, bloc = calculs.lire_choix_regles(session, semestre_id, champs_regles)
     pre = calculs.pre_verifier(
         session,
@@ -331,7 +330,7 @@ def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
     Ouvert hors HTMX (adresse saisie, lien), il mène à la page du calcul.
     """
     if not est_htmx(request):
-        return RedirectResponse(f"/calculs/{calcul_id}", status_code=303)
+        return rediriger(request, f"/calculs/{calcul_id}")
     resultat = calculs.resultat_calcul(session, calcul_id)
     _prechauffer_si_fini(resultat)
     return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
