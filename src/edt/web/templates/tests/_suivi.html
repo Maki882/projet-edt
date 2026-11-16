@@ -1,0 +1,63 @@
+{#
+  Suivi de l'exécution des tests (fragment). Tant qu'elle tourne, le bloc s'interroge lui-même
+  chaque seconde (HTMX) et se remplace par la réponse ; il demande les tests terminés depuis
+  le dernier compte (`depuis`), dont les lignes, et les résumés de leur fichier, de leur
+  composant et de la famille, arrivent remplacés à part (hx-swap-oob).
+  Variables : t (TableauFamille), duree, oob (vrai dans la réponse au suivi), lignes_oob,
+  fichiers_oob, composants_oob.
+#}
+{% import "macros.html" as ui %}
+{% import "tests/_macros.html" as banc with context %}
+{%- set s = t.suivi %}
+{%- set ISSUES = {"terminee": ("Terminée", "succes"), "arretee": ("Arrêtée", "attention"), "temps_depasse": ("Durée maximale atteinte", "attention"), "erreur": ("Erreur", "erreur"), "interrompue": ("Interrompue", "attention")} %}
+<section id="suivi-tests" class="carte banc-suivi" aria-live="polite" aria-labelledby="suivi-tests-titre"
+  {%- if s and s.en_cours %} hx-get="/tests/{{ t.famille }}/suivi?execution={{ s.id }}&amp;depuis={{ s.termines|length }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {%- if s %}
+  {%- set nb_echecs = s.compte("echec") %}
+  <h2 id="suivi-tests-titre">Exécution : {{ s.libelle }}
+    {% if s.en_cours %}{{ ui.etiquette("En cours", "info") }}{% else %}{{ ui.etiquette(ISSUES[s.issue][0], "erreur" if nb_echecs and s.issue == "terminee" else ISSUES[s.issue][1]) }}{% endif %}</h2>
+  <p class="banc-avancement">
+    <strong>{{ s.termines|length }} test{{ "s" if s.termines|length > 1 }} terminé{{ "s" if s.termines|length > 1 }} sur {{ s.total }}</strong> :
+    {{ s.compte("reussi") }} réussi{{ "s" if s.compte("reussi") > 1 }},
+    {{ nb_echecs }} échec{{ "s" if nb_echecs > 1 }},
+    {{ s.compte("ignore") }} ignoré{{ "s" if s.compte("ignore") > 1 }}.
+  </p>
+  <progress class="banc-barre" max="{{ [s.total, 1]|max }}" value="{{ s.termines|length }}">{{ s.termines|length }} sur {{ s.total }}</progress>
+  {%- if s.en_cours %}
+  {%- set en_cours = t.ligne(s.test_en_cours) if s.test_en_cours else none %}
+  <p class="discret">
+    {%- if en_cours %}Test en cours : <strong>{{ en_cours.test.nom }}</strong> ({{ en_cours.test.composant }}, {{ en_cours.test.fichier.rsplit("/", 1)[-1] }}). {% elif not s.termines %}Préparation des tests… {% endif -%}
+    Temps écoulé : {{ duree(s.ecoule_s) }} sur {{ duree(s.duree_max_s) }} au plus. Cette page se met à jour toute seule.
+  </p>
+  <noscript><p><a class="bouton" href="/tests/{{ t.famille }}">Actualiser</a></p></noscript>
+  <form method="post" action="/tests/arreter" class="edt-boutons">
+    <input type="hidden" name="famille" value="{{ t.famille }}">
+    <button type="submit" class="bouton bouton-danger"{% if s.arret_demande %} disabled{% endif %}>{{ "Arrêt demandé…" if s.arret_demande else "Arrêter l'exécution" }}</button>
+    <span class="discret">Les résultats des tests déjà terminés sont gardés.</span>
+  </form>
+  {%- else %}
+  <p>{{ s.message }}{% if nb_echecs %} Les tests en échec sont dépliés ci-dessous, avec le détail de chaque échec.{% endif %}</p>
+  <p class="discret">Durée : {{ duree(s.ecoule_s) }}. <a href="/tests/journal">Journal complet de l'exécution</a></p>
+  {%- endif %}
+  {%- elif t.derniere and t.derniere.famille in (none, t.famille) %}
+  {%- set d = t.derniere %}
+  <h2 id="suivi-tests-titre">Dernière exécution : {{ d.libelle }} {{ ui.etiquette(ISSUES[d.issue][0], "erreur" if d.nb_echecs and d.issue == "terminee" else ISSUES[d.issue][1]) }}</h2>
+  <p>Le {{ d.debut|dateheure_fr }} : {{ d.nb_tests }} test{{ "s" if d.nb_tests > 1 }} terminé{{ "s" if d.nb_tests > 1 }}, {{ d.nb_reussis }} réussi{{ "s" if d.nb_reussis > 1 }}, {{ d.nb_echecs }} échec{{ "s" if d.nb_echecs > 1 }}, {{ d.nb_ignores }} ignoré{{ "s" if d.nb_ignores > 1 }}. {{ d.message }}</p>
+  <p class="discret"><a href="/tests/journal">Journal complet de l'exécution</a></p>
+  {%- else %}
+  <h2 id="suivi-tests-titre">Exécution</h2>
+  <p class="discret">Aucune exécution récente. Choisir ci-dessous un test, un fichier, un composant, ou lancer toute la famille.</p>
+  {%- endif %}
+</section>
+{%- if oob %}
+{{ banc.resume_famille(true) }}
+{%- for c in composants_oob %}
+{{ banc.resume_composant(c, true) }}
+{%- endfor %}
+{%- for f in fichiers_oob %}
+{{ banc.entete_fichier(f, true) }}
+{%- endfor %}
+{%- for l in lignes_oob %}
+{{ banc.ligne(l, true) }}
+{%- endfor %}
+{%- endif %}

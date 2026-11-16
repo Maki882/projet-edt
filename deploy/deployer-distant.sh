@@ -463,7 +463,7 @@ else
   avertir "cette version n'a pas de contraintes.txt : pip installe les dernières versions compatibles avec pyproject.toml, que le contrôle automatique n'a peut-être pas testées."
 fi
 "$PYTHON_VENV" -m pip install --no-input --disable-pip-version-check --progress-bar off \
-  --log "$DOSSIER_VERSION/installation-pip.log" "${contraintes[@]}" "$DOSSIER_CODE"
+  --log "$DOSSIER_VERSION/installation-pip.log" "${contraintes[@]}" "$DOSSIER_CODE[dev]"
 "$PYTHON_VENV" -m pip freeze --all > "$DOSSIER_VERSION/paquets-installes.txt"
 nombre_paquets="$(wc -l < "$DOSSIER_VERSION/paquets-installes.txt")"
 info "$nombre_paquets paquets installés (liste : $DOSSIER_VERSION/paquets-installes.txt)."

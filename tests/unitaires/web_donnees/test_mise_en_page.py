@@ -10,7 +10,6 @@ from jinja2 import BaseLoader, DictLoader, TemplateNotFound
 from edt.web.gabarits import gabarits
 from edt.web.menu import (
     GROUPE_JEUX,
-    ONGLET_A_TRAITER,
     ONGLET_DONNEES,
     ONGLET_GENERER,
     SECTION_A_TRAITER,
@@ -38,9 +37,9 @@ def test_onglets_dans_l_ordre_fixe_et_onglet_vide_omis():
     assert [onglet.titre for onglet in menu] == [
         "Accueil",
         "Données",
+        "Générer",
         "Emploi du temps",
-        "À traiter",
-    ]  # « Générer » n'a aucune entrée : il n'est pas affiché
+    ]  # « À traiter » est rangé dans « Générer » ; les onglets de tests, vides, sont omis
 
 
 def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
@@ -69,7 +68,7 @@ def test_groupes_de_l_onglet_donnees_et_section_inconnue(caplog):
     assert onglet_actif(menu, "/salles/12").titre == ONGLET_DONNEES
     assert onglet_actif(menu, "/calculs").titre == ONGLET_GENERER
     assert onglet_actif(menu, "/n-existe-pas") is None
-    assert ONGLET_A_TRAITER not in [onglet.titre for onglet in menu]
+    assert "À traiter" not in [onglet.titre for onglet in menu]
 
 
 PANNEAU = "assistant/_panneau.html"

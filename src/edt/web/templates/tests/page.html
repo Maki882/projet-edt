@@ -1,0 +1,76 @@
+{#
+  Page d'une famille de tests (« Tests unitaires » ou « Tests d'intégration »).
+  Variables : t (edt.services.banc_tests.tableau.TableauFamille), duree.
+  Un seul formulaire (#form-lancer) : chaque bouton « Lancer » envoie sa cible (champ cible).
+#}
+{% extends "base.html" %}
+{% import "macros.html" as ui %}
+{% import "tests/_macros.html" as banc with context %}
+{% block titre %}{{ t.titre }}{% endblock %}
+{% block styles %}<link rel="stylesheet" href="/static/css/tests.css?v={{ version_application }}">{% endblock %}
+{% block contenu %}
+<div class="banc banc-{{ t.famille }}">
+  <details class="carte banc-schema" id="banc-schema" open>
+    <summary>Comment sont organisés ces tests</summary>
+    <div class="banc-schema-corps">
+      <div class="banc-schema-texte">
+        {%- if t.famille == "unitaires" %}
+        <p>Un <strong>test unitaire</strong> exerce un seul module de l'application, en appelant directement ses fonctions Python. Il n'envoie aucune requête web, ne lance aucune commande ni aucun autre processus : un échec désigne donc directement le module fautif.</p>
+        <p>Les tests sont rangés par <strong>composant</strong> (un dossier par partie de l'application), puis par fichier. Chaque test peut avoir plusieurs cas (mêmes vérifications sur plusieurs données) : il est réussi si tous ses cas le sont.</p>
+        {%- else %}
+        <p>Un <strong>test d'intégration</strong> fait travailler plusieurs couches réelles ensemble, sur une base temporaire : une requête web ou une commande traverse les services, la logique (générateur, vérificateur, import et export) jusqu'à la base, ou un calcul complet est mené de bout en bout.</p>
+        <p>Les <strong>six parcours</strong> du composant <code>parcours</code> rejouent l'usage réel de l'application, du formulaire « Générer » au fichier iCal exporté. Les autres composants vérifient leurs écrans, leurs commandes et leurs calculs.</p>
+        {%- endif %}
+        <p class="discret">Les tests tournent à part, sur une base temporaire effacée à la fin : la base de l'application n'est jamais touchée. Les tests de charge, longs, ne partent pas avec un groupe : ils se lancent un par un.</p>
+      </div>
+      {%- if t.famille == "unitaires" %}{% include "tests/_schema_unitaires.html" %}{% else %}{% include "tests/_schema_integration.html" %}{% endif %}
+    </div>
+  </details>
+
+  <section class="carte banc-bandeau" aria-labelledby="banc-bandeau-titre">
+    <div class="banc-bandeau-tete">
+      <h2 id="banc-bandeau-titre">{{ t.titre }}</h2>
+      {{ banc.bouton("famille", "Lancer tous les " ~ t.titre|lower, "Lancer tous les tests de cette famille, sauf les tests de charge", true) }}
+    </div>
+    {{ banc.resume_famille() }}
+    {%- if t.indisponible %}
+    {{ ui.message(t.indisponible, "attention") }}
+    {%- endif %}
+    {%- if t.avertissement %}
+    {{ ui.message(t.avertissement, "attention") }}
+    {%- endif %}
+    {%- if t.ailleurs %}
+    {{ ui.message("Des tests sont en cours d'exécution par la ligne de commande (" ~ t.ailleurs.libelle ~ ") : leurs résultats s'afficheront à la fin. Recharger la page pour les voir.", "info") }}
+    {%- endif %}
+  </section>
+
+  {% include "tests/_suivi.html" %}
+
+  <form method="post" action="/tests/{{ t.famille }}/lancer" id="form-lancer" class="banc-liste">
+    {%- for c in t.composants %}
+    <details class="carte banc-composant" id="{{ c.id_html }}"{% if c.ouvert %} open{% endif %}>
+      <summary>
+        <span class="banc-composant-titre"><strong>{{ c.nom }}</strong>{% if c.description %} <span class="discret">- {{ c.description }}</span>{% endif %}</span>
+        {{ banc.resume_composant(c) }}
+      </summary>
+      <p class="banc-composant-action">{{ banc.bouton("composant:" ~ c.nom, "Lancer le composant " ~ c.nom, "Lancer les " ~ (c.compte.total - c.compte.charge) ~ " tests du composant") }}</p>
+      {%- for f in c.fichiers %}
+      <section class="banc-fichier">
+        {{ banc.entete_fichier(f) }}
+        {%- if f.fichier.erreur %}
+        {{ ui.message(f.fichier.erreur, "erreur") }}
+        {%- endif %}
+        <div class="banc-tests">
+          {%- for l in f.lignes %}
+          {{ banc.ligne(l) }}
+          {%- endfor %}
+        </div>
+      </section>
+      {%- endfor %}
+    </details>
+    {%- else %}
+    {{ ui.message(t.catalogue.absence or "Aucun test dans cette famille.", "info") }}
+    {%- endfor %}
+  </form>
+</div>
+{% endblock %}

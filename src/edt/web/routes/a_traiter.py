@@ -24,11 +24,7 @@ from edt.web.menu import EntreeMenu
 SECTION_A_TRAITER = "À traiter"
 
 routeur = APIRouter(prefix="/a-traiter")
-MENU = [
-    EntreeMenu(
-        "Anomalies et séances à programmer", "/a-traiter", section=SECTION_A_TRAITER, ordre=350
-    )
-]
+MENU = [EntreeMenu("Points à traiter", "/a-traiter", section=SECTION_A_TRAITER, ordre=350)]
 
 
 @routeur.get("", name="a_traiter")
