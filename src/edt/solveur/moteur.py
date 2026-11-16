@@ -642,7 +642,7 @@ def resoudre(
         if not options.optimiser:
             pass
         elif optimal:
-            message += " On ne peut pas faire mieux avec les préférences actuelles."
+            message += " Impossible de faire mieux avec les préférences actuelles."
         elif solution.entorses or solution.entorses_regles:
             message += (
                 " Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent "

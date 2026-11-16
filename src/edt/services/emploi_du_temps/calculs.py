@@ -1207,6 +1207,7 @@ def _entorses(calcul_id: int, statistiques: dict, niveaux: Niveaux) -> tuple[str
 
 PHRASES_DE_QUALITE = (
     "Bilan sur l'ensemble du semestre",
+    "Impossible de faire mieux",
     "On ne peut pas faire mieux",
     "L'amélioration s'est arrêtée",
     "Le temps a manqué pour l'améliorer",
@@ -1215,6 +1216,9 @@ PHRASES_DE_QUALITE = (
 
 Les autres phrases (séances placées, séances datées, contraintes ignorées,
 arrêt demandé) sont déjà dites par les compteurs et les encarts de l'écran.
+« On ne peut pas faire mieux » est la même phrase que « Impossible de faire
+mieux », telle qu'elle figure dans les messages de calculs déjà enregistrés en
+base : elle reste reconnue.
 """
 
 
