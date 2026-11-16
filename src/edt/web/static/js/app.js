@@ -8,7 +8,10 @@
  *    fragment de message ; il est affiché dans la zone `#messages` au lieu
  *    d'être ignoré. Une panne de réseau affiche un message générique. Un
  *    élément accessoire marqué `data-erreur-silencieuse` (compteur d'onglet)
- *    note son échec dans la console sans bandeau.
+ *    note son échec dans la console sans bandeau. Le bandeau de panne de
+ *    réseau s'efface dès qu'une requête HTMX aboutit de nouveau (suivi d'un
+ *    calcul après un redémarrage du serveur). Un message ajouté hors de sa
+ *    zone (`hx-swap-oob` sur `#messages`) est ramené à l'écran.
  * 3. Panneau Assistant : ouverture et fermeture (bouton, Échap), focus,
  *    état conservé d'une page à l'autre (stockage local du navigateur).
  * 4. Champs conditionnels : un champ portant `data-visible-si="nom:v1,v2"`
@@ -16,9 +19,14 @@
  *    v1 ou v2 ; plusieurs conditions séparées par « ; » doivent toutes tenir
  *    (`portee:etablissement;p_mode:libre`).
  * 5. Choix multiples : filtre de la liste de cases à cocher (`.choix-multiple`).
- * 6. Attente : un formulaire portant `data-attente="..."` désactive ses boutons
- *    pendant l'envoi et affiche ce texte (opérations longues), y compris un
- *    bouton placé hors du formulaire et rattaché par l'attribut `form=`.
+ * 6. Envoi : les boutons d'envoi d'un formulaire `method="post"` envoyé par le
+ *    navigateur sont désactivés pendant l'envoi (un double clic n'envoie
+ *    qu'une fois), puis réactivés au retour sur la page (`pageshow`) ou après
+ *    `DELAI_REACTIVATION_MS` si la page reste affichée. Un formulaire portant
+ *    `data-attente="..."` affiche en plus ce texte sur ses boutons, jusqu'à la
+ *    page suivante (opérations longues). Les boutons rattachés par l'attribut
+ *    `form=`, placés hors du formulaire, sont compris. Les envois HTMX ne sont
+ *    pas concernés (HTMX les gère lui-même).
  * 7. Blocs repliables : un `<details id="...">` ouvert le reste quand HTMX
  *    remplace la zone qui le contient.
  * 8. Arbres repliables : un conteneur `data-arbre="clé"` mémorise ses nœuds
@@ -28,6 +36,9 @@
  * 9. Champ invalide replié : quand le navigateur refuse l'envoi d'un formulaire
  *    pour un champ invalide placé dans un `<details>` fermé, ce bloc (et ceux
  *    qui le contiennent) s'ouvre pour que la bulle du navigateur soit visible.
+ * 10. Tableaux défilants : après un remplacement HTMX, un tableau qui montre
+ *    une ligne de confirmation de suppression (`tr.ligne-suppression`) revient
+ *    à gauche, pour que la question et ses boutons soient lisibles.
  *
  * Les points 4 et 5 s'appliquent aussi aux fragments chargés par HTMX.
  */
@@ -45,7 +56,9 @@
     }
   }, true);
 
-  /* ---- 6. Attente pendant un envoi long ----------------------------------- */
+  /* ---- 6. Boutons désactivés pendant un envoi ------------------------------ */
+
+  var DELAI_REACTIVATION_MS = 10000;
 
   function boutonsEnvoi(formulaire) {
     // `elements` comprend les boutons rattachés par `form=`, placés hors du formulaire.
@@ -54,19 +67,53 @@
     });
   }
 
+  function reactiver(boutons) {
+    Array.prototype.forEach.call(boutons, function (bouton) {
+      if (!bouton.hasAttribute("data-envoi-en-cours")) {
+        return;
+      }
+      bouton.disabled = false;
+      bouton.removeAttribute("data-envoi-en-cours");
+      if (bouton.hasAttribute("data-texte-avant-envoi")) {
+        bouton.textContent = bouton.getAttribute("data-texte-avant-envoi");
+        bouton.removeAttribute("data-texte-avant-envoi");
+      }
+    });
+  }
+
   document.addEventListener("submit", function (evenement) {
     var formulaire = evenement.target;
-    var texte = formulaire.dataset ? formulaire.dataset.attente : null;
-    if (!texte || evenement.defaultPrevented) {
+    if (evenement.defaultPrevented || !formulaire.getAttribute) {
+      return; // refusé (confirmation) ou pris en charge par HTMX
+    }
+    var texte = formulaire.dataset.attente || null;
+    var methode = (formulaire.getAttribute("method") || "get").toLowerCase();
+    if (!texte && methode !== "post") {
       return;
     }
+    var boutons = boutonsEnvoi(formulaire);
     // Désactivés après la construction des données envoyées : l'envoi n'est pas gêné.
     window.setTimeout(function () {
-      boutonsEnvoi(formulaire).forEach(function (bouton) {
+      boutons.forEach(function (bouton) {
         bouton.disabled = true;
-        bouton.textContent = texte;
+        bouton.setAttribute("data-envoi-en-cours", "");
+        if (texte) {
+          bouton.setAttribute("data-texte-avant-envoi", bouton.textContent);
+          bouton.textContent = texte;
+        }
       });
     }, 0);
+    if (!texte) {
+      // Page restée affichée (téléchargement, envoi interrompu) : pas de bouton mort.
+      window.setTimeout(function () {
+        reactiver(boutons);
+      }, DELAI_REACTIVATION_MS);
+    }
+  });
+
+  // Retour arrière : le navigateur peut réafficher la page telle qu'elle était à l'envoi.
+  window.addEventListener("pageshow", function () {
+    reactiver(document.querySelectorAll("[data-envoi-en-cours]"));
   });
 
   /* ---- 7. Blocs repliables conservés pendant un remplacement HTMX ------------ */
@@ -104,10 +151,13 @@
     zone.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 
-  function messageErreur(texte) {
+  function messageErreur(texte, reseau) {
     var bloc = document.createElement("div");
     bloc.className = "message message-erreur";
     bloc.setAttribute("role", "alert");
+    if (reseau) {
+      bloc.setAttribute("data-erreur-reseau", "");
+    }
     var paragraphe = document.createElement("p");
     paragraphe.textContent = texte;
     bloc.appendChild(paragraphe);
@@ -132,7 +182,28 @@
   });
 
   document.addEventListener("htmx:sendError", function () {
-    afficherMessage(messageErreur("Le serveur ne répond pas. Vérifier la connexion puis réessayer."));
+    afficherMessage(messageErreur("Le serveur ne répond pas. Vérifier la connexion puis réessayer.", true));
+  });
+
+  // Le serveur répond de nouveau : le bandeau de panne de réseau n'a plus lieu d'être.
+  document.addEventListener("htmx:afterRequest", function (evenement) {
+    if (!evenement.detail.successful) {
+      return;
+    }
+    var zone = document.getElementById("messages");
+    var bandeau = zone ? zone.querySelector("[data-erreur-reseau]") : null;
+    if (bandeau) {
+      bandeau.remove();
+    }
+  });
+
+  // Message ajouté hors de sa zone (`hx-swap-oob`) : ramené à l'écran s'il est hors de vue.
+  document.addEventListener("htmx:oobAfterSwap", function (evenement) {
+    // La zone a pu être remplacée : celle du document, pas celle de l'événement.
+    var zone = document.getElementById("messages");
+    if (evenement.target && evenement.target.id === "messages" && zone && zone.textContent.trim()) {
+      zone.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
   });
 
   /* ---- 3. Panneau Assistant ---------------------------------------------- */
@@ -373,6 +444,17 @@
       });
     });
   }
+
+  /* ---- 10. Ligne de confirmation lisible dans un tableau défilant ----------- */
+
+  document.addEventListener("htmx:afterSettle", function () {
+    document.querySelectorAll("tr.ligne-suppression").forEach(function (ligne) {
+      var cadre = ligne.closest(".tableau-defilant");
+      if (cadre) {
+        cadre.scrollLeft = 0;
+      }
+    });
+  });
 
   /* ---- 9. Champ invalide dans un bloc replié -------------------------------- */
 
