@@ -107,7 +107,7 @@ def test_statistiques_et_journal(caplog):
 
 
 def test_mode_reproductible():
-    instantane, _ = generer(80, graine=5)
+    instantane, _ = generer(40, graine=5)
     reglages = options(graine=11, nb_workers=1)
     premier = resoudre(instantane, reglages)
     second = resoudre(instantane, reglages)
@@ -213,11 +213,11 @@ def test_recherche_rendue_en_retard_l_amelioration_n_est_pas_perdue(monkeypatch)
     from edt.solveur import moteur
 
     # Réserve négative : la recherche se termine une seconde et demie APRÈS le temps limite,
-    # comme il arrive sur une machine chargée avec un gros modèle. Le temps limite laisse une
-    # marge large à la première solution (quelques secondes, même machine chargée), et
-    # l'instance est assez grande pour que l'amélioration ne prouve pas l'optimum avant la fin.
+    # comme il arrive sur une machine chargée avec un gros modèle. La première solution de
+    # cette instance arrive en une fraction de seconde, même machine chargée : il reste du
+    # temps pour améliorer, sans que l'optimum soit prouvé avant la fin.
     monkeypatch.setattr(moteur, "RESERVE_MAX_S", -1.5)
-    instantane, _ = generer(120, graine=4)
+    instantane, _ = generer(60, graine=4)
     resultat = resoudre(instantane, options(optimiser=True, temps_limite_s=6, nb_workers=2))
     verifier_solution(instantane, resultat)
     stats = resultat.statistiques
@@ -248,7 +248,9 @@ def test_temps_depasse_sans_preuve():
     instantane, _ = generer(300, graine=1)
     debut = time.perf_counter()
     resultat = resoudre(instantane, options(temps_limite_s=0.05))
-    assert time.perf_counter() - debut < 5
+    # Garde-fou contre une construction qui exploserait (quadratique) : la construction seule
+    # prend jusqu'à 3 s sur une machine chargée, d'où une borne large.
+    assert time.perf_counter() - debut < 20
     assert resultat.statut is StatutSolveur.TEMPS_DEPASSE
     assert resultat.placements == ()
     assert "pas une preuve" in resultat.message
@@ -265,14 +267,17 @@ def test_arret_demande_avant_le_calcul():
 
 
 def _arreter_pendant_l_amelioration(guetter_journal):
-    """Lance un calcul optimisé de 300 séances, attend que l'amélioration ait commencé, demande
+    """Lance un calcul optimisé de 120 séances, attend que l'amélioration ait commencé, demande
     l'arrêt ; rend `(instantané, résultat, délai en secondes entre la demande et le retour)`.
+
+    L'amélioration est encore en cours au moment de la demande : elle ne s'arrête d'elle-même
+    qu'après `STAGNATION_MIN_S` (10 s) sans progrès, et ne prouve pas l'optimum à cette taille.
 
     Toute attente est une attente d'événement du moteur (première solution annoncée, départ de
     l'amélioration), jamais un délai fixe : le déroulement ne dépend pas de la charge de la
     machine, seule la durée change.
     """
-    instantane, _ = generer(300, graine=1)
+    instantane, _ = generer(120, graine=1)
     solution = guetter_journal("Emploi du temps valide trouvé")
     amelioration = guetter_journal("Amélioration : départ à l'objectif")
     arret = threading.Event()
@@ -352,9 +357,11 @@ class _FauxSolveur:
 
     def __init__(self) -> None:
         self.arrets = 0
+        self.arrete = threading.Event()
 
     def stop_search(self) -> None:
         self.arrets += 1
+        self.arrete.set()
 
 
 class _FauxSuivi:
@@ -366,22 +373,28 @@ class _FauxSuivi:
     stagnation_s: float | None = None
 
 
-def _surveiller_une_seconde(monkeypatch, **reglages) -> tuple[_FauxSolveur, _FauxSuivi]:
+def _surveiller(
+    monkeypatch, attente_s: float, **reglages
+) -> tuple[_FauxSolveur, _FauxSuivi, float]:
+    """Fait tourner le fil de surveillance jusqu'à sa première demande d'arrêt, au plus
+    `attente_s` secondes ; rend le faux solveur, le faux suivi et le temps écoulé."""
     from edt.solveur import moteur
 
     monkeypatch.setattr(moteur, "STAGNATION_MIN_S", 0.3)
     solveur, suivi, fini = _FauxSolveur(), _FauxSuivi(), threading.Event()
+    debut = time.perf_counter()
     fil = threading.Thread(
         target=moteur._surveiller,
-        args=(solveur, None, fini, logging.getLogger("edt.calcul"), time.perf_counter(), suivi),
+        args=(solveur, None, fini, logging.getLogger("edt.calcul"), debut, suivi),
         kwargs=reglages,
     )
     fil.start()
-    time.sleep(1.0)
+    solveur.arrete.wait(attente_s)
+    ecoule = time.perf_counter() - debut
     fini.set()
     fil.join(timeout=5)
     assert not fil.is_alive()
-    return solveur, suivi
+    return solveur, suivi, ecoule
 
 
 def test_regle_de_stagnation(monkeypatch):
@@ -391,18 +404,20 @@ def test_regle_de_stagnation(monkeypatch):
     delais = [moteur.delai_de_stagnation(t) for t in (5, 30, 90, 300)]
     assert delais == pytest.approx([10, 10, 30, 100])
 
-    # Le fil de surveillance arrête la recherche restée sans progrès plus longtemps que cela...
-    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=True)
+    # Le fil de surveillance arrête la recherche restée sans progrès plus longtemps que cela
+    # (la dernière solution date du lancement : `_FauxSuivi.dernier_progres` vaut 0)...
+    solveur, suivi, ecoule = _surveiller(monkeypatch, 10, stagnation=True)
     assert solveur.arrets >= 1
-    assert suivi.stagnation_s is not None and 0.3 <= suivi.stagnation_s < 1.0
+    assert suivi.stagnation_s is not None and 0.3 <= suivi.stagnation_s <= ecoule
 
     # ... mais pas si le critère est désactivé (`OptionsSolveur.arret_sur_stagnation` à faux),
-    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=False)
+    # ce qu'une attente de deux fois le délai suffit à constater,
+    solveur, suivi, _ = _surveiller(monkeypatch, 0.6, stagnation=False)
     assert solveur.arrets == 0 and suivi.stagnation_s is None
 
     # ni tant que cette recherche n'a pas trouvé sa première solution (chargement du modèle).
     monkeypatch.setattr(_FauxSuivi, "dernier_progres", None)
-    solveur, suivi = _surveiller_une_seconde(monkeypatch, stagnation=True)
+    solveur, suivi, _ = _surveiller(monkeypatch, 0.6, stagnation=True)
     assert solveur.arrets == 0 and suivi.stagnation_s is None
 
 
@@ -472,13 +487,16 @@ def test_conflit_de_salles_contourne_quand_une_autre_matinee_existe():
         {"nb_workers": -1},
         {"nb_workers": 1000},
         {"nb_workers": 2.5},
+        {"nb_workers": True},
         {"graine": 1.5},
+        {"graine": True},
     ],
     ids=str,
 )
 def test_options_invalides_refusees(champs):
     """Cas : options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul,
-    négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers.
+    négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers
+    ou booléens.
 
     Risque : « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon
     ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils.
@@ -492,7 +510,8 @@ def test_options_aux_bornes_acceptees():
     """Cas : options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40.
 
     Risque : des bornes trop serrées refuseraient des réglages légitimes ; une graine hors
-    [0, 2^31[ est ramenée dans les bornes de CP-SAT par le moteur, pas refusée.
+    [0, 2^31[ est gardée telle quelle (le moteur la ramène dans les bornes de CP-SAT, voir
+    `test_parametres_extremes_restent_valides`).
     """
     for champs in (
         {"temps_limite_s": TEMPS_LIMITE_MAX_S},
@@ -502,7 +521,8 @@ def test_options_aux_bornes_acceptees():
         {"graine": -5},
         {"graine": 2**40},
     ):
-        assert options(**champs).vers_dict()
+        ((cle, valeur),) = champs.items()
+        assert getattr(options(**champs), cle) == valeur
 
 
 @pytest.mark.cas_limite
@@ -529,15 +549,9 @@ def test_toutes_les_seances_verrouillees():
         assert resultat.statistiques["raison_arret"] == "premiere_solution"
 
 
-@pytest.mark.cas_limite
-def test_arret_pendant_la_premiere_recherche_rend_la_main_vite(guetter_journal):
-    """Cas : instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la
-    première recherche, avant toute solution (la première solution demande ici plus d'une
-    minute).
-
-    Risque : le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à
-    rendre la main : bouton « Arrêter » sans effet avant la première solution.
-    """
+def _arreter_pendant_la_premiere_recherche(guetter_journal) -> tuple[ResultatSolveur, float]:
+    """Lance un calcul de 300 séances, demande l'arrêt dès que le modèle est construit ; rend
+    `(résultat, délai en secondes entre la demande et le retour)`."""
     instantane, _ = generer(300, graine=1)
     modele_construit = guetter_journal("Modèle des horaires construit")
     arret = threading.Event()
@@ -550,12 +564,35 @@ def test_arret_pendant_la_premiere_recherche_rend_la_main_vite(guetter_journal):
     demande = time.perf_counter()
     arret.set()
     fil.join(30)
+    delai = time.perf_counter() - demande
     assert not fil.is_alive(), "le moteur n'a pas rendu la main en 30 s"
-    # Borne large : l'arrêt est suivi d'effet bien avant le temps limite, machine chargée ou non.
-    assert time.perf_counter() - demande < 30
     (resultat,) = resultats
+    return resultat, delai
+
+
+@pytest.mark.cas_limite
+def test_arret_pendant_la_premiere_recherche_est_suivi_d_effet(guetter_journal):
+    """Cas : instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la
+    première recherche, avant toute solution (la première solution demande ici plus d'une
+    minute).
+
+    Risque : le moteur ignore l'arrêt tant qu'aucune solution n'existe : bouton « Arrêter » sans
+    effet avant la première solution. Borne large sur le délai, machine chargée ou non ; la
+    réactivité fine est mesurée à part
+    (`test_arret_pendant_la_premiere_recherche_repond_en_moins_de_deux_secondes`, `perf`).
+    """
+    resultat, delai = _arreter_pendant_la_premiere_recherche(guetter_journal)
+    assert delai < 30
     assert resultat.statut is StatutSolveur.ARRETE and resultat.placements == ()
     assert "avant qu'un emploi du temps soit trouvé" in resultat.message
+
+
+@pytest.mark.perf
+def test_arret_pendant_la_premiere_recherche_repond_en_moins_de_deux_secondes(guetter_journal):
+    """Machine au repos : avant toute solution aussi, le moteur rend la main moins de deux
+    secondes après la demande d'arrêt."""
+    _, delai = _arreter_pendant_la_premiere_recherche(guetter_journal)
+    assert delai < 2
 
 
 @pytest.mark.cas_limite
