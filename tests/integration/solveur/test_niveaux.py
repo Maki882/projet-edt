@@ -147,7 +147,7 @@ def test_commande_generer_niveau_refuse(jeu_minimal, arguments, attendu):
 
 
 # --------------------------------------------------------------------------- #
-# Temps 2 : contraintes souples (une entorse coûte, une contrainte nécessaire interdit)
+# Contraintes souples (une entorse coûte, une contrainte nécessaire interdit)
 # --------------------------------------------------------------------------- #
 
 

@@ -736,8 +736,8 @@ def test_deux_besoins_sans_groupe_sont_refuses_en_les_nommant():
 
     Risque : une donnée incomplète tolérée en silence, ou une exception brute. Le dépliage ne
     produit aucune séance pour un tel besoin et la pré-vérification refuse le calcul en nommant
-    chaque besoin ; autrefois, le moteur réunissait les séances sans groupe en une unité fictive
-    « aucun groupe » et prouvait une infaisabilité fausse.
+    chaque besoin, au lieu de réunir les séances sans groupe en une unité fictive « aucun
+    groupe » et de prouver une infaisabilité fausse.
     """
     f = Fabrique(creneaux=UN_CRENEAU)
     f.salle("N101")
