@@ -1538,8 +1538,9 @@ class _Generateur:
         un besoin sans place alors qu'il en existait une. Dans ce cas, le
         semestre est replacé de zéro avec un autre départage (déterministe,
         dérivé de la graine), jusqu'à `ESSAIS_TEMOIN` fois, et le meilleur essai
-        est retenu. Le premier essai utilise le générateur commun : un jeu sans
-        écart au premier essai ne change pas.
+        est retenu. Chaque essai repart du vivier d'avant le semestre : seules
+        les recrues de l'essai retenu restent. Le premier essai utilise le
+        générateur commun : un jeu sans écart au premier essai ne change pas.
         """
         specs = [spec for spec in self.specs if spec.semestre == code]
         self.exigences = ExigencesRegles(
@@ -1561,12 +1562,15 @@ class _Generateur:
             key=lambda u: (min(s.priorite for s in u), -max(s.effectif for s in u), u[0].cle),
         )
         recrutes = self.vivier.nb_recrutes
-        meilleur: tuple[dict[int, Resultat], list[tuple[_Spec, str]]] | None = None
+        depart = self.vivier.etat()
+        meilleur = None
         for essai in range(ESSAIS_TEMOIN):
+            if essai:
+                self.vivier.restaurer(depart)
             rng = self.rng if essai == 0 else random.Random(f"{self.graine}/{code}/{essai}")
             places, ecarts = self._essai_temoin(demandes, ordre, rng)
             if meilleur is None or len(ecarts) < len(meilleur[1]):
-                meilleur = (places, ecarts)
+                meilleur = (places, ecarts, self.vivier.etat())
             if not ecarts:
                 break
             journal.info(
@@ -1575,7 +1579,8 @@ class _Generateur:
                 essai + 1,
                 len(ecarts),
             )
-        places, ecarts = meilleur
+        places, ecarts, vivier = meilleur
+        self.vivier.restaurer(vivier)
         self.resultats.update(places)
         par_cle = {spec.cle: spec for spec in specs}
         for cle, resultat in places.items():

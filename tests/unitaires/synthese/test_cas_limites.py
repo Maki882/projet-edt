@@ -38,7 +38,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.parametres import ecrire_parametre
 from edt.services.regles import lister
-from edt.synthese import MOYEN, PETIT, ConfigPromotion, ConfigurationJeu, SallesSite
+from edt.synthese import MOYEN, PETIT, ConfigPromotion, ConfigurationJeu, SallesSite, generateur
 from edt.synthese.configuration import ANNEE_DEBUT_MAX, ANNEE_DEBUT_MIN, GRAINE_MAX
 from edt.synthese.generateur import ESSAIS_NOM_UNIQUE, generer_jeu
 
@@ -389,13 +389,39 @@ def test_noms_epuises_homonymes_admis_sans_boucle_infinie(base_vierge, monkeypat
 # --------------------------------------------------------------------------- #
 
 
-def test_graine_difficile_du_moyen_sans_besoin_ecarte(tmp_path):
+def test_graine_difficile_du_moyen_sans_besoin_ecarte(tmp_path, monkeypatch):
     """Cas : graine 13 du jeu moyen, où un premier placement glouton laisse deux TP sans place.
-    Risque : jeu incomplet selon la graine, ou relance du témoin non déterministe."""
+    Risque : jeu incomplet selon la graine, relance du témoin non déterministe, ou recrues
+    d'un essai écarté gardées dans le vivier et comptées au rapport.
+
+    Si le catalogue change et que la graine 13 place tout au premier essai, choisir une
+    autre graine difficile (journal : « nouvel essai avec un autre départage »).
+    """
+    essais = []  # (recrues avant l'essai, recrues après, besoins sans place)
+    reel = generateur._Generateur._essai_temoin
+
+    def essai_observe(self, *args):
+        avant = self.vivier.nb_recrutes
+        places, ecarts = reel(self, *args)
+        essais.append((avant, self.vivier.nb_recrutes, len(ecarts)))
+        return places, ecarts
+
+    monkeypatch.setattr(generateur._Generateur, "_essai_temoin", essai_observe)
     rapport, empreinte = generer_dans(creer_base(tmp_path / "a"), "moyen", 13)
+    assert len(essais) > 2, "la graine 13 ne relance plus le témoin : en choisir une autre"
+    monkeypatch.undo()
     _, empreinte_bis = generer_dans(creer_base(tmp_path / "b"), "moyen", 13)
     assert rapport.besoins_ecartes == ()
     assert empreinte == empreinte_bis
+    # Essais d'un semestre : une suite qui finit au premier essai sans écart. Seules les
+    # recrues de l'essai retenu (ici le dernier de chaque semestre) comptent.
+    retenus, en_cours = [], []
+    for essai in essais:
+        en_cours.append(essai)
+        if essai[2] == 0:
+            retenus.append(en_cours[-1])
+            en_cours = []
+    assert rapport.nb_recrutements == sum(apres - avant for avant, apres, _ in retenus)
 
 
 def _controler_plusieurs_graines(tmp_path, taille, graines):

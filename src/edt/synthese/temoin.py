@@ -236,6 +236,20 @@ class Vivier:
         """Enseignants de la discipline (liste vide si aucun)."""
         return self._par_discipline.get(discipline, [])
 
+    def etat(self) -> tuple[list[EnseignantTemoin], dict[str, list[EnseignantTemoin]], int]:
+        """Copie du contenu du vivier, à rétablir par `restaurer` (essais successifs du témoin)."""
+        par_discipline = {d: list(liste) for d, liste in self._par_discipline.items()}
+        return list(self.enseignants), par_discipline, self.nb_recrutes
+
+    def restaurer(
+        self, etat: tuple[list[EnseignantTemoin], dict[str, list[EnseignantTemoin]], int]
+    ) -> None:
+        """Rétablit un contenu pris par `etat` : les recrues faites depuis sont oubliées."""
+        enseignants, par_discipline, nb_recrutes = etat
+        self.enseignants = list(enseignants)
+        self._par_discipline = {d: list(liste) for d, liste in par_discipline.items()}
+        self.nb_recrutes = nb_recrutes
+
     def recruter(self, discipline: str) -> EnseignantTemoin:
         """Recrute un enseignant permanent de la discipline (journalisé)."""
         self.nb_recrutes += 1
