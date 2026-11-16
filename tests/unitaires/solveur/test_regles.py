@@ -1,6 +1,6 @@
-"""Règles personnalisées dans le solveur (temps A) : poseurs, réglages par personne, niveaux.
+"""Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux.
 
-Chaque poseur du temps A est éprouvé des deux côtés : la règle nécessaire
+Chaque poseur est éprouvé des deux côtés : la règle nécessaire
 interdit (calcul refusé ou impossible, en nommant la règle), la règle
 souple est comptée (`statistiques["entorses_regles"]`, message). Les
 réglages par personne (déjeuner, pause) viennent de `Instantane.reglages` :
@@ -93,7 +93,7 @@ def test_une_regle_d_un_type_sans_poseur_fait_refuser_le_calcul(monkeypatch):
     f.besoin([classe], [f.enseignant()])
     f.regle(TypeRegle.MAX_PAR_JOUR, NaturePortee.GROUPE, classe, maximum=360)
     instantane = f.instantane()
-    resultat = refuse(instantane, "R001", "ne sait pas encore poser", "Maximum par jour")
+    resultat = refuse(instantane, "R001", "ne sait pas appliquer", "Maximum par jour")
     assert resultat.statistiques["refuse"] is True
     (anomalie,) = [a for a in pre_verifier(instantane) if a.bloquante]
     assert (anomalie.regle_id, anomalie.regle_code) == (1, "R001")
@@ -503,7 +503,7 @@ def test_pre_verifier_semestre_avec_des_niveaux_de_regles(jeu_minimal):
 
 
 # --------------------------------------------------------------------------- #
-# Temps B : emploi du temps par jour ou par semaine, relations
+# Emploi du temps par jour ou par semaine, relations
 # --------------------------------------------------------------------------- #
 
 
@@ -720,7 +720,7 @@ def test_reproductible_avec_des_regles_d_emploi_du_temps():
 
 
 # --------------------------------------------------------------------------- #
-# Revue adversariale : règles de portée campus, verrous, pauses, replacement
+# Règles de portée campus, verrous, pauses, replacement
 # --------------------------------------------------------------------------- #
 
 
@@ -746,7 +746,7 @@ def _deux_campus_matin_pris(avec_s1: bool = True):
     ids=["plage", "creneaux"],
 )
 def test_horaires_de_portee_campus_ne_jouent_que_sur_ce_campus(type_regle, parametres):
-    """Scénarios de la revue : la règle de C2 ne gêne pas une séance placée sur C1 (S1, 13 h 45),
+    """La règle de C2 ne gêne pas une séance placée sur C1 (S1, 13 h 45),
     en dur comme en souple, et le vérificateur ne relève rien ; sans salle sur C1, elle joue."""
     for niveau in ("necessaire", "important"):
         f, c2 = _deux_campus_matin_pris()
@@ -764,7 +764,7 @@ def test_horaires_de_portee_campus_ne_jouent_que_sur_ce_campus(type_regle, param
 
 
 def test_la_pause_standard_reste_entre_deux_groupes_chevauchants():
-    """Scénario de la revue : une règle PAUSE_MINIMALE plus courte sur un tiers ne supprime pas la
+    """Une règle PAUSE_MINIMALE plus courte sur un tiers ne supprime pas la
     pause standard entre deux groupes déclarés en conflit sans lignée commune."""
     contigus = (
         Creneau(LUNDI, 8 * H + 30, 10 * H + 30, DemiJournee.MATIN),
@@ -796,7 +796,7 @@ def test_la_pause_standard_reste_entre_deux_groupes_chevauchants():
 
 
 def test_verrou_et_regles_de_salle():
-    """Scénarios de la revue : une salle verrouillée que la règle interdit, un campus imposé, un
+    """Une salle verrouillée que la règle interdit, un campus imposé, un
     verrou sans salle dont la règle impose une salle indisponible ; vérificateur et solveur d'accord."""
     f = Fabrique(creneaux=LUNDI_SEUL)
     f.salle("S1")
@@ -851,7 +851,7 @@ def test_verrou_et_regles_de_salle():
 
 
 def test_replacement_juge_le_jour_avec_le_campus_de_la_salle():
-    """Scénario de la revue : le vendredi est fermé sur C2 ; S1 (C1) est indisponible ce jour-là :
+    """Le vendredi est fermé sur C2 ; S1 (C1) est indisponible ce jour-là :
     rien ne convient en dur, et la règle souple fait payer la salle de C2."""
 
     def etablissement(niveau: str):
@@ -943,7 +943,7 @@ def _replacer(instantane, placements, niveau: Niveau | None = None):
 
 
 def test_replacement_respecte_le_maximum_par_jour():
-    """Scénario de la revue : le mardi de la 2e semaine a déjà 4 h ; en dur, la séance du lundi
+    """Le mardi de la 2e semaine a déjà 4 h ; en dur, la séance du lundi
     fermé va au lundi de l'autre semaine ; en facultatif, le mardi au prix d'une entorse."""
     f = _lundi_mardi()
     classe = f.groupe("A1")

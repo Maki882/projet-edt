@@ -92,7 +92,8 @@ journal = logging.getLogger(__name__)
 
 NOM_MOTEUR = "cp_sat"
 NB_WORKERS_PAR_DEFAUT = 2
-"""Fils de calcul quand `options.nb_workers` vaut 0 : le serveur cible a deux cœurs."""
+"""Fils de calcul quand `options.nb_workers` vaut 0 : deux, ce que supporte un serveur de
+deux cœurs (mesures dans docs/solveur.md)."""
 INTERVALLE_SUIVI_S = 5.0
 """Intervalle entre deux lignes de progression dans le journal."""
 INTERVALLE_SOLUTIONS_S = 2.0
@@ -182,7 +183,7 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
         if objectif is None:
             self._journal.info("Horaires trouvés après %.1f s", ecoule)
         elif ecoule - self._dernier_message >= INTERVALLE_SOLUTIONS_S:
-            # Les améliorations se suivent de près : on n'en journalise qu'une partie.
+            # Les améliorations se suivent de près : seule une partie est journalisée.
             self._dernier_message = ecoule
             self._journal.info(
                 "Amélioration n° %d après %.1f s : objectif %d (borne %d)",
@@ -318,10 +319,11 @@ def resoudre(
         "une preuve d'impossibilité : relancer avec plus de temps peut aboutir."
     )
     message_infaisable = (
-        "Aucun emploi du temps ne peut respecter toutes les contraintes actives : c'est "
-        "prouvé, relancer le calcul ne changera rien. Il faut alléger les données (salles, "
+        "Aucun emploi du temps ne peut respecter toutes les règles retenues pour ce calcul : "
+        "c'est prouvé, relancer le calcul ne changera rien. Alléger les données (salles, "
         "indisponibilités, verrous, volumes) ou abaisser le niveau d'une règle (important ou "
-        "facultatif) ; les avertissements des pré-vérifications indiquent où chercher en premier."
+        "facultatif) ; les avertissements des vérifications avant calcul indiquent où chercher "
+        "en premier."
     )
     debut_modele = time.perf_counter()
     try:
@@ -400,8 +402,8 @@ def resoudre(
         )
         if code == cp_model.MODEL_INVALID:
             raise ErreurEDT(
-                "Le moteur a construit un modèle invalide : c'est une erreur interne, à "
-                "signaler avec le journal du calcul.",
+                "Erreur interne du générateur : le calcul n'a pas pu être lancé. La signaler "
+                "avec le journal du calcul.",
                 [modele.cp.validate()],
             )
         return code, solveur, suivi
@@ -491,8 +493,8 @@ def resoudre(
         _texte_entorses(toutes_les_entorses(solution, bilan)),
     )
 
-    # 4. Amélioration : on repart de la solution valide, dans le temps qui reste. Sans
-    # « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a (phase des
+    # 4. Amélioration : la recherche repart de la solution valide, dans le temps qui reste.
+    # Sans « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a (phase des
     # horaires ou des salles).
     optimal = optimum_horaires = amelioration_lancee = temps_manquant = False
     stagnation_s: float | None = None
@@ -660,7 +662,7 @@ def resoudre(
         stats["raison_arret"] = "premiere_solution"
     if options.contraintes_desactivees:
         libelles = sorted(CATALOGUE[code_].libelle for code_ in options.contraintes_desactivees)
-        message += " Contraintes ignorées à votre demande : " + ", ".join(libelles) + "."
+        message += " Règles ignorées à votre demande : " + ", ".join(libelles) + "."
     return conclure(StatutSolveur.SOLUTION, message, placements)
 
 

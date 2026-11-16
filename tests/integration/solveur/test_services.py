@@ -689,7 +689,7 @@ def test_commande_generer_avec_optimisation_et_contrainte_desactivee(lanceur, je
     )
     assert resultat.exit_code == 0, resultat.output
     assert "avec optimisation" in resultat.output
-    assert "Contraintes ignorées à votre demande : Pause entre deux séances" in resultat.output
+    assert "Règles ignorées à votre demande : Pause entre deux séances" in resultat.output
     # Le bilan est dans le message du calcul : la commande ne le répète pas sur sa propre ligne.
     message = next(ligne for ligne in resultat.output.splitlines() if ligne.startswith("Emploi"))
     assert "Bilan sur l'ensemble du semestre :" in message and "le samedi" in message

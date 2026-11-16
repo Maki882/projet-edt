@@ -191,6 +191,9 @@ def test_seance_sans_salle_compatible_dit_quelle_exigence_elimine_les_salles():
     assert "Sur 2 salle(s) : 1 d'au moins 45 places" in erreur.message
     assert "1 équipées de tout le matériel requis" in erreur.message
     assert "aucune ne réunit toutes ces exigences" in erreur.message
+    assert erreur.message.endswith(
+        "Ajouter une salle qui convient ou revoir les exigences du besoin."
+    )
     assert erreur.seances == ("1-1",)
 
 
@@ -309,7 +312,11 @@ def test_verrou_incoherent_ou_contredisant_son_besoin_est_nomme():
     """
     attendus = [
         (_une_seance_verrouillee(jour=7), "est incohérent"),
-        (_une_seance_verrouillee(salle=99), "désigne une salle (n° 99) qui n'existe pas"),
+        (
+            _une_seance_verrouillee(salle=99),
+            "désigne une salle qui n'existe pas dans ce semestre. Choisir une autre salle pour "
+            "ce verrou, ou le retirer.",
+        ),
         (
             _une_seance_verrouillee(duree=90, duree_verrou=120),
             "dure 2 h au lieu des 1 h 30 demandées",
