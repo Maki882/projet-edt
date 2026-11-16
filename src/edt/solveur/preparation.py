@@ -1,6 +1,6 @@
 """Préparation d'un calcul : les domaines de chaque séance, avant tout modèle.
 
-Pour chaque séance de l'instantané, on calcule ici, en Python pur :
+Pour chaque séance de l'instantané, ce module calcule, en Python pur :
 
 - ses **débuts admissibles** : couples (jour, heure) permis par les verrous,
   les jours et heures imposés, la grille (`HORAIRES`, `JOURS`), le déjeuner
@@ -187,8 +187,8 @@ class Preparation:
                 Anomalie(
                     C.REGLE,
                     Gravite.ERREUR,
-                    f"La règle {regle.code} ({regle.phrase}) est d'un type que le moteur ne sait "
-                    f"pas encore poser (« {regle.type.libelle} ») : ne pas l'appliquer à ce "
+                    f"La règle {regle.code} ({regle.phrase}) est d'un type que le générateur ne "
+                    f"sait pas appliquer (« {regle.type.libelle} ») : ne pas l'appliquer à ce "
                     "calcul, ou la désactiver.",
                     regle_id=regle.id,
                     regle_code=regle.code,
@@ -286,7 +286,8 @@ class Preparation:
                 probleme=(
                     C.REGLE,
                     f"aucune salle ne convient : {refus.raison} écarte toutes les salles qui "
-                    "conviennent au besoin.",
+                    "conviennent au besoin. Assouplir cette règle ou ne pas l'appliquer à ce "
+                    "calcul.",
                 ),
             )
 
@@ -299,7 +300,8 @@ class Preparation:
                 probleme=(
                     C.DISPO_SALLE,
                     f"aucune salle n'est libre : les {len(compatibles.salles)} salle(s) qui "
-                    "conviennent sont indisponibles à tous les horaires possibles de la séance.",
+                    "conviennent sont indisponibles à tous les horaires possibles de la séance. "
+                    "Revoir les indisponibilités de ces salles ou ajouter une salle qui convient.",
                 ),
             )
         if interdits_campus:
@@ -317,7 +319,8 @@ class Preparation:
                         C.REGLE,
                         "aucun horaire possible sur un campus permis : une règle de jours ou "
                         "d'horaires de portée campus ferme chaque horaire possible sur le "
-                        "campus de chaque salle qui convient.",
+                        "campus de chaque salle qui convient. Assouplir cette règle ou ne pas "
+                        "l'appliquer à ce calcul.",
                     ),
                 )
         if len(salles) == 1 and interdits:
@@ -333,7 +336,8 @@ class Preparation:
                     probleme=(
                         C.DISPO_SALLE,
                         "aucun horaire possible : la seule salle qui convient est indisponible "
-                        "ou interdite à tous les horaires possibles de la séance.",
+                        "ou interdite à tous les horaires possibles de la séance. Revoir ses "
+                        "indisponibilités ou ajouter une salle qui convient.",
                     )
                 )
         return _Domaine(
@@ -569,7 +573,7 @@ class Preparation:
             return (
                 C.JOURS,
                 "aucun horaire possible : la grille horaire n'offre aucun jour de cours permis "
-                "pour cette séance.",
+                "pour cette séance. Ajouter des créneaux à la grille ou revoir les jours permis.",
             )
         (code, _), _ = max(elimines.items(), key=lambda item: item[1])
         details = enumerer(
@@ -577,7 +581,8 @@ class Preparation:
         )
         return (
             code,
-            f"aucun horaire possible : {examines} début(s) examiné(s), tous écartés ({details}).",
+            f"aucun horaire possible : {examines} début(s) examiné(s), tous écartés ({details}). "
+            "Lever ou assouplir l'une de ces causes.",
         )
 
     def _probleme_de_salles(self, besoin: Besoin) -> tuple[CodeContrainte, str]:
@@ -585,7 +590,11 @@ class Preparation:
         total = len(self.instantane.salles)
         exigences = self.regles.salles_compatibles(besoin).exigences
         if total == 0 or not exigences:
-            return C.TYPE_SALLE, "aucune salle n'est enregistrée pour ce semestre."
+            return (
+                C.TYPE_SALLE,
+                "aucune salle n'est enregistrée pour ce semestre. Ajouter des salles avant de "
+                "lancer le calcul.",
+            )
         pire = min(exigences, key=lambda exigence: exigence.nb_salles)
         details = enumerer(
             (f"{exigence.nb_salles} {exigence.libelle}" for exigence in exigences), maximum=6
@@ -598,7 +607,8 @@ class Preparation:
             conclusion = f"l'exigence « {CATALOGUE[pire.code].libelle} » élimine toutes les salles"
         return (
             pire.code,
-            f"aucune salle ne convient. Sur {total} salle(s) : {details} ; {conclusion}.",
+            f"aucune salle ne convient. Sur {total} salle(s) : {details} ; {conclusion}. "
+            "Ajouter une salle qui convient ou revoir les exigences du besoin.",
         )
 
     def _filtrer_salles_disponibles(
@@ -647,7 +657,7 @@ class Preparation:
     def _preparer_verrouillee(
         self, index: int, seance: SeanceAPlacer, verrou: Placement, semaines: int
     ) -> SeancePreparee:
-        """Séance fixée par son verrou : on vérifie que le verrou est tenable seul.
+        """Séance fixée par son verrou : vérifie que le verrou est tenable seul.
 
         Horaires et jours ne sont pas opposés à un verrou (une séance imposée
         qui s'en écarte n'est qu'une information) ; les indisponibilités, les
@@ -742,7 +752,8 @@ class Preparation:
                 valide = False
                 refuser(
                     code,
-                    f"{designation} tombe pendant une indisponibilité de {nom}.",
+                    f"{designation} tombe pendant une indisponibilité de {nom}. Déplacer le "
+                    "verrou ou revoir cette indisponibilité.",
                     jour=verrou.jour,
                 )
         if not valide:
@@ -775,7 +786,8 @@ class Preparation:
                 refuser(
                     C.DISPO_SALLE,
                     f"{designation} n'a pas de salle : toutes les salles qui conviennent sont "
-                    "indisponibles à cet horaire.",
+                    "indisponibles à cet horaire. Déplacer le verrou ou revoir les "
+                    "indisponibilités des salles.",
                     jour=verrou.jour,
                 )
             preparee.salles = salles
@@ -787,10 +799,15 @@ class Preparation:
         try:
             salle = self.instantane.salle(verrou.salle_id)
         except ErreurIntrouvable:
+            journal.warning(
+                "Verrou de la séance %s : salle n° %s absente de l'instantané",
+                seance.id,
+                verrou.salle_id,
+            )
             refuser(
                 C.VERROU,
-                f"{designation} désigne une salle (n° {verrou.salle_id}) qui n'existe pas "
-                "dans ce semestre.",
+                f"{designation} désigne une salle qui n'existe pas dans ce semestre. Choisir "
+                "une autre salle pour ce verrou, ou le retirer.",
             )
             return preparee
         defauts = [
@@ -802,8 +819,8 @@ class Preparation:
             refuser(
                 code,
                 f"{designation} est verrouillée en salle {salle.code}, qui ne fait pas partie "
-                f"des salles {libelle}. Changer la salle du verrou ou désactiver la contrainte "
-                f"« {CATALOGUE[code].libelle} ».",
+                f"des salles {libelle}. Changer la salle du verrou ou ignorer la règle "
+                f"« {CATALOGUE[code].libelle} » pour ce calcul.",
                 salles=(salle.id,),
                 jour=verrou.jour,
             )
@@ -826,7 +843,9 @@ class Preparation:
         if not salles:
             refuser(
                 C.DISPO_SALLE,
-                f"{designation} est verrouillée en salle {salle.code}, indisponible à cet horaire.",
+                f"{designation} est verrouillée en salle {salle.code}, indisponible à cet "
+                "horaire. Changer la salle ou l'horaire du verrou, ou revoir cette "
+                "indisponibilité.",
                 salles=(salle.id,),
                 jour=verrou.jour,
             )

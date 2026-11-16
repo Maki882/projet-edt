@@ -373,12 +373,16 @@ class Regles:
         pas, les règles restent. Avec `date` (couche datée), les règles
         résolues à cette date (`jours_de`). Une séance inconnue de la semaine
         type (occurrence saisie à la main, `seance_id` absent) n'a que le
-        standard de son `besoin`. Un jour sans aucun créneau dans la grille
-        n'est pas un jour de cours (le vérificateur l'exige aussi), même quand
-        `HORAIRES` est ignorée et que les débuts sortent de la grille.
+        standard de son `besoin`.
+
+        Un jour sans aucun créneau dans la grille n'est pas un jour de cours,
+        même quand les débuts peuvent sortir de la grille. La cause est imputée
+        une seule fois : à `HORAIRES` quand elle est vérifiée, à `JOURS` sinon.
         """
-        if self.active(C.JOURS) and not self.instantane.debuts_de_creneau(jour):
-            return [Violation(C.JOURS, f"la grille horaire n'a aucun créneau le {JOURS[jour]}")]
+        if not self.instantane.debuts_de_creneau(jour):
+            code = C.HORAIRES if self.active(C.HORAIRES) else C.JOURS
+            if self.active(code):
+                return [Violation(code, f"la grille horaire n'a aucun créneau le {JOURS[jour]}")]
         reglages = self.instantane.reglages.jours
         if seance_id is None or seance_id not in reglages:
             if not self.active(C.JOURS) or jour in self.instantane.jours_travailles:
@@ -396,15 +400,6 @@ class Regles:
                 )
             )
         return violations
-
-    def jour_permis(self, jour: int, seance_id: str, campus_id: int | None = None) -> bool:
-        """Vrai si le jour est permis à la séance : un jour de la grille, qu'aucune règle de jours
-        nécessaire ni le standard (`JOURS` nécessaire) n'interdit."""
-        if not self.instantane.debuts_de_creneau(jour):
-            return False
-        return not any(
-            self.dure_violation(v) for v in self.violations_de_jour(seance_id, jour, campus_id)
-        )
 
     def debuts_a_examiner(self, besoin: Besoin, jour: int) -> tuple[int, ...]:
         """Heures de début envisageables ce jour-là, avant toute règle.

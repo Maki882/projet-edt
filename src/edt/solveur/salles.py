@@ -20,7 +20,7 @@ La première phase ne connaît pas ces coûts : elle choisit les horaires avec
 toutes les salles admissibles, et c'est ici que les entorses sont évitées
 quand les horaires le permettent.
 
-Si l'affectation est impossible, on cherche un **conflit** : un sous-ensemble
+Si l'affectation est impossible, la recherche rend un **conflit** : un sous-ensemble
 de séances qui, à ces horaires, ne peuvent pas toutes recevoir une salle. La
 première phase écarte alors cette combinaison d'horaires et recommence
 (`ModeleHoraires.interdire`). Le résultat global reste exact : une solution

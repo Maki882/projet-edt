@@ -1120,13 +1120,6 @@ class ModeleHoraires:
 
     # -- objectif -----------------------------------------------------------------
 
-    @property
-    def entorses_possibles(self) -> bool:
-        """Vrai si une contrainte souple peut être enfreinte par le placement."""
-        return any(
-            variable is not True for liste in self._entorses.values() for _, variable in liste
-        )
-
     def poser_objectif(self, confort: bool = True) -> bool:
         """Ajoute au modèle l'objectif à minimiser ; renvoie faux s'il est sans effet.
 

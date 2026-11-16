@@ -1,4 +1,4 @@
-"""Pré-vérifications : ce qu'on peut dire d'un calcul avant de le lancer.
+"""Pré-vérifications : ce qui est certain d'un calcul avant de le lancer.
 
 `pre_verifier` est une fonction pure et rapide (moins d'une seconde sur un
 établissement complet). Elle est appelée d'office par le moteur avant toute

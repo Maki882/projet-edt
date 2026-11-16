@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'intégration.
+Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
 | `exploitation` | 40 | 32 |
 | `socle` | 48 | 24 |
-| `solveur` | 18 | 16 |
+| `solveur` | 19 | 16 |
 | `synthese` | 28 | 5 |
 | `verification` | 25 | 0 |
 | `web_donnees` | 1 | 36 |
 | `web_edt` | 1 | 30 |
-| **Total** | **200** | **148** |
+| **Total** | **201** | **148** |
 
-### Tests unitaires (200 cas)
+### Tests unitaires (201 cas)
 
 #### `echange` (39 cas)
 
@@ -329,13 +329,14 @@ Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'i
 | Un index unique partiel absent est un ecart | la base date d'avant l'index unique partiel « une seule version active par semestre ». | `verifier-schema` disait « à jour », deux versions pouvaient être actives et l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma. |
 | Une unicite absente ou en trop est un ecart | une table recréée par une ancienne version sans l'unicité du modèle (ou avec une autre). | doublons acceptés (ou refusés à tort) sans que rien ne signale le schéma périmé. |
 
-#### `solveur` (18 cas)
+#### `solveur` (19 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Deux besoins sans groupe sont refuses en les nommant | deux besoins sans aucun groupe inscrit (données hors interface), d'enseignants différents, un seul créneau et deux salles. | une donnée incomplète tolérée en silence, ou une exception brute. Le dépliage ne produit aucune séance pour un tel besoin et la pré-vérification refuse le calcul en nommant chaque besoin ; autrefois, le moteur réunissait les séances sans groupe en une unité fictive « aucun groupe » et prouvait une infaisabilité fausse. |
+| Jour travaille sans creneau une seule cause | le mardi est un jour travaillé, mais la grille n'a de créneaux que le lundi. | la même cause portée par `JOURS` dans le moteur et par `HORAIRES` dans le vérificateur, ou plus dite du tout quand l'une des deux est ignorée. |
+| Deux besoins sans groupe sont refuses en les nommant | deux besoins sans aucun groupe inscrit (données hors interface), d'enseignants différents, un seul créneau et deux salles. | une donnée incomplète tolérée en silence, ou une exception brute. Le dépliage ne produit aucune séance pour un tel besoin et la pré-vérification refuse le calcul en nommant chaque besoin, au lieu de réunir les séances sans groupe en une unité fictive « aucun groupe » et de prouver une infaisabilité fausse. |
 | Seance finissant apres minuit refusee meme sans horaires | besoin de 25 h, ou besoin de 2 h au début imposé 23 h, la grille active puis ignorée. | placement dont la fin dépasse minuit (occurrence débordant sur le lendemain, refusée ensuite par la base), ou refus muet qui ne dit pas pourquoi. |
 
 [`tests/unitaires/solveur/test_couche_datee.py`](../tests/unitaires/solveur/test_couche_datee.py)
@@ -349,10 +350,10 @@ Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Options invalides refusees | options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul, négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers. | « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils. |
-| Options aux bornes acceptees | options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40. | des bornes trop serrées refuseraient des réglages légitimes ; une graine hors [0, 2^31[ est ramenée dans les bornes de CP-SAT par le moteur, pas refusée. |
+| Options invalides refusees | options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul, négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers ou booléens. | « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils. |
+| Options aux bornes acceptees | options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40. | des bornes trop serrées refuseraient des réglages légitimes ; une graine hors [0, 2^31[ est gardée telle quelle (le moteur la ramène dans les bornes de CP-SAT, voir `test_parametres_extremes_restent_valides`). |
 | Toutes les seances verrouillees | chaque séance porte un verrou avec sa salle : le modèle n'a ni variable ni choix. | plantage sur un modèle vide (objectif sans terme, statistiques) ou solution non rendue, en mode faisable comme en mode optimisé. |
-| Arret pendant la premiere recherche rend la main vite | instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la première recherche, avant toute solution (la première solution demande ici plus d'une minute). | le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à rendre la main : bouton « Arrêter » sans effet avant la première solution. |
+| Arret pendant la premiere recherche est suivi d effet | instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la première recherche, avant toute solution (la première solution demande ici plus d'une minute). | le moteur ignore l'arrêt tant qu'aucune solution n'existe : bouton « Arrêter » sans effet avant la première solution. Borne large sur le délai, machine chargée ou non ; la réactivité fine est mesurée à part (`test_arret_pendant_la_premiere_recherche_repond_en_moins_de_deux_secondes`, `perf`). |
 | Parametres extremes restent valides | pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et 2^40, mode optimisé. | coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage jour × pas des débuts faux quand le pas dépasse 100 000. |
 
 [`tests/unitaires/solveur/test_preverification.py`](../tests/unitaires/solveur/test_preverification.py)

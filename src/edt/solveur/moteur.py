@@ -73,6 +73,7 @@ import os
 import statistics
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
@@ -92,7 +93,8 @@ journal = logging.getLogger(__name__)
 
 NOM_MOTEUR = "cp_sat"
 NB_WORKERS_PAR_DEFAUT = 2
-"""Fils de calcul quand `options.nb_workers` vaut 0 : le serveur cible a deux cœurs."""
+"""Fils de calcul quand `options.nb_workers` vaut 0 : deux, ce que supporte un serveur de
+deux cœurs (mesures dans docs/solveur.md)."""
 INTERVALLE_SUIVI_S = 5.0
 """Intervalle entre deux lignes de progression dans le journal."""
 INTERVALLE_SOLUTIONS_S = 2.0
@@ -182,7 +184,7 @@ class _Suivi(cp_model.CpSolverSolutionCallback):
         if objectif is None:
             self._journal.info("Horaires trouvés après %.1f s", ecoule)
         elif ecoule - self._dernier_message >= INTERVALLE_SOLUTIONS_S:
-            # Les améliorations se suivent de près : on n'en journalise qu'une partie.
+            # Les améliorations se suivent de près : seule une partie est journalisée.
             self._dernier_message = ecoule
             self._journal.info(
                 "Amélioration n° %d après %.1f s : objectif %d (borne %d)",
@@ -202,12 +204,20 @@ def resoudre(
     instantane: Instantane,
     options: OptionsSolveur,
     arret: threading.Event | None = None,
+    sur_premiere_solution: Callable[[float], None] | None = None,
 ) -> ResultatSolveur:
     """Place toutes les séances de l'instantané, ou explique pourquoi c'est impossible.
 
     Voir `edt.solveur.contrat` pour le contrat et l'en-tête de ce module pour
     le déroulement. `options.nb_workers == 0` utilise deux fils de calcul au
     plus ; un seul fil avec une graine fixe donne un résultat reproductible.
+
+    `sur_premiere_solution`, s'il est donné, est appelé une seule fois, dès
+    qu'un emploi du temps complet existe (horaires et salles) : à partir de
+    cet instant, un arrêt demandé garde une solution. Il reçoit la durée
+    écoulée depuis le lancement, en secondes. Il n'est pas appelé si aucune
+    solution n'est trouvée. Une exception qu'il lève est journalisée avec sa
+    trace et n'interrompt pas le calcul.
     """
     debut = time.perf_counter()
     journal_calcul = journal_calcul_courant()
@@ -291,16 +301,12 @@ def resoudre(
         raisons = " ".join(a.message for a in erreurs[:NB_RAISONS_DANS_LE_MESSAGE])
         autres = len(erreurs) - NB_RAISONS_DANS_LE_MESSAGE
         suite = f" (et {autres} autre(s) raison(s), voir la liste complète)" if autres > 0 else ""
-        conseil = ""
-        if preparation.conflits_verrous and not options.tolerer_violations_heritees:
-            conseil = (
-                " Pour garder des séances verrouillées qui se contredisent, cocher « tolérer "
-                "les violations héritées »."
-            )
+        # Le conseil « tolérer les violations héritées » est dans le message de chaque
+        # conflit de verrous (`diagnostiquer`) : il n'est pas répété ici.
         return conclure(
             StatutSolveur.INFAISABLE,
             f"Le calcul n'a pas été lancé : {len(erreurs)} impossibilité(s) certaine(s) "
-            f"relevée(s) avant la recherche. {raisons}{suite}{conseil}",
+            f"relevée(s) avant la recherche. {raisons}{suite}",
         )
     if nb_seances == 0:
         return conclure(StatutSolveur.SOLUTION, "Aucune séance à placer pour ce semestre.")
@@ -322,10 +328,11 @@ def resoudre(
         "une preuve d'impossibilité : relancer avec plus de temps peut aboutir."
     )
     message_infaisable = (
-        "Aucun emploi du temps ne peut respecter toutes les contraintes actives : c'est "
-        "prouvé, relancer le calcul ne changera rien. Il faut alléger les données (salles, "
+        "Aucun emploi du temps ne peut respecter toutes les règles retenues pour ce calcul : "
+        "c'est prouvé, relancer le calcul ne changera rien. Alléger les données (salles, "
         "indisponibilités, verrous, volumes) ou abaisser le niveau d'une règle (important ou "
-        "facultatif) ; les avertissements des pré-vérifications indiquent où chercher en premier."
+        "facultatif) ; les avertissements des vérifications avant calcul indiquent où chercher "
+        "en premier."
     )
     debut_modele = time.perf_counter()
     try:
@@ -404,8 +411,8 @@ def resoudre(
         )
         if code == cp_model.MODEL_INVALID:
             raise ErreurEDT(
-                "Le moteur a construit un modèle invalide : c'est une erreur interne, à "
-                "signaler avec le journal du calcul.",
+                "Erreur interne du générateur : le calcul n'a pas pu être lancé. La signaler "
+                "avec le journal du calcul.",
                 [modele.cp.validate()],
             )
         return code, solveur, suivi
@@ -467,6 +474,12 @@ def resoudre(
     # elle, est libérée avant que la seconde commence.
     del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
+    if sur_premiere_solution is not None:
+        try:
+            sur_premiere_solution(time.perf_counter() - debut)
+        except Exception:
+            # Le rappel informe l'interface ; son échec ne doit pas coûter la solution.
+            journal.exception("Le rappel de première solution a échoué : le calcul continue.")
 
     def cout_salles(essai: _Solution) -> int:
         """Pénalité des entorses de la phase des salles, au poids de l'objectif."""
@@ -495,8 +508,8 @@ def resoudre(
         _texte_entorses(toutes_les_entorses(solution, bilan)),
     )
 
-    # 4. Amélioration : on repart de la solution valide, dans le temps qui reste. Sans
-    # « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a (phase des
+    # 4. Amélioration : la recherche repart de la solution valide, dans le temps qui reste.
+    # Sans « optimiser », elle ne porte que sur les entorses et n'a lieu que s'il y en a (phase des
     # horaires ou des salles).
     optimal = optimum_horaires = amelioration_lancee = temps_manquant = False
     stagnation_s: float | None = None
@@ -664,7 +677,7 @@ def resoudre(
         stats["raison_arret"] = "premiere_solution"
     if options.contraintes_desactivees:
         libelles = sorted(CATALOGUE[code_].libelle for code_ in options.contraintes_desactivees)
-        message += " Contraintes ignorées à votre demande : " + ", ".join(libelles) + "."
+        message += " Règles ignorées à votre demande : " + ", ".join(libelles) + "."
     return conclure(StatutSolveur.SOLUTION, message, placements)
 
 

@@ -75,10 +75,10 @@ C1, C2, C3, C4 = (creneau[0] for creneau in CRENEAUX_JOUR)
 """Débuts des quatre créneaux standard : 8 h 30, 10 h 45, 13 h 45 et 16 h."""
 
 RENTREE = dt.date(2026, 9, 7)
+"""Un lundi : premier jour du semestre des instantanés fabriqués."""
 
 TYPES_SEANCE = {"TD": 1, "CM": 2, "TP": 3}
 """Types de séance des besoins fabriqués : code → identifiant."""
-"""Un lundi : premier jour du semestre des instantanés fabriqués."""
 
 
 def grille(jours: Iterable[int] = range(5), samedi: bool = True) -> tuple[Creneau, ...]:
@@ -469,8 +469,8 @@ def definition_niveau(type_regle: TypeRegle) -> Niveau:
 def niveaux_regles_posables(instantane: Instantane) -> dict[int, Niveau]:
     """Niveaux des règles de l'instantané que le moteur sait poser (les autres sont ignorées).
 
-    Pour les jeux fictifs, qui portent des règles de tous les types, tant que
-    le moteur ne couvre pas le catalogue entier.
+    Le moteur pose tous les types du catalogue (`types_non_couverts("solveur")`
+    est vide) : le filtre garde les tests du côté sûr si un type s'ajoute.
     """
     return {regle.id: regle.niveau for regle in instantane.regles if regle.type in POSEURS}
 

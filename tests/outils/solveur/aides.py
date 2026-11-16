@@ -3,7 +3,7 @@
 - `UN_CRENEAU`, `MATINEE` : petites grilles du lundi matin ;
 - `SEMAINE`, `place`, `instancier_et_replacer` : couche datée (instanciation puis replacement,
   vérifiés par l'oracle des séances datées) ;
-- `niveaux_avec` : toutes les contraintes nécessaires sauf celles qu'on assouplit.
+- `niveaux_avec` : toutes les contraintes nécessaires sauf celles qui sont assouplies.
 """
 
 from __future__ import annotations

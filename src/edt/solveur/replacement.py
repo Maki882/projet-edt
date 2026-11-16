@@ -5,10 +5,9 @@ leur place (**fixes**) et celles qu'il faut déplacer (**à replacer**), et
 cherche pour chacune de ces dernières une date, une heure et une salle qui
 respectent toutes les contraintes actives face aux occurrences déjà en place.
 
-Il sert aujourd'hui à replacer les séances qui tombent un jour fermé ou
-pendant une indisponibilité (`edt.solveur.instanciation`). Il est écrit pour
-servir aussi, plus tard, au réaménagement sur imprévu : un ensemble
-quelconque d'occurrences à replacer, une fenêtre de dates, un coût
+Il replace les séances qui tombent un jour fermé ou pendant une
+indisponibilité (`edt.solveur.instanciation`). Il accepte un ensemble
+quelconque d'occurrences à replacer, une fenêtre de dates et un coût
 d'éloignement.
 
 Règles appliquées à une place candidate (les mêmes que la semaine type,
@@ -282,9 +281,7 @@ class _Planning:
                 supprimees[violation] += 1
         return dict(supprimees)
 
-    def _places_des_personnes(
-        self, besoin: Besoin, date: dt.date, personnes: Iterable
-    ) -> list[_Place]:
+    def _places_des_personnes(self, date: dt.date, personnes: Iterable) -> list[_Place]:
         """Occurrences du jour des personnes données (enseignants, groupes feuilles et leur lignée)."""
         places: dict[int, _Place] = {}
         for personne in personnes:
@@ -309,7 +306,7 @@ class _Planning:
         for regle in regles.regles_emploi_de(besoin, seance_id):
             if regle.type is not TypeRegle.CAMPUS_PAR_JOUR or not regle.couvre(date):
                 continue
-            places = self._places_des_personnes(besoin, date, personnes & set(regle.personnes))
+            places = self._places_des_personnes(date, personnes & set(regle.personnes))
             campus = frozenset(
                 self._campus_de[p.salle_id] for p in places if p.salle_id is not None
             )
@@ -666,12 +663,12 @@ def _placer(
     duree = origine.fin - origine.debut
     salles = [salle.id for salle in regles.salles_compatibles(besoin).salles]
     if origine.salle_id in salles:
-        # À égalité, on garde la salle d'origine.
+        # À égalité, la salle d'origine est gardée.
         salles = [origine.salle_id] + [salle for salle in salles if salle != origine.salle_id]
     refus: dict[str, int] = defaultdict(int)
     nb_examinees = 0
     # La place retenue minimise éloignement et entorses : les candidates arrivent par
-    # éloignement croissant, on s'arrête dès qu'aucune ne peut plus battre la meilleure.
+    # éloignement croissant, la recherche s'arrête dès qu'aucune ne peut battre la meilleure.
     meilleure: tuple[int, Occurrence] | None = None
     par_campus = _jours_par_campus(regles, besoin, origine.seance_id)
     for cout, date, debut in _candidates(regles, besoin, origine, premier, dernier, options):
