@@ -27,7 +27,7 @@ def test_sans_emploi_du_temps_actif(jeu_minimal, client):
 def test_sans_verificateur_l_absence_est_dite(version_generee, client, sans_verificateur):
     page = client.get("/a-traiter").text
 
-    assert "Les vérifications automatiques ne sont pas encore disponibles" in page
+    assert "Les vérifications automatiques sont indisponibles" in page
     assert "Aucune anomalie" not in page
     assert client.get("/a-traiter/compteur", headers=HX).text.strip() == ""
 
@@ -108,7 +108,7 @@ def test_avec_le_vrai_verificateur(version_generee, client):
 
     page = client.get("/a-traiter").text
 
-    assert "pas encore disponibles" not in page
+    assert "installation incomplète" not in page
     if verification.nb_erreurs:
         assert f"Erreurs : règles non respectées ({verification.nb_erreurs})" in page
     else:

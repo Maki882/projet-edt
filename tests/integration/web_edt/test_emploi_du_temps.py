@@ -100,7 +100,7 @@ def test_trois_affichages_pour_un_groupe_un_enseignant_une_salle(
     assert attendu in page
     assert 'class="edt-bloc edt-couleur-' in page  # au moins une séance dans la grille
     assert "Traceback" not in page
-    assert "pas encore disponible" not in page
+    assert "installation incomplète" not in page
     assert f"/export/emploi-du-temps.csv?version_id={version}" in page
 
 
@@ -165,13 +165,14 @@ def test_version_sans_seances_datees_puis_produites(version_generee, client):
     adresse = f"/emploi-du-temps?version_id={version}&couche=date"
     assert "pas encore été produites" in client.get(adresse).text
 
-    # Instanciation simulée absente : on le dit, rien n'est produit.
+    # Instanciation simulée absente : la page le dit, rien n'est produit.
     with pytest.MonkeyPatch.context() as temporaire:
         temporaire.setitem(sys.modules, "edt.services.instanciation", None)
         absente = client.post(
             f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
         )
-    assert "pas encore disponible" in absente.text
+    assert "La production des séances datées" in absente.text
+    assert "est indisponible" in absente.text and "installation incomplète" in absente.text
 
     produite = client.post(
         f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
@@ -263,7 +264,7 @@ def test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx(version_generee, 
     fragment = client.get(f"/emploi-du-temps/seances/{seance.id}/panneau", headers=HX).text
     assert "<html" not in fragment
     assert "Exigences" in fragment and "56 places au moins" in fragment
-    assert "pas encore disponibles" not in fragment  # le vrai vérificateur a tourné
+    assert "installation incomplète" not in fragment  # le vrai vérificateur a tourné
 
 
 def test_modification_acceptee_puis_verrou(version_generee, client, faux_verificateur):
@@ -341,7 +342,7 @@ def test_sans_verificateur_aucune_seance_n_est_deplacee(version_generee, sans_ve
             session, seance.id, jour=jour, debut=debut, salle_id=seance.salle_id
         )
         assert not resultat.enregistree
-        assert "pas encore disponibles" in resultat.message
+        assert "vérifications automatiques sont indisponibles" in resultat.message
         assert session.get(m.SeanceHebdo, seance.id).jour == seance.jour
 
 
@@ -355,7 +356,7 @@ def test_salles_compatibles_libres_d_abord(version_generee):
         }
         assert codes <= {"L012"}  # N310 : accessibilité inconnue, refusée par défaut
 
-        # On occupe N105 le vendredi à 8 h 30, puis on cherche une salle pour le TD de la classe 2.
+        # N105 occupée le vendredi à 8 h 30, puis recherche d'une salle pour le TD de la classe 2.
         td_g1 = seance_du_besoin(session, version, "Mathématiques", "TD", "A1-G1")
         n105 = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
         td_g1.jour, td_g1.debut_min, td_g1.fin_min, td_g1.salle_id = 4, 510, 630, n105.id

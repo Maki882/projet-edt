@@ -5,8 +5,8 @@ Règles :
 - **toute modification de placement est vérifiée avant d'être enregistrée** :
   une anomalie de gravité « erreur » la refuse (rien n'est écrit) ; les
   avertissements et informations sont rendus avec le résultat. Si le
-  vérificateur n'est pas encore disponible, la modification est refusée
-  avec un message clair (une séance n'est jamais déplacée sans contrôle) ;
+  vérificateur ne peut pas être appelé, la modification est refusée avec un
+  message clair (une séance n'est jamais déplacée sans contrôle) ;
 - la semaine type se vérifie par `raccords.verifier_modification` (rien
   n'est écrit pendant la vérification) ; une occurrence datée est déplacée
   dans la transaction, vérifiée par `raccords.verifier_occurrences_version`
@@ -208,7 +208,7 @@ class BilanRecalcul:
 
 @dataclass(frozen=True)
 class AnomaliesSeance:
-    """Anomalies actuelles d'une séance, ou la raison pour laquelle on ne les connaît pas."""
+    """Anomalies actuelles d'une séance, ou la raison pour laquelle elles sont inconnues."""
 
     controle: raccords.Controle
     anomalies: tuple[Anomalie, ...]
@@ -634,7 +634,7 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
     programmer ») ; les retouches à la main restent telles quelles (voir
     l'en-tête du module). Lève `ErreurRegleMetier` pour une version dont les
     séances datées ont été importées (avant toute écriture), et
-    `raccords.ErreurRaccordIndisponible` si l'instanciation n'est pas livrée.
+    `raccords.ErreurRaccordIndisponible` si l'instanciation est introuvable.
     """
     if obtenir(session, m.VersionEdt, version_id) is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
@@ -838,7 +838,7 @@ def _debuts_possibles(
 ) -> tuple[tuple[int, str], ...]:
     """Débuts de créneau de la grille ce jour-là où la séance tient avant la fermeture.
 
-    S'y ajoutent l'heure actuelle (`actuel`, quand on garde le même jour) et
+    S'y ajoutent l'heure actuelle (`actuel`, quand le jour ne change pas) et
     le début imposé du besoin : une séance imposée hors grille (un DST à 8 h)
     reste modifiable sans perdre son heure.
     """
@@ -1000,7 +1000,7 @@ def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
         bilan = recalculer_seances_datees(session, version_id)
     except (raccords.ErreurRaccordIndisponible, ErreurRegleMetier) as erreur:
         # Une version importée, ou l'instanciation qui refuse : la semaine type est
-        # enregistrée, ses séances datées restent telles quelles, et on le dit.
+        # enregistrée, ses séances datées restent telles quelles, et la remarque le dit.
         return [
             "Les séances datées de cette version n'ont pas été recalculées : "
             + _minuscule(erreur.message)
