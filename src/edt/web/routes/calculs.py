@@ -417,18 +417,25 @@ def activer(request: Request, session: SessionRequete, version_id: int, taches: 
 
 
 @routeur.post("/versions/{version_id:int}/supprimer", name="supprimer_version")
-def supprimer(request: Request, session: SessionRequete, version_id: int):
+def supprimer(
+    request: Request,
+    session: SessionRequete,
+    version_id: int,
+    semestre_id: EntierFacultatif = None,
+):
     """Supprime une version qui n'est pas active (après confirmation dans la page).
 
     Une version qui n'existe pas ou plus (double clic, second onglet) mène à l'historique avec un
-    message d'information, jamais à une page d'erreur : le résultat voulu est atteint.
+    message d'information, jamais à une page d'erreur : le résultat voulu est atteint. Le
+    semestre de la page d'origine (`semestre_id`, dans l'adresse du formulaire) y est gardé.
     """
     try:
         semestre_id = versions.lire_version(session, version_id).semestre_id
     except ErreurIntrouvable:
         journal.info("Suppression de la version %s : elle n'existe pas ou plus", version_id)
+        historique = "/versions" if semestre_id is None else f"/versions?semestre_id={semestre_id}"
         return rediriger(
-            request, "/versions", "Cette version n'existe plus : elle a déjà été supprimée.", "info"
+            request, historique, "Cette version n'existe plus : elle a déjà été supprimée.", "info"
         )
     libelle = versions.supprimer_version(session, version_id)
     return rediriger(request, f"/versions?semestre_id={semestre_id}", f"« {libelle} » supprimée.")

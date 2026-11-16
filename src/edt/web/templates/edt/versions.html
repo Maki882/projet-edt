@@ -46,7 +46,7 @@
             <form class="en-ligne" method="post" action="/versions/{{ v.id }}/activer">
               <button type="submit" class="bouton">Rendre active</button>
             </form>
-            {{ ui.bouton_suppression("/versions/" ~ v.id ~ "/supprimer", confirmation="Supprimer définitivement « " ~ v.libelle ~ " » et toutes ses séances ?") }}
+            {{ ui.bouton_suppression("/versions/" ~ v.id ~ "/supprimer?semestre_id=" ~ historique.semestre.id, confirmation="Supprimer définitivement « " ~ v.libelle ~ " » et toutes ses séances ?") }}
             {%- endif %}
           </td>
         </tr>

@@ -389,13 +389,16 @@ def test_double_clic_sur_supprimer_une_version(version_generee, client):
         generation.lancer_calcul(version_generee.semestre_id), DELAI
     )
     client.post(f"/versions/{version_generee.version_id}/activer")
-    reponses = [
-        client.post(f"/versions/{second.version_id}/supprimer", follow_redirects=False)
-        for _ in range(2)
-    ]
+    historique = f"/versions?semestre_id={version_generee.semestre_id}"
+    # L'adresse du formulaire, telle que la page de l'historique la donne.
+    (action,) = re.findall(
+        rf'action="(/versions/{second.version_id}/supprimer[^"]*)"', client.get(historique).text
+    )
+    reponses = [client.post(html.unescape(action), follow_redirects=False) for _ in range(2)]
     assert [r.status_code for r in reponses] == [303, 303]
-    assert reponses[1].headers["location"] == "/versions"
-    page = client.get("/versions")
+    # Le second envoi revient à l'historique du même semestre, pas au semestre par défaut.
+    assert reponses[1].headers["location"] == historique
+    page = client.get(historique)
     assert page.status_code == 200 and "déjà été supprimée" in page.text
 
 
