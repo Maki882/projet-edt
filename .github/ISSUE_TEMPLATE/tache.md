@@ -1,6 +1,6 @@
 ---
 name: Tâche
-about: Une fonctionnalité, une contrainte à implémenter ou un bug
+about: Une fonctionnalité, une règle à implémenter ou un défaut à corriger
 title: ""
 labels: ""
 assignees: ""
@@ -8,16 +8,16 @@ assignees: ""
 
 ## Objectif
 
-<!-- Ce qu'on veut obtenir, en une ou deux phrases. -->
+<!-- Ce qu'il faut obtenir, en une ou deux phrases. -->
 
-## Niveau d'utilité
+## Classement
 
-<!-- obligatoire / utile / optionnelle (classement demandé par le professeur) -->
+<!-- obligatoire, utile ou optionnelle (classement du livret 1, docs/livrets/1-specifications-fonctionnelles.md) -->
 
 ## Détails
 
-<!-- Contraintes concernées, cas limites, référence à docs/spec.md. -->
+<!-- Règles concernées, cas limites, documents de docs/ à consulter. -->
 
 ## Critère de réussite
 
-<!-- Comment on saura que c'est terminé (test, comportement observable). -->
+<!-- Comment savoir que c'est terminé : test, comportement observable. -->
