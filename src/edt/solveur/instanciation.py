@@ -217,7 +217,7 @@ def instancier(
             0 <= placement.jour <= 6 and 0 <= placement.debut < placement.fin <= MINUTES_PAR_JOUR
         ):
             raise ErreurDonneesInvalides(
-                f"Le placement de la séance {seance.id} (« {seance.besoin.libelle} ») est "
+                f"Le placement de la séance « {seance.besoin.libelle} » n° {seance.rang} est "
                 f"incohérent : jour {placement.jour}, de {placement.debut} à {placement.fin} "
                 "minutes. Corriger la semaine type avant de produire les séances datées."
             )

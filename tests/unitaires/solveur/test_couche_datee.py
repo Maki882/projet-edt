@@ -247,7 +247,7 @@ def test_placement_hors_bornes_refuse_en_nommant_la_seance():
         Placement("1-1", LUNDI, 23 * H, 25 * H, 1),
         Placement("1-1", LUNDI, C2, C2, 1),
     ):
-        with pytest.raises(ErreurDonneesInvalides, match="séance 1-1"):
+        with pytest.raises(ErreurDonneesInvalides, match="» n° 1 est incohérent"):
             instancier(instantane, [placement])
 
 

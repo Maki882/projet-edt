@@ -187,8 +187,8 @@ def test_seance_sans_salle_compatible_dit_quelle_exigence_elimine_les_salles():
     )
     (erreur,) = erreurs(pre_verifier(f.instantane()))
     assert erreur.code in (C.CAPACITE, C.EQUIPEMENT)
-    assert "« TP » (séance 1-1) : aucune salle ne convient" in erreur.message
-    assert "Sur 2 salle(s) : 1 d'au moins 45 places" in erreur.message
+    assert "« TP » : aucune salle ne convient" in erreur.message
+    assert "Sur 2 salles : 1 d'au moins 45 places" in erreur.message
     assert "1 équipées de tout le matériel requis" in erreur.message
     assert "aucune ne réunit toutes ces exigences" in erreur.message
     assert erreur.message.endswith(

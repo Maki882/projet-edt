@@ -976,8 +976,8 @@ def blocs_de_la_grille(instantane: Instantane) -> list[tuple[int, int, int]]:
 
 
 def nom_seance(seance: SeanceAPlacer) -> str:
-    """Désignation lisible d'une séance : « libellé du besoin » (séance 12-1)."""
-    return f"« {seance.besoin.libelle} » (séance {seance.id})"
+    """Désignation lisible d'une séance : « libellé du besoin » (séance n° 2 de la semaine)."""
+    return f"« {seance.besoin.libelle} » (séance n° {seance.rang} de la semaine)"
 
 
 def nom_creneau(jour: int, debut: int, fin: int) -> str:

@@ -203,13 +203,13 @@ class Preparation:
             if domaine.probleme is not None:
                 code, message = domaine.probleme
                 besoin = instantane.besoin(besoin_id)
-                pluriel = "s" if len(domaine.seances) > 1 else ""
+                nombre = len(domaine.seances)
+                combien = f" ({nombre} séances par semaine)" if nombre > 1 else ""
                 self.anomalies.append(
                     Anomalie(
                         code,
                         Gravite.ERREUR,
-                        f"« {besoin.libelle} » (séance{pluriel} {enumerer(domaine.seances)}) : "
-                        f"{message}",
+                        f"« {besoin.libelle} »{combien} : {message}",
                         seances=tuple(domaine.seances),
                         groupes=tuple(sorted(besoin.groupes)),
                         besoins=(besoin_id,),
@@ -299,8 +299,14 @@ class Preparation:
                 debuts=debuts,
                 probleme=(
                     C.DISPO_SALLE,
-                    f"aucune salle n'est libre : les {len(compatibles.salles)} salle(s) qui "
-                    "conviennent sont indisponibles à tous les horaires possibles de la séance. "
+                    "aucune salle n'est libre : "
+                    + (
+                        "la seule salle qui convient est indisponible"
+                        if len(compatibles.salles) == 1
+                        else f"les {len(compatibles.salles)} salles qui conviennent sont "
+                        "indisponibles"
+                    )
+                    + " à tous les horaires possibles de la séance. "
                     "Revoir les indisponibilités de ces salles ou ajouter une salle qui convient.",
                 ),
             )
@@ -579,10 +585,15 @@ class Preparation:
         details = enumerer(
             (f"{nombre} par {raison}" for (_, raison), nombre in elimines.items()), maximum=6
         )
+        debuts = (
+            "l'heure de début examinée est écartée"
+            if examines == 1
+            else f"les {examines} heures de début examinées sont toutes écartées"
+        )
         return (
             code,
-            f"aucun horaire possible : {examines} début(s) examiné(s), tous écartés ({details}). "
-            "Lever ou assouplir l'une de ces causes.",
+            f"aucun horaire possible : {debuts}, {details}. Lever ou assouplir l'une de ces "
+            "causes.",
         )
 
     def _probleme_de_salles(self, besoin: Besoin) -> tuple[CodeContrainte, str]:
@@ -607,7 +618,8 @@ class Preparation:
             conclusion = f"l'exigence « {CATALOGUE[pire.code].libelle} » élimine toutes les salles"
         return (
             pire.code,
-            f"aucune salle ne convient. Sur {total} salle(s) : {details} ; {conclusion}. "
+            f"aucune salle ne convient. Sur {total} salle{'s' if total > 1 else ''} : {details} ; "
+            f"{conclusion}. "
             "Ajouter une salle qui convient ou revoir les exigences du besoin.",
         )
 
@@ -923,8 +935,8 @@ class Preparation:
                                 codes[0],
                                 Gravite.ERREUR,
                                 f"« {a.besoin.libelle} » impose le même jour et la même heure "
-                                f"({nom_creneau(jour, debut_a, fin_a)}) à ses séances "
-                                f"{a.seance.id} et {b.seance.id}, qui ne peuvent pas avoir lieu "
+                                f"({nom_creneau(jour, debut_a, fin_a)}) à ses séances n° "
+                                f"{a.seance.rang} et {b.seance.rang}, qui ne peuvent pas avoir lieu "
                                 f"en même temps ({violees}). Réduire le nombre de séances par "
                                 "semaine ou retirer le jour ou l'heure imposés.",
                                 **cibles,
