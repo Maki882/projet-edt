@@ -1,4 +1,6 @@
 {# Erreur renvoyée à une requête HTMX : un simple message, affiché dans la zone #messages. #}
 {% import "macros.html" as ui %}
-{% set lignes = (details|list) + (["Référence de l'incident : " ~ id_requete] if id_requete else []) %}
+{#- La référence retrouve la requête dans le journal ; « incident » seulement pour une panne. #}
+{% set libelle = "Référence de l'incident : " if statut|default(500) >= 500 else "Référence : " %}
+{% set lignes = (details|list) + ([libelle ~ id_requete] if id_requete else []) %}
 {{ ui.message(titre ~ " : " ~ message, "erreur", lignes) }}

@@ -47,6 +47,7 @@ from edt import __version__
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import duree_vers_texte, minutes_vers_texte
 from edt.journal import contexte_requete
+from edt.web.menu import onglet_actif
 
 journal = logging.getLogger(__name__)
 
@@ -99,7 +100,7 @@ gabarits.env.filters.update(
     date_fr=_date_fr,
     dateheure_fr=_dateheure_fr,
 )
-gabarits.env.globals.update(version_application=__version__, JOURS=JOURS)
+gabarits.env.globals.update(version_application=__version__, JOURS=JOURS, onglet_actif=onglet_actif)
 
 
 def precompiler_gabarits() -> int:

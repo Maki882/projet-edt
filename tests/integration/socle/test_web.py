@@ -117,6 +117,8 @@ def test_accueil_reste_lisible_sans_base_initialisee(environnement):
     reponse = client.get("/")
     assert reponse.status_code == 200
     assert "pas encore initialisée" in reponse.text
+    # Le chargement d'un établissement fictif initialise la base : proposé à côté d'init-db.
+    assert '<a href="/jeux">charger un établissement fictif</a> (la base est préparée' in reponse.text
 
     sante = client.get("/sante")
     assert sante.status_code == 503
@@ -181,7 +183,24 @@ def test_erreur_rendue_en_fragment_pour_htmx_et_en_json(client_etendu):
 def test_page_inconnue(client):
     reponse = client.get("/n-existe-pas")
     assert reponse.status_code == 404
-    assert "Page introuvable" in reponse.text
+    assert "Page introuvable" in reponse.text and "Vérifier l&#39;adresse" in reponse.text
+    # La référence reste, pour le diagnostic, sans parler d'incident pour une simple erreur.
+    assert f"Référence : <code>{reponse.headers['X-Request-ID']}</code>" in reponse.text
+    assert "Référence de l&#39;incident" not in reponse.text
+
+
+def test_pied_de_page_sans_reference_de_requete(jeu_minimal, client):
+    reponse = client.get("/")
+    pied = reponse.text.split('<footer class="pied">', 1)[1].split("</footer>", 1)[0]
+    assert "requête" not in pied and reponse.headers["X-Request-ID"] not in reponse.text
+
+
+def test_saisie_invalide_nomme_le_champ_sans_nom_technique(jeu_minimal, client):
+    reponse = client.get("/emploi-du-temps", params={"version_id": "abc"})
+    assert reponse.status_code == 422
+    assert "Version : valeur manquante ou invalide" in reponse.text
+    assert "version_id" not in reponse.text.split("<main", 1)[1]
+    assert "Revenir à la page précédente et recommencer." in reponse.text
 
 
 def test_module_de_routes_decouvert_avec_son_menu(client_etendu):

@@ -91,6 +91,19 @@ TITRE_HTTP_AUTRE = (
     "précédente et réessayer.",
 )
 
+NOMS_DE_CHAMPS = {
+    "version_id": "Version",
+    "semestre_id": "Semestre",
+    "calcul_id": "Calcul",
+    "groupe_id": "Groupe",
+    "enseignant_id": "Enseignant",
+    "salle_id": "Salle",
+    "date": "Date",
+    "jour": "Jour",
+    "debut": "Heure de début",
+}
+"""Libellé affiché d'un champ refusé par la validation ; un champ absent n'est pas cité."""
+
 ERREURS_DE_PROGRAMMATION = (ProgrammingError, InternalError, NotSupportedError)
 """Erreurs du pilote qui révèlent un défaut du code, pas une panne de la base : page 500."""
 
@@ -153,19 +166,23 @@ async def _erreur_http(request: Request, erreur: ErreurHTTP) -> Response:
 
 
 async def _saisie_invalide(request: Request, erreur: RequestValidationError) -> Response:
+    """Saisie refusée avant la route : les champs connus sont nommés par leur libellé
+    (`NOMS_DE_CHAMPS`), jamais par leur nom technique ; le journal garde le détail brut."""
     details = []
     for anomalie in erreur.errors():
-        champ = " / ".join(str(e) for e in anomalie.get("loc", ()) if e not in ("body", "query"))
-        details.append(f"{champ or 'formulaire'} : valeur manquante ou invalide")
+        for element in anomalie.get("loc", ()):
+            nom = NOMS_DE_CHAMPS.get(str(element))
+            ligne = f"{nom} : valeur manquante ou invalide"
+            if nom and ligne not in details:
+                details.append(ligne)
+    details.append("Revenir à la page précédente et recommencer.")
     journal.warning("Saisie invalide sur %s : %s", request.url.path, erreur.errors())
     return reponse_erreur(
         request,
         statut=422,
         titre="Saisie invalide",
         message=(
-            "Certaines valeurs envoyées sont manquantes ou invalides : rien n'a été "
-            "enregistré. Revenir au formulaire, corriger les champs cités ci-dessous, puis "
-            "renvoyer."
+            "Certaines valeurs envoyées sont manquantes ou invalides : rien n'a été enregistré."
         ),
         details=details,
     )
