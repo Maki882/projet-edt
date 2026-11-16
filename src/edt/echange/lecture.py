@@ -52,6 +52,7 @@ import zipfile
 import zlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
 
 from edt.domaine.enumerations import Gravite
@@ -180,6 +181,45 @@ def nature_fichier(fichier: FichierEnvoye) -> str:
     return "csv"
 
 
+EXTENSIONS_TEXTE = ("", ".csv", ".txt", ".tsv")
+"""Extensions lues comme un tableau CSV (sans extension : le contenu décide)."""
+
+FORMATS_ACCEPTES = (
+    "Formats acceptés : CSV (.csv, .txt, .tsv), classeur Excel (.xlsx), archive ZIP de "
+    "fichiers CSV, agenda iCal (.ics)."
+)
+
+
+def _format_refuse(fichier: FichierEnvoye, nature: str) -> str | None:
+    """Pourquoi le fichier n'est pas d'un format lisible ici, ou `None` s'il l'est.
+
+    Un fichier d'un autre format (image, PDF, document Word) serait sinon lu
+    comme un CSV et finirait en « encodage illisible » ou « tableau non
+    reconnu », messages qui n'aident pas à comprendre l'erreur.
+    """
+    extension = PurePosixPath(fichier.nom.replace("\\", "/")).suffix.lower()
+    if nature == "csv" and extension in (".xlsx", ".xlsm"):
+        return (
+            f"« {fichier.nom} » porte l'extension {extension} mais n'est pas un classeur Excel "
+            "valide (fichier abîmé, ou fichier d'un autre format renommé). L'ouvrir dans un "
+            "tableur, puis l'enregistrer au format .xlsx ou .csv."
+        )
+    if nature == "csv" and extension == ".zip":
+        return f"« {fichier.nom} » n'est pas une archive ZIP valide (fichier abîmé ou incomplet)."
+    if nature == "csv" and (extension not in EXTENSIONS_TEXTE or _binaire(fichier.contenu)):
+        return f"« {fichier.nom} » n'est pas un fichier de données lisible ici. {FORMATS_ACCEPTES}"
+    if nature == "zip" and extension not in ("", ".zip"):
+        # Document Word, OpenDocument, archive Java : des archives qui ne sont pas des données.
+        return f"« {fichier.nom} » n'est pas un fichier de données lisible ici. {FORMATS_ACCEPTES}"
+    return None
+
+
+def _binaire(contenu: bytes) -> bool:
+    """Vrai si le début du fichier contient un octet nul hors d'un texte UTF-16 annoncé."""
+    debut = contenu[:4096]
+    return b"\x00" in debut and not debut.startswith((b"\xff\xfe", b"\xfe\xff"))
+
+
 def lire_fichier(
     fichier: FichierEnvoye, limites: Limites | None = None
 ) -> tuple[FichierLu, list[Signalement]]:
@@ -193,6 +233,10 @@ def lire_fichier(
     signalements: list[Signalement] = []
     if not fichier.contenu.strip():
         signalements.append(_erreur(fichier.nom, "Fichier vide : rien à importer."))
+        return FichierLu(fichier.nom), signalements
+    if (refus := _format_refuse(fichier, nature)) is not None:
+        journal.info("Fichier %s refusé : format non pris en charge (%s)", fichier.nom, nature)
+        signalements.append(_erreur(fichier.nom, refus))
         return FichierLu(fichier.nom), signalements
     if nature == "xls":
         signalements.append(

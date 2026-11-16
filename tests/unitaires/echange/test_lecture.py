@@ -286,6 +286,39 @@ def test_agenda_ical_dans_une_archive_ignore_avec_le_bon_conseil():
     assert erreur.fichier == "donnees.zip/agenda.ics" and "s'envoie à part" in erreur.message
 
 
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("nom", "contenu", "attendu"),
+    [
+        ("image.png", b"\x89PNG\r\n\x1a\n" + bytes(range(256)), "Formats acceptés"),
+        ("document.pdf", b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n" + bytes(range(256)), "Formats acceptés"),
+        ("programme", b"MZ\x90\x00" + bytes(300), "Formats acceptés"),
+        ("faux.xlsx", b"ceci n'est pas un classeur", "n'est pas un classeur Excel valide"),
+        ("coupee.zip", b"debut d'une archive perdue", "n'est pas une archive ZIP valide"),
+    ],
+    ids=["image", "pdf", "binaire-sans-extension", "xlsx-renomme", "zip-abime"],
+)
+def test_fichier_d_un_autre_format_refuse_avec_les_formats_acceptes(nom, contenu, attendu):
+    """Cas : une image, un PDF, un programme, un texte renommé en .xlsx, une archive abîmée.
+
+    Risque : le fichier lu comme un CSV : « Encodage illisible : l'enregistrer en CSV UTF-8 »
+    ou « Tableau non reconnu », conseils faux qui n'expliquent pas l'erreur.
+    """
+    tableaux, signalements = _lire(nom, contenu)
+    assert not tableaux
+    erreur = seul(signalements, Gravite.ERREUR)
+    assert attendu in erreur.message and f"« {nom} »" in erreur.message
+    assert "Encodage" not in erreur.message
+
+
+def test_document_word_refuse_comme_autre_format():
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as archive:
+        archive.writestr("word/document.xml", "<w:document/>")
+    tableaux, signalements = _lire("lettre.docx", tampon.getvalue())
+    assert not tableaux and "Formats acceptés" in seul(signalements, Gravite.ERREUR).message
+
+
 def test_ancien_format_excel_refuse_clairement():
     tableaux, signalements = _lire("vieux.xls", b"\xd0\xcf\x11\xe0" + b"\x00" * 100)
     assert not tableaux and ".xlsx" in signalements[0].message

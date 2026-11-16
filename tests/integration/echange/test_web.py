@@ -100,6 +100,25 @@ def test_tout_remplacer_demande_confirmation(jeu_minimal, client, fichier_exempl
     assert compter(m.Salle) == 0  # les salles du fichier visent un campus supprimé : rejetées
 
 
+@pytest.mark.cas_limite
+def test_simulation_d_une_image_sans_bouton_appliquer(base, client):
+    """Cas : une image envoyée à l'import, puis simulée.
+
+    Risque : page d'erreur brute ; ou bouton « Appliquer l'import » proposé alors que rien
+    ne serait écrit, et compte rendu « 0 ligne(s) non importée(s), 1 erreur(s) ».
+    """
+    envoi = {
+        "files": [("fichiers", ("photo.png", b"\x89PNG\r\n\x1a\n" + bytes(300), "image/png"))],
+        "data": {"mode": "donnees"},
+    }
+    reponse = client.post("/import/simuler", headers=HTMX, **envoi)
+    assert reponse.status_code == 200
+    texte = html.unescape(reponse.text)
+    assert "« photo.png » n'est pas un fichier de données lisible ici" in texte
+    assert "Rien à appliquer" in texte and "Appliquer l'import" not in texte
+    assert "0 ligne(s)" not in texte and "1 erreur(s)" in texte
+
+
 def test_envoi_sans_fichier_ou_trop_gros(base, client):
     vide = client.post("/import/simuler", data={"mode": "donnees"})
     assert vide.status_code == 422 and "Aucun fichier" in vide.text

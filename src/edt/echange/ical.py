@@ -169,7 +169,12 @@ def lire_ical(
     try:
         calendrier = Calendar.from_ical(texte)
     except ValueError as erreur:
-        return [], [Signalement(Gravite.ERREUR, f"Fichier iCal illisible ({erreur}).", fichier=nom)]
+        journal.info("Fichier iCal %s illisible : %s", nom, erreur)
+        message = (
+            "Fichier iCal illisible : ce n'est pas un agenda au format iCal valide. L'exporter "
+            f"de nouveau depuis le logiciel d'agenda (détail technique : {erreur})."
+        )
+        return [], [Signalement(Gravite.ERREUR, message, fichier=nom)]
     debuts = [
         numero
         for numero, ligne in enumerate(texte.splitlines(), start=1)

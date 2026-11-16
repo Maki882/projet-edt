@@ -1418,7 +1418,8 @@ def importer_tableaux(
                 Signalement(
                     Gravite.ERREUR,
                     f"Tableau « {tableau.nom} » non reconnu : nommer l'onglet ou le fichier comme "
-                    f"une feuille du format ({', '.join(f.nom for f in FEUILLES)}). "
+                    f"une feuille du format ({', '.join(f.nom for f in FEUILLES)}), ou partir "
+                    "du gabarit vide (Données > Export). "
                     f"{len(tableau.lignes)} ligne(s) non importée(s).",
                     tableau.fichier,
                     tableau.nom,
