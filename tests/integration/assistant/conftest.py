@@ -6,6 +6,8 @@
 import pytest
 from tests.outils.assistant.fixtures import (  # noqa: F401
     cle_factice,
+    faux_client,
+    jour_fige,
     sans_cle,
     version_minimale,
 )

@@ -299,9 +299,9 @@ def derouler(
             reponse = client.with_options(timeout=delai, max_retries=reprises).beta.messages.create(
                 **parametres_requete(messages, config, jetons_sortie=jetons_sortie)
             )
-        except Exception as erreur:  # traduite par _issue_de, qui relance ce qui n'est pas du SDK
+        except Exception as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
             budget.annuler(reservation)
-            issue = _issue_de(erreur, delai)
+            issue = issue_de(erreur, delai)
             if issue in PAUSES_S:
                 _mettre_en_pause(issue)
             return _echec(resultat, issue)
@@ -396,7 +396,7 @@ def _echec(resultat: ResultatBoucle, issue: Issue, *, message: str | None = None
     return resultat
 
 
-def _issue_de(erreur: Exception, delai: float) -> Issue:
+def issue_de(erreur: Exception, delai: float) -> Issue:
     """Issue d'une exception du SDK, de la plus précise à la plus générale ; relance les autres."""
     import anthropic
 
