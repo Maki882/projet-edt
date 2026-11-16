@@ -1,4 +1,4 @@
-"""Règles entre deux séances : SALLE_UNIQUE, ENSEIGNANT_UNIQUE, GROUPE_UNIQUE, PAUSE, CAMPUS_TRAJET.
+"""Règles entre deux séances : salle, enseignant, groupe, pause, trajet entre campus.
 
 La première partie couvre les scénarios classiques de chevauchement,
 transposés à l'instantané : ressources distinctes, chaque ressource en conflit, jours

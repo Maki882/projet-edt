@@ -1,4 +1,4 @@
-"""Bornes contre les fichiers hostiles (site public) et corrections de la revue d'ensemble.
+"""Bornes contre les fichiers hostiles : archive bombe, fichier trop long.
 
 Chaque constat bloquant est reproduit (archive bombe, fichier trop long,
 page qui gèle le serveur) et le refus propre est vérifié.

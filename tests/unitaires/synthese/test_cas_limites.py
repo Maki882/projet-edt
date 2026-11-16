@@ -1,4 +1,4 @@
-"""Banque des cas limites du générateur de jeux fictifs (`edt.synthese`).
+"""Entrées refusées lisiblement et avant toute écriture.
 
 Règles que ces tests figent :
 

@@ -1,4 +1,4 @@
-"""VOLUME, VERROU, MAX_ENSEIGNANT et choix des contraintes vérifiées (semaine type)."""
+"""Volume, verrous, maxima horaires, choix des contraintes vérifiées."""
 
 from __future__ import annotations
 

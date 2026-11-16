@@ -1,4 +1,4 @@
-"""Commande `python -m edt verifier` sur le jeu minimal (base SQLite temporaire), lancée par `CliRunner`.
+"""Commande `verifier` lancée par `CliRunner` : codes de sortie, options.
 
 `version_sans_occurrences` vient de `tests/outils/verification/fixtures.py` (par `conftest.py`).
 """

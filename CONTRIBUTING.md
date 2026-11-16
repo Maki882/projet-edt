@@ -120,6 +120,12 @@ python -m ruff format --check .
   `tests/outils/<composant>/`. `tests/test_rangement.py` vérifie ce
   classement ; la règle complète est dans [tests/README.md](tests/README.md).
   Ajoutez de préférence un test à un fichier existant.
+  Un nouveau fichier de tests commence par une docstring de module dont la
+  première phrase dit ce qu'il vérifie. Après l'ajout ou le retrait d'un
+  test, `python -m tests.outils.classement --ecrire` met à jour les nombres
+  et les tableaux de `tests/README.md`, `tests/unitaires/README.md` et
+  `tests/integration/README.md` ; `tests/test_rangement.py` échoue tant
+  qu'ils ne sont pas à jour.
 - **Un test appelle le vrai code et doit pouvoir échouer** : avant de le
   garder, cassez volontairement le code qu'il protège et constatez qu'il
   passe au rouge.

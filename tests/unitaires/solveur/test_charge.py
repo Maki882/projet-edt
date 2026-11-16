@@ -1,4 +1,4 @@
-"""Essais de charge (marqués `perf`) : toujours avec deux fils de calcul, comme le serveur.
+"""Durées de calcul sur des instantanés générés et les jeux moyen et grand (`perf`).
 
 - instantanés générés (`tests/outils/solveur/generateur.py`) : 200 séances en moins
   de 30 s, 800 séances en moins de 120 s ;

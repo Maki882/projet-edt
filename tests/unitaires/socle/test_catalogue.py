@@ -1,4 +1,5 @@
-"""Catalogue des cas limites de `docs/banque-de-tests.md` (générateur `tests.outils.catalogue`).
+"""Catalogue des cas limites de `docs/banque-de-tests.md` : document à jour, « Cas » et « Risque »
+de chaque cas limite, générateur.
 
 Trois contrôles :
 

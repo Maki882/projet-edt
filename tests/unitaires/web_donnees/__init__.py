@@ -1,1 +1,4 @@
-"""Tests unitaires de l'espace « Données » et de la mise en page commune."""
+"""Services des écrans de données.
+
+Espace « Données » et mise en page commune, sans client web.
+"""

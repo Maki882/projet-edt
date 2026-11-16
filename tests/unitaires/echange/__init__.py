@@ -1,1 +1,4 @@
-"""Tests unitaires du lot « import et export » : modules exercés par leurs fonctions Python."""
+"""Import et export.
+
+Modules d'import et d'export (`edt.echange`) exercés par leurs fonctions Python.
+"""

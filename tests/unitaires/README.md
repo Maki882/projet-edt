@@ -6,10 +6,9 @@ aucun autre processus, et n'enchaîne pas le calcul complet par le service de
 génération. Il peut utiliser une base SQLite temporaire. Le solveur appelé
 directement sur des données en mémoire reste unitaire.
 
-Ce dossier compte **867 fonctions de test, soit 1 187 cas collectés** (une
-fonction paramétrée donne plusieurs cas), dont 347 cas limites et 24 tests de
-charge. La règle complète, la vue d'ensemble et les tests d'intégration sont
-décrits dans [`tests/README.md`](../README.md) et
+Les nombres de tests et le détail par fichier sont en section 3. La règle
+complète, la vue d'ensemble et les tests d'intégration sont décrits dans
+[`tests/README.md`](../README.md) et
 [`tests/integration/README.md`](../integration/README.md).
 
 ## 1. Ce qu'un test unitaire met en jeu
@@ -36,145 +35,150 @@ jeu : un échec désigne donc directement le module fautif.
 
 ```mermaid
 flowchart TD
-    U["tests/unitaires : 1 187 cas"]
-    U --> S["socle : domaine, base, configuration, journaux - 323 cas"]
-    U --> SO["solveur : contraintes CP-SAT, moteur, séances datées - 207 cas"]
-    U --> V["verification : règles du vérificateur, indicateurs - 271 cas"]
-    U --> E["echange : lecture, import, export, iCal - 206 cas"]
-    U --> SY["synthese : jeux de données fictives, témoin - 93 cas"]
-    U --> X["exploitation : scripts, systemd, nginx - 57 cas"]
-    U --> W["web_donnees et web_edt : fonctions pures des écrans - 30 cas"]
+    U["tests/unitaires"]
+    U --> S["socle : domaine, base, configuration, journaux"]
+    U --> SO["solveur : contraintes CP-SAT, moteur, séances datées"]
+    U --> V["verification : règles du vérificateur, indicateurs"]
+    U --> E["echange : lecture, import, export, iCal"]
+    U --> SY["synthese : jeux de données fictives, témoin"]
+    U --> X["exploitation : scripts, systemd, nginx"]
+    U --> W["web_donnees et web_edt : fonctions pures des écrans"]
 ```
 
 ## 3. Ce que vérifie chaque fichier
 
-Nombres mesurés sur le dépôt. « Fonctions » compte les fonctions `test_*` du
-fichier, « Cas » les tests collectés par pytest. Recalculer :
+Nombres de fonctions de test (`test_*`), comptés dans le code : une fonction
+paramétrée compte une fois. La description d'un fichier est la première
+phrase de la docstring de son module. Cette section est produite par
+`python -m tests.outils.classement --ecrire` (voir [`tests/README.md`](../README.md), section 3) ; le nombre
+de cas collectés par pytest s'obtient par
+`python -m pytest --collect-only -q tests/unitaires`.
 
-```sh
-python -m tests.outils.classement                    # fonctions par composant
-python -m pytest --collect-only -q tests/unitaires   # cas, fichier par fichier
-```
+<!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-### `socle/` : Domaine, base et services transverses (190 fonctions, 323 cas)
+Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquées `cas_limite` et 19 marquées `perf`.
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`socle/test_base.py`](socle/test_base.py) | initialisation de la base, unicités, règles de suppression, normalisation des codes | 14 | 32 |
-| [`socle/test_calendrier.py`](socle/test_calendrier.py) | Pâques, jours fériés, semaines d'une période, conversions d'heures | 8 | 16 |
-| [`socle/test_catalogue.py`](socle/test_catalogue.py) | catalogue des cas limites de `docs/banque-de-tests.md` : document à jour, « Cas » et « Risque » de chaque cas limite, générateur | 7 | 7 |
-| [`socle/test_charge.py`](socle/test_charge.py) | chargement rapide de l'instantané d'un établissement complet (`perf`) | 1 | 1 |
-| [`socle/test_cli.py`](socle/test_cli.py) | fonctions du module de commandes appelées directement : extension refusée, point d'entrée, sorties UTF-8 | 4 | 4 |
-| [`socle/test_config.py`](socle/test_config.py) | variables `EDT_*` invalides refusées, valeurs vides ramenées au défaut | 2 | 11 |
-| [`socle/test_conflits_groupes.py`](socle/test_conflits_groupes.py) | conflits entre groupes : hiérarchie, chevauchement déclaré, étudiant commun | 6 | 6 |
-| [`socle/test_contrats.py`](socle/test_contrats.py) | contrats partagés entre catalogue des contraintes, vérificateur, solveur et paramètres | 10 | 10 |
-| [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | pause déjeuner : trois modes, validation, lecture d'une ancienne base | 14 | 16 |
-| [`socle/test_depliage.py`](socle/test_depliage.py) | dépliage des besoins en séances hebdomadaires (trois modes de volume) | 12 | 12 |
-| [`socle/test_instantane.py`](socle/test_instantane.py) | chargement de l'instantané d'un semestre depuis la base | 11 | 18 |
-| [`socle/test_jeux.py`](socle/test_jeux.py) | jeux fictifs et remise à zéro : panne, schéma périmé, verrou entre processus | 8 | 9 |
-| [`socle/test_journal.py`](socle/test_journal.py) | journalisation : fichier non ouvrable, rotation, purge des journaux de calcul | 4 | 4 |
-| [`socle/test_moteur.py`](socle/test_moteur.py) | moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 9 | 13 |
-| [`socle/test_niveaux.py`](socle/test_niveaux.py) | niveaux des contraintes (nécessaire, important, facultatif) dans le catalogue | 7 | 13 |
-| [`socle/test_parametres.py`](socle/test_parametres.py) | un paramètre corrompu en base reste réparable | 1 | 1 |
-| [`socle/test_regles.py`](socle/test_regles.py) | règles personnalisées côté domaine : catalogue, validation, phrases, résolution | 31 | 80 |
-| [`socle/test_regles_service.py`](socle/test_regles_service.py) | règles personnalisées côté service : table, chargement, écriture, propositions | 29 | 58 |
-| [`socle/test_schema.py`](socle/test_schema.py) | schéma périmé détecté (colonnes, index, unicités) | 10 | 10 |
-| [`socle/test_web.py`](socle/test_web.py) | fonctions de l'application web appelées directement (module de routes, macros) | 2 | 2 |
+### `echange/` : Import et export (139 fonctions)
 
-### `solveur/` : Solveur CP-SAT et préparation du calcul (188 fonctions, 207 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`echange/test_bornes.py`](echange/test_bornes.py) | Bornes contre les fichiers hostiles : archive bombe, fichier trop long | 22 |
+| [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps importé en mode référence : iCal et CSV datés, relus et réimportés | 4 |
+| [`echange/test_format.py`](echange/test_format.py) | Le format d'échange : gabarit XLSX et ZIP, documentation générée depuis la description | 5 |
+| [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 18 |
+| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 29 |
+| [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 12 |
+| [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 37 |
+| [`echange/test_regles.py`](echange/test_regles.py) | Feuille « regles » du format d'échange : gabarit, import, export, réimport, tout remplacer | 12 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`solveur/test_charge.py`](solveur/test_charge.py) | durées de calcul sur des instantanés générés et les jeux moyen et grand (`perf`) | 7 | 11 |
-| [`solveur/test_contraintes.py`](solveur/test_contraintes.py) | une contrainte, un test : chaque contrainte change l'issue d'un petit problème | 47 | 48 |
-| [`solveur/test_couche_datee.py`](solveur/test_couche_datee.py) | instanciation de la semaine type et replacement des séances empêchées | 16 | 16 |
-| [`solveur/test_dejeuner.py`](solveur/test_dejeuner.py) | pause déjeuner dans le solveur : mode libre borné et mode « aucun » | 11 | 11 |
-| [`solveur/test_moteur.py`](solveur/test_moteur.py) | le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 26 | 36 |
-| [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | circulation des niveaux de règles, des options du calcul jusqu'au suivi | 23 | 26 |
-| [`solveur/test_preverification.py`](solveur/test_preverification.py) | pré-vérifications : impossibilités certaines et situations tendues | 19 | 19 |
-| [`solveur/test_regles.py`](solveur/test_regles.py) | règles personnalisées dans le solveur : interdiction si nécessaire, comptage si souple | 33 | 34 |
-| [`solveur/test_services.py`](solveur/test_services.py) | services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 6 | 6 |
+### `exploitation/` : Exploitation et déploiement (40 fonctions)
 
-### `verification/` : Vérificateur indépendant (231 fonctions, 271 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`exploitation/test_commandes_exploitation.py`](exploitation/test_commandes_exploitation.py) | Contrats de l'application dont dépend le déploiement, vérifiés sans passer par une interface | 2 |
+| [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
+| [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`verification/test_bout_en_bout.py`](verification/test_bout_en_bout.py) | un petit emploi du temps valide écrit à la main ne donne aucune anomalie | 2 | 2 |
-| [`verification/test_commande.py`](verification/test_commande.py) | point d'entrée `cli.main` de la commande `verifier` appelé en Python | 1 | 1 |
-| [`verification/test_datee.py`](verification/test_datee.py) | vérification des séances datées (`verifier_occurrences`) | 23 | 27 |
-| [`verification/test_dejeuner_libre.py`](verification/test_dejeuner_libre.py) | pause déjeuner libre bornée : semaine type et séances datées | 13 | 13 |
-| [`verification/test_disponibilites.py`](verification/test_disponibilites.py) | indisponibilités des enseignants, des salles et des groupes | 9 | 9 |
-| [`verification/test_horaires.py`](verification/test_horaires.py) | règles de temps d'une séance : déjeuner, horaires, jours | 21 | 21 |
-| [`verification/test_indicateurs.py`](verification/test_indicateurs.py) | indicateurs de qualité, comparés à des valeurs calculées à la main | 8 | 8 |
-| [`verification/test_niveaux.py`](verification/test_niveaux.py) | niveaux des contraintes dans le vérificateur pur | 10 | 12 |
-| [`verification/test_paires.py`](verification/test_paires.py) | règles entre deux séances : salle, enseignant, groupe, pause, trajet entre campus | 33 | 44 |
-| [`verification/test_performance.py`](verification/test_performance.py) | vérification d'un établissement d'environ 1 000 séances (`perf`) | 4 | 4 |
-| [`verification/test_regles_emploi.py`](verification/test_regles_emploi.py) | règles personnalisées sur l'emploi du temps d'un jour ou d'une semaine | 14 | 26 |
-| [`verification/test_regles_personnalisees.py`](verification/test_regles_personnalisees.py) | un vérificateur par type de règle personnalisée | 20 | 23 |
-| [`verification/test_salles.py`](verification/test_salles.py) | règles de salle : accessibilité, capacité, type, équipement | 12 | 12 |
-| [`verification/test_service.py`](verification/test_service.py) | service de vérification sur le jeu minimal (base temporaire) | 16 | 16 |
-| [`verification/test_service_niveaux.py`](verification/test_service_niveaux.py) | niveaux d'un calcul et d'une version et leur usage par le service | 14 | 16 |
-| [`verification/test_service_regles.py`](verification/test_service_regles.py) | règles personnalisées dans les services de vérification | 10 | 14 |
-| [`verification/test_volume_verrou_maxima.py`](verification/test_volume_verrou_maxima.py) | volume, verrous, maxima horaires, choix des contraintes vérifiées | 21 | 23 |
+### `socle/` : Domaine, base et services transverses (202 fonctions)
 
-### `web_donnees/` : Services des écrans de données (11 fonctions, 11 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`socle/test_base.py`](socle/test_base.py) | Initialisation de la base, unicités et règles de suppression | 15 |
+| [`socle/test_calendrier.py`](socle/test_calendrier.py) | Calendrier (Pâques, fériés, semaines) et conversions d'heures | 8 |
+| [`socle/test_catalogue.py`](socle/test_catalogue.py) | Catalogue des cas limites de `docs/banque-de-tests.md` : document à jour, « Cas » et « Risque » de chaque cas limite, générateur | 7 |
+| [`socle/test_charge.py`](socle/test_charge.py) | Charge : chargement de l'instantané d'un établissement complet (test marqué `perf`) | 1 |
+| [`socle/test_cli.py`](socle/test_cli.py) | Fonctions du module de commandes appelées directement : extension refusée, point d'entrée, sorties UTF-8 | 5 |
+| [`socle/test_config.py`](socle/test_config.py) | Configuration : variables EDT_* invalides refusées, valeurs vides au défaut, doctor | 2 |
+| [`socle/test_conflits_groupes.py`](socle/test_conflits_groupes.py) | Relation de conflit entre groupes : hiérarchie, chevauchement déclaré, étudiant commun | 6 |
+| [`socle/test_contrats.py`](socle/test_contrats.py) | Contrats partagés : catalogue des contraintes, vérificateur, solveur, paramètres | 10 |
+| [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne | 14 |
+| [`socle/test_depliage.py`](socle/test_depliage.py) | Dépliage des besoins en séances hebdomadaires (les trois modes de volume) | 12 |
+| [`socle/test_instantane.py`](socle/test_instantane.py) | Chargement de l'instantané d'un semestre depuis la base | 11 |
+| [`socle/test_jeux.py`](socle/test_jeux.py) | Jeux fictifs et remise à zéro : panne après remise à zéro, schéma périmé, marqueur | 11 |
+| [`socle/test_journal.py`](socle/test_journal.py) | Journalisation : fichier non ouvrable, rotation partagée entre processus, purge des calculs | 6 |
+| [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 9 |
+| [`socle/test_niveaux.py`](socle/test_niveaux.py) | Niveaux des contraintes (nécessaire, important, facultatif) : contrat du catalogue | 7 |
+| [`socle/test_parametres.py`](socle/test_parametres.py) | Un paramètre corrompu en base reste réparable | 1 |
+| [`socle/test_regles.py`](socle/test_regles.py) | Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution | 31 |
+| [`socle/test_regles_service.py`](socle/test_regles_service.py) | Règles personnalisées, côté base et service : table, chargement, écriture, propositions | 29 |
+| [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |
+| [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 5 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`web_donnees/test_besoins.py`](web_donnees/test_besoins.py) | charge hebdomadaire par groupe calculée par le service des enseignements | 2 | 2 |
-| [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | un seul chargement de jeu ou une seule remise à zéro à la fois, sur le service | 1 | 1 |
-| [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | service générique : modification partielle, refus détaillé par champ | 3 | 3 |
-| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | construction du menu à onglets et blocs du gabarit, sans client web | 3 | 3 |
-| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | un entier démesuré passé au service est refusé avec un message | 1 | 1 |
-| [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | conséquences d'une suppression expliquées par le service | 1 | 1 |
+### `solveur/` : Solveur CP-SAT et préparation du calcul (193 fonctions)
 
-### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (19 fonctions, 19 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`solveur/test_charge.py`](solveur/test_charge.py) | Durées de calcul sur des instantanés générés et les jeux moyen et grand (`perf`) | 7 |
+| [`solveur/test_contraintes.py`](solveur/test_contraintes.py) | Une contrainte, un test : chaque contrainte est déterminante sur un petit problème | 48 |
+| [`solveur/test_couche_datee.py`](solveur/test_couche_datee.py) | Couche datée : instanciation de la semaine type, puis replacement des séances empêchées | 16 |
+| [`solveur/test_dejeuner.py`](solveur/test_dejeuner.py) | Pause déjeuner dans le solveur : mode libre borné et mode « aucun » | 11 |
+| [`solveur/test_moteur.py`](solveur/test_moteur.py) | Le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 30 |
+| [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles : des options du calcul jusqu'au suivi et à la commande | 23 |
+| [`solveur/test_preverification.py`](solveur/test_preverification.py) | Pré-vérifications : impossibilités certaines et situations tendues, dites en clair | 19 |
+| [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 6 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | prochaine étape calculée par le tableau de bord | 2 | 2 |
-| [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | bornes des identifiants dans les services des écrans | 1 | 1 |
-| [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | disposition des blocs dans la grille et mises en forme françaises | 9 | 9 |
-| [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | raccords vers les autres composants : absence explicite, rapport, panne journalisée | 6 | 6 |
-| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | présentation d'une anomalie qui ne cite pas de règle | 1 | 1 |
-| [`web_edt/test_anomalies.py`](web_edt/test_anomalies.py) | liste « À traiter » : séances datées qui ne font que répéter la semaine type | 1 | 1 |
-| [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 | 1 |
-| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 | 2 |
-| [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 | 2 |
+### `synthese/` : Générateur de données fictives (59 fonctions)
 
-### `echange/` : Import et export (139 fonctions, 206 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | Entrées refusées lisiblement et avant toute écriture | 22 |
+| [`synthese/test_commande.py`](synthese/test_commande.py) | Service `edt.services.jeux` exercé directement (sans passer par la commande) | 3 |
+| [`synthese/test_generation.py`](synthese/test_generation.py) | Génération des jeux fictifs : configuration, déterminisme, unicités, effectifs, rapport | 10 |
+| [`synthese/test_performance.py`](synthese/test_performance.py) | Durée de génération du jeu « grand » (test de charge, exclu de la CI courante) | 1 |
+| [`synthese/test_realisme.py`](synthese/test_realisme.py) | Présence des cas réalistes demandés, sur le jeu « grand » (le seul qui les couvre tous) | 9 |
+| [`synthese/test_regles.py`](synthese/test_regles.py) | Règles personnalisées des jeux fictifs : présence, phrases, validité, respect par le témoin | 7 |
+| [`synthese/test_temoin.py`](synthese/test_temoin.py) | Le témoin est un emploi du temps valide, aligné sur l'instantané officiel du semestre | 4 |
+| [`synthese/test_verificateur.py`](synthese/test_verificateur.py) | Le témoin de chaque jeu passe le vérificateur officiel sans erreur ni avertissement | 3 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`echange/test_bornes.py`](echange/test_bornes.py) | bornes contre les fichiers hostiles : archive bombe, fichier trop long | 22 | 27 |
-| [`echange/test_export_edt.py`](echange/test_export_edt.py) | export CSV et iCal d'un emploi du temps importé, relu et réimporté | 4 | 4 |
-| [`echange/test_format.py`](echange/test_format.py) | format d'échange : gabarit XLSX et ZIP, documentation générée | 5 | 5 |
-| [`echange/test_ical.py`](echange/test_ical.py) | adaptateur iCal : récurrences, exceptions, changement d'heure | 18 | 36 |
-| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | import des données : aller-retour, import partiel, simulation, réimport | 29 | 31 |
-| [`echange/test_import_edt.py`](echange/test_import_edt.py) | import d'un emploi du temps existant (trois modes) | 12 | 12 |
-| [`echange/test_lecture.py`](echange/test_lecture.py) | lecture tolérante : encodages, séparateurs, dates, heures, classeurs | 37 | 79 |
-| [`echange/test_regles.py`](echange/test_regles.py) | feuille des règles du format d'échange : gabarit, import, export | 12 | 12 |
+### `verification/` : Vérificateur indépendant (235 fonctions)
 
-### `synthese/` : Générateur de données fictives (59 fonctions, 93 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`verification/test_bout_en_bout.py`](verification/test_bout_en_bout.py) | De bout en bout : un petit emploi du temps valide, écrit à la main, ne donne aucune anomalie | 2 |
+| [`verification/test_commande.py`](verification/test_commande.py) | Point d'entrée `cli.main` de la commande `verifier`, appelé en Python sur le jeu minimal | 1 |
+| [`verification/test_datee.py`](verification/test_datee.py) | Vérification des séances datées (`verifier_occurrences`) | 23 |
+| [`verification/test_dejeuner_libre.py`](verification/test_dejeuner_libre.py) | Pause déjeuner « libre bornée » (mode libre de `DEJEUNER`) : semaine type et couche datée | 14 |
+| [`verification/test_disponibilites.py`](verification/test_disponibilites.py) | Indisponibilités des enseignants, des salles et des groupes | 9 |
+| [`verification/test_horaires.py`](verification/test_horaires.py) | Règles de temps d'une séance : DEJEUNER, HORAIRES, JOURS | 21 |
+| [`verification/test_indicateurs.py`](verification/test_indicateurs.py) | Indicateurs : `calculer_indicateurs`, valeurs calculées à la main | 8 |
+| [`verification/test_niveaux.py`](verification/test_niveaux.py) | Niveaux des contraintes dans le vérificateur pur (`niveaux=` de `verifier` et `verifier_occurrences`) | 10 |
+| [`verification/test_paires.py`](verification/test_paires.py) | Règles entre deux séances : salle, enseignant, groupe, pause, trajet entre campus | 33 |
+| [`verification/test_performance.py`](verification/test_performance.py) | Charge : un établissement complet d'environ 1 000 séances hebdomadaires (test marqué `perf`) | 4 |
+| [`verification/test_regles_emploi.py`](verification/test_regles_emploi.py) | Règles personnalisées sur l'emploi du temps par jour ou par semaine, et relations entre séances | 14 |
+| [`verification/test_regles_personnalisees.py`](verification/test_regles_personnalisees.py) | Règles personnalisées (code `REGLE`) : un vérificateur par type | 20 |
+| [`verification/test_salles.py`](verification/test_salles.py) | Règles de salle : accessibilité, capacité, type, équipement | 12 |
+| [`verification/test_service.py`](verification/test_service.py) | Service de vérification sur le jeu minimal (base SQLite temporaire) | 20 |
+| [`verification/test_service_niveaux.py`](verification/test_service_niveaux.py) | Niveaux d'un calcul et d'une version (`edt.services.niveaux`) et leur usage par le service | 14 |
+| [`verification/test_service_regles.py`](verification/test_service_regles.py) | Règles personnalisées dans les services : niveaux d'une version et vérification d'une version | 10 |
+| [`verification/test_volume_verrou_maxima.py`](verification/test_volume_verrou_maxima.py) | Volume, verrous, maxima horaires, choix des contraintes vérifiées | 20 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | entrées refusées lisiblement et avant toute écriture | 22 | 41 |
-| [`synthese/test_commande.py`](synthese/test_commande.py) | service des jeux fictifs exercé directement | 3 | 3 |
-| [`synthese/test_generation.py`](synthese/test_generation.py) | génération : configuration, déterminisme, unicités, effectifs | 10 | 15 |
-| [`synthese/test_performance.py`](synthese/test_performance.py) | durée de génération du jeu grand (`perf`) | 1 | 1 |
-| [`synthese/test_realisme.py`](synthese/test_realisme.py) | présence des cas réalistes demandés dans le jeu grand | 9 | 9 |
-| [`synthese/test_regles.py`](synthese/test_regles.py) | règles d'exemple des jeux : présence, phrases, validité | 7 | 12 |
-| [`synthese/test_temoin.py`](synthese/test_temoin.py) | le témoin est un emploi du temps valide, aligné sur l'instantané | 4 | 6 |
-| [`synthese/test_verificateur.py`](synthese/test_verificateur.py) | le témoin de chaque jeu passe le vérificateur sans erreur | 3 | 6 |
+### `web_donnees/` : Services des écrans de données (12 fonctions)
 
-### `exploitation/` : Exploitation et déploiement (30 fonctions, 57 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`web_donnees/test_besoins.py`](web_donnees/test_besoins.py) | Charge hebdomadaire par groupe et groupes des besoins, calculées par le service des enseignements | 2 |
+| [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | Un seul chargement de jeu fictif ou une seule remise à zéro à la fois, vérifié sur le service | 1 |
+| [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique, côté service : modification partielle, refus détaillé par champ, identifiants | 3 |
+| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune, sans client web : construction du menu à onglets et blocs du gabarit de base | 4 |
+| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Un entier démesuré passé au service est refusé avec un message | 1 |
+| [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression, côté service : les conséquences d'une suppression sont expliquées | 1 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`exploitation/test_commandes_exploitation.py`](exploitation/test_commandes_exploitation.py) | contrats dont dépend le déploiement, vérifiés sans interface | 2 | 2 |
-| [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | scripts de déploiement lus : syntaxe, fins de ligne, cohérence | 15 | 39 |
-| [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | unités systemd, configuration nginx et pages d'erreur cohérentes avec l'application | 13 | 16 |
+### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (28 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : la prochaine étape calculée par le tableau de bord, sur une base temporaire | 3 |
+| [`web_edt/test_anomalies.py`](web_edt/test_anomalies.py) | Liste « À traiter » : séances datées qui ne font que répéter la semaine type | 1 |
+| [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Cas limites des services des écrans de l'emploi du temps : bornes des identifiants | 1 |
+| [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | Emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 |
+| [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | Disposition des blocs dans la grille (fonction pure) et mises en forme françaises | 9 |
+| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 |
+| [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | Mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 |
+| [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : absence explicite, lecture du rapport, panne journalisée | 8 |
+| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Règles personnalisées : présentation d'une anomalie qui ne cite pas de règle | 1 |
+
+<!-- tests-unitaires : fin de la partie générée -->
 
 ## 4. Un exemple expliqué pas à pas
 
@@ -240,5 +244,7 @@ python -m pytest tests/unitaires/solveur          # un composant
 python -m pytest tests/unitaires/solveur/test_contraintes.py -k salle   # un fichier, un mot du nom
 ```
 
-Chaque fichier `test_*.py` de ce dossier doit figurer dans les tableaux de la
-section 3 : `tests/test_rangement.py` le vérifie.
+Un nouveau fichier `test_*.py` commence par une docstring de module dont la
+première phrase dit ce qu'il vérifie ; `python -m tests.outils.classement --ecrire` l'ajoute
+ensuite aux tableaux de la section 3. `tests/test_rangement.py` échoue tant que
+ces tableaux ne sont pas à jour.

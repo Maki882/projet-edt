@@ -1,4 +1,4 @@
-"""Onglet « Emploi du temps » : affichages, groupes liés, corrections vérifiées, séances datées."""
+"""Grille, groupes liés, déplacements et annulations vérifiés."""
 
 from __future__ import annotations
 

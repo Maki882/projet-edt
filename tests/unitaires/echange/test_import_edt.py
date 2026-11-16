@@ -1,4 +1,4 @@
-"""Import d'un emploi du temps existant : trois modes et règles décidées par l'équipe."""
+"""Import d'un emploi du temps existant (trois modes)."""
 
 from __future__ import annotations
 

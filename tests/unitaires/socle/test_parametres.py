@@ -1,4 +1,4 @@
-"""Paramètres globaux : une valeur corrompue en base ne bloque pas la réparation."""
+"""Un paramètre corrompu en base reste réparable."""
 
 from __future__ import annotations
 
