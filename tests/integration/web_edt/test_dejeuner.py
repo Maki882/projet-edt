@@ -2,7 +2,7 @@
 
 Horaires déterminés (plage réservée), pause libre bornée (au moins N minutes
 d'un seul tenant dans une fenêtre) ou pas de pause. Le moteur et le
-vérificateur du mode libre sont livrés à part : ici, un calcul en mode libre
+vérificateur du mode libre sont testés à part : ici, un calcul en mode libre
 doit seulement réussir, la pause elle-même n'est pas contrôlée.
 """
 

@@ -2,7 +2,7 @@
 
 Chaque règle modifiable se règle à trois niveaux (nécessaire, important,
 facultatif) ; les six règles qui définissent le problème restent toujours
-nécessaires ; l'écran ne permet plus d'ignorer une règle.
+nécessaires ; l'écran ne propose pas d'ignorer une règle.
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ def test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires(j
     assert page.count("Toujours nécessaire</span>") == 6
     assert page.count("(par défaut)") == len(MODIFIABLES)  # défaut signalé discrètement
     assert f'title="{Niveau.FACULTATIF.description}"' in page.replace("&#39;", "'")
-    # La pause déjeuner a son niveau, avec sa note ; plus de case pour ignorer une règle.
+    # La pause déjeuner a son niveau, avec sa note ; pas de case pour ignorer une règle.
     assert 'name="niveau_DEJEUNER"' in page
     assert "Ne s&#39;applique pas sans pause déjeuner" in page
     assert 'type="checkbox" name="contraintes"' not in page
@@ -183,7 +183,7 @@ def test_ancien_calcul_a_regle_ignoree_reste_lisible(jeu_minimal, client):
     with session_base() as session:
         calcul = session.get(m.Calcul, suivi.id)
         anciens = {cle: v for cle, v in calcul.parametres.items() if cle != "niveaux"}
-        calcul.parametres = anciens  # enregistré avant les niveaux de règles
+        calcul.parametres = anciens  # enregistré sans niveaux de règles
         calcul.contraintes_desactivees = ["PAUSE"]
 
     page = client.get(f"/calculs/{suivi.id}").text
@@ -191,14 +191,14 @@ def test_ancien_calcul_a_regle_ignoree_reste_lisible(jeu_minimal, client):
     assert "lancé avant les niveaux" not in page  # vrai aussi d'une relance ou de `generer -d`
     historique = client.get(f"/versions?semestre_id={jeu_minimal.semestre_id}").text
     assert "ignorées : Pause entre deux séances" in historique
-    # L'écran ne propose plus d'ignorer : la règle revient à son niveau par défaut.
+    # L'écran ne propose pas d'ignorer : la règle revient à son niveau par défaut.
     formulaire = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
     assert _coche(formulaire, "PAUSE", "important")
 
 
 @dataclass(frozen=True)
 class AnomalieAvecNiveau(Anomalie):
-    """Anomalie telle que le lot vérificateur la livrera : avec le niveau de sa règle."""
+    """Anomalie telle que le vérificateur la rend : avec le niveau de sa règle."""
 
     niveau: Niveau | None = None
 
@@ -331,7 +331,7 @@ def _deplacement_avec_entorse_pause(session, version_id: int) -> tuple[int, int,
 
 
 def test_retouche_d_une_version_a_regle_ignoree_garde_les_niveaux(jeu_minimal):
-    """Une règle ignorée au calcul ne fait plus vérifier la retouche en dur (revue des niveaux).
+    """Une règle ignorée au calcul ne fait pas vérifier la retouche en dur.
 
     Version calculée avec PAUSE importante et CAPACITE ignorée : une retouche
     qui crée une entorse à PAUSE passe avec un avertissement, comme « À

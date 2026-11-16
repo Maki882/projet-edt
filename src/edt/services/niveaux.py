@@ -50,9 +50,9 @@ CLE_NIVEAUX = "niveaux"
 CLE_REGLES = "regles"
 """Clé des paramètres d'un calcul qui copie chaque règle personnalisée appliquée.
 
-Écrite par le lot solveur : une liste de dictionnaires `{id, code, type,
-portee, parametres, niveau, phrase}` ; `niveau` vide (`None`) marque une
-règle explicitement non appliquée.
+Écrite par `edt.services.generation` au lancement : une liste de
+dictionnaires `{id, code, type, portee, parametres, niveau, niveau_regle,
+phrase}` ; `niveau` vide (`None`) marque une règle explicitement non appliquée.
 """
 
 
@@ -75,7 +75,7 @@ def niveaux_du_calcul(
       codes absents prenant leur niveau par défaut ; les codes de
       `contraintes_desactivees` éventuellement enregistrés en plus sont
       retirés (contraintes ignorées) ;
-    - sinon, calcul antérieur aux niveaux : `niveaux_depuis_desactivees`
+    - sinon (calcul enregistré sans niveaux) : `niveaux_depuis_desactivees`
       (niveaux par défaut sans les contraintes désactivées) ;
     - sinon, les niveaux par défaut.
 
@@ -147,8 +147,8 @@ def niveaux_regles_du_calcul(
 ) -> dict[int, Niveau]:
     """Niveau de vérification de chaque règle active actuelle, d'après un calcul (pur).
 
-    - calcul sans `parametres["regles"]` (antérieur aux règles, ou pas de
-      calcul) : chaque règle à son propre niveau ;
+    - calcul sans `parametres["regles"]` (copie absente, ou pas de calcul) :
+      chaque règle à son propre niveau ;
     - règle copiée par le calcul : le niveau choisi alors (`None` : règle
       explicitement non appliquée, donc ignorée) ;
     - règle absente de la copie : à son propre niveau si elle a été créée ou
