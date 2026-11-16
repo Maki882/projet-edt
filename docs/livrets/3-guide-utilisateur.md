@@ -11,6 +11,7 @@ Projet PTS Informatique, ISEP, année 2026-2027
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
 | Date | 16 novembre 2026 |
 | Version | 1.0 |
+| Application décrite | EDT 1.0.0 |
 
 Ce livret est le mode d'emploi de l'application, écran par écran. Il s'adresse au
 responsable de la scolarité qui la découvre et ne suppose aucune connaissance en
@@ -51,7 +52,7 @@ navigateur web, sans écran de connexion. Six onglets occupent le haut de chaque
 
 | Onglet | À quoi il sert |
 |---|---|
-| **Accueil** | l'encadré « Prochaine étape » et l'état de chaque semestre |
+| **Accueil** | l'encadré « Prochaine étape » et l'état de l'emploi du temps du semestre en cours (version active, points à traiter) ; les autres semestres se consultent dans Générer › Points à traiter |
 | **Données** | l'établissement : campus, salles, enseignants, groupes, matières, besoins, indisponibilités, calendrier, règles, import et export |
 | **Générer** | lancer le calcul, suivre son avancement, l'historique des versions et les **points à traiter**, dont le nombre s'affiche sur l'onglet |
 | **Emploi du temps** | consulter le résultat par groupe, enseignant ou salle ; déplacer, verrouiller ou annuler une séance ; imprimer et exporter |
@@ -107,7 +108,7 @@ garde le meilleur trouvé.
 
 **Étape 3. Consulter.** Cliquer sur « Voir l'emploi du temps ». L'onglet **Emploi du temps**
 s'ouvre sur une classe ; la liste « Pour qui » choisit un autre groupe, un enseignant ou une
-salle (partie 6). L'accueil affiche désormais « L'emploi du temps du semestre 1 (2026-2027)
+salle (partie 6). L'accueil affiche alors « L'emploi du temps du semestre 1 (2026-2027)
 est prêt » et le bouton « Consulter l'emploi du temps ».
 
 ## 3. Saisir ou importer les données
@@ -144,7 +145,7 @@ Pour reprendre les fichiers d'une école plutôt que tout saisir, voir la partie
 
 ### 4.1 Les trois niveaux
 
-Chaque règle porte un niveau, affiché à l'écran avec la même définition :
+Chaque règle porte un niveau ; l'écran Générer en rappelle la définition :
 
 - **Nécessaire** : toujours respectée ;
 - **Important** : enfreinte seulement faute de mieux, avec un avertissement ;
@@ -194,9 +195,10 @@ ligne de résumé : « Règles », « Règles personnalisées », « Pause déje
 options » (recherche jusqu'à 5 ou 15 minutes ; « Emploi du temps plus confortable », avec
 moins de trous, de changements de campus et de samedis).
 
-Si des séances ont été retouchées à la main (partie 6), un encadré prévient : « Le nouveau
-calcul crée une autre version, sans ces retouches : seules les séances verrouillées gardent
-leur place. »
+Si des séances datées ont été déplacées ou annulées à la main (partie 6.3), un encadré
+prévient : « Le nouveau calcul crée une autre version, sans ces retouches : seules les
+séances verrouillées gardent leur place. » Une séance déplacée en semaine type (partie 6.2)
+ne garde sa place au calcul suivant que si elle est verrouillée.
 
 ### 5.2 Pendant et après le calcul
 
@@ -208,8 +210,10 @@ solution » relance, après confirmation, un calcul qui cherche un emploi du tem
 
 Chaque calcul réussi enregistre une **version**. L'écran **Historique et versions** (menu
 de gauche de Générer) les liste ; la **version active** est celle que les écrans montrent.
-« Consulter », « Rendre active » et « Supprimer » agissent sur une version. L'établissement
-fictif fournit aussi un **emploi du temps de référence**, pour comparer.
+« Consulter », « Rendre active » et « Supprimer » agissent sur une version. Si la case
+« Enregistrer aussi un emploi du temps de référence » a été cochée au chargement (options
+avancées de l'écran Établissement fictif), l'établissement fictif fournit aussi un **emploi
+du temps de référence**, pour comparer.
 
 ### 5.3 Quand aucun emploi du temps n'est possible
 
@@ -374,7 +378,9 @@ Les tests sont rangés par composant, puis par fichier, et chaque niveau a son b
 (« Lancer tous les tests … », « Lancer le composant … », « Lancer ce fichier », « Lancer »).
 Un cadre suit l'exécution (« 6 tests terminés sur 6 : 6 réussis, 0 échec, 0 ignoré ») ;
 chaque test affiche son état, sa durée et la date de son dernier lancement, et « Journal
-complet de l'exécution » donne le détail. Les tests de charge, longs, se lancent un par un.
+complet de l'exécution » donne le détail. Les tests de charge, longs, ne se lancent pas
+depuis le navigateur : leur ligne porte « Par la commande », et l'administrateur les lance un
+par un avec `python -m edt tests --test …` (voir l'annexe).
 
 ![Onglet Tests d'intégration après l'exécution du composant parcours : six tests réussis, avec leur durée et leur date](images/guide-tests-integration.png)
 
@@ -420,5 +426,5 @@ aussi une commande ; `python -m edt <commande> --help` donne ses options.
 | `gabarit`, `importer`, `exporter-donnees`, `exporter-edt` | échanger des fichiers (XLSX, CSV, iCal) |
 | `sauvegarder`, `verifier-sauvegarde` | sauvegarder la base ; contrôler une sauvegarde |
 | `assistant` | état de l'assistant (configuration, limites, consommation du jour) |
-| `tests` | lancer les tests comme depuis les onglets de tests |
+| `tests` | lancer les tests comme depuis les onglets de tests ; un seul test, dont un test de charge, avec `--test` |
 | `doctor`, `version` | vérifier l'installation ; afficher la version |
