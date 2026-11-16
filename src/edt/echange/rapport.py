@@ -221,7 +221,15 @@ class RapportImport:
         Faux quand tout est rejeté, mis de côté ou déjà identique : appliquer ne
         changerait rien.
         """
-        sans_ecriture = (*COMPTEURS_DE_REJET, "inchanges", "lues", "annulees", "retirees")
+        # « fusionnes » : doublon du fichier écarté à la lecture au profit de sa première ligne.
+        sans_ecriture = (
+            *COMPTEURS_DE_REJET,
+            "inchanges",
+            "fusionnes",
+            "lues",
+            "annulees",
+            "retirees",
+        )
         return any(
             nombre and cle not in sans_ecriture
             for bilan in self.bilans
