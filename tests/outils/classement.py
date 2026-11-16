@@ -375,7 +375,9 @@ class Classeur:
         cible = self.modules.get(importe.fichier)
         if cible is None:
             return set()
-        if importe.nom is None:  # module importé : ses fonctions citées (`module.aide()`) sont suivies
+        if (
+            importe.nom is None
+        ):  # module importé : ses fonctions citées (`module.aide()`) sont suivies
             atteints: set[str] = set()
             for n in noms & cible.fonctions.keys():
                 atteints |= self.noms_atteints(cible, cible.fonctions[n], n, pile)
