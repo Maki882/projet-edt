@@ -10,6 +10,8 @@
  *  4. Cartes et définitions        10. Panneau Assistant
  *  5. Messages et étiquettes       11. Utilitaires
  *  6. Compteurs                    12. Petits écrans et impression
+ *                                  13. Onglets des tests
+
  */
 
 /* ----- 1. Variables et bases ------------------------------------------------ */
@@ -1576,4 +1578,45 @@ fieldset.champ {
   .tableau-defilant {
     border: none;
   }
+}
+
+/* ----- 13. Onglets des tests ---------------------------------------------------- */
+
+/*
+ * Les deux onglets de tests ont chacun leur couleur, reprise par leurs pages
+ * (static/css/tests.css). Texte blanc : contraste de 6,1 (turquoise) et 7,2 (violet).
+ */
+:root {
+  --tests-unitaires: #0b6e69;
+  --tests-unitaires-fonce: #07504c;
+  --tests-unitaires-pale: #e1f3f1;
+  --tests-integration: #8b2f8f;
+  --tests-integration-fonce: #69206d;
+  --tests-integration-pale: #f6e8f6;
+}
+
+.onglet-tests-unitaires > a {
+  background: var(--tests-unitaires);
+  color: #ffffff;
+}
+
+.onglet-tests-integration > a {
+  background: var(--tests-integration);
+  color: #ffffff;
+}
+
+.onglet-tests-unitaires > a:hover,
+.onglet-tests-unitaires > a.actif {
+  background: var(--tests-unitaires-fonce);
+  color: #ffffff;
+}
+
+.onglet-tests-integration > a:hover,
+.onglet-tests-integration > a.actif {
+  background: var(--tests-integration-fonce);
+  color: #ffffff;
+}
+
+.onglet-tests-unitaires + .onglet-tests-integration {
+  margin-left: 2px;
 }

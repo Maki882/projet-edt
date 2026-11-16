@@ -1,0 +1,45 @@
+{#- Schéma des tests unitaires (SVG dans la page, couleurs de tests.css). -#}
+<figure class="banc-schema-figure">
+  <svg class="banc-svg" viewBox="0 0 360 452" role="img" aria-labelledby="schema-u-titre schema-u-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="schema-u-titre">Organisation des tests unitaires</title>
+    <desc id="schema-u-desc">Le test unitaire prépare ses données, appelle une fonction d'un seul module, au besoin sur une base SQLite temporaire, puis vérifie le résultat : réussi ou échec. Il n'envoie jamais de requête web, ne lance ni commande, ni autre processus, ni calcul complet. Les tests sont rangés par composant : socle, solveur, verification, echange, synthese, exploitation, web_donnees, web_edt, banc_tests.</desc>
+    <defs>
+      <marker id="schema-u-fleche" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="banc-svg-pointe"/>
+      </marker>
+    </defs>
+    <rect x="10" y="10" width="340" height="46" rx="6" class="banc-svg-forte"/>
+    <text x="180" y="30" class="banc-svg-texte-clair" text-anchor="middle"><tspan font-weight="700">Test unitaire</tspan></text>
+    <text x="180" y="47" class="banc-svg-texte-clair banc-svg-petit" text-anchor="middle">prépare ses données (fabrique, fixture)</text>
+
+    <line x1="110" y1="56" x2="110" y2="94" class="banc-svg-trait" marker-end="url(#schema-u-fleche)"/>
+    <text x="118" y="80" class="banc-svg-texte banc-svg-petit">appel Python</text>
+
+    <rect x="10" y="96" width="200" height="46" rx="6" class="banc-svg-boite"/>
+    <text x="110" y="116" class="banc-svg-texte" text-anchor="middle" font-weight="700">Module visé</text>
+    <text x="110" y="133" class="banc-svg-texte banc-svg-petit" text-anchor="middle">une seule partie du code</text>
+
+    <line x1="210" y1="119" x2="228" y2="119" class="banc-svg-trait banc-svg-tirets" marker-end="url(#schema-u-fleche)"/>
+    <rect x="230" y="96" width="120" height="46" rx="6" class="banc-svg-boite banc-svg-tirets"/>
+    <text x="290" y="116" class="banc-svg-texte banc-svg-petit" text-anchor="middle">Base SQLite</text>
+    <text x="290" y="132" class="banc-svg-texte banc-svg-petit" text-anchor="middle">temporaire, si besoin</text>
+
+    <line x1="110" y1="142" x2="110" y2="180" class="banc-svg-trait" marker-end="url(#schema-u-fleche)"/>
+    <text x="118" y="166" class="banc-svg-texte banc-svg-petit">résultat vérifié (assert)</text>
+
+    <rect x="10" y="182" width="340" height="40" rx="6" class="banc-svg-boite"/>
+    <text x="180" y="207" class="banc-svg-texte" text-anchor="middle"><tspan class="banc-svg-reussi" font-weight="700">Réussi</tspan> ou <tspan class="banc-svg-echec" font-weight="700">échec</tspan>, avec le message</text>
+
+    <rect x="10" y="240" width="340" height="62" rx="6" class="banc-svg-interdit"/>
+    <text x="180" y="262" class="banc-svg-texte" text-anchor="middle" font-weight="700">Jamais dans un test unitaire</text>
+    <text x="180" y="281" class="banc-svg-texte banc-svg-petit" text-anchor="middle">requête web, commande, autre processus,</text>
+    <text x="180" y="296" class="banc-svg-texte banc-svg-petit" text-anchor="middle">calcul complet : ce sont des tests d'intégration</text>
+
+    <text x="10" y="330" class="banc-svg-texte" font-weight="700">Rangés par composant</text>
+    {%- for nom in ("socle", "solveur", "verification", "echange", "synthese", "exploitation", "web_donnees", "web_edt", "banc_tests") %}
+    {%- set x = 10 + (loop.index0 % 3) * 116 %}{% set y = 342 + (loop.index0 // 3) * 34 %}
+    <rect x="{{ x }}" y="{{ y }}" width="108" height="26" rx="13" class="banc-svg-pastille"/>
+    <text x="{{ x + 54 }}" y="{{ y + 17 }}" class="banc-svg-texte banc-svg-petit" text-anchor="middle">{{ nom }}</text>
+    {%- endfor %}
+  </svg>
+</figure>

@@ -1,0 +1,90 @@
+{#
+  Morceaux des écrans de tests, partagés par la page et par le fragment de suivi.
+  Variables attendues dans le contexte : t (TableauFamille), duree (texte d'une durée).
+  - etat(ligne)                  pastille de l'état d'un test
+  - compte(c)                    résumé « 12 réussis, 1 échec… » d'un groupe
+  - ligne(l, oob)                un test (remplacé tel quel par le suivi si oob)
+  - entete_fichier(f, oob)       titre, résumé et bouton d'un fichier
+  - resume_composant(c, oob)     résumé d'un composant (dans son <summary>)
+  - resume_famille(oob)          résumé de la famille, en tête de page
+  Les boutons « Lancer » envoient le formulaire #form-lancer (champ cible).
+#}
+{% import "macros.html" as ui %}
+
+{%- set NIVEAUX_ETATS = {"reussi": "succes", "echec": "erreur", "ignore": "attention", "jamais": "neutre", "en_cours": "info", "en_attente": "neutre"} %}
+
+{% macro etat(l) -%}
+<span class="etiquette etiquette-{{ NIVEAUX_ETATS[l.etat] }} banc-etat banc-etat-{{ l.etat }}">{{ l.libelle_etat }}</span>
+{%- endmacro %}
+
+{% macro compte(c) -%}
+<span class="banc-compte">
+  {%- if c.reussis %}<span class="banc-compte-reussi">{{ c.reussis }} réussi{{ "s" if c.reussis > 1 }}</span>{% endif %}
+  {%- if c.echecs %}<span class="banc-compte-echec">{{ c.echecs }} échec{{ "s" if c.echecs > 1 }}</span>{% endif %}
+  {%- if c.ignores %}<span class="banc-compte-ignore">{{ c.ignores }} ignoré{{ "s" if c.ignores > 1 }}</span>{% endif %}
+  {%- if c.en_cours %}<span class="banc-compte-en-cours">{{ c.en_cours }} en cours</span>{% endif %}
+  {%- if c.jamais %}<span class="banc-compte-jamais">{{ c.jamais }} jamais lancé{{ "s" if c.jamais > 1 }}</span>{% endif %}
+</span>
+{%- endmacro %}
+
+{% macro bouton(cible, libelle, titre, principal=false) -%}
+<button type="submit" form="form-lancer" name="cible" value="{{ cible }}" title="{{ titre }}"
+  class="bouton bouton-petit banc-bouton{% if principal %} banc-bouton-principal{% endif %}"{% if t.indisponible %} disabled{% endif %}>{{ libelle }}</button>
+{%- endmacro %}
+
+{% macro ligne(l, oob=false) -%}
+<div class="banc-test banc-test-{{ l.etat }}" id="{{ l.id_html }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <div class="banc-test-nom">
+    <strong>{{ l.test.nom }}</strong>
+    {%- if l.test.perf %} {{ ui.etiquette("Test de charge", "neutre") }}{% endif %}
+    {%- if l.test.resume %}<span class="banc-test-resume">{{ l.test.resume }}</span>{% endif %}
+    {%- if l.etat == "ignore" and l.resultat and l.resultat.raison %}
+    <span class="banc-test-raison">Ignoré : {{ l.resultat.raison }}</span>
+    {%- endif %}
+    {%- if l.resultat and l.resultat.etat == "echec" and l.resultat.detail %}
+    <details class="banc-detail">
+      <summary>Voir le détail de l'échec</summary>
+      <pre>{{ l.resultat.detail }}</pre>
+    </details>
+    {%- endif %}
+  </div>
+  <div class="banc-test-etat">
+    {{ etat(l) }}
+    {%- if l.resultat and l.resultat.nb_cas > 1 %}
+    <span class="banc-cas">{{ l.resultat.nb_cas }} cas{% if l.resultat.nb_echecs %}, {{ l.resultat.nb_echecs }} en échec{% endif %}</span>
+    {%- endif %}
+  </div>
+  <div class="banc-test-duree">{% if l.resultat %}{{ duree(l.resultat.duree_s) }}{% endif %}</div>
+  <div class="banc-test-date">{% if l.resultat %}<span class="banc-libelle-mobile">Dernière exécution : </span>{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">-</span>{% endif %}</div>
+  <div class="banc-test-action">{{ bouton("test:" ~ l.test.cle, "Lancer", "Lancer ce test" ~ (" (tous ses cas)" if l.resultat and l.resultat.nb_cas > 1 else "")) }}</div>
+</div>
+{%- endmacro %}
+
+{% macro entete_fichier(f, oob=false) -%}
+<div class="banc-fichier-entete" id="{{ f.id_html }}"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <h3><code>{{ f.fichier.nom }}</code></h3>
+  {{ compte(f.compte) }}
+  <span class="banc-date">{% if f.complet_le %}Fichier lancé en entier le {{ f.complet_le|dateheure_fr }}{% else %}Fichier jamais lancé en entier{% endif %}</span>
+  {{ bouton("fichier:" ~ f.fichier.chemin, "Lancer ce fichier", "Lancer les " ~ f.compte.total ~ " tests du fichier") }}
+</div>
+{%- endmacro %}
+
+{% macro resume_composant(c, oob=false) -%}
+<span class="banc-composant-resume" id="{{ c.id_html }}-resume"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {{ compte(c.compte) }}
+  <span class="banc-date">{% if c.complet_le %}lancé en entier le {{ c.complet_le|dateheure_fr }}{% else %}jamais lancé en entier{% endif %}</span>
+</span>
+{%- endmacro %}
+
+{% macro resume_famille(oob=false) -%}
+<div class="banc-resume-famille" id="banc-resume-famille"{% if oob %} hx-swap-oob="true"{% endif %}>
+  <p class="banc-resume-nombres">
+    <strong>{{ t.compte.total }} tests</strong> {{ compte(t.compte) }}
+  </p>
+  <p class="banc-date">
+    {%- if t.complet_le %}Dernière exécution complète : le {{ t.complet_le|dateheure_fr }}.
+    {%- else %}Ces tests n'ont jamais été lancés tous ensemble depuis l'application.{% endif %}
+    {%- if t.compte.charge %} {{ t.compte.charge }} test{{ "s" if t.compte.charge > 1 }} de charge, longs, ne {{ "sont" if t.compte.charge > 1 else "est" }} lancé{{ "s" if t.compte.charge > 1 }} qu'un par un.{% endif %}
+  </p>
+</div>
+{%- endmacro %}

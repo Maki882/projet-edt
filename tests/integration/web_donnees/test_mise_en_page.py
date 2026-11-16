@@ -1,4 +1,4 @@
-"""Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, panneau Assistant."""
+"""Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau Assistant."""
 
 from __future__ import annotations
 
@@ -37,7 +37,8 @@ def test_panneau_assistant_present_sur_toutes_les_pages(site):
     assert "Données fictives" not in page  # plus de bandeau sur les données
 
 
-def test_cinq_onglets_de_l_application_et_import_export_dans_donnees(site):
+def test_six_onglets_de_l_application_et_import_export_dans_donnees(site):
+
     page = site.get("/besoins").text
 
     onglets = re.search(r'<nav class="onglets".*?</nav>', page, re.S).group(0)
@@ -47,17 +48,20 @@ def test_cinq_onglets_de_l_application_et_import_export_dans_donnees(site):
         "Données",
         "Générer",
         "Emploi du temps",
-        "À traiter",
+        "Tests unitaires",
+        "Tests d&#39;intégration",  # apostrophe échappée par Jinja
     ]
+
     sous_navigation = re.search(r'<nav class="sous-navigation".*?</nav>', page, re.S).group(0)
     assert "<h2>Import et export</h2>" in sous_navigation
     assert '<a href="/import">Import</a>' in sous_navigation
     assert '<a href="/export">Export</a>' in sous_navigation
 
 
-def test_compteur_charge_dans_l_onglet_a_traiter(site):
+def test_compteur_des_points_a_traiter_charge_dans_l_onglet_generer(site):
     page = site.get("/salles").text
-    onglet = re.search(r'<a href="/a-traiter"[^>]*>À traiter(.*?)</a>', page, re.S)
+    onglet = re.search(r'<a href="/calculs"[^>]*>Générer(.*?)</a>', page, re.S)
+
     assert onglet is not None
     compteur = onglet.group(1)
     assert 'hx-get="/a-traiter/compteur"' in compteur and 'hx-trigger="load"' in compteur

@@ -2,23 +2,28 @@
 
 Chaque module de `edt.web.routes` peut exposer `MENU`, une liste
 d'`EntreeMenu`. La navigation du gabarit de base est construite à partir de
-toutes les entrées : **cinq onglets** dans un ordre fixe, chacun regroupant
+toutes les entrées : **six onglets** dans un ordre fixe, chacun regroupant
 les entrées de certaines sections.
 
-| Onglet           | Sections rangées dans l'onglet                          |
-|------------------|---------------------------------------------------------|
-| Accueil          | (aucune section)                                        |
-| Données          | Référentiels, Planification, Configuration, Données     |
-| Générer          | Générer                                                 |
-| Emploi du temps  | Emploi du temps                                         |
-| À traiter        | À traiter                                               |
+| Onglet              | Sections rangées dans l'onglet                       |
+|---------------------|------------------------------------------------------|
+| Accueil             | (aucune section)                                     |
+| Données             | Référentiels, Planification, Configuration, Données  |
+| Générer             | Générer, À traiter                                   |
+| Emploi du temps     | Emploi du temps                                      |
+| Tests unitaires     | Tests unitaires                                      |
+| Tests d'intégration | Tests d'intégration                                  |
 
 Un onglet sans aucune entrée n'est pas affiché. Dans un onglet, les entrées
 sont regroupées sous des titres parlants (`GroupeMenu`), affichés dans la
 sous-navigation : pour l'onglet Données, « Établissement » (section
 Référentiels), « Besoins et disponibilités » (Planification), « Règles et
-calendrier » (Configuration), « Import et export » (Données). Une entrée peut
+calendrier » (Configuration), « Import et export » (Données) ; dans l'onglet
+Générer, la section À traiter rejoint le groupe « Générer ». Une entrée peut
 choisir son groupe avec le champ `groupe` (par exemple « Jeux de données »).
+
+Un onglet peut recevoir une classe de couleur (`CLASSES_ONGLETS`), posée sur
+son élément de la barre : les deux onglets de tests ont chacun la leur.
 
 Sections et plages d'ordre convenues (pour que les écrans des différents
 lots se rangent sans se concerter) :
@@ -33,6 +38,8 @@ lots se rangent sans se concerter) :
 | Configuration     | 500 - 599 | calendrier, grille, paramètres                  |
 | Générer           | 600 - 699 | lancement et suivi des calculs                  |
 | À traiter         | 700 - 799 | anomalies, séances à programmer                 |
+| Tests unitaires   | 800 - 849 | lancement et résultats des tests unitaires      |
+| Tests d'intégration | 850 - 899 | lancement et résultats des tests d'intégration |
 
 Une entrée dont la section n'est rangée dans aucun onglet est placée dans
 l'onglet Données (sous un groupe portant le nom de sa section) et le fait est
@@ -54,12 +61,15 @@ SECTION_DONNEES = "Données"
 SECTION_CONFIGURATION = "Configuration"
 SECTION_GENERER = "Générer"
 SECTION_A_TRAITER = "À traiter"
+SECTION_TESTS_UNITAIRES = "Tests unitaires"
+SECTION_TESTS_INTEGRATION = "Tests d'intégration"
 
 ONGLET_ACCUEIL = "Accueil"
 ONGLET_DONNEES = "Données"
 ONGLET_GENERER = "Générer"
 ONGLET_EMPLOI_DU_TEMPS = "Emploi du temps"
-ONGLET_A_TRAITER = "À traiter"
+ONGLET_TESTS_UNITAIRES = "Tests unitaires"
+ONGLET_TESTS_INTEGRATION = "Tests d'intégration"
 
 GROUPE_ETABLISSEMENT = "Établissement"
 GROUPE_BESOINS = "Besoins et disponibilités"
@@ -73,26 +83,36 @@ ONGLETS: tuple[tuple[str, tuple[str, ...]], ...] = (
         ONGLET_DONNEES,
         (SECTION_REFERENTIELS, SECTION_PLANIFICATION, SECTION_CONFIGURATION, SECTION_DONNEES),
     ),
-    (ONGLET_GENERER, (SECTION_GENERER,)),
+    (ONGLET_GENERER, (SECTION_GENERER, SECTION_A_TRAITER)),
     (ONGLET_EMPLOI_DU_TEMPS, (SECTION_EMPLOI_DU_TEMPS,)),
-    (ONGLET_A_TRAITER, (SECTION_A_TRAITER,)),
+    (ONGLET_TESTS_UNITAIRES, (SECTION_TESTS_UNITAIRES,)),
+    (ONGLET_TESTS_INTEGRATION, (SECTION_TESTS_INTEGRATION,)),
 )
-"""Les cinq onglets, dans leur ordre d'affichage, et les sections qu'ils rangent."""
+"""Les six onglets, dans leur ordre d'affichage, et les sections qu'ils rangent."""
 
 GROUPE_PAR_SECTION: dict[str, str] = {
     SECTION_REFERENTIELS: GROUPE_ETABLISSEMENT,
     SECTION_PLANIFICATION: GROUPE_BESOINS,
     SECTION_CONFIGURATION: GROUPE_REGLES,
     SECTION_DONNEES: GROUPE_IMPORT_EXPORT,
+    SECTION_A_TRAITER: SECTION_GENERER,
 }
 """Titre de groupe affiché par défaut pour une section (sinon : le nom de la section)."""
 
-COMPTEURS_ONGLETS: dict[str, str] = {ONGLET_A_TRAITER: "/a-traiter/compteur"}
+COMPTEURS_ONGLETS: dict[str, str] = {ONGLET_GENERER: "/a-traiter/compteur"}
 """Adresse du fragment qui affiche un compteur dans l'onglet (chargé par HTMX).
+
+L'onglet Générer porte le nombre de points à traiter (page « Points à traiter »).
 
 Le fragment renvoie `<span class="edt-compteur-onglet">N</span>`, ou rien
 quand il n'y a rien à compter ; sans JavaScript, l'onglet reste un lien simple.
 """
+
+CLASSES_ONGLETS: dict[str, str] = {
+    ONGLET_TESTS_UNITAIRES: "onglet-tests-unitaires",
+    ONGLET_TESTS_INTEGRATION: "onglet-tests-integration",
+}
+"""Classe de couleur de certains onglets (définie dans `static/css/app.css`)."""
 
 ORDRE_DES_GROUPES: tuple[str, ...] = (
     GROUPE_ETABLISSEMENT,
@@ -168,6 +188,11 @@ class Onglet:
         return COMPTEURS_ONGLETS.get(self.titre)
 
     @property
+    def classe(self) -> str:
+        """Classe de couleur de l'onglet, ou chaîne vide."""
+        return CLASSES_ONGLETS.get(self.titre, "")
+
+    @property
     def url(self) -> str:
         """Adresse de l'onglet : celle de sa première entrée."""
         return self.entrees[0].url
@@ -213,7 +238,7 @@ def _grouper(entrees: list[EntreeMenu]) -> tuple[SectionMenu, ...]:
 
 
 def construire_menu(entrees: Iterable[EntreeMenu]) -> tuple[Onglet, ...]:
-    """Range les entrées dans les cinq onglets ; les onglets vides sont omis."""
+    """Range les entrées dans les six onglets ; les onglets vides sont omis."""
     onglet_de_section = {section: titre for titre, sections in ONGLETS for section in sections}
     par_onglet: dict[str, list[EntreeMenu]] = {titre: [] for titre, _ in ONGLETS}
     for entree in entrees:
