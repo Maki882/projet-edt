@@ -173,6 +173,21 @@ def test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit(
 
 
 @pytest.mark.cas_limite
+def test_une_remise_a_zero_donne_un_seul_avertissement_au_journal(jeu_minimal, aujourdhui, caplog):
+    """Cas : remise à zéro demandée depuis l'écran ou par `init-db --reset`, sans incident.
+
+    Risque : le journal, outil de diagnostic d'une démonstration, se remplit d'avertissements
+    en double pour une action voulue ; un seul avertissement dit la suppression des données.
+    """
+    with caplog.at_level(logging.INFO):
+        remettre_a_zero(aujourdhui=aujourdhui)
+
+    avertissements = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(avertissements) == 1, [r.getMessage() for r in avertissements]
+    assert "Remise à zéro" in avertissements[0].getMessage()
+
+
+@pytest.mark.cas_limite
 def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
     jeu_minimal, compter, verrou_ecriture_bref, aujourdhui
 ):

@@ -241,7 +241,7 @@ def sauvegarder_base(url: str | None = None) -> Path | None:
             "remise à zéro annulée, rien n'a été modifié. Libérer de l'espace disque ou "
             "corriger les droits du dossier, puis relancer."
         ) from erreur
-    journal.warning("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
+    journal.info("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
     return copie
 
 
@@ -693,7 +693,9 @@ def initialiser_base(
     moteur = obtenir_moteur(url)
     url_affichee = url_affichable(moteur.url)
     if reset:
-        journal.warning(
+        # Niveau INFO : l'avertissement est donné une fois par l'appelant qui décide la remise
+        # à zéro (`edt.services.jeux.remettre_a_zero`).
+        journal.info(
             "Remise à zéro de la base %s : toutes les données sont supprimées", url_affichee
         )
         supprimer_schema(moteur)
