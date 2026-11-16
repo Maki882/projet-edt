@@ -261,7 +261,7 @@ assert jours_a1_g1 and LUNDI not in jours_a1_g1
 1. **Préparation.** La fixture `jeu_minimal` charge un petit
    établissement dans la base temporaire du test. Le service des règles crée
    la règle « A1-G1 ne travaille que du mardi au vendredi », au niveau
-   nécessaire, comme le ferait l'écran « Règles ».
+   nécessaire, comme le ferait l'écran « Règles personnalisées ».
 2. **Appel.** `calculer` (`tests/outils/parcours/aides.py`) lance
    un vrai calcul par `lancer_calcul` et l'attend par `attendre_calcul` :
    chargement de l'instantané, solveur, contrôle, enregistrement de la
