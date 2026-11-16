@@ -10,26 +10,29 @@
 #   sudo edt jeu --taille grand --graine 0   charge le jeu de données fictif
 #   sudo edt verifier                        vérifie l'emploi du temps
 #   sudo edt sauvegarder                     sauvegarde vérifiée de la base
-# Depuis le poste : ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo edt doctor'
+# Depuis le poste : ssh -i <clé> <compte>@<serveur> 'sudo edt doctor'
+# (paramètres de deploy/serveur.env ; docs/deploiement.md).
 #
 # Le code de sortie est celui de la commande. Lancée autrement (python du venv
 # à la main, sans sudo...), une commande utiliserait une AUTRE base sans le
-# dire : ce lanceur refuse donc tout compte autre que root ou ubuntu via sudo.
-# Il refuse aussi de démarrer pendant un déploiement (verrou partagé).
+# dire : ce lanceur ne s'exécute donc qu'en root (directement ou par sudo).
+# Il refuse aussi de démarrer pendant un déploiement (verrou partagé). La clé
+# de l'assistant (/etc/edt/assistant.env, facultative) est lue comme par le
+# service.
 # =============================================================================
 set -euo pipefail
 
 readonly COURANT="/opt/edt/courant"
 readonly FICHIER_ENV="/etc/edt/edt.env"
+readonly FICHIER_ASSISTANT="/etc/edt/assistant.env"
 readonly UTILISATEUR_APP="edt"
-readonly COMPTES_AUTORISES=" root ubuntu "
 # Même verrou que deployer-distant.sh, pris ici en partagé : refus pendant un
 # déploiement (qui le prend en exclusif), et le déploiement attend la fin de
 # cette commande au lieu de remplacer la base sous ses pieds.
 readonly VERROU="/run/lock/edt-deploiement.lock"
 
-if [ "$EUID" -ne 0 ] || [[ "$COMPTES_AUTORISES" != *" ${SUDO_USER:-root} "* ]]; then
-  echo "edt : à lancer en root ou par ubuntu avec sudo, par exemple « sudo edt ${1:-doctor} »." >&2
+if [ "$EUID" -ne 0 ]; then
+  echo "edt : à lancer en root, par exemple « sudo edt ${1:-doctor} »." >&2
   exit 2
 fi
 for chemin in "$COURANT/venv/bin/python" "$FICHIER_ENV"; do
@@ -48,7 +51,9 @@ fi
 
 # Terminal interactif : --pty transmet Ctrl+C à la commande ; sinon --pipe.
 if [ -t 0 ] && [ -t 1 ]; then mode="--pty"; else mode="--pipe"; fi
+environnement=(-p EnvironmentFile="$FICHIER_ENV")
+if [ -e "$FICHIER_ASSISTANT" ]; then environnement+=(-p EnvironmentFile="$FICHIER_ASSISTANT"); fi
 exec systemd-run --quiet --wait --collect "$mode" --service-type=exec \
   --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
-  -p EnvironmentFile="$FICHIER_ENV" -p WorkingDirectory="$COURANT/code" \
+  "${environnement[@]}" -p WorkingDirectory="$COURANT/code" \
   -E PYTHONUNBUFFERED=1 "$COURANT/venv/bin/python" -m edt "$@"

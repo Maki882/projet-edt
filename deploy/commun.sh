@@ -4,12 +4,15 @@
 # depuis le POSTE DU DÉVELOPPEUR (Git Bash sous Windows) : deployer.sh,
 # etat.sh et journaux.sh, qui le chargent avec « source ».
 #
-# Paramètres, surchargeables par variables d'environnement :
-#   EDT_SSH_HOTE         adresse du serveur             (défaut 92.222.10.188)
-#   EDT_SSH_UTILISATEUR  compte SSH, sudo sans mot de passe (défaut ubuntu)
-#   EDT_SSH_CLE          clé privée SSH dédiée          (défaut ~/.ssh/edt_vps_ed25519)
-#   EDT_DOMAINE          nom de domaine public          (défaut pts.jorund.xyz)
-# Exemple : EDT_SSH_HOTE=203.0.113.7 deploy/etat.sh
+# Paramètres, lus dans deploy/serveur.env (fichier local ignoré par git,
+# modèle deploy/serveur.env.exemple) ; une variable d'environnement du même
+# nom l'emporte. Tous obligatoires : sans eux, le script s'arrête avant toute
+# action en disant quoi créer.
+#   EDT_SSH_HOTE         adresse du serveur
+#   EDT_SSH_UTILISATEUR  compte SSH, sudo sans mot de passe
+#   EDT_SSH_CLE          clé privée SSH dédiée (chemin sur le poste)
+#   EDT_DOMAINE          nom de domaine public
+# Exemple : EDT_SSH_HOTE=203.0.113.10 deploy/etat.sh
 # =============================================================================
 set -euo pipefail
 
@@ -18,10 +21,13 @@ if [ "${BASH_SOURCE[0]}" = "$0" ]; then
   exit 2
 fi
 
-EDT_SSH_HOTE="${EDT_SSH_HOTE:-92.222.10.188}"
-EDT_SSH_UTILISATEUR="${EDT_SSH_UTILISATEUR:-ubuntu}"
-EDT_SSH_CLE="${EDT_SSH_CLE:-$HOME/.ssh/edt_vps_ed25519}"
-EDT_DOMAINE="${EDT_DOMAINE:-pts.jorund.xyz}"
+# shellcheck source=deploy/configuration.sh
+. "$(dirname "${BASH_SOURCE[0]}")/configuration.sh"
+EDT_SSH_HOTE="${EDT_SSH_HOTE:-}"
+EDT_SSH_UTILISATEUR="${EDT_SSH_UTILISATEUR:-}"
+EDT_SSH_CLE="${EDT_SSH_CLE:-}"
+EDT_DOMAINE="${EDT_DOMAINE:-}"
+charger_configuration_serveur "$(dirname "${BASH_SOURCE[0]}")/serveur.env"
 
 # Clé dédiée seulement, jamais de question interactive (BatchMode), délai de
 # connexion court, détection des connexions mortes.
@@ -71,6 +77,7 @@ executer_script_distant() {
 
 verifier_poste_local() {
   local outil
+  exiger_parametres EDT_SSH_HOTE EDT_SSH_UTILISATEUR EDT_SSH_CLE EDT_DOMAINE
   for outil in ssh git curl tr sha256sum; do
     if ! command -v "$outil" > /dev/null; then
       erreur "commande « $outil » introuvable : lancez ce script depuis Git Bash."
@@ -78,11 +85,11 @@ verifier_poste_local() {
     fi
   done
   if [ ! -e "$EDT_SSH_CLE" ]; then
-    erreur "clé SSH introuvable : $EDT_SSH_CLE (variable EDT_SSH_CLE)."
+    erreur "clé SSH introuvable : $EDT_SSH_CLE (paramètre EDT_SSH_CLE de deploy/serveur.env)."
     exit 1
   fi
   if ! [[ "$EDT_DOMAINE" =~ ^[A-Za-z0-9.-]+$ ]]; then
-    erreur "EDT_DOMAINE invalide : « $EDT_DOMAINE »."
+    erreur "EDT_DOMAINE invalide : « $EDT_DOMAINE » (lettres, chiffres, points et tirets seulement)."
     exit 1
   fi
 }

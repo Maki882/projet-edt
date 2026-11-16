@@ -9,7 +9,7 @@
 #   deploy/journaux.sh nginx     accès et erreurs nginx du site
 #   deploy/journaux.sh calcul    journal du calcul d'emploi du temps le plus récent
 #
-# Paramètres : EDT_SSH_HOTE, EDT_SSH_UTILISATEUR, EDT_SSH_CLE (deploy/commun.sh).
+# Paramètres : deploy/serveur.env (voir deploy/commun.sh).
 # =============================================================================
 set -euo pipefail
 set -o errtrace
@@ -44,14 +44,15 @@ exec tail -n 50 -F "$dernier"'
     ;;
 esac
 
-etape "Contrôles locaux et connexion à $SSH_CIBLE"
+etape "Contrôles locaux et connexion au serveur"
 verifier_poste_local
 verifier_connexion
 
 etape "Journaux en direct (mode « $MODE ») — Ctrl+C pour arrêter"
 # -t : terminal distant, pour que Ctrl+C arrête aussi la commande sur le
-# serveur. Le script est passé en argument, protégé par printf %q (le shell
-# de connexion du compte ubuntu est bash).
+# serveur. Le script est passé en argument, protégé par printf %q : le shell
+# de connexion du compte SSH doit être bash (cas du compte par défaut des
+# images Ubuntu).
 CODE=0
 ssh -t "${SSH_OPTIONS[@]}" "$SSH_CIBLE" "sudo -n bash -c $(printf '%q' "$COMMANDE_DISTANTE")" || CODE=$?
 case "$CODE" in
