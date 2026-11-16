@@ -47,7 +47,7 @@ def test_seance_non_placee():
 
 
 def test_placement_d_une_seance_qui_n_est_plus_demandee_nomme_le_besoin():
-    # Constat n° 17 de la revue : après le raccourcissement d'un semestre, la version garde
+    # Après le raccourcissement d'un semestre, la version garde
     # la séance « 1-3 » que le besoin ne produit plus. Le message nomme le besoin et dit quoi
     # faire, sans exposer l'identifiant technique (qui reste dans le champ `seances`).
     f, n204, s1, s2 = deux_seances()
@@ -285,7 +285,7 @@ def test_libelle_du_socle_qui_cite_deja_ses_groupes():
 
 
 def test_seance_verrouillee_deplacee_n_est_plus_imposee():
-    # Même règle que la couche datée (constat n° 15) : hors de la place de son verrou, une
+    # Même règle que la couche datée : hors de la place de son verrou, une
     # séance verrouillée n'a plus droit aux écarts admis.
     f, n204, _, seance = seance_verrouillee()
     anomalies = verifier(f.construire(), [placer(seance, SAMEDI, "8h30", n204)], ["JOURS"])

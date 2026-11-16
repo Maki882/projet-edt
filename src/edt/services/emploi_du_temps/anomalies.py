@@ -256,8 +256,7 @@ def _grouper(
                             code,
                             gravite,
                             liens.lien(a),
-                            # Livré par le lot vérificateur : absent des anomalies plus anciennes.
-                            presentation.etiquette_niveau(getattr(a, "niveau", None)),
+                            presentation.etiquette_niveau(a.niveau),
                             presentation.regle_citee(a, annee_id),
                         )
                         for a in liste[:LIMITE_LIGNES]

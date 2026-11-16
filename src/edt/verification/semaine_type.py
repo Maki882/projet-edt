@@ -98,7 +98,7 @@ def verifier(
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     placements = tuple(placements)
-    valider_placements(instantane, placements)
+    valider_placements(placements)
     ctx = Contexte(instantane, codes, datee=False, niveaux_regles=regles_retenues)
     elements, inconnus = construire_elements(instantane, placements)
     signaler_salles_disparues(elements)
@@ -128,7 +128,7 @@ def verifier(
     return anomalies
 
 
-def valider_placements(instantane: Instantane, placements: Sequence[Placement]) -> None:
+def valider_placements(placements: Sequence[Placement]) -> None:
     """Lève `ErreurDonneesInvalides` (avec tous les défauts) si un placement est mal formé.
 
     Une salle inconnue de l'instantané n'est pas un défaut de structure (voir l'en-tête).

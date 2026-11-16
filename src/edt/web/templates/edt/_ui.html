@@ -5,11 +5,14 @@
       {% import "edt/_ui.html" as edt with context %}
 
   - edt.encart_controle(controle)              vérification indisponible ou en échec : encart clair
-  - edt.indicateurs(controle, nb_a_programmer) les quatre indicateurs de l'équipe
-  - edt.anomalies(liste)                       anomalies en phrases, avec leur gravité
-  - edt.regle_citee(regle, message)             la règle personnalisée d'une anomalie, avec son lien
+  - edt.indicateurs(controle, nb_a_programmer) indicateurs de qualité (séances placées, conflits,
+                                               salles, campus, séances à programmer)
+  - edt.ecarts_decoches(controle)              écarts aux règles décochées lors du calcul
+  - edt.anomalies(liste, titre)                anomalies en phrases, avec leur gravité
+  - edt.regle_citee(regle, message)            la règle personnalisée d'une anomalie, avec son lien
   - edt.etiquette_gravite(gravite)             pastille « Erreur », « Avertissement »...
-  - edt.ressources(liste)                      feuilles de style et script des écrans
+  - edt.ressources(), edt.script()             feuille de style et script des écrans
+  - edt.choix_semestre(semestres, semestre, action)  sélecteur de semestre
   - edt.perimetre(vue, url_vue)                ce que la grille affiche et ce qu'elle laisse de côté
 #}
 {% import "macros.html" as ui %}

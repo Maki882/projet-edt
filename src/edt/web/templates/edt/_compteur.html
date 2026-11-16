@@ -1,4 +1,4 @@
 {#- Nombre d'éléments à traiter, pour l'onglet du menu. Variables : total, complet. -#}
 {%- if total -%}
-<span class="edt-compteur-onglet" title="{{ total }} élément(s) à traiter{% if not complet %} (vérifications automatiques pas encore toutes disponibles){% endif %}">{{ total }}</span>
+<span class="edt-compteur-onglet" title="{{ total }} élément(s) à traiter{% if not complet %} (certaines vérifications n'ont pas pu être faites){% endif %}">{{ total }}</span>
 {%- endif -%}

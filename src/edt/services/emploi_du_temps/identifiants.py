@@ -4,7 +4,7 @@ SQLite range ses identifiants sur 64 bits signés : un entier hors de
 `[1, 2**63 - 1]` (`edt.db.moteur.IDENTIFIANT_MAX`) ne peut désigner aucune
 ligne, et le donner à la base lève `OverflowError` (une erreur 500 pour un lien
 mal copié). Les services de ces écrans vérifient donc chaque identifiant reçu
-avec la garde commune du socle, `edt.db.moteur.identifiant_valide` : hors
+avec la garde commune `edt.db.moteur.identifiant_valide` : hors
 bornes, c'est « introuvable », exactement comme un identifiant inconnu
 (`exiger_identifiant`, `obtenir`).
 

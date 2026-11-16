@@ -322,7 +322,7 @@ def verifier_modification(
     modification n'introduit aucune erreur : une entorse nouvelle à une règle
     importante ou facultative est renvoyée comme avertissement ou information,
     sans rendre le rapport invalide. Une séance verrouillée dans la version
-    donne une anomalie `VERROU` si on la déplace.
+    donne une anomalie `VERROU` si elle est déplacée.
 
     Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
     de la version ; `contraintes_actives` seul les restreint à ces codes).

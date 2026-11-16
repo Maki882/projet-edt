@@ -1,4 +1,4 @@
-"""Fixtures du lot vérificateur sur la base du jeu minimal (base SQLite temporaire).
+"""Fixtures des tests du vérificateur sur la base du jeu minimal (base SQLite temporaire).
 
 Elles complètent celles de `tests/conftest.py` (`session`, `jeu_minimal`) :
 

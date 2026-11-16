@@ -1,4 +1,4 @@
-"""Règles personnalisées (code `REGLE`) : un vérificateur par type, temps A.
+"""Règles personnalisées (code `REGLE`) : un vérificateur par type.
 
 Chaque type : une entorse signalée, la gravité selon le niveau de la règle, la
 règle ignorée (absente de `niveaux_regles`) ; plus les réglages par personne
@@ -35,10 +35,6 @@ def resume(anomalies):
     return [(str(a.code), a.gravite, a.regle_code) for a in anomalies]
 
 
-def regles_de(anomalies):
-    return [a for a in anomalies if a.code is REGLE]
-
-
 def promotion():
     """A1 (promotion) > A1-G1, A1-G2 ; B1 (promotion seule) ; salles N204 (NDC), L101 (Issy)."""
     f = Fabrique()
@@ -69,7 +65,7 @@ def test_type_sans_verificateur_signale_et_jamais_bloquant(monkeypatch):
         Gravite.AVERTISSEMENT,
         "R001",
     )
-    assert "n'est pas encore vérifié automatiquement" in anomalie.message
+    assert "n'est pas vérifié automatiquement ; la contrôler à la main" in anomalie.message
 
 
 # --------------------------------------------------------------------------- #

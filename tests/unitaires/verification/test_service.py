@@ -1,4 +1,4 @@
-"""Intégration : service de vérification sur le jeu minimal du socle (base SQLite temporaire).
+"""Service de vérification sur le jeu minimal (base SQLite temporaire).
 
 La version vérifiée est l'emploi du temps saisi à la main de `versions.py`
 (fixture `version_id` de `conftest.py`) : sa semaine type est valide ; ses
@@ -145,7 +145,7 @@ def test_modification_d_une_seance_non_placee(version_sans_seances_datees, jeu_m
 
 
 def test_modification_ignore_les_violations_deja_presentes(version_id, jeu_minimal, session):
-    # Constat n° 16 de la revue : une violation antérieure et indépendante du déplacement
+    # Une violation antérieure et indépendante du déplacement
     # (ici le maximum hebdomadaire de M. Bernard, dépassé dans la version enregistrée) ne
     # doit pas figer ses séances.
     bernard = session.scalar(select(m.Enseignant).where(m.Enseignant.identifiant == "ENS002"))

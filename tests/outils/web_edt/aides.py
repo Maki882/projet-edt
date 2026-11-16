@@ -108,8 +108,8 @@ class FauxVerificateur:
     niveaux_regles_pre_verifies: dict | None = None
 
     def __setattr__(self, nom, valeur) -> None:
-        # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
-        # mémoire des écrans pour que le prochain affichage le voie.
+        # Changer ce que renvoie le faux vérificateur ne touche pas la base : la mémoire des
+        # écrans est vidée pour que le prochain affichage le voie.
         super().__setattr__(nom, valeur)
         memoire.oublier()
 

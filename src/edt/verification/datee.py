@@ -107,7 +107,7 @@ def verifier_occurrences(
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     occurrences = tuple(occurrences)
-    valider_occurrences(instantane, occurrences)
+    valider_occurrences(occurrences)
     ctx = Contexte(instantane, codes, datee=True, niveaux_regles=regles_retenues)
     besoins = {besoin.id: besoin for besoin in instantane.besoins}
     seances = {seance.id: seance for seance in instantane.seances}
@@ -158,7 +158,7 @@ def verifier_occurrences(
     return anomalies
 
 
-def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence]) -> None:
+def valider_occurrences(occurrences: Sequence[Occurrence]) -> None:
     """Lève `ErreurDonneesInvalides` (avec tous les défauts) si une occurrence est mal formée.
 
     La date doit être exactement un `datetime.date` : un `datetime` (date et

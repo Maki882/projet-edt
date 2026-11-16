@@ -1,4 +1,4 @@
-"""Constats de la revue d'ensemble (lot web-edt, n° 20 à 28) et mémoire des écrans."""
+"""Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _importer_les_seances_datees(version_id: int) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# n° 20 : séances datées importées
+# Séances datées importées
 # --------------------------------------------------------------------------- #
 
 
@@ -93,7 +93,7 @@ def test_un_refus_de_l_instanciation_devient_une_remarque(seances_datees, client
 
 
 # --------------------------------------------------------------------------- #
-# n° 21 et 22 : un seul nombre de points à traiter
+# Un seul nombre de points à traiter
 # --------------------------------------------------------------------------- #
 
 
@@ -164,7 +164,7 @@ def test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois(
 
 
 # --------------------------------------------------------------------------- #
-# n° 23 : contraintes décochées lors du calcul
+# Contraintes décochées lors du calcul
 # --------------------------------------------------------------------------- #
 
 
@@ -215,7 +215,7 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
 
 
 # --------------------------------------------------------------------------- #
-# n° 24 à 28
+# Calcul sans version, semestre sans besoin, accueil, nom de version
 # --------------------------------------------------------------------------- #
 
 
@@ -313,7 +313,7 @@ def test_besoin_impossible_a_deplier_affiche_une_seule_fois(jeu_minimal, client)
 def test_refus_reel_de_l_instanciation_sans_erreur_500(
     seances_datees, client, faux_verificateur, monkeypatch
 ):
-    """L'instanciation livrée refuse une version importée : ni le recalcul ni un déplacement ne plantent."""
+    """L'instanciation refuse une version importée : ni le recalcul ni un déplacement ne plantent."""
     version = seances_datees.version_id
     _importer_les_seances_datees(version)
     # Sans le garde de l'écran, c'est `instancier_version` elle-même qui refuse.

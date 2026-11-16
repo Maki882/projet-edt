@@ -115,7 +115,7 @@ def _adresse_de_la_page(request: Request, retour: str | None, cle: str) -> str |
     """Adresse de retour d'un panneau : `retour` s'il est donné, sinon la page d'où vient HTMX.
 
     HTMX envoie l'adresse de la page dans l'en-tête `HX-Current-URL` : inutile
-    de la répéter dans chaque bloc de la grille. On y met la séance `cle` en
+    de la répéter dans chaque bloc de la grille. La séance `cle` y est mise en
     évidence, pour revenir sur elle après une action. Un en-tête illisible est
     ignoré (`adresse_courante` le journalise).
     """
@@ -245,7 +245,7 @@ def page(
         vue = construire(choisie, etendu)
     except ErreurIntrouvable as erreur:
         # Lien ancien, cible retenue d'une autre année, ou changement de semestre sans
-        # JavaScript : on montre la cible par défaut.
+        # JavaScript : la cible par défaut est montrée.
         defaut = vues.cible_par_defaut(session, annee_id)
         if choisie == defaut:
             raise
@@ -367,7 +367,7 @@ def formulaire_seance(
     verrouiller: bool = False,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change le jour ou l'heure (débuts et salles libres).
+    """Formulaire recalculé au changement du jour ou de l'heure (débuts et salles libres).
 
     Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
     """
@@ -484,7 +484,7 @@ def formulaire_occurrence(
     salle_id: str | None = None,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change la date ou l'heure.
+    """Formulaire recalculé au changement de la date ou de l'heure.
 
     Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
     """

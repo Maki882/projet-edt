@@ -279,7 +279,7 @@ def test_liste_vide():
 
 
 def test_verrou_ne_couvre_pas_une_occurrence_deplacee_a_la_main():
-    # Constat n° 15 de la revue : le verrou fixe la place de la semaine type, pas une nouvelle
+    # Le verrou fixe la place de la semaine type, pas une nouvelle
     # date choisie à la main. Déplacée un samedi interdit, l'occurrence est une ERREUR JOURS,
     # sans le faux « créneau imposé ».
     f = Fabrique()

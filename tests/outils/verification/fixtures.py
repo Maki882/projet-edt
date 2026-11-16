@@ -1,4 +1,4 @@
-"""Fixtures du lot vérificateur utilisées par les tests unitaires et par les tests d'intégration.
+"""Fixtures des tests du vérificateur, utilisées par les tests unitaires et d'intégration.
 
 Elles s'appuient sur celles de `tests/conftest.py` (`jeu_minimal`) et sont importées par nom
 dans le `conftest.py` de chaque côté qui s'en sert :
