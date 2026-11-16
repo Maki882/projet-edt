@@ -1,4 +1,4 @@
-"""Commandes du socle : `init-db`, `verifier-schema`, `jeu-minimal`, `serve`, `version`,
+"""Commandes générales : `init-db`, `verifier-schema`, `jeu-minimal`, `serve`, `version`,
 `doctor`, et l'exploitation de la base : `sauvegarder`, `verifier-sauvegarde`."""
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
+from sqlalchemy import create_engine, select, text
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
 from edt.db.base import Base
 from edt.db.initialisation import (
     MARCHE_A_SUIVRE_SCHEMA_PERIME,
+    copier_base,
     ecarts_schema,
     exiger_schema_a_jour,
     initialiser_base,
@@ -33,14 +33,15 @@ from edt.db.initialisation import (
     tables_manquantes,
 )
 from edt.db.jeux import creer_jeu_minimal
+from edt.db.modeles import Campus
 from edt.db.moteur import (
+    chemin_base,
     expliquer_erreur_base,
     obtenir_moteur,
     session_base,
     transaction_immediate,
 )
 from edt.erreurs import (
-    ErreurCalculEnCours,
     ErreurConfiguration,
     ErreurDonneesInvalides,
     ErreurEDT,
@@ -49,6 +50,7 @@ from edt.erreurs import (
 )
 from edt.journal import DOSSIER_CALCULS, NOM_FICHIER, panne_journalisation
 from edt.services.etat import EtatBase, diagnostiquer_base
+from edt.services.jeux import remettre_a_zero
 
 commandes = typer.Typer()
 journal = logging.getLogger(__name__)
@@ -101,16 +103,20 @@ def init_db(
 
     --reset demande confirmation quand la commande est tapée dans un terminal
     (--oui l'évite ; un script non interactif n'est pas interrogé), refuse
-    d'agir pendant un calcul, et, en production, sauvegarde d'abord le fichier
-    de la base à côté de lui (« edt-<date>-avant-reset.db »).
+    d'agir pendant un calcul ou pendant un chargement de jeu, et, en
+    production, sauvegarde d'abord la base dans le dossier « sauvegardes »
+    à côté d'elle (« edt-<date>-avant-reset.db »).
     """
     sauvegarde = None
     if reset:
         _confirmer_remise_a_zero(oui)
-        _exiger_aucun_calcul_en_cours()
         if charger_configuration().est_prod:
             sauvegarde = sauvegarder_base()
-    rapport = initialiser_base(reset=reset)
+        # Même chemin que l'écran de configuration : verrou, fichier marqueur vu des autres
+        # processus, refus pendant un calcul.
+        rapport = remettre_a_zero()
+    else:
+        rapport = initialiser_base()
     action = "remise à zéro puis initialisée" if rapport.reinitialisee else "initialisée"
     if sauvegarde is not None:
         typer.echo(f"Sauvegarde de l'ancienne base : {sauvegarde}")
@@ -119,10 +125,20 @@ def init_db(
     for table, nombre in rapport.ajouts.items():
         if nombre:
             typer.echo(f"  - {table} : {nombre}")
+    with session_base() as session:
+        vide = session.scalar(select(Campus.id).limit(1)) is None
+    if vide:
+        typer.echo(
+            "Étape suivante : charger des données fictives (« python -m edt jeu --taille moyen », "
+            "ou « python -m edt jeu-minimal » pour un tout petit jeu), puis lancer « python -m edt "
+            "serve »."
+        )
+    else:
+        typer.echo("Étape suivante : lancer « python -m edt serve ».")
 
 
 def _entree_interactive() -> bool:
-    """Vrai si la commande est tapée dans un terminal (on peut poser une question)."""
+    """Vrai si la commande est tapée dans un terminal (une question peut y être posée)."""
     return sys.stdin is not None and sys.stdin.isatty()
 
 
@@ -140,24 +156,11 @@ def _confirmer_remise_a_zero(oui: bool) -> None:
     )
 
 
-def _exiger_aucun_calcul_en_cours() -> None:
-    """Refuse la remise à zéro pendant un calcul : il lit la base et sa ligne disparaîtrait."""
-    from edt.db.initialisation import base_initialisee
-    from edt.services.generation import calcul_en_cours
-
-    if not base_initialisee(obtenir_moteur()):
-        return  # pas de table « calcul » : aucun calcul ne peut tourner
-    suivi = calcul_en_cours()
-    if suivi is not None:
-        raise ErreurCalculEnCours(
-            f"Impossible de remettre la base à zéro : un calcul d'emploi du temps est en cours "
-            f"(calcul n°{suivi.id}). Attendre sa fin ou l'arrêter."
-        )
-
-
 @commandes.command("verifier-schema")
 def verifier_schema() -> None:
-    """Vérifie que les tables de la base ont les colonnes du modèle (rien n'est modifié).
+    """Vérifie que les tables de la base correspondent au modèle : colonnes, unicités, index.
+
+    Rien n'est modifié.
 
     Code de sortie 0 si le schéma est à jour, 1 s'il est périmé (les écarts sont
     listés), 2 si la base est inaccessible. Une table pas encore créée n'est pas
@@ -194,7 +197,7 @@ def verifier_schema() -> None:
 def jeu_minimal() -> None:
     """Charge un tout petit jeu de données fictif et cohérent dans une base vide."""
     moteur = obtenir_moteur()
-    exiger_schema_a_jour(moteur)
+    exiger_schema_a_jour(moteur, rien_modifie=True)
     if tables_manquantes(moteur):
         raise ErreurRegleMetier(
             "La base n'est pas initialisée : lancer d'abord « python -m edt init-db »."
@@ -207,6 +210,10 @@ def jeu_minimal() -> None:
         f"{jeu.nb_campus} campus, {jeu.nb_salles} salles, {jeu.nb_enseignants} enseignants, "
         f"{jeu.nb_groupes} groupes, {jeu.nb_matieres} matières, {jeu.nb_besoins} besoins "
         f"(semestre n°{jeu.semestre_id})."
+    )
+    typer.echo(
+        f"Étape suivante : « python -m edt generer --semestre {jeu.semestre_id} » calcule "
+        "l'emploi du temps ; « python -m edt serve » ouvre l'application dans le navigateur."
     )
 
 
@@ -266,9 +273,20 @@ def doctor() -> None:
     for statut, message in controles:
         typer.echo(f"[{statut:^9}] {message}")
     echecs = sum(1 for statut, _ in controles if statut == ECHEC)
+    avertissements = sum(1 for statut, _ in controles if statut == ATTENTION)
     if echecs:
-        typer.echo(f"{echecs} contrôle(s) en échec.", err=True)
+        typer.echo(
+            f"{echecs} contrôle(s) en échec : corriger ce que disent les lignes ECHEC, puis "
+            "relancer « python -m edt doctor ».",
+            err=True,
+        )
         raise typer.Exit(1)
+    if avertissements:
+        typer.echo(
+            f"Aucun échec, {avertissements} avertissement(s) : suivre les indications des lignes "
+            "ATTENTION."
+        )
+        return
     typer.echo("Tout est prêt.")
 
 
@@ -332,7 +350,7 @@ def sauvegarder(
     _supprimer_partiels_abandonnes(dossier, prefixe)
     partiel = cible.with_name(cible.name + ".partiel")
     try:
-        nb_tables = _copier_base(base, partiel)
+        nb_tables = copier_base(base, partiel)
         partiel.replace(cible)
     except BaseException:
         partiel.unlink(missing_ok=True)
@@ -398,7 +416,11 @@ def _controler_python() -> tuple[str, str]:
     requis = ".".join(map(str, PYTHON_MINIMUM))
     if actuelle[:2] >= PYTHON_MINIMUM:
         return OK, f"Python {texte} ({requis} ou plus requis)"
-    return ECHEC, f"Python {texte} : la version {requis} ou plus est requise"
+    return (
+        ECHEC,
+        f"Python {texte} : la version {requis} ou plus est requise ; l'installer, puis recréer "
+        "l'environnement du projet (README, « Installation »)",
+    )
 
 
 def _controler_ortools() -> tuple[str, str]:
@@ -406,7 +428,11 @@ def _controler_ortools() -> tuple[str, str]:
         import ortools
         from ortools.sat.python import cp_model
     except ImportError as erreur:
-        return ECHEC, f"OR-Tools introuvable ({erreur}) : installer les dépendances du projet"
+        return (
+            ECHEC,
+            f"OR-Tools introuvable ({erreur}) : installer les dépendances du projet "
+            "(« python -m pip install -e . »)",
+        )
     version_lue = ortools.__version__
     try:
         numerique = tuple(int(partie) for partie in version_lue.split(".")[:2])
@@ -414,7 +440,11 @@ def _controler_ortools() -> tuple[str, str]:
         return ECHEC, f"OR-Tools : version illisible ({version_lue!r})"
     requis = ".".join(map(str, ORTOOLS_MINIMUM))
     if numerique < ORTOOLS_MINIMUM:
-        return ECHEC, f"OR-Tools {version_lue} : la version {requis} ou plus est requise"
+        return (
+            ECHEC,
+            f"OR-Tools {version_lue} : la version {requis} ou plus est requise "
+            "(« python -m pip install -e . » la met à jour)",
+        )
 
     modele = cp_model.CpModel()
     x = modele.new_int_var(0, 10, "x")
@@ -440,29 +470,31 @@ def _controler_base(etat: EtatBase | str) -> tuple[str, str]:
     if isinstance(etat, str):
         return ECHEC, f"Base : {etat}"
     if not etat.accessible:
-        return ECHEC, f"Base {etat.url} inaccessible : {etat.erreur}"
+        return (
+            ECHEC,
+            f"Base {etat.url} inaccessible ({etat.erreur}) : "
+            f"{expliquer_erreur_base(Exception(etat.erreur))}",
+        )
     mode = f", mode {etat.mode_journal}" if etat.mode_journal else ""
     return OK, f"Base {etat.url} accessible{mode}"
 
 
 def _controler_ecriture(etat: EtatBase | str) -> tuple[str, str]:
-    """La base accepte-t-elle une écriture ? (lecture seule, verrou, disque plein)."""
+    """La base accepte-t-elle une écriture ? Résultat de l'écriture d'essai du diagnostic.
+
+    `services.etat.verifier_ecriture` l'a tentée sans attendre de verrou : une base occupée
+    par une autre écriture n'est pas une panne.
+    """
     if isinstance(etat, str) or not etat.accessible:
         return ATTENTION, "Écriture non vérifiée : la base est inaccessible"
-    try:
-        brute = obtenir_moteur().raw_connection()
-        try:
-            # BEGIN IMMEDIATE prend le verrou d'écriture (attente puis « locked » s'il est tenu) ;
-            # en mode WAL, seule une écriture réelle révèle un fichier en lecture seule :
-            # réécrire la version utilisateur à l'identique écrit l'en-tête, puis ROLLBACK.
-            brute.execute("BEGIN IMMEDIATE")
-            version = brute.execute("PRAGMA user_version").fetchone()[0]
-            brute.execute(f"PRAGMA user_version = {int(version)}")
-            brute.rollback()
-        finally:
-            brute.close()
-    except Exception as erreur:  # erreur SQLAlchemy ou du pilote sqlite3 brut
-        return ECHEC, f"Écriture dans la base impossible : {expliquer_erreur_base(erreur)}"
+    if etat.inscriptible is None:
+        return (
+            ATTENTION,
+            "Écriture non vérifiée : une autre écriture occupe la base (calcul, chargement, "
+            "import) ; relancer « python -m edt doctor » une fois celle-ci terminée",
+        )
+    if not etat.inscriptible:
+        return ECHEC, f"Écriture dans la base impossible : {etat.ecriture_impossible}"
     return OK, "Écriture dans la base possible (écriture d'essai annulée)"
 
 
@@ -498,7 +530,11 @@ def _controler_journaux(config: Configuration) -> tuple[str, str]:
         with (dossier / NOM_FICHIER).open("a", encoding="utf-8"):
             pass
     except OSError as erreur:
-        return ECHEC, f"Journaux : impossible d'écrire dans « {dossier} » ({erreur})"
+        return (
+            ECHEC,
+            f"Journaux : impossible d'écrire dans « {dossier} » ({erreur}) : corriger "
+            "EDT_LOG_DIR ou les droits de ce dossier",
+        )
     return OK, f"Journaux : dossier « {dossier} » et fichier {NOM_FICHIER} accessibles en écriture"
 
 
@@ -514,7 +550,7 @@ def _controler_journaux_calcul(config: Configuration) -> tuple[str, str]:
         return (
             ECHEC,
             f"Journaux de calcul : impossible d'écrire dans « {dossier} » ({erreur}) : aucun "
-            "calcul n'aurait de journal",
+            "calcul n'aurait de journal ; ce chemin doit être un dossier inscriptible",
         )
     return OK, f"Journaux de calcul : dossier « {dossier} » accessible en écriture"
 
@@ -552,18 +588,15 @@ def _maintenant_utc() -> dt.datetime:
 
 
 def _fichier_de_la_base() -> Path:
-    """Fichier SQLite de la base configurée (`EDT_DB_URL`), tel que l'application l'ouvre."""
-    config = charger_configuration()
-    try:
-        url = make_url(config.db_url)
-    except Exception as erreur:
-        raise ErreurConfiguration(f"EDT_DB_URL invalide ({config.db_url!r}) : {erreur}") from erreur
-    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
-        raise ErreurConfiguration(
-            "Sauvegarde possible seulement pour une base SQLite sur fichier "
-            f"(EDT_DB_URL = {config.db_url_affichable})."
-        )
-    return Path(url.database)
+    """Fichier SQLite de la base configurée (`EDT_DB_URL`), tel que l'application l'ouvre.
+
+    `obtenir_moteur` refuse toute URL qui n'est pas un fichier SQLite, avec le remède.
+    """
+    obtenir_moteur()
+    chemin = chemin_base(charger_configuration().db_url)
+    if chemin is None:  # impossible après `obtenir_moteur`, gardé pour le typage
+        raise ErreurConfiguration("EDT_DB_URL ne désigne pas un fichier SQLite.")
+    return chemin
 
 
 def _taille_base(base: Path) -> int:
@@ -575,35 +608,6 @@ def _taille_base(base: Path) -> int:
 def _lisible(octets: int) -> str:
     """Taille lisible : « 3,2 Mo »."""
     return f"{octets / (1024 * 1024):.1f} Mo".replace(".", ",")
-
-
-def _copier_base(source: Path, cible: Path) -> int:
-    """Copie cohérente de `source` dans `cible` (API de sauvegarde SQLite), puis contrôle.
-
-    La copie lit un instantané de la base : le service peut écrire pendant ce
-    temps. Renvoie le nombre de tables de la copie ; lève `ErreurDonneesInvalides`
-    si la base est illisible, le disque plein ou la copie abîmée.
-    """
-    try:
-        with closing(sqlite3.connect(source, timeout=30)) as connexion_source:
-            with closing(sqlite3.connect(cible)) as connexion_cible:
-                connexion_source.backup(connexion_cible)
-                verdict = connexion_cible.execute("PRAGMA integrity_check").fetchone()[0]
-                nb_tables = connexion_cible.execute(
-                    "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
-                ).fetchone()[0]
-    except sqlite3.Error as erreur:
-        raise ErreurDonneesInvalides(
-            f"Sauvegarde impossible : base {source} illisible ou disque plein ({erreur})."
-        ) from erreur
-    if verdict != "ok":
-        raise ErreurDonneesInvalides(
-            f"Sauvegarde refusée : le contrôle d'intégrité de la copie échoue ({verdict}). La base "
-            f"{source} est sans doute abîmée (docs/deploiement.md, « Base corrompue »)."
-        )
-    if nb_tables == 0:
-        raise ErreurDonneesInvalides(f"Sauvegarde refusée : {source} ne contient aucune table.")
-    return nb_tables
 
 
 def _supprimer_partiels_abandonnes(dossier: Path, prefixe: str) -> None:
@@ -628,10 +632,19 @@ def _faire_tourner(dossier: Path, prefixe: str, garder: int) -> list[str]:
         return []
     sauvegardes = sorted(dossier.glob(f"{prefixe}-*.db"), key=lambda chemin: chemin.name)
     anciennes = sauvegardes[: max(0, len(sauvegardes) - garder)]
+    supprimees = []
     for chemin in anciennes:
-        chemin.unlink()
+        try:
+            chemin.unlink()
+        except OSError as erreur:
+            # La sauvegarde du jour est faite et vérifiée : un fichier ancien tenu par un autre
+            # programme (antivirus, explorateur) ne la fait pas passer pour un échec.
+            journal.warning("Ancienne sauvegarde %s non supprimée : %s", chemin, erreur)
+            typer.echo(f"  ancienne sauvegarde non supprimée : {chemin.name} ({erreur})", err=True)
+            continue
         journal.info("Ancienne sauvegarde supprimée : %s", chemin)
-    return [chemin.name for chemin in anciennes]
+        supprimees.append(chemin.name)
+    return supprimees
 
 
 def _verifier_integrite(copie: Path, fichier: Path) -> int:

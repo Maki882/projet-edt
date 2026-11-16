@@ -1,7 +1,7 @@
 """Catalogue des contraintes : source unique pour le vérificateur, le solveur et l'interface.
 
-Les codes sont ceux de la section 6 de `docs/decisions.md`. Ils sont
-**stables** : on ne renomme jamais un code, on en ajoute. Toutes les
+Les codes sont décrits dans `docs/verification.md`. Ils sont **stables** :
+un code n'est jamais renommé, seuls de nouveaux codes s'ajoutent. Toutes les
 contraintes sont actives par défaut ; avant un calcul, l'utilisateur choisit
 le **niveau** de chacune et chaque choix est tracé dans le résultat. Aucune
 contrainte n'est jamais abandonnée automatiquement.
@@ -25,8 +25,9 @@ peut changer.
 Les niveaux retenus pour un calcul forment un `Niveaux` (`dict[CodeContrainte,
 Niveau]`). Convention : **une clé absente est une contrainte ignorée**, ni
 posée par le solveur ni vérifiée par le vérificateur ; c'est ainsi que
-`niveaux_depuis_desactivees` traduit les calculs anciens, qui ne connaissaient
-que des contraintes désactivées. `normaliser_niveaux` produit toujours un
+`niveaux_depuis_desactivees` traduit une simple liste de contraintes
+désactivées (option `--desactiver`, calcul enregistré sans niveaux).
+`normaliser_niveaux` produit toujours un
 dictionnaire complet. Côté vérificateur, la gravité d'une anomalie découle du
 niveau : nécessaire donne une erreur, important un avertissement, facultatif
 une information. Côté solveur, une entorse à une contrainte souple coûte
@@ -35,8 +36,8 @@ une information. Côté solveur, une entorse à une contrainte souple coûte
 Pour ajouter une contrainte : ajouter un membre à `CodeContrainte`, son
 entrée dans `CATALOGUE` (avec son niveau par défaut et, si elle définit le
 problème, `_TOUJOURS_NECESSAIRES`), puis l'implémenter dans le vérificateur
-**et** dans le solveur (le test `tests/unitaires/socle/test_contrats.py`
-vérifie que le catalogue couvre tous les codes).
+**et** dans le solveur (un test de contrat vérifie que le catalogue couvre
+tous les codes).
 
 Les préférences (objectif à minimiser) sont décrites par `PREFERENCES` ;
 leurs poids sont des paramètres globaux réglables (`edt.domaine.parametres`).
@@ -115,7 +116,7 @@ samedi, 1 par créneau extrême. Une contrainte importante vaut donc une
 centaine de trous-semaines (sept trous sur un semestre de quinze semaines),
 plus que tout gain de confort réaliste d'une seule entorse ; une facultative
 deux trous-semaines, qu'un vrai gain de confort peut emporter. Valeurs
-calibrées par le lot solveur sur les jeux moyen et grand (2026-10-06).
+calibrées sur les jeux fictifs moyen et grand.
 """
 
 Niveaux = dict[CodeContrainte, Niveau]

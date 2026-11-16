@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'intégration.
+Le catalogue compte 360 cas : 208 cas en tests unitaires et 152 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
 | `exploitation` | 40 | 32 |
-| `socle` | 48 | 24 |
+| `socle` | 55 | 28 |
 | `solveur` | 19 | 16 |
 | `synthese` | 28 | 5 |
 | `verification` | 25 | 0 |
 | `web_donnees` | 1 | 36 |
 | `web_edt` | 1 | 30 |
-| **Total** | **201** | **148** |
+| **Total** | **208** | **152** |
 
-### Tests unitaires (201 cas)
+### Tests unitaires (208 cas)
 
 #### `echange` (39 cas)
 
@@ -219,23 +219,25 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (48 cas)
+#### `socle` (55 cas)
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Contraintes de controle du modele et maxima positifs | une écriture qui contourne les services viole une règle de cohérence du modèle (créneau à l'envers, besoin de durée nulle, ponctuel sans date, trajet inversé, indisponibilité ni récurrente ni datée, maxima horaires négatifs ou nuls, groupe parent de lui-même). | dernière ligne de défense avant un instantané incohérent ; un remaniement de `modeles.py` perdrait ces CHECK sans signal, et les maxima négatifs rendaient `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde. |
-| Un code aux espaces invisibles est le meme code | un code saisi ou importé porte une espace insécable, une espace de largeur nulle, des espaces aux bords ou une tabulation (collé depuis un traitement de texte). | « N105 » et « N105 » passaient l'unicité et créaient un doublon invisible, introuvable à la recherche ; le code doit être normalisé dès l'affectation. |
+| Contraintes de controle du modele et maxima positifs | une écriture qui contourne les services viole une règle de cohérence du modèle (créneau à l'envers, besoin de durée nulle, ponctuel sans date, trajet inversé, indisponibilité ni récurrente ni datée, maxima horaires négatifs ou nuls, groupe parent de lui-même). | dernière ligne de défense avant un instantané incohérent ; un remaniement de `modeles.py` perdrait ces CHECK sans signal, et des maxima négatifs rendraient `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde. |
+| Un code aux espaces invisibles est le meme code | un code saisi ou importé porte une espace insécable, une espace de largeur nulle, des espaces aux bords ou une tabulation (collé depuis un traitement de texte). | « N105 » et « N105 » passeraient l'unicité et créeraient un doublon invisible, introuvable à la recherche ; le code doit être normalisé dès l'affectation. |
 | Les codes et identifiants sont normalises en nfc | le même code en forme Unicode décomposée (« e » + accent) et précomposée ; identifiant d'enseignant avec une espace insécable. | doublons invisibles de campus ou d'enseignants ; la forme enregistrée doit être NFC et l'unicité doit jouer. |
 | Init db relance ne recree pas un referentiel supprime volontairement | l'utilisateur a supprimé un type de séance, un équipement et toute la grille pour la ressaisir ; le déploiement suivant relance `init-db`. | lignes ressuscitées sans un mot (choix de l'utilisateur annulé à chaque mise à jour) ; seul un paramètre absent doit être reposé. |
+| Un type de seance par defaut sans son type de salle est signale | base sans aucun paramètre ni type de séance, mais dont les types de salle sont déjà saisis sans « AMPHI » (base remplie à la main, puis `init-db`). | le type de séance « CM » créé sans type de salle par défaut, sans un mot ; la création continue, mais l'écart est journalisé avec les deux codes. |
 | Le jeu minimal refuse proprement une base avec regles ou sans semestre s1 | `jeu-minimal` sur une base sans référentiel mais avec une règle déjà créée, puis sur une base dont les semestres ont été renommés. | `IntegrityError` brute (unicité (année, code) de la règle) puis `StopIteration` (semestre S1 introuvable) : code 2 / 500 au lieu d'un refus qui dit quoi faire. |
 
 [`tests/unitaires/socle/test_cli.py`](../tests/unitaires/socle/test_cli.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Options de niveau insensibles a la casse et aux espaces | `generer -d pause --niveau " Pause = Facultatif "` (casse et espaces libres). | refus surprenant alors que `--regle r007=Facultatif` tolère casse et espaces ; fragile pour les scripts. |
+| Une ancienne sauvegarde indelebile n empeche pas la rotation | la rotation des sauvegardes rencontre un fichier ancien tenu par un autre programme (antivirus, explorateur de fichiers sous Windows). | `sauvegarder` sortirait en « Erreur inattendue » (code 2) alors que la sauvegarde du jour est faite et vérifiée ; le fichier tenu est signalé, les autres anciens sont supprimés. |
+| Options de niveau insensibles a la casse et aux espaces | `generer -d pause` et `generer --niveau " Pause = Facultatif "` (casse et espaces libres), puis les deux options sur la même contrainte. | refus surprenant alors que `--regle r007=Facultatif` tolère casse et espaces ; fragile pour les scripts. Une contrainte à la fois ignorée et dotée d'un niveau est contradictoire : refus qui le dit. |
 
 [`tests/unitaires/socle/test_config.py`](../tests/unitaires/socle/test_config.py)
 
@@ -248,27 +250,29 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Ponctuel hors des dates du semestre est un probleme de depliage | le semestre commence un mercredi ; une séance ponctuelle est datée du lundi de la même semaine (saisie avant un raccourcissement du semestre). | le dépliage jugeait à la semaine et acceptait, le solveur plaçait, puis l'instanciation rejetait la date avec une raison vague : la cause réelle (hors semestre) doit être dite avant le calcul. |
+| Ponctuel hors des dates du semestre est un probleme de depliage | le semestre commence un mercredi ; une séance ponctuelle est datée du lundi de la même semaine (saisie avant un raccourcissement du semestre). | le dépliage jugerait à la semaine et accepterait, le solveur placerait, puis l'instanciation rejetterait la date avec une raison vague : la cause réelle (hors semestre) doit être dite avant le calcul. |
 | Un besoin sans groupe est signale et non deplie | un besoin dont la liste des groupes est vide (import partiel, groupe retiré par un script) ; la base l'accepte, la conception non. | déplié avec un effectif nul (toute salle convient), planifié comme si de rien n'était ; la demande incomplète doit être signalée, pas placée. |
 
 [`tests/unitaires/socle/test_instantane.py`](../tests/unitaires/socle/test_instantane.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Regle salles avec salles homonymes sur deux campus | une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la classe A1-G1. | la règle résolue ne visait qu'une des deux salles, au hasard de l'ordre de lecture : résultat faux sans message ; les deux identifiants doivent être retenus. |
-| Deux versions actives sont refusees et l index absent est un ecart | base créée sans l'index unique partiel « une version active par semestre » ; deux versions ont été activées. | l'instantané prenait la première ligne : verrous repris d'une version arbitraire, affichage d'une version et calcul sur l'autre, sans message. |
+| Regle salles avec salles homonymes sur deux campus | une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la classe A1-G1. | la règle résolue ne viserait qu'une des deux salles, au hasard de l'ordre de lecture : résultat faux sans message ; les deux identifiants doivent être retenus. |
+| Deux versions actives sont refusees et l index absent est un ecart | base créée sans l'index unique partiel « une version active par semestre » ; deux versions ont été activées. | l'instantané prendrait la première ligne : verrous repris d'une version arbitraire, affichage d'une version et calcul sur l'autre, sans message. |
 | Un besoin sans groupe est signale dans l instantane | un besoin du jeu perd tous ses groupes (script, import partiel) puis le semestre est chargé. | besoin déplié avec un effectif nul et planifié ; il doit figurer dans les problèmes de dépliage et n'avoir aucune séance. |
-| Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | un identifiant de séance venu d'une adresse ou d'un fichier porte un chiffre Unicode (« ² », chiffres d'une autre écriture) ou une forme bancale. | `isdigit()` acceptait « ² » puis `int()` levait une `ValueError` brute (500 / code 2) ; l'erreur doit être métier et nommer l'identifiant (cas transmis par le lot vérificateur). |
+| Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | un identifiant de séance venu d'une adresse ou d'un fichier porte un chiffre Unicode (« ² », chiffres d'une autre écriture), une forme bancale ou des milliers de chiffres. | `isdigit()` accepterait « ² », et `int()` lèverait une `ValueError` brute pour ce chiffre comme au-delà de 4 300 chiffres (500 / code 2) ; l'erreur doit être métier et nommer l'identifiant. |
 
 [`tests/unitaires/socle/test_jeux.py`](../tests/unitaires/socle/test_jeux.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Panne de generation apres remise a zero est dite | `recharger_jeu_fictif(..., reinitialiser=True)` et la génération du jeu plante (bogue, disque plein) après que la remise à zéro a été validée. | `RuntimeError` brute (500 / code 2) sans dire que la base a été effacée ni qu'aucun jeu n'est chargé ; la docstring promettait « rien n'est écrit sinon ». |
-| Jeu fictif sur schema perime indique le reset | une table a une colonne en trop (base d'une autre version) ; on charge un jeu sans remise à zéro, par le service puis par le chemin direct. | « lancer init-db » conseillé alors qu'init-db refusera ; le chemin direct continuait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ». |
-| Une operation d un autre processus est vue par son marqueur | `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le serveur sert des pages. | le verrou étant propre au processus, le serveur répondait « base non initialisée : lancer init-db » (faux) pendant la recréation des tables ; le marqueur posé à côté de la base doit être vu, et un marqueur périmé ignoré. |
-| Une graine ou une annee invalides sont refusees avant la remise a zero | l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine ou une année de début hors bornes. | la base était remise à zéro, puis la génération refusait la demande : toutes les données perdues pour une faute de saisie (cas transmis par le lot synthèse). |
-| Un chargement attend un verrou d ecriture tenu brievement et reussit | un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou d'écriture quelques dixièmes de seconde. | avec un BEGIN différé, le chargement lisait puis échouait aussitôt « database is locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ; ouvert en IMMEDIATE, il attend son tour et réussit. |
+| Panne de generation apres remise a zero est dite | `recharger_jeu_fictif(..., reinitialiser=True)` et la génération du jeu plante (bogue, disque plein) après que la remise à zéro a été validée. | `RuntimeError` brute (500 / code 2) sans dire que la base a été effacée ni qu'aucun jeu n'est chargé, alors que la docstring promet « rien n'est écrit sinon ». |
+| Jeu fictif sur schema perime indique le reset | une table a une colonne en trop (base d'une autre version) ; un jeu est chargé sans remise à zéro, par le service puis par le chemin direct. | « lancer init-db » conseillé alors qu'init-db refusera ; le chemin direct continuerait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ». |
+| Le jeu minimal nomme le code par defaut qui manque | un type de séance ou un équipement par défaut a été supprimé de la base avant `python -m edt jeu-minimal`. | `KeyError` (« Erreur inattendue », code 2) au milieu du chargement, ou un type de séance « TP » manquant masqué par le type de salle homonyme ; l'erreur doit nommer la liste, le code et le remède, avant toute écriture. |
+| Une operation d un autre processus est vue par son marqueur | `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le serveur sert des pages. | le verrou étant propre au processus, le serveur répondrait « base non initialisée : lancer init-db » (faux) pendant la recréation des tables ; le marqueur posé à côté de la base doit être vu, et un marqueur périmé ignoré. |
+| Une graine ou une annee invalides sont refusees avant la remise a zero | l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine ou une année de début hors bornes. | la base serait remise à zéro, puis la génération refuserait la demande : toutes les données perdues pour une faute de saisie. |
+| Un chargement attend un verrou d ecriture tenu brievement et reussit | un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou d'écriture quelques dixièmes de seconde. | avec un BEGIN différé, le chargement lirait puis échouerait aussitôt « database is locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ; ouvert en IMMEDIATE, il attend son tour et réussit. |
+| Une remise a zero donne un seul avertissement au journal | remise à zéro demandée depuis l'écran ou par `init-db --reset`, sans incident. | le journal, outil de diagnostic d'une démonstration, se remplit d'avertissements en double pour une action voulue ; un seul avertissement dit la suppression des données. |
 | Une remise a zero attend un verrou d ecriture tenu brievement | `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion écrit brièvement. | suppression du schéma (lecture du catalogue puis DROP) en échec « database is locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit. |
 | Deux chargements simultanes un seul reussit l autre est refuse clairement | deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux onglets). | les deux passent le contrôle « base vide » puis l'un échoue « database is locked » brut ou les données sont doublées ; un seul doit réussir, l'autre être refusé par un message clair (opération en cours, ou base déjà garnie). |
 | Deux chargements de deux processus sont serialises sous le verrou | deux chargements depuis deux processus (le verrou du processus ne joue pas) : deux transactions distinctes, lancées ensemble, sur la même base. | les deux lisent « base vide », le second échoue « database is locked » brut à sa première écriture ; en IMMEDIATE le second attend la fin du premier puis est refusé « la base contient déjà des données ». |
@@ -278,20 +282,22 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Dossier de journaux sous un fichier est une erreur de configuration | EDT_LOG_DIR désigne un chemin sous un fichier existant. | `NotADirectoryError` brute au lieu d'un message qui nomme la variable. |
-| Une rotation impossible ne perd ni ligne ni console | la rotation d'`edt.log` échoue parce qu'un autre processus tient le fichier (service web et commande `edt` en même temps, cas de Windows). | « --- Logging error --- » répété sur la console et lignes perdues ; la ligne doit être écrite dans le fichier courant, sans bruit. |
+| Une rotation impossible ne perd ni ligne ni archive ni console | la rotation d'`edt.log` échoue parce qu'un autre processus tient le fichier (service web et commande `edt` en même temps, cas de Windows), et cinq archives existent. | « --- Logging error --- » répété sur la console, lignes perdues, et une archive détruite à chaque ligne (archives décalées avant le renommage refusé) ; la ligne doit être écrite dans le fichier courant, les archives rester intactes, l'échec être dit une seule fois. |
+| Une rotation reussie decale les archives | `edt.log` atteint sa taille maximale alors que deux archives existent. | une rotation qui perd ou écrase une archive ; `.1` doit devenir `.2`, le fichier courant `.1`, et la ligne suivante partir dans un fichier neuf. |
+| Un dossier de journaux supprime ne fait pas lever le code qui journalise | le dossier des journaux est supprimé pendant que le serveur tourne (nettoyage, disque démonté). | `FileNotFoundError` levée par la réouverture du fichier dans le code qui journalise, à chaque ligne : requête web en erreur 500, calcul interrompu. La panne doit passer par le traitement d'erreur de `logging`, et l'écriture reprendre quand le dossier revient. |
 | Le fichier journal suit une rotation faite par un autre processus | un autre processus (ou logrotate) a renommé `edt.log` pendant que celui-ci écrit. | les lignes suivantes partiraient dans l'archive ou un fichier délié (incidents introuvables) ; le flux doit être rouvert sur le nouveau fichier. |
-| Les journaux de calcul les plus anciens sont purges | des centaines de calculs ont laissé chacun leur fichier dans `generations/`. | disque plein à terme (« database or disk is full » sur toute écriture) ; seuls les `NB_JOURNAUX_CALCUL` fichiers les plus récents doivent rester, et la purge est dite. |
+| Les journaux de calcul les plus anciens sont purges | des centaines de calculs ont laissé chacun leur fichier dans `generations/`. | disque plein à terme (« database or disk is full » sur toute écriture) ; seuls les `NB_JOURNAUX_CALCUL` fichiers les plus récents doivent rester, et la purge est dite. L'ordre suit la date portée par le nom, ni la date de modification (une copie ou une restauration la change) ni le numéro (il repart de 1 après une remise à zéro) : ici, les dates de modification vont à rebours des noms et le plus récent des anciens fichiers porte le numéro 1. |
 
 [`tests/unitaires/socle/test_moteur.py`](../tests/unitaires/socle/test_moteur.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Un point de sauvegarde libere reste annule par la transaction englobante | un service ouvre un point de sauvegarde avant toute écriture, écrit, le libère, puis la route lève (rollback de la transaction). | le pilote sqlite3 n'ouvre une transaction qu'avant une écriture ; sans le contournement du moteur, le RELEASE du SAVEPOINT validait l'insertion malgré le rollback. |
+| Un point de sauvegarde libere reste annule par la transaction englobante | un service ouvre un point de sauvegarde avant toute écriture, écrit, le libère, puis la route lève (rollback de la transaction). | le pilote sqlite3 n'ouvre une transaction qu'avant une écriture ; sans le contournement du moteur, le RELEASE du SAVEPOINT validerait l'insertion malgré le rollback. |
 | Un identifiant hors des entiers sqlite est invalide | un identifiant venu d'une adresse ou d'une option vaut 0, -1, 2**63, 10**30… | `session.get` ferait lever `OverflowError` au pilote (500 / code 2) au lieu de répondre « n'existe pas » ; la garde `identifiant_valide` doit tout refuser. |
-| Les erreurs du pilote sont expliquees avec leur remede | le pilote SQLite refuse une opération (verrou, lecture seule, fichier corrompu, disque plein). | un message technique sans remède ; l'opérateur pourrait effacer la base pour un simple verrou. |
+| Les erreurs du pilote sont expliquees avec leur remede | le pilote SQLite refuse une opération (verrou, lecture seule, fichier corrompu, disque plein). | un message technique sans remède ; l'opérateur pourrait effacer la base pour un simple verrou, ou libérer du disque pour une requête que la version de SQLite refuse (« FULL OUTER JOIN » ne veut pas dire « disque plein »). Chaque cause est enveloppée dans la classe que le pilote lève vraiment : `DatabaseError` pour un fichier qui n'est pas une base, `OperationalError` sinon. |
 | Une ecriture attend la fin d une transaction courte | deux fils écrivent presque en même temps (fil de calcul et requête web). | sans `busy_timeout`, la seconde écriture échouerait aussitôt « database is locked » et la saisie ou la version serait perdue ; elle doit attendre puis réussir. |
 | Sous un verrou tenu l ecriture echoue apres le delai et les lecteurs sont servis | un autre processus (sqlite3, commande) tient le verrou d'écriture longtemps. | sans mode WAL les lectures seraient bloquées aussi (/sante rouge à chaque import) ; sans délai borné l'écriture attendrait sans fin. Elle doit échouer après le délai, « locked », sans rien écrire, pendant que les lecteurs sont servis. |
-| Transaction immediate prend le verrou d ecriture des l ouverture | un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa transaction, avant toute lecture. | avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et deux imports pouvaient commencer en même temps ; les lecteurs doivent rester servis. |
+| Transaction immediate prend le verrou d ecriture des l ouverture | un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa transaction, avant toute lecture. | avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et deux imports pourraient commencer en même temps ; les lecteurs doivent rester servis. |
 | Transaction immediate apres une requete est une erreur de configuration | le verrou immédiat est demandé après une première requête de la transaction. | SQLAlchemy ignore alors l'option avec un simple avertissement : la transaction resterait différée en silence et l'import croirait tenir le verrou. |
 | Une transaction qui lit ne bloque pas les autres ecrivains | une transaction ordinaire a lu (BEGIN différé) pendant qu'un autre processus veut écrire. | si le défaut devenait IMMEDIATE, chaque page lue tiendrait le verrou d'écriture et bloquerait les écrivains ; la politique par défaut doit rester le BEGIN différé. |
 
@@ -299,34 +305,35 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Un parametre corrompu en base reste reparable par l ecriture et la reinitialisation | `parametre.valeur` mal typée après un import, un script ou une requête SQL (« quinze » pour une durée, « vrai » pour un booléen). | la lecture levait partout (422 sur /parametres et /calculs) et l'écriture comme la réinitialisation commençaient par lire : l'application ne pouvait plus se réparer, seul `init-db --reset` restait (perte des données). |
+| Un parametre corrompu en base reste reparable par l ecriture et la reinitialisation | `parametre.valeur` mal typée après un import, un script ou une requête SQL (« quinze » pour une durée, « vrai » pour un booléen). | la lecture lèverait partout (422 sur /parametres et /calculs) et l'écriture comme la réinitialisation commencent par lire : l'application ne pourrait plus se réparer, seul `init-db --reset` resterait (perte des données). |
 
 [`tests/unitaires/socle/test_regles.py`](../tests/unitaires/socle/test_regles.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Une regle hors des heures d ouverture est refusee avec le champ fautif | une règle d'horaires ou de déjeuner cite une heure hors des heures d'ouverture de l'établissement (8 h 30 - 18 h 00 par défaut), ou un créneau interdit y est entièrement extérieur. | règle acceptée alors que le paramètre global équivalent est refusé ; un déjeuner « réservé » à 6 h ne protège rien, une plage 20 h - 22 h rend sa portée infaisable sans nommer la règle, un créneau interdit à 22 h n'interdit rien. |
-| Des regles de jours incompatibles sont signalees avec leurs codes | la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne convient au TD. | `jours_permis()` vide sans un mot ; la pré-vérification ne savait dire que « la grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles. |
-| Une regle sans heures a une phrase ou une erreur nommee jamais une exception brute | une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause libre validée sans paramètres globaux. | `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondait 500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur nomme le champ. |
-| Des salles homonymes sur deux campus sont toutes resolues | deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle SALLES qui cite « N105 ». | un dictionnaire code → identifiant n'en gardait qu'une : le solveur imposait la mauvaise salle et le vérificateur signalait « en N105, hors des salles imposées (N105) ». |
+| Des regles de jours incompatibles sont signalees avec leurs codes | la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne convient au TD. | `jours_permis()` vide sans un mot ; la pré-vérification ne saurait dire que « la grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles. Inversement, un avertissement par séance noierait le journal : un seul par ensemble de règles, qui compte et cite les séances. |
+| Une regle sans heures a une phrase ou une erreur nommee jamais une exception brute | une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause libre validée sans paramètres globaux. | `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondrait 500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur nomme le champ. |
+| Des salles homonymes sur deux campus sont toutes resolues | deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle SALLES qui cite « N105 ». | un dictionnaire code → identifiant n'en garderait qu'une : le solveur imposerait la mauvaise salle et le vérificateur signalerait « en N105, hors des salles imposées (N105) ». |
 
 [`tests/unitaires/socle/test_regles_service.py`](../tests/unitaires/socle/test_regles_service.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Brouillon qui n est pas un objet est une validation invalide | l'assistant ou un client JSON envoie une liste, un texte, `null` ou un nombre à `valider()` ou `creer()`. | `dict(brouillon)` levait `ValueError`/`TypeError` (500) : le contrat « valider ne lève pas, renvoie une validation invalide » était rompu ; `creer` doit refuser sans écrire. |
-| Modifier refuse un changement d annee ou de code et garde le controle des doublons | `modifier()` reçoit « annee » (autre année) ou « code » dans les changements. | le doublon était cherché dans l'autre année mais la règle restait dans la sienne : deux réglages actifs pour la même cible, et le semestre entier devenait inchargeable ; le changement de code était ignoré en silence. |
+| Brouillon qui n est pas un objet est une validation invalide | l'assistant ou un client JSON envoie une liste, un texte, `null` ou un nombre à `valider()` ou `creer()`. | `dict(brouillon)` lèverait `ValueError`/`TypeError` (500) : le contrat « valider ne lève pas, renvoie une validation invalide » serait rompu ; `creer` doit refuser sans écrire. |
+| Modifier refuse un changement d annee ou de code et garde le controle des doublons | `modifier()` reçoit « annee » (autre année) ou « code » dans les changements. | le doublon serait cherché dans l'autre année mais la règle resterait dans la sienne : deux réglages actifs pour la même cible, et le semestre entier deviendrait inchargeable ; le changement de code serait ignoré en silence. |
 | Filtre inconnu est une erreur metier | `lister()` ou `regles_visant()` reçoit un filtre hors énumération (paramètre de requête, valeur de l'assistant). | `ValueError` brute (500) au lieu d'une erreur métier (422) qui liste les valeurs admises. |
 | Le code est normalise en majuscules | `creer()` reçoit le code « r002 » alors que R002 existe, puis « r007 » ; la ligne de commande met les codes en majuscules. | « r002 » créé à côté de R002 (unicité sensible à la casse), ignoré par l'attribution automatique des codes et introuvable par la commande. |
-| Annee mal formee indique le format attendu | le brouillon donne l'année comme entier, « 2026 », booléen ou « 2026/2027 ». | « L'année scolaire 2026 n'existe pas » : l'assistant ne savait ni le format « 2026-2027 » ni les années existantes, et bouclait sur des corrections. |
-| Une regle enregistree sans heures reste lisible | une règle enregistrée (import ancien, script) de type PLAGE_HORAIRE sans `debut` ni `fin` ; la liste et la fiche des règles sont ouvertes. | `KeyError` dans la phrase : toute la liste répondait 500 pour une ligne ; la phrase doit se compléter avec les heures d'ouverture de l'établissement. |
-| Regle dont la cible numerique est hors bornes est invalide | brouillon de règle dont la cible est un identifiant numérique hors des entiers de SQLite, négatif ou nul (assistant, adresse forgée). | `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles (cas transmis par le lot solveur). |
+| Annee mal formee indique le format attendu | le brouillon donne l'année comme entier, « 2026 », booléen ou « 2026/2027 ». | « L'année scolaire 2026 n'existe pas » : un appelant qui ne connaît ni le format « 2026-2027 » ni les années existantes bouclerait sur des corrections. |
+| Une regle enregistree sans heures reste lisible | une règle enregistrée (import ancien, script) de type PLAGE_HORAIRE sans `debut` ni `fin` ; la liste et la fiche des règles sont ouvertes. | `KeyError` dans la phrase : toute la liste répondrait 500 pour une ligne ; la phrase doit se compléter avec les heures d'ouverture de l'établissement. |
+| Regle dont la cible numerique est hors bornes est invalide | brouillon de règle dont la cible est un identifiant numérique hors des entiers de SQLite, négatif ou nul (assistant, adresse forgée). | `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles. |
 
 [`tests/unitaires/socle/test_schema.py`](../tests/unitaires/socle/test_schema.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Un index unique partiel absent est un ecart | la base date d'avant l'index unique partiel « une seule version active par semestre ». | `verifier-schema` disait « à jour », deux versions pouvaient être actives et l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma. |
+| Une remise a zero avec plusieurs connexions ouvertes ne cree aucun faux ecart | la base est remise à zéro (chargement d'un jeu depuis l'écran) dans un serveur dont le groupe tient plusieurs connexions, ouvertes par des calculs et des pages. | la connexion qui a supprimé les tables garde en mémoire un schéma sans elles ; une autre les recrée ; les PRAGMA de réflexion (`index_list`) ne relisent pas le schéma et la croient vide : « table annee_scolaire : unicité (libelle) absente de la base », chargement refusé sur une base que la même opération vient de vider. Sans correctif, l'écart apparaît avec trois connexions dans le groupe. |
+| Un index unique partiel absent est un ecart | la base n'a pas l'index unique partiel « une seule version active par semestre ». | `verifier-schema` dirait « à jour », deux versions pourraient être actives et l'instantané en choisirait une au hasard ; l'index absent doit être un écart de schéma. |
 | Une unicite absente ou en trop est un ecart | une table recréée par une ancienne version sans l'unicité du modèle (ou avec une autre). | doublons acceptés (ou refusés à tort) sans que rien ne signale le schéma périmé. |
 
 #### `solveur` (19 cas)
@@ -538,7 +545,7 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 |---|---|---|
 | Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
 
-### Tests d'intégration (148 cas)
+### Tests d'intégration (152 cas)
 
 #### `echange` (5 cas)
 
@@ -601,37 +608,41 @@ Le catalogue compte 349 cas : 201 cas en tests unitaires et 148 cas en tests d'i
 | Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
 | Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
-#### `socle` (24 cas)
+#### `socle` (28 cas)
 
 [`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Une base verrouillee lecture seule ou corrompue donne un message clair et le code 1 | `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite. | trace brute et code 2, et le script de déploiement enchaînait sur « --reset-base » (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et le remède, code 1. |
-| Init db reset exige une confirmation dans un terminal et aucun calcul en cours | `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne dans un autre processus, puis en production hors calcul. | base de production effacée par mégarde sans question ni sauvegarde, calcul en cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie « edt-<date>-avant-reset.db » dans le troisième. |
+| Une base verrouillee lecture seule ou corrompue donne un message clair et le code 1 | `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite. | trace brute et code 2, et le script de déploiement enchaînerait sur « --reset-base » (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et le remède, code 1. |
+| Init db reset exige une confirmation dans un terminal et aucun calcul en cours | `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne dans un autre processus, puis en production hors calcul. | base de production effacée par mégarde sans question ni sauvegarde, calcul en cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie « sauvegardes/edt-<date>-avant-reset.db » dans le troisième. |
+| Init db reset en production n efface rien si la sauvegarde echoue | `init-db --reset --oui` en production alors que la sauvegarde préalable échoue (disque plein, dossier « sauvegardes » non inscriptible). | la remise à zéro détruirait une base qui n'a pas été sauvegardée ; la commande doit s'arrêter avant, code 1, en nommant la sauvegarde et le remède, sans fichier partiel. |
+| Init db reset est refuse pendant un chargement de jeu | `init-db --reset --oui` lancé pendant qu'un chargement de jeu fictif tient le verrou des opérations sur la base (écran de configuration, commande `jeu`). | tables supprimées sous le chargement en cours, et serveur qui ignore la remise à zéro (pas de fichier marqueur) ; la commande doit refuser, code 1, sans rien effacer. |
 | Init db reset non interactif ne pose pas de question | `init-db --reset` lancé par un script (déploiement), sans terminal, en développement. | une question posée à un script le bloquerait ou le ferait échouer ; en développement, pas de copie de sauvegarde qui encombre le dossier. |
-| Doctor signale une base en lecture seule | `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule). | doctor disait « Tout est prêt » alors qu'aucune écriture n'était possible ; il doit échouer en nommant la lecture seule. |
+| Doctor n attend pas une base occupee par une autre ecriture | `doctor` est lancé pendant qu'un autre processus écrit (calcul, chargement). | doctor attendrait le délai de verrou puis conclurait « écriture impossible » (code 1) pour une base saine ; l'écriture d'essai est dite non vérifiée, avec le remède. |
+| Doctor signale une base en lecture seule | `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule). | doctor dirait « Tout est prêt » alors qu'aucune écriture n'est possible ; il doit échouer en nommant la lecture seule. |
 | Commandes de calcul avec un identifiant inexistant | `generer`, `pre-verifier` ou `instancier` reçoivent un identifiant inexistant, nul ou négatif. | trace Python (code 2) ou ligne de calcul créée pour un semestre inexistant ; il faut le code 1, « n'existe pas », et aucun calcul enregistré. |
-| Doctor signale le dossier des journaux de calcul inutilisable | `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le dossier racine des journaux va bien. | doctor disait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aurait de journal (cas transmis par le lot solveur). |
+| Doctor signale le dossier des journaux de calcul inutilisable | `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le dossier racine des journaux va bien. | doctor dirait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aurait de journal. |
 
 [`tests/integration/socle/test_config.py`](../tests/integration/socle/test_config.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Doctor signale une adresse d ecoute introuvable | EDT_HOST désigne un nom qui ne se résout pas. | `serve` mourrait sur `gaierror` avec une trace, et doctor concluait à tort « le serveur tourne peut-être déjà » (code 0) au lieu d'un échec qui nomme EDT_HOST. |
+| Doctor signale une adresse d ecoute introuvable | EDT_HOST désigne un nom qui ne se résout pas. | `serve` mourrait sur `gaierror` avec une trace, et doctor conclurait à tort « le serveur tourne peut-être déjà » (code 0) au lieu d'un échec qui nomme EDT_HOST. La résolution de nom est simulée : le test ne dépend pas du réseau du poste. |
+| Doctor signale un port deja occupe sans echouer | le port EDT_PORT est déjà pris, en général par le serveur EDT lancé plus tôt. | doctor en échec (code 1) pour un serveur qui tourne, ou silence ; il faut un avertissement qui dit quoi faire, et le code 0. |
 
 [`tests/integration/socle/test_instantane.py`](../tests/integration/socle/test_instantane.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Un identifiant hors des entiers sqlite est introuvable | un identifiant de semestre ou de version au-delà de 2**63, négatif ou nul arrive par une adresse web ou une option de commande. | `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors que -1 donnait proprement « n'existe pas » ; tous doivent être introuvables. |
+| Un identifiant hors des entiers sqlite est introuvable | un identifiant de semestre ou de version au-delà de 2**63, négatif ou nul arrive par une adresse web ou une option de commande. | `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors que -1 donne proprement « n'existe pas » ; tous doivent être introuvables. |
 | Une commande avec un identifiant hors bornes repond n existe pas | `pre-verifier --semestre 99999999999999999999` ou `verifier --version 2**63` (identifiant au-delà des entiers de SQLite). | `OverflowError` brute du pilote, « Erreur inattendue » avec trace, au lieu de « n'existe pas » avec le code de sortie que la commande rend déjà pour -1 : 1 (erreur métier) pour `pre-verifier`, 2 (« vérification impossible ») pour `verifier`. |
 
 [`tests/integration/socle/test_journal.py`](../tests/integration/socle/test_journal.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Fichier journal non ouvrable leve une erreur de configuration et doctor le dit | `edt.log` ne peut pas être ouvert (un dossier porte son nom, ou il appartient à un autre utilisateur). | `PermissionError` brute à chaque commande (code 2, « la trace est dans le journal » qui n'existe pas), message en double, boucle de redémarrage du service ; doctor, censé diagnostiquer, ne démarrait pas. |
+| Fichier journal non ouvrable leve une erreur de configuration et doctor le dit | `edt.log` ne peut pas être ouvert (un dossier porte son nom, ou il appartient à un autre utilisateur). | `PermissionError` brute à chaque commande (code 2, « la trace est dans le journal » qui n'existe pas), message en double, boucle de redémarrage du service ; doctor, censé diagnostiquer, ne démarrerait pas. |
 
 [`tests/integration/socle/test_moteur.py`](../tests/integration/socle/test_moteur.py)
 

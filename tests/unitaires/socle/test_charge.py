@@ -2,9 +2,8 @@
 
 Le jeu « grand » compte environ 600 besoins, 230 groupes et 75 fermetures par
 semestre. Son instantané est rechargé à chaque affichage qui suit une
-modification des données : il doit rester rapide. Avant l'accélération du
-dépliage, ce chargement prenait 0,43 s sur un poste de développement ; il en
-prend environ 0,06 s. La borne est large pour ne pas dépendre de la machine.
+modification des données : il doit rester rapide (de l'ordre de 0,06 s sur un
+poste de développement). La borne est large pour ne pas dépendre de la machine.
 """
 
 from __future__ import annotations
@@ -40,5 +39,5 @@ def test_chargement_de_l_instantane_du_jeu_grand(base):
             charger_instantane(session, semestre_id)
             durees.append(time.perf_counter() - debut)
 
-    # La meilleure mesure : on borne le coût du calcul, pas les à-coups de la machine.
+    # La meilleure mesure borne le coût du calcul, pas les à-coups de la machine.
     assert min(durees) < SEUIL_S, f"instantané du jeu grand chargé en {min(durees):.3f} s"

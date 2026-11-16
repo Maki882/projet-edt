@@ -1,1 +1,1 @@
-"""Fixtures, constantes et aides du lot socle partagées entre ses tests unitaires et d'intégration."""
+"""Fixtures, constantes et aides partagées entre les tests unitaires et d'intégration du socle."""

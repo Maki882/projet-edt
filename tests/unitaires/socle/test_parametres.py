@@ -22,9 +22,9 @@ def test_un_parametre_corrompu_en_base_reste_reparable_par_l_ecriture_et_la_rein
     """Cas : `parametre.valeur` mal typée après un import, un script ou une requête SQL
     (« quinze » pour une durée, « vrai » pour un booléen).
 
-    Risque : la lecture levait partout (422 sur /parametres et /calculs) et l'écriture comme la
-    réinitialisation commençaient par lire : l'application ne pouvait plus se réparer, seul
-    `init-db --reset` restait (perte des données).
+    Risque : la lecture lèverait partout (422 sur /parametres et /calculs) et l'écriture comme
+    la réinitialisation commencent par lire : l'application ne pourrait plus se réparer, seul
+    `init-db --reset` resterait (perte des données).
     """
     session.get(Parametre, "pause_min").valeur = "quinze"
     session.get(Parametre, "objectif_actif").valeur = "vrai"

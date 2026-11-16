@@ -3,7 +3,7 @@
 Il n'y a pas de migrations : `initialiser_base(reset=True)` supprime tout et
 recrée. Sans `reset`, l'initialisation est **idempotente** : elle crée les
 tables manquantes et ajoute les données par défaut absentes, sans jamais
-modifier une ligne existante (on peut donc la relancer à chaque déploiement).
+modifier une ligne existante : elle se relance sans risque à chaque déploiement.
 Les listes par défaut (grille horaire, types de salle, équipements, types de
 séance) ne sont posées que dans une base **neuve** (qui n'a encore aucun
 paramètre enregistré) : une ligne supprimée exprès par l'utilisateur, ou une
@@ -16,8 +16,8 @@ Schéma périmé
 Créer les tables manquantes ne suffit pas : après une mise à jour du code,
 une table **déjà là** peut ne plus avoir les colonnes du modèle, et
 l'application planterait à la première requête qui les touche.
-`ecarts_schema()` compare donc chaque table existante au modèle, colonne par
-colonne. Tant qu'il reste un écart, `initialiser_base()` sans `reset` refuse
+`ecarts_schema()` compare donc chaque table existante au modèle : colonnes,
+unicités et index. Tant qu'il reste un écart, `initialiser_base()` sans `reset` refuse
 de continuer (`ErreurSchemaPerime`) sans rien modifier, et la base n'est pas
 considérée comme initialisée (`base_initialisee`). Le seul remède est
 `reset=True`, qui efface les données.
@@ -40,6 +40,7 @@ import datetime as dt
 import logging
 import re
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -50,7 +51,7 @@ from sqlalchemy.exc import CompileError
 from sqlalchemy.orm import Session
 from sqlalchemy.types import TypeEngine
 
-from edt.config import url_affichable
+from edt.config import charger_configuration, url_affichable
 from edt.db.base import Base
 from edt.db.modeles import (
     AnneeScolaire,
@@ -92,13 +93,15 @@ class ErreurSchemaPerime(ErreurRegleMetier):
     """Des tables existantes de la base n'ont plus les colonnes du modèle.
 
     `ecarts` (repris dans `details`) liste les différences ; le texte complet
-    de l'erreur se termine par la marche à suivre.
+    de l'erreur se termine par la marche à suivre. « Rien n'a été modifié »
+    n'y figure que si l'appelant le garantit (`rien_modifie`) : l'erreur peut
+    survenir après une remise à zéro.
     """
 
-    def __init__(self, ecarts: list[str]) -> None:
+    def __init__(self, ecarts: list[str], rien_modifie: bool = False) -> None:
         super().__init__(
-            f"Le schéma de la base ne correspond plus au modèle ({len(ecarts)} écart(s)). "
-            "Rien n'a été modifié.",
+            f"Le schéma de la base ne correspond plus au modèle ({len(ecarts)} écart(s))."
+            + (" Rien n'a été modifié." if rien_modifie else ""),
             ecarts,
         )
         self.ecarts: tuple[str, ...] = tuple(ecarts)
@@ -178,30 +181,67 @@ def creer_schema(moteur: Engine) -> None:
     """
     with connexion_immediate(moteur) as connexion:
         Base.metadata.create_all(connexion)
+    _renouveler_connexions(moteur)
 
 
-def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Path | None:
-    """Copie cohérente du fichier SQLite à côté de lui (« edt-<date>-<suffixe>.db »).
+def copier_base(source: Path, cible: Path) -> int:
+    """Copie cohérente de `source` dans `cible` (API de sauvegarde SQLite), puis contrôle.
 
-    Utilise l'API de sauvegarde de SQLite : la copie inclut les écritures
-    encore dans le fichier -wal. Renvoie le chemin de la copie, ou `None` si
-    la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si la copie
-    échoue : on ne détruit pas une base qu'on n'a pas su sauvegarder.
+    La copie lit un instantané de la base, écritures encore dans le fichier
+    -wal comprises : le service peut écrire pendant ce temps. Renvoie le nombre
+    de tables de la copie ; lève `ErreurDonneesInvalides` si la base est
+    illisible, le disque plein ou la copie abîmée.
     """
-    chemin = chemin_base(url or str(obtenir_moteur(url).url))
-    if chemin is None or not chemin.exists():
-        return None
-    horodatage = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    copie = chemin.with_name(f"{chemin.stem}-{horodatage}-{suffixe}{chemin.suffix or '.db'}")
     try:
-        with sqlite3.connect(chemin) as source, sqlite3.connect(copie) as cible:
-            source.backup(cible)
-    except (sqlite3.Error, OSError) as erreur:
+        with closing(sqlite3.connect(source, timeout=30)) as connexion_source:
+            with closing(sqlite3.connect(cible)) as connexion_cible:
+                connexion_source.backup(connexion_cible)
+                verdict = connexion_cible.execute("PRAGMA integrity_check").fetchone()[0]
+                nb_tables = connexion_cible.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
+                ).fetchone()[0]
+    except sqlite3.Error as erreur:
+        raise ErreurDonneesInvalides(
+            f"Sauvegarde impossible : base {source} illisible ou disque plein ({erreur})."
+        ) from erreur
+    if verdict != "ok":
+        raise ErreurDonneesInvalides(
+            f"Sauvegarde refusée : le contrôle d'intégrité de la copie échoue ({verdict}). La base "
+            f"{source} est sans doute abîmée (docs/deploiement.md, « Base corrompue »)."
+        )
+    if nb_tables == 0:
+        raise ErreurDonneesInvalides(f"Sauvegarde refusée : {source} ne contient aucune table.")
+    return nb_tables
+
+
+def sauvegarder_base(url: str | None = None) -> Path | None:
+    """Copie vérifiée de la base avant sa remise à zéro, dans le dossier « sauvegardes ».
+
+    Le fichier `sauvegardes/edt-<date et heure UTC>-avant-reset.db`, à côté de
+    la base, suit le nommage des sauvegardes du déploiement et tourne donc
+    avec elles. Il est écrit en « .partiel », puis renommé seulement si son
+    contrôle d'intégrité passe (`copier_base`). Renvoie le chemin de la copie,
+    ou `None` si la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si
+    la copie échoue : une base qui n'a pas pu être sauvegardée n'est pas détruite.
+    """
+    chemin = chemin_base(url or charger_configuration().db_url)
+    if chemin is None or not chemin.is_file():
+        return None
+    horodatage = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    copie = chemin.parent / "sauvegardes" / f"edt-{horodatage}-avant-reset.db"
+    partiel = copie.with_name(copie.name + ".partiel")
+    try:
+        copie.parent.mkdir(parents=True, exist_ok=True)
+        copier_base(chemin, partiel)
+        partiel.replace(copie)
+    except (ErreurDonneesInvalides, OSError) as erreur:
+        partiel.unlink(missing_ok=True)
         raise ErreurRegleMetier(
             f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
-            "remise à zéro annulée, rien n'a été modifié."
+            "remise à zéro annulée, rien n'a été modifié. Libérer de l'espace disque ou "
+            "corriger les droits du dossier, puis relancer."
         ) from erreur
-    journal.warning("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
+    journal.info("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
     return copie
 
 
@@ -215,6 +255,20 @@ def supprimer_schema(moteur: Engine) -> None:
         existant = MetaData()
         existant.reflect(bind=connexion)
         existant.drop_all(connexion)
+    _renouveler_connexions(moteur)
+
+
+def _renouveler_connexions(moteur: Engine) -> None:
+    """Ferme les connexions en attente du groupe après un changement de schéma.
+
+    Chaque connexion SQLite garde le schéma en mémoire et ne le relit qu'à la
+    requête qui en vérifie la version ; les PRAGMA de réflexion ne la vérifient
+    pas. Après une suppression ou une création de tables, les connexions
+    suivantes repartent donc neuves. Une connexion en cours d'usage dans un
+    autre fil n'est pas touchée : elle est fermée quand elle est rendue.
+    """
+    moteur.dispose()
+    journal.debug("Connexions de la base renouvelées après un changement de schéma")
 
 
 def tables_manquantes(moteur: Engine) -> list[str]:
@@ -249,57 +303,62 @@ def ecarts_schema(moteur: Engine) -> list[str]:
     crée, voir `tables_manquantes`) et une table de la base inconnue du
     modèle (elle est simplement ignorée).
 
-    Limite assumée : les clés étrangères (règle de suppression) et les
-    contrôles entre colonnes (CHECK autres que les énumérations) ne sont pas
-    comparés. Après un tel changement du modèle, recréer la base avec
-    `reset=True`.
+    Limite : ne sont pas comparés les clés étrangères (règle de suppression),
+    les contrôles (CHECK autres que les énumérations) ni la condition d'un
+    index partiel (`sqlite_where`). Après un tel changement du modèle,
+    recréer la base avec `reset=True`.
     """
-    inspecteur = inspect(moteur)
-    presentes = set(inspecteur.get_table_names())
-    ecarts: list[str] = []
-    for nom in sorted(Base.metadata.tables):
-        if nom not in presentes:
-            continue
-        table = Base.metadata.tables[nom]
-        reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
-        permises = (
-            _valeurs_permises(inspecteur, nom)
-            if any(isinstance(colonne.type, EnumSQL) for colonne in table.columns)
-            else {}
-        )
-        for colonne in table.columns:
-            reelle = reelles.pop(colonne.name, None)
-            if reelle is None:
-                ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
+    # Une seule connexion pour toute la réflexion, et la liste des tables d'abord : cette
+    # lecture de `sqlite_master` recharge le schéma que la connexion garde en mémoire. Les
+    # PRAGMA de réflexion (`index_list`...) ne le rechargent pas : sur une connexion qui a
+    # supprimé une table qu'une autre a recréée ensuite, ils la croiraient encore absente.
+    with moteur.connect() as connexion:
+        inspecteur = inspect(connexion)
+        presentes = set(inspecteur.get_table_names())
+        ecarts: list[str] = []
+        for nom in sorted(Base.metadata.tables):
+            if nom not in presentes:
                 continue
-            prefixe = f"table {nom} : colonne {colonne.name}"
-            attendu = _nom_de_type(colonne.type, moteur)
-            lu = _nom_de_type(reelle["type"], moteur)
-            if lu != attendu:
-                ecarts.append(f"{prefixe} de type {lu} dans la base, {attendu} dans le modèle")
-            if bool(reelle["nullable"]) != bool(colonne.nullable):
-                dans_la_base, dans_le_modele = (
-                    ("facultative", "obligatoire")
-                    if reelle["nullable"]
-                    else ("obligatoire", "facultative")
-                )
-                ecarts.append(
-                    f"{prefixe} {dans_la_base} dans la base, {dans_le_modele} dans le modèle"
-                )
-            if isinstance(colonne.type, EnumSQL) and colonne.name in permises:
-                du_modele, de_la_base = set(colonne.type.enums), permises[colonne.name]
-                if du_modele - de_la_base:
-                    ecarts.append(
-                        f"{prefixe} : valeur(s) du modèle refusée(s) par la base : "
-                        + ", ".join(sorted(du_modele - de_la_base))
+            table = Base.metadata.tables[nom]
+            reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
+            permises = (
+                _valeurs_permises(inspecteur, nom)
+                if any(isinstance(colonne.type, EnumSQL) for colonne in table.columns)
+                else {}
+            )
+            for colonne in table.columns:
+                reelle = reelles.pop(colonne.name, None)
+                if reelle is None:
+                    ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
+                    continue
+                prefixe = f"table {nom} : colonne {colonne.name}"
+                attendu = _nom_de_type(colonne.type, moteur)
+                lu = _nom_de_type(reelle["type"], moteur)
+                if lu != attendu:
+                    ecarts.append(f"{prefixe} de type {lu} dans la base, {attendu} dans le modèle")
+                if bool(reelle["nullable"]) != bool(colonne.nullable):
+                    dans_la_base, dans_le_modele = (
+                        ("facultative", "obligatoire")
+                        if reelle["nullable"]
+                        else ("obligatoire", "facultative")
                     )
-                if de_la_base - du_modele:
                     ecarts.append(
-                        f"{prefixe} : valeur(s) de la base inconnue(s) du modèle : "
-                        + ", ".join(sorted(de_la_base - du_modele))
+                        f"{prefixe} {dans_la_base} dans la base, {dans_le_modele} dans le modèle"
                     )
-        ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
-        ecarts.extend(_ecarts_unicites_et_index(inspecteur, nom, table))
+                if isinstance(colonne.type, EnumSQL) and colonne.name in permises:
+                    du_modele, de_la_base = set(colonne.type.enums), permises[colonne.name]
+                    if du_modele - de_la_base:
+                        ecarts.append(
+                            f"{prefixe} : valeur(s) du modèle refusée(s) par la base : "
+                            + ", ".join(sorted(du_modele - de_la_base))
+                        )
+                    if de_la_base - du_modele:
+                        ecarts.append(
+                            f"{prefixe} : valeur(s) de la base inconnue(s) du modèle : "
+                            + ", ".join(sorted(de_la_base - du_modele))
+                        )
+            ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
+            ecarts.extend(_ecarts_unicites_et_index(inspecteur, nom, table))
     return ecarts
 
 
@@ -370,11 +429,14 @@ def _valeurs_permises(inspecteur: Inspector, nom_table: str) -> dict[str, set[st
     return permises
 
 
-def exiger_schema_a_jour(moteur: Engine) -> None:
-    """Lève `ErreurSchemaPerime` si une table existante ne correspond plus au modèle."""
+def exiger_schema_a_jour(moteur: Engine, rien_modifie: bool = False) -> None:
+    """Lève `ErreurSchemaPerime` si une table existante ne correspond plus au modèle.
+
+    `rien_modifie` : l'appelant n'a encore rien écrit, le message peut le dire.
+    """
     ecarts = ecarts_schema(moteur)
     if ecarts:
-        raise ErreurSchemaPerime(ecarts)
+        raise ErreurSchemaPerime(ecarts, rien_modifie=rien_modifie)
 
 
 def base_initialisee(moteur: Engine) -> bool:
@@ -535,7 +597,7 @@ def _inserer_types_seance(session: Session, neuve: bool) -> int:
             code=code,
             libelle=libelle,
             samedi_autorise=samedi,
-            type_salle_defaut=types_salle.get(salle_defaut) if salle_defaut else None,
+            type_salle_defaut=_type_salle_defaut(types_salle, code, salle_defaut),
             couleur=couleur,
         )
         for code, libelle, samedi, salle_defaut, couleur in TYPES_SEANCE
@@ -545,17 +607,42 @@ def _inserer_types_seance(session: Session, neuve: bool) -> int:
     return len(nouveaux)
 
 
+def _type_salle_defaut(
+    types_salle: dict[str, TypeSalle], type_seance: str, code: str | None
+) -> TypeSalle | None:
+    """Type de salle par défaut d'un type de séance, s'il existe dans la base.
+
+    Une base sans paramètre mais dont les types de salle sont déjà saisis peut ne pas
+    avoir celui de la liste par défaut : le type de séance est alors créé sans type de
+    salle par défaut, et c'est journalisé.
+    """
+    if code is None:
+        return None
+    if code not in types_salle:
+        journal.warning(
+            "Type de séance %s créé sans type de salle par défaut : le type de salle %s "
+            "n'existe pas dans la base",
+            type_seance,
+            code,
+        )
+        return None
+    return types_salle[code]
+
+
 ANCIENNE_CLE_DEJEUNER = "dejeuner_horaires_determines"
-"""Paramètre booléen d'avant `dejeuner_mode`, encore présent dans les bases d'alors."""
+"""Clé booléenne du réglage du déjeuner, que `dejeuner_mode` remplace.
+
+Une base qui la porte encore est reprise par `init-db` (voir `_inserer_parametres`)."""
 
 
 def _inserer_parametres(session: Session) -> int:
-    """Ajoute les paramètres absents avec leur défaut ; reprend l'ancien réglage du déjeuner.
+    """Ajoute les paramètres absents avec leur défaut, et reprend la clé `dejeuner_horaires_determines`.
 
-    Une base d'avant `dejeuner_mode` porte le booléen `dejeuner_horaires_determines` :
+    Si la base porte le booléen `dejeuner_horaires_determines` sans `dejeuner_mode`,
     le mode inséré en découle (vrai : horaires déterminés, faux : pas de pause) au
-    lieu du défaut, puis la ligne devenue inutile est supprimée. Sans cela, le
-    choix « pas de pause » de l'utilisateur basculerait en silence au défaut.
+    lieu du défaut ; dans tous les cas, cette clé est ensuite supprimée. Le choix
+    « pas de pause » enregistré sous cette clé ne bascule donc pas en silence au
+    défaut.
     """
     enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
     defauts = {entree.cle: entree.defaut for entree in definitions()}
@@ -569,13 +656,13 @@ def _inserer_parametres(session: Session) -> int:
                 )
             defauts["dejeuner_mode"] = DEJEUNER_FIXE if ancien else DEJEUNER_AUCUN
             journal.info(
-                "Ancien paramètre « %s » = %r : le mode de déjeuner « %s » est enregistré à sa place.",
+                "Paramètre « %s » = %r : le mode de déjeuner « %s » est enregistré à sa place.",
                 ANCIENNE_CLE_DEJEUNER,
                 ancien,
                 defauts["dejeuner_mode"],
             )
         session.delete(session.get(Parametre, ANCIENNE_CLE_DEJEUNER))
-        journal.info("Ancien paramètre « %s » supprimé de la base.", ANCIENNE_CLE_DEJEUNER)
+        journal.info("Paramètre « %s » supprimé de la base.", ANCIENNE_CLE_DEJEUNER)
     nouveaux = [
         Parametre(cle=cle, valeur=valeur)
         for cle, valeur in defauts.items()
@@ -606,12 +693,14 @@ def initialiser_base(
     moteur = obtenir_moteur(url)
     url_affichee = url_affichable(moteur.url)
     if reset:
-        journal.warning(
+        # Niveau INFO : l'avertissement est donné une fois par l'appelant qui décide la remise
+        # à zéro (`edt.services.jeux.remettre_a_zero`).
+        journal.info(
             "Remise à zéro de la base %s : toutes les données sont supprimées", url_affichee
         )
         supprimer_schema(moteur)
     else:
-        exiger_schema_a_jour(moteur)
+        exiger_schema_a_jour(moteur, rien_modifie=True)
     creer_schema(moteur)
     with session_base(url) as session:
         transaction_immediate(session)  # écrivain long : lit puis écrit, verrou pris d'emblée

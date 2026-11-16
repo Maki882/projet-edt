@@ -6,6 +6,6 @@
 - `initialisation` : création du schéma et des données par défaut ;
 - `jeux` : petit jeu de données cohérent pour les tests et la découverte.
 
-Il n'y a pas de migrations en V1 : la base se recrée et se repeuple par
-commande (`python -m edt init-db --reset`).
+Il n'y a pas de migrations : la base se recrée et se repeuple par commande
+(`python -m edt init-db --reset`).
 """

@@ -1,4 +1,4 @@
-"""Aides du lot socle pour le dépliage : la règle des semaines ouvertes écrite au plus simple."""
+"""Aides des tests du dépliage : la règle des semaines ouvertes écrite au plus simple."""
 
 from __future__ import annotations
 

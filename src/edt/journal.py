@@ -51,7 +51,7 @@ contexte_requete: ContextVar[str | None] = ContextVar("edt_id_requete", default=
 contexte_calcul: ContextVar[int | None] = ContextVar("edt_id_calcul", default=None)
 
 _PREFIXE_JOURNAL_CALCUL = "edt.calcul."
-_MARQUE = "_edt_socle"
+_MARQUE = "_edt_journal"
 _etat: dict[str, object] = {"signature": None, "panne": None}
 
 journal = logging.getLogger(__name__)
@@ -114,17 +114,22 @@ class _ConsoleCourante(logging.StreamHandler):
 class _FichierTournant(RotatingFileHandler):
     """Fichier tournant qui supporte qu'un autre processus écrive le même fichier.
 
-    - si la rotation échoue (fichier tenu par un autre processus, cas de
-      Windows), on continue d'écrire dans le fichier courant et on réessaie à
-      la ligne suivante, sans « Logging error » sur la console ;
-    - si un autre processus a tourné le fichier (le chemin désigne désormais
-      un autre fichier), le flux est rouvert sur le nouveau, comme le fait
-      `WatchedFileHandler` : aucune ligne ne part dans un fichier délié.
+    - la rotation commence par renommer le fichier courant ; si ce renommage
+      est refusé (fichier tenu par un autre processus, cas de Windows), les
+      archives restent intactes, l'écriture continue dans le fichier courant,
+      une ligne d'avertissement y est écrite une fois, et la rotation est
+      retentée à la ligne suivante ;
+    - si un autre processus a tourné ou supprimé le fichier (le chemin désigne
+      un autre fichier, ou plus rien), le flux est rouvert sur le chemin, comme
+      le fait `WatchedFileHandler` : aucune ligne ne part dans un fichier délié.
+      Une réouverture impossible passe par `handleError`, comme toute erreur
+      d'écriture : elle ne remonte jamais dans le code qui journalise.
     """
 
     def __init__(self, *arguments, **options) -> None:
         super().__init__(*arguments, **options)
         self._empreinte = self._empreinte_actuelle()
+        self._rotation_refusee = False
 
     def _empreinte_actuelle(self) -> tuple[int, int] | None:
         try:
@@ -134,23 +139,62 @@ class _FichierTournant(RotatingFileHandler):
         return infos.st_dev, infos.st_ino
 
     def emit(self, record: logging.LogRecord) -> None:
-        empreinte = self._empreinte_actuelle()
-        if empreinte != self._empreinte:
-            if self.stream is not None:
-                self.stream.close()
-            self.stream = self._open()
-            self._empreinte = self._empreinte_actuelle()
+        if self._empreinte_actuelle() == self._empreinte:
+            super().emit(record)
+            return
+        # Le flux est fermé ici et rouvert par `RotatingFileHandler.emit`, sous sa protection.
+        if self.stream is not None:
+            self.stream.close()
+            self.stream = None
         super().emit(record)
+        self._empreinte = self._empreinte_actuelle()
+
+    def rotate(self, source: str, dest: str) -> None:
+        """Renomme `source` en `dest`, en remplaçant `dest` s'il existe (Windows compris)."""
+        os.replace(source, dest)
 
     def doRollover(self) -> None:  # noqa: N802 (nom imposé par logging)
+        if self.stream is not None:
+            self.stream.close()
+            self.stream = None
+        en_rotation = f"{self.baseFilename}.rotation"
         try:
-            super().doRollover()
-        except OSError:
-            # Un autre processus tient le fichier : on garde le fichier courant, la rotation
-            # sera retentée à la prochaine ligne.
-            if self.stream is None:
-                self.stream = self._open()
-        self._empreinte = self._empreinte_actuelle()
+            # Premier geste : libérer le fichier courant. Tant qu'il est refusé, aucune
+            # archive ne bouge.
+            self.rotate(self.baseFilename, en_rotation)
+        except OSError as erreur:
+            self.stream = self._open()
+            self._empreinte = self._empreinte_actuelle()
+            if not self._rotation_refusee:
+                self._rotation_refusee = True
+                self._ecrire_avertissement(
+                    "Rotation de %s impossible (%s) : écriture poursuivie dans ce fichier, "
+                    "nouvel essai à chaque ligne.",
+                    self.baseFilename,
+                    erreur,
+                )
+            return
+        self._rotation_refusee = False
+        try:
+            for rang in range(self.backupCount - 1, 0, -1):
+                archive = f"{self.baseFilename}.{rang}"
+                if os.path.exists(archive):
+                    self.rotate(archive, f"{self.baseFilename}.{rang + 1}")
+            self.rotate(en_rotation, f"{self.baseFilename}.1")
+        finally:
+            self.stream = self._open()
+            self._empreinte = self._empreinte_actuelle()
+
+    def _ecrire_avertissement(self, message: str, *arguments: object) -> None:
+        """Écrit un avertissement directement dans le fichier courant, hors de la chaîne `logging`.
+
+        Passer par `journal.warning` rappellerait ce gestionnaire pendant sa propre rotation.
+        """
+        avis = journal.makeRecord(
+            journal.name, logging.WARNING, __file__, 0, message, arguments, None
+        )
+        avis.contexte = "-"
+        self.stream.write(self.format(avis) + self.terminator)
 
 
 def _creer_dossier(dossier: Path) -> None:
@@ -176,11 +220,22 @@ def _ouvrir_fichier_tournant(chemin: Path) -> _FichierTournant:
         ) from erreur
 
 
+def _ordre_journal_calcul(fichier: Path) -> tuple[str, str]:
+    """Clé chronologique d'un journal de calcul : la date et l'heure portées par son nom.
+
+    Nom `calcul-<numéro>-<date>-<heure>.log` : la date prime sur le numéro, qui repart
+    de 1 après une remise à zéro de la base. Un nom d'une autre forme passe pour le
+    plus ancien.
+    """
+    morceaux = fichier.stem.split("-", 2)
+    return (morceaux[2] if len(morceaux) == 3 else "", fichier.name)
+
+
 def _purger_journaux_calcul(dossier: Path, garder: int) -> int:
     """Supprime les journaux de calcul les plus anciens au-delà de `garder` ; renvoie le nombre."""
     fichiers = sorted(
         (f for f in dossier.glob("calcul-*.log") if f.is_file()),
-        key=lambda f: f.stat().st_mtime,
+        key=_ordre_journal_calcul,
         reverse=True,
     )
     supprimes = 0

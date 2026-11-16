@@ -4,8 +4,8 @@ Mécanisme d'extension
 ---------------------
 Ce fichier ne déclare aucune commande. Au démarrage, il importe tous les
 modules du paquet `edt.commandes` et rattache l'objet `commandes` (un
-`typer.Typer`) que chacun doit exposer. Pour ajouter une commande, on crée
-donc un module dans `edt/commandes/` sans toucher à ce fichier :
+`typer.Typer`) que chacun doit exposer. Une commande s'ajoute donc en créant
+un module dans `edt/commandes/`, sans toucher à ce fichier :
 
     # src/edt/commandes/exemple.py
     import typer
@@ -73,7 +73,7 @@ class GroupeEDT(typer.core.TyperGroup):
             raise
         except ErreurEDT as erreur:
             # Sans gestionnaire (journalisation en panne), `logging` répéterait le message
-            # sur la console : on ne journalise que si un gestionnaire est en place.
+            # sur la console : le message n'est journalisé que si un gestionnaire est en place.
             if logging.getLogger().handlers:
                 journal.error("Commande en échec : %s", erreur)
             typer.echo(f"Erreur : {erreur}", err=True)

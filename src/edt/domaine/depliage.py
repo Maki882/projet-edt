@@ -24,7 +24,7 @@ Règles par mode de volume
   sont espacées régulièrement et la première semaine est toujours servie.
   La séance de rang r est active les semaines qui reçoivent au moins r
   séances. Si `nombre` dépasse `S * max_par_semaine`, la demande est
-  impossible : on déplie ce qui tient et on signale le reste (`VOLUME`).
+  impossible : ce qui tient est déplié, le reste est signalé (`VOLUME`).
 - `ponctuel` : une séance (rang 1) active la seule semaine de sa date ; son
   jour est imposé par la date. Elle reste permise pendant une période
   d'examens ou une semaine spéciale, pas un jour férié ni pendant des vacances.
@@ -46,9 +46,6 @@ from edt.domaine.instantane import Besoin, JourFerme, ProblemeDepliage, SeanceAP
 
 JOURS_OUVRES_PAR_DEFAUT: tuple[int, ...] = (0, 1, 2, 3, 4)
 """Lundi à vendredi : valeur par défaut du paramètre `jours_travailles`."""
-
-JOURS_OUVRES = JOURS_OUVRES_PAR_DEFAUT
-"""Ancien nom, conservé pour les appelants : préférer `Parametres.jours_travailles`."""
 
 _JoursFermes = tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]
 """Jours fermés pour tous, puis plages de jours fermés pour certains groupes (numéros de jour)."""
@@ -115,7 +112,7 @@ class _Fermetures:
         pour_tous: set[int] = set()
         par_groupes: list[tuple[frozenset[int], range]] = []
         for ferme in self._fermetures:
-            # Seuls comptent les jours des semaines données : on y borne la plage.
+            # Seuls comptent les jours des semaines données : la plage y est bornée.
             jours = range(
                 max(ferme.date_debut.toordinal(), premier),
                 min(ferme.date_fin.toordinal(), dernier) + 1,

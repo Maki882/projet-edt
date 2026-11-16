@@ -1,4 +1,4 @@
-"""Fixtures du lot socle partagées par ses tests unitaires et d'intégration.
+"""Fixtures du socle partagées par les tests unitaires et d'intégration.
 
 Chaque côté les importe par leur nom dans son `conftest.py` :
 

@@ -1,6 +1,6 @@
 """Règles personnalisées : catalogue des types, validation, phrase, résolution.
 
-Conception validée : `docs/regles-personnalisees.md`. Une **règle** est une
+Conception : `docs/regles-personnalisees.md`. Une **règle** est une
 donnée (saisie, importée, proposée par l'assistant) qui applique l'un des
 types de ce catalogue à une **portée** (établissement, groupe, enseignant,
 campus, type de séance, matière ou besoin) avec des **paramètres** validés
@@ -27,8 +27,8 @@ en JSON) : jours en noms français (« lundi »), heures en « HH:MM », durées
 minutes, choix par leur valeur, cibles (campus, salles, types de séance) par
 leur code, demi-journées en « lundi matin » / « lundi après-midi ».
 
-Précédence des jours (§ 1.3 de la conception, décision 1)
-------------------------------------------------------
+Précédence des jours
+--------------------
 Le **standard** d'une séance est `Parametres.jours_travailles`, plus le samedi
 si son type de séance l'autorise et qu'aucune règle `JOURS_TRAVAILLES` ne vise
 ce type. Chaque **axe** de la séance résout sa lignée du plus précis au moins
@@ -90,7 +90,7 @@ journal = logging.getLogger(__name__)
 
 
 class TypeRegle(EnumLibelle):
-    """Types de règle, codes stables : on n'en renomme jamais, on en ajoute."""
+    """Types de règle, codes stables : un code n'est jamais renommé, seuls de nouveaux s'ajoutent."""
 
     JOURS_TRAVAILLES = "JOURS_TRAVAILLES", "Jours travaillés"
     PLAGE_HORAIRE = "PLAGE_HORAIRE", "Horaires"
@@ -109,7 +109,7 @@ class TypeRegle(EnumLibelle):
 
 
 class NaturePortee(EnumLibelle):
-    """Nature de la portée d'une règle (pas de portée salle : décision 5)."""
+    """Nature de la portée d'une règle (pas de portée salle : une salle se règle sur sa fiche)."""
 
     ETABLISSEMENT = "etablissement", "Établissement"
     GROUPE = "groupe", "Groupe"
@@ -252,7 +252,7 @@ class DefinitionType:
     description: str
     exemples: tuple[str, ...]
     refus: tuple[tuple[NaturePortee, str], ...] = ()
-    """Portées admises par principe mais refusées avec une explication (voir § 1.4)."""
+    """Portées admises par principe mais refusées avec une explication."""
     periode_datable: bool = True
     """Faux pour un réglage de personne : période = année ou semestre entier, jamais des dates."""
 
@@ -817,7 +817,7 @@ class Portee:
 
     @property
     def est_personne(self) -> bool:
-        """Vrai pour une portée dont on parle comme d'une personne (groupe, enseignant)."""
+        """Vrai pour une portée qui désigne une personne (groupe, enseignant)."""
         return self.nature in (NaturePortee.GROUPE, NaturePortee.ENSEIGNANT)
 
 
@@ -1733,8 +1733,8 @@ def _choisir(
     """Première règle qui compte le long de la lignée.
 
     Au même niveau, plusieurs candidates ne peuvent qu'avoir des périodes
-    disjointes (`resoudre_reglages` refuse les autres) : on retient la plus
-    couvrante sur `semaines`, puis le plus petit code.
+    disjointes (`resoudre_reglages` refuse les autres) : la plus couvrante sur
+    `semaines` l'emporte, puis le plus petit code.
     """
     for niveau in lignee:
         candidates = [r for r in niveau if compte(r)]
@@ -1990,7 +1990,7 @@ def _feuilles_et_lignees(
 def personnes_concernees(
     regle: Regle | RegleResolue, instantane: Instantane
 ) -> frozenset[Personne]:
-    """Personnes visées par une règle de sorte emploi du temps ou relation (§ 1.2)."""
+    """Personnes visées par une règle de sorte emploi du temps ou relation."""
     nature = regle.portee if isinstance(regle, RegleResolue) else regle.portee.nature
     cible = regle.cible_id if isinstance(regle, RegleResolue) else regle.portee.cible_id
     valeurs = regle.valeurs if isinstance(regle, RegleResolue) else regle.parametres
@@ -2023,7 +2023,7 @@ def personnes_concernees(
 
 
 def seances_concernees(regle: Regle | RegleResolue, instantane: Instantane) -> frozenset[str]:
-    """Séances visées par une règle (§ 1.2) ; pour une portée campus, toutes les séances."""
+    """Séances visées par une règle ; pour une portée campus, toutes les séances."""
     nature = regle.portee if isinstance(regle, RegleResolue) else regle.portee.nature
     cible = regle.cible_id if isinstance(regle, RegleResolue) else regle.portee.cible_id
     seances = instantane.seances
@@ -2051,7 +2051,7 @@ def seances_concernees(regle: Regle | RegleResolue, instantane: Instantane) -> f
 def resoudre_regle(
     regle: Regle,
     instantane: Instantane,
-    identifiants: Mapping[str, Mapping[str, int]] | None = None,
+    identifiants: Mapping[str, Mapping[str, int | Collection[int]]] | None = None,
 ) -> RegleResolue:
     """Résout une règle active sur un instantané (valeurs, semaines, cibles, phrase).
 
@@ -2144,6 +2144,7 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
 
     jt = TypeRegle.JOURS_TRAVAILLES
     jours: dict[str, ReglesJours] = {}
+    sans_jour: dict[tuple[str, ...], list[str]] = {}
     for seance in instantane.seances:
         besoin = seance.besoin
         axes: list[Lignee] = []
@@ -2181,13 +2182,18 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
         )
         incompatibles = jours[seance.id].regles_incompatibles
         if incompatibles:
-            journal.warning(
-                "Séance %s (%s) : aucun jour permis, les règles de jours retenues sont "
-                "incompatibles entre elles : %s",
-                seance.id,
-                besoin.libelle,
-                ", ".join(r.code for r in incompatibles),
-            )
+            sans_jour.setdefault(tuple(r.code for r in incompatibles), []).append(seance.id)
+    # Un même couple de règles contradictoires touche souvent des dizaines de séances :
+    # un avertissement par ensemble de règles, pas un par séance.
+    for codes, seances_sans_jour in sans_jour.items():
+        journal.warning(
+            "%d séance(s) sans aucun jour permis : les règles de jours %s sont incompatibles "
+            "entre elles (séances %s%s)",
+            len(seances_sans_jour),
+            ", ".join(codes),
+            ", ".join(seances_sans_jour[:5]),
+            ", ..." if len(seances_sans_jour) > 5 else "",
+        )
 
     toutes = frozenset(semaine.numero for semaine in instantane.semaines)
 

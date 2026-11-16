@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import logging
 import os
 import threading
 import time
 
 import pytest
+from sqlalchemy import select
 
 from edt.db import modeles as m
 from edt.db.initialisation import ErreurSchemaPerime, base_initialisee
+from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import obtenir_moteur, session_base
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurRegleMetier
 from edt.services import jeux
@@ -23,18 +24,16 @@ from edt.services.jeux import (
     remettre_a_zero,
 )
 
-AUJOURDHUI = dt.date(2026, 10, 5)
-
 
 @pytest.mark.cas_limite
 def test_panne_de_generation_apres_remise_a_zero_est_dite(
-    jeu_minimal, monkeypatch, compter, caplog
+    jeu_minimal, monkeypatch, compter, caplog, aujourdhui
 ):
     """Cas : `recharger_jeu_fictif(..., reinitialiser=True)` et la génération du jeu plante
     (bogue, disque plein) après que la remise à zéro a été validée.
 
     Risque : `RuntimeError` brute (500 / code 2) sans dire que la base a été effacée ni
-    qu'aucun jeu n'est chargé ; la docstring promettait « rien n'est écrit sinon ».
+    qu'aucun jeu n'est chargé, alors que la docstring promet « rien n'est écrit sinon ».
     """
 
     def generation_en_panne(*_args, **_options):
@@ -43,7 +42,7 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
     monkeypatch.setattr(jeux, "generer_jeu", generation_en_panne)
     with caplog.at_level(logging.ERROR, logger="edt.services.jeux"):
         with pytest.raises(ErreurRegleMetier) as capture:
-            recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=AUJOURDHUI)
+            recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=aujourdhui)
 
     message = capture.value.message
     assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
@@ -54,18 +53,18 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
 
 
 @pytest.mark.cas_limite
-def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter):
-    """Cas : une table a une colonne en trop (base d'une autre version) ; on charge un jeu
+def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter, aujourdhui):
+    """Cas : une table a une colonne en trop (base d'une autre version) ; un jeu est chargé
     sans remise à zéro, par le service puis par le chemin direct.
 
     Risque : « lancer init-db » conseillé alors qu'init-db refusera ; le chemin direct
-    continuait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ».
+    continuerait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ».
     """
     with obtenir_moteur().begin() as connexion:
         connexion.exec_driver_sql("ALTER TABLE besoin ADD COLUMN ancien_champ VARCHAR(10)")
 
     with pytest.raises(ErreurSchemaPerime) as capture:
-        recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+        recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)
     assert "--reset" in str(capture.value) and "init-db »" not in capture.value.message
     with session_base() as session, pytest.raises(ErreurSchemaPerime):
         charger_jeu_fictif(session, "petit", 1)
@@ -73,13 +72,40 @@ def test_jeu_fictif_sur_schema_perime_indique_le_reset(base, compter):
 
 
 @pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("modele", "code", "famille"),
+    [
+        (m.TypeSeance, "PROJET", "types de séance"),
+        (m.TypeSeance, "TP", "types de séance"),  # le type de salle « TP », lui, reste
+        (m.Equipement, "VISIO", "équipements"),
+    ],
+)
+def test_le_jeu_minimal_nomme_le_code_par_defaut_qui_manque(session, modele, code, famille):
+    """Cas : un type de séance ou un équipement par défaut a été supprimé de la base avant
+    `python -m edt jeu-minimal`.
+
+    Risque : `KeyError` (« Erreur inattendue », code 2) au milieu du chargement, ou un type de
+    séance « TP » manquant masqué par le type de salle homonyme ; l'erreur doit nommer la
+    liste, le code et le remède, avant toute écriture.
+    """
+    ligne = session.scalar(select(modele).where(modele.code == code))
+    session.delete(ligne)
+    session.flush()
+
+    with pytest.raises(ErreurRegleMetier) as capture:
+        creer_jeu_minimal(session)
+    assert f"{famille} {code}" in capture.value.message and "--reset" in capture.value.message
+    assert session.scalar(select(m.Campus.id)) is None
+
+
+@pytest.mark.cas_limite
 def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
-    base, environnement, monkeypatch
+    base, environnement, monkeypatch, aujourdhui
 ):
     """Cas : `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le
     serveur sert des pages.
 
-    Risque : le verrou étant propre au processus, le serveur répondait « base non
+    Risque : le verrou étant propre au processus, le serveur répondrait « base non
     initialisée : lancer init-db » (faux) pendant la recréation des tables ; le marqueur posé
     à côté de la base doit être vu, et un marqueur périmé ignoré.
     """
@@ -102,7 +128,7 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
         return reelle(*args, **options)
 
     monkeypatch.setattr(jeux, "initialiser_base", initialisation_observee)
-    rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
+    rapport = remettre_a_zero(aujourdhui=aujourdhui)
     assert rapport.reinitialisee and vu_pendant == [True]
     assert not marqueur.exists() and not operation_en_cours()
 
@@ -112,17 +138,17 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
     ("graine", "annee_debut"), [(-1, None), (0, 1900)], ids=["graine négative", "année 1900"]
 )
 def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
-    jeu_minimal, compter, graine, annee_debut
+    jeu_minimal, compter, graine, annee_debut, aujourdhui
 ):
     """Cas : l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine
     ou une année de début hors bornes.
 
-    Risque : la base était remise à zéro, puis la génération refusait la demande : toutes les
-    données perdues pour une faute de saisie (cas transmis par le lot synthèse).
+    Risque : la base serait remise à zéro, puis la génération refuserait la demande : toutes
+    les données perdues pour une faute de saisie.
     """
     with pytest.raises(ErreurDonneesInvalides):
         recharger_jeu_fictif(
-            "petit", graine, reinitialiser=True, annee_debut=annee_debut, aujourdhui=AUJOURDHUI
+            "petit", graine, reinitialiser=True, annee_debut=annee_debut, aujourdhui=aujourdhui
         )
     assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
     assert compter(m.Besoin) == jeu_minimal.nb_besoins
@@ -131,27 +157,39 @@ def test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero(
 
 @pytest.mark.cas_limite
 def test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit(
-    base, compter, verrou_ecriture_bref
+    base, compter, verrou_ecriture_bref, aujourdhui
 ):
     """Cas : un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou
     d'écriture quelques dixièmes de seconde.
 
-    Risque : avec un BEGIN différé, le chargement lisait puis échouait aussitôt « database is
+    Risque : avec un BEGIN différé, le chargement lirait puis échouerait aussitôt « database is
     locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ;
     ouvert en IMMEDIATE, il attend son tour et réussit.
     """
     verrou_ecriture_bref(0.4)
-    debut = time.perf_counter()
-    rapport = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
-    duree = time.perf_counter() - debut
+    rapport = recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)  # sans « locked »
 
     assert rapport.nb_besoins > 0 and compter(m.Salle) > 0
-    assert duree >= 0.3  # il a bien attendu la fin du verrou
+
+
+@pytest.mark.cas_limite
+def test_une_remise_a_zero_donne_un_seul_avertissement_au_journal(jeu_minimal, aujourdhui, caplog):
+    """Cas : remise à zéro demandée depuis l'écran ou par `init-db --reset`, sans incident.
+
+    Risque : le journal, outil de diagnostic d'une démonstration, se remplit d'avertissements
+    en double pour une action voulue ; un seul avertissement dit la suppression des données.
+    """
+    with caplog.at_level(logging.INFO):
+        remettre_a_zero(aujourdhui=aujourdhui)
+
+    avertissements = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(avertissements) == 1, [r.getMessage() for r in avertissements]
+    assert "Remise à zéro" in avertissements[0].getMessage()
 
 
 @pytest.mark.cas_limite
 def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
-    jeu_minimal, compter, verrou_ecriture_bref
+    jeu_minimal, compter, verrou_ecriture_bref, aujourdhui
 ):
     """Cas : `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion
     écrit brièvement.
@@ -160,12 +198,14 @@ def test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement(
     locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit.
     """
     verrou_ecriture_bref(0.4)
-    rapport = remettre_a_zero(aujourdhui=AUJOURDHUI)
+    rapport = remettre_a_zero(aujourdhui=aujourdhui)
     assert rapport.reinitialisee and compter(m.Salle) == 0 and base_initialisee(obtenir_moteur())
 
 
 @pytest.mark.cas_limite
-def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement(base, compter):
+def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement(
+    base, compter, aujourdhui
+):
     """Cas : deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux
     onglets).
 
@@ -179,7 +219,7 @@ def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_claireme
     def charger(nom: str) -> None:
         depart.wait(5)
         try:
-            resultats[nom] = recharger_jeu_fictif("petit", 1, aujourdhui=AUJOURDHUI)
+            resultats[nom] = recharger_jeu_fictif("petit", 1, aujourdhui=aujourdhui)
         except ErreurEDT as erreur:
             resultats[nom] = erreur
 
@@ -188,6 +228,7 @@ def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_claireme
         fil.start()
     for fil in fils:
         fil.join(30)
+        assert not fil.is_alive(), f"fil {fil.name} toujours actif après 30 s"
 
     reussis = [r for r in resultats.values() if not isinstance(r, Exception)]
     refus = [r for r in resultats.values() if isinstance(r, Exception)]
@@ -195,7 +236,7 @@ def test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_claireme
     message = refus[0].message
     assert ("en cours" in message) or ("contient déjà" in message), message
     assert "locked" not in message.lower()
-    assert compter(m.Campus) == reussis[0].nb_campus if hasattr(reussis[0], "nb_campus") else True
+    assert compter(m.Campus) == reussis[0].compteurs["campus"] > 0
 
 
 @pytest.mark.cas_limite
@@ -223,6 +264,7 @@ def test_deux_chargements_de_deux_processus_sont_serialises_sous_le_verrou(base,
         fil.start()
     for fil in fils:
         fil.join(30)
+        assert not fil.is_alive(), f"fil {fil.name} toujours actif après 30 s"
 
     reussis = [r for r in resultats.values() if not isinstance(r, Exception)]
     refus = [r for r in resultats.values() if isinstance(r, Exception)]

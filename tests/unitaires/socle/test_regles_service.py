@@ -269,11 +269,8 @@ def test_cibles_par_code_et_par_description(jeu_minimal, session):
     )
     instantane = charger_instantane(session, jeu_minimal.semestre_id)
     resolue = instantane.regle(campus.id)
-    assert (
-        resolue.valeurs["campus"] == (instantane.campus[0].id,)
-        if instantane.campus[0].code == "NDC"
-        else True
-    )
+    ndc = next(c.id for c in instantane.campus if c.code == "NDC")
+    assert resolue.valeurs["campus"] == (ndc,)
     assert all(instantane.seance(s).besoin.type_seance_code == "TP" for s in resolue.seances)
 
 
@@ -368,11 +365,11 @@ def test_cycle_de_vie_sans_journal_perdu(jeu_minimal, session, caplog):
     assert f"Règle {detail.code} créée" in caplog.text and detail.phrase in caplog.text
     assert f"Règle {detail.code} supprimée" in caplog.text
     assert detail.regle.date_debut is None and detail.regle.periode_texte() == "toute l'année"
-    assert dt.date.today()  # le brouillon sans année prend l'année en cours (2026-2027 ici)
+    assert detail.annee_libelle == "2026-2027"  # une seule année : celle du brouillon sans année
 
 
 # --------------------------------------------------------------------------- #
-# Corrections de la revue
+# Période d'un réglage, filtres, origine, réimport et année suivante
 # --------------------------------------------------------------------------- #
 
 
@@ -560,8 +557,8 @@ def test_brouillon_qui_n_est_pas_un_objet_est_une_validation_invalide(
     """Cas : l'assistant ou un client JSON envoie une liste, un texte, `null` ou un nombre à
     `valider()` ou `creer()`.
 
-    Risque : `dict(brouillon)` levait `ValueError`/`TypeError` (500) : le contrat « valider ne
-    lève pas, renvoie une validation invalide » était rompu ; `creer` doit refuser sans écrire.
+    Risque : `dict(brouillon)` lèverait `ValueError`/`TypeError` (500) : le contrat « valider ne
+    lève pas, renvoie une validation invalide » serait rompu ; `creer` doit refuser sans écrire.
     """
     validation = service.valider(session, brouillon)
     assert not validation.valide and "objet" in validation.erreurs["brouillon"]
@@ -580,13 +577,14 @@ def test_modifier_refuse_un_changement_d_annee_ou_de_code_et_garde_le_controle_d
 ):
     """Cas : `modifier()` reçoit « annee » (autre année) ou « code » dans les changements.
 
-    Risque : le doublon était cherché dans l'autre année mais la règle restait dans la sienne :
-    deux réglages actifs pour la même cible, et le semestre entier devenait inchargeable ; le
-    changement de code était ignoré en silence.
+    Risque : le doublon serait cherché dans l'autre année mais la règle resterait dans la
+    sienne : deux réglages actifs pour la même cible, et le semestre entier deviendrait
+    inchargeable ; le changement de code serait ignoré en silence.
     """
     annee = jeu_minimal.annee_scolaire_id
     assurer_annee_scolaire(session, 2027)
     brouillon = {
+        "annee": "2026-2027",  # sans elle, l'année suivrait la date du jour (deux années ici)
         "type": "PAUSE_MINIMALE",
         "portee": {"nature": "enseignant", "cible": "ENS004"},
         "parametres": {"duree": 30},
@@ -671,8 +669,8 @@ def test_le_code_est_normalise_en_majuscules(jeu_minimal, session):
 def test_annee_mal_formee_indique_le_format_attendu(jeu_minimal, session, annee):
     """Cas : le brouillon donne l'année comme entier, « 2026 », booléen ou « 2026/2027 ».
 
-    Risque : « L'année scolaire 2026 n'existe pas » : l'assistant ne savait ni le format
-    « 2026-2027 » ni les années existantes, et bouclait sur des corrections.
+    Risque : « L'année scolaire 2026 n'existe pas » : un appelant qui ne connaît ni le format
+    « 2026-2027 » ni les années existantes bouclerait sur des corrections.
     """
     validation = service.valider(
         session,
@@ -688,7 +686,7 @@ def test_une_regle_enregistree_sans_heures_reste_lisible(jeu_minimal, session):
     """Cas : une règle enregistrée (import ancien, script) de type PLAGE_HORAIRE sans `debut` ni
     `fin` ; la liste et la fiche des règles sont ouvertes.
 
-    Risque : `KeyError` dans la phrase : toute la liste répondait 500 pour une ligne ; la
+    Risque : `KeyError` dans la phrase : toute la liste répondrait 500 pour une ligne ; la
     phrase doit se compléter avec les heures d'ouverture de l'établissement.
     """
     ligne = session.scalar(select(m.Regle).where(m.Regle.code == "R001"))
@@ -716,7 +714,7 @@ def test_regle_dont_la_cible_numerique_est_hors_bornes_est_invalide(
     SQLite, négatif ou nul (assistant, adresse forgée).
 
     Risque : `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide :
-    page 500 sur l'écran des règles (cas transmis par le lot solveur).
+    page 500 sur l'écran des règles.
     """
     validation = service.valider(
         session,
