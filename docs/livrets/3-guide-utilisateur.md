@@ -85,7 +85,7 @@ l'établissement fictif ».
 En quelques secondes, l'écran **Établissement fictif chargé** résume ce qui est entré dans
 la base : 3 campus, 34 salles, 39 groupes, 246 étudiants, 34 enseignants, 30 matières,
 221 besoins d'enseignement et 14 règles d'exemple. Si la base contenait déjà des données, le
-chargement les remplace toutes, une fois cochée la case « Je confirme l'effacement de toutes
+chargement les remplace toutes, une fois cochée la case « Confirmer l'effacement de toutes
 les données actuelles ».
 
 **Étape 2. Générer.** Cliquer sur « Générer l'emploi du temps » (le même bouton figure sur
@@ -102,14 +102,15 @@ garde le meilleur trouvé.
 
 *Figure 3. Calcul en cours : un premier emploi du temps est trouvé après une seconde.*
 
-![Résultat du calcul : 111 séances placées dans la semaine type, 1196 séances datées, 15 replacées, 0 à programmer, puis la qualité de l'emploi du temps](images/guide-resultat-calcul.png)
+![Résultat du calcul : 111 séances placées dans la semaine type, 1196 séances datées, 9 replacées, 0 à programmer, puis la qualité de l'emploi du temps](images/guide-resultat-calcul.png)
 
 *Figure 4. Résultat : l'emploi du temps devient la version active du semestre.*
 
 **Étape 3. Consulter.** Cliquer sur « Voir l'emploi du temps ». L'onglet **Emploi du temps**
 s'ouvre sur une classe ; la liste « Pour qui » choisit un autre groupe, un enseignant ou une
 salle (partie 6). L'accueil affiche alors « L'emploi du temps du semestre 1 (2026-2027)
-est prêt » et le bouton « Consulter l'emploi du temps ».
+est prêt » et le bouton « Consulter l'emploi du temps » ; s'il reste des points à traiter
+(partie 7), il en donne le nombre et propose « Voir ce qui reste à traiter ».
 
 ## 3. Saisir ou importer les données
 
@@ -145,7 +146,8 @@ Pour reprendre les fichiers d'une école plutôt que tout saisir, voir la partie
 
 ### 4.1 Les trois niveaux
 
-Chaque règle porte un niveau ; l'écran Générer en rappelle la définition :
+Chaque règle porte un niveau, affiché à l'écran avec la même définition (écran Générer et
+formulaire d'une règle) :
 
 - **Nécessaire** : toujours respectée ;
 - **Important** : enfreinte seulement faute de mieux, avec un avertissement ;
@@ -253,14 +255,18 @@ verrouillée, un point d'exclamation une anomalie, détaillée sous la grille.
 Un clic sur une séance ouvre son panneau à droite : type, horaire, groupes, enseignants,
 salle, semaines, **place** et exigences. Deux actions :
 
-![Panneau d'une séance après un déplacement refusé : message « La modification n'a pas été enregistrée » et la règle « Une séance par groupe » en cause](images/guide-deplacement-refuse.png)
+![Panneau d'une séance après un déplacement refusé : message « La modification n'a pas été enregistrée » et la règle personnalisée R010 en cause](images/guide-deplacement-refuse.png)
 
 *Figure 9. Un déplacement refusé : rien n'est enregistré, la raison est donnée.*
 
 - « Verrouiller à cette place » : « Séance verrouillée : les prochains calculs la laisseront
   à sa place. » « Déverrouiller » annule ce choix.
 - « Déplacer la séance (toutes les semaines) » : choisir le jour, l'heure de début et la
-  salle ; chaque heure est marquée **(possible)**, **(refusé)** ou **(actuelle)**.
+  salle. Chaque heure est marquée **(possible)** (accepté avec la salle proposée pour cette
+  heure), **(possible, avec avertissement)** (accepté, avec une entorse à une règle
+  importante signalée), **(refusé)** ou **(actuelle)**. Quand aucune heure ne convient ce
+  jour-là, le panneau le dit : « Aucune heure possible le jeudi avec les salles proposées :
+  essayer un autre jour (règle la plus souvent en cause : Une séance par groupe). »
   « Vérifier et enregistrer » contrôle toutes les règles. Un déplacement accepté s'affiche en
   vert (« Séance déplacée au mardi à 13 h 45, salle L201… ») ; un déplacement refusé
   n'enregistre rien et liste les règles en cause (figure 9).
@@ -302,7 +308,7 @@ Pour chaque semestre :
 - **Séances à programmer** : les séances tombées un jour fermé ou pendant une
   indisponibilité sans autre créneau trouvé, avec la raison et le bouton « Programmer ».
 
-![Points à traiter du semestre 1 : 120 points, dont des règles non respectées par des séances du mercredi matin, avec le lien « Voir dans l'emploi du temps »](images/guide-a-traiter.png)
+![Points à traiter du semestre 1 : 51 points, dont des règles non respectées par des séances du mercredi matin, avec le lien « Voir dans l'emploi du temps »](images/guide-a-traiter.png)
 
 *Figure 11. Après l'ajout d'une règle, les séances qui ne la respectent pas sont listées.*
 
@@ -377,10 +383,12 @@ commande, un calcul complet) ; le bloc « Comment sont organisés ces tests » l
 Les tests sont rangés par composant, puis par fichier, et chaque niveau a son bouton
 (« Lancer tous les tests … », « Lancer le composant … », « Lancer ce fichier », « Lancer »).
 Un cadre suit l'exécution (« 6 tests terminés sur 6 : 6 réussis, 0 échec, 0 ignoré ») ;
-chaque test affiche son état, sa durée et la date de son dernier lancement, et « Journal
-complet de l'exécution » donne le détail. Les tests de charge, longs, ne se lancent pas
-depuis le navigateur : leur ligne porte « Par la commande », et l'administrateur les lance un
-par un avec `python -m edt tests --test …` (voir l'annexe).
+chaque test affiche son état, sa durée et sa « Dernière exécution » (« jamais » pour un test
+jamais lancé), et « Journal complet de l'exécution » donne le détail. Pendant une exécution
+des tests, l'écran Générer prévient qu'un calcul lancé à ce moment serait refusé. Les tests
+de charge, longs, ne se lancent pas depuis le navigateur : leur ligne porte « Par la
+commande », et l'administrateur les lance un par un avec `python -m edt tests --test …`
+(voir l'annexe).
 
 ![Onglet Tests d'intégration après l'exécution du composant parcours : six tests réussis, avec leur durée et leur date](images/guide-tests-integration.png)
 
@@ -391,7 +399,10 @@ par un avec `python -m edt tests --test …` (voir l'annexe).
 | Message ou situation | Ce qui s'est passé | Que faire |
 |---|---|---|
 | « Le calcul ne peut pas être lancé : … points bloquants à corriger » | une donnée ou une règle rend le calcul impossible | lever ou assouplir la règle ou la donnée citée (partie 5.3) |
-| « La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes » | un déplacement de séance enfreint une règle nécessaire | choisir une heure marquée « (possible) » et une salle libre |
+| « La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes » | un déplacement de séance enfreint une règle nécessaire | choisir une heure marquée « (possible) », avec la salle proposée |
+| « Aucune heure possible le … avec les salles proposées : essayer un autre jour » | aucune heure de ce jour ne convient à la séance | choisir un autre jour ; la règle citée est la cause la plus fréquente |
+| « Une exécution des tests est en cours : un calcul lancé maintenant serait refusé » | des tests tournent depuis les onglets de tests | relancer le calcul à la fin des tests, visible dans leur onglet |
+| « Règle R… déjà créée avec ce contenu : rien n'a été ajouté. » | une règle identique existe déjà | rien à faire : la règle existante s'applique |
 | « Saisie invalide » | une valeur envoyée manque ou n'est pas valide ; rien n'a été enregistré | « Revenir à la page précédente » et corriger le champ cité |
 | « Base de données occupée » | une autre opération (chargement, remise à zéro, calcul) utilise la base ; rien n'a été modifié | réessayer dans quelques secondes |
 | « Erreur interne de l'assistant », avec une référence | l'assistant n'a pas pu répondre | « Renvoyer ma demande » ; si l'erreur revient, transmettre la référence à l'administrateur |
