@@ -300,11 +300,6 @@ def exigences(besoin: Besoin) -> list[str]:
     return morceaux
 
 
-def texte_exigences(besoin: Besoin) -> str:
-    """Exigences lisibles sur une ligne, séparées par des points-virgules."""
-    return " ; ".join(exigences(besoin))
-
-
 def libelle_besoin(besoin: Besoin) -> str:
     """Libellé court d'un besoin : « IM.1101 TD A1-G1 »."""
     return " ".join(

@@ -1,4 +1,4 @@
-"""Règles personnalisées touchées par la suppression d'une cible (décision 3).
+"""Règles personnalisées touchées par la suppression d'une cible.
 
 Une règle **vise** une cible par sa portée (groupe, enseignant, campus, type
 de séance, matière, besoin) : la base refuse de supprimer la cible tant que
