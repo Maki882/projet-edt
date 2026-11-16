@@ -1,10 +1,14 @@
 """Conversations de l'assistant : en mémoire du processus, bornées et expirantes.
 
 Rien du contenu d'une conversation n'est écrit en base. Le registre garde au
-plus `EDT_ASSISTANT_CONVERSATIONS_MAX` conversations ; une conversation sans
-activité depuis `EDT_ASSISTANT_EXPIRATION_MIN` minutes est oubliée, et quand
-la place manque, la moins récemment active sans échange en cours est
-retirée. Un redémarrage du serveur efface tout : le panneau le dit.
+plus `EDT_ASSISTANT_CONVERSATIONS_MAX` conversations, dont au plus
+`EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE` par adresse ; une conversation sans
+activité depuis `EDT_ASSISTANT_EXPIRATION_MIN` minutes est oubliée. Une
+conversation n'est créée que pour un message accepté (limites passées).
+Quand la place manque, la moins récemment active est retirée (d'abord parmi
+celles de la même adresse), mais jamais une conversation qui a un échange en
+cours ou une proposition en attente : faute de place, le nouveau message est
+refusé. Un redémarrage du serveur efface tout : le panneau le dit.
 
 Une conversation garde :
 
@@ -130,6 +134,16 @@ class Conversation:
             return self._numero
 
     @property
+    def a_proposition_en_attente(self) -> bool:
+        """Vrai si une proposition attend encore Confirmer ou Refuser."""
+        return any(p.en_attente for p in self.propositions.values())
+
+    @property
+    def retirable(self) -> bool:
+        """Vrai si la conversation peut être retirée pour faire de la place."""
+        return self.echange is None and not self.a_proposition_en_attente
+
+    @property
     def court(self) -> str:
         """Début de l'identifiant, pour les journaux."""
         return self.identifiant[:8]
@@ -151,20 +165,24 @@ class RegistreConversations:
                 return None
             return self._conversations.get(identifiant)
 
-    def creer(self, cle_adresse: str, maximum: int, expiration_s: float) -> Conversation:
-        """Nouvelle conversation ; `LimiteAtteinte` si la mémoire est pleine d'échanges en cours."""
+    def creer(
+        self, cle_adresse: str, maximum: int, par_adresse: int, expiration_s: float
+    ) -> Conversation:
+        """Nouvelle conversation (voir l'en-tête) ; `LimiteAtteinte` si aucune place ne se libère."""
         with self._verrou:
             self._purger(expiration_s)
+            miennes = [c for c in self._conversations.values() if c.cle_adresse == cle_adresse]
+            if len(miennes) >= par_adresse:
+                self._faire_place(
+                    miennes,
+                    "Trop de conversations sont ouvertes depuis votre adresse : terminez celle "
+                    "en cours, ou réessayez dans quelques minutes.",
+                )
             while len(self._conversations) >= maximum:
-                libres = [c for c in self._conversations.values() if c.echange is None]
-                if not libres:
-                    raise LimiteAtteinte(
-                        Limite.MEMOIRE,
-                        "L'assistant est très sollicité : réessayez dans un instant.",
-                    )
-                ancienne = min(libres, key=lambda c: c.derniere_activite)
-                journal.info("Conversation %s retirée (place)", ancienne.court)
-                self._retirer(ancienne.identifiant)
+                self._faire_place(
+                    list(self._conversations.values()),
+                    "L'assistant est très sollicité : réessayez dans un instant.",
+                )
             conversation = Conversation(
                 identifiant=secrets.token_urlsafe(16),
                 cle_adresse=cle_adresse,
@@ -187,9 +205,22 @@ class RegistreConversations:
         with self._verrou:
             return self._echanges.get(jeton)
 
+    def nombre(self) -> int:
+        """Conversations en mémoire."""
+        with self._verrou:
+            return len(self._conversations)
+
     def nb_echanges_en_cours(self) -> int:
         with self._verrou:
             return sum(1 for c in self._conversations.values() if c.echange is not None)
+
+    def _faire_place(self, candidates: list[Conversation], refus: str) -> None:
+        retirables = [c for c in candidates if c.retirable]
+        if not retirables:
+            raise LimiteAtteinte(Limite.MEMOIRE, refus)
+        ancienne = min(retirables, key=lambda c: c.derniere_activite)
+        journal.info("Conversation %s retirée (place)", ancienne.court)
+        self._retirer(ancienne.identifiant)
 
     def _retirer(self, identifiant: str) -> None:
         conversation = self._conversations.pop(identifiant, None)

@@ -849,11 +849,12 @@ de réglage, de même cible et de périodes qui se recoupent.
 
 #### `assistant_consommation`
 
-Consommation de l'assistant conversationnel pour un jour, sur tout le site
-(`docs/assistant.md`). Une ligne par jour, mise à jour après chaque appel au
-modèle ; sert aux limites du jour, qui survivent ainsi à un redémarrage.
-Aucun texte de conversation ni adresse n'y est enregistré. Classe ORM :
-`AssistantConsommation`.
+Consommation de l'assistant conversationnel pour un jour. Limite connue :
+l'application n'écrit ni ne lit cette table. La consommation du jour est gardée
+hors de la base, dans un fichier sous le dossier des journaux
+(`docs/assistant.md` § 3), pour survivre à la remise à zéro de la base, qui
+supprime toutes les tables. La table reste dans le modèle pour ne pas changer
+le schéma des bases existantes. Classe ORM : `AssistantConsommation`.
 
 | Colonne | Type | Obligatoire | Description |
 |---|---|---|---|

@@ -18,6 +18,7 @@
 | `EDT_ASSISTANT_BUDGET_JOUR` | `2.00` | dollars par jour pour tout le site (coût estimé) |
 | `EDT_ASSISTANT_SIMULTANES` | `2` | échanges en même temps |
 | `EDT_ASSISTANT_CONVERSATIONS_MAX` | `200` | conversations gardées en mémoire |
+| `EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE` | `10` | conversations gardées par adresse IP |
 | `EDT_ASSISTANT_EXPIRATION_MIN` | `30` | minutes sans activité avant l'oubli d'une conversation |
 | `EDT_ASSISTANT_JOURNAL_CONTENU` | `non` | `oui` : textes des messages au niveau DEBUG |
 
@@ -128,6 +129,7 @@ class ConfigurationAssistant:
     budget_jour_micro: int = 2 * MICRO
     simultanes: int = 2
     conversations_max: int = 200
+    conversations_par_adresse: int = 10
     expiration_min: int = 30
     journal_contenu: bool = False
     variable_cle: str | None = None
@@ -196,6 +198,7 @@ ENTIERS: tuple[_Entier, ...] = (
     _Entier("EDT_ASSISTANT_MESSAGES_PAR_JOUR", "messages_par_jour", 0, 100_000),
     _Entier("EDT_ASSISTANT_SIMULTANES", "simultanes", 1, 20),
     _Entier("EDT_ASSISTANT_CONVERSATIONS_MAX", "conversations_max", 1, 10_000),
+    _Entier("EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE", "conversations_par_adresse", 1, 10_000),
     _Entier("EDT_ASSISTANT_EXPIRATION_MIN", "expiration_min", 1, 1440),
 )
 """Variables entières : nom, attribut de `ConfigurationAssistant`, bornes incluses."""

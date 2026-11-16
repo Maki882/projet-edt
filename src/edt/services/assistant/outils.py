@@ -1,11 +1,19 @@
-"""Outils exposés au modèle : schémas stricts et exécution.
+"""Outils exposés au modèle : schémas et exécution.
 
 Douze outils, triés par nom, construits une fois à l'import (`OUTILS`). Les
-schémas suivent le mode strict de l'API : `additionalProperties: false` sur
-chaque objet, toutes les propriétés requises (une valeur facultative s'écrit
-`anyOf` avec `null`), aucun mot-clé de borne (`minimum`, `maxLength`...) :
-les bornes sont contrôlées par les services. Les énumérations viennent du
-domaine (types et états de règle, portées, niveaux, jours).
+schémas ont la forme du mode strict de l'API (`additionalProperties: false`
+sur chaque objet, toutes les propriétés requises, une valeur non précisée
+s'écrit null par `anyOf` avec `null`, aucun mot-clé de borne comme `minimum`
+ou `maxLength` : les bornes sont contrôlées par les services), mais aucun
+outil n'est déclaré `strict`. Le service limite le mode strict, sur
+l'ensemble des schémas stricts d'une requête, à 16 paramètres à union (nous
+en avons 74), 24 paramètres facultatifs et 20 outils, plus une limite
+interne de taille de la grammaire compilée : au-delà, toute requête est
+refusée (400). Le schéma guide donc le modèle, et c'est l'exécution qui
+valide chaque argument (type, valeur, existence) : un argument absent compte
+comme null, un argument mal formé revient au modèle comme refus clair, qu'il
+corrige. Les énumérations viennent du domaine (types et états de règle,
+portées, niveaux, jours).
 
 Aucun outil n'écrit. Les outils de lecture appellent les services et
 rendent un texte français compact (`TAILLE_MAX` caractères au plus) ; les
@@ -47,7 +55,13 @@ from edt.domaine.parametres import DEJEUNER_FIXE, DEJEUNER_LIBRE
 from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, NaturePortee, TypeRegle
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurIntrouvable
 from edt.services import regles
-from edt.services.assistant.propositions import Lien, NatureProposition, Proposition
+from edt.services.assistant.propositions import (
+    Lien,
+    NatureProposition,
+    Proposition,
+    generation_base,
+    identite,
+)
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.emploi_du_temps import anomalies, occupation, presentation, versions, vues
 from edt.services.emploi_du_temps.presentation import adresse_regle, plages_de_semaines
@@ -200,7 +214,9 @@ def _construire_outils() -> list[dict[str, Any]]:
             "description": "Séances d'un groupe, d'un enseignant ou d'une salle dans la version "
             "active d'un semestre : semaine type (date null) ou semaine datée qui contient la "
             "date ; jour pour se limiter à un jour. À appeler pour toute question sur les cours "
-            "de quelqu'un ou l'occupation d'une salle.",
+            "de quelqu'un ou l'occupation d'une salle. Pour un groupe, les séances de ses "
+            "sous-groupes et des groupes qui partagent ses étudiants sont incluses, marquées "
+            "« une partie du groupe ».",
             "input_schema": _objet(
                 {
                     "nature": {"type": "string", "enum": ["groupe", "enseignant", "salle"]},
@@ -365,8 +381,6 @@ def _construire_outils() -> list[dict[str, Any]]:
             ),
         },
     ]
-    for outil in outils:
-        outil["strict"] = True
     return sorted(outils, key=lambda outil: outil["name"])
 
 
@@ -1080,12 +1094,15 @@ def _salles_libres(session: Session, entree: Mapping[str, Any], contexte: Contex
                 f"- {_salle_vue(o.salle)} : {_plage(o.debut, o.fin)} {o.libelle}{semaines}"
             )
     if r.exceptions:
-        lignes.append("Exceptions datées (indisponibilités des salles libres) :")
+        lignes.append(
+            "Exceptions datées (indisponibilités et séances datées qui prennent ces salles "
+            "certains jours) :"
+        )
         for e in r.exceptions:
             dates = ", ".join(f"{d:%d/%m/%Y}" for d in e.dates)
-            motif = f" ({e.motif})" if e.motif else ""
             lignes.append(
-                f"- {e.salle.code} ({e.salle.campus}) : indisponible le {dates}, {_plage(e.debut, e.fin)}{motif}"
+                f"- {e.salle.code} ({e.salle.campus}) : {e.libelle} le {dates}, "
+                f"{_plage(e.debut, e.fin)}"
             )
     return "\n".join(lignes)
 
@@ -1139,6 +1156,10 @@ def _emploi_du_temps(session: Session, entree: Mapping[str, Any], contexte: Cont
             jour=jour if date is None else None,
             verifier=False,
             aujourdhui=contexte.aujourdhui,
+            # Vue étendue : les séances des demi-groupes et des groupes qui partagent ses
+            # étudiants comptent aussi (marquées « une partie du groupe »), sinon une classe
+            # dont seuls les demi-groupes ont cours paraîtrait libre.
+            etendu=True,
         )
         blocs = sorted(vue.blocs, key=lambda b: (b.date or dt.date.min, b.jour, b.debut))
         if date is not None and not datees:
@@ -1392,7 +1413,11 @@ def _proposer_regle(session: Session, entree: Mapping[str, Any], contexte: Conte
             titre="Nouvelle règle",
             phrase=validation.phrase,
             details=_details_regle(regle),
-            donnees={"annee_id": annee_id, "brouillon": _brouillon_canonique(regle, libelle)},
+            donnees={
+                "generation": generation_base(session),
+                "annee_id": annee_id,
+                "brouillon": _brouillon_canonique(regle, libelle),
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1428,7 +1453,12 @@ def _proposer_modification_regle(
             phrase=validation.phrase,
             phrase_avant=avant.phrase,
             details=_details_regle(validation.regle),
-            donnees={"annee_id": annee_id, "code": avant.code, "changements": changements},
+            donnees={
+                "generation": generation_base(session),
+                "annee_id": annee_id,
+                "code": avant.code,
+                "changements": changements,
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1462,7 +1492,13 @@ def _proposer_etat_regle(
             titre=titre,
             phrase=detail.phrase,
             details=(f"État actuel : {detail.etat.libelle.lower()}", suite),
-            donnees={"annee_id": annee_id, "code": detail.code, "etat": etat},
+            donnees={
+                "generation": generation_base(session),
+                "annee_id": annee_id,
+                "code": detail.code,
+                "regle_id": detail.id,
+                "etat": etat,
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1567,7 +1603,11 @@ def _proposer_indisponibilite(
             titre="Indisponibilité",
             phrase=phrase,
             details=tuple(details),
-            donnees={"valeurs": valeurs},
+            donnees={
+                "generation": generation_base(session),
+                "valeurs": valeurs,
+                "identite": identite(ressource),
+            },
             lien_ecran=Lien("Ouvrir les indisponibilités", "/indisponibilites"),
         )
     )

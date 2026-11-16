@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import datetime as dt
 import itertools
+import json
 import logging
+import time
 
+import anthropic
 import pytest
 from anthropic.types.beta import BetaMessage
 from tests.outils.assistant.faux_client import (
     FauxClient,
+    client_sdk_simule,
+    corps_erreur,
+    delai_depasse,
+    erreur_api,
     message,
     outil,
     reflexion,
     repli,
+    reponse_http,
     reponse_outil,
     reponse_texte,
     texte,
@@ -65,6 +73,128 @@ def _pause_levee():
 
 
 # --------------------------------------------------------------------------- #
+# Schémas envoyés : limites documentées du mode strict
+# --------------------------------------------------------------------------- #
+
+# « Structured outputs », § Schema complexity limits et § JSON Schema limitations
+# (platform.claude.com/docs/en/build-with-claude/structured-outputs). Les trois
+# limites chiffrées portent sur le total de tous les schémas stricts d'une requête ;
+# un outil sans `strict` n'y compte pas.
+OUTILS_STRICTS_MAX = 20
+PARAMETRES_FACULTATIFS_MAX = 24
+PARAMETRES_A_UNION_MAX = 16
+MOTS_REFUSES_EN_STRICT = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "maxItems",
+        "uniqueItems",
+        "contains",
+        "minProperties",
+        "maxProperties",
+        "patternProperties",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+    }
+)
+FORMATS_PRIS_EN_CHARGE = frozenset(
+    {"date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"}
+)
+MOTIFS_REFUSES = ("(?=", "(?!", "(?<=", "(?<!", "\\b", "\\B", *(f"\\{n}" for n in range(1, 10)))
+
+
+def _sous_schemas(schema: dict):
+    """Le schéma et tous ses sous-schémas : propriétés, éléments, branches, définitions."""
+    yield schema
+    for sous in schema.get("properties", {}).values():
+        yield from _sous_schemas(sous)
+    if isinstance(schema.get("items"), dict):
+        yield from _sous_schemas(schema["items"])
+    for cle in ("anyOf", "allOf"):
+        for sous in schema.get(cle, []):
+            yield from _sous_schemas(sous)
+    for cle in ("$defs", "definitions"):
+        for sous in schema.get(cle, {}).values():
+            yield from _sous_schemas(sous)
+
+
+def depassements_du_mode_strict(outils_envoyes: list[dict]) -> list[str]:
+    """Limites documentées du mode strict que ces outils dépassent (liste vide : aucune)."""
+    stricts = [outil for outil in outils_envoyes if outil.get("strict")]
+    schemas = [(o["name"], s) for o in stricts for s in _sous_schemas(o["input_schema"])]
+    unions = sum(1 for _, s in schemas if "anyOf" in s or isinstance(s.get("type"), list))
+    facultatifs = sum(
+        len(set(s.get("properties", {})) - set(s.get("required", [])))
+        for _, s in schemas
+        if s.get("type") == "object"
+    )
+    erreurs = []
+    if len(stricts) > OUTILS_STRICTS_MAX:
+        erreurs.append(f"{len(stricts)} outils stricts (limite {OUTILS_STRICTS_MAX})")
+    if unions > PARAMETRES_A_UNION_MAX:
+        erreurs.append(f"{unions} paramètres à union (limite {PARAMETRES_A_UNION_MAX})")
+    if facultatifs > PARAMETRES_FACULTATIFS_MAX:
+        erreurs.append(
+            f"{facultatifs} paramètres facultatifs (limite {PARAMETRES_FACULTATIFS_MAX})"
+        )
+    for nom, s in schemas:
+        if s.get("type") == "object" and s.get("additionalProperties") is not False:
+            erreurs.append(f"{nom} : objet sans additionalProperties: false")
+        if refuses := sorted(MOTS_REFUSES_EN_STRICT & set(s)):
+            erreurs.append(f"{nom} : mots non pris en charge {refuses}")
+        if s.get("minItems", 0) not in (0, 1):
+            erreurs.append(f"{nom} : minItems {s['minItems']} (0 ou 1 seulement)")
+        if any(isinstance(v, dict | list) for v in s.get("enum", [])):
+            erreurs.append(f"{nom} : énumération de valeurs non simples")
+        if "format" in s and s["format"] not in FORMATS_PRIS_EN_CHARGE:
+            erreurs.append(f"{nom} : format {s['format']} non pris en charge")
+        if any(motif in s.get("pattern", "") for motif in MOTIFS_REFUSES):
+            erreurs.append(f"{nom} : motif {s['pattern']} non pris en charge")
+        if "$ref" in s:
+            erreurs.append(f"{nom} : $ref (récursif ou externe : refusé)")
+    return erreurs
+
+
+@pytest.mark.cas_limite
+def test_schemas_envoyes_dans_les_limites_du_mode_strict():
+    """Cas : la requête réelle part avec les douze outils de l'assistant.
+
+    Risque : le service refuse toute requête en 400 (« Schemas contains too many parameters
+    with union types (74 …) », limite 16) : l'assistant ne répond jamais, alors que tous les
+    tests passent par le faux client, qui n'applique aucune de ces limites.
+    """
+    outils_envoyes = boucle.parametres_requete([], _config())["tools"]
+    assert len(outils_envoyes) == 12
+    assert depassements_du_mode_strict(outils_envoyes) == []
+
+
+def test_le_controle_des_limites_detecte_un_depassement():
+    """Le contrôle lui-même : un outil strict à dix-sept paramètres nullables est refusé."""
+    trop = {
+        "name": "trop",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                f"p{i}": {"anyOf": [{"type": "string"}, {"type": "null"}]} for i in range(17)
+            },
+            "required": [f"p{i}" for i in range(17)],
+            "additionalProperties": False,
+        },
+    }
+    assert depassements_du_mode_strict([trop]) == ["17 paramètres à union (limite 16)"]
+    assert depassements_du_mode_strict([{**trop, "strict": False}]) == []
+
+
+# --------------------------------------------------------------------------- #
 # Arrêts du modèle
 # --------------------------------------------------------------------------- #
 
@@ -83,7 +213,7 @@ def test_reponse_directe_et_arguments_envoyes(base):
     assert arguments["system"] == [
         {"type": "text", "text": CONSIGNES, "cache_control": {"type": "ephemeral"}}
     ]
-    assert arguments["tools"] == OUTILS and all(o["strict"] for o in arguments["tools"])
+    assert arguments["tools"] == OUTILS and not any(o.get("strict") for o in OUTILS)
     assert arguments["max_tokens"] == 4096
     for interdit in ("thinking", "tool_choice", "temperature", "top_p", "top_k"):
         assert interdit not in arguments
@@ -94,7 +224,7 @@ def test_reponse_directe_et_arguments_envoyes(base):
         and "Page affichée par l'utilisateur : /salles" in systeme["content"]
     )
     assert resultat.messages[-1]["role"] == "assistant"
-    assert faux.options == [{"timeout": 40.0, "max_retries": 1}]
+    assert faux.options == [{"timeout": 40.0, "max_retries": 0}]
 
 
 def test_outil_puis_reponse_et_historique_en_ajout_seul(base):
@@ -206,7 +336,7 @@ def test_echeance_de_l_echange_jamais_depassee(base):
     assert resultat.reussi
     # Il restait 20 s : délai d'appel ramené à 20 s, sans reprise (elle ne tiendrait pas).
     assert faux.options == [
-        {"timeout": 40.0, "max_retries": 1},
+        {"timeout": 40.0, "max_retries": 0},
         {"timeout": 20.0, "max_retries": 0},
     ]
 
@@ -233,6 +363,131 @@ def test_budget_epuise_aucun_appel(base):
     resultat, _ = _derouler(faux, config=_config(EDT_ASSISTANT_BUDGET_JOUR="0"))
     assert resultat.issue is Issue.LIMITE and faux.appels == []
     assert "limite du jour" in resultat.message
+
+
+@pytest.mark.cas_limite
+def test_estimation_prudente_pour_un_texte_non_ascii():
+    """Cas : un texte fait de caractères non latins (« 数 »), qui comptent environ un jeton
+    chacun, bien plus que les 3 caractères par jeton du français.
+
+    Risque : réservation du budget et contrôle de la taille du contexte sous-estimés : un
+    appel bien plus cher que prévu, et un budget du jour qui n'est plus borné.
+    """
+    texte = "数" * 3000
+    estimes = boucle.estimer_jetons([{"role": "user", "content": texte}], 1000, 0)
+    assert estimes >= 1000 + 3000
+    francais = boucle.estimer_jetons([{"role": "user", "content": "a" * 3000}], 1000, 0)
+    assert francais <= 1000 + 1100
+
+
+@pytest.fixture
+def sommeil_enregistre(monkeypatch):
+    """Les attentes demandées par le SDK (`time.sleep`) sont enregistrées au lieu d'attendre."""
+    attentes: list[float] = []
+    monkeypatch.setattr(time, "sleep", attentes.append)
+    return attentes
+
+
+@pytest.mark.cas_limite
+def test_une_attente_demandee_trop_longue_n_est_jamais_suivie(base, sommeil_enregistre):
+    """Cas : le service répond 429 avec « retry-after: 3600 » (vrai SDK, service simulé).
+
+    Risque : le SDK dort une heure avant de reprendre : l'échange reste « en cours » bien
+    au-delà de son échéance, la conversation est bloquée, et deux échanges ainsi bloqués
+    ferment l'assistant à tout le site.
+    """
+    client, requetes = client_sdk_simule(
+        [reponse_http(429, corps_erreur("rate_limit_error"), {"retry-after": "3600"})] * 3
+    )
+    attentes: list[float] = []
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=client,
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=Budget(),
+        horloge=lambda: 0.0,
+        attendre=attentes.append,
+    )
+    assert resultat.issue is Issue.DEBIT
+    assert len(requetes) == 1
+    assert sommeil_enregistre == [] and attentes == []
+
+
+@pytest.mark.cas_limite
+def test_une_surcharge_est_reprise_une_fois_dans_l_echeance(base, sommeil_enregistre):
+    """Cas : le service répond 529 (surcharge) puis répond normalement (vrai SDK simulé).
+
+    Risque : sans reprise, une surcharge passagère devient une erreur ; avec la reprise du
+    SDK, une attente non bornée par l'échéance.
+    """
+    succes = json.loads(reponse_texte("Bonjour.").model_dump_json())
+    client, requetes = client_sdk_simule(
+        [reponse_http(529, corps_erreur("overloaded_error")), reponse_http(200, succes)]
+    )
+    attentes: list[float] = []
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=client,
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=Budget(),
+        horloge=lambda: 0.0,
+        attendre=attentes.append,
+    )
+    assert resultat.reussi and resultat.texte == "Bonjour."
+    assert len(requetes) == 2 and attentes == [1.0] and sommeil_enregistre == []
+
+
+def test_attente_avant_reprise():
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.RateLimitError, 429, entetes={"retry-after": "5"})
+        )
+        == 5.0
+    )
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.RateLimitError, 429, entetes={"retry-after-ms": "1500"})
+        )
+        == 1.5
+    )
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.OverloadedError, 529, entetes={"retry-after": "60"})
+        )
+        is None
+    )
+    assert boucle.attente_avant_reprise(erreur_api(anthropic.BadRequestError, 400)) is None
+    assert boucle.attente_avant_reprise(delai_depasse()) == 1.0
+
+
+@pytest.mark.cas_limite
+def test_un_appel_hors_delai_est_compte_au_cout_maximal(base):
+    """Cas : un appel dépasse son délai (la génération était lancée), sa reprise aussi.
+
+    Risque : appels comptés comme gratuits alors qu'ils ont pu être facturés : la dépense
+    réelle du jour dépasse le budget sans qu'aucune limite ne joue.
+    """
+    budget = Budget()
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=FauxClient([delai_depasse(), delai_depasse()]),
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=budget,
+        horloge=lambda: 0.0,
+        attendre=lambda secondes: None,
+    )
+    assert resultat.issue is Issue.DELAI
+    consommation = budget.consommation()
+    assert consommation.appels == 2 and consommation.cout > 0
 
 
 def test_historique_d_une_conversation_prefixe_exact(base):

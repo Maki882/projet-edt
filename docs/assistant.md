@@ -51,8 +51,12 @@ nombre de séances déjà placées sur le créneau d'une indisponibilité).
   l'assistant est active aussitôt, avec l'origine « assistant ». La carte donne le code de la
   règle (ou le numéro de l'indisponibilité) et un lien vers elle.
 - **Refuser** n'enregistre rien ; l'assistant en est informé au message suivant.
-- Si les données ont changé entre-temps (une règle qui ferait doublon, un élément supprimé),
-  la confirmation est refusée avec la raison, et rien n'est enregistré.
+- Si les données ont changé entre-temps (une règle qui ferait doublon, un élément supprimé,
+  un établissement fictif rechargé qui fait désigner à la carte un autre enseignant ou une
+  autre règle), la confirmation est refusée avec la raison, et rien n'est enregistré :
+  avant d'écrire, l'application vérifie que la base n'a pas été rechargée depuis la
+  proposition et que la cible est toujours celle de la carte (identité de l'enseignant, de
+  la salle ou du groupe ; phrase de la règle).
 
 Vérifiez la phrase avant de confirmer : l'assistant peut se tromper. Une règle ou une
 indisponibilité confirmée compte **au prochain calcul** ; elle ne modifie pas la version
@@ -67,6 +71,12 @@ Points à traiter (onglet Générer).
 - **Nouvelle conversation** : oublie la conversation en cours (pas pendant une réponse).
 - Une conversation compte au plus 10 messages (le panneau dit combien il en reste), et
   s'oublie après 30 minutes sans activité ou au redémarrage du serveur ; le panneau le dit.
+  Le cookie qui la désigne est renouvelé à chaque activité (message, ouverture du panneau,
+  réponse, clic sur une proposition).
+- Une conversation n'est créée que pour un message accepté. Quand la mémoire manque, la
+  conversation la moins récemment active est oubliée, jamais une conversation dont une
+  proposition attend Confirmer ou Refuser : le nouveau message est alors refusé (« très
+  sollicité »).
 - Le site limite le nombre de messages par adresse et par jour, et l'ensemble des messages
   et la dépense de la journée ; une limite atteinte est annoncée dans le fil, avec le moment où
   elle se lève.
@@ -107,6 +117,7 @@ répète.
 | `EDT_ASSISTANT_BUDGET_JOUR` | `2.00` | dépense estimée par jour pour tout le site, en dollars |
 | `EDT_ASSISTANT_SIMULTANES` | `2` | échanges en même temps |
 | `EDT_ASSISTANT_CONVERSATIONS_MAX` / `EDT_ASSISTANT_EXPIRATION_MIN` | `200` / `30` | conversations gardées en mémoire, minutes sans activité avant l'oubli |
+| `EDT_ASSISTANT_CONVERSATIONS_PAR_ADRESSE` | `10` | conversations gardées par adresse IP (le jour d'une démonstration où une salle sort par une même adresse, le relever avec `EDT_ASSISTANT_MESSAGES_PAR_ADRESSE`) |
 | `EDT_ASSISTANT_JOURNAL_CONTENU` | `non` | `oui` : texte des messages et des réponses au niveau DEBUG (débogage local seulement) |
 
 La clé ne se place pas dans le fichier d'environnement général du service, que
@@ -126,7 +137,7 @@ python -m edt assistant --question "…"     # une question, réponse affichée
 - L'état dit si l'assistant est prêt, quelle variable porte l'identifiant (jamais sa
   valeur), les limites et la consommation du jour (échanges, appels, jetons, coût estimé).
 - L'essai fait **un** appel avec exactement les paramètres d'un échange (consignes, douze
-  outils stricts, en-tête de repli, effort) et le message « Répondez seulement : prêt. » ;
+  outils, en-tête de repli, effort) et le message « Répondez seulement : prêt. » ;
   il vérifie ainsi la clé, le modèle, l'en-tête bêta et l'acceptation des schémas. Il
   affiche la durée, l'arrêt, le modèle servi, les jetons (dont ceux lus en cache) et le coût
   estimé, qui compte dans la consommation du jour.
@@ -160,7 +171,7 @@ Paquet `edt.services.assistant` (aucun accès web), appelé par
 | `__init__` | API : `etat`, `vue`, `exemples`, `envoyer`, `lire_echange`, `confirmer`, `refuser`, `nouvelle_conversation`, `essayer`, `repondre`, `consommation_du_jour` |
 | `configuration` | variables § 2.1, table des prix, état (prêt, non configuré, désactivé, configuration) |
 | `consignes` | consignes système figées, suivies du catalogue des règles généré depuis le domaine |
-| `outils` | douze outils : schémas stricts, exécution, textes bornés, étapes affichées |
+| `outils` | douze outils : schémas (sans mode strict, § 5), exécution, textes bornés, étapes affichées |
 | `boucle` | déroulement d'un échange, paramètres de requête, matrice des erreurs, pause |
 | `limites` | coûts, budget réservé avant chaque appel, compteurs du jour (base et mémoire), par adresse |
 | `conversations` | registre en mémoire, conversations, échanges, bulles |
@@ -177,10 +188,13 @@ sur un créneau en semaine type ou à une date, séances d'une ressource sur un 
 **État en mémoire.** L'architecture n'admet pas d'état global en mémoire, sauf le suivi des
 calculs en cours ; l'assistant est la seconde exception : registre des conversations,
 compteurs par adresse, sel des empreintes d'adresse, pause après un refus de clé. Tout est
-perdu au redémarrage, ce que le panneau dit. La consommation du jour est aussi en base
-(table `assistant_consommation`, `docs/modele-donnees.md`), pour survivre à un redémarrage ;
-le chargement d'un établissement fictif recrée toutes les tables : le compte en mémoire
-garde alors la consommation, le plus grand des deux faisant foi.
+perdu au redémarrage, ce que le panneau dit. La consommation du jour (échanges, appels,
+jetons, coût estimé) est aussi gardée dans un petit fichier,
+`<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit à un redémarrage
+comme au chargement d'un établissement fictif, qui recrée toutes les tables. Le fichier est
+réécrit d'un bloc après chaque échange commencé et chaque appel ; le plus grand du compte
+du fichier et du compte en mémoire fait foi. La table `assistant_consommation` du modèle
+n'est pas utilisée (`docs/modele-donnees.md`).
 
 ## 4. Un échange
 
@@ -196,13 +210,18 @@ garde alors la consommation, le plus grand des deux faisant foi.
 3. La boucle (`boucle.derouler`), écrite à la main pour garder la main sur la dépense et la
    durée :
    - avant chaque appel : échéance de l'échange (90 s), taille estimée du contexte, budget
-     **réservé** pour le pire cas de cet appel ; délai de l'appel ramené à ce qui reste, une
-     reprise par le SDK seulement si elle tient avant l'échéance ;
+     **réservé** pour le pire cas de cet appel (taille estimée sans jamais la sous-estimer : 3
+     caractères ASCII par jeton, un jeton par caractère non ASCII) ; délai de l'appel ramené à ce qui reste ;
+   - le SDK ne reprend jamais un appel de lui-même (il suivrait l'attente demandée par le
+     service sans plafond) : la boucle reprend au plus une fois par échange un appel en
+     débit limité, en surcharge, hors délai ou en panne réseau, après l'attente demandée par le
+     service (20 s au plus), et seulement si l'attente et un nouvel appel tiennent avant
+     l'échéance ; sinon l'erreur est rendue aussitôt ;
    - paramètres fixes : modèle, `max_tokens`, consignes en `system` avec point de cache,
-     douze outils stricts, `output_config.effort`, cache automatique de la fin de
-     conversation, en-tête `server-side-fallback-2026-07-01` et `fallbacks: "default"` ; ni
-     `thinking` (réflexion toujours active sur ce modèle), ni `tool_choice` (un outil forcé
-     est refusé), ni `temperature` ;
+     douze outils (sans mode strict, § 5), `output_config.effort`, cache automatique de la
+     fin de conversation, en-tête `server-side-fallback-2026-07-01` et `fallbacks:
+     "default"` ; ni `thinking` (réflexion toujours active sur ce modèle), ni `tool_choice`
+     (un outil forcé est refusé), ni `temperature` ;
    - `stop_reason` est lu avant le contenu : `end_turn` termine, `tool_use` exécute les
      outils (tous les résultats dans un seul message, avec l'identifiant de chaque appel),
      `pause_turn` reprend, `refusal` et `max_tokens` arrêtent sans exécuter d'outil ;
@@ -212,7 +231,7 @@ garde alors la consommation, le plus grand des deux faisant foi.
    - l'historique est en **ajout seul** et l'échange n'y entre que s'il aboutit : un
      échange en échec ne laisse aucune trace dans ce qui est renvoyé au service.
 4. Un message système par tour (`role: "system"` après le message de l'utilisateur) donne
-   la date du jour, la page affichée (chemin seul) et les suites données aux propositions
+   la date du jour, la page affichée (son chemin seul, 200 caractères au plus, sinon rien) et les suites données aux propositions
    depuis l'échange précédent. Les consignes, elles, ne changent jamais (préfixe en cache).
 
 ## 5. Outils
@@ -225,12 +244,24 @@ le nombre de lignes manquantes).
 |---|---|
 | `lire_contexte` | date du jour, année en cours, semestres et version active, horaires, déjeuner, types de séance permis le samedi, demi-journées de la grille par jour, calcul en cours, nombre d'éléments |
 | `chercher` | éléments d'une entité par texte et filtres (codes, libellés acceptés), 25 par page ; sans résultat, cinq éléments proches |
-| `salles_libres` | salles libres toutes les semaines (par campus), libres certaines semaines, occupées, exceptions datées ; à une date, les séances datées et les fermetures |
-| `emploi_du_temps` | séances d'un groupe, d'un enseignant ou d'une salle (semaine type ou semaine datée, un jour) ; lien vers l'emploi du temps |
+| `salles_libres` | salles libres toutes les semaines (par campus), libres certaines semaines, occupées, exceptions datées (indisponibilités, et séances datées déplacées ou replacées dans une salle que la semaine type laisse libre) ; à une date, les séances datées et les fermetures |
+| `emploi_du_temps` | séances d'un groupe, d'un enseignant ou d'une salle (semaine type ou semaine datée, un jour) ; pour un groupe, aussi celles de ses sous-groupes et des groupes qui partagent ses étudiants, marquées « une partie du groupe » ; lien vers l'emploi du temps |
 | `points_a_traiter` | total, par gravité et par règle les trois premiers messages, séances à programmer ; lien vers la page Points à traiter |
 | `lister_regles`, `expliquer_regle` | règles de l'année (phrase, état, niveau, période) ; explication d'une règle |
 | `proposer_regle`, `proposer_modification_regle`, `proposer_etat_regle`, `proposer_indisponibilite` | validation par le service, puis une proposition ajoutée à l'échange (trois au plus) ; erreurs par champ sinon |
 | `preparer_formulaire_besoin` | résumé, besoins voisins, lien du formulaire prérempli construit par le serveur |
+
+Les schémas ont la forme du mode strict (chaque objet fermé, toutes les propriétés
+requises, null pour une valeur non précisée, aucune borne), mais aucun outil n'est déclaré
+`strict` : le service limite le mode strict, sur l'ensemble des schémas stricts d'une
+requête, à 16 paramètres à union (`anyOf` ou type en liste ; nos schémas ont 74
+paramètres nullables), 24 paramètres facultatifs et 20 outils, plus une limite interne de
+taille de la grammaire compilée, et refuse toute la requête au-delà (400). Le schéma guide
+le modèle ; l'exécution valide chaque argument : un argument absent compte comme null, un
+argument mal formé revient au modèle comme refus clair, qu'il corrige. Un test parcourt les
+outils réellement envoyés et vérifie ces limites ; un autre envoie, pour chaque paramètre
+de chaque outil, un argument absent ou du mauvais type et exige un refus clair, jamais une
+erreur interne.
 
 Les codes sont résolus sans casse : groupe et matière dans l'année en cours, enseignant par
 identifiant ou par nom unique, salle par code (« N105 (ISSY) » départage deux homonymes). Un
@@ -247,7 +278,7 @@ revient comme « erreur interne de l'outil » avec la référence de l'échange.
 | clé refusée (401, 403), facturation (402), modèle introuvable (404) | « momentanément indisponible » ; assistant en pause 10 min (60 min pour 402) | ERROR, statut, identifiant de requête |
 | requête refusée (400) | « Erreur interne de l'assistant », référence | ERROR, message du service |
 | 413, réflexion liée à une autre conversation | « Conversation trop longue : commencez-en une nouvelle » ; conversation close | WARNING ou ERROR |
-| débit (429), surcharge (5xx, 529), délai, réseau | message dédié, bouton « Renvoyer ma demande » | WARNING |
+| débit (429), surcharge (5xx, 529), délai, réseau | repris une fois si l'échéance le permet ; sinon message dédié, bouton « Renvoyer ma demande » | INFO (reprise), WARNING |
 | refus du modèle, réponse tronquée, trop d'appels | message dédié ; aucun outil tronqué exécuté | WARNING |
 | limite atteinte (adresse, site, budget, conversation, contexte, simultanés) | bulle « attention » qui dit quand elle se lève | INFO ; WARNING la première fois du jour pour le site |
 | base occupée à la confirmation | « Base occupée : rien n'a été enregistré, réessayez » ; la carte reste à confirmer | WARNING |
@@ -262,7 +293,8 @@ l'ordre de 8 000 jetons (estimation, à confirmer par la commande d'essai). Ordr
 grandeur estimés sur Opus 5.5, cache chaud : une question avec un outil coûte environ
 0,02 à 0,03 $, une proposition avec trois outils environ 0,05 $ ; le pire appel admis
 (contexte de 40 000 jetons, repli compris) environ 0,63 $. La réservation appel par appel
-garantit que la dépense d'une journée ne dépasse pas le budget du jour.
+garantit que la dépense d'une journée ne dépasse pas le budget du jour ; un appel hors délai,
+qui a pu être facturé, est compté au coût maximal réservé.
 
 ## 7. Tests et limites connues
 

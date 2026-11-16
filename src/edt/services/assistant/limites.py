@@ -6,11 +6,14 @@ Le site est public et sans connexion : la dépense doit rester bornée.
   par jour, sur une empreinte de l'adresse (aucune adresse en clair, ni en
   mémoire ni en base).
 - **Pour le site** (`EDT_ASSISTANT_MESSAGES_PAR_JOUR`, `EDT_ASSISTANT_BUDGET_JOUR`) :
-  la consommation du jour est en base (table `assistant_consommation`), pour
-  survivre à un redémarrage, et aussi en mémoire : le chargement d'un
-  établissement fictif recrée toutes les tables, et le plus grand des deux
-  comptes fait foi. Une écriture refusée (base occupée) est journalisée et
-  gardée en mémoire, ajoutée à l'écriture suivante.
+  la consommation du jour est dans un petit fichier,
+  `<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit
+  ainsi à la remise à zéro de la base (chargement d'un établissement fictif,
+  ouvert à tous) comme à un redémarrage. Le fichier est réécrit d'un bloc
+  (fichier temporaire puis remplacement) après chaque échange commencé et
+  chaque appel. La consommation compte aussi en mémoire, et le plus grand des
+  deux comptes fait foi ; une écriture impossible est journalisée et gardée
+  en mémoire, ajoutée à l'écriture suivante.
 - **Budget** : avant chaque appel au modèle, son coût maximal (les deux
   tentatives possibles, la demande et son repli, pour la taille réelle du
   contexte) est **réservé** ; l'appel n'a pas lieu si consommé + réservé +
@@ -25,16 +28,18 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import json
 import logging
+import os
+import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 from typing import Any
 
-from sqlalchemy.exc import DatabaseError
-
-from edt.db import modeles as m
-from edt.db.moteur import session_base, transaction_immediate
+from edt.config import charger_configuration
 from edt.erreurs import ErreurEDT
 from edt.services.assistant import temps
 from edt.services.assistant.configuration import (
@@ -170,16 +175,32 @@ def cout_maximal_appel(jetons_entree: int, config: ConfigurationAssistant) -> in
 # --------------------------------------------------------------------------- #
 
 
-class Budget:
-    """Consommation du jour du site : base, mémoire, réservations (voir l'en-tête)."""
+FICHIER_CONSOMMATION = "consommation.json"
+NB_ESSAIS_REMPLACEMENT = 5
+"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : on réessaie."""
 
-    def __init__(self) -> None:
+
+def dossier_consommation() -> Path:
+    """Dossier du fichier de consommation : `<EDT_LOG_DIR>/assistant`."""
+    return charger_configuration().log_dir / "assistant"
+
+
+class Budget:
+    """Consommation du jour du site : fichier, mémoire, réservations (voir l'en-tête)."""
+
+    def __init__(self, dossier: Path | None = None) -> None:
+        self._dossier = dossier
         self._verrou = threading.RLock()
         self._jour: dt.date | None = None
         self._memoire = Compteurs()
         self._a_ecrire = Compteurs()
         self._reserve = 0
         self._averti = False
+
+    @property
+    def chemin(self) -> Path:
+        """Le fichier de la consommation du jour."""
+        return (self._dossier or dossier_consommation()) / FICHIER_CONSOMMATION
 
     def _du_jour(self) -> dt.date:
         jour = temps.aujourdhui()
@@ -191,12 +212,12 @@ class Budget:
         return jour
 
     def consommation(self) -> Compteurs:
-        """Consommation du jour qui fait foi : le plus grand de la base et de la mémoire."""
+        """Consommation du jour qui fait foi : le plus grand du fichier et de la mémoire."""
         with self._verrou:
             jour = self._du_jour()
-            en_base = self._lire(jour)
-            en_base.ajouter(self._a_ecrire)
-            return en_base.maximum(self._memoire)
+            enregistree = self._lire(jour)
+            enregistree.ajouter(self._a_ecrire)
+            return enregistree.maximum(self._memoire)
 
     def ouvrir_echange(self, config: ConfigurationAssistant) -> None:
         """Compte un échange ; `LimiteAtteinte` si le nombre du jour ou le budget est atteint."""
@@ -222,7 +243,7 @@ class Budget:
             return cout_max
 
     def solder(self, reservation: int, consommation: Compteurs) -> None:
-        """Remplace la réservation par la consommation réelle d'un appel (base et mémoire)."""
+        """Remplace la réservation par la consommation réelle d'un appel (fichier et mémoire)."""
         with self._verrou:
             jour = self._du_jour()
             self._reserve = max(0, self._reserve - reservation)
@@ -248,63 +269,78 @@ class Budget:
         raise LimiteAtteinte(Limite.SITE, MESSAGE_SITE)
 
     def _lire(self, jour: dt.date) -> Compteurs:
+        """Consommation enregistrée pour `jour` (celle d'un autre jour ne compte pas)."""
         try:
-            with session_base() as session:
-                ligne = session.get(m.AssistantConsommation, jour)
-                if ligne is None:
-                    return Compteurs()
-                return Compteurs(
-                    echanges=ligne.echanges,
-                    appels=ligne.appels,
-                    entree=ligne.jetons_entree,
-                    cache_lus=ligne.jetons_cache_lus,
-                    cache_ecrits=ligne.jetons_cache_ecrits,
-                    sortie=ligne.jetons_sortie,
-                    cout=ligne.cout_microdollars,
-                )
-        except DatabaseError as erreur:
+            donnees = json.loads(self.chemin.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return Compteurs()
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as erreur:
             journal.warning(
-                "Consommation de l'assistant non lue en base (%s) : le compte en mémoire fait foi",
-                erreur.orig,
+                "Consommation de l'assistant illisible (%s : %s) : le compte en mémoire fait foi",
+                self.chemin,
+                erreur,
+            )
+            return Compteurs()
+        if not isinstance(donnees, dict) or donnees.get("jour") != jour.isoformat():
+            return Compteurs()
+        try:
+            return Compteurs(
+                **{champ.name: int(donnees[champ.name]) for champ in dataclasses.fields(Compteurs)}
+            )
+        except (KeyError, TypeError, ValueError) as erreur:
+            journal.warning(
+                "Consommation de l'assistant mal formée (%s : %s) : le compte en mémoire fait foi",
+                self.chemin,
+                erreur,
             )
             return Compteurs()
 
     def _persister(self, jour: dt.date, delta: Compteurs) -> None:
+        """Ajoute `delta` (et ce qui n'a pas pu être écrit avant) au fichier du jour."""
         a_ecrire = Compteurs()
         a_ecrire.ajouter(self._a_ecrire)
         a_ecrire.ajouter(delta)
+        total = self._lire(jour)
+        total.ajouter(a_ecrire)
         try:
-            with session_base() as session:
-                transaction_immediate(session)
-                ligne = session.get(m.AssistantConsommation, jour)
-                if ligne is None:
-                    ligne = m.AssistantConsommation(
-                        jour=jour,
-                        echanges=0,
-                        appels=0,
-                        jetons_entree=0,
-                        jetons_cache_lus=0,
-                        jetons_cache_ecrits=0,
-                        jetons_sortie=0,
-                        cout_microdollars=0,
-                    )
-                    session.add(ligne)
-                ligne.echanges += a_ecrire.echanges
-                ligne.appels += a_ecrire.appels
-                ligne.jetons_entree += a_ecrire.entree
-                ligne.jetons_cache_lus += a_ecrire.cache_lus
-                ligne.jetons_cache_ecrits += a_ecrire.cache_ecrits
-                ligne.jetons_sortie += a_ecrire.sortie
-                ligne.cout_microdollars += a_ecrire.cout
-        except DatabaseError as erreur:
+            self.chemin.parent.mkdir(parents=True, exist_ok=True)
+            _ecrire_atomique(
+                self.chemin,
+                json.dumps({"jour": jour.isoformat(), **dataclasses.asdict(total)}, indent=1),
+            )
+        except OSError as erreur:
             journal.error(
-                "Consommation de l'assistant non enregistrée (%s) : gardée en mémoire, ajoutée à "
-                "la prochaine écriture",
-                erreur.orig,
+                "Consommation de l'assistant non enregistrée (%s : %s) : gardée en mémoire, "
+                "ajoutée à la prochaine écriture",
+                self.chemin,
+                erreur,
             )
             self._a_ecrire = a_ecrire
             return
         self._a_ecrire = Compteurs()
+
+
+def _ecrire_atomique(chemin: Path, texte: str) -> None:
+    """Écrit `texte` dans un fichier temporaire du même dossier, puis remplace `chemin`."""
+    descripteur, temporaire = tempfile.mkstemp(
+        dir=chemin.parent, prefix=".consommation-", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(descripteur, "w", encoding="utf-8") as flux:
+            flux.write(texte)
+            flux.flush()
+            os.fsync(flux.fileno())
+        for essai in range(NB_ESSAIS_REMPLACEMENT):
+            try:
+                os.replace(temporaire, chemin)
+                return
+            except PermissionError:
+                if essai == NB_ESSAIS_REMPLACEMENT - 1:
+                    raise
+                time.sleep(0.1)
+    finally:
+        if os.path.exists(temporaire):
+            os.remove(temporaire)
 
 
 # --------------------------------------------------------------------------- #

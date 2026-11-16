@@ -21,7 +21,7 @@ DELAI_CONNEXION_S = 5.0
 
 
 def creer_client(reglages: ConfigurationAssistant) -> Any:
-    """Client du SDK, une reprise au plus, délai d'un appel de la configuration.
+    """Client du SDK, sans reprise automatique (la boucle les décide), délai d'un appel.
 
     Lève `anthropic.CredentialsError` si le SDK ne trouve aucun identifiant.
     """
@@ -30,6 +30,6 @@ def creer_client(reglages: ConfigurationAssistant) -> Any:
     for nom in ("anthropic", "httpx2"):
         logging.getLogger(nom).setLevel(logging.WARNING)
     return anthropic.Anthropic(
-        max_retries=1,
+        max_retries=0,
         timeout=anthropic.Timeout(float(reglages.delai_appel_s), connect=DELAI_CONNEXION_S),
     )
