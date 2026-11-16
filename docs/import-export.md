@@ -170,8 +170,8 @@ complément : `salles_ndc.csv`), à défaut par ses en-têtes.
   obligatoire absente rejette tout le tableau. Un import ne s'arrête jamais
   au premier défaut.
 - **Simulation** : l'import complet s'exécute dans un point de sauvegarde
-  annulé à la fin ; le bilan affiché (« 12 créé(s), 30 mis à jour, 2
-  inchangé(s), 3 rejeté(s) » par feuille) est donc celui que donnera
+  annulé à la fin ; le bilan affiché (« 12 créés, 30 mis à jour, 2
+  inchangés, 3 rejetés » par feuille) est donc celui que donnera
   l'application, et rien n'est écrit.
 - **Imports simultanés** : un import lit d'abord tous ses fichiers (tableaux
   et récurrences iCal) sans rien réserver, puis réserve la base en écriture le

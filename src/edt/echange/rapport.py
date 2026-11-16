@@ -18,20 +18,20 @@ from dataclasses import dataclass, field
 from edt.domaine.enumerations import Gravite
 from edt.echange.valeurs import neutraliser_formule
 
-LIBELLES_COMPTEURS: dict[str, str] = {
-    "crees": "créé(s)",
-    "mis_a_jour": "mis à jour",
-    "inchanges": "inchangé(s)",
-    "rejetes": "rejeté(s)",
-    "fusionnes": "doublon(s) fusionné(s)",
-    "lues": "lue(s)",
-    "retenues": "retenue(s)",
-    "annulees": "annulée(s), non comptée(s)",
-    "ecartees": "mise(s) de côté",
-    "retirees": "retirée(s) (jour fermé)",
-    "supprimes": "supprimé(s)",
+LIBELLES_COMPTEURS: dict[str, tuple[str, str]] = {
+    "crees": ("créé", "créés"),
+    "mis_a_jour": ("mis à jour", "mis à jour"),
+    "inchanges": ("inchangé", "inchangés"),
+    "rejetes": ("rejeté", "rejetés"),
+    "fusionnes": ("doublon fusionné", "doublons fusionnés"),
+    "lues": ("lue", "lues"),
+    "retenues": ("retenue", "retenues"),
+    "annulees": ("annulée, non comptée", "annulées, non comptées"),
+    "ecartees": ("mise de côté", "mises de côté"),
+    "retirees": ("retirée (jour fermé)", "retirées (jour fermé)"),
+    "supprimes": ("supprimé", "supprimés"),
 }
-"""Libellé affiché de chaque compteur d'un bilan, dans l'ordre d'affichage."""
+"""Libellé affiché de chaque compteur d'un bilan (singulier, pluriel), dans l'ordre d'affichage."""
 
 COMPTEURS_DE_REJET = ("rejetes", "ecartees")
 """Compteurs qui désignent des lignes qui ne sont pas entrées."""
@@ -134,10 +134,10 @@ class Bilan:
 
     @property
     def texte(self) -> str:
-        """Résumé lisible : « 12 créé(s), 30 mis à jour, 3 rejeté(s) »."""
+        """Résumé lisible : « 12 créés, 30 mis à jour, 1 rejeté »."""
         parties = [
-            f"{self.compteurs[cle]} {libelle}"
-            for cle, libelle in LIBELLES_COMPTEURS.items()
+            f"{self.compteurs[cle]} {singulier if self.compteurs[cle] == 1 else pluriel}"
+            for cle, (singulier, pluriel) in LIBELLES_COMPTEURS.items()
             if self.compteurs.get(cle)
         ]
         return ", ".join(parties) if parties else "rien à traiter"

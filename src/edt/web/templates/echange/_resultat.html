@@ -14,9 +14,9 @@
   {% endif %}
 
   {% if rapport.a_des_rejets and rapport.nb_rejets %}
-    {{ ui.message(rapport.nb_rejets ~ " ligne(s) ou séance(s) non importée(s), " ~ rapport.nb_erreurs ~ " erreur(s) : voir le rapport ci-dessous.", "attention") }}
+    {{ ui.message(fmt.pluriel(rapport.nb_rejets, "ligne ou séance non importée", "lignes ou séances non importées") ~ ", " ~ fmt.pluriel(rapport.nb_erreurs, "erreur", "erreurs") ~ " : voir le rapport ci-dessous.", "attention") }}
   {% elif rapport.a_des_rejets %}
-    {{ ui.message(rapport.nb_erreurs ~ " erreur(s) : voir le rapport ci-dessous.", "attention") }}
+    {{ ui.message(fmt.pluriel(rapport.nb_erreurs, "erreur", "erreurs") ~ " : voir le rapport ci-dessous.", "attention") }}
   {% else %}
     {{ ui.message("Aucune ligne rejetée.", "succes") }}
   {% endif %}
@@ -24,7 +24,7 @@
   <p class="discret">Fichiers : {{ rapport.fichiers|join(", ") }}</p>
 
   <h3>Bilan</h3>
-  {{ ui.tableau([("objet", "Feuille ou objet"), ("texte", "Bilan")], rapport.bilans, vide="Rien à importer.") }}
+  {{ ui.tableau([("objet", "Feuille ou objet"), ("texte", "Bilan")], bilans, vide="Rien à importer.") }}
 
   {% if rapport.version_id %}
   <p>Version d'emploi du temps créée : n° {{ rapport.version_id }}.</p>
@@ -45,9 +45,9 @@
     pour retenir une autre semaine type, indiquer une date de cette semaine et simuler de nouveau.</p>
   {% endif %}
 
-  <h3>Rapport ({{ nb_signalements }} ligne(s){% if nb_signalements > signalements|length %}, les {{ signalements|length }} premières affichées{% endif %})</h3>
+  <h3>Rapport ({{ fmt.pluriel(nb_signalements, "ligne") }}{% if nb_signalements > signalements|length %}, les {{ signalements|length }} premières affichées{% endif %})</h3>
   {% if rapport.signalements_omis %}
-  <p class="discret">Au-delà de {{ rapport.signalements|length }} lignes, le détail n'est pas conservé : {{ rapport.signalements_omis }} signalement(s) sont seulement comptés.</p>
+  <p class="discret">Au-delà de {{ rapport.signalements|length }} lignes, le détail n'est pas conservé : {{ fmt.pluriel(rapport.signalements_omis, "signalement") }} {{ "est" if rapport.signalements_omis == 1 else "sont" }} seulement {{ "compté" if rapport.signalements_omis == 1 else "comptés" }}.</p>
   {% endif %}
   {% if nb_signalements %}
   <p>
@@ -68,7 +68,7 @@
   {% endif %}
   {% for apercu in apercus %}
   <details>
-    <summary>{{ apercu.titre }} : {{ apercu.nb_lignes }} ligne(s){% if apercu.nb_lignes > apercu.lignes|length %}, les {{ apercu.lignes|length }} premières affichées{% endif %}{% if apercu.nb_colonnes > limite_colonnes_apercu %}, {{ limite_colonnes_apercu }} colonnes sur {{ apercu.nb_colonnes }}{% endif %}</summary>
+    <summary>{{ apercu.titre }} : {{ fmt.pluriel(apercu.nb_lignes, "ligne") }}{% if apercu.nb_lignes > apercu.lignes|length %}, les {{ apercu.lignes|length }} premières affichées{% endif %}{% if apercu.nb_colonnes > limite_colonnes_apercu %}, {{ limite_colonnes_apercu }} colonnes sur {{ apercu.nb_colonnes }}{% endif %}</summary>
     {{ ui.tableau(apercu.colonnes, apercu.lignes, vide="Aucune ligne.") }}
   </details>
   {% endfor %}
@@ -76,7 +76,11 @@
 
   {% if rapport.simulation and not rapport.a_des_ecritures %}
   <h3>Appliquer</h3>
+  {% if rapport.a_des_rejets %}
   {{ ui.message("Rien à appliquer : aucune ligne ne serait créée ni modifiée. Corriger les fichiers d'après le rapport, puis simuler de nouveau.", "info") }}
+  {% else %}
+  {{ ui.message("Rien à appliquer : les fichiers ne contiennent rien de nouveau, l'établissement a déjà ces données.", "info") }}
+  {% endif %}
   {% elif rapport.simulation %}
   <h3>Appliquer</h3>
   {% if tout_remplacer %}

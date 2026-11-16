@@ -69,7 +69,7 @@ def test_page_bornee_et_rapport_complet_telechargeable(jeu_minimal, client):
     page = client.post("/import/simuler", headers=HTMX, **envoi)
 
     assert page.status_code == 200
-    assert "3000 ligne(s), les 200 premières affichées" in page.text
+    assert "3000 lignes, les 200 premières affichées" in page.text
     assert page.text.count("<tr>") < 260  # 200 signalements, le bilan et l'aperçu
     assert "data:text/csv" not in page.text
 

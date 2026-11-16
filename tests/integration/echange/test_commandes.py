@@ -40,7 +40,7 @@ def test_exporter_puis_simuler_le_reimport(lanceur, jeu_minimal, tmp_path):
 
     assert resultat.exit_code == 0, resultat.output
     assert "rien n'a été écrit" in resultat.output
-    assert "salles : 6 inchangé(s)" in resultat.output
+    assert "salles : 6 inchangés" in resultat.output
 
 
 def test_importer_avec_rejets_sort_en_erreur(lanceur, jeu_minimal, tmp_path):
@@ -51,7 +51,7 @@ def test_importer_avec_rejets_sort_en_erreur(lanceur, jeu_minimal, tmp_path):
     )
 
     assert resultat.exit_code == 1
-    assert "salles : 2 créé(s), 4 rejeté(s)" in resultat.output
+    assert "salles : 2 créés, 4 rejetés" in resultat.output
     assert "[erreur] salles_avec_erreurs.csv, ligne 3, colonne capacite" in resultat.output
     assert compter(m.Salle) == jeu_minimal.nb_salles + 2  # les lignes valides sont entrées
     assert "Campus « LYON » inconnu" in rapport.read_text(encoding="utf-8-sig")
@@ -127,7 +127,7 @@ def test_dossier_melange_signale_l_agenda_en_mode_donnees(lanceur, jeu_minimal, 
     resultat = lanceur.invoke(cli.app, ["importer", str(envoi), "--simuler"])
 
     assert resultat.exit_code == 1
-    assert "salles : 1 créé(s)" in resultat.output
+    assert "salles : 1 créé" in resultat.output
     assert "[erreur] agenda.ics : Un fichier iCal décrit un emploi du temps" in resultat.output
 
 

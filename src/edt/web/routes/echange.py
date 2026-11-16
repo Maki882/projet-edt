@@ -36,11 +36,12 @@ from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
 from edt.config import charger_configuration
+from edt.echange.format import feuille
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.echange import FichierEnvoye, FichierProduit, ModeImport, RapportImport
-from edt.services.emploi_du_temps import prechauffage
+from edt.services.emploi_du_temps import prechauffage, presentation
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rendre
 from edt.web.menu import SECTION_DONNEES, EntreeMenu
@@ -129,13 +130,18 @@ def _appliquer(request: Request, session, envois, options) -> tuple[HTMLResponse
         message = Message("Rien n'a été importé : voir le rapport.", "attention")
     elif rapport.nb_rejets:
         message = Message(
-            f"Import appliqué : {rapport.nb_rejets} ligne(s) ou séance(s) non importée(s), "
-            "voir le rapport.",
+            "Import appliqué : "
+            + presentation.pluriel(
+                rapport.nb_rejets, "ligne ou séance non importée", "lignes ou séances non importées"
+            )
+            + ", voir le rapport.",
             "attention",
         )
     elif rapport.a_des_rejets:
         message = Message(
-            f"Import appliqué, avec {rapport.nb_erreurs} erreur(s) : voir le rapport.", "attention"
+            f"Import appliqué, avec {presentation.pluriel(rapport.nb_erreurs, 'erreur')} : voir le "
+            "rapport.",
+            "attention",
         )
     else:
         message = Message("Import appliqué : toutes les lignes sont entrées.", "succes")
@@ -204,6 +210,14 @@ def _contexte_import(session) -> dict:
     }
 
 
+def _titre_feuille(objet: str) -> str:
+    """Titre d'une feuille du format (« jours_fermes » : « Jours fermés »), sinon l'objet."""
+    try:
+        return feuille(objet).titre
+    except KeyError:
+        return objet
+
+
 def _contexte_resultat(rapport: RapportImport, remplacement: dict[str, int]) -> dict:
     """Ce que le gabarit du résultat affiche : aperçu, bilan, premiers signalements et besoins."""
     apercus = [
@@ -223,6 +237,9 @@ def _contexte_resultat(rapport: RapportImport, remplacement: dict[str, int]) -> 
     ]
     return {
         "rapport": rapport,
+        # Une feuille du classeur est nommée par son titre (« Jours fermés »), pas son code.
+        "bilans": [{"objet": _titre_feuille(b.objet), "texte": b.texte} for b in rapport.bilans],
+        "fmt": presentation,
         "mode_libelle": ModeImport(rapport.mode).libelle,
         "apercus": apercus,
         "nb_apercus": len(rapport.apercus),
