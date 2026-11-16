@@ -317,6 +317,111 @@ def test_conversations_bornees_par_adresse(base, faux_client, jour_fige, monkeyp
 
 
 @pytest.mark.cas_limite
+def test_envois_refuses_faute_de_place_ne_consomment_rien(jeu_minimal, faux_client, jour_fige):
+    """Cas : réglages par défaut ; une adresse ouvre ses 10 conversations, chacune finie sur
+    une proposition en attente (jamais évincée), puis envoie 95 messages sans cookie, tous
+    refusés « trop de conversations ».
+
+    Risque : chaque refus compte un échange du site sans aucun appel au modèle : la limite du
+    jour (100) est atteinte en quelques secondes et tous les visiteurs sont refusés jusqu'au
+    lendemain, même après un redémarrage (la consommation est dans un fichier).
+    """
+    conversations = [_proposer(faux_client, "proposer_regle", REGLE_CM)[0] for _ in range(10)]
+    avant = assistant.consommation_du_jour()
+    assert avant.echanges == 10
+    for _ in range(95):
+        refus = _envoyer("Encore")
+        assert not refus.accepte and "Trop de conversations" in refus.refus.texte
+    assert assistant.consommation_du_jour() == avant
+    faux_client.reponses = [reponse_texte("Bonjour."), reponse_texte("Suite.")]
+    _echanger("Autre visiteur", adresse="203.0.113.77")
+    _echanger("Suite", conversations[0])  # l'adresse garde ses messages du jour
+    assert assistant.consommation_du_jour().echanges == 12
+
+
+@pytest.mark.cas_limite
+def test_envois_refuses_memoire_pleine_ne_consomment_rien(
+    jeu_minimal, faux_client, jour_fige, monkeypatch
+):
+    """Cas : la mémoire est pleine de conversations qu'aucune place ne peut libérer (une
+    proposition en attente) ; d'autres visiteurs envoient, refusés « très sollicité ».
+
+    Risque : ces refus épuisent la limite du jour sans aucun appel au modèle.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_CONVERSATIONS_MAX", "1")
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_JOUR", "3")
+    conversation, proposition = _proposer(faux_client, "proposer_regle", REGLE_CM)
+    for numero in range(5):
+        refus = _envoyer("Autre visiteur", adresse=f"203.0.113.{80 + numero}")
+        assert not refus.accepte and "très sollicité" in refus.refus.texte
+    assert assistant.consommation_du_jour().echanges == 1
+    assistant.confirmer(conversation, proposition.jeton)
+    faux_client.reponses = [reponse_texte("ok")]
+    _echanger("Autre visiteur", adresse="203.0.113.80")
+    assert assistant.consommation_du_jour().echanges == 2
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("variable", "valeur", "attendu"),
+    [
+        ("EDT_ASSISTANT_BUDGET_JOUR", "0.0001", "limite du jour"),
+        ("EDT_ASSISTANT_CONTEXTE_MAX", "5000", "Cette conversation est trop longue"),
+        (None, None, "configuration est à corriger"),
+    ],
+    ids=["budget_du_premier_appel", "contexte_trop_long", "client_impossible"],
+)
+def test_echange_arrete_avant_tout_appel_ne_consomme_rien(
+    base, faux_client, jour_fige, monkeypatch, variable, valeur, attendu
+):
+    """Cas : un message accepté, mais l'échange s'arrête avant d'appeler le modèle (budget
+    restant trop court pour le premier appel, contexte déjà trop long, client impossible à
+    construire).
+
+    Risque : un échange du site et un message de l'adresse comptés sans aucun appel :
+    l'adresse est bloquée pour la journée par des messages qui n'ont rien coûté.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_ADRESSE", "1")
+    if variable is None:
+
+        def sans_identifiant(reglages):
+            raise anthropic.CredentialsError("aucun identifiant")
+
+        monkeypatch.setattr(module_client, "creer_client", sans_identifiant)
+    else:
+        monkeypatch.setenv(variable, valeur)
+    for _ in range(2):  # la seconde passerait la limite de l'adresse si la première comptait
+        resultat = _echanger()
+        assert attendu in resultat.echange.tour.texte
+    assert faux_client.appels == []
+    assert assistant.consommation_du_jour().echanges == 0
+
+
+@pytest.mark.cas_limite
+def test_echanges_en_cours_comptent_dans_la_limite_du_jour(
+    base, faux_client, jour_fige, monkeypatch
+):
+    """Cas : la limite du jour est de 2 échanges ; deux échanges sont en cours (pas encore
+    écrits dans le fichier de consommation) quand deux autres visiteurs envoient.
+
+    Risque : les échanges en cours ne comptent pas : la limite du jour est dépassée.
+    """
+    monkeypatch.setenv("EDT_ASSISTANT_MESSAGES_PAR_JOUR", "2")
+    monkeypatch.setenv("EDT_ASSISTANT_SIMULTANES", "5")
+    faux_client.reponses = [reponse_texte("un"), reponse_texte("deux")]
+    faux_client.bloquer()
+    en_cours = [_envoyer("Bonjour", adresse=f"203.0.113.{20 + numero}") for numero in range(2)]
+    assert all(resultat.accepte for resultat in en_cours)
+    for numero in range(2):
+        refus = _envoyer("Bonjour", adresse=f"203.0.113.{30 + numero}")
+        assert not refus.accepte and "limite du jour" in refus.refus.texte
+    faux_client.liberer()
+    for resultat in en_cours:
+        attendre(resultat.echange)
+    assert assistant.consommation_du_jour().echanges == 2
+
+
+@pytest.mark.cas_limite
 def test_conversations_expirees_et_place_limitee(base, faux_client, jour_fige, monkeypatch):
     """Cas : une conversation inactive depuis plus de 30 minutes ; la mémoire est pleine.
 

@@ -79,7 +79,8 @@ Points à traiter (onglet Générer).
   sollicité »).
 - Le site limite le nombre de messages par adresse et par jour, et l'ensemble des messages
   et la dépense de la journée ; une limite atteinte est annoncée dans le fil, avec le moment où
-  elle se lève.
+  elle se lève. Un message refusé, ou arrêté avant que l'assistant ait interrogé le service, ne
+  compte dans aucune de ces limites.
 - Vos messages sont transmis au service Claude d'Anthropic : n'y écrivez aucune donnée
   personnelle. Les données du site sont fictives. Le texte des conversations n'est pas
   enregistré en base.
@@ -173,7 +174,7 @@ Paquet `edt.services.assistant` (aucun accès web), appelé par
 | `consignes` | consignes système figées, suivies du catalogue des règles généré depuis le domaine |
 | `outils` | douze outils : schémas (sans mode strict, § 5), exécution, textes bornés, étapes affichées |
 | `boucle` | déroulement d'un échange, paramètres de requête, matrice des erreurs, pause |
-| `limites` | coûts, budget réservé avant chaque appel, compteurs du jour (base et mémoire), par adresse |
+| `limites` | coûts, budget réservé avant chaque appel, échanges du jour réservés puis comptés (fichier hors de la base, et mémoire), messages par adresse |
 | `conversations` | registre en mémoire, conversations, échanges, bulles |
 | `propositions` | propositions et leur écriture à la confirmation |
 | `client` | construction du client du SDK (seul endroit) |
@@ -187,23 +188,32 @@ sur un créneau en semaine type ou à une date, séances d'une ressource sur un 
 
 **État en mémoire.** L'architecture n'admet pas d'état global en mémoire, sauf le suivi des
 calculs en cours ; l'assistant est la seconde exception : registre des conversations,
-compteurs par adresse, sel des empreintes d'adresse, pause après un refus de clé. Tout est
-perdu au redémarrage, ce que le panneau dit. La consommation du jour (échanges, appels,
+compteurs par adresse, échanges en cours réservés, sel des empreintes d'adresse, pause après
+un refus de clé. Tout est perdu au redémarrage, ce que le
+panneau dit. La consommation du jour (échanges, appels,
 jetons, coût estimé) est aussi gardée dans un petit fichier,
 `<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit à un redémarrage
 comme au chargement d'un établissement fictif, qui recrée toutes les tables. Le fichier est
-réécrit d'un bloc après chaque échange commencé et chaque appel ; le plus grand du compte
-du fichier et du compte en mémoire fait foi. La table `assistant_consommation` du modèle
+réécrit d'un bloc après chaque appel et à la fin de chaque échange qui a appelé le modèle ;
+le plus grand du compte du fichier et du compte en mémoire fait foi. La table `assistant_consommation` du modèle
 n'est pas utilisée (`docs/modele-donnees.md`).
 
 ## 4. Un échange
 
 1. `POST /assistant/messages` contrôle, dans l'ordre : assistant disponible, pas de pause,
    message (vide, plus de 800 caractères, caractères de contrôle), conversation (close,
-   échange déjà en cours, nombre de messages), échanges simultanés, limite de l'adresse,
-   limite du site et budget. Un refus est rendu en 200 dans le fil (un 4xx serait affiché
-   hors du panneau). Sinon l'échange part dans un fil `assistant-<jeton>`, et la réponse
-   contient la bulle de l'utilisateur et une bulle d'attente.
+   échange déjà en cours, nombre de messages), échanges simultanés ; ces refus ne comptent
+   rien. Puis, sous un même verrou : le message est compté pour l'adresse (limite de
+   l'adresse), l'échange du jour est réservé (limite du site et budget), et une nouvelle
+   conversation prend sa place en mémoire. Un refus à l'une de ces trois étapes rend ce que
+   les précédentes ont pris : un message refusé ne consomme ni message de l'adresse, ni
+   échange du jour, ni place. Un échange réservé compte aussitôt dans la limite du jour ; il
+   n'est écrit dans la consommation qu'à sa fin, s'il a tenté au moins un appel au modèle.
+   Arrêté avant (budget restant trop court pour le premier appel, contexte déjà trop long,
+   client impossible à construire), il est rendu avec le message de l'adresse. Un refus est
+   rendu en 200 dans le fil (un 4xx serait affiché hors du panneau). Sinon l'échange part
+   dans un fil `assistant-<jeton>`, et la réponse contient la bulle de l'utilisateur et une
+   bulle d'attente. Confirmer et Refuser ne comptent rien.
 2. La bulle d'attente interroge `GET /assistant/echanges/<jeton>?vu=<n>` chaque seconde :
    204 tant que l'étape n'a pas changé, la bulle à jour sinon, puis la réponse finale (sans
    interrogation). Le navigateur cesse d'interroger au bout de l'échéance plus 30 s.
