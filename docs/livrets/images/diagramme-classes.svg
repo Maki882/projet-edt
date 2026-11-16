@@ -152,7 +152,7 @@
 <polyline points="40.0,838.0 300.0,838.0" fill="none" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="49.0" y="856.0" font-size="13" text-anchor="start" fill="#1b1f24">code</text>
 <text x="49.0" y="873.0" font-size="13" text-anchor="start" fill="#1b1f24">type</text>
-<text x="49.0" y="890.0" font-size="13" text-anchor="start" fill="#1b1f24">portée</text>
+<text x="49.0" y="890.0" font-size="13" text-anchor="start" fill="#1b1f24">concerne</text>
 <text x="49.0" y="907.0" font-size="13" text-anchor="start" fill="#1b1f24">paramètres</text>
 <text x="49.0" y="924.0" font-size="13" text-anchor="start" fill="#1b1f24">niveau</text>
 <text x="49.0" y="941.0" font-size="13" text-anchor="start" fill="#1b1f24">état (proposée, active, inactive)</text>

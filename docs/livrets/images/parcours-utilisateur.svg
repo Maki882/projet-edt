@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1468" height="472" viewBox="0 0 1468 472" font-family="Segoe UI, DejaVu Sans, Helvetica, Arial, sans-serif">
-<rect x="0" y="0" width="1468" height="472" fill="#ffffff"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1468" height="484" viewBox="0 0 1468 484" font-family="Segoe UI, DejaVu Sans, Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1468" height="484" fill="#ffffff"/>
 <rect x="24" y="30" width="250" height="44" rx="6" fill="#1f3f66" stroke="#2f4b6e"/>
 <text x="149.0" y="58.0" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="700">1. Accueil</text>
-<rect x="24" y="82" width="250" height="220" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
+<rect x="24" y="82" width="250" height="232" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="38.0" y="110.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Savoir où en est le semestre</text>
 <circle cx="42" cy="137" r="2.6" fill="#2f4b6e"/>
 <text x="52.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Lire « Prochaine étape » :</text>
@@ -12,11 +12,11 @@
 <circle cx="42" cy="203" r="2.6" fill="#2f4b6e"/>
 <text x="52.0" y="208.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Voir s&#x27;il reste des points</text>
 <text x="52.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">à traiter</text>
-<polyline points="278.0,192.0 310.0,192.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
-<polygon points="314.0,192.0 303.0,197.5 303.0,186.5" fill="#2f4b6e"/>
+<polyline points="278.0,198.0 310.0,198.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
+<polygon points="314.0,198.0 303.0,203.5 303.0,192.5" fill="#2f4b6e"/>
 <rect x="316" y="30" width="250" height="44" rx="6" fill="#1f3f66" stroke="#2f4b6e"/>
 <text x="441.0" y="58.0" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="700">2. Données</text>
-<rect x="316" y="82" width="250" height="220" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
+<rect x="316" y="82" width="250" height="232" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="330.0" y="110.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Décrire l&#x27;établissement</text>
 <circle cx="334" cy="137" r="2.6" fill="#2f4b6e"/>
 <text x="344.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Établissement : campus, salles,</text>
@@ -28,12 +28,13 @@
 <text x="344.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">fermés, grille, règles</text>
 <text x="344.0" y="252.0" font-size="13.5" text-anchor="start" fill="#1b1f24">personnalisées, paramètres</text>
 <circle cx="334" cy="269" r="2.6" fill="#2f4b6e"/>
-<text x="344.0" y="274.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Import, export, jeux fictifs</text>
-<polyline points="570.0,192.0 602.0,192.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
-<polygon points="606.0,192.0 595.0,197.5 595.0,186.5" fill="#2f4b6e"/>
+<text x="344.0" y="274.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Import, export, établissement</text>
+<text x="344.0" y="296.0" font-size="13.5" text-anchor="start" fill="#1b1f24">fictif ; listes de référence</text>
+<polyline points="570.0,198.0 602.0,198.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
+<polygon points="606.0,198.0 595.0,203.5 595.0,192.5" fill="#2f4b6e"/>
 <rect x="608" y="30" width="250" height="44" rx="6" fill="#1f3f66" stroke="#2f4b6e"/>
 <text x="733.0" y="58.0" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="700">3. Générer</text>
-<rect x="608" y="82" width="250" height="220" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
+<rect x="608" y="82" width="250" height="232" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="622.0" y="110.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Construire l&#x27;emploi du temps</text>
 <circle cx="626" cy="137" r="2.6" fill="#2f4b6e"/>
 <text x="636.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Vérifications avant le calcul</text>
@@ -47,11 +48,11 @@
 <text x="636.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Résultat et qualité</text>
 <circle cx="626" cy="247" r="2.6" fill="#2f4b6e"/>
 <text x="636.0" y="252.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Historique et versions</text>
-<polyline points="862.0,192.0 894.0,192.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
-<polygon points="898.0,192.0 887.0,197.5 887.0,186.5" fill="#2f4b6e"/>
+<polyline points="862.0,198.0 894.0,198.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
+<polygon points="898.0,198.0 887.0,203.5 887.0,192.5" fill="#2f4b6e"/>
 <rect x="900" y="30" width="250" height="44" rx="6" fill="#1f3f66" stroke="#2f4b6e"/>
 <text x="1025.0" y="58.0" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="700">4. Emploi du temps</text>
-<rect x="900" y="82" width="250" height="220" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
+<rect x="900" y="82" width="250" height="232" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="914.0" y="110.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Consulter et retoucher</text>
 <circle cx="918" cy="137" r="2.6" fill="#2f4b6e"/>
 <text x="928.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Par groupe, enseignant, salle</text>
@@ -63,30 +64,28 @@
 <text x="928.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">verrouiller, annuler</text>
 <circle cx="918" cy="247" r="2.6" fill="#2f4b6e"/>
 <text x="928.0" y="252.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Exporter, imprimer</text>
-<polyline points="1154.0,192.0 1186.0,192.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
-<polygon points="1190.0,192.0 1179.0,197.5 1179.0,186.5" fill="#2f4b6e"/>
+<polyline points="1154.0,198.0 1186.0,198.0" fill="none" stroke="#2f4b6e" stroke-width="2.2"/>
+<polygon points="1190.0,198.0 1179.0,203.5 1179.0,192.5" fill="#2f4b6e"/>
 <rect x="1192" y="30" width="250" height="44" rx="6" fill="#1f3f66" stroke="#2f4b6e"/>
 <text x="1317.0" y="58.0" font-size="17" text-anchor="middle" fill="#ffffff" font-weight="700">5. À traiter</text>
-<rect x="1192" y="82" width="250" height="220" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
+<rect x="1192" y="82" width="250" height="232" rx="6" fill="#f4f7fb" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="1206.0" y="110.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Corriger ce qui reste</text>
 <circle cx="1210" cy="137" r="2.6" fill="#2f4b6e"/>
-<text x="1220.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Anomalies classées par</text>
-<text x="1220.0" y="164.0" font-size="13.5" text-anchor="start" fill="#1b1f24">gravité : erreur,</text>
-<text x="1220.0" y="186.0" font-size="13.5" text-anchor="start" fill="#1b1f24">avertissement, information</text>
+<text x="1220.0" y="142.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Points à traiter : anomalies</text>
+<text x="1220.0" y="164.0" font-size="13.5" text-anchor="start" fill="#1b1f24">classées par gravité, et</text>
+<text x="1220.0" y="186.0" font-size="13.5" text-anchor="start" fill="#1b1f24">séances à programmer</text>
 <circle cx="1210" cy="203" r="2.6" fill="#2f4b6e"/>
-<text x="1220.0" y="208.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Séances à programmer</text>
-<circle cx="1210" cy="225" r="2.6" fill="#2f4b6e"/>
-<text x="1220.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Lien vers la séance dans</text>
-<text x="1220.0" y="252.0" font-size="13.5" text-anchor="start" fill="#1b1f24">l&#x27;emploi du temps</text>
-<polyline points="1287.0,302.0 1287.0,336.0 1031.0,336.0 1031.0,310.0" fill="none" stroke="#2f4b6e" stroke-width="1.8" stroke-dasharray="6,4"/>
-<polygon points="1031.0,304.0 1036.0,314.0 1026.0,314.0" fill="#2f4b6e"/>
-<rect x="1081.5" y="316.0" width="149.0" height="17.0" fill="#ffffff"/>
-<text x="1156.0" y="328.0" font-size="13" text-anchor="middle" fill="#1b1f24" font-style="italic">retoucher une séance</text>
-<polyline points="1347.0,302.0 1347.0,372.0 441.0,372.0 441.0,310.0" fill="none" stroke="#2f4b6e" stroke-width="1.8" stroke-dasharray="6,4"/>
-<polygon points="441.0,304.0 446.0,314.0 436.0,314.0" fill="#2f4b6e"/>
-<rect x="526.2" y="352.0" width="413.6" height="17.0" fill="#ffffff"/>
-<text x="733.0" y="364.0" font-size="13" text-anchor="middle" fill="#1b1f24" font-style="italic">corriger une donnée ou une règle, puis relancer le calcul</text>
-<rect x="24" y="402" width="1418" height="52" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4" stroke-dasharray="7,5"/>
-<text x="40.0" y="424.0" font-size="13.5" text-anchor="start" fill="#1b1f24" font-weight="700">Assistant (bouton présent sur chaque page, fonctionnalité optionnelle en cours de réalisation) :</text>
-<text x="40.0" y="444.0" font-size="13.5" text-anchor="start" fill="#1b1f24">répond en langage courant sur les données et l&#x27;emploi du temps ; propose une règle ou une indisponibilité, que l&#x27;utilisateur confirme ou écarte.</text>
+<text x="1220.0" y="208.0" font-size="13.5" text-anchor="start" fill="#1b1f24">Lien vers la séance dans</text>
+<text x="1220.0" y="230.0" font-size="13.5" text-anchor="start" fill="#1b1f24">l&#x27;emploi du temps</text>
+<polyline points="1287.0,314.0 1287.0,348.0 1031.0,348.0 1031.0,322.0" fill="none" stroke="#2f4b6e" stroke-width="1.8" stroke-dasharray="6,4"/>
+<polygon points="1031.0,316.0 1036.0,326.0 1026.0,326.0" fill="#2f4b6e"/>
+<rect x="1081.5" y="328.0" width="149.0" height="17.0" fill="#ffffff"/>
+<text x="1156.0" y="340.0" font-size="13" text-anchor="middle" fill="#1b1f24" font-style="italic">retoucher une séance</text>
+<polyline points="1347.0,314.0 1347.0,384.0 441.0,384.0 441.0,322.0" fill="none" stroke="#2f4b6e" stroke-width="1.8" stroke-dasharray="6,4"/>
+<polygon points="441.0,316.0 446.0,326.0 436.0,326.0" fill="#2f4b6e"/>
+<rect x="526.2" y="364.0" width="413.6" height="17.0" fill="#ffffff"/>
+<text x="733.0" y="376.0" font-size="13" text-anchor="middle" fill="#1b1f24" font-style="italic">corriger une donnée ou une règle, puis relancer le calcul</text>
+<rect x="24" y="414" width="1418" height="52" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4" stroke-dasharray="7,5"/>
+<text x="40.0" y="436.0" font-size="13.5" text-anchor="start" fill="#1b1f24" font-weight="700">Assistant (bouton présent sur chaque page, fonctionnalité optionnelle en cours de réalisation) :</text>
+<text x="40.0" y="456.0" font-size="13.5" text-anchor="start" fill="#1b1f24">répond en langage courant sur les données et l&#x27;emploi du temps ; propose une règle ou une indisponibilité, que l&#x27;utilisateur accepte ou écarte.</text>
 </svg>
