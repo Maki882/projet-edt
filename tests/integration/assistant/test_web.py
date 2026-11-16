@@ -370,3 +370,20 @@ def test_page_sans_javascript(site, faux_client):
         assert time.monotonic() < fin
         time.sleep(0.02)
     assert 'http-equiv="refresh"' not in site.get("/assistant").text
+
+
+@pytest.mark.cas_limite
+def test_le_cookie_de_conversation_est_renouvele_a_chaque_activite(site, faux_client):
+    """Cas : une démonstration de plus de 30 minutes sur une même conversation.
+
+    Risque : le cookie posé au premier message expire alors que la conversation vit encore
+    sur le serveur : la réponse en cours est « perdue », Confirmer répond « Cette
+    proposition n'existe plus », et le message suivant ouvre une autre conversation.
+    """
+    faux_client.reponses = [reponse_texte("un"), reponse_texte("deux")]
+    premier = _envoyer(site)
+    _attendre(site, _jeton(premier))
+    for reponse in (_envoyer(site, "Encore"), site.get("/assistant/panneau", headers=HX)):
+        cookie = reponse.headers.get("set-cookie", "")
+        assert "edt_assistant=" in cookie and "Max-Age=1800" in cookie, cookie
+        assert premier.cookies["edt_assistant"] in cookie

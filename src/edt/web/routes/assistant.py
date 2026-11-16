@@ -161,6 +161,12 @@ def _refus_origine(request: Request) -> Response:
 
 
 def _poser_cookie(request: Request, reponse: Response, identifiant: str | None) -> None:
+    """Pose (ou efface, sans identifiant) le cookie de la conversation.
+
+    Il est reposé à chaque activité de la conversation (message, ouverture du
+    panneau, réponse, clic sur une proposition) : sa durée suit ainsi celle de
+    la conversation en mémoire, oubliée après la même durée sans activité.
+    """
     if identifiant is None:
         reponse.delete_cookie(COOKIE)
         return
@@ -221,8 +227,8 @@ def panneau(request: Request):
         "assistant/_conversation.html",
         _contexte_conversation(vue, _page_courante(request), annonce),
     )
-    if vue.perdue:
-        _poser_cookie(request, reponse, None)
+    if vue.perdue or vue.conversation_id is not None:
+        _poser_cookie(request, reponse, vue.conversation_id)
     return reponse
 
 
@@ -266,7 +272,7 @@ def envoyer(
         reponse.headers["X-Assistant-Accepte"] = "oui"
     else:
         reponse = _fragment(request, "assistant/_tour.html", {"tour": resultat.refus})
-    if resultat.conversation_id is not None and (resultat.nouvelle or resultat.perdue):
+    if resultat.conversation_id is not None:
         _poser_cookie(request, reponse, resultat.conversation_id)
     return reponse
 
@@ -293,11 +299,13 @@ def echange(request: Request, jeton: str, vu: int = 0):
                 "limite_ms": _limite_ms(trouve),
             },
         )
-    return _fragment(
+    reponse = _fragment(
         request,
         "assistant/_fin.html",
         {"tour": tour, "vue": assistant.vue(identifiant)},
     )
+    _poser_cookie(request, reponse, identifiant)
+    return reponse
 
 
 def _suite_proposition(request: Request, jeton: str, action) -> Response:
@@ -312,11 +320,13 @@ def _suite_proposition(request: Request, jeton: str, action) -> Response:
             "assistant/_proposition_perdue.html",
             {"jeton": jeton, "message": resultat.message},
         )
-    return _fragment(
+    reponse = _fragment(
         request,
         "assistant/_proposition.html",
         {"proposition": resultat.proposition, "message": resultat.message, "apres_clic": True},
     )
+    _poser_cookie(request, reponse, request.cookies.get(COOKIE))
+    return reponse
 
 
 @routeur.post("/propositions/{jeton}/confirmer", name="assistant_confirmer")

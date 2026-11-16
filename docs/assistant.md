@@ -71,6 +71,8 @@ Points à traiter (onglet Générer).
 - **Nouvelle conversation** : oublie la conversation en cours (pas pendant une réponse).
 - Une conversation compte au plus 10 messages (le panneau dit combien il en reste), et
   s'oublie après 30 minutes sans activité ou au redémarrage du serveur ; le panneau le dit.
+  Le cookie qui la désigne est renouvelé à chaque activité (message, ouverture du panneau,
+  réponse, clic sur une proposition).
 - Une conversation n'est créée que pour un message accepté. Quand la mémoire manque, la
   conversation la moins récemment active est oubliée, jamais une conversation dont une
   proposition attend Confirmer ou Refuser : le nouveau message est alors refusé (« très
