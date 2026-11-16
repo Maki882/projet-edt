@@ -122,7 +122,7 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 
 | Composant | Unitaires | Intégration | Total |
 |---|---:|---:|---:|
-| `assistant` | 136 | 31 | 167 |
+| `assistant` | 141 | 31 | 172 |
 | `banc_tests` | 43 | 22 | 65 |
 | `echange` | 148 | 35 | 183 |
 | `exploitation` | 40 | 32 | 72 |
@@ -132,9 +132,9 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 125 | 137 |
-| `web_edt` | 35 | 130 | 165 |
-| **Total** | **1 113** | **523** | **1 636** |
-| dont cas limites (`cas_limite`) | 317 | 205 | 522 |
+| `web_edt` | 37 | 132 | 169 |
+| **Total** | **1 120** | **525** | **1 645** |
+| dont cas limites (`cas_limite`) | 323 | 207 | 530 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.

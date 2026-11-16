@@ -70,11 +70,11 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'intégration.
+Le catalogue compte 530 cas : 323 cas en tests unitaires et 207 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
-| `assistant` | 45 | 7 |
+| `assistant` | 50 | 7 |
 | `banc_tests` | 19 | 10 |
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
@@ -83,12 +83,12 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 41 |
-| `web_edt` | 8 | 41 |
-| **Total** | **317** | **205** |
+| `web_edt` | 9 | 43 |
+| **Total** | **323** | **207** |
 
-### Tests unitaires (317 cas)
+### Tests unitaires (323 cas)
 
-#### `assistant` (45 cas)
+#### `assistant` (50 cas)
 
 [`tests/unitaires/assistant/test_boucle.py`](../tests/unitaires/assistant/test_boucle.py)
 
@@ -119,6 +119,10 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Un message refuse ne cree pas de conversation | une adresse au-delà de sa limite envoie des messages sans cookie, à la chaîne. | chaque refus crée une conversation vide ; le registre se remplit et évince les conversations des autres visiteurs, propositions en attente comprises, sans aucun appel. |
 | Une proposition en attente n est jamais evincee | la mémoire est pleine ; la conversation de la démonstratrice a une proposition en attente ; un autre visiteur commence une conversation. | au clic, « Cette proposition n'existe plus » : la conversation a été évincée. |
 | Conversations bornees par adresse | une même adresse ouvre conversation sur conversation (cookies effacés). | une seule adresse occupe toute la mémoire et évince les autres visiteurs. |
+| Envois refuses faute de place ne consomment rien | réglages par défaut ; une adresse ouvre ses 10 conversations, chacune finie sur une proposition en attente (jamais évincée), puis envoie 95 messages sans cookie, tous refusés « trop de conversations ». | chaque refus compte un échange du site sans aucun appel au modèle : la limite du jour (100) est atteinte en quelques secondes et tous les visiteurs sont refusés jusqu'au lendemain, même après un redémarrage (la consommation est dans un fichier). |
+| Envois refuses memoire pleine ne consomment rien | la mémoire est pleine de conversations qu'aucune place ne peut libérer (une proposition en attente) ; d'autres visiteurs envoient, refusés « très sollicité ». | ces refus épuisent la limite du jour sans aucun appel au modèle. |
+| Echange arrete avant tout appel ne consomme rien | un message accepté, mais l'échange s'arrête avant d'appeler le modèle (budget restant trop court pour le premier appel, contexte déjà trop long, client impossible à construire). | un échange du site et un message de l'adresse comptés sans aucun appel : l'adresse est bloquée pour la journée par des messages qui n'ont rien coûté. |
+| Echanges en cours comptent dans la limite du jour | la limite du jour est de 2 échanges ; deux échanges sont en cours (pas encore écrits dans le fichier de consommation) quand deux autres visiteurs envoient. | les échanges en cours ne comptent pas : la limite du jour est dépassée. |
 | Conversations expirees et place limitee | une conversation inactive depuis plus de 30 minutes ; la mémoire est pleine. | la mémoire du serveur grossit sans fin avec les visiteurs. |
 | Confirmation devenue impossible | entre la proposition et le clic, quelqu'un enregistre une règle qui fait doublon. | deux réglages contradictoires actifs, ou une erreur brute. |
 | Base occupee a la confirmation | un autre processus tient la base au moment du clic sur Confirmer. | proposition perdue ou enregistrée à moitié ; ici rien n'est écrit, la carte reste à confirmer. |
@@ -133,6 +137,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
+| Echange reserve compte dans la limite et n est ecrit qu a sa validation | deux échanges réservés en même temps sur une limite de 2 ; l'un s'arrête avant tout appel au modèle (rendu), l'autre en a fait un (validé). | des échanges en cours ignorés par la limite (dépassée), ou un échange rendu resté écrit dans le fichier (limite du jour atteinte par des messages qui n'ont rien coûté). |
 | Consommation du jour survit a un redemarrage et change avec le jour | le service redémarre (déploiement) après avoir dépensé une partie du budget ; puis minuit passe. | le budget remis à zéro à chaque redémarrage, ou jamais remis à zéro. |
 | Consommation survit a une remise a zero puis a un redemarrage | 1,90 $ dépensés ; un visiteur charge un établissement fictif (remise à zéro de la base) ; le service redémarre le même jour. | le budget et le compteur du jour repartent de zéro : un second budget complet. |
 | Fichier de consommation illisible | le fichier de consommation est abîmé (disque, copie à la main). | une exception à chaque message, ou un compte faux sans que personne le sache. |
@@ -710,7 +715,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (8 cas)
+#### `web_edt` (9 cas)
 
 [`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
 
@@ -736,6 +741,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 |---|---|---|
 | Budget depasse ou verificateur absent | la vérification des heures dépasse son budget, ou le vérificateur est absent. | un formulaire qui met des secondes à se recharger à chaque changement de jour, ou une erreur qui empêche d'ouvrir le panneau de la séance. |
 | Heure annoncee possible est acceptee avec la salle proposee | le TD de mathématiques du groupe A1-G1 (lundi 13 h 45 à Notre-Dame) est déplacé au vendredi, où le groupe sort à 10 h 30 d'un TP à Issy ; à 10 h 45, le groupe et l'enseignant sont libres, mais toutes les salles proposées sont à Notre-Dame, à une heure de trajet. | l'heure est annoncée « possible » (vérifiée sans salle), puis l'enregistrement est refusé avec chacune des salles proposées : l'annonce trompe l'utilisateur. |
+| Jour sans aucune heure possible dit quoi faire | toutes les heures du jour choisi sont refusées (CM d'une promotion entière). | une liste de « (refusé) » sans explication : l'utilisateur ne sait ni pourquoi ni quoi essayer. |
 
 [`tests/unitaires/web_edt/test_memoire.py`](../tests/unitaires/web_edt/test_memoire.py)
 
@@ -750,7 +756,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (205 cas)
+### Tests d'intégration (207 cas)
 
 #### `assistant` (7 cas)
 
@@ -1057,7 +1063,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (41 cas)
+#### `web_edt` (43 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1118,6 +1124,13 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Version sans seance s affiche et s exporte | version sans aucune séance (import resté vide, référence non remplie) affichée en semaine type, datée et par jour, listée dans l'historique, exportée en CSV et en iCal. | erreur 500 (minimum ou maximum d'une liste vide), blocs inventés, ou fichier d'export illisible par le tableur ou l'agenda. |
 | Version active vide sur a traiter et l accueil | la version active du semestre n'a aucune séance (import resté vide). | erreur 500 sur « À traiter » ou l'accueil, ou version vide présentée comme un emploi du temps sans défaut. |
 | Semestre sans grille reste utilisable | la grille de créneaux est vidée après la génération (grille en cours de refonte). | erreur 500 sur Générer ou sur la grille, ou séance proposée à une place qui n'existe plus. |
+
+[`tests/integration/web_edt/test_deplacement_possible.py`](../tests/integration/web_edt/test_deplacement_possible.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Heure possible choisie puis enregistree reussit | l'utilisateur choisit une heure « (possible) » ; HTMX recharge le formulaire en renvoyant la salle actuelle de la séance, occupée à cette heure par une autre séance. | la salle occupée reste sélectionnée et « Vérifier et enregistrer » refuse le déplacement (« Une séance par salle »), alors que l'heure était annoncée possible. |
+| Chaque heure possible du jeu minimal s enregistre | pour chaque séance de la version et chaque jour, la première heure annoncée « (possible) », choisie puis enregistrée telle que le formulaire se présente. | une annonce « possible » démentie à l'enregistrement par le bandeau rouge. |
 
 [`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
 

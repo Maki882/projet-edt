@@ -56,18 +56,18 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 120 fonctions de test** dans 10 composants, dont 323 marquées `cas_limite` et 20 marquées `perf`.
 
-### `assistant/` : Assistant en langage courant (136 fonctions)
+### `assistant/` : Assistant en langage courant (141 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`assistant/test_boucle.py`](assistant/test_boucle.py) | Boucle d'un échange avec le faux client : arrêts, outils, historique, bornes, arguments | 22 |
 | [`assistant/test_configuration.py`](assistant/test_configuration.py) | Configuration de l'assistant : défauts, variables invalides, clé absente ou en double | 11 |
 | [`assistant/test_consignes.py`](assistant/test_consignes.py) | Consignes système : figées, sans donnée variable, avec tout le catalogue des règles | 4 |
-| [`assistant/test_conversations.py`](assistant/test_conversations.py) | Conversations et propositions : échange dans son fil, limites, confirmation, refus, secret | 30 |
+| [`assistant/test_conversations.py`](assistant/test_conversations.py) | Conversations et propositions : échange dans son fil, limites, confirmation, refus, secret | 34 |
 | [`assistant/test_erreurs_api.py`](assistant/test_erreurs_api.py) | Matrice des erreurs du service : chaque cas, son message, son journal, sa pause | 3 |
-| [`assistant/test_limites.py`](assistant/test_limites.py) | Limites et coûts : prix d'un appel, réservation, compteurs du jour en base et en mémoire | 11 |
+| [`assistant/test_limites.py`](assistant/test_limites.py) | Limites et coûts : prix d'un appel, réservation, compteurs du jour en base et en mémoire | 12 |
 | [`assistant/test_occupation.py`](assistant/test_occupation.py) | Occupation d'un créneau : plage d'un moment, salles libres, séances d'une ressource | 17 |
 | [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas, outils de lecture, propositions sans écriture | 29 |
 | [`assistant/test_validations.py`](assistant/test_validations.py) | Validations sans écriture utilisées par les propositions de l'assistant | 9 |
@@ -187,7 +187,7 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Un entier démesuré passé au service est refusé avec un message | 1 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression, côté service : les conséquences d'une suppression sont expliquées | 1 |
 
-### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (35 fonctions)
+### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (37 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -196,7 +196,7 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Cas limites des services des écrans de l'emploi du temps : bornes des identifiants | 1 |
 | [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | Emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 |
 | [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | Disposition des blocs dans la grille (fonction pure) et mises en forme françaises | 9 |
-| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 3 |
+| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 5 |
 | [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | Mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : absence explicite, lecture du rapport, panne journalisée | 8 |
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 7 |
