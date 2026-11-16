@@ -72,7 +72,7 @@
 <rect x="820.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="883.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="1063.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
-<text x="30.0" y="443.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Données fictives</text>
+<text x="30.0" y="443.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Établissements fictifs</text>
 <text x="330.0" y="443.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
 <rect x="811.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="883.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
@@ -89,7 +89,7 @@
 <rect x="811.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="883.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="1063.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
-<text x="30.0" y="521.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Moteur de calcul</text>
+<text x="30.0" y="521.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Générateur (calcul)</text>
 <text x="330.0" y="521.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
 <rect x="811.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
 <rect x="820.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
