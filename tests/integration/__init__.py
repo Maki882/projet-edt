@@ -1,1 +1,1 @@
-"""Tests d'intégration : plusieurs composants réels assemblés (voir README.md du dossier)."""
+"""Tests d'intégration : plusieurs couches de l'application assemblées."""

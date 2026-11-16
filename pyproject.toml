@@ -47,7 +47,8 @@ testpaths = ["tests"]
 markers = [
     "perf: test de charge long, exclu de la CI courante (pytest -m \"not perf\")",
     "cas_limite: test d'un cas limite ou d'une panne plausible (banque de tests, docs/banque-de-tests.md)",
-    "integration: test d'intégration : plusieurs composants réels assemblés (web, services, solveur, base)",
+    "unitaire: test unitaire : un module exercé seul, par ses fonctions Python (dossier tests/unitaires)",
+    "integration: test d'intégration : plusieurs couches assemblées (web, commandes, calcul complet ; dossier tests/integration)",
 ]
 
 [tool.ruff]

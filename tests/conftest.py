@@ -32,6 +32,20 @@ AUJOURDHUI = dt.date(2026, 10, 5)
 """Date de référence des tests : l'année scolaire créée par défaut est 2026-2027."""
 
 
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Pose le marqueur `unitaire` ou `integration` d'après le dossier du test.
+
+    `pytest -m unitaire` et `pytest -m integration` choisissent ainsi une
+    famille sans que chaque test ait à porter le marqueur.
+    """
+    for item in items:
+        dossiers = item.path.parts
+        if "integration" in dossiers:
+            item.add_marker(pytest.mark.integration)
+        elif "unitaires" in dossiers:
+            item.add_marker(pytest.mark.unitaire)
+
+
 @pytest.fixture(autouse=True)
 def environnement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     """Isole le test : base et journaux dans un dossier temporaire, moteurs libérés à la fin."""

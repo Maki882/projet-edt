@@ -1,4 +1,4 @@
-"""Outils communs aux tests d'intégration.
+"""Outils communs aux parcours de bout en bout.
 
 Les fixtures de `tests/conftest.py` s'appliquent déjà : chaque test a sa propre
 base SQLite dans un dossier temporaire (`environnement`), et peut demander
@@ -7,7 +7,7 @@ base SQLite dans un dossier temporaire (`environnement`), et peut demander
 
 Ici, on ajoute seulement :
 
-- `DELAI` : durée maximale d'attente d'un calcul (repris des tests web) ; un
+- `DELAI` : durée maximale d'attente d'un calcul ; un
   calcul bloqué fait échouer le test au lieu de le laisser attendre sans fin ;
 - `sans_prechauffage` (automatique) : coupe le préchauffage des écrans, un
   fil d'arrière-plan lancé après un calcul qui survivrait à la base
@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
-from tests.web_edt.conftest import DELAI
 
 from edt.db.moteur import session_base
 from edt.services import generation
 from edt.services.emploi_du_temps import prechauffage
 
 __all__ = ["DELAI", "calculer", "compter"]
+
+DELAI = 20
+"""Secondes : garde-fou pour qu'un calcul bloqué fasse échouer le test au lieu d'attendre sans fin."""
 
 
 @pytest.fixture(autouse=True)
