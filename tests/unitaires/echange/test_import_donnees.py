@@ -339,8 +339,8 @@ ENTETE_BESOIN = "annee;semestre;matiere;type;groupes;duree;jour_impose;debut_imp
 def test_export_xlsx_tolere_les_caracteres_de_controle(format_, jeu_minimal, importer):
     """Cas : un libellé de matière contient un caractère de contrôle invisible (U+0001 collé).
 
-    Risque : openpyxl refusait la cellule (IllegalCharacterError) et tout l'export
-    XLSX de l'établissement échouait en 500 ; un réimport perdait le caractère.
+    Risque : openpyxl refuserait la cellule (IllegalCharacterError) et tout l'export
+    XLSX de l'établissement échouerait en 500 ; un réimport perdrait le caractère.
     """
     libelle = "Mathématiques\x01avancées"
     with session_base() as session:
@@ -377,8 +377,8 @@ def test_caractere_de_controle_importe_est_garde_et_signale(base, importer):
 def test_besoin_dont_le_debut_impose_et_la_duree_depassent_minuit_est_rejete(jeu_minimal, importer):
     """Cas : un besoin de 24 h imposé à 23:00, ou de 3 h imposé à 22:30.
 
-    Risque : durée et heure contrôlées séparément, le besoin entrait ; toute séance
-    placée à ce début violait la contrainte de plage horaire à l'enregistrement de
+    Risque : durée et heure contrôlées séparément, le besoin entrerait ; toute séance
+    placée à ce début violerait la contrainte de plage horaire à l'enregistrement de
     la version : plantage différé, au calcul, sans lien visible avec l'import.
     """
     fichier = csv_envoye(
@@ -406,7 +406,7 @@ def test_salle_au_code_contenant_arobase_reste_referencable(
 ):
     """Cas : une salle de code « A@B » imposée à un besoin, puis export et réimport.
 
-    Risque : la référence était coupée au premier « @ » (salle « A » du campus
+    Risque : la référence serait coupée au premier « @ » (salle « A » du campus
     « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour.
     """
     salles = csv_envoye("salles.csv", "code;campus;capacite;type", "A@B;NDC;30;COURS")
@@ -433,11 +433,39 @@ def test_salle_au_code_contenant_arobase_reste_referencable(
 
 
 @pytest.mark.cas_limite
+def test_reference_de_salle_a_double_lecture_refusee_comme_ambigue(jeu_minimal, importer):
+    """Cas : une salle de code « A@NDC » (campus ISSY) et deux salles « A » (NDC et ISSY) ;
+    un besoin impose la salle « A@NDC », référence que l'export écrit pour la salle A de NDC.
+
+    Risque : la salle de code « A@NDC » serait choisie en silence au lieu de la salle A du
+    campus NDC : salle imposée changée au réimport d'un export, sans un mot.
+    """
+    salles = csv_envoye(
+        "salles.csv",
+        "code;campus;capacite;type",
+        "A@NDC;ISSY;30;COURS",
+        "A;NDC;30;COURS",
+        "A;ISSY;30;COURS",
+    )
+    besoins = csv_envoye(
+        "besoins.csv",
+        "annee;semestre;matiere;type;groupes;duree;salle_imposee;libelle",
+        "2026-2027;S1;IM.1101;TD;A1-G1;2 h;A@NDC;Séance en salle A@NDC",
+    )
+
+    rapport = importer([salles, besoins], simuler=True)
+
+    erreurs = [s for s in rapport.signalements if s.gravite is Gravite.ERREUR]
+    assert [(s.feuille, s.colonne) for s in erreurs] == [("besoins.csv", "salle_imposee")]
+    assert "ambiguë" in erreurs[0].message and "campus NDC" in erreurs[0].message
+
+
+@pytest.mark.cas_limite
 def test_durees_absurdes_signalees(jeu_minimal, importer):
     """Cas : un trajet de 100 h entre deux campus, un maximum de 90 h par jour.
 
-    Risque : accepté sans borne, il rendait le calcul infaisable (trajet impossible)
-    ou n'avait aucun sens, sans lien visible avec l'import.
+    Risque : accepté sans borne, il rendrait le calcul infaisable (trajet impossible)
+    ou n'aurait aucun sens, sans lien visible avec l'import.
     """
     trajets = csv_envoye("trajets.csv", "campus_a;campus_b;duree", "NDC;ISSY;100 h")
     enseignants = csv_envoye(
@@ -480,7 +508,7 @@ def _chaine_de_groupes(nombre: int) -> list[str]:
 def test_groupe_parent_de_lui_meme_rejete(jeu_minimal, importer):
     """Cas : un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1).
 
-    Risque : l'auto-parenté finissait en IntegrityError générique, ou en boucle sans
+    Risque : l'auto-parenté finirait en IntegrityError générique, ou en boucle sans
     fin dans le parcours des parents.
     """
     boucles = csv_envoye(
@@ -549,7 +577,7 @@ def test_hierarchie_profonde_et_auto_parente(jeu_minimal, importer):
 def test_ical_en_mode_donnees_signale_le_mauvais_mode(jeu_minimal, importer, fichier_exemple):
     """Cas : un agenda .ics envoyé avec le mode « données de l'établissement ».
 
-    Risque : correct aujourd'hui mais sans test ; une régression ignorerait
+    Risque : une régression ignorerait
     l'agenda en silence, l'utilisateur croyant son emploi du temps importé.
     """
     campus = csv_envoye("campus.csv", "code;nom", "ZZ;Campus fictif")
@@ -569,8 +597,8 @@ def test_ical_en_mode_donnees_signale_le_mauvais_mode(jeu_minimal, importer, fic
 def test_import_en_cours_signale_pendant_tout_l_import(base, monkeypatch):
     """Cas : un calcul est demandé depuis un autre onglet pendant qu'un import lit ses fichiers.
 
-    Risque : sans marqueur consultable, le lancement d'un calcul ne pouvait pas
-    savoir qu'un import tournait (calcul sur des données en train de changer),
+    Risque : sans marqueur consultable, le lancement d'un calcul ne pourrait pas
+    savoir qu'un import tourne (calcul sur des données en train de changer),
     alors que l'import, lui, refuse un calcul en cours.
     """
     commence, liberer = threading.Event(), threading.Event()
