@@ -583,3 +583,45 @@ def test_parametres_extremes_restent_valides():
         assert resultat.statistiques["statut_cp_sat"] != "MODEL_INVALID"
         # 100 000 min de trajet : jamais le même jour.
         assert places["1-1"].jour != places["2-1"].jour
+
+
+def test_sur_premiere_solution_appele_une_fois_avec_la_duree_ecoulee():
+    """Le rappel est appelé une seule fois, amélioration comprise, avec une durée positive."""
+    instantane, _ = generer(40, graine=3)
+    appels: list[float] = []
+    resultat = resoudre(
+        instantane, options(optimiser=True, temps_limite_s=5), sur_premiere_solution=appels.append
+    )
+    verifier_solution(instantane, resultat)
+    assert len(appels) == 1
+    assert 0 < appels[0] <= resultat.statistiques["duree_s"]
+
+
+def test_sur_premiere_solution_pas_appele_sans_solution():
+    """Horaires trouvés mais salles impossibles (impossibilité prouvée), ou calcul refusé avant
+    la recherche : aucun emploi du temps complet, aucun appel."""
+    appels: list[float] = []
+    resultat = resoudre(_salles_en_quinconce([LUNDI]), OPTIONS, sur_premiere_solution=appels.append)
+    assert resultat.statut is StatutSolveur.INFAISABLE
+    assert resultat.statistiques["nb_coupes"] >= 1  # des horaires avaient été trouvés
+    f = Fabrique(creneaux=UN_CRENEAU)
+    f.salle("N101")
+    f.besoin([f.groupe("A1")], [f.enseignant()], nombre=2)
+    resultat = resoudre(f.instantane(), OPTIONS, sur_premiere_solution=appels.append)
+    assert resultat.statut is StatutSolveur.INFAISABLE
+    assert appels == []
+
+
+def test_sur_premiere_solution_qui_echoue_n_empeche_pas_le_resultat(caplog):
+    """Un rappel qui lève : erreur journalisée avec sa trace, solution rendue quand même."""
+    instantane, _ = generer(40, graine=3)
+
+    def rappel(duree: float) -> None:
+        raise RuntimeError("interface indisponible")
+
+    with caplog.at_level(logging.ERROR, logger="edt.solveur.moteur"):
+        resultat = resoudre(instantane, OPTIONS, sur_premiere_solution=rappel)
+    verifier_solution(instantane, resultat)
+    assert resultat.statut is StatutSolveur.SOLUTION
+    (erreur,) = [r for r in caplog.records if "rappel de première solution" in r.getMessage()]
+    assert erreur.exc_info is not None and "interface indisponible" in str(erreur.exc_info[1])

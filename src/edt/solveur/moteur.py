@@ -73,6 +73,7 @@ import os
 import statistics
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from ortools.sat.python import cp_model
@@ -202,12 +203,20 @@ def resoudre(
     instantane: Instantane,
     options: OptionsSolveur,
     arret: threading.Event | None = None,
+    sur_premiere_solution: Callable[[float], None] | None = None,
 ) -> ResultatSolveur:
     """Place toutes les séances de l'instantané, ou explique pourquoi c'est impossible.
 
     Voir `edt.solveur.contrat` pour le contrat et l'en-tête de ce module pour
     le déroulement. `options.nb_workers == 0` utilise deux fils de calcul au
     plus ; un seul fil avec une graine fixe donne un résultat reproductible.
+
+    `sur_premiere_solution`, s'il est donné, est appelé une seule fois, dès
+    qu'un emploi du temps complet existe (horaires et salles) : à partir de
+    cet instant, un arrêt demandé garde une solution. Il reçoit la durée
+    écoulée depuis le lancement, en secondes. Il n'est pas appelé si aucune
+    solution n'est trouvée. Une exception qu'il lève est journalisée avec sa
+    trace et n'interrompt pas le calcul.
     """
     debut = time.perf_counter()
     journal_calcul = journal_calcul_courant()
@@ -467,6 +476,12 @@ def resoudre(
     # elle, est libérée avant que la seconde commence.
     del solveur, suivi
     stats["duree_premiere_solution_s"] = round(time.perf_counter() - debut, 3)
+    if sur_premiere_solution is not None:
+        try:
+            sur_premiere_solution(time.perf_counter() - debut)
+        except Exception:
+            # Le rappel informe l'interface ; son échec ne doit pas coûter la solution.
+            journal.exception("Le rappel de première solution a échoué : le calcul continue.")
 
     def cout_salles(essai: _Solution) -> int:
         """Pénalité des entorses de la phase des salles, au poids de l'objectif."""
