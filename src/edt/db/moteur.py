@@ -96,6 +96,24 @@ def base_verrouillee(erreur: BaseException) -> bool:
     return "locked" in cause or "busy" in cause
 
 
+REMEDE_BASE_ILLISIBLE = (
+    "restaurer une sauvegarde, ou mettre ce fichier de côté (le déplacer ou le renommer, avec "
+    "ses fichiers -wal et -shm s'ils existent), puis lancer « python -m edt init-db », qui recrée "
+    "une base vide (les données du fichier abîmé ne sont pas reprises)."
+)
+"""Remède d'un fichier qui n'est pas une base SQLite lisible. « init-db --reset » ne convient
+pas : il doit d'abord lire la base pour la vider, et échoue sur la même erreur."""
+
+
+def base_illisible(erreur: BaseException) -> bool:
+    """Vrai si l'erreur du pilote signale un fichier qui n'est pas une base SQLite lisible.
+
+    Accepte l'erreur enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
+    """
+    cause = str(getattr(erreur, "orig", None) or erreur).lower()
+    return "not a database" in cause or "malformed" in cause
+
+
 def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
     """Phrase française pour une erreur du pilote de base, avec le remède.
 
@@ -118,11 +136,10 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
             "et de son dossier (le fichier -wal et -shm doivent pouvoir y être créés), ou l'espace "
             "disque."
         )
-    if "not a database" in minuscule or "malformed" in minuscule:
+    if base_illisible(erreur):
         return (
             "Le fichier de la base de données n'est pas une base SQLite lisible (fichier "
-            "corrompu, tronqué ou remplacé) : restaurer une sauvegarde, ou recréer la base avec "
-            "« python -m edt init-db --reset » (les données sont perdues)."
+            f"corrompu, tronqué ou remplacé) : {REMEDE_BASE_ILLISIBLE}"
         )
     if "disk is full" in minuscule:
         return "Le disque de la base de données est plein : libérer de l'espace, puis réessayer."

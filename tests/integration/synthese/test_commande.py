@@ -24,7 +24,7 @@ def test_commande_jeu_charge_et_affiche_le_resume(lanceur, base):
     resultat = lanceur.invoke(cli.app, ["jeu", "--taille", "petit", "--reference"])
     assert resultat.exit_code == 0, resultat.output
     assert "Jeu fictif « petit » (graine 0)" in resultat.output
-    assert "vérificateur sur le témoin : 0 erreur(s)" in resultat.output
+    assert "vérificateur sur l'emploi du temps de référence : 0 erreur," in resultat.output
     assert _nombre(m.Besoin) > 0 and _nombre(m.VersionEdt) == 1
 
 

@@ -19,7 +19,7 @@
   <input type="hidden" name="retour" value="{{ retour }}">
   {%- set rechargement = {"hx-get": adresse ~ "/formulaire", "hx-trigger": "change", "hx-include": "closest form", "hx-target": "#edt-formulaire", "hx-swap": "outerHTML"} %}
   {{ ui.champ("jour", "Jour", f.jour, type="select", requis=true, options=f.jours, attributs=rechargement) }}
-  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ " (la durée ne change pas). « possible » : le groupe et l'enseignant sont libres et les règles nécessaires respectées, à condition de choisir une salle libre ; « refusé » : l'enregistrement serait refusé (le choisir pour voir pourquoi).") }}
+  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ " (la durée ne change pas). « possible » : le déplacement sera accepté avec la salle proposée pour cette heure ; « refusé » : il serait refusé avec cette salle (le choisir pour voir pourquoi, puis essayer une autre salle si la raison tient à la salle).") }}
   {%- if f.remarque_debuts %}
   {{ ui.message(f.remarque_debuts, "attention") }}
   {%- endif %}

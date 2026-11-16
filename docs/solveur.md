@@ -158,8 +158,8 @@ n'a pas besoin d'être écrit.
   accessibilité, indisponibilités récurrentes de la salle.
 
 Un domaine vide est rapporté **avant** la résolution, en nommant la séance et
-ce qui élimine ses possibilités (« 20 débuts examinés, tous écartés : 12 par
-une indisponibilité de Mme Martin, 8 par la pause déjeuner »).
+ce qui élimine ses possibilités (« les 20 heures de début examinées sont toutes
+écartées, 12 par une indisponibilité de Mme Martin et 8 par la pause déjeuner »).
 
 **Contraintes.**
 
@@ -828,11 +828,11 @@ vérificateur, avec la même phrase.
 | Famille | Exemple de message |
 |---|---|
 | dépliage | « Projet : 5 séances demandées, mais la période n'en permet que 2... Corriger le besoin avant de lancer le calcul. » |
-| séance sans horaire | « « TP » (séance 12-1) : aucun horaire possible : 20 début(s) examiné(s), tous écartés (20 par une indisponibilité de Mme Martin). » |
-| séance sans salle | « « TP » (séance 12-1) : aucune salle ne convient. Sur 40 salle(s) : 12 du type demandé (Laboratoire), 30 d'au moins 45 places, 0 accessibles ; la séance requiert une salle accessible et aucune salle ne l'est. » |
-| verrou intenable | « La séance verrouillée « Maths » (séance 3-1), placée le lundi 8 h 30 - 10 h 30, est verrouillée en salle N101, qui ne fait pas partie des salles d'au moins 30 places... » |
+| séance sans horaire | « « TP » : aucun horaire possible : les 20 heures de début examinées sont toutes écartées, 20 par une indisponibilité de Mme Martin. » |
+| séance sans salle | « « TP » : aucune salle ne convient. Sur 40 salles : 12 du type demandé (Laboratoire), 30 d'au moins 45 places, 0 accessibles ; la séance requiert une salle accessible et aucune salle ne l'est. » |
+| verrou intenable | « La séance verrouillée « Maths » (séance n° 1 de la semaine), placée le lundi 8 h 30 - 10 h 30, est verrouillée en salle N101, qui ne fait pas partie des salles d'au moins 30 places... » |
 | verrous contradictoires | « Les séances verrouillées « Maths »... et « Physique »... se contredisent (« Une séance par salle »). » |
-| créneau imposé à plusieurs séances | « « DST » impose le même jour et la même heure à ses séances 7-1 et 7-2... » |
+| créneau imposé à plusieurs séances | « « DST » impose le même jour et la même heure à ses séances n° 1 et 2... » |
 | charge d'un groupe | « Le groupe A2-G1 demande 10 h de cours par semaine pour 8 h 30 disponibles : c'est impossible. » |
 | charge d'un enseignant | « Mme Martin doit assurer 6 h de cours par semaine pour 4 h 15 disponibles (compte tenu de ses indisponibilités) : c'est impossible. » |
 | maxima d'un enseignant | « Mme Martin doit assurer 6 h de cours par semaine pour un maximum de 4 h par semaine : c'est impossible. » |

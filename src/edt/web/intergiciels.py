@@ -12,7 +12,8 @@ corps retiré.
   `request.state.id_requete` et dans l'en-tête de réponse `X-Request-ID` ;
 - journalise la méthode, le chemin, le statut et la durée (au niveau DEBUG
   pour les fichiers statiques et l'interrogation périodique du suivi d'un
-  calcul, qui écrirait sinon une ligne par seconde : `est_silencieux`) ;
+  calcul, d'un échange avec l'assistant ou d'une exécution des tests, qui
+  écrirait sinon une ligne par seconde : `est_silencieux`) ;
 - intercepte toute exception non prévue : la trace complète part dans le
   journal avec l'identifiant, et l'utilisateur reçoit une page d'erreur
   lisible portant ce même identifiant (jamais de trace brute à l'écran).
@@ -20,6 +21,7 @@ corps retiré.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 import time
@@ -38,8 +40,12 @@ EN_TETE_ID = "X-Request-ID"
 PREFIXES_SILENCIEUX = ("/static/", "/assistant/echanges/")
 """Débuts de chemin journalisés au niveau DEBUG seulement : fichiers statiques, et suivi
 d'un échange avec l'assistant, interrogé chaque seconde."""
-MOTIFS_SILENCIEUX = (re.compile(r"/calculs/[0-9]+/etat"),)
-"""Chemins entiers journalisés au niveau DEBUG : suivi d'un calcul, interrogé chaque seconde."""
+MOTIFS_SILENCIEUX = (
+    re.compile(r"/calculs/[0-9]+/etat"),
+    re.compile(r"/tests/(unitaires|integration)/suivi"),
+)
+"""Chemins entiers journalisés au niveau DEBUG : suivi d'un calcul et suivi d'une exécution des
+tests, interrogés chaque seconde."""
 
 
 def est_silencieux(chemin: str, statut: int) -> bool:
@@ -90,6 +96,7 @@ class IntergicielJournal:
         debut = time.perf_counter()
         statut = 500
         reponse_commencee = False
+        interrompue = False
 
         async def envoyer(message: Message) -> None:
             nonlocal statut, reponse_commencee
@@ -118,10 +125,28 @@ class IntergicielJournal:
                     ),
                 )
                 await reponse(scope, receive, envoyer)
+        except asyncio.CancelledError:
+            # Arrêt du serveur ou client parti : la requête est abandonnée, ce n'est pas une
+            # erreur 500 (aucune réponse d'erreur n'est partie).
+            interrompue = not reponse_commencee
+            raise
         finally:
             duree_ms = (time.perf_counter() - debut) * 1000
-            niveau = logging.DEBUG if est_silencieux(scope["path"], statut) else logging.INFO
-            journal.log(
-                niveau, "%s %s -> %d en %.0f ms", scope["method"], scope["path"], statut, duree_ms
-            )
+            if interrompue:
+                journal.info(
+                    "%s %s -> interrompue en %.0f ms (arrêt du serveur ou client parti)",
+                    scope["method"],
+                    scope["path"],
+                    duree_ms,
+                )
+            else:
+                niveau = logging.DEBUG if est_silencieux(scope["path"], statut) else logging.INFO
+                journal.log(
+                    niveau,
+                    "%s %s -> %d en %.0f ms",
+                    scope["method"],
+                    scope["path"],
+                    statut,
+                    duree_ms,
+                )
             contexte_requete.reset(jeton)

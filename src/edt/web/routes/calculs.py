@@ -50,9 +50,9 @@ from edt.web.menu import EntreeMenu
 SECTION_GENERER = "Générer"
 
 DELAI_DOUBLE_ENVOI_S = 5.0
-"""Un second « Lancer le calcul » arrivé si tôt après le premier est un double clic : la page
-dit « Calcul lancé. » comme pour le premier envoi, au lieu d'avertir qu'un calcul est déjà en
-cours."""
+"""Un second « Lancer le calcul » arrivé si tôt après le premier, avec le même semestre et les
+mêmes réglages, est un double clic : la page dit « Calcul lancé. » comme pour le premier envoi,
+au lieu d'avertir qu'un calcul est déjà en cours."""
 
 journal = logging.getLogger(__name__)
 routeur = APIRouter()
@@ -269,14 +269,19 @@ def lancer(
             ),
             niveaux_regles=niveaux_regles,
         )
-    except ErreurCalculEnCours:
-        suivi = generation.calcul_en_cours()
-        if (
-            suivi is not None
-            and suivi.semestre_id == semestre_id
-            and suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S
-        ):
+    except calculs.ErreurMemeCalculEnCours as erreur:
+        suivi = erreur.suivi
+        if suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S:
             return rediriger(request, f"/calculs/{suivi.id}", "Calcul lancé.")
+        return rediriger(
+            request,
+            f"/calculs/{suivi.id}",
+            "Un calcul est déjà en cours : voici son avancement.",
+            "attention",
+        )
+    except ErreurCalculEnCours:
+        # Autre semestre ou autres réglages : les réglages envoyés n'ont pas été appliqués.
+        suivi = generation.calcul_en_cours()
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
@@ -333,7 +338,12 @@ def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
         return rediriger(request, f"/calculs/{calcul_id}")
     resultat = calculs.resultat_calcul(session, calcul_id)
     _prechauffer_si_fini(resultat)
-    return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
+    # Calcul fini : le bandeau de la page (« Calcul lancé. ») est périmé, il est vidé.
+    return rendre(
+        request,
+        "edt/_suivi_calcul.html",
+        {"r": resultat, "fmt": presentation, "vider_messages": not resultat.en_cours},
+    )
 
 
 @routeur.post("/calculs/{calcul_id:int}/arreter", name="arreter_calcul")
@@ -417,18 +427,25 @@ def activer(request: Request, session: SessionRequete, version_id: int, taches: 
 
 
 @routeur.post("/versions/{version_id:int}/supprimer", name="supprimer_version")
-def supprimer(request: Request, session: SessionRequete, version_id: int):
+def supprimer(
+    request: Request,
+    session: SessionRequete,
+    version_id: int,
+    semestre_id: EntierFacultatif = None,
+):
     """Supprime une version qui n'est pas active (après confirmation dans la page).
 
     Une version qui n'existe pas ou plus (double clic, second onglet) mène à l'historique avec un
-    message d'information, jamais à une page d'erreur : le résultat voulu est atteint.
+    message d'information, jamais à une page d'erreur : le résultat voulu est atteint. Le
+    semestre de la page d'origine (`semestre_id`, dans l'adresse du formulaire) y est gardé.
     """
     try:
         semestre_id = versions.lire_version(session, version_id).semestre_id
     except ErreurIntrouvable:
         journal.info("Suppression de la version %s : elle n'existe pas ou plus", version_id)
+        historique = "/versions" if semestre_id is None else f"/versions?semestre_id={semestre_id}"
         return rediriger(
-            request, "/versions", "Cette version n'existe plus : elle a déjà été supprimée.", "info"
+            request, historique, "Cette version n'existe plus : elle a déjà été supprimée.", "info"
         )
     libelle = versions.supprimer_version(session, version_id)
     return rediriger(request, f"/versions?semestre_id={semestre_id}", f"« {libelle} » supprimée.")

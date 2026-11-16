@@ -120,11 +120,16 @@ def init_db(
     sauvegarde = None
     if reset:
         _confirmer_remise_a_zero(oui)
-        if charger_configuration().est_prod and not sans_sauvegarde:
+
+        def sauvegarder() -> None:
+            nonlocal sauvegarde
             sauvegarde = sauvegarder_base()
+
         # Même chemin que l'écran de configuration : verrou, fichier marqueur vu des autres
-        # processus, refus pendant un calcul.
-        rapport = remettre_a_zero()
+        # processus, refus pendant un calcul. La sauvegarde suit les refus : une demande
+        # refusée n'ajoute pas de copie à la rotation des sauvegardes.
+        prod = charger_configuration().est_prod and not sans_sauvegarde
+        rapport = remettre_a_zero(avant=sauvegarder if prod else None)
     else:
         rapport = initialiser_base()
     action = "remise à zéro puis initialisée" if rapport.reinitialisee else "initialisée"

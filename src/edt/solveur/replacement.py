@@ -758,8 +758,13 @@ def _placer(
     details = ", ".join(
         f"{nombre} par {motif}" for motif, nombre in sorted(refus.items(), key=lambda r: -r[1])
     )
+    creneaux = (
+        "le créneau examiné est écarté"
+        if nb_examinees == 1
+        else f"les {nb_examinees} créneaux examinés sont tous écartés"
+    )
     return _a_programmer(
         origine,
         f"aucune place libre entre le {premier:%d/%m/%Y} et le {dernier:%d/%m/%Y} : "
-        f"{nb_examinees} créneau(x) examiné(s), tous écartés ({details})",
+        f"{creneaux}, {details}",
     )

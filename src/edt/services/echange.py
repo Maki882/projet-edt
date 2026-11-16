@@ -404,7 +404,7 @@ def _importer(
             "le confirmer explicitement pour appliquer l'import."
         )
     # Par le service de génération : un calcul abandonné par son processus est d'abord clos.
-    en_cours = calcul_en_cours()
+    en_cours = calcul_en_cours(ecriture=True)
     if en_cours is not None:
         raise ErreurCalculEnCours(
             f"Un calcul d'emploi du temps est en cours (n° {en_cours.id}) : l'import est refusé "

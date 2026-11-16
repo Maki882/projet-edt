@@ -620,7 +620,7 @@ def blocage_calcul() -> tuple[int, Raison] | None:
     calcul. Un semestre ou une année supprimés emporteraient le calcul
     lui-même, et avec lui le verrou « un seul calcul à la fois ».
     """
-    suivi = generation.calcul_en_cours()
+    suivi = generation.calcul_en_cours(ecriture=True)
     if suivi is None:
         return None
     return suivi.id, Raison(

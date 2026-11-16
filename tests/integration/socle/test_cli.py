@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import sqlite3
 import sys
 import types
@@ -169,6 +170,33 @@ def test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_
 
 
 @pytest.mark.cas_limite
+@pytest.mark.parametrize("env", ["dev", "prod"])
+def test_base_illisible_le_remede_annonce_permet_d_en_sortir(
+    lanceur, base, environnement, monkeypatch, corrompre_base, env
+):
+    """Cas : le fichier de la base n'est plus une base SQLite (abîmé ou remplacé), et
+    `init-db --reset --oui` est lancé pour la recréer, en développement puis en production.
+
+    Risque : en développement, le refus conseille cette même commande (l'utilisateur tourne en
+    rond) ; en production, il conclut « libérer de l'espace disque ou corriger les droits »,
+    qui ne sert à rien. Le remède annoncé doit permettre de recréer la base.
+    """
+    monkeypatch.setenv("EDT_ENV", env)
+    chemin = corrompre_base()
+
+    refus = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert refus.exit_code == cli.CODE_ERREUR_METIER, refus.output
+    sortie = " ".join(refus.output.split())
+    assert "init-db --reset" not in sortie and "espace disque" not in sortie, sortie
+    assert "de côté" in sortie and "« python -m edt init-db »" in sortie, sortie
+    # Le remède annoncé : mettre le fichier de côté, puis « init-db ».
+    chemin.rename(chemin.with_name("edt-illisible.db"))
+    recree = lanceur.invoke(cli.app, ["init-db"])
+    assert recree.exit_code == 0, recree.output
+
+
+@pytest.mark.cas_limite
 def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours(
     lanceur, jeu_minimal, environnement, monkeypatch, compter
 ):
@@ -235,6 +263,41 @@ def test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue(
     assert "sauvegarde de la base" in resultat.output and "remise à zéro annulée" in resultat.output
     assert compter(Salle) == jeu_minimal.nb_salles
     assert not list(environnement.rglob("*.partiel"))
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("occupation", ["calcul", "chargement"])
+def test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde(
+    lanceur, jeu_minimal, environnement, monkeypatch, compter, occupation
+):
+    """Cas : `init-db --reset --oui` en production, refusé parce qu'un calcul tourne ou qu'un
+    autre processus charge un établissement fictif.
+
+    Risque : la copie « edt-<date>-avant-reset.db » est écrite avant le refus, sans être
+    signalée ; chaque nouvel essai en ajoute une, qui chasse de la rotation les sauvegardes
+    du déploiement.
+    """
+    monkeypatch.setenv("EDT_ENV", "prod")
+    if occupation == "calcul":
+        pid_vivant = 4242
+        monkeypatch.setattr(generation, "_processus_vivant", lambda pid: pid == pid_vivant)
+        with session_base() as session:
+            session.add(
+                Calcul(
+                    semestre_id=jeu_minimal.semestre_id,
+                    etat=EtatCalcul.EN_COURS,
+                    demarre_le=dt.datetime.now(),
+                    statistiques={"pid": pid_vivant},
+                )
+            )
+    else:
+        jeux.fichier_marqueur().write_text(f"{os.getppid()} charger", encoding="utf-8")
+
+    resultat = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert compter(Salle) == jeu_minimal.nb_salles
+    assert not list(environnement.rglob("edt-*-avant-reset.db"))
 
 
 @pytest.mark.cas_limite

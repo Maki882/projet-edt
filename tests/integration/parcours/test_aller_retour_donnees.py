@@ -16,7 +16,7 @@ TABLES = (m.Salle, m.Enseignant, m.Groupe, m.Matiere, m.Besoin)
 
 @pytest.mark.integration
 def test_export_puis_import_dans_une_base_neuve(jeu_minimal, client, environnement, aujourdhui):
-    """Scénario : on déménage les données d'une installation vers une autre.
+    """Scénario : les données d'une installation déménagent vers une autre.
 
     Étapes :
     1. Télécharger le classeur des données depuis le site (GET /export/donnees.xlsx).

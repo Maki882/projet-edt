@@ -10,10 +10,13 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import logging
+import threading
 import time
+from collections.abc import Callable
 
 import pytest
 from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 from tests.outils.solveur.en_base import OPTIONS
 from tests.outils.solveur.en_base import calcul_fictif as _calcul_fictif
 from tests.outils.solveur.en_base import etat as _etat
@@ -24,7 +27,7 @@ from edt.db import modeles as m
 from edt.db import moteur as module_moteur
 from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineVersion
-from edt.erreurs import ErreurIntrouvable
+from edt.erreurs import ErreurCalculEnCours, ErreurIntrouvable
 from edt.services import generation
 from edt.services import regles as service_regles
 from edt.services.instantane import charger_instantane
@@ -173,6 +176,65 @@ def test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne(jeu_minima
     # Verrou relâché : l'appel suivant clôt le calcul.
     assert generation.calcul_en_cours() is None
     assert _etat(abandonne) is EtatCalcul.ERREUR
+
+
+def _appels_d_ecriture() -> dict[str, Callable[[Session], object]]:
+    """Les contrôles « aucun calcul en cours » des services qui écrivent, par nom lisible."""
+    from edt.echange.lecture import FichierEnvoye
+    from edt.services import echange, jeux
+    from edt.services.referentiels import operations, reglages
+
+    fichier = FichierEnvoye("salles.csv", b"code;nom;campus\n")
+    return {
+        "paramètres": lambda session: reglages.enregistrer_parametres_saisis(session, {}),
+        "paramètres par défaut": reglages.remettre_parametres_par_defaut,
+        "établissement fictif": lambda _: jeux._refuser_pendant_un_calcul("charger"),
+        "suppression": lambda _: operations.blocage_calcul(),
+        "import": lambda session: echange.simuler_import(
+            session, [fichier], echange.OptionsImport()
+        ),
+    }
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("appel", list(_appels_d_ecriture()))
+def test_controle_d_une_ecriture_n_attend_pas_un_lancement_de_calcul(
+    jeu_minimal, monkeypatch, appel
+):
+    """Cas : une requête d'écriture tient le verrou d'écriture de la base et vérifie qu'aucun
+    calcul ne tourne, pendant qu'un lancement de calcul tient le verrou du service de génération
+    et attend, lui, le verrou de la base (clics simultanés sur « Enregistrer » et « Lancer »).
+
+    Risque : chacun attend l'autre ; les deux requêtes restent figées jusqu'au délai de verrou
+    de la base, puis le lancement échoue « base occupée ». Le contrôle doit renoncer vite et
+    refuser l'écriture avec un message qui dit d'attendre.
+    """
+    monkeypatch.setattr(generation, "DELAI_VERROU_ECRITURE_S", 0.05)
+    controle = _appels_d_ecriture()[appel]
+    resultat: list[BaseException | None] = []
+
+    def ecrire() -> None:
+        with session_base() as requete:
+            transaction_immediate(requete)
+            try:
+                controle(requete)
+            except BaseException as erreur:  # noqa: BLE001 - rendue au test
+                resultat.append(erreur)
+            else:
+                resultat.append(None)
+
+    assert generation._verrou.acquire(timeout=5)  # le lancement concurrent tient le verrou
+    try:
+        fil = threading.Thread(target=ecrire, daemon=True)
+        fil.start()
+        fil.join(5)
+        bloque = fil.is_alive()
+    finally:
+        generation._verrou.release()
+    fil.join(15)
+    assert not bloque, "le contrôle attend le verrou du service de génération"
+    assert isinstance(resultat[0], ErreurCalculEnCours), resultat
+    assert "en cours de lancement" in resultat[0].message
 
 
 @pytest.mark.cas_limite

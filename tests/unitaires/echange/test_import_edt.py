@@ -17,6 +17,7 @@ from edt.domaine.enumerations import (
     OrigineVersion,
     StatutOccurrence,
 )
+from edt.echange.rapport import Bilan, RapportImport
 from edt.erreurs import ErreurDonneesInvalides
 from edt.services.echange import FichierEnvoye, ModeImport
 
@@ -273,3 +274,20 @@ def test_reimport_sans_enseignants_signale_le_remplacement_des_enseignants_exist
     with session_base() as session:
         besoin = _besoin(session, "IM.1101", "CM")
         assert [e.identifiant for e in besoin.enseignants] == ["FICTIF-IM.1101-A1"]
+
+
+@pytest.mark.cas_limite
+def test_doublon_fusionne_seul_n_est_pas_une_ecriture():
+    """Cas : un emploi du temps importé dont toutes les séances sont mises de côté ou annulées,
+    sauf un doublon du fichier fusionné à la lecture avec sa première ligne.
+
+    Risque : « fusionné » compté comme une écriture : l'écran propose « Appliquer », annonce
+    « Import appliqué » alors que rien n'est enregistré, et prépare les écrans pour rien.
+    """
+    bilan = Bilan("séances")
+    for compteur, nombre in (("fusionnes", 1), ("lues", 11), ("annulees", 1), ("ecartees", 9)):
+        bilan.ajouter(compteur, nombre)
+    rapport = RapportImport("reference", True, ("seances.csv",), (bilan,), ())
+    assert not rapport.a_des_ecritures
+    bilan.ajouter("retenues")  # une séance retenue s'écrit
+    assert rapport.a_des_ecritures

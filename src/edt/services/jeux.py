@@ -46,10 +46,11 @@ import logging
 import os
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NoReturn
 
 from sqlalchemy.orm import Session
 
@@ -94,8 +95,15 @@ def operation_en_cours(url: str | None = None) -> bool:
     marqueur il y a moins de `DUREE_MARQUEUR_S` secondes. Un marqueur dont le
     processus n'existe plus (arrêté sans le retirer) est ignoré.
     """
-    if _verrou_base.locked():
-        return True
+    return _verrou_base.locked() or _marqueur_actif(url)
+
+
+def _marqueur_actif(url: str | None) -> bool:
+    """Vrai si le fichier marqueur désigne une opération menée par un autre processus vivant.
+
+    Un marqueur au numéro de ce processus est un reste : appelée sans le verrou (lecture), ou
+    en le tenant (`_seul_a_la_fois`, avant d'écrire le sien).
+    """
     marqueur = fichier_marqueur(url)
     if marqueur is None:
         return False
@@ -110,7 +118,6 @@ def operation_en_cours(url: str | None = None) -> bool:
         )
         return False
     pid = _pid_du_marqueur(contenu)
-    # Le verrou n'est pas tenu ici : un marqueur au numéro de ce processus est un reste.
     if pid is not None and (pid == os.getpid() or not _processus_vivant(pid)):
         journal.warning(
             "Marqueur d'opération %s laissé par le processus %d, qui ne l'exécute plus : ignoré",
@@ -134,16 +141,16 @@ def _pid_du_marqueur(contenu: str) -> int | None:
 def _seul_a_la_fois(action: str, url: str | None = None) -> Iterator[None]:
     """Exécute le bloc sous le verrou ; refuse tout de suite si une autre opération le tient.
 
-    Pose le fichier marqueur pour les autres processus et le retire à la fin.
+    Refuse aussi quand le marqueur d'un autre processus vivant est posé (commande `edt jeu`
+    ou `init-db --reset` d'un côté, serveur de l'autre). Pose le fichier marqueur pour les
+    autres processus et le retire à la fin. Limite : deux processus qui commencent dans la
+    même fraction de seconde peuvent ne pas se voir.
     """
     if not _verrou_base.acquire(blocking=False):
-        journal.warning(
-            "Demande refusée (%s) : un chargement ou une remise à zéro est en cours", action
-        )
-        raise ErreurChargementEnCours(
-            f"Impossible de {action} : un chargement d'établissement fictif ou une remise à zéro "
-            "est déjà en cours. Attendre quelques secondes, puis recharger la page."
-        )
+        _refuser_operation(action, "dans ce processus")
+    if _marqueur_actif(url):
+        _verrou_base.release()
+        _refuser_operation(action, "par un autre processus")
     marqueur = fichier_marqueur(url)
     try:
         if marqueur is not None:
@@ -160,6 +167,16 @@ def _seul_a_la_fois(action: str, url: str | None = None) -> Iterator[None]:
             except OSError as erreur:
                 journal.warning("Marqueur d'opération %s non retiré : %s", marqueur, erreur)
         _verrou_base.release()
+
+
+def _refuser_operation(action: str, ou: str) -> NoReturn:
+    journal.warning(
+        "Demande refusée (%s) : un chargement ou une remise à zéro est en cours %s", action, ou
+    )
+    raise ErreurChargementEnCours(
+        f"Impossible de {action} : un chargement d'établissement fictif ou une remise à zéro "
+        "est déjà en cours. Attendre quelques secondes, puis recharger la page."
+    )
 
 
 @dataclass(frozen=True)
@@ -264,20 +281,28 @@ def _charger(
 
 
 def remettre_a_zero(
-    *, aujourdhui: dt.date | None = None, url: str | None = None
+    *,
+    aujourdhui: dt.date | None = None,
+    url: str | None = None,
+    avant: Callable[[], object] | None = None,
 ) -> RapportInitialisation:
     """Supprime toutes les données puis recrée la base et ses données par défaut.
 
     `aujourdhui` choisit l'année scolaire recréée (défaut : la date du jour) ;
-    `url` désigne la base (défaut : `EDT_DB_URL`). Refusé pendant un calcul
-    et pendant un chargement ou une autre remise à zéro.
+    `url` désigne la base (défaut : `EDT_DB_URL`) ; `avant` est appelée une fois
+    les refus passés, juste avant l'effacement (sauvegarde de la base : rien
+    n'est écrit pour une demande refusée). Refusé pendant un calcul et pendant
+    un chargement ou une autre remise à zéro.
     """
     with _seul_a_la_fois("remettre la base à zéro", url):
-        return _remettre_a_zero(aujourdhui, url, "remettre la base à zéro")
+        return _remettre_a_zero(aujourdhui, url, "remettre la base à zéro", avant)
 
 
 def _remettre_a_zero(
-    aujourdhui: dt.date | None, url: str | None, action: str
+    aujourdhui: dt.date | None,
+    url: str | None,
+    action: str,
+    avant: Callable[[], object] | None = None,
 ) -> RapportInitialisation:
     """Remise à zéro refusée pendant un calcul ; `action` nomme la demande dans le refus.
 
@@ -285,6 +310,8 @@ def _remettre_a_zero(
     de la base d'avant la suppression des tables.
     """
     _exiger_aucun_calcul(action, url)
+    if avant is not None:
+        avant()
     journal.warning("Remise à zéro de la base demandée : toutes les données seront supprimées")
     rapport = initialiser_base(reset=True, aujourdhui=aujourdhui, url=url)
     obtenir_moteur(url).dispose()
@@ -364,7 +391,7 @@ def _exiger_aucun_calcul(action: str, url: str | None = None) -> None:
 
 def _refuser_pendant_un_calcul(action: str) -> None:
     """Lève `ErreurCalculEnCours` si un calcul tourne ; la base doit avoir ses tables."""
-    suivi = calcul_en_cours()
+    suivi = calcul_en_cours(ecriture=True)
     if suivi is not None:
         raise ErreurCalculEnCours(
             f"Impossible de {action} : un calcul d'emploi du temps est en cours "

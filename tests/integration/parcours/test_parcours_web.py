@@ -19,7 +19,7 @@ def test_parcours_web_du_calcul_a_l_export(jeu_minimal, client):
     """Scénario : un responsable génère l'emploi du temps depuis le site, le consulte et l'exporte.
 
     Étapes :
-    1. Il envoie le formulaire « Générer » (POST /calculs) ; le vrai solveur calcule.
+    1. Envoi du formulaire « Générer » (POST /calculs) ; le vrai solveur calcule.
     2. La page des versions montre une version « Active ».
     3. La page « Emploi du temps » affiche des séances dans la grille.
     4. Le vérificateur ne trouve aucune anomalie bloquante (semaine type et séances datées).

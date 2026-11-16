@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import datetime as dt
+import json
 import logging
 import os
 import sqlite3
@@ -585,6 +586,39 @@ def test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus(jeu_minimal):
     assert generation.demander_arret(dernier).etat is EtatCalcul.ERREUR
 
 
+@pytest.mark.cas_limite
+def test_calcul_refuse_pendant_une_execution_des_tests(jeu_minimal, processus_vivant, monkeypatch):
+    """Cas : une exécution des tests tourne, lancée par la ligne de commande (fichier de verrou
+    du banc de tests au nom d'un autre processus vivant) ou depuis l'application (ce processus),
+    et un calcul est demandé.
+
+    Risque : le calcul et pytest se partagent les processeurs du serveur ; le calcul atteint son
+    temps limite plus vite et rend un emploi du temps moins bon, sans que rien ne le dise.
+    """
+    from edt.services.banc_tests import execution, resultats
+
+    dossier = resultats.dossier_resultats()
+    dossier.mkdir(parents=True, exist_ok=True)
+    verrou = dossier / execution.FICHIER_VERROU
+    info = {"pid": processus_vivant.pid, "execution": "e1", "libelle": "Tests unitaires"}
+    verrou.write_text(json.dumps(info), encoding="utf-8")
+    with pytest.raises(ErreurRegleMetier, match="exécution des tests est en cours") as refus:
+        generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    assert "onglet des tests" in refus.value.message and "relancer" in refus.value.message
+    verrou.unlink()
+
+    dans_ce_processus = types.SimpleNamespace(en_cours=True)
+    monkeypatch.setattr(execution, "_courante", dans_ce_processus)
+    with pytest.raises(ErreurRegleMetier, match="exécution des tests est en cours"):
+        generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Calcul)) == 0
+
+    dans_ce_processus.en_cours = False  # exécution terminée : le calcul passe
+    suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS))
+    assert suivi.etat is EtatCalcul.REUSSI, suivi.message
+
+
 def test_calcul_vivant_d_un_autre_processus_n_est_pas_clos(jeu_minimal):
     """Une commande lancée pendant que le service calcule ne clôt pas le calcul du service."""
     vivant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
@@ -757,7 +791,7 @@ def test_commande_generer_echec_code_1(lanceur, jeu_minimal):
     assert resultat.exit_code == 1 and "le calcul serait refusé" in resultat.output
     resultat = lanceur.invoke(cli.app, ["generer", "--semestre", semestre])
     assert resultat.exit_code == 1, resultat.output
-    assert "Impossible (prouvé)" in resultat.output
+    assert generation.LIBELLE_NON_LANCE in resultat.output  # refusé avant la recherche
 
 
 # --------------------------------------------------------------------------- #
@@ -915,7 +949,7 @@ def test_salle_supprimee_pendant_le_calcul_est_dite(jeu_minimal, caplog):
 
 
 @pytest.mark.cas_limite
-def test_semestre_sans_besoin_ne_cree_pas_de_version_vide(jeu_minimal):
+def test_semestre_sans_besoin_ne_cree_pas_de_version_vide(jeu_minimal, lanceur, client):
     """Cas : Générer sur un semestre sans aucun besoin, qui a une version de référence active.
 
     Risque : « Aucune séance à placer » pris pour un succès, version vide enregistrée et activée,
@@ -945,6 +979,14 @@ def test_semestre_sans_besoin_ne_cree_pas_de_version_vide(jeu_minimal):
     with session_base() as session:
         (version,) = session.scalars(select(m.VersionEdt)).all()
         assert version.libelle == "Référence importée" and version.active
+    # Un calcul non lancé n'est pas annoncé « Impossible (prouvé) » : rien n'a été cherché.
+    commande = lanceur.invoke(cli.app, ["generer", "--semestre", str(jeu_minimal.semestre_id)])
+    assert f"Calcul n° {suivi.id + 1} : {generation.LIBELLE_NON_LANCE}" in commande.output
+    historique = client.get(f"/versions?semestre_id={jeu_minimal.semestre_id}").text
+    assert EtatCalcul.INFAISABLE.libelle not in commande.output + historique
+    assert historique.count(generation.LIBELLE_NON_LANCE) == 2
+    page = client.get(f"/calculs/{suivi.id}").text
+    assert "qu&#39;aucun emploi du temps ne peut satisfaire" not in page
 
 
 @pytest.mark.cas_limite

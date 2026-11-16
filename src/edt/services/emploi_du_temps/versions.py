@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from edt.db import modeles as m
 from edt.domaine.enumerations import EtatCalcul, OrigineVersion, StatutOccurrence
 from edt.erreurs import ErreurIntrouvable, ErreurRegleMetier
+from edt.services import generation
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.emploi_du_temps import presentation, regles_personnalisees
 from edt.services.emploi_du_temps.identifiants import exiger_identifiant, obtenir
@@ -79,6 +80,8 @@ class LigneCalcul:
     version_numero: int | None
     niveaux_modifies: tuple[str, ...] = ()
     regles_modifiees: tuple[str, ...] = ()
+    libelle: str = ""
+    """Résultat en quelques mots (`generation.libelle_resultat`)."""
 
 
 @dataclass(frozen=True)
@@ -217,6 +220,7 @@ def historique(session: Session, semestre_id: int) -> Historique:
             version_numero=numeros.get(produites.get(c.id)),
             niveaux_modifies=_niveaux_modifies(c, dejeuner_actif),
             regles_modifiees=regles_personnalisees.resume_regles_du_calcul(c),
+            libelle=generation.libelle_resultat(EtatCalcul(c.etat), c.statistiques),
         )
         for c in calculs
     )
