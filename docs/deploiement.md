@@ -214,8 +214,9 @@ Ce que fait `deployer.sh` (chaque étape est affichée et horodatée) :
    - **préparation**, l'ancienne version reste en ligne : verrou, envoi complet,
      fichiers de la base à l'utilisateur `edt`, **aucune commande `sudo edt`
      ni autre processus de l'application hors du service** (sinon refus, avec
-     la liste des processus), venv propre à la version, `pip install` aux
-     versions exactes de `contraintes.txt` (section 15), chargement de l'application avec la configuration de production (elle
+     la liste des processus), venv propre à la version, `pip install` de l'application et de son extra de
+     développement (pytest, httpx2, ruff : les onglets de tests lancent pytest sur le
+     serveur) aux versions exactes de `contraintes.txt` (section 15), chargement de l'application avec la configuration de production (elle
      indique elle-même la base qu'elle utilise), contrôle du port 8000 ;
    - **bascule** : arrêt du service (au plus 20 s d'attente, puis arrêt forcé),
      nouveau contrôle qu'aucun processus de l'application ne tient la base,
@@ -315,6 +316,7 @@ sudo edt jeu --taille moyen              # charge le jeu fictif (base initialis�
 sudo edt verifier                        # vérifie l'emploi du temps
 sudo edt sauvegarder --prefixe manuelle --garder 0   # sauvegarde vérifiée, jamais supprimée
 sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<fichier>.db   # contrôle sans modifier
+sudo edt tests --famille unitaires       # lance les tests unitaires (résultats visibles dans l'application)
 ```
 
 Depuis le poste : `serveur 'sudo edt doctor'` (`serveur -t` pour une commande
@@ -367,7 +369,11 @@ serveur -t 'sudo bash /opt/edt/courant/code/deploy/installer-cle-assistant.sh --
 ```
 
 **Essayer l'assistant** : `serveur -t 'sudo edt assistant --essai'` (un appel
-réel au modèle, compté dans la consommation du jour). `deploy/etat.sh` indique
+réel au modèle, compté dans la consommation du jour). Codes de sortie : 0 l'essai
+a réussi ; 1 l'assistant n'est pas utilisable (non configuré, désactivé,
+configuration invalide, clé refusée, modèle introuvable, requête refusée, limite
+atteinte), avec la cause et le remède ; 2 erreur inattendue (trace dans le
+journal). `deploy/etat.sh` indique
 « Assistant : clé installée » ou « clé absente » (existence du fichier
 seulement, jamais son contenu).
 
@@ -894,6 +900,11 @@ de main (gestionnaire de mots de passe), jamais copiée dans un fichier du poste
   `sudo systemctl restart edt`. Le fichier est lu par systemd (pour le service,
   le lanceur `edt`, la sauvegarde quotidienne et les déploiements) : une ligne
   `NOM=valeur` par variable. Le modèle du dépôt ne l'écrase jamais.
+- **Tests lancés depuis l'application** (onglets « Tests unitaires » et « Tests
+  d'intégration », commande `sudo edt tests`) : `EDT_TESTS_DUREE_MAX_S` (900 par
+  défaut) borne la durée d'une exécution, en secondes ; `EDT_TESTS_LANCEMENT=non`
+  désactive les lancements (les derniers résultats restent consultables). Les
+  résultats sont dans `/var/log/edt/tests/`.
 - **Service, minuteur, lanceur, nginx ou pages d'erreur** : modifier le fichier
   dans `deploy/`, committer, puis refaire les étapes 1 et 2 de la section 3. Si
   `nginx -t` refuse la nouvelle configuration, l'ancienne est remise automatiquement.
