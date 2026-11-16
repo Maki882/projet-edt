@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import datetime as dt
 import os
 import sqlite3
 import sys
@@ -17,9 +16,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import DatabaseError, OperationalError, ProgrammingError
 from starlette.exceptions import HTTPException
 from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
+from tests.outils.solveur.en_base import calcul_abandonne
 
 from edt.db.initialisation import supprimer_schema
-from edt.db.modeles import Calcul, Campus
+from edt.db.modeles import Campus
 from edt.db.moteur import liberer_moteurs, obtenir_moteur, session_base
 from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurRegleMetier
@@ -86,20 +86,6 @@ def _app_etendue(monkeypatch):
 def client_etendu(base, monkeypatch):
     """Client de l'application étendue (`_app_etendue`)."""
     return TestClient(_app_etendue(monkeypatch))
-
-
-def _calcul_reste_en_cours(semestre_id: int) -> int:
-    """Une ligne « calcul en cours » laissée par un processus disparu."""
-    with session_base() as session:
-        calcul = Calcul(
-            semestre_id=semestre_id,
-            etat=EtatCalcul.EN_COURS,
-            demarre_le=dt.datetime(2026, 10, 5, 8, 0),
-            statistiques={"pid": 999_999},
-        )
-        session.add(calcul)
-        session.flush()
-        return calcul.id
 
 
 def test_accueil_tait_une_base_en_bon_etat(jeu_minimal, client):
@@ -246,7 +232,7 @@ def test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise(
     Risque : journalisation du démarrage, clôture des calculs abandonnés et message d'arrêt
     cassés sans signal.
     """
-    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+    abandonne = calcul_abandonne(jeu_minimal.semestre_id)
 
     with TestClient(module_app.creer_app()) as client:
         assert client.get("/sante").status_code == 200
@@ -348,7 +334,7 @@ def test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_de
     Risque : la clôture (une écriture) fait échouer le démarrage ; elle doit être reportée
     (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ».
     """
-    abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
+    abandonne = calcul_abandonne(jeu_minimal.semestre_id)
     liberer_moteurs()
 
     with verrou_ecriture(), TestClient(_app_etendue(monkeypatch)) as client:
