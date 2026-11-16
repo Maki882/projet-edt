@@ -101,6 +101,7 @@ from edt.services.emploi_du_temps.versions import (
 from edt.services.instantane import charger_instantane
 from edt.services.parametres import ecrire_parametres, lire_parametres
 from edt.solveur.contrat import OptionsSolveur
+from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
 from edt.verification.contrat import Anomalie
 
 journal = logging.getLogger(__name__)
@@ -1175,7 +1176,8 @@ def resultat_calcul(
         controle=controle,
         nb_a_programmer=nb_a_programmer,
         journal_nom=Path(suivi.fichier_journal).name if suivi.fichier_journal else None,
-        avertissements=tuple(suivi.avertissements),
+        # L'arrêt demandé est dit par le titre et la phrase : ce n'est pas une situation tendue.
+        avertissements=tuple(a for a in suivi.avertissements if a != MESSAGE_SOLUTION_CONSERVEE),
         impossibilites=tuple(statistiques.get("impossibilites") or ()),
         nb_seances=int(statistiques["nb_seances"])
         if issue == Issue.REUSSI and "nb_seances" in statistiques
@@ -1312,9 +1314,12 @@ def _phrases(
         if suivi.version_id is None:
             phrase += " La version produite a depuis été supprimée."
         elif version_active:
-            phrase += " Il est maintenant la version active du semestre."
+            phrase += " Cet emploi du temps est maintenant la version active du semestre."
         else:
-            phrase += " Il est enregistré comme une version du semestre (pas la version active)."
+            phrase += (
+                " Cet emploi du temps est enregistré comme une version du semestre (pas la "
+                "version active)."
+            )
         return titre, phrase, None
     if issue == Issue.REFUSE:
         return (

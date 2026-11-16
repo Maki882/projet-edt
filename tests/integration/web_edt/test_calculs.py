@@ -488,6 +488,7 @@ def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
         return dataclasses.replace(
             resultat,
             message=f"{resultat.message} {MESSAGE_SOLUTION_CONSERVEE}",
+            avertissements=(*resultat.avertissements, MESSAGE_SOLUTION_CONSERVEE),
             statistiques={**resultat.statistiques, "arrete_par_utilisateur": True},
         )
 
@@ -504,6 +505,10 @@ def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
     assert "Calcul arrêté : meilleure solution conservée" in page
     assert "la meilleure solution trouvée a été conservée" in page
     assert "Voir l&#39;emploi du temps" in page or "Voir l'emploi du temps" in page
+    # La phrase désigne l'emploi du temps, pas « il » (la solution) ; l'arrêt demandé n'est
+    # pas une situation tendue.
+    assert "Cet emploi du temps est maintenant la version active" in page
+    assert " Il est " not in page and "situations tendues" not in page
 
 
 def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
