@@ -276,8 +276,8 @@ def lancer_calcul(
 
     Lève `ErreurCalculEnCours` si un calcul tourne déjà (dans ce processus ou
     un autre, même lancé la même seconde), `ErreurRegleMetier` pendant un
-    chargement d'établissement fictif, une remise à zéro ou un import,
-    `ErreurIntrouvable` si le semestre n'existe pas.
+    chargement d'établissement fictif, une remise à zéro, un import ou une
+    exécution des tests, `ErreurIntrouvable` si le semestre n'existe pas.
     """
     # Imports locaux : `edt.services.jeux` et `edt.services.echange` importent ce module.
     from edt.services.echange import import_en_cours
@@ -287,6 +287,7 @@ def lancer_calcul(
         raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     config = charger_configuration()
     moteur = moteur or solveur.resoudre
+    _refuser_pendant_les_tests(semestre_id)
     # L'attente du verrou d'écriture de la base (plus bas) se fait en tenant `_verrou`. Les
     # fonctions de ce module prennent les deux verrous dans cet ordre (`_verrou`, puis la base).
     # Une requête d'écriture tient déjà la base quand elle vérifie qu'aucun calcul ne tourne :
@@ -355,6 +356,34 @@ def lancer_calcul(
 
     journal.info("Calcul %d lancé pour le semestre %d", calcul_id, semestre_id)
     return calcul_id
+
+
+def _refuser_pendant_les_tests(semestre_id: int) -> None:
+    """Lève `ErreurRegleMetier` si une exécution des tests tourne (ce processus ou un autre).
+
+    pytest et le calcul se partageraient les processeurs : le calcul atteindrait son temps
+    limite plus vite, avec un résultat moins bon. L'inverse est déjà vrai : les tests sont
+    refusés pendant un calcul. Appelée **sans** tenir `_verrou` : le lancement des tests tient
+    son propre verrou en consultant `calcul_en_cours`, et l'ordre inverse les bloquerait.
+    Limite : un lancement des tests dans la même fraction de seconde n'est pas vu.
+    """
+    # Import local : le service des tests importe ce module.
+    from edt.services.banc_tests import execution
+
+    courante = execution.execution_courante()
+    if courante is not None and courante.en_cours:
+        libelle = courante.cible.libelle
+    else:
+        ailleurs = execution.execution_ailleurs()
+        if ailleurs is None:
+            return
+        libelle = ailleurs.get("libelle") or "des tests"
+    journal.info("Calcul refusé pour le semestre %d : tests en cours (%s)", semestre_id, libelle)
+    raise ErreurRegleMetier(
+        f"Impossible de lancer un calcul : une exécution des tests est en cours ({libelle}) et "
+        "occupe les processeurs du serveur ; le calcul serait ralenti et son résultat moins bon. "
+        "Attendre la fin des tests, ou les arrêter depuis leur onglet, puis relancer le calcul."
+    )
 
 
 def pre_verifier_semestre(

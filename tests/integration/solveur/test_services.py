@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import datetime as dt
+import json
 import logging
 import os
 import sqlite3
@@ -583,6 +584,41 @@ def test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus(jeu_minimal):
     assert generation.calcul_en_cours() is None and _etat(autre) is EtatCalcul.ERREUR
     dernier = _calcul_en_cours_d_un_autre_processus(jeu_minimal.semestre_id, mort.pid)
     assert generation.demander_arret(dernier).etat is EtatCalcul.ERREUR
+
+
+@pytest.mark.cas_limite
+def test_calcul_refuse_pendant_une_execution_des_tests(jeu_minimal, processus_vivant, monkeypatch):
+    """Cas : une exécution des tests tourne, lancée par la ligne de commande (fichier de verrou
+    du banc de tests au nom d'un autre processus vivant) ou depuis l'application (ce processus),
+    et un calcul est demandé.
+
+    Risque : le calcul et pytest se partagent les processeurs du serveur ; le calcul atteint son
+    temps limite plus vite et rend un emploi du temps moins bon, sans que rien ne le dise.
+    """
+    from edt.services.banc_tests import execution, resultats
+
+    dossier = resultats.dossier_resultats()
+    dossier.mkdir(parents=True, exist_ok=True)
+    verrou = dossier / execution.FICHIER_VERROU
+    info = {"pid": processus_vivant.pid, "execution": "e1", "libelle": "Tests unitaires"}
+    verrou.write_text(json.dumps(info), encoding="utf-8")
+    with pytest.raises(ErreurRegleMetier, match="exécution des tests est en cours") as refus:
+        generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    assert "Tests unitaires" in refus.value.message and "relancer" in refus.value.message
+    verrou.unlink()
+
+    dans_ce_processus = types.SimpleNamespace(
+        en_cours=True, cible=types.SimpleNamespace(libelle="Tests d'intégration")
+    )
+    monkeypatch.setattr(execution, "execution_courante", lambda: dans_ce_processus)
+    with pytest.raises(ErreurRegleMetier, match="Tests d'intégration"):
+        generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Calcul)) == 0
+
+    dans_ce_processus.en_cours = False  # exécution terminée : le calcul passe
+    suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS))
+    assert suivi.etat is EtatCalcul.REUSSI, suivi.message
 
 
 def test_calcul_vivant_d_un_autre_processus_n_est_pas_clos(jeu_minimal):
