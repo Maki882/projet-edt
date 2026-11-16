@@ -21,7 +21,7 @@
         <p>Un <strong>test d'intégration</strong> fait travailler plusieurs couches réelles ensemble, sur une base temporaire : une requête web ou une commande traverse les services, la logique (générateur, vérificateur, import et export) jusqu'à la base, ou un calcul complet est mené de bout en bout.</p>
         <p>Les <strong>six parcours</strong> du composant <code>parcours</code> rejouent l'usage réel de l'application, du formulaire « Générer » au fichier iCal exporté. Les autres composants vérifient leurs écrans, leurs commandes et leurs calculs.</p>
         {%- endif %}
-        <p class="discret">Les tests tournent à part, sur une base temporaire effacée à la fin : la base de l'application n'est jamais touchée. Les tests de charge, longs, ne partent pas avec un groupe : ils se lancent un par un.</p>
+        <p class="discret">Les tests tournent à part, sur une base temporaire effacée à la fin : la base de l'application n'est jamais touchée. Les tests de charge, longs, ne se lancent pas depuis le site, seulement par la commande <code>python -m edt tests --test …</code>. Pour laisser le serveur aux autres visiteurs, un court délai sépare la fin d'une exécution du lancement suivant depuis le site.</p>
       </div>
       {%- if t.famille == "unitaires" %}{% include "tests/_schema_unitaires.html" %}{% else %}{% include "tests/_schema_integration.html" %}{% endif %}
     </div>

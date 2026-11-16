@@ -154,7 +154,8 @@ class Cible:
     - `groupes` : groupes entièrement couverts (`famille:…`, `composant:…`,
       `fichier:…`), dont la date de dernière exécution complète est notée si
       l'exécution va à son terme ;
-    - `exclure_perf` : lancement par groupe, sans les tests de charge.
+    - `exclure_perf` : lancement par groupe, sans les tests de charge ;
+    - `charge` : un test de charge lancé seul (refusé depuis le site).
     """
 
     cle: str
@@ -164,6 +165,7 @@ class Cible:
     tests: tuple[str, ...]
     groupes: tuple[str, ...]
     exclure_perf: bool
+    charge: bool = False
 
 
 # --------------------------------------------------------------------------- #
@@ -451,7 +453,14 @@ def resoudre_cible(catalogue: Catalogue, cible: str, famille: str | None) -> Cib
         if test is None or test.famille not in familles:
             raise ErreurIntrouvable(f"Test inconnu : « {cle[:200]} ».")
         return Cible(
-            texte, test.famille, f"le test « {test.nom} »", (test.cle,), (test.cle,), (), False
+            texte,
+            test.famille,
+            f"le test « {test.nom} »",
+            (test.cle,),
+            (test.cle,),
+            (),
+            False,
+            charge=test.perf,
         )
 
     raise ErreurIntrouvable(
