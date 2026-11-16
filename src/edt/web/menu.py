@@ -66,6 +66,7 @@ GROUPE_BESOINS = "Besoins et disponibilités"
 GROUPE_REGLES = "Règles et calendrier"
 GROUPE_IMPORT_EXPORT = "Import et export"
 GROUPE_JEUX = "Jeux de données"
+GROUPE_LISTES = "Listes de référence"
 
 ONGLETS: tuple[tuple[str, tuple[str, ...]], ...] = (
     (ONGLET_ACCUEIL, ("",)),
@@ -100,6 +101,7 @@ ORDRE_DES_GROUPES: tuple[str, ...] = (
     GROUPE_REGLES,
     GROUPE_IMPORT_EXPORT,
     GROUPE_JEUX,
+    GROUPE_LISTES,
 )
 """Ordre fixe des groupes connus ; les autres suivent, par ordre de leur première entrée."""
 
