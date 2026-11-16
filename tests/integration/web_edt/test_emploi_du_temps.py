@@ -569,6 +569,9 @@ def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
     assert "Claire Martin" in retour and "dernier emploi du temps consulté" in retour
 
     # Une cible retenue qui n'existe plus ici : la page s'ouvre sur la classe, sans erreur.
+    # Le témoin posé par le serveur est d'abord retiré : il ne doit en rester qu'un, quel que
+    # soit le domaine que le client de test lui attribue.
+    client.cookies.clear()
     client.cookies.set("edt_derniere_cible", "groupe:9999")
     perdue = client.get("/emploi-du-temps")
     assert perdue.status_code == 200 and "Groupe A1-G1" in perdue.text

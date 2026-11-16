@@ -14,7 +14,7 @@ import io
 import threading
 import time
 
-import httpx
+import httpx2
 from sqlalchemy import select
 from tests.outils.echange.fabrique import (
     archive_zip,
@@ -102,8 +102,8 @@ def test_un_import_ne_gele_pas_les_autres_requetes(jeu_minimal, monkeypatch):
     app = creer_app()
 
     async def scenario() -> tuple[int, int]:
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://essai") as client:
+        transport = httpx2.ASGITransport(app=app)
+        async with httpx2.AsyncClient(transport=transport, base_url="http://essai") as client:
             envoi = client.post(
                 "/import/simuler",
                 files=[("fichiers", ("campus.csv", b"code;nom\nNDC;Notre-Dame\n", "text/csv"))],
