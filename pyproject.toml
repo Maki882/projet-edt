@@ -20,6 +20,7 @@ dependencies = [
     "icalendar",
     "python-dateutil",
     "faker",
+    "anthropic>=2.0,<3",
 ]
 
 [project.optional-dependencies]
@@ -58,7 +59,8 @@ markers = [
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
-# Fichiers d'origine de l'équipe ou scripts hors paquet : on ne les reformate pas.
+# docs/ : exemples de code des documents Markdown (que ruff mettrait en forme) et
+# outils hors paquet ; ils ne suivent pas les règles du code de l'application.
 extend-exclude = ["docs"]
 force-exclude = true
 
