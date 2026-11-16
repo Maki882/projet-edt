@@ -5,8 +5,7 @@ Point d'entrée stable pour tout le projet :
     from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur, resoudre
 
 Le contrat (types et signature) est dans `edt.solveur.contrat`. Le moteur
-exporté ici est le moteur CP-SAT (`edt.solveur.moteur`) ; l'ancien moteur
-provisoire reste disponible dans `edt.solveur.provisoire`. Les appelants
+exporté ici est le moteur CP-SAT (`edt.solveur.moteur`). Les appelants
 passent par `edt.services.generation`, jamais par le moteur directement.
 
 Autres fonctions du paquet (voir `docs/solveur.md`) :
