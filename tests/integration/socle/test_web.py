@@ -14,7 +14,7 @@ import pytest
 from fastapi import APIRouter, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError, ProgrammingError
+from sqlalchemy.exc import DatabaseError, OperationalError, ProgrammingError
 from starlette.exceptions import HTTPException
 from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
 
@@ -55,6 +55,9 @@ def _app_etendue(monkeypatch):
 
     @routeur.get("/panne-base")
     def panne_base(cause: str):
+        # Comme le pilote : un fichier illisible lève `DatabaseError`, pas `OperationalError`.
+        if "not a database" in cause:
+            raise DatabaseError("UPDATE parametre ...", {}, sqlite3.DatabaseError(cause))
         raise OperationalError("UPDATE parametre ...", {}, sqlite3.OperationalError(cause))
 
     @routeur.get("/requete-fausse")
