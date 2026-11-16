@@ -71,7 +71,8 @@ Fichiers du dossier `deploy/` :
   `nginx-edt-application.conf` (proxy, statiques, pages d'erreur, envois de 21 Mo au plus) ;
 - pages d'erreur : `erreur-502.html` et `erreur-413.html`.
 
-Les tests automatiques de ces fichiers sont dans `tests/exploitation/` (syntaxe des
+Les tests automatiques de ces fichiers sont dans `tests/unitaires/exploitation/` et
+`tests/integration/exploitation/` (syntaxe des
 scripts, cohérence entre fichiers, sauvegardes, arrêt brutal) ; ce qui ne peut se
 vérifier que sur le serveur est décrit en section 10.
 
@@ -508,7 +509,7 @@ serveur() { ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 "$@"; }
 `serveur 'commande'` lance la commande sur le serveur ; `serveur -t 'commande'`
 lui donne un terminal (commande qui affiche sa progression ou pose une question).
 
-| Ce qui est vérifié | Automatiquement (`tests/exploitation/`) | À la main (ci-dessous) |
+| Ce qui est vérifié | Automatiquement (`tests/unitaires/exploitation/`, `tests/integration/exploitation/`) | À la main (ci-dessous) |
 |---|---|---|
 | Syntaxe, fins de ligne, cohérence des scripts et unités | oui | non |
 | Code Python de la sauvegarde du déploiement | oui | non |

@@ -1,12 +1,12 @@
 """Essais de charge (marqués `perf`) : toujours avec deux fils de calcul, comme le serveur.
 
-- instantanés générés (`tests/solveur/generateur.py`) : 200 séances en moins
+- instantanés générés (`tests/outils/solveur/generateur.py`) : 200 séances en moins
   de 30 s, 800 séances en moins de 120 s ;
 - jeux fictifs de `edt.synthese` : `moyen` en moins de 30 s, `grand` en moins
   de 120 s, pour les deux semestres ; le mode optimisé fait mieux que
   l'emploi du temps témoin du jeu.
 
-Chaque solution passe par l'oracle. Lancer avec `pytest tests/solveur -m perf`.
+Chaque solution passe par l'oracle. Lancer avec `pytest tests/unitaires/solveur -m perf`.
 """
 
 from __future__ import annotations

@@ -11,7 +11,7 @@ catalogue des contraintes.
 
 Code : `src/edt/verification/` (vérificateur pur), `src/edt/services/verification.py`
 (service sur la base), `src/edt/commandes/verification.py` (commande
-`python -m edt verifier`). Tests : `tests/verification/`.
+`python -m edt verifier`). Tests : `tests/unitaires/verification/` et `tests/integration/verification/`.
 
 ## Rôle
 
@@ -339,7 +339,7 @@ classDiagram
   chaque paire n'est examinée qu'une fois. Le coût suit le nombre de séances
   qui partagent une ressource, pas le carré du nombre de séances.
 
-Mesure (test `perf`, `tests/verification/test_performance.py`) : une semaine
+Mesure (test `perf`, `tests/unitaires/verification/test_performance.py`) : une semaine
 type valide de 1 000 séances (cinq promotions, deux campus) est vérifiée en
 une quarantaine de millisecondes sur un poste de développement ; le seuil du
 test est de 2 secondes.
@@ -677,17 +677,20 @@ indicateurs (semaine type) et le verdict. Codes de sortie :
 
 ## Tests et banque des cas limites
 
-Les tests du lot sont dans `tests/verification/` :
+Les tests du lot sont dans `tests/unitaires/verification/` (vérificateur et services
+appelés par leurs fonctions Python) et `tests/integration/verification/` (commande
+`verifier` par la ligne de commande). Aides partagées :
 
-- `fabrique.py` : instantanés écrits à la main, sans base, pour le
-  vérificateur pur (dates repères `MARDI_6_OCT`, `MARDI_13_OCT`) ;
-- `versions.py` et `conftest.py` : l'emploi du temps saisi à la main du jeu
-  minimal et les fixtures des services (`version_id`,
-  `version_sans_seances_datees`, `salle_n204_supprimee`,
-  `salle_n204_orpheline`).
+- `tests/outils/verification/fabrique.py` : instantanés écrits à la main,
+  sans base, pour le vérificateur pur (dates repères `MARDI_6_OCT`,
+  `MARDI_13_OCT`) ;
+- `tests/outils/verification/versions.py` et `tests/unitaires/verification/conftest.py` :
+  l'emploi du temps saisi à la main du jeu minimal et les fixtures des
+  services (`version_id`, `version_sans_seances_datees`,
+  `salle_n204_supprimee`, `salle_n204_orpheline`).
 
 Les tests des **cas limites** portent le marqueur `cas_limite` et une
-docstring « Cas : … Risque : … » ; `pytest -m cas_limite tests/verification`
+docstring « Cas : … Risque : … » ; `pytest -m cas_limite tests/unitaires/verification tests/integration/verification`
 les lance seuls. Un défaut qui relève d'un autre lot y reste en
 `xfail(strict=True)`, la raison nommant le lot et le fichier à corriger : le
 test échouera (XPASS) le jour de la correction, pour qu'on retire la marque.
@@ -710,10 +713,10 @@ test échouera (XPASS) le jour de la correction, pour qu'on retire la marque.
    `ctx.reperes(element)`), écrire le message avec les outils de
    `messages.py` et de `Contexte` (`libelle`, `moment`, `quand`,
    `precision_semaines`).
-4. Ajouter dans `tests/verification/` un cas valide, un cas en violation et
+4. Ajouter dans `tests/unitaires/verification/` un cas valide, un cas en violation et
    les cas limites qui comptent (égalité, semaines disjointes, enseignant
    fictif, séance imposée, contrainte désactivée), avec la fabrique
-   `tests/verification/fabrique.py` ; chaque cas limite porte le marqueur
+   `tests/outils/verification/fabrique.py` ; chaque cas limite porte le marqueur
    `cas_limite` et sa docstring « Cas : … Risque : … ».
 5. Implémenter la même règle dans le solveur, avec la même sémantique.
 6. Compléter le tableau des règles ci-dessus.

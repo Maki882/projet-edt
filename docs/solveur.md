@@ -731,7 +731,7 @@ coupée dépend de la machine et de sa charge : deux exécutions peuvent rendre
 deux solutions. Rien ne change pour le mode faisable, ni pour un calcul qui
 va jusqu'à l'optimum prouvé. `OptionsSolveur.arret_sur_stagnation` (vrai par
 défaut, enregistré avec les options du calcul) désactive le critère : c'est
-le réglage des tests (`tests/solveur/fabrique.py`), et celui à prendre pour
+le réglage des tests (`tests/outils/solveur/fabrique.py`), et celui à prendre pour
 comparer deux exécutions à temps limite égal.
 
 ### Statuts et messages
@@ -942,7 +942,8 @@ ensemble quelconque d'occurrences, une fenêtre et un coût.
   avertissements sont dans `SuiviCalcul.avertissements`, les indicateurs du
   vérificateur dans `statistiques["indicateurs"]`, le bilan des séances
   datées dans `statistiques["instanciation"]`. Garde-fous, chacun figé par un
-  test de la banque des cas limites (`tests/solveur/test_services.py`) :
+  test de la banque des cas limites (`test_services.py`, dans `tests/unitaires/solveur/` et
+  `tests/integration/solveur/`) :
   - **semestre sans séance** : refusé (état « erreur », « aucune séance à
     placer »), aucune version vide n'est créée ni activée à la place de la
     version active ;
@@ -1103,7 +1104,7 @@ with session_base() as session:
 Poste de développement (Windows, Python 3.11, OR-Tools 9.15), **2 fils de
 calcul**, graine 1, sans indices, **un calcul à la fois**. Jeux `moyen` et
 `grand` de `edt.synthese` (graine 0) ; « généré n » :
-`tests/solveur/generateur.py` (deux campus). Chaque solution passe l'oracle
+`tests/outils/solveur/generateur.py` (deux campus). Chaque solution passe l'oracle
 sans erreur. Les durées varient d'une exécution à l'autre (de l'ordre de
 ± 30 %, davantage quand la machine est occupée par ailleurs). Les tableaux
 du moteur retenu ont été relevés le 05/10/2026 sur le code livré.
@@ -1674,12 +1675,12 @@ module concerné, dans une section « Cas limites » en fin de fichier :
 
 | Fichier | Cas couverts |
 |---|---|
-| `tests/solveur/test_contraintes.py` | besoins sans groupe (refusés en les nommant), séance finissant après minuit |
-| `tests/solveur/test_preverification.py` | charges parasites d'une séance sans horaire, verrous incohérents, indisponibilités incohérentes, grille vide |
-| `tests/solveur/test_moteur.py` | bornes des options, tout verrouillé, arrêt avant la première solution, paramètres extrêmes |
-| `tests/solveur/test_regles.py` | niveau d'une règle inconnue |
-| `tests/solveur/test_couche_datee.py` | placement hors bornes, semestre en milieu de semaine ou d'un jour |
-| `tests/solveur/test_services.py` | options hors bornes en ligne de commande, identifiants hors bornes, données modifiées pendant le calcul, semestre sans besoin, journal indisponible, suivi corrompu, version sans séances datées, clôture, lancement pendant un chargement, deux processus (`perf`), moteur fautif, verrous tolérés, écriture finale retentée, saut d'horloge |
+| `tests/unitaires/solveur/test_contraintes.py` | besoins sans groupe (refusés en les nommant), séance finissant après minuit |
+| `tests/unitaires/solveur/test_preverification.py` | charges parasites d'une séance sans horaire, verrous incohérents, indisponibilités incohérentes, grille vide |
+| `tests/unitaires/solveur/test_moteur.py` | bornes des options, tout verrouillé, arrêt avant la première solution, paramètres extrêmes |
+| `tests/unitaires/solveur/test_regles.py` | niveau d'une règle inconnue |
+| `tests/unitaires/solveur/test_couche_datee.py` | placement hors bornes, semestre en milieu de semaine ou d'un jour |
+| `tests/unitaires/solveur/test_services.py`, `tests/integration/solveur/test_services.py` | options hors bornes en ligne de commande, identifiants hors bornes, données modifiées pendant le calcul, semestre sans besoin, journal indisponible, suivi corrompu, version sans séances datées, clôture, lancement pendant un chargement, deux processus (`perf`), moteur fautif, verrous tolérés, écriture finale retentée, saut d'horloge |
 
 ```sh
 pytest -m "cas_limite and not perf"    # la banque, test long exclu
@@ -1687,8 +1688,9 @@ pytest -m cas_limite                   # tout, les deux processus qui lancent en
 ```
 
 Aides réutilisables : `Fabrique.verrou(..., fin=)` (verrou incohérent),
-`tests/solveur/conftest.py` (`lanceur`, `processus_vivant`), et dans
-`test_services.py` `_calcul_fictif` (ligne de calcul telle quelle) et
+`tests/integration/solveur/conftest.py` (`lanceur`, `processus_vivant`),
+`tests/outils/solveur/en_base.py` (`calcul_fictif` : ligne de calcul telle
+quelle) et, dans `tests/integration/solveur/test_services.py`,
 `_calcul_en_cours_d_un_autre_processus`. Un défaut qui relève d'un autre lot
 est figé par un test `@pytest.mark.xfail(strict=True, reason="à corriger par
 le lot ... : fichier")` : il passe au rouge « inattendu » dès que le lot
@@ -1718,8 +1720,8 @@ corrige, et le marqueur se retire alors.
    `instanciation.empechement`.
 5. Si elle peut rendre un calcul impossible de façon évidente, ajouter une
    pré-vérification chiffrée dans `preverification.py`.
-6. Tests dans `tests/solveur/test_contraintes.py` : un petit problème où la
+6. Tests dans `tests/unitaires/solveur/test_contraintes.py` : un petit problème où la
    contrainte est déterminante (impossible quand elle est active, résolu
    quand elle est désactivée), une assertion directe, et l'oracle
-   (`verifier_solution`). Relancer `pytest tests/solveur -m perf` : une
+   (`verifier_solution`). Relancer `pytest tests/unitaires/solveur tests/integration/solveur -m perf` : une
    contrainte mal écrite peut multiplier le temps de calcul.
