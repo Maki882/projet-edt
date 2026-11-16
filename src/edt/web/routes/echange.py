@@ -30,15 +30,17 @@ from dataclasses import replace
 from typing import Annotated
 from urllib.parse import quote
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Query, Request
 from fastapi.responses import HTMLResponse, Response
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
 
+from edt.config import charger_configuration
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.echange import FichierEnvoye, FichierProduit, ModeImport, RapportImport
+from edt.services.emploi_du_temps import prechauffage
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import Message, est_htmx, rendre
 from edt.web.menu import SECTION_DONNEES, EntreeMenu
@@ -84,10 +86,19 @@ async def simuler(request: Request, session: SessionRequete) -> HTMLResponse:
 
 
 @routeur.post("/import/appliquer", response_class=HTMLResponse, name="import_appliquer")
-async def appliquer(request: Request, session: SessionRequete) -> HTMLResponse:
-    """Applique l'import : les lignes valides entrent, les autres sont listées."""
+async def appliquer(
+    request: Request, session: SessionRequete, taches: BackgroundTasks
+) -> HTMLResponse:
+    """Applique l'import : les lignes valides entrent, les autres sont listées.
+
+    Si des données ont changé, les écrans suivants (accueil, « À traiter »,
+    Générer) sont préparés en arrière-plan, après l'enregistrement.
+    """
     envois, options = await _lire_envoi(request)
-    return await run_in_threadpool(_appliquer, request, session, envois, options)
+    reponse, ecrit = await run_in_threadpool(_appliquer, request, session, envois, options)
+    if ecrit:
+        taches.add_task(prechauffage.lancer, charger_configuration().db_url)
+    return reponse
 
 
 @routeur.post("/import/rapport.csv", name="import_rapport")
@@ -106,11 +117,11 @@ def _simuler(request: Request, session, envois, options) -> HTMLResponse:
     return rendre(request, "echange/import.html", _contexte_import(session) | resultat)
 
 
-def _appliquer(request: Request, session, envois, options) -> HTMLResponse:
+def _appliquer(request: Request, session, envois, options) -> tuple[HTMLResponse, bool]:
     rapport = service.appliquer_import(session, envois, options)
     resultat = _contexte_resultat(rapport, {})
     if est_htmx(request):
-        return rendre(request, "echange/_resultat.html", resultat)
+        return rendre(request, "echange/_resultat.html", resultat), rapport.a_des_ecritures
     if rapport.a_des_rejets:
         message = Message(
             f"Import appliqué : {rapport.nb_rejets} ligne(s) ou séance(s) non importée(s), "
@@ -119,9 +130,10 @@ def _appliquer(request: Request, session, envois, options) -> HTMLResponse:
         )
     else:
         message = Message("Import appliqué : toutes les lignes sont entrées.", "succes")
-    return rendre(
+    page = rendre(
         request, "echange/import.html", _contexte_import(session) | resultat, messages=[message]
     )
+    return page, rapport.a_des_ecritures
 
 
 def _rapport_csv(session, envois, options) -> Response:

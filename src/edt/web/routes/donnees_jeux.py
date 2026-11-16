@@ -14,7 +14,9 @@ import logging
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
 
+from edt.config import charger_configuration
 from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
+from edt.services.emploi_du_temps import prechauffage
 from edt.services.etat import EtatBase, diagnostiquer_base
 from edt.services.jeux import (
     ErreurChargementEnCours,
@@ -134,6 +136,8 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
         rapport.graine,
         rapport.duree_s,
     )
+    # Les écrans suivants (accueil, « À traiter », Générer) sont préparés pendant la lecture.
+    prechauffage.lancer(charger_configuration().db_url)
     return rendre(
         request,
         "donnees/jeux_resultat.html",

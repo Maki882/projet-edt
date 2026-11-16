@@ -13,6 +13,7 @@ from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul
 from edt.services.echange import ModeImport
+from edt.services.emploi_du_temps import prechauffage
 from edt.services.generation import CLE_PROCESSUS
 
 HTMX = {"HX-Request": "true"}
@@ -58,12 +59,15 @@ def test_simulation_sans_htmx_rend_la_page_entiere(jeu_minimal, client, fichier_
     assert reponse.status_code == 200 and "<html" in reponse.text and "Bilan" in reponse.text
 
 
-def test_application(jeu_minimal, client, fichier_exemple):
+def test_application(jeu_minimal, client, fichier_exemple, monkeypatch):
+    prechauffages = []
+    monkeypatch.setattr(prechauffage, "lancer", prechauffages.append)
     reponse = client.post("/import/appliquer", **_envoi(fichier_exemple("salles_avec_erreurs.csv")))
 
     assert reponse.status_code == 200
     assert "Import appliqué" in reponse.text and "non importée(s)" in reponse.text
     assert compter(m.Salle) == jeu_minimal.nb_salles + 2
+    assert len(prechauffages) == 1  # écrans suivants préparés après l'enregistrement
 
 
 def test_import_d_emploi_du_temps_par_le_web(jeu_minimal, client, fichier_exemple):

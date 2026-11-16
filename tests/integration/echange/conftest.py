@@ -3,7 +3,8 @@
 Les fixtures partagées (`fichier_exemple`, `importer`, `version_reference`)
 viennent de `tests/outils/echange/fixtures.py` ; s'y ajoute, propre à ce côté :
 
-- `version_generee` : une version produite par un calcul complet sur le jeu minimal.
+- `version_generee` : une version produite par un calcul complet sur le jeu minimal ;
+- `sans_prechauffage` (automatique) : le préchauffage des écrans est coupé.
 """
 
 from __future__ import annotations
@@ -12,8 +13,15 @@ import pytest
 from tests.outils.echange.fixtures import fichier_exemple, importer, version_reference  # noqa: F401
 
 from edt.services import generation
+from edt.services.emploi_du_temps import prechauffage
 
 DELAI = 30
+
+
+@pytest.fixture(autouse=True)
+def sans_prechauffage(monkeypatch):
+    """Aucun préchauffage des écrans : un fil qui survit à la base temporaire du test."""
+    monkeypatch.setattr(prechauffage, "ACTIF", False)
 
 
 @pytest.fixture

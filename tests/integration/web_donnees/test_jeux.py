@@ -18,6 +18,7 @@ from sqlalchemy import func, select
 
 from edt.db.modeles import Besoin, Campus
 from edt.db.moteur import session_base
+from edt.services.emploi_du_temps import prechauffage
 from edt.synthese.configuration import GRAINE_MAX
 
 
@@ -34,7 +35,9 @@ def test_page_decrit_les_tailles(client):
     assert "data-attente=" in page  # bouton désactivé pendant l'envoi
 
 
-def test_chargement_du_jeu_petit(client):
+def test_chargement_du_jeu_petit(client, monkeypatch):
+    prechauffages = []
+    monkeypatch.setattr(prechauffage, "lancer", prechauffages.append)
     reponse = client.post("/jeux/charger", data={"taille": "petit", "graine": "0"})
 
     assert reponse.status_code == 200
@@ -42,6 +45,7 @@ def test_chargement_du_jeu_petit(client):
     assert "Jeu fictif « petit » (graine 0)" in reponse.text  # résumé du rapport
     assert 'href="/besoins"' in reponse.text
     assert _compter(Campus) == 2 and _compter(Besoin) > 0
+    assert len(prechauffages) == 1  # écrans suivants préparés pendant la lecture du résumé
 
 
 @pytest.mark.cas_limite
