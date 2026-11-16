@@ -136,6 +136,32 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
 
 
 @pytest.mark.cas_limite
+def test_une_operation_d_un_autre_processus_empeche_d_en_commencer_une(
+    jeu_minimal, compter, aujourdhui
+):
+    """Cas : un autre processus charge un établissement fictif (son marqueur est posé à côté de
+    la base) quand `init-db --reset` ou l'écran de configuration demande une remise à zéro.
+
+    Risque : le verrou étant propre au processus, la remise à zéro efface les tables sous le
+    chargement en cours, puis retire le marqueur de l'autre processus : le serveur ne voit
+    plus l'opération qui tourne encore.
+    """
+    marqueur = fichier_marqueur()
+    contenu = f"{os.getppid()} charger un établissement fictif"  # processus vivant, autre
+    marqueur.write_text(contenu, encoding="utf-8")
+
+    with pytest.raises(jeux.ErreurChargementEnCours, match="déjà en cours"):
+        remettre_a_zero(aujourdhui=aujourdhui)
+    with pytest.raises(jeux.ErreurChargementEnCours):
+        recharger_jeu_fictif("petit", reinitialiser=True, aujourdhui=aujourdhui)
+
+    assert compter(m.Salle) == jeu_minimal.nb_salles  # rien n'a été effacé
+    assert marqueur.read_text(encoding="utf-8") == contenu and operation_en_cours()
+    marqueur.unlink()
+    assert remettre_a_zero(aujourdhui=aujourdhui).reinitialisee  # marqueur retiré : permis
+
+
+@pytest.mark.cas_limite
 @pytest.mark.parametrize(
     ("graine", "annee_debut"), [(-1, None), (0, 1900)], ids=["graine négative", "année 1900"]
 )
