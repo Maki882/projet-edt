@@ -1297,6 +1297,17 @@ def qualite_du_moteur(message: str | None) -> str | None:
     return " ".join(gardees) or None
 
 
+def _duree_premiere_solution(statistiques: Mapping) -> str | None:
+    """Instant de la première solution d'un calcul amélioré ensuite, en texte ; sinon `None`."""
+    brut = statistiques.get("duree_premiere_solution_s")
+    if not isinstance(brut, int | float) or statistiques.get("raison_arret") in (
+        None,
+        "premiere_solution",
+    ):
+        return None
+    return presentation.duree_secondes(brut)
+
+
 def _phrases(
     suivi: generation.SuiviCalcul,
     issue: str,
@@ -1326,6 +1337,14 @@ def _phrases(
         return "Calcul en cours", phrase, None
     if issue == Issue.REUSSI:
         phrase = f"Un emploi du temps a été trouvé en {temps}."
+        # Le suivi a dit « déjà trouvé (après N s) » : le résultat redit cet instant, puis la
+        # durée totale, amélioration comprise, au lieu d'une seule durée qui le contredirait.
+        premiere = _duree_premiere_solution(suivi.statistiques)
+        if premiere is not None and premiere != temps:
+            phrase = (
+                f"Un emploi du temps a été trouvé après {premiere}, puis amélioré : calcul "
+                f"terminé en {temps}."
+            )
         titre = "Emploi du temps généré"
         if arrete_avec_solution:
             titre = "Calcul arrêté : meilleure solution conservée"
@@ -1362,8 +1381,10 @@ def _phrases(
             None,
         )
     if issue == Issue.TEMPS_DEPASSE:
-        phrase = "Aucun emploi du temps n'a été trouvé"
-        phrase += f" en {limite}." if limite else " dans le temps imparti."
+        # Durée réelle, la même que l'en-tête du calcul : l'attribution des salles peut
+        # interrompre la recherche avant le temps limite.
+        phrase = f"Aucun emploi du temps n'a été trouvé en {temps}"
+        phrase += f" (temps limite : {limite})." if limite else "."
         phrase += (
             " Ce n'est pas une preuve qu'il n'en existe pas : une recherche plus longue peut "
             "aboutir. Aucun emploi du temps n'a été enregistré."

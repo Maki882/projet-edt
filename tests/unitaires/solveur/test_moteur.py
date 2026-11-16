@@ -662,3 +662,27 @@ def test_sur_premiere_solution_qui_echoue_n_empeche_pas_le_resultat(caplog):
     assert resultat.statut is StatutSolveur.SOLUTION
     (erreur,) = [r for r in caplog.records if "rappel de première solution" in r.getMessage()]
     assert erreur.exc_info is not None and "interface indisponible" in str(erreur.exc_info[1])
+
+
+@pytest.mark.cas_limite
+def test_salles_interrompues_le_message_donne_la_duree_reelle(monkeypatch):
+    """Cas : des horaires sont trouvés, puis l'attribution des salles s'interrompt sur son propre
+    temps maximal sans rien prouver (machine très chargée), bien avant le temps limite de 300 s.
+
+    Risque : le calcul s'arrête « pas trouvé » après une minute, mais son message affirme
+    « Aucun emploi du temps n'a été trouvé en 300 s » : deux durées différentes à l'écran.
+    """
+    from edt.solveur import moteur
+    from edt.solveur.salles import AffectationSalles
+
+    monkeypatch.setattr(
+        moteur, "affecter_salles", lambda *args, **kwargs: AffectationSalles(None, prouve=False)
+    )
+    instantane, _ = generer(20, graine=1)
+    resultat = resoudre(instantane, options(temps_limite_s=300))
+    assert resultat.statut is StatutSolveur.TEMPS_DEPASSE
+    assert "300 s" not in resultat.message, resultat.message
+    duree = resultat.statistiques["duree_s"]
+    attendu = "moins d'une seconde" if duree < 1 else f"en {round(duree)} s"
+    assert attendu in resultat.message, resultat.message
+    assert "salles" in resultat.message

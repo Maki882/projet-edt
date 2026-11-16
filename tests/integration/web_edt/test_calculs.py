@@ -755,3 +755,36 @@ def test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif(
         assert "une exécution des tests est en cours" in page and "Référence" not in page
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING], adresse
     assert _nb_calculs() == 1  # seul le calcul de la fixture
+
+
+@pytest.mark.cas_limite
+def test_resultat_dit_les_memes_durees_que_le_suivi(version_generee, client):
+    """Cas : un calcul trouve un premier emploi du temps après 1 s, l'améliore, et s'arrête au
+    bout de 16 s ; un autre s'arrête « pas trouvé » au bout de 75 s pour un temps limite de 300 s.
+
+    Risque : le suivi a dit « déjà trouvé (après 1 s) » et le résultat dit « trouvé en 16 s » ;
+    ou le résultat dit « pas trouvé en 300 s » quand le calcul a duré 75 s : deux durées
+    contradictoires sous les yeux du public.
+    """
+    calcul_id = version_generee.calcul_id
+    with session_base() as session:
+        calcul = session.get(m.Calcul, calcul_id)
+        calcul.duree_s = 16.0
+        calcul.statistiques = {
+            **calcul.statistiques,
+            "duree_premiere_solution_s": 1.2,
+            "raison_arret": "stagnation",
+        }
+    page = html.unescape(client.get(f"/calculs/{calcul_id}").text)
+    assert "Un emploi du temps a été trouvé après 1 s, puis amélioré : calcul terminé en 16 s." in (
+        page
+    )
+
+    with session_base() as session:
+        calcul = session.get(m.Calcul, calcul_id)
+        calcul.etat = EtatCalcul.TEMPS_DEPASSE
+        calcul.duree_s = 75.0
+        calcul.parametres = {**calcul.parametres, "temps_limite_s": 300}
+        session.execute(delete(m.VersionEdt).where(m.VersionEdt.calcul_id == calcul_id))
+    page = html.unescape(client.get(f"/calculs/{calcul_id}").text)
+    assert "Aucun emploi du temps n'a été trouvé en 1 min 15 s (temps limite : 5 minutes)" in page
