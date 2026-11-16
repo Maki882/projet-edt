@@ -40,5 +40,12 @@ jobs:
       - name: Format (ruff format --check)
         run: python -m ruff format --check .
 
-      - name: Tests (hors tests de charge)
-        run: python -m pytest -m "not perf"
+      # Les tests de charge (marqueur perf) sont exclus de la CI courante.
+      - name: Contrôle du rangement des tests
+        run: python -m pytest tests/test_rangement.py
+
+      - name: Tests unitaires
+        run: python -m pytest tests/unitaires -m "not perf"
+
+      - name: Tests d'intégration
+        run: python -m pytest tests/integration -m "not perf"
