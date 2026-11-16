@@ -166,7 +166,7 @@ def _message_resultat(resultat: modifications.ResultatModification) -> str:
         )
     reste = len(resultat.anomalies) - NB_ANOMALIES_DANS_MESSAGE
     if reste > 0:
-        morceaux.append(f"(et {reste} autre(s) remarque(s))")
+        morceaux.append(f"(et {presentation.pluriel(reste, 'autre remarque', 'autres remarques')})")
     return " ".join(morceaux)
 
 

@@ -19,7 +19,7 @@
     {%- endfor %}
   </ul>
   {%- if c.total > c.lignes|length %}
-  <p class="discret">... et {{ c.total - c.lignes|length }} autre(s) du même genre.</p>
+  <p class="discret">... et {{ fmt.pluriel(c.total - c.lignes|length, "autre") }} du même genre.</p>
   {%- endif %}
 </details>
 {%- endfor %}
@@ -38,7 +38,7 @@
       {%- endfor %}
     </select>
   </div>
-  <button type="submit" class="bouton">Afficher</button>
+  <button type="submit" class="bouton sans-js">Afficher</button>
 </form>
 {%- endif %}
 
@@ -51,11 +51,12 @@
 <section class="carte">
   <h2>{{ element.semestre.libelle }}
     {%- if element.complet %}
-    {{ ui.etiquette(fmt.pluriel(element.total, "point") ~ " à traiter", "erreur" if element.total else "succes") }}
+    {{ ui.etiquette(fmt.pluriel(element.total, "point") ~ " à traiter" if element.total else "Aucun point à traiter", "erreur" if element.total else "succes") }}
     {%- endif %}
   </h2>
   <p class="discret">{{ element.version.libelle }} -
-    <a href="/emploi-du-temps?version_id={{ element.version.id }}">consulter l'emploi du temps</a></p>
+    <a href="/emploi-du-temps?version_id={{ element.version.id }}">consulter l'emploi du temps</a>
+    {%- if element.total %} <a class="bouton bouton-petit" href="/calculs?semestre_id={{ element.semestre.id }}">Générer à nouveau</a>{% endif %}</p>
 
   <h3>Semaine type</h3>
   {%- if not element.hebdo.disponible %}
@@ -67,6 +68,9 @@
   {%- endif %}
 
   <h3>Séances datées</h3>
+  {%- if element.datees_comme_hebdo %}
+  <p class="aide">Mêmes règles en cause que dans la semaine type : chaque séance de la semaine type se répète à chaque date. Corriger la semaine type, ou générer à nouveau, corrige aussi les séances datées qui en découlent.</p>
+  {%- endif %}
   {%- if element.datees is none %}
   <p class="discret">Les séances datées de cette version n'ont pas encore été produites.</p>
   {%- elif not element.datees.disponible %}
@@ -78,8 +82,8 @@
   {%- endif %}
 
   {%- if element.decochees %}
-  <h3>Écarts aux règles décochées lors du calcul ({{ element.nb_ecarts_decoches }})</h3>
-  <p class="aide">Le calcul de cette version a été lancé sans ces règles : {{ element.contraintes_decochees|join(", ") }}. Ces écarts sont donc voulus ; ils restent listés ici, mais ne comptent pas dans les points à traiter.</p>
+  <h3>Entorses aux règles ignorées pour ce calcul ({{ element.nb_ecarts_decoches }})</h3>
+  <p class="aide">Le calcul de cette version a ignoré ces règles : {{ element.contraintes_decochees|join(", ") }}. Ces entorses sont donc voulues ; elles restent listées ici, mais ne comptent pas dans les points à traiter.</p>
   {%- for c in element.decochees %}
   <details class="edt-groupe-contrainte">
     <summary>{{ c.libelle }} ({{ c.total }})</summary>
@@ -89,7 +93,7 @@
         {%- if ligne.lien %} <a href="/emploi-du-temps?{{ ligne.lien|urlencode }}">Voir dans l'emploi du temps</a>{% endif %}</li>
       {%- endfor %}
     </ul>
-    {%- if c.total > c.lignes|length %}<p class="discret">... et {{ c.total - c.lignes|length }} autre(s).</p>{% endif %}
+    {%- if c.total > c.lignes|length %}<p class="discret">... et {{ fmt.pluriel(c.total - c.lignes|length, "autre") }}.</p>{% endif %}
   </details>
   {%- endfor %}
   {%- endif %}

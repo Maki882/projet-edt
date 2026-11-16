@@ -44,6 +44,13 @@ règle ignorée lors du calcul ne la bloque pas ; seule une règle nécessaire
 la refuse. Le vérificateur ne renvoie que les anomalies que le déplacement
 introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
+Le formulaire de déplacement d'une séance de la semaine type annonce, pour
+chaque heure de début, si le déplacement serait accepté (« possible ») ou
+refusé, sans salle (le groupe, l'enseignant et les règles) : la liste des
+salles libres, rechargée à chaque changement d'heure, couvre la salle. Cette
+annonce tient dans `BUDGET_ANNOTATION_S` secondes ; au-delà, les heures
+suivantes restent sans mention.
+
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
 imposés : mêmes règles que l'instantané), libres d'abord, les occupées
@@ -54,6 +61,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -69,7 +77,7 @@ from edt.domaine.enumerations import (
 )
 from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
-from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
+from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import raccords, regles_personnalisees
 from edt.services.emploi_du_temps.identifiants import apercu, exiger_identifiant, obtenir
@@ -87,6 +95,9 @@ MESSAGE_SEANCES_IMPORTEES = (
 
 MOTIF_MAX = 2000
 """Longueur maximale du motif d'annulation d'une séance datée (`FormulaireOccurrence.motif_max`)."""
+
+BUDGET_ANNOTATION_S = 1.5
+"""Temps au-delà duquel les heures de début suivantes ne sont plus vérifiées une à une."""
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -124,6 +135,9 @@ class FormulaireSeance:
     `remarque` : pourquoi le jour demandé n'a pas été retenu (jour non
     proposé pour cette séance, ou aucun début de créneau ce jour-là où elle
     tienne avant la fermeture) ; le jour actuel est alors gardé.
+    `debuts` : (valeur, texte) ; le texte dit « (possible) », « (refusé) » ou
+    « (actuelle) » (voir l'en-tête du module). `remarque_debuts` : pourquoi
+    les heures n'ont pas pu être vérifiées.
     """
 
     bloc: Bloc
@@ -137,6 +151,7 @@ class FormulaireSeance:
     salle_id: int | None
     exigences: str
     remarque: str | None = None
+    remarque_debuts: str | None = None
 
 
 @dataclass(frozen=True)
@@ -191,18 +206,21 @@ class BilanRecalcul:
     @property
     def message(self) -> str:
         """Phrase pour l'utilisateur."""
+        replacees = "replacée" if self.nb_replacees < 2 else "replacées"
         texte = (
             f"Séances datées recalculées : {self.nb_occurrences} au total, dont "
-            f"{self.nb_replacees} replacée(s) après un jour fermé ou une indisponibilité et "
+            f"{self.nb_replacees} {replacees} après un jour fermé ou une indisponibilité et "
             f"{self.nb_a_programmer} à programmer."
         )
-        if self.nb_retouches:
+        if self.nb_retouches == 1:
+            texte += " Votre retouche à la main (déplacement ou annulation) est conservée."
+        elif self.nb_retouches:
             texte += (
-                f" Vos {self.nb_retouches} retouche(s) à la main (déplacements, annulations) "
+                f" Vos {self.nb_retouches} retouches à la main (déplacements, annulations) "
                 "sont conservées."
             )
         if self.nb_a_programmer:
-            texte += " Les séances à programmer sont listées dans l'onglet « À traiter »."
+            texte += " Les séances à programmer sont listées dans la page « Points à traiter »."
         return texte
 
 
@@ -284,6 +302,7 @@ def formulaire_seance(
     if debut is None or debut not in dict(debuts):
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
+    debuts, remarque_debuts = _annoter_debuts(session, seance, jour, duree, debuts)
     exigences = _Exigences.du_besoin(session, besoin)
     salles = _salles_hebdo(session, seance, exigences, jour, debut, fin)
     if salle_id is None or salle_id not in {s.id for s in salles}:
@@ -300,7 +319,53 @@ def formulaire_seance(
         salle_id=salle_id,
         exigences=exigences.texte(session),
         remarque=remarque,
+        remarque_debuts=remarque_debuts,
     )
+
+
+def _annoter_debuts(
+    session: Session,
+    seance: m.SeanceHebdo,
+    jour: int,
+    duree: int,
+    debuts: tuple[tuple[int, str], ...],
+) -> tuple[tuple[tuple[int, str], ...], str | None]:
+    """Chaque heure de début suivie de « (possible) », « (refusé) » ou « (actuelle) ».
+
+    La vérification se fait sans salle, par le même raccord que l'enregistrement
+    (`raccords.verifier_modification`) ; les valeurs ne changent pas. Au-delà
+    de `BUDGET_ANNOTATION_S`, les heures suivantes restent sans mention. Si la
+    vérification est impossible, aucune mention, et la raison est rendue.
+    """
+    chrono = time.monotonic()
+    identifiant = id_seance(seance.besoin_id, seance.rang)
+    annotes: list[tuple[int, str]] = []
+    for position, (debut, texte) in enumerate(debuts):
+        if jour == seance.jour and debut == seance.debut_min:
+            annotes.append((debut, f"{texte} (actuelle)"))
+            continue
+        if time.monotonic() - chrono > BUDGET_ANNOTATION_S:
+            journal.info(
+                "Formulaire de la séance %d : %d heure(s) non vérifiée(s) (budget de %.1f s)",
+                seance.id,
+                len(debuts) - position,
+                BUDGET_ANNOTATION_S,
+            )
+            annotes.extend(debuts[position:])
+            break
+        try:
+            verification = raccords.verifier_modification(
+                session, seance.version_id, identifiant, jour, debut, debut + duree, None
+            )
+        except ErreurEDT as erreur:
+            journal.info(
+                "Formulaire de la séance %d : heures non vérifiées (%s)", seance.id, erreur
+            )
+            return debuts, (
+                "Les heures possibles n'ont pas pu être vérifiées : " + _minuscule(erreur.message)
+            )
+        annotes.append((debut, f"{texte} ({'possible' if verification.valide else 'refusé'})"))
+    return tuple(annotes), None
 
 
 def modifier_placement(
@@ -407,7 +472,7 @@ def modifier_placement(
         (jour, debut, salle_id),
         seance.version_id,
     )
-    remarques = _recalculer_seances_datees(session, seance.version_id)
+    remarques, a_signaler = _recalculer_seances_datees(session, seance.version_id)
     salle = obtenir(session, m.Salle, salle_id) if salle_id is not None else None
     message = f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" + (
         f", salle {salle.code}." if salle else ", sans salle."
@@ -417,7 +482,9 @@ def modifier_placement(
     return ResultatModification(
         enregistree=True,
         message=message,
-        niveau="attention" if remarques or retenues else "succes",
+        # Vert sauf avertissement, ou séances datées non recalculées ou à programmer : une
+        # information (écart admis) ne mérite pas l'orange.
+        niveau="attention" if a_signaler or _avertit(retenues) else "succes",
         anomalies=_triees(retenues),
         remarques=tuple(remarques),
     )
@@ -607,7 +674,7 @@ def deplacer_occurrence(
             f"{minutes_vers_texte(debut)}"
             + (f", salle {salle.code}." if salle else ", sans salle.")
         ),
-        niveau="attention" if concernees else "succes",
+        niveau="attention" if _avertit(concernees) else "succes",
         anomalies=_triees(concernees),
     )
 
@@ -1014,15 +1081,24 @@ def _minuscule(phrase: str) -> str:
     return phrase[:1].lower() + phrase[1:] if phrase else phrase
 
 
-def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
-    """Recalcule les séances datées d'une version qui en a déjà ; renvoie les remarques."""
+def _avertit(anomalies: tuple[Anomalie, ...]) -> bool:
+    """Vrai si une anomalie est un avertissement (les erreurs ont déjà refusé la retouche)."""
+    return any(a.gravite is Gravite.AVERTISSEMENT for a in anomalies)
+
+
+def _recalculer_seances_datees(session: Session, version_id: int) -> tuple[list[str], bool]:
+    """Recalcule les séances datées d'une version qui en a déjà.
+
+    Renvoie les remarques, et vrai s'il faut les signaler : recalcul refusé, ou
+    séances qui restent à programmer.
+    """
     if (
         session.scalar(
             select(m.Occurrence.id).where(m.Occurrence.version_id == version_id).limit(1)
         )
         is None
     ):
-        return []
+        return [], False
     try:
         bilan = recalculer_seances_datees(session, version_id)
     except (raccords.ErreurRaccordIndisponible, ErreurRegleMetier) as erreur:
@@ -1031,8 +1107,8 @@ def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
         return [
             "Les séances datées de cette version n'ont pas été recalculées : "
             + _minuscule(erreur.message)
-        ]
-    return [bilan.message]
+        ], True
+    return [bilan.message], bilan.nb_a_programmer > 0
 
 
 def seances_datees_importees(session: Session, version_id: int) -> bool:

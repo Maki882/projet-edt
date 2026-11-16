@@ -1,4 +1,4 @@
-"""Onglet « À traiter » : anomalies et séances à programmer des emplois du temps actifs.
+"""Page « Points à traiter » : anomalies et séances à programmer des emplois du temps actifs.
 
 Adresses :
 

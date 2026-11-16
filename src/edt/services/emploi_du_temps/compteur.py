@@ -1,4 +1,4 @@
-"""Compteur de l'onglet « À traiter » : le même nombre que la page et que l'accueil.
+"""Compteur des points à traiter, affiché dans le menu : le même nombre que la page et l'accueil.
 
 Le nombre est la somme des `ATraiter.total` des versions actives (voir
 `anomalies`) : c'est la seule définition de « points à traiter » de

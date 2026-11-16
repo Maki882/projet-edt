@@ -8,7 +8,7 @@
 {%- set adresse = "/emploi-du-temps/seances/" ~ f.bloc.seance_hebdo_id %}
 <form id="edt-formulaire" class="formulaire" method="post" action="{{ adresse }}/modifier"
   hx-post="{{ adresse }}/modifier" hx-target="#edt-panneau" hx-swap="innerHTML">
-  <h3>Déplacer la séance</h3>
+  <h3>Déplacer la séance (toutes les semaines)</h3>
   {%- if resultat %}
   {{ ui.message(resultat.message, resultat.niveau, resultat.remarques) }}
   {{ edt.anomalies(resultat.anomalies) }}
@@ -19,7 +19,10 @@
   <input type="hidden" name="retour" value="{{ retour }}">
   {%- set rechargement = {"hx-get": adresse ~ "/formulaire", "hx-trigger": "change", "hx-include": "closest form", "hx-target": "#edt-formulaire", "hx-swap": "outerHTML"} %}
   {{ ui.champ("jour", "Jour", f.jour, type="select", requis=true, options=f.jours, attributs=rechargement) }}
-  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ " (la durée ne change pas).") }}
+  {{ ui.champ("debut", "Heure de début", f.debut, type="select", requis=true, options=f.debuts, attributs=rechargement, aide="Fin à " ~ (f.fin|heure) ~ " (la durée ne change pas). « possible » : le groupe et l'enseignant sont libres et les règles nécessaires respectées, à condition de choisir une salle libre ; « refusé » : l'enregistrement serait refusé (le choisir pour voir pourquoi).") }}
+  {%- if f.remarque_debuts %}
+  {{ ui.message(f.remarque_debuts, "attention") }}
+  {%- endif %}
   <div class="champ">
     <label for="champ-salle_id">Salle</label>
     <select id="champ-salle_id" name="salle_id">

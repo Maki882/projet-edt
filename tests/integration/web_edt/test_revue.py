@@ -81,10 +81,13 @@ def test_un_refus_de_l_instanciation_devient_une_remarque(seances_datees, client
     monkeypatch.setattr(raccords, "instancier_version", refuser)
     version = seances_datees.version_id
     with session_base() as session:
-        assert modifications._recalculer_seances_datees(session, version) == [
-            "Les séances datées de cette version n'ont pas été recalculées : l'instanciation "
-            "refuse cette version."
-        ]
+        assert modifications._recalculer_seances_datees(session, version) == (
+            [
+                "Les séances datées de cette version n'ont pas été recalculées : "
+                "l'instanciation refuse cette version."
+            ],
+            True,  # signalé : le message de la retouche passe à l'orange
+        )
     reponse = client.post(
         f"/emploi-du-temps/versions/{version}/seances-datees",
         data={"retour": f"/emploi-du-temps?version_id={version}&couche=date"},
@@ -98,7 +101,7 @@ def test_un_refus_de_l_instanciation_devient_une_remarque(seances_datees, client
 
 
 def _trois_nombres(client) -> tuple[int, int, int]:
-    """Points à traiter selon l'accueil, la pastille de l'onglet et la page « À traiter »."""
+    """Points à traiter selon l'accueil, le compteur du menu et la page « Points à traiter »."""
     with session_base() as session:
         semestre = session.scalar(select(m.Semestre).where(m.Semestre.code == "S1"))
         from edt.services.emploi_du_temps.versions import exiger_semestre
@@ -194,8 +197,8 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
         controle = raccords.controler_version(session, version)
         assert controle.verification.nb_erreurs == 0 and controle.nb_ecarts_decoches == 1
     page = client.get("/a-traiter").text
-    assert "Écarts aux règles décochées lors du calcul (1)" in page
-    assert "0 point à traiter" in page
+    assert "Entorses aux règles ignorées pour ce calcul (1)" in page
+    assert "Aucun point à traiter" in page
     accueil = client.get("/").text
     assert "Aucun point à traiter" in accueil  # même nombre que la page « À traiter »
 

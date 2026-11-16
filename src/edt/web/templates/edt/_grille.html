@@ -12,12 +12,12 @@
 {%- set lien = url_vue(seance=b.cle) %}
 {%- if b.occurrence_id %}{% set panneau = "/emploi-du-temps/occurrences/" ~ b.occurrence_id ~ "/panneau" %}{% else %}{% set panneau = "/emploi-du-temps/seances/" ~ b.seance_hebdo_id ~ "/panneau" %}{% endif %}
 {%- set infobulle -%}
-{{ b.debut|heure }} - {{ b.fin|heure }} : {{ b.titre }} ({{ b.type_libelle }}). Groupes : {{ b.groupes|join(", ") or "aucun" }}. Enseignants : {{ b.enseignants|join(", ") or "aucun" }}. Salle : {{ b.salle or "à définir" }}.
+{{ b.debut|heure }} - {{ b.fin|heure }} : {{ b.titre }} ({{ b.type_libelle }}). Groupes : {{ b.groupes|join(", ") or "aucun" }}. Enseignants : {{ b.enseignants|join(", ") or "non désigné" }}. Salle : {{ b.salle or "à définir" }}.
 {%- if b.semaines_texte %} {{ b.semaines_texte }}.{% endif %}
 {%- if b.verrou %} Séance verrouillée.{% endif %}
 {%- if b.partielle %} Concerne une partie du groupe.{% endif %}
 {%- if b.annulee %} Séance annulée.{% elif b.deplacee %} Séance déplacée{% if b.date_initiale %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}.{% endif %}
-{%- if b.anomalies %} {{ b.anomalies|length }} anomalie(s) : ouvrir la séance pour le détail.{% endif %}
+{%- if b.anomalies %} {{ fmt.pluriel(b.anomalies|length, "anomalie") }} : ouvrir la séance pour le détail.{% endif %}
 {%- endset %}
 <a class="edt-bloc edt-couleur-{{ b.couleur }}
   {%- if b.partielle %} edt-bloc-partielle{% endif %}
@@ -30,13 +30,13 @@
   title="{{ infobulle|trim }}" data-cle="{{ b.cle }}">
   {%- if b.verrou or b.gravite %}
   <span class="edt-marques">
-    {%- if b.gravite %}<span class="edt-marque edt-marque-{{ b.gravite.value }}" aria-label="{{ b.anomalies|length }} anomalie(s)">!</span>{% endif %}
+    {%- if b.gravite %}<span class="edt-marque edt-marque-{{ b.gravite.value }}" aria-label="{{ fmt.pluriel(b.anomalies|length, 'anomalie') }}">!</span>{% endif %}
     {%- if b.verrou %}<span class="edt-marque edt-marque-verrou" aria-label="Séance verrouillée">{{ verrou() }}</span>{% endif %}
   </span>
   {%- endif %}
   <span class="edt-bloc-horaire edt-bloc-detail">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
   <strong class="edt-bloc-titre edt-bloc-ligne">{{ b.titre }}</strong>
-  <span class="edt-bloc-ligne">{{ b.type_code }} - {{ b.groupes|join(", ") }}</span>
+  <span class="edt-bloc-ligne">{{ b.type_code if b.type_code|length <= 3 else b.type_libelle }} - {{ b.groupes|join(", ") }}</span>
   {%- if b.enseignants %}<span class="edt-bloc-ligne edt-bloc-detail">{{ b.enseignants|join(", ") }}</span>{% endif %}
   <span class="edt-bloc-ligne">{{ b.salle or "Salle à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</span>
   {%- if b.semaines_texte %}<span class="edt-bloc-semaines edt-bloc-ligne edt-bloc-detail">{{ b.semaines_texte }}</span>{% endif %}

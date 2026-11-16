@@ -14,7 +14,7 @@
   <dt>Date</dt><dd>{{ fmt.date_longue(b.date)|capitalize }}, {{ fmt.plage_horaire(b.debut, b.fin) }}</dd>
   <dt>État</dt><dd>{{ b.statut.libelle }}{% if b.date_initiale and b.date_initiale != b.date %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}</dd>
   <dt>Groupes</dt><dd>{{ b.groupes|join(", ") or "aucun" }}</dd>
-  <dt>Enseignants</dt><dd>{{ b.enseignants|join(", ") or "aucun" }}</dd>
+  <dt>Enseignants</dt><dd>{{ b.enseignants|join(", ") or "non désigné" }}</dd>
   <dt>Salle</dt><dd>{{ b.salle or "à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</dd>
   <dt>Exigences</dt><dd>{{ f.exigences }}</dd>
   {%- if b.commentaire %}
@@ -27,7 +27,7 @@
 {%- if f.modifiable %}
 {% include "edt/_formulaire_occurrence.html" %}
 <form class="formulaire" method="post" action="/emploi-du-temps/occurrences/{{ b.occurrence_id }}/annuler"
-  data-confirmation="Annuler la séance du {{ b.date|date_fr }} ? Elle n'aura pas lieu et ne comptera plus dans le volume.">
+  data-confirmation="Annuler la séance du {{ b.date|date_fr }} ? Elle n'aura pas lieu et ne comptera plus dans le volume. Elle ne pourra pas être rétablie dans cette version.">
   <h3>Annuler cette séance</h3>
   <input type="hidden" name="retour" value="{{ retour }}">
   {#- maxlength : la même borne que le serveur (modifications.MOTIF_MAX) #}
@@ -36,6 +36,7 @@
     <button type="submit" class="bouton bouton-danger">Annuler la séance</button>
   </div>
 </form>
+<p class="discret">Pour verrouiller la séance à sa place : passer en « Semaine type ».</p>
 {%- else %}
 {{ ui.message("Cette séance est annulée : elle n'a pas lieu.", "info") }}
 {%- endif %}

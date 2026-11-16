@@ -236,7 +236,7 @@ def test_les_retouches_survivent_au_recalcul_sans_doublon(
                 if lundi <= (o.date_initiale or o.date) <= lundi + dt.timedelta(days=6)
             ]
             assert len(meme_semaine) == 1  # la retouche, et pas de séance recalculée en double
-    assert "retouche(s) à la main" in bilan.message
+    assert "retouches à la main" in bilan.message
 
 
 DEBUTS_DE_LA_GRILLE = (8 * 60 + 30, 10 * 60 + 45, 13 * 60 + 45, 16 * 60)
@@ -292,6 +292,9 @@ def test_modification_acceptee_puis_verrou(version_generee, client, faux_verific
     message = client.get("/emploi-du-temps").text
     assert f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" in message
     assert "À noter" in message
+    # Une simple information ne fait pas passer le message à l'orange : vert.
+    assert 'class="message message-succes"' in message
+    assert 'class="message message-attention"' not in message
 
     client.post(f"/emploi-du-temps/seances/{identifiant}/verrou", data={"verrou": "true"})
     with session_base() as session:
@@ -543,7 +546,7 @@ def test_bandeau_et_bascule_vers_la_vue_etendue(version_generee, client):
     restreinte = client.get(adresse).text
     assert "<strong>Affiché :</strong> les séances de A1-G1 et de A1" in restreinte
     assert "<strong>Non affiché :</strong>" in restreinte and "A1-G1a, A1-G1b" in restreinte
-    assert "Afficher aussi les classes, demi-groupes et groupes de langues" in restreinte
+    assert "Afficher aussi ces séances" in restreinte
     assert "etendu=1" in restreinte
 
     etendue = client.get(adresse + "&etendu=1").text
@@ -568,7 +571,7 @@ def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
 
     client.get(f"/emploi-du-temps?enseignant_id={martin}")
     retour = client.get("/emploi-du-temps").text
-    assert "Claire Martin" in retour and "dernier emploi du temps consulté" in retour
+    assert "Claire Martin" in retour and "choix repris de votre dernière visite" in retour
 
     # Une cible retenue qui n'existe plus ici : la page s'ouvre sur la classe, sans erreur.
     # Le témoin posé par le serveur est d'abord retiré : il ne doit en rester qu'un, quel que

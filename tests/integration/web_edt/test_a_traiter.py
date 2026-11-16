@@ -1,4 +1,4 @@
-"""Onglet « À traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer."""
+"""Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer."""
 
 from __future__ import annotations
 
@@ -87,8 +87,10 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
 
     page = client.get("/a-traiter").text
 
-    assert page.index("Erreurs : règles non respectées") < page.index("Avertissements")
-    assert page.index("Avertissements") < page.index("Informations")
+    assert page.index("Règles non respectées") < page.index("Situations à vérifier")
+    assert page.index("Situations à vérifier") < page.index("Pour information")
+    assert f'href="/calculs?semestre_id={seances_datees.semestre_id}">Générer à nouveau' in page
+    assert "Mêmes règles en cause que dans la semaine type" not in page  # jour fermé : propre
     assert "Une séance par salle (1)" in page and "Jours fermés (1)" in page
     assert "La salle N016 est prise deux fois." in page
     assert f"seance=h{seance_hebdo_id}" in page and f"groupe_id={promotion}" in page
@@ -110,7 +112,7 @@ def test_avec_le_vrai_verificateur(version_generee, client):
 
     assert "installation incomplète" not in page
     if verification.nb_erreurs:
-        assert f"Erreurs : règles non respectées ({verification.nb_erreurs})" in page
+        assert f"Règles non respectées ({verification.nb_erreurs})" in page
     else:
         assert "Aucune anomalie dans la semaine type" in page
 
