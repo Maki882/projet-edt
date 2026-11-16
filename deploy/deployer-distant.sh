@@ -65,7 +65,7 @@ readonly LIGNES_JOURNAL=50
 readonly ESPACE_MINIMAL_MO=1024
 readonly MARQUE_ENVOI="envoi-termine"        # écrit par deployer.sh après un envoi complet
 readonly MARQUE_REUSSITE="deploiement-reussi"
-readonly EXPLICATION_SCHEMA="le schéma de la base ne correspond plus au modèle de cette version (table ou colonne ajoutée, renommée ou supprimée). Il n'y a pas de migrations : cette version ne peut être déployée qu'avec « deploy/deployer.sh --reset-base », qui EFFACE les données (une sauvegarde est faite juste avant)."
+readonly EXPLICATION_SCHEMA="le schéma de la base ne correspond plus au modèle de cette version (colonne, unicité ou index ajouté, modifié ou supprimé). Il n'y a pas de migrations : cette version ne peut être déployée qu'avec « deploy/deployer.sh --reset-base », qui EFFACE les données (une sauvegarde est faite juste avant)."
 export PIP_CACHE_DIR="/var/cache/edt/pip"
 
 # --- Messages horodatés ------------------------------------------------------

@@ -62,6 +62,37 @@ def test_chargement_du_jeu_petit(client, monkeypatch):
 
 
 @pytest.mark.cas_limite
+def test_page_de_resultat_rechargee_sans_second_chargement(client, monkeypatch):
+    """Cas : F5 sur la page de résultat d'un chargement d'établissement fictif, puis ouverture
+    d'une adresse de résultat périmée (autre chargement depuis, ou serveur redémarré).
+
+    Risque : le navigateur renvoie le formulaire (confirmation d'effacement comprise) et
+    remet la base à zéro une seconde fois ; ou une adresse périmée affiche le compte rendu
+    d'un autre chargement, ou une erreur.
+    """
+    monkeypatch.setattr(prechauffage, "lancer", lambda url: None)
+    envoi = client.post(
+        "/jeux/charger", data={"taille": "petit", "graine": "0"}, follow_redirects=False
+    )
+    assert envoi.status_code == 303
+    adresse = envoi.headers["location"]
+    assert re.fullmatch(r"/jeux/resultat/\d+", adresse)
+
+    premiere = client.get(adresse)
+    assert "Établissement fictif « petit » chargé" in premiere.text  # message du chargement
+    with session_base() as session:  # une donnée saisie après le chargement
+        session.add(Campus(code="APRES", nom="Ajouté après le chargement"))
+    rechargee = client.get(adresse)  # F5 : un GET, pas un nouvel envoi
+    assert rechargee.status_code == 200 and "<li>2 campus, 14 salles</li>" in rechargee.text
+    assert "chargé :" not in rechargee.text  # le message n'est donné qu'une fois
+    assert _compter(Campus) == 3  # rien n'a été rechargé ni effacé
+
+    perimee = client.get(adresse + "0")
+    assert perimee.status_code == 200 and "plus disponible" in perimee.text
+    assert "Ce qui a été chargé" not in perimee.text
+
+
+@pytest.mark.cas_limite
 def test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran(client):
     """Cas : la graine saisie à l'écran vaut un de plus que la plus grande graine admise par
     le générateur (et par la commande `python -m edt jeu`).

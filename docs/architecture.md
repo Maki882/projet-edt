@@ -202,7 +202,7 @@ reste un écart :
 | Où | Ce qui se passe |
 |---|---|
 | `python -m edt init-db` | échoue (code 1) sans rien modifier, liste les écarts et indique la marche à suivre |
-| `python -m edt init-db --reset` | recrée la base et **efface les données** ; demande confirmation dans un terminal (`--oui` l'évite), refuse d'agir pendant un calcul, sauvegarde d'abord le fichier en production |
+| `python -m edt init-db --reset` | recrée la base et **efface les données** ; demande confirmation dans un terminal (`--oui` l'évite), refuse d'agir pendant un calcul ou un chargement d'établissement fictif, sauvegarde d'abord la base dans `sauvegardes/` en production (sauf `--sans-sauvegarde`, quand l'appelant vient de la sauvegarder) |
 | `python -m edt verifier-schema` | code 0 si le schéma est à jour, 1 avec la liste des écarts, 2 si la base est inaccessible |
 | `python -m edt doctor` | une ligne « Schéma » en échec, avec le nombre d'écarts |
 | `/sante` | répond 503 avec les écarts |

@@ -247,7 +247,7 @@ def test_entorses_minimisees_meme_sans_optimiser():
     assert resultat.statistiques["entorses"] == {"PAUSE": 1}
     assert resultat.statistiques["raison_arret"] == "optimum_prouve"
     assert "trous" not in resultat.statistiques  # pas de bilan de confort sans « optimiser »
-    assert "On ne peut pas faire mieux" not in resultat.message
+    assert "Impossible de faire mieux" not in resultat.message
 
 
 def test_dejeuner_souple():
@@ -485,7 +485,7 @@ def test_optimal_n_est_pas_affirme_tant_qu_il_reste_une_entorse_de_salle():
     assert resultat.statistiques["entorses"] == {"EQUIPEMENT": 1}
     assert resultat.statistiques["raison_arret"] == "optimum_prouve"
     assert resultat.statistiques["optimal"] is False
-    assert "On ne peut pas faire mieux" not in resultat.message
+    assert "Impossible de faire mieux" not in resultat.message
     assert "viennent des salles" in resultat.message
 
 

@@ -136,3 +136,23 @@ def test_descriptions_des_regles_sans_nom_technique():
     """Le tableau « Règles » et la page « Points à traiter » affichent ces descriptions telles quelles."""
     for code, entree in CATALOGUE.items():
         assert "`" not in entree.description and "edt." not in entree.description, code
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    "phrase",
+    [
+        "Impossible de faire mieux avec les préférences actuelles.",
+        "On ne peut pas faire mieux avec les préférences actuelles.",
+    ],
+    ids=["message du moteur", "message déjà enregistré en base"],
+)
+def test_optimum_prouve_garde_dans_le_bilan_de_qualite(phrase):
+    """Cas : calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà
+    enregistré en base avec l'autre tournure de la même phrase.
+
+    Risque : la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la
+    phrase du moteur.
+    """
+    message = f"Emploi du temps trouvé : 3 séance(s) placée(s). {phrase}"
+    assert calculs.qualite_du_moteur(message) == phrase

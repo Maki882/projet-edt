@@ -744,7 +744,7 @@ def test_commande_generer_ameliore_par_defaut(lanceur, jeu_minimal):
         assert calcul.parametres["arret_sur_stagnation"] is True
     assert raison in ("optimum_prouve", "stagnation"), raison
     attendu = {
-        "optimum_prouve": "On ne peut pas faire mieux avec les préférences actuelles.",
+        "optimum_prouve": "Impossible de faire mieux avec les préférences actuelles.",
         "stagnation": "L'amélioration s'est arrêtée d'elle-même",
     }[raison]
     assert attendu in message
@@ -1080,7 +1080,7 @@ def test_lancer_un_calcul_pendant_un_chargement_est_refuse(jeu_minimal):
     """
     assert jeux._verrou_base.acquire(blocking=False)
     try:
-        with pytest.raises(ErreurRegleMetier, match="chargement de jeu de données"):
+        with pytest.raises(ErreurRegleMetier, match="chargement d'établissement fictif"):
             generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
         assert _nb_lignes(m.Calcul) == 0
     finally:

@@ -94,6 +94,16 @@ def init_db(
         bool,
         typer.Option("--oui", "-y", help="Avec --reset : ne demande pas de confirmation."),
     ] = False,
+    sans_sauvegarde: Annotated[
+        bool,
+        typer.Option(
+            "--sans-sauvegarde",
+            help=(
+                "Avec --reset : ne copie pas la base avant de l'effacer (sauvegarde déjà faite "
+                "par l'appelant, comme le déploiement)."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Crée la base, son schéma et les données par défaut (sans risque à relancer).
 
@@ -105,12 +115,12 @@ def init_db(
     (--oui l'évite ; un script non interactif n'est pas interrogé), refuse
     d'agir pendant un calcul ou pendant un chargement de jeu, et, en
     production, sauvegarde d'abord la base dans le dossier « sauvegardes »
-    à côté d'elle (« edt-<date>-avant-reset.db »).
+    à côté d'elle (« edt-<date>-avant-reset.db »), sauf avec --sans-sauvegarde.
     """
     sauvegarde = None
     if reset:
         _confirmer_remise_a_zero(oui)
-        if charger_configuration().est_prod:
+        if charger_configuration().est_prod and not sans_sauvegarde:
             sauvegarde = sauvegarder_base()
         # Même chemin que l'écran de configuration : verrou, fichier marqueur vu des autres
         # processus, refus pendant un calcul.

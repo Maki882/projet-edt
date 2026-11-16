@@ -386,8 +386,8 @@ FEUILLES: tuple[Feuille, ...] = (
                 defaut=StatutEnseignant.PERMANENT,
                 exemple="vacataire",
             ),
-            _c("max_par_jour", "Maximum par jour", T.DUREE, exemple="6 h"),
-            _c("max_par_semaine", "Maximum par semaine", T.DUREE, exemple="18 h"),
+            _c("max_par_jour", "Maximum par jour", T.DUREE, minimum=1, exemple="6 h"),
+            _c("max_par_semaine", "Maximum par semaine", T.DUREE, minimum=1, exemple="18 h"),
             _c(
                 "fictif",
                 "Fictif",

@@ -56,7 +56,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 078 fonctions de test** dans 10 composants, dont 285 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (115 fonctions)
 
@@ -81,7 +81,7 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | Onglets des tests dans le menu, et tableau d'une famille : état affiché de chaque test et comptes | 8 |
 | [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | Regroupement des comptes rendus de pytest par fonction de test, et historique des résultats sur disque | 8 |
 
-### `echange/` : Import et export (145 fonctions)
+### `echange/` : Import et export (146 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -89,7 +89,7 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps importé en mode référence : iCal et CSV datés, relus et réimportés | 4 |
 | [`echange/test_format.py`](echange/test_format.py) | Le format d'échange : gabarit XLSX et ZIP, documentation générée depuis la description | 5 |
 | [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 19 |
-| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 31 |
+| [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 32 |
 | [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 12 |
 | [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 40 |
 | [`echange/test_regles.py`](echange/test_regles.py) | Feuille « regles » du format d'échange : gabarit, import, export, réimport, tout remplacer | 12 |
@@ -102,7 +102,7 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-### `socle/` : Domaine, base et services transverses (202 fonctions)
+### `socle/` : Domaine, base et services transverses (204 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -112,14 +112,14 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`socle/test_charge.py`](socle/test_charge.py) | Charge : chargement de l'instantané d'un établissement complet (test marqué `perf`) | 1 |
 | [`socle/test_cli.py`](socle/test_cli.py) | Fonctions du module de commandes appelées directement : extension refusée, point d'entrée, sorties UTF-8 | 5 |
 | [`socle/test_config.py`](socle/test_config.py) | Configuration : variables EDT_* invalides refusées, valeurs vides au défaut, doctor | 2 |
-| [`socle/test_conflits_groupes.py`](socle/test_conflits_groupes.py) | Relation de conflit entre groupes : hiérarchie, chevauchement déclaré, étudiant commun | 6 |
+| [`socle/test_conflits_groupes.py`](socle/test_conflits_groupes.py) | Relation de conflit entre groupes : hiérarchie, chevauchement déclaré, étudiant commun | 7 |
 | [`socle/test_contrats.py`](socle/test_contrats.py) | Contrats partagés : catalogue des contraintes, vérificateur, solveur, paramètres | 10 |
 | [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne | 14 |
 | [`socle/test_depliage.py`](socle/test_depliage.py) | Dépliage des besoins en séances hebdomadaires (les trois modes de volume) | 12 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Chargement de l'instantané d'un semestre depuis la base | 11 |
 | [`socle/test_jeux.py`](socle/test_jeux.py) | Jeux fictifs et remise à zéro : panne après remise à zéro, schéma périmé, marqueur | 11 |
 | [`socle/test_journal.py`](socle/test_journal.py) | Journalisation : fichier non ouvrable, rotation partagée entre processus, purge des calculs | 6 |
-| [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 9 |
+| [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 10 |
 | [`socle/test_niveaux.py`](socle/test_niveaux.py) | Niveaux des contraintes (nécessaire, important, facultatif) : contrat du catalogue | 7 |
 | [`socle/test_parametres.py`](socle/test_parametres.py) | Un paramètre corrompu en base reste réparable | 1 |
 | [`socle/test_regles.py`](socle/test_regles.py) | Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution | 31 |
@@ -187,7 +187,7 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Un entier démesuré passé au service est refusé avec un message | 1 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression, côté service : les conséquences d'une suppression sont expliquées | 1 |
 
-### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (33 fonctions)
+### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (34 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -199,7 +199,7 @@ Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marqu
 | [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 |
 | [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | Mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : absence explicite, lecture du rapport, panne journalisée | 8 |
-| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 6 |
+| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 7 |
 
 <!-- tests-unitaires : fin de la partie générée -->
 

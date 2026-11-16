@@ -5,11 +5,20 @@ sessions : une remise à zéro supprime les tables et ne doit jamais se faire
 pendant qu'une session de requête est ouverte. Ces routes n'utilisent donc
 pas `SessionRequete`. Pendant un calcul, les deux sont refusées
 (`ErreurCalculEnCours`) et la page l'explique.
+
+Un chargement réussi redirige vers la page de son compte rendu
+(`/jeux/resultat/<numéro>`, POST puis GET) : un rechargement de cette page
+la réaffiche sans renvoyer le formulaire, donc sans second chargement. Le
+compte rendu du dernier chargement est gardé en mémoire du processus
+jusqu'au chargement suivant ; une adresse périmée (autre chargement depuis,
+serveur redémarré) ramène à la page des établissements fictifs.
 """
 
 from __future__ import annotations
 
+import itertools
 import logging
+import threading
 
 from fastapi import APIRouter, Request
 from fastapi.responses import Response
@@ -48,6 +57,11 @@ ENTITES_SAISIES = (
     "Calculs",
 )
 """Compteurs qui révèlent des données saisies ou chargées (au-delà des données par défaut)."""
+
+_numeros = itertools.count(1)
+_dernier_chargement: tuple[str, RapportJeu] | None = None
+"""Numéro et rapport du dernier chargement réussi (affiché par `resultat`)."""
+_verrou_dernier = threading.Lock()
 
 routeur = APIRouter(prefix="/jeux")
 MENU = [
@@ -171,19 +185,40 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
     )
     # Les écrans suivants (accueil, « À traiter », Générer) sont préparés pendant la lecture.
     prechauffage.lancer(charger_configuration().db_url)
+    global _dernier_chargement
+    with _verrou_dernier:
+        numero = str(next(_numeros))
+        _dernier_chargement = (numero, rapport)
+    return rediriger(
+        request,
+        f"/jeux/resultat/{numero}",
+        f"Établissement fictif « {saisies['taille']} » chargé : "
+        f"{rapport.compteurs.get('salle', 0)} salles, "
+        f"{rapport.compteurs.get('enseignant', 0)} enseignants, "
+        f"{rapport.nb_besoins} besoins.",
+    )
+
+
+@routeur.get("/resultat/{numero}", name="jeux_resultat")
+def resultat(request: Request, numero: str) -> Response:
+    """Compte rendu du dernier chargement ; une adresse périmée ramène à la page des jeux."""
+    with _verrou_dernier:
+        dernier = _dernier_chargement
+    if dernier is None or dernier[0] != numero:
+        journal.info("Compte rendu de chargement n° %s demandé : plus disponible", numero[:30])
+        return rediriger(
+            request,
+            "/jeux",
+            "Ce compte rendu de chargement n'est plus disponible (un autre chargement a eu "
+            "lieu depuis, ou le serveur a redémarré) : l'état actuel de la base est affiché "
+            "ci-dessous.",
+            "info",
+        )
+    rapport = dernier[1]
     return rendre(
         request,
         "donnees/jeux_resultat.html",
         {"rapport": rapport, "resume": rapport.resume(), "synthese": synthese(rapport)},
-        messages=[
-            Message(
-                f"Établissement fictif « {saisies['taille']} » chargé : "
-                f"{rapport.compteurs.get('salle', 0)} salles, "
-                f"{rapport.compteurs.get('enseignant', 0)} enseignants, "
-                f"{rapport.nb_besoins} besoins.",
-                "succes",
-            )
-        ],
     )
 
 

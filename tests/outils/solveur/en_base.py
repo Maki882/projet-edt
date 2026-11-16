@@ -1,7 +1,9 @@
 """Aides partagées par les tests du solveur qui travaillent sur la base temporaire du jeu minimal.
 
-- `OPTIONS` : options de calcul des tests de service (30 s, graine 1, un fil) ;
-- `rendre_impossible`, `calcul_fictif`, `etat`, `regles_du_jeu` : préparer ou lire la base ;
+- `OPTIONS` : options de calcul des tests de service (30 s, graine 1, un fil, sans arrêt sur
+  stagnation, critère qui lit l'horloge : résultat reproductible quelle que soit la charge) ;
+- `rendre_impossible`, `calcul_fictif`, `calcul_abandonne`, `etat`, `regles_du_jeu` : préparer
+  ou lire la base ;
 - `journalise` : enregistrements du journal capturés par `caplog`.
 """
 
@@ -15,10 +17,11 @@ from sqlalchemy import select
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import EtatCalcul, ModeVolume
+from edt.services.generation import CLE_PROCESSUS
 from edt.services.regles import charger_regles_actives
 from edt.solveur import OptionsSolveur
 
-OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1)
+OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1, arret_sur_stagnation=False)
 
 
 def rendre_impossible(semestre_id: int) -> None:
@@ -51,6 +54,15 @@ def calcul_fictif(semestre_id: int, **champs) -> int:
         session.add(calcul)
         session.flush()
         return calcul.id
+
+
+def calcul_abandonne(semestre_id: int) -> int:
+    """Calcul « en cours » d'un processus disparu (n° 999 999) : application arrêtée en route."""
+    return calcul_fictif(
+        semestre_id,
+        demarre_le=dt.datetime(2026, 10, 5, 8, 0),
+        statistiques={CLE_PROCESSUS: 999_999},
+    )
 
 
 def etat(calcul_id: int) -> EtatCalcul:

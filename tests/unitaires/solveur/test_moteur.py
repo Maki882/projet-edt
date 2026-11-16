@@ -351,7 +351,7 @@ def test_l_amelioration_s_arrete_d_elle_meme_quand_elle_ne_progresse_plus(monkey
         resultat.message,
     )
     assert "temps limite" not in resultat.message
-    assert "On ne peut pas faire mieux" not in resultat.message
+    assert "Impossible de faire mieux" not in resultat.message
 
 
 class _FauxSolveur:
