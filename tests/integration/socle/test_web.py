@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import os
 import sqlite3
 import sys
@@ -25,7 +26,6 @@ from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurRegleMetier
 from edt.services import generation
 from edt.web import app as module_app
-from edt.web import erreurs as module_erreurs
 from edt.web.dependances import SessionRequete
 from edt.web.gabarits import rediriger
 from edt.web.menu import SECTION_REFERENTIELS, EntreeMenu
@@ -321,7 +321,10 @@ def test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede(
     reponse = client_etendu.post("/essai/campus", params={"code": "KO"}, follow_redirects=False)
     assert reponse.status_code == 503
     assert "Base de données indisponible" in reponse.text and "pas une base SQLite" in reponse.text
-    assert "init-db --reset" in reponse.text and "inattendue" not in reponse.text
+    texte = html.unescape(reponse.text)
+    # « init-db --reset » échoue sur un fichier illisible : le remède est de le mettre de côté.
+    assert "de côté" in texte and "« python -m edt init-db »" in texte
+    assert "init-db --reset" not in texte and "inattendue" not in texte
 
 
 @pytest.mark.cas_limite
@@ -389,18 +392,19 @@ def test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes(client_etendu,
 
 
 @pytest.mark.cas_limite
-def test_base_non_initialisee_une_trace_puis_une_ligne(client_etendu, environnement, monkeypatch):
-    """Cas : la base n'est pas initialisée et plusieurs pages répondent 503 à la suite.
+def test_base_non_initialisee_une_ligne_d_avertissement_sans_trace(client_etendu, environnement):
+    """Cas : la base n'est pas initialisée et plusieurs pages répondent 503 à la suite, dès la
+    première.
 
-    Risque : une trace complète par page, qui noie le journal (huit traces en une demi-seconde).
+    Risque : une erreur avec trace complète pour un état connu que la page explique, qui fait
+    croire à une panne (et, répétée, noie le journal).
     """
-    monkeypatch.setattr(module_erreurs, "_non_initialisee_signalee", False)
     for _ in range(3):
         reponse = client_etendu.get("/essai/panne-base", params={"cause": "no such table: salle"})
         assert reponse.status_code == 503
     journal = _journal(environnement)
-    assert journal.count("Traceback") == 1
-    assert journal.count("Base de données non initialisée sur /essai/panne-base") == 2
+    assert journal.count("Traceback") == 0 and " ERROR " not in journal
+    assert journal.count("Base de données non initialisée sur /essai/panne-base") == 3
 
 
 @pytest.mark.cas_limite

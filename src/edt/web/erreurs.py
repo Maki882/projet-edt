@@ -39,7 +39,7 @@ from sqlalchemy.exc import (
 )
 from starlette.exceptions import HTTPException as ErreurHTTP
 
-from edt.db.moteur import base_verrouillee
+from edt.db.moteur import REMEDE_BASE_ILLISIBLE, base_verrouillee
 from edt.erreurs import (
     ErreurConfiguration,
     ErreurDonneesInvalides,
@@ -110,9 +110,6 @@ NOMS_DE_CHAMPS = {
 
 ERREURS_DE_PROGRAMMATION = (ProgrammingError, InternalError, NotSupportedError)
 """Erreurs du pilote qui révèlent un défaut du code, pas une panne de la base : page 500."""
-
-_non_initialisee_signalee = False
-"""Vrai une fois la trace d'une base non initialisée journalisée (voir `_base_indisponible`)."""
 
 
 def veut_du_json(request: Request) -> bool:
@@ -221,10 +218,9 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     de programmation (`ERREURS_DE_PROGRAMMATION`) est relevée : l'intergiciel
     en fait la page 500 avec sa référence, au lieu d'un « réessayer » inopérant.
 
-    Journal : trace complète, sauf pour une base non initialisée déjà signalée
-    (chaque page en 503 ajouterait sinon la même trace) : une ligne suffit.
+    Journal : trace complète, sauf pour une base non initialisée, état connu que la page
+    explique : une ligne d'avertissement par page, sans trace.
     """
-    global _non_initialisee_signalee
     if isinstance(erreur, ERREURS_DE_PROGRAMMATION):
         raise erreur
     cause = str(erreur.orig or erreur).lower()
@@ -240,13 +236,12 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
                 "modifié : réessayer dans quelques secondes."
             ),
         )
-    if "no such table" in cause and _non_initialisee_signalee:
+    if "no such table" in cause:
         journal.warning(
             "Base de données non initialisée sur %s : %s", request.url.path, erreur.orig
         )
     else:
         journal.exception("Base de données indisponible sur %s", request.url.path)
-        _non_initialisee_signalee = _non_initialisee_signalee or "no such table" in cause
     titre = "Base de données indisponible"
     if "no such table" in cause:
         message = (
@@ -258,9 +253,7 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     elif "not a database" in cause or "malformed" in cause:
         message = (
             "Le fichier de la base de données est illisible : ce n'est pas une base SQLite, "
-            "ou il est corrompu. À faire par l'administrateur du serveur : restaurer une "
-            "sauvegarde, ou recréer la base avec « python -m edt init-db --reset » (les "
-            "données sont perdues), puis réessayer."
+            "ou il est corrompu. À faire par l'administrateur du serveur : " + REMEDE_BASE_ILLISIBLE
         )
     elif "readonly" in cause or "read-only" in cause:
         titre = "Base de données en lecture seule"
