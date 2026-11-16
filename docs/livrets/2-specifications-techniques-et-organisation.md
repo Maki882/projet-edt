@@ -271,11 +271,12 @@ d'intégration » s'appuient sur le service `edt.services.banc_tests`, que la co
 - le résultat et la date de la dernière exécution de chaque test sont gardés dans
   `logs/tests/resultats.json`, avec le journal complet de la dernière exécution.
 
-Mesure faite sur le serveur de démonstration (Linux, deux cœurs), à la version 1.0.0 : la
-famille des tests unitaires, lancée par `python -m edt tests --famille unitaires`, a duré
-2 min 22 s : 1 093 tests (les 20 tests de charge ne partent pas avec la famille), 1 093
-réussis, 0 échec, 0 ignoré ; la famille des tests d'intégration, 4 min 07 s : 519 tests (hors
-les 4 tests de charge), 519 réussis.
+Mesure faite sur le serveur de démonstration (Linux, deux cœurs) le 16 novembre, juste avant
+la publication de la version 1.0.0 : la famille des tests unitaires, lancée par
+`python -m edt tests --famille unitaires`, a duré 2 min 31 s : 1 101 tests (les
+20 tests de charge ne partent pas avec la famille), 1 101 réussis, 0 échec, 0 ignoré ;
+la famille des tests d'intégration, 4 min 29 s : 527 tests (hors les
+4 tests de charge), 527 réussis.
 
 ### 1.12 Assistant conversationnel
 

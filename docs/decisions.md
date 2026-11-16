@@ -216,7 +216,8 @@ Sept règles définissent le problème et restent toujours nécessaires :
 défaut, `PAUSE`, `DEJEUNER`, `EQUIPEMENT` et `MAX_ENSEIGNANT` sont
 importantes, les autres nécessaires. Les niveaux sont enregistrés avec le
 calcul et appliqués ensuite à la vérification de la version produite.
-L'interface ne permet pas d'ignorer une règle. La ligne de commande le permet
+L'interface ne permet pas d'ignorer une règle du catalogue (une règle
+personnalisée, elle, peut y être ignorée le temps d'un calcul). La ligne de commande le permet
 (`generer -d CODE`) ; la règle ignorée est alors tracée dans le résultat du
 calcul. Aucune règle n'est jamais abandonnée automatiquement.
 

@@ -416,7 +416,7 @@ Il faut Python 3.11 ou plus récent. Depuis la racine du dépôt, dans un enviro
 virtuel (`python -m venv .venv`, puis l'activer) :
 
 ```sh
-python -m pip install -e .               # installe l'application et ses dépendances
+python -m pip install -e . -c contraintes.txt   # installe l'application aux versions figées
 python -m edt init-db                    # crée la base data/edt.db et ses données par défaut
 python -m edt serve                      # lance le serveur web sur http://127.0.0.1:8000
 ```

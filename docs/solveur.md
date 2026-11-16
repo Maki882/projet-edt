@@ -979,11 +979,15 @@ fenêtre et un coût : il sert aussi au replacement à la demande
     « introuvable » pour le suivi, l'arrêt, le lancement, les pré-vérifications,
     l'instanciation et le replacement (`identifiant_valide`), jamais
     `OverflowError` ;
-  - **lancement pendant un chargement de jeu, une remise à zéro ou un
-    import** (`edt.services.jeux.operation_en_cours`,
-    `edt.services.echange.import_en_cours`) : refusé (`ErreurRegleMetier`,
-    journalisé), comme l'inverse. Les deux marqueurs ne couvrent que le
-    processus (le serveur web en est un seul) ;
+  - **lancement pendant un chargement de jeu, une remise à zéro, un import
+    ou une exécution des tests** (`edt.services.jeux.operation_en_cours`,
+    `edt.services.echange.import_en_cours`,
+    `edt.services.banc_tests.execution.tests_en_cours`) : refusé
+    (`ErreurLancementRefuse`, sous-classe d'`ErreurRegleMetier`, journalisé),
+    comme l'inverse ; à l'écran, retour sur Générer avec la cause. Les
+    marqueurs du chargement et de l'import ne couvrent que le processus (le
+    serveur web en est un seul) ; celui des tests voit aussi une exécution
+    lancée par la commande ;
   - **deux processus qui lancent la même seconde** (commande et serveur) :
     `lancer_calcul` ouvre sa transaction par `edt.db.moteur.transaction_immediate`
     (`BEGIN IMMEDIATE`, avant toute lecture) : le contrôle « aucun calcul en
