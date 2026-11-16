@@ -434,7 +434,7 @@ def rubriques_regle(
             type="select",
             valeur=str(valeurs.get("portee", "")),
             requis=True,
-            aide="Portées admises par ce type. Un groupe vaut aussi pour ses sous-groupes.",
+            aide="Qui peut être concerné par ce type de règle. Un groupe vaut aussi pour ses sous-groupes.",
             erreur=erreurs.get("portee"),
             options=tuple((n.value, n.libelle) for n in natures),
         )
@@ -550,7 +550,7 @@ def rubriques_regle(
     if datable:
         reglages += dates
     reglages += commentaire
-    rubriques = [RubriqueChamps("Portée", tuple(portee))]
+    rubriques = [RubriqueChamps("À qui s'applique la règle", tuple(portee))]
     erreur_bloc = erreurs.get(CLE_BLOC_PARAMETRES)
     if champs_parametres or erreur_bloc:
         # Bloc masqué quand aucun de ses paramètres ne vaut pour la portée choisie

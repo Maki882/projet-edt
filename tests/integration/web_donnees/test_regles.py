@@ -12,6 +12,7 @@ from starlette.datastructures import FormData
 from tests.outils.web_donnees.aides import (
     HX,
     NOMBRE_TROP_GRAND,
+    depuis,
     erreur_sous_le_champ,
     identifiant,
     saisie_regle,
@@ -55,7 +56,7 @@ def _nouvelle(annee: int, type_regle: str, **champs) -> dict:
 def test_liste_de_l_annee_et_bandeau_des_regles_proposees(site, ids):
     page = site.get("/regles").text
     assert _codes(page) == ["R001", "R002", "R003", "R004"]
-    assert "2 règles proposées à confirmer" in page
+    assert "2 règles proposées à activer" in page
     assert 'class="ligne-proposee"' in page
     assert "La promotion A1 ne travaille que du lundi au vendredi." in page
     assert "Règles personnalisées" in page and '<a href="/regles" class="actif"' in page
@@ -81,7 +82,7 @@ def test_bandeau_les_voir_ignore_les_filtres_en_cours(site, ids):
     # Un filtre qui exclut les proposées : le bandeau les compte quand même (toute l'année),
     # et « Les voir » mène à toutes, pas à une liste vide.
     page = site.get(f"/regles?annee={ids.annee}&type=PAUSE_DEJEUNER&q=midi").text
-    assert "2 règles proposées à confirmer" in page
+    assert "2 règles proposées à activer" in page
     lien = re.search(r'<a href="([^"]+)">Les voir</a>', page).group(1)
     assert lien == f"/regles?annee={ids.annee}&amp;etat=proposee"
     assert _codes(site.get(lien.replace("&amp;", "&")).text) == ["R003", "R004"]
@@ -346,11 +347,11 @@ def test_etats_activer_ecarter_desactiver_tout_confirmer(site, ids):
     assert _regle(ids.annee, "R003").etat is EtatRegle.ACTIVE
     assert _regle(ids.annee, "R004").etat is EtatRegle.INACTIVE
     page = site.get("/regles").text
-    assert "proposées à confirmer" not in page and "Désactiver" in page
+    assert "proposées à activer" not in page and "Désactiver" in page
 
     site.post(f"/regles/{r004.id}/etat", data={"etat": "proposee"})
     reponse = site.post("/regles/confirmer", data={"annee": ids.annee}, follow_redirects=True)
-    assert "1 règle confirmée en 2026-2027." in reponse.text
+    assert "1 règle activée en 2026-2027." in reponse.text
     assert site.post(f"/regles/{r003.id}/etat", data={"etat": "autre"}).status_code == 422
 
 
@@ -511,7 +512,7 @@ def test_creation_d_une_annee_propose_les_regles(site, ids):
     assert "2 règles proposées, à revoir dans Règles personnalisées." in reponse.text
     nouvelle = identifiant(m.AnneeScolaire, m.AnneeScolaire.libelle, "2027-2028")
     page = site.get(f"/regles?annee={nouvelle}").text
-    assert _codes(page) == ["R001", "R002"] and "2 règles proposées à confirmer" in page
+    assert _codes(page) == ["R001", "R002"] and "2 règles proposées à activer" in page
 
     encore = site.post("/regles/proposer", data={"annee": nouvelle}, follow_redirects=True)
     assert "0 règle proposée pour 2027-2028, 2 déjà présente(s)" in encore.text
@@ -527,7 +528,7 @@ def test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees(sit
     assert str(reponse.url).endswith(f"/regles?annee={nouvelle}&etat=proposee")
     assert (
         "Année scolaire « 2028-2029 » créée. 2 règles personnalisées proposées pour cette "
-        "année, ci-dessous : sans effet tant qu&#39;elles ne sont pas confirmées."
+        "année, ci-dessous : sans effet tant qu&#39;elles ne sont pas activées."
     ) in reponse.text
     assert _codes(reponse.text) == ["R001", "R002"]
 
@@ -695,3 +696,48 @@ def test_code_de_regle_en_minuscules_dans_la_base(site, ids):
     assert etat.status_code == 200 and f"Règle r{numero:03d} désactivée" in texte_visible(etat)
     cree = site.post("/regles/nouveau", data=saisie_regle(ids))
     assert f"Règle R{numero + 1:03d} créée" in texte_visible(cree)
+
+
+@pytest.mark.cas_limite
+def test_double_clic_sur_la_suppression_d_une_regle(site, ids):
+    """Cas : « Supprimer » d'une règle cliqué deux fois (page de confirmation ou ligne de la
+    liste) : le navigateur affiche la réponse du second envoi. Risque : une page « Élément
+    introuvable » (404) juste après une suppression réussie, en pleine démonstration."""
+    liste = f"/regles?annee={ids.annee}"
+    for code, adresse, entetes in (
+        ("R001", "/regles/{}/supprimer", {}),
+        ("R002", "/regles/{}/ligne/supprimer", depuis(liste)),
+    ):
+        regle = identifiant(m.Regle, m.Regle.code, code)
+        envoi = {"data": {"_retour": liste}, "headers": entetes, "follow_redirects": False}
+        premier = site.post(adresse.format(regle), **envoi)
+        assert premier.status_code == (200 if entetes else 303), code
+        second = site.post(adresse.format(regle), **envoi)
+        if entetes:  # depuis la ligne : la zone de liste revient, avec le message
+            assert second.status_code == 200 and "<html" not in second.text
+            texte = texte_visible(second)
+        else:
+            assert second.status_code == 303 and second.headers["location"] == liste
+            texte = texte_visible(site.get(second.headers["location"]))
+        assert "Cette règle n'existe plus : elle a déjà été supprimée." in texte, code
+        assert identifiant(m.Regle, m.Regle.code, code) is None
+
+
+def test_pages_des_regles_sans_jargon(site, ids):
+    """« Concerne » et « À qui s'applique la règle » au lieu de « portée », « lignée » ou
+    « groupe feuille » ; « activer » une règle proposée ; la création annonce le prochain calcul ;
+    le choix du type n'a pas quatorze boutons principaux."""
+    adresses = (
+        "/regles",
+        "/regles/nouveau",
+        f"/regles/nouveau?annee={ids.annee}&type=JOURS_TRAVAILLES",
+    )
+    for adresse in adresses:
+        texte = texte_visible(site.get(adresse)).lower()
+        for mot in ("portée", "lignée", "feuille", "confirmer"):
+            assert mot not in texte, (adresse, mot)
+    choix = site.get("/regles/nouveau").text
+    principal = choix[choix.index('<main id="contenu">') : choix.index("</main>")]
+    assert "bouton-principal" not in principal and "Étape 1 sur 2" in choix
+    cree = site.post("/regles/nouveau", data=saisie_regle(ids))
+    assert "Elle s'appliquera aux prochains calculs." in texte_visible(cree)
