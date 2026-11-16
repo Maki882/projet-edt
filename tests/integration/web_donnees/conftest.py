@@ -28,7 +28,9 @@ from tests.outils.web_donnees.fixtures import generation_lente, ids, sans_precha
 
 from edt import solveur
 from edt.db.jeux import JeuMinimal
+from edt.domaine.enumerations import EtatCalcul
 from edt.services import generation
+from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 
 DELAI_CALCUL_S = 20
 """Garde-fou : un calcul de test qui ne finit pas fait échouer le test au lieu de le bloquer."""
@@ -61,11 +63,15 @@ class CalculRetenu:
     id: int
     semestre_id: int
     _liberation: threading.Event
+    _expire: threading.Event
 
     def liberer(self) -> generation.SuiviCalcul:
         """Laisse le vrai moteur calculer, attend la fin du calcul et renvoie son suivi."""
         self._liberation.set()
-        return generation.attendre_calcul(self.id, DELAI_CALCUL_S)
+        suivi = generation.attendre_calcul(self.id, DELAI_CALCUL_S)
+        assert not self._expire.is_set(), "le calcul retenu n'a pas été libéré dans le délai"
+        assert suivi.etat is not EtatCalcul.EN_COURS, "le calcul retenu n'a pas fini dans le délai"
+        return suivi
 
 
 @pytest.fixture
@@ -77,19 +83,25 @@ def calcul_retenu(jeu_minimal: JeuMinimal, monkeypatch):
     mais l'enregistrement de la solution, lui, se fait dans la base telle
     qu'elle est devenue (c'est là que se voient les suppressions acceptées à tort).
     """
-    demarre, liberation = threading.Event(), threading.Event()
+    demarre, liberation, expire = threading.Event(), threading.Event(), threading.Event()
     vrai_moteur = solveur.resoudre
 
     def moteur_retenu(instantane, options, arret=None):
+        # Une assertion levée ici, dans le fil du calcul, ne parviendrait pas au test : le
+        # dépassement du délai est noté dans `expire`, que le test vérifie.
         demarre.set()
-        assert liberation.wait(DELAI_CALCUL_S), "le calcul retenu n'a pas été libéré"
+        if not liberation.wait(DELAI_CALCUL_S):
+            expire.set()
+            return ResultatSolveur(StatutSolveur.ARRETE)
         return vrai_moteur(instantane, options, arret)
 
     monkeypatch.setattr(solveur, "resoudre", moteur_retenu)
     calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
     assert demarre.wait(DELAI_CALCUL_S), "le calcul n'a pas atteint le moteur"
-    calcul = CalculRetenu(calcul_id, jeu_minimal.semestre_id, liberation)
+    calcul = CalculRetenu(calcul_id, jeu_minimal.semestre_id, liberation, expire)
     yield calcul
     # Le calcul doit être fini avant que la base temporaire ne disparaisse.
     liberation.set()
-    generation.attendre_calcul(calcul_id, DELAI_CALCUL_S)
+    suivi = generation.attendre_calcul(calcul_id, DELAI_CALCUL_S)
+    assert suivi.etat is not EtatCalcul.EN_COURS, "le calcul retenu n'a pas fini dans le délai"
+    assert not expire.is_set(), "le calcul retenu n'a pas été libéré dans le délai"

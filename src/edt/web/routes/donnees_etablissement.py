@@ -35,7 +35,7 @@ from edt.services.referentiels.personnes import (
 from edt.web.dependances import SessionRequete
 from edt.web.donnees.ecrans import Ecran, Formulaire, contexte_liste, routeur_ecran
 from edt.web.gabarits import rediriger, rendre
-from edt.web.menu import SECTION_REFERENTIELS, EntreeMenu
+from edt.web.menu import GROUPE_LISTES, SECTION_REFERENTIELS, EntreeMenu
 
 journal = logging.getLogger(__name__)
 
@@ -126,13 +126,27 @@ routeur = APIRouter()
 MENU = [
     EntreeMenu("Campus et trajets", "/campus", section=SECTION_REFERENTIELS, ordre=100),
     EntreeMenu("Salles", "/salles", section=SECTION_REFERENTIELS, ordre=110),
-    EntreeMenu("Types de salle", "/types-salle", section=SECTION_REFERENTIELS, ordre=120),
-    EntreeMenu("Équipements", "/equipements", section=SECTION_REFERENTIELS, ordre=130),
+    EntreeMenu(
+        "Types de salle",
+        "/types-salle",
+        section=SECTION_REFERENTIELS,
+        ordre=120,
+        groupe=GROUPE_LISTES,
+    ),
+    EntreeMenu(
+        "Équipements", "/equipements", section=SECTION_REFERENTIELS, ordre=130, groupe=GROUPE_LISTES
+    ),
     EntreeMenu("Enseignants", "/enseignants", section=SECTION_REFERENTIELS, ordre=140),
     EntreeMenu("Groupes", "/groupes", section=SECTION_REFERENTIELS, ordre=150),
     EntreeMenu("Étudiants", "/etudiants", section=SECTION_REFERENTIELS, ordre=160),
     EntreeMenu("Matières", "/matieres", section=SECTION_REFERENTIELS, ordre=170),
-    EntreeMenu("Types de séance", "/types-seance", section=SECTION_REFERENTIELS, ordre=180),
+    EntreeMenu(
+        "Types de séance",
+        "/types-seance",
+        section=SECTION_REFERENTIELS,
+        ordre=180,
+        groupe=GROUPE_LISTES,
+    ),
 ]
 
 

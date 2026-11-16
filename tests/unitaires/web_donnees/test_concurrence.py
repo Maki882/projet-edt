@@ -1,4 +1,4 @@
-"""Un seul chargement de jeu fictif ou une seule remise à zéro à la fois, vérifié sur le service (revue n° 14).
+"""Un seul chargement de jeu fictif ou une seule remise à zéro à la fois, vérifié sur le service.
 
 Le premier chargement est ralenti (génération remplacée par une attente) ;
 pendant qu'il tient le verrou, toute autre demande au service est refusée.
@@ -7,7 +7,7 @@ pendant qu'il tient le verrou, toute autre demande au service est refusée.
 from __future__ import annotations
 
 import pytest
-from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan
+from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan, attendre_fil
 
 from edt.services import jeux
 
@@ -26,8 +26,6 @@ def test_service_refuse_un_second_chargement_ou_une_remise_a_zero(base, generati
         jeux.remettre_a_zero()
 
     liberer.set()
-    fil.join(DELAI_S)
-    assert "erreur" not in premier, premier.get("erreur")
-    assert premier["valeur"].graine == 3
+    assert attendre_fil(fil, premier).graine == 3
     assert not jeux.operation_en_cours()
     jeux.remettre_a_zero()  # le verrou est rendu : la demande suivante passe

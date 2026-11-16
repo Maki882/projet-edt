@@ -4,8 +4,7 @@ Toutes les fonctions prennent la session de l'appelant et le **code** de
 l'entité (« salle », « besoin »... voir `edt.services.referentiels.catalogue`)
 ou sa description `Entite`. Elles ne valident jamais la transaction
 (`session.flush()` seulement) et renvoient des valeurs sérialisables en JSON :
-une interface web, une API ou un assistant en langage naturel les appellent
-telles quelles.
+l'interface web, une API ou l'assistant les appellent telles quelles.
 
     page = lister(session, "salle", recherche="N2", tri="capacite", page=1)
     salle = creer(session, "salle", {"code": "N210", "campus_id": 1, ...})
@@ -39,6 +38,7 @@ from edt.erreurs import (
     ErreurIntrouvable,
     ErreurRegleMetier,
 )
+from edt.services import generation
 from edt.services.referentiels.conversion import ErreurChamp, canonique, convertir
 from edt.services.referentiels.description import (
     Champ,
@@ -222,17 +222,6 @@ def options(session: Session, code: str | Entite, nom_champ: str) -> list[tuple[
     if champ.reference is not None:
         return options_reference(session, champ.reference)
     return [(str(cle), libelle) for cle, libelle in champ.choix]
-
-
-def options_filtre(session: Session, code: str | Entite, nom_filtre: str) -> list[tuple[str, str]]:
-    """Choix d'un filtre de liste : (valeur, libellé)."""
-    description = entite(code)
-    filtre = description.filtre(nom_filtre)
-    if filtre is None:
-        raise ErreurIntrouvable(
-            f"Filtre inconnu pour les {description.pluriel} : « {nom_filtre} »."
-        )
-    return filtre.options(session)
 
 
 def valeurs_par_defaut(code: str | Entite) -> dict[str, Any]:
@@ -615,9 +604,7 @@ def blocage_calcul() -> tuple[int, Raison] | None:
     calcul. Un semestre ou une année supprimés emporteraient le calcul
     lui-même, et avec lui le verrou « un seul calcul à la fois ».
     """
-    from edt.services.generation import calcul_en_cours
-
-    suivi = calcul_en_cours()
+    suivi = generation.calcul_en_cours()
     if suivi is None:
         return None
     return suivi.id, Raison(
@@ -701,7 +688,7 @@ def supprimer(
     utilisé (« Cette salle est imposée à 12 besoins. »), et `ErreurCalculEnCours`
     (sous-classe) si un calcul tourne.
 
-    Règles personnalisées (décision 3) : si des règles visent l'élément ou le
+    Règles personnalisées : si des règles visent l'élément ou le
     citent, la suppression n'a lieu que si `regles_confirmees` donne exactement
     leurs identifiants (l'utilisateur a vu la liste et accepté) ; elles sont
     alors supprimées, ou l'élément retiré de leurs paramètres, dans la même

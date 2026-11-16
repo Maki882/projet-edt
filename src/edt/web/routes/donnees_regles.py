@@ -23,7 +23,6 @@ from edt.domaine.calendrier import annee_scolaire_de
 from edt.domaine.regles import EtatRegle
 from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import generation
-from edt.services.parametres import reinitialiser_parametres
 from edt.services.referentiels.calendrier import (
     ANNEE_SCOLAIRE,
     CRENEAU,
@@ -40,6 +39,7 @@ from edt.services.referentiels.reglages import (
     enregistrer_parametres_saisis,
     parametres_affichables,
     parametres_invalides,
+    remettre_parametres_par_defaut,
 )
 from edt.services.regles import lister as lister_regles
 from edt.web.dependances import SessionRequete
@@ -55,9 +55,10 @@ PARENT_CALENDRIER = ("Retour au calendrier", "/calendrier")
 def suite_creation_annee(session: Session, annee: Mapping[str, Any]) -> SuiteCreation | None:
     """Une année créée par le formulaire a reçu ses règles proposées : le dire, y mener.
 
-    La création les propose (crochet `apres_creation` du service) ; on compte ici
-    les règles proposées de l'année, qui vient de naître : ce sont exactement
-    celles-là. On arrive sur leur liste, où les confirmer ou les écarter.
+    La création les propose (crochet `apres_creation` du service) ; les règles
+    proposées de l'année, qui vient de naître, sont exactement celles-là : leur
+    nombre est dit, et la page suivante est leur liste, où les activer ou les
+    écarter.
     """
     nombre = len(lister_regles(session, annee["id"], etat=EtatRegle.PROPOSEE))
     if nombre == 0:
@@ -65,10 +66,10 @@ def suite_creation_annee(session: Session, annee: Mapping[str, Any]) -> SuiteCre
     adresse = "/regles?" + urlencode({"annee": annee["id"], "etat": EtatRegle.PROPOSEE.value})
     texte = (
         "1 règle personnalisée proposée pour cette année, ci-dessous : sans effet tant "
-        "qu'elle n'est pas confirmée."
+        "qu'elle n'est pas activée."
         if nombre == 1
         else f"{nombre} règles personnalisées proposées pour cette année, ci-dessous : sans "
-        "effet tant qu'elles ne sont pas confirmées."
+        "effet tant qu'elles ne sont pas activées."
     )
     return SuiteCreation(texte, adresse)
 
@@ -107,7 +108,6 @@ ECRAN_GRILLE = Ecran(
 )
 
 GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Calcul", ("temps_limite_s", "temps_limite_long_s", "nb_workers")),
     (
         "Journée",
         (
@@ -122,6 +122,7 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     ("Lieux", ("trajet_defaut_min", "accessibilite_inconnue_acceptee")),
+    ("Calcul", ("temps_limite_s", "temps_limite_long_s", "nb_workers")),
     (
         "Qualité de l'emploi du temps",
         (
@@ -134,6 +135,10 @@ GROUPES_PARAMETRES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ),
 )
 """Rubriques de l'écran des paramètres ; un paramètre non cité va dans « Autres réglages »."""
+
+RUBRIQUES_AVANCEES = frozenset({"Calcul", "Qualité de l'emploi du temps"})
+"""Rubriques repliées par défaut (« réglages avancés ») ; ouvertes si l'un de leurs champs est
+signalé."""
 
 UNITES = {"s": "secondes", "min": "minutes"}
 
@@ -254,29 +259,11 @@ def _rendre_parametres(
             "invalides": invalides,
             "erreur": erreur,
             "unites": UNITES,
+            "rubriques_avancees": RUBRIQUES_AVANCEES,
             # Prévenir avant la saisie (le refus, lui, s'affiche à la place).
             "calcul_en_cours": generation.calcul_en_cours() if erreur is None else None,
         },
         statut=statut,
-    )
-
-
-def _refus_pendant_un_calcul() -> ErreurCalculEnCours | None:
-    """Refus de changer les paramètres pendant un calcul, ou None s'il n'y en a pas.
-
-    Un calcul a lu les paramètres à son lancement et les relit pour contrôler
-    puis dater sa solution : les changer entre-temps donnerait une version
-    vérifiée avec d'autres réglages que ceux du calcul (comme la pause
-    déjeuner réglée depuis « Générer », refusée elle aussi).
-    """
-    suivi = generation.calcul_en_cours()
-    if suivi is None:
-        return None
-    journal.info("Paramètres non modifiés : calcul n° %d en cours", suivi.id)
-    return ErreurCalculEnCours(
-        f"Un calcul d'emploi du temps est en cours (calcul n° {suivi.id}) : les paramètres ne "
-        "changent pas pendant un calcul. Attendre qu'il se termine, ou l'arrêter, puis "
-        "enregistrer de nouveau. Rien n'a été enregistré."
     )
 
 
@@ -300,12 +287,9 @@ def enregistrer_parametres(
             saisies[parametre.cle] = ",".join(formulaire.getlist(parametre.cle))
         elif parametre.cle in formulaire:
             saisies[parametre.cle] = str(formulaire[parametre.cle])
-    refus = _refus_pendant_un_calcul()
-    if refus is not None:
-        return _rendre_parametres(request, session, saisies, refus)
     try:
         enregistrer_parametres_saisis(session, saisies)
-    except ErreurDonneesInvalides as erreur:
+    except (ErreurDonneesInvalides, ErreurCalculEnCours) as erreur:
         session.rollback()
         return _rendre_parametres(request, session, saisies, erreur)
     return rediriger(request, "/parametres", "Paramètres enregistrés.")
@@ -313,11 +297,12 @@ def enregistrer_parametres(
 
 @routeur.post("/parametres/defaut", name="parametres_defaut")
 def parametres_par_defaut(request: Request, session: SessionRequete) -> Response:
-    """Remet tous les paramètres à leur valeur par défaut."""
-    refus = _refus_pendant_un_calcul()
-    if refus is not None:
+    """Remet tous les paramètres à leur valeur par défaut (refusé pendant un calcul)."""
+    try:
+        remettre_parametres_par_defaut(session)
+    except ErreurCalculEnCours as refus:
+        session.rollback()
         return _rendre_parametres(request, session, erreur=refus)
-    reinitialiser_parametres(session)
     return rediriger(
         request, "/parametres", "Tous les paramètres ont repris leur valeur par défaut."
     )

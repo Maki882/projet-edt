@@ -273,7 +273,7 @@ _CHAMP_PERSONNES = ChampRegle(
     "personnes",
     SorteChamp.CHOIX,
     "Personnes concernées",
-    "Pour la portée établissement : les groupes, les enseignants ou les deux.",
+    "Quand la règle concerne tout l'établissement : les groupes, les enseignants ou les deux.",
     defaut=PERSONNES_GROUPES,
     choix=(
         (PERSONNES_GROUPES, "Les groupes"),
@@ -336,14 +336,15 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                     SorteChamp.JOURS,
                     "Jours travaillés",
                     "Les jours où les séances peuvent avoir lieu ; peut ouvrir ou fermer un "
-                    "jour par rapport au standard de l'établissement.",
+                    "jour par rapport aux jours habituels de l'établissement.",
                     obligatoire=True,
                     minimum_elements=1,
                 ),
             ],
             Niveau.NECESSAIRE,
-            "Les jours où la portée peut avoir cours. La règle la plus précise l'emporte le "
-            "long de chaque lignée (demi-groupe, classe, promotion ; besoin, matière, type).",
+            "Les jours où les séances concernées peuvent avoir lieu. En cas de règles "
+            "contradictoires, la plus précise l'emporte (demi-groupe avant classe, classe avant "
+            "promotion ; besoin avant matière, matière avant type).",
             (
                 "Le groupe A1 ne travaille pas le samedi.",
                 "La classe A3-APP1 a aussi cours le samedi.",
@@ -380,7 +381,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.NECESSAIRE,
-            "Les séances de la portée tiennent entre deux heures, les jours visés.",
+            "Les séances concernées tiennent entre deux heures, les jours visés.",
             (
                 "Le lundi, les A3 commencent à 10 h au plus tôt.",
                 "Le vendredi, l'établissement ferme à 17 h.",
@@ -416,7 +417,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.NECESSAIRE,
-            "Aucune séance de la portée ne recoupe la plage, les jours visés.",
+            "Aucune séance concernée ne recoupe la plage, les jours visés.",
             (
                 "Pas de CM le vendredi après-midi.",
                 "Mme Roux n'a pas cours le lundi de 8 h 30 à 10 h 30.",
@@ -452,7 +453,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.NECESSAIRE,
-            "Les séances de la portée ont lieu sur les campus imposés, ou jamais sur les "
+            "Les séances concernées ont lieu sur les campus imposés, ou jamais sur les "
             "campus interdits.",
             (
                 "Les séances de la promotion A3 ont lieu à Issy.",
@@ -489,7 +490,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.NECESSAIRE,
-            "Les séances de la portée ont lieu dans les salles imposées, ou jamais dans les "
+            "Les séances concernées ont lieu dans les salles imposées, ou jamais dans les "
             "salles interdites.",
             (
                 "Les TP d'électronique des A2 ont lieu en N016 ou en N018.",
@@ -540,8 +541,8 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.IMPORTANT,
-            "La pause déjeuner de chaque personne de la portée, à la place du réglage de "
-            "l'établissement.",
+            "La pause déjeuner de chaque groupe ou enseignant concerné, à la place du réglage "
+            "de l'établissement.",
             (
                 "La classe A2-G3 a une pause déjeuner libre d'au moins 1 h 15 entre 11 h 45 "
                 "et 14 h 15.",
@@ -567,8 +568,8 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.IMPORTANT,
-            "L'écart minimal entre deux séances consécutives de chaque personne de la "
-            "portée, à la place du réglage de l'établissement.",
+            "L'écart minimal entre deux séances consécutives de chaque groupe ou enseignant "
+            "concerné, à la place du réglage de l'établissement.",
             ("Le demi-groupe A1-G2a a au moins 30 min entre deux séances.",),
             [_REFUS_REGLAGE_ETABLISSEMENT],
         ),
@@ -598,7 +599,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.IMPORTANT,
-            "Chaque personne de la portée n'a pas plus que le maximum par jour.",
+            "Chaque groupe ou enseignant concerné n'a pas plus que le maximum par jour.",
             (
                 "Les A1 n'ont pas plus de 6 h de cours par jour.",
                 "Mme Roux ne donne pas plus de 3 séances par jour.",
@@ -638,7 +639,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.IMPORTANT,
-            "Chaque personne de la portée garde au moins ce nombre de demi-journées ou de "
+            "Chaque groupe ou enseignant concerné garde au moins ce nombre de demi-journées ou de "
             "journées travaillées sans séance.",
             (
                 "Chaque enseignant a au moins une demi-journée libre par semaine.",
@@ -662,7 +663,8 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.FACULTATIF,
-            "Chaque personne de la portée a au plus ce nombre de créneaux de trou par semaine.",
+            "Chaque groupe ou enseignant concerné a au plus ce nombre de créneaux libres entre "
+            "deux cours par semaine.",
             ("La classe A3-APP1 n'a aucun trou dans la semaine.",),
         ),
         _d(
@@ -672,7 +674,8 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
             [NaturePortee.ETABLISSEMENT, NaturePortee.GROUPE, NaturePortee.ENSEIGNANT],
             [_CHAMP_PERSONNES],
             Niveau.IMPORTANT,
-            "Les séances d'une journée de chaque personne de la portée sont sur un seul campus.",
+            "Les séances d'une journée de chaque groupe ou enseignant concerné sont sur un seul "
+            "campus.",
             ("Les A3 ne changent pas de campus dans la journée.",),
         ),
         _d(
@@ -691,7 +694,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.FACULTATIF,
-            "Chaque groupe de la portée n'a pas plus de ce nombre de matières différentes "
+            "Chaque groupe concerné n'a pas plus de ce nombre de matières différentes "
             "dans la journée.",
             ("Les A1 n'ont pas plus de 3 matières différentes par jour.",),
         ),
@@ -717,7 +720,7 @@ CATALOGUE_TYPES: dict[TypeRegle, DefinitionType] = dict(
                 ),
             ],
             Niveau.FACULTATIF,
-            "Pour chaque groupe feuille et chaque matière, toute séance du premier type "
+            "Pour chaque demi-groupe (ou classe sans demi-groupe) et chaque matière, toute séance du premier type "
             "commence avant toute séance du second dans la même semaine.",
             ("Dans chaque matière, le CM précède les TD de la semaine.",),
         ),
@@ -1262,8 +1265,8 @@ def valider_portee(type_regle: TypeRegle, nature: NaturePortee) -> None:
         admises = ", ".join(sorted(p.libelle.lower() for p in definition.portees))
         raise ErreurSaisie(
             {
-                "portee.nature": f"{definition.libelle} n'admet pas la portée "
-                f"« {nature.libelle.lower()} » ; portées admises : {admises}."
+                "portee.nature": f"{definition.libelle} ne peut pas concerner "
+                f"« {nature.libelle.lower()} » ; possible : {admises}."
             }
         )
 

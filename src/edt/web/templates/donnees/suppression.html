@@ -1,7 +1,7 @@
 {#
   Confirmation d'une suppression (page entière, utilisée sans JavaScript ou depuis la fiche) :
   ce qu'elle emporte, ou pourquoi elle est refusée avec des liens vers ce qui bloque.
-  `retour` : la liste où revenir après la suppression ; `annuler` : là d'où l'on vient.
+  `retour` : la liste où revenir après la suppression ; `annuler` : la page de départ.
 #}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
@@ -33,7 +33,7 @@
   <ul>{{ d.raisons(analyse.blocages) }}</ul>
   {{ d.regles_touchees(analyse, retour_regles) }}
   {%- if analyse.blocages|length > (1 if analyse.calcul_id else 0) %}
-  <p>Modifiez ou supprimez d'abord les éléments qui l'utilisent : on ne modifie jamais une demande en silence.</p>
+  <p>Modifier ou supprimer d'abord les éléments qui l'utilisent : une demande n'est jamais modifiée sans le dire.</p>
   {%- else %}
   <p>La suppression sera possible dès la fin du calcul.</p>
   {%- endif %}

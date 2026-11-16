@@ -167,7 +167,7 @@ def test_erreurs_par_champ(jeu_minimal, session):
         )
     assert "portee.nature" in capture.value.erreurs
     assert service.valider(session, {"type": "SANS_TROU", "portee": "etablissement"}).erreurs == {
-        "portee.nature": "Trous limités n'admet pas la portée « établissement » ; portées admises : enseignant, groupe."
+        "portee.nature": "Trous limités ne peut pas concerner « établissement » ; possible : enseignant, groupe."
     }
 
 

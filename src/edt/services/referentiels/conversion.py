@@ -39,7 +39,7 @@ ENTIER_MAX = 2**63 - 1
 
 CHIFFRES_MAX = 30
 """Au-delà de 30 chiffres significatifs, un nombre saisi est trop grand pour tout champ :
-on ne le convertit même pas (Python refuse de lire plus de 4 300 chiffres)."""
+il n'est même pas converti (Python refuse de lire plus de 4 300 chiffres)."""
 
 
 class ErreurChamp(ErreurDonneesInvalides):

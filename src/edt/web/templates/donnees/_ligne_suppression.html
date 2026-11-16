@@ -29,7 +29,7 @@
       <ul class="liste-simple">{{ d.raisons(analyse.blocages) }}</ul>
       {{ d.regles_touchees(analyse, retour_regles) }}
       {%- if analyse.blocages|length > (1 if analyse.calcul_id else 0) %}
-      <p class="discret">Modifiez ou supprimez d'abord ces éléments : on ne modifie jamais une demande en silence.</p>
+      <p class="discret">Modifier ou supprimer d'abord ces éléments : une demande n'est jamais modifiée sans le dire.</p>
       {%- endif %}
       <div class="ligne-boutons">
         <button type="button" class="bouton bouton-petit" autofocus

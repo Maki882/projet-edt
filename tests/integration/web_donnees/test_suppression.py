@@ -6,31 +6,19 @@ import re
 from urllib.parse import quote, urlencode
 
 import pytest
-from sqlalchemy import func, select
-from tests.outils.web_donnees.aides import compter, occurrence_prevue
+from sqlalchemy import select
+from tests.outils.web_donnees.aides import (
+    compter,
+    depuis,
+    identifiant,
+    occurrence_prevue,
+    texte_visible,
+)
 
 from edt.db.modeles import Besoin, Campus, Occurrence, Salle, SeanceHebdo, TypeSalle
 from edt.db.moteur import session_base
 from edt.services.jeux import recharger_jeu_fictif
 from edt.services.referentiels import operations
-
-HTMX = {"HX-Request": "true"}
-
-
-def _depuis(liste: str) -> dict[str, str]:
-    """En-têtes d'une demande HTMX faite depuis la liste `liste`."""
-    return {**HTMX, "HX-Current-URL": f"http://testserver{liste}"}
-
-
-def _id_salle(code: str) -> int:
-    with session_base() as session:
-        return session.scalar(select(Salle.id).where(Salle.code == code))
-
-
-def _nb_salles() -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(Salle))
-
 
 # --------------------------------------------------------------------------- #
 # Retour conservé
@@ -40,7 +28,7 @@ def _nb_salles() -> int:
 def test_lien_supprimer_de_la_ligne_porte_la_liste(site, ids):
     liste = f"/salles?campus={ids.issy}&tri=capacite"
     page = site.get(liste).text
-    l012 = _id_salle("L012")
+    l012 = identifiant(Salle, Salle.code, "L012")
     retour = quote(liste, safe="")
     assert f'href="/salles/{l012}/supprimer?retour={retour}"' in page
     assert f'hx-get="/salles/{l012}/ligne/suppression"' in page
@@ -48,7 +36,7 @@ def test_lien_supprimer_de_la_ligne_porte_la_liste(site, ids):
 
 def test_confirmation_garde_la_liste_et_y_revient(site, ids):
     liste = f"/salles?campus={ids.issy}"
-    l012 = _id_salle("L012")
+    l012 = identifiant(Salle, Salle.code, "L012")
     page = site.get(f"/salles/{l012}/supprimer", params={"retour": liste}).text
     assert f'<input type="hidden" name="_retour" value="{liste}">' in page.replace("&amp;", "&")
     assert f'<a class="bouton" href="{liste}">Annuler</a>' in page
@@ -89,9 +77,9 @@ def test_retour_a_la_page_precedente_si_la_page_disparait(site, ids):
                     "accessibilite": "oui",
                 },
             )
-    # La page 2 existe encore après la première suppression : on y revient.
+    # La page 2 existe encore après la première suppression : le retour s'y fait.
     reponse = site.post(
-        f"/salles/{_id_salle('Z45')}/supprimer",
+        f"/salles/{identifiant(Salle, Salle.code, 'Z45')}/supprimer",
         data={"_retour": "/salles?page=2"},
         follow_redirects=False,
     )
@@ -99,20 +87,21 @@ def test_retour_a_la_page_precedente_si_la_page_disparait(site, ids):
 
     # Depuis la ligne, la dernière salle de la page 2 : la zone montre la page 1.
     zone = site.post(
-        f"/salles/{_id_salle('Z44')}/ligne/supprimer", headers=_depuis("/salles?page=2")
+        f"/salles/{identifiant(Salle, Salle.code, 'Z44')}/ligne/supprimer",
+        headers=depuis("/salles?page=2"),
     )
     assert zone.headers["HX-Replace-Url"] == "/salles"
     assert "50 salles." in zone.text and "Salle « Z44 (NDC) » supprimée." in zone.text
 
 
 # --------------------------------------------------------------------------- #
-# Confirmation sur place (HTMX)
+# Confirmation sur place (HX)
 # --------------------------------------------------------------------------- #
 
 
 def test_ligne_de_confirmation_quand_la_suppression_est_possible(site, ids):
-    l115 = _id_salle("L115")
-    reponse = site.get(f"/salles/{l115}/ligne/suppression", headers=_depuis("/salles"))
+    l115 = identifiant(Salle, Salle.code, "L115")
+    reponse = site.get(f"/salles/{l115}/ligne/suppression", headers=depuis("/salles"))
     assert reponse.status_code == 200 and "<html" not in reponse.text
     texte = reponse.text
     assert 'class="ligne-suppression"' in texte and 'colspan="9"' in texte
@@ -124,7 +113,7 @@ def test_ligne_de_confirmation_quand_la_suppression_est_possible(site, ids):
 
 def test_ligne_de_confirmation_refusee_avec_lien(site, ids):
     reponse = site.get(
-        f"/enseignants/{ids.enseignant_martin}/ligne/suppression", headers=_depuis("/enseignants")
+        f"/enseignants/{ids.enseignant_martin}/ligne/suppression", headers=depuis("/enseignants")
     )
     texte = reponse.text
     assert "ligne-suppression-refusee" in texte and "Impossible de supprimer" in texte
@@ -138,9 +127,9 @@ def test_ligne_de_confirmation_refusee_avec_lien(site, ids):
 
 
 def test_suppression_depuis_la_ligne_rafraichit_la_zone(site, ids):
-    l012 = _id_salle("L012")
+    l012 = identifiant(Salle, Salle.code, "L012")
     reponse = site.post(
-        f"/salles/{l012}/ligne/supprimer", headers=_depuis(f"/salles?campus={ids.issy}")
+        f"/salles/{l012}/ligne/supprimer", headers=depuis(f"/salles?campus={ids.issy}")
     )
     assert reponse.status_code == 200
     texte = reponse.text
@@ -148,19 +137,19 @@ def test_suppression_depuis_la_ligne_rafraichit_la_zone(site, ids):
     assert f"ligne-salle-{l012}" not in texte
     assert re.search(r'<div id="messages"[^>]*hx-swap-oob="true"', texte)
     assert "Salle « L012 (ISSY) » supprimée." in texte
-    assert _id_salle("L012") is None
+    assert identifiant(Salle, Salle.code, "L012") is None
 
 
 def test_suppression_refusee_depuis_la_ligne_ne_touche_a_rien(site, ids):
     reponse = site.post(
-        f"/enseignants/{ids.enseignant_martin}/ligne/supprimer", headers=_depuis("/enseignants")
+        f"/enseignants/{ids.enseignant_martin}/ligne/supprimer", headers=depuis("/enseignants")
     )
     assert "message-erreur" in reponse.text and "Cet enseignant assure 3 besoins." in reponse.text
     assert "5 enseignants." in reponse.text
 
 
 def test_sans_javascript_la_suppression_depuis_la_ligne_redirige(site, ids):
-    l012 = _id_salle("L012")
+    l012 = identifiant(Salle, Salle.code, "L012")
     reponse = site.post(f"/salles/{l012}/ligne/supprimer", follow_redirects=False)
     assert reponse.status_code == 303 and reponse.headers["location"] == "/salles"
 
@@ -200,7 +189,7 @@ def test_refus_par_campus_et_par_groupe(site, ids):
 
 def test_parcours_reel_sur_le_jeu_moyen(client):
     recharger_jeu_fictif("moyen", 0, enregistrer_reference=True)
-    salles_au_depart = _nb_salles()  # le jeu évolue : on compte ce qui est supprimé, pas un total
+    salles_au_depart = compter(Salle)  # le jeu évolue : compter ce qui est supprimé, pas un total
     with session_base() as session:
         stan = session.scalar(select(Campus.id).where(Campus.code == "STAN"))
         placee = session.scalar(
@@ -211,14 +200,14 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
     assert "2 salles correspondant" in client.get(liste).text
 
     # Avec JavaScript : confirmation dans la ligne, puis zone rafraîchie avec le message.
-    stan301 = _id_salle("Stan301")
-    confirmation = client.get(f"/salles/{stan301}/ligne/suppression", headers=_depuis(liste))
+    stan301 = identifiant(Salle, Salle.code, "Stan301")
+    confirmation = client.get(f"/salles/{stan301}/ligne/suppression", headers=depuis(liste))
     assert "Supprimer définitivement" in confirmation.text
-    zone = client.post(f"/salles/{stan301}/ligne/supprimer", headers=_depuis(liste)).text
+    zone = client.post(f"/salles/{stan301}/ligne/supprimer", headers=depuis(liste)).text
     assert "1 salle correspondant" in zone and "Salle « Stan301 (STAN) » supprimée." in zone
 
     # Sans JavaScript : page de confirmation, puis retour sur la même liste filtrée.
-    stan201 = _id_salle("Stan201")
+    stan201 = identifiant(Salle, Salle.code, "Stan201")
     reponse = client.post(
         f"/salles/{stan201}/supprimer", data={"_retour": liste}, follow_redirects=False
     )
@@ -237,14 +226,14 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
             operations.modifier(
                 session, "besoin", besoin_id, {"salle_imposee_id": placee}, partiel=True
             )
-    refus = client.get(f"/salles/{placee}/ligne/suppression", headers=_depuis("/salles")).text
+    refus = client.get(f"/salles/{placee}/ligne/suppression", headers=depuis("/salles")).text
     lien = re.search(r'<a href="([^"]+)">Voir ces 2 besoins</a>', refus).group(1)
     assert "2 besoins correspondant" in client.get(lien.replace("&amp;", "&")).text
-    assert _nb_salles() == salles_au_depart - 2
+    assert compter(Salle) == salles_au_depart - 2
 
 
 # --------------------------------------------------------------------------- #
-# Rejeu : deux onglets, double clic, bouton « Précédent » (inventaire n° 12)
+# Rejeu : deux onglets, double clic, bouton « Précédent »
 # --------------------------------------------------------------------------- #
 
 
@@ -252,26 +241,34 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
 def test_rejeu_d_une_suppression_et_d_une_annulation(site, ids, version_generee):
     """Cas : la même suppression envoyée deux fois (deux onglets, double clic, bouton
     « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. Risque : une
-    erreur 500, une double écriture ou un message trompeur ; correct aujourd'hui, ce test fige
-    le comportement."""
-    # Page de confirmation ouverte deux fois : la seconde dit que la salle n'existe plus.
-    l012, l115 = _id_salle("L012"), _id_salle("L115")
+    erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement."""
+    # Page de confirmation ouverte deux fois : la seconde revient à la liste et dit que la
+    # salle n'existe plus, sans page d'erreur.
+    l012, l115 = identifiant(Salle, Salle.code, "L012"), identifiant(Salle, Salle.code, "L115")
     premiere = site.post(
         f"/salles/{l012}/supprimer", data={"_retour": "/salles"}, follow_redirects=False
     )
     assert premiere.status_code == 303 and premiere.headers["location"] == "/salles"
-    seconde = site.post(f"/salles/{l012}/supprimer", data={"_retour": "/salles"})
-    assert seconde.status_code == 404 and "introuvable" in seconde.text
-    assert "a peut-être été supprimée" in seconde.text
+    seconde = site.post(
+        f"/salles/{l012}/supprimer", data={"_retour": "/salles"}, follow_redirects=False
+    )
+    assert seconde.status_code == 303 and seconde.headers["location"] == "/salles"
+    liste = site.get(seconde.headers["location"])
+    assert "Cet élément n'existe plus : il a déjà été supprimé." in texte_visible(liste)
+    assert "message-info" in liste.text
 
-    # Même chose depuis la ligne (HTMX) : la zone repart sans la ligne, puis le refus est dit.
-    zone = site.post(f"/salles/{l115}/ligne/supprimer", headers=_depuis("/salles"))
+    # Même chose depuis la ligne (HX) : la zone repart sans la ligne, puis le rejeu le dit.
+    zone = site.post(f"/salles/{l115}/ligne/supprimer", headers=depuis("/salles"))
     assert zone.status_code == 200 and f'id="ligne-salle-{l115}"' not in zone.text
     assert f'id="ligne-salle-{ids.salle_n016}"' in zone.text  # les autres lignes restent
-    rejeu = site.post(f"/salles/{l115}/ligne/supprimer", headers=_depuis("/salles"))
-    assert rejeu.status_code == 404 and "<html" not in rejeu.text  # fragment pour #messages
-    assert "introuvable" in rejeu.text
-    assert _id_salle("L012") is None and _id_salle("L115") is None
+    rejeu = site.post(f"/salles/{l115}/ligne/supprimer", headers=depuis("/salles"))
+    assert rejeu.status_code == 200 and "<html" not in rejeu.text  # zone de liste
+    assert "Cet élément n'existe plus" in texte_visible(rejeu)
+    assert f'id="ligne-salle-{ids.salle_n016}"' in rejeu.text
+    assert (
+        identifiant(Salle, Salle.code, "L012") is None
+        and identifiant(Salle, Salle.code, "L115") is None
+    )
 
     # Annulation d'une séance datée rejouée : refus explicite, une seule annulation.
     occurrence = occurrence_prevue(version_generee)

@@ -1,4 +1,4 @@
-{# Règles personnalisées d'une année : proposées à confirmer, filtres, liste paginée. #}
+{# Règles personnalisées d'une année : proposées à activer, filtres, liste paginée. #}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
@@ -32,10 +32,10 @@
 {%- set pluriel = nb_proposees > 1 %}
 <div class="message message-attention bandeau-proposees">
   <p>
-    <strong>{{ nb_proposees }} règle{{ "s" if pluriel }} proposée{{ "s" if pluriel }} à confirmer</strong> :
-    sans effet tant qu'{{ "elles ne sont pas confirmées" if pluriel else "elle n'est pas confirmée" }}.
+    <strong>{{ nb_proposees }} règle{{ "s" if pluriel }} proposée{{ "s" if pluriel }} à activer</strong> :
+    sans effet tant qu'{{ "elles ne sont pas activées" if pluriel else "elle n'est pas activée" }}.
     <a href="{{ url_proposees }}">Les voir</a>
-    {{ ui.bouton_action("/regles/confirmer", "Tout confirmer", classe="bouton bouton-petit", champs={"annee": annee.id, "_retour": url_liste}, confirmation="Confirmer toutes les règles proposées ? Elles s'appliqueront aux prochains calculs.") }}
+    {{ ui.bouton_action("/regles/confirmer", ("Activer les " ~ nb_proposees ~ " règles") if pluriel else "Activer la règle", classe="bouton bouton-petit", champs={"annee": annee.id, "_retour": url_liste}, confirmation="Activer toutes les règles proposées ? Elles s'appliqueront aux prochains calculs.") }}
   </p>
 </div>
 {%- endif %}

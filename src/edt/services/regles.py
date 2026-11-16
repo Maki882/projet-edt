@@ -1,14 +1,14 @@
 """Règles personnalisées : lecture, validation, écriture, propositions, explication.
 
 C'est l'entrée unique des écrans, de l'import et de l'assistant
-conversationnel (format JSON stable décrit dans `docs/regles-personnalisees.md`,
-§ 4.8). Toute logique de règle (catalogue, validation, phrase) vient de
+conversationnel (format JSON stable décrit dans `docs/regles-personnalisees.md`).
+Toute logique de règle (catalogue, validation, phrase) vient de
 `edt.domaine.regles` ; ce module résout les cibles dans la base, attribue les
 codes, refuse les doublons de réglage et journalise chaque écriture avec la
 phrase de la règle.
 
 Brouillon (entrée structurée, produit par un formulaire, une feuille importée
-ou le modèle de langue) :
+ou l'assistant) :
 
     {"type": "PAUSE_DEJEUNER",
      "portee": {"nature": "groupe", "cible": "A2-G3"},
@@ -32,7 +32,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from edt.db import modeles as m
@@ -66,7 +66,11 @@ from edt.services.parametres import lire_parametres
 
 journal = logging.getLogger(__name__)
 
-_MOTIF_CODE = re.compile(r"^R(\d+)$")
+_MOTIF_CODE = re.compile(r"^R(\d+)$", re.IGNORECASE)
+"""Code attribué automatiquement (« R007 ») ; sans casse, comme la recherche par code."""
+
+LONGUEUR_COMMENTAIRE = 2000
+"""Longueur maximale du commentaire d'une règle (formulaire, import ou appel direct)."""
 
 
 # --------------------------------------------------------------------------- #
@@ -113,7 +117,7 @@ class RegleDetail:
         return self.regle.portee
 
     def vers_dict(self) -> dict[str, Any]:
-        """Représentation JSON stable (celle que l'assistant et l'export reçoivent)."""
+        """Représentation JSON stable (format décrit dans `docs/regles-personnalisees.md`)."""
         r = self.regle
         periode: dict[str, Any] = {}
         if r.semestre_code:
@@ -153,7 +157,7 @@ class Validation:
     erreurs: dict[str, str] = field(default_factory=dict)
 
     def vers_dict(self) -> dict[str, Any]:
-        """`{"valide", "regle", "phrase", "erreurs"}` (voir la conception, § 4.8)."""
+        """`{"valide", "regle", "phrase", "erreurs"}`."""
         regle = (
             RegleDetail(self.regle, self.phrase or "", self.annee_libelle or "").vers_dict()
             if self.regle is not None
@@ -219,7 +223,7 @@ class Explication:
 
 
 def decrire_types() -> dict[str, Any]:
-    """Catalogue des types (la définition d'outil donnée au modèle de langue)."""
+    """Catalogue des types de règle : portées admises, paramètres, niveau par défaut, exemples."""
     return decrire_catalogue()
 
 
@@ -270,7 +274,9 @@ def lire_par_id(session: Session, regle_id: int) -> RegleDetail:
     """La règle d'identifiant `regle_id` ; lève `ErreurIntrouvable` sinon."""
     ligne = session.get(m.Regle, regle_id) if identifiant_valide(regle_id) else None
     if ligne is None:
-        raise ErreurIntrouvable(f"La règle {regle_id} n'existe pas.")
+        raise ErreurIntrouvable(
+            f"Règle n° {regle_id} introuvable : elle a peut-être été supprimée."
+        )
     return _detail(session, ligne, lire_parametres(session))
 
 
@@ -701,6 +707,11 @@ def _construire(
         code = None
     if isinstance(code, str):
         code = code.strip().upper()  # « r007 » et « R007 » sont le même code
+    commentaire = str(brouillon.get("commentaire") or "")
+    if len(commentaire) > LONGUEUR_COMMENTAIRE:
+        erreurs["commentaire"] = (
+            f"{LONGUEUR_COMMENTAIRE} caractères au plus (lu : {len(commentaire)})."
+        )
     if erreurs or definition is None or annee is None or portee is None:
         raise ErreurSaisie(erreurs or {"regle": "Règle invalide."})
 
@@ -719,7 +730,7 @@ def _construire(
         date_debut=date_debut,
         date_fin=date_fin,
         origine=origine,
-        commentaire=str(brouillon.get("commentaire") or ""),
+        commentaire=commentaire,
         reprise_de_id=existante.reprise_de_id if existante is not None else None,
     )
     _refuser_doublon(session, regle, existante)
@@ -742,7 +753,7 @@ def _annee(session: Session, valeur: object) -> m.AnneeScolaire:
         annee = session.scalar(
             select(m.AnneeScolaire).where(m.AnneeScolaire.libelle == valeur.strip())
         )
-    elif isinstance(valeur, int) and not isinstance(valeur, bool) and identifiant_valide(valeur):
+    elif identifiant_valide(valeur):
         annee = session.get(m.AnneeScolaire, valeur)  # le formulaire web passe l'identifiant
     if annee is None:
         existantes = ", ".join(
@@ -1161,9 +1172,12 @@ def _detail(session: Session, ligne: m.Regle, parametres: Parametres) -> RegleDe
 
 
 def _ligne_ou_none(session: Session, annee_scolaire_id: int, code: str) -> m.Regle | None:
+    """La règle `code` de l'année, sans casse : une base peut tenir « r007 » écrit tel quel."""
     code = str(code).strip().upper()
     return session.scalar(
-        select(m.Regle).where(m.Regle.annee_scolaire_id == annee_scolaire_id, m.Regle.code == code)
+        select(m.Regle).where(
+            m.Regle.annee_scolaire_id == annee_scolaire_id, func.upper(m.Regle.code) == code
+        )
     )
 
 
@@ -1187,7 +1201,7 @@ def _membre(enumeration: type, valeur: object, nom: str):
     except ValueError:
         admises = ", ".join(membre.value for membre in enumeration)
         raise ErreurDonneesInvalides(
-            f"Filtre « {nom} » : valeur {valeur!r} inconnue ; valeurs admises : {admises}."
+            f"Valeur inconnue pour « {nom} » : {valeur!r} ; valeurs admises : {admises}."
         ) from None
 
 

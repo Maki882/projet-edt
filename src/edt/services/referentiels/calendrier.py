@@ -235,8 +235,8 @@ def creer_annee_par_defaut(session: Session, annee_debut: int) -> dict:
 def proposer_regles(session: Session, annee_scolaire_id: int) -> int:
     """Propose à une année ses règles de base et la reprise de l'année précédente.
 
-    Les règles sont créées à l'état « proposée », sans effet tant qu'on ne les
-    confirme pas (écran Règles personnalisées). Renvoie leur nombre.
+    Les règles sont créées à l'état « proposée », sans effet tant qu'elles ne
+    sont pas activées (écran Règles personnalisées). Renvoie leur nombre.
     """
     return len(proposer_pour_annee(session, annee_scolaire_id).creees)
 
