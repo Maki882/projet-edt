@@ -47,7 +47,12 @@ from edt.domaine.parametres import DEJEUNER_FIXE, DEJEUNER_LIBRE
 from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, NaturePortee, TypeRegle
 from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurIntrouvable
 from edt.services import regles
-from edt.services.assistant.propositions import Lien, NatureProposition, Proposition
+from edt.services.assistant.propositions import (
+    Lien,
+    NatureProposition,
+    Proposition,
+    identite,
+)
 from edt.services.calendrier import semestre_par_defaut
 from edt.services.emploi_du_temps import anomalies, occupation, presentation, versions, vues
 from edt.services.emploi_du_temps.presentation import adresse_regle, plages_de_semaines
@@ -1428,7 +1433,11 @@ def _proposer_modification_regle(
             phrase=validation.phrase,
             phrase_avant=avant.phrase,
             details=_details_regle(validation.regle),
-            donnees={"annee_id": annee_id, "code": avant.code, "changements": changements},
+            donnees={
+                "annee_id": annee_id,
+                "code": avant.code,
+                "changements": changements,
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1462,7 +1471,12 @@ def _proposer_etat_regle(
             titre=titre,
             phrase=detail.phrase,
             details=(f"État actuel : {detail.etat.libelle.lower()}", suite),
-            donnees={"annee_id": annee_id, "code": detail.code, "etat": etat},
+            donnees={
+                "annee_id": annee_id,
+                "code": detail.code,
+                "regle_id": detail.id,
+                "etat": etat,
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1567,7 +1581,7 @@ def _proposer_indisponibilite(
             titre="Indisponibilité",
             phrase=phrase,
             details=tuple(details),
-            donnees={"valeurs": valeurs},
+            donnees={"valeurs": valeurs, "identite": identite(ressource)},
             lien_ecran=Lien("Ouvrir les indisponibilités", "/indisponibilites"),
         )
     )

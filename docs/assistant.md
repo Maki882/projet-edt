@@ -51,8 +51,11 @@ nombre de séances déjà placées sur le créneau d'une indisponibilité).
   l'assistant est active aussitôt, avec l'origine « assistant ». La carte donne le code de la
   règle (ou le numéro de l'indisponibilité) et un lien vers elle.
 - **Refuser** n'enregistre rien ; l'assistant en est informé au message suivant.
-- Si les données ont changé entre-temps (une règle qui ferait doublon, un élément supprimé),
-  la confirmation est refusée avec la raison, et rien n'est enregistré.
+- Si les données ont changé entre-temps (une règle qui ferait doublon, un élément supprimé,
+  un établissement fictif rechargé qui fait désigner à la carte un autre enseignant ou une
+  autre règle), la confirmation est refusée avec la raison, et rien n'est enregistré :
+  avant d'écrire, l'application vérifie que la cible est toujours celle de la carte
+  (identité de l'enseignant, de la salle ou du groupe ; phrase de la règle).
 
 Vérifiez la phrase avant de confirmer : l'assistant peut se tromper. Une règle ou une
 indisponibilité confirmée compte **au prochain calcul** ; elle ne modifie pas la version
