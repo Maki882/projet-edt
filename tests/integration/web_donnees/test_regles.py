@@ -9,7 +9,14 @@ import re
 import pytest
 from sqlalchemy import func, select
 from starlette.datastructures import FormData
-from tests.outils.web_donnees.aides import NOMBRE_TROP_GRAND, saisie_regle
+from tests.outils.web_donnees.aides import (
+    HX,
+    NOMBRE_TROP_GRAND,
+    erreur_sous_le_champ,
+    identifiant,
+    saisie_regle,
+    texte_visible,
+)
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -25,13 +32,6 @@ from edt.web.donnees.regles import (
     erreurs_par_champ,
     rubriques_regle,
 )
-
-HTMX = {"HX-Request": "true"}
-
-
-def _id(modele, colonne, valeur) -> int:
-    with session_base() as session:
-        return session.scalar(select(modele.id).where(colonne == valeur))
 
 
 def _regle(annee: int, code: str) -> service_regles.RegleDetail:
@@ -67,11 +67,11 @@ def test_filtres_et_recherche(site, ids):
     assert _codes(site.get(f"{base}&type=PAUSE_DEJEUNER").text) == ["R002"]
     assert _codes(site.get(f"{base}&portee=etablissement").text) == ["R003", "R004"]
     assert _codes(site.get(f"{base}&origine=base&niveau=facultatif").text) == ["R003", "R004"]
-    demi = _id(m.Groupe, m.Groupe.code, "A1-G1a")
+    demi = identifiant(m.Groupe, m.Groupe.code, "A1-G1a")
     assert _codes(site.get(f"{base}&groupe={demi}").text) == ["R001", "R002"]  # héritées
     assert _codes(site.get(f"{base}&q=pause dejeuner").text) == ["R002"]  # sans accents
     assert _codes(site.get(f"{base}&q=R003").text) == ["R003"]
-    zone = site.get(f"{base}&etat=active", headers={**HTMX, "HX-Target": "zone-liste"})
+    zone = site.get(f"{base}&etat=active", headers={**HX, "HX-Target": "zone-liste"})
     assert "<html" not in zone.text and _codes(zone.text) == ["R001", "R002"]
     assert site.get(f"{base}&etat=inconnu").status_code == 422
     assert site.get("/regles?annee=999").status_code == 404
@@ -104,7 +104,7 @@ def test_choix_du_type_puis_formulaire_tire_du_schema(site, ids):
     assert 'data-visible-si="p_mode:libre"' in page  # durée : mode libre seulement
     assert 'data-visible-si="portee:enseignant"' in page
     assert re.search(r'<option value="\d+"> └ A1-G1 - ', page)  # arbre des groupes
-    # L'aperçu part de sa section, pas du formulaire : HTMX valide un formulaire avant de
+    # L'aperçu part de sa section, pas du formulaire : HX valide un formulaire avant de
     # l'envoyer et n'enverrait rien tant qu'un champ requis est vide ou hors bornes.
     formulaire = re.search(r'<form class="formulaire formulaire-large"[^>]*>', page).group(0)
     assert "hx-post" not in formulaire and 'action="/regles/nouveau"' in formulaire
@@ -129,7 +129,7 @@ def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):
     )
     assert pour_tous["parametres"]["personnes"] == "enseignants"
 
-    classe = _id(m.Groupe, m.Groupe.code, "A1-G2")
+    classe = identifiant(m.Groupe, m.Groupe.code, "A1-G2")
     donnees = _nouvelle(
         ids.annee,
         "MAX_PAR_JOUR",
@@ -156,7 +156,7 @@ def test_type_non_datable_sans_mode_dates_et_dates_refusees(site, ids):
     assert '<option value="dates"' not in page and 'name="date_debut"' not in page
     assert "sans dates" in page  # l'aide de la période le dit
 
-    classe = _id(m.Groupe, m.Groupe.code, "A1-G2")
+    classe = identifiant(m.Groupe, m.Groupe.code, "A1-G2")
     donnees = _nouvelle(
         ids.annee,
         "PAUSE_DEJEUNER",
@@ -168,14 +168,14 @@ def test_type_non_datable_sans_mode_dates_et_dates_refusees(site, ids):
         niveau="important",
         periode="dates",
     )
-    attendu = "Pause déjeuner vaut toute l&#39;année ou un semestre entier, sans dates"
+    attendu = "Pause déjeuner vaut toute l'année ou un semestre entier, sans dates"
     for dates in ({"date_debut": "2026-11-02", "date_fin": "2026-12-18"}, {}):
         refus = site.post("/regles/nouveau", data={**donnees, **dates})
         assert refus.status_code == 422
-        erreur = re.search(r'id="erreur-periode">([^<]+)<', refus.text).group(1)
+        erreur = erreur_sous_le_champ(refus, "periode")
         assert erreur.startswith(attendu), dates  # erreur globale « periode » sous la période
         assert '<option value="dates" selected>' in refus.text  # la saisie reste visible
-        apercu = site.post("/regles/apercu", data={**donnees, **dates}, headers=HTMX).text
+        apercu = site.post("/regles/apercu", data={**donnees, **dates}, headers=HX).text
         assert apercu.count("sans dates") == 1
     with session_base() as session:
         assert len(service_regles.lister(session, ids.annee)) == 4  # rien n'a été créé
@@ -222,7 +222,7 @@ def test_erreurs_globales_du_service_sous_leur_bloc(site, ids):
 
 
 def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
-    classe = _id(m.Groupe, m.Groupe.code, "A1-G2")
+    classe = identifiant(m.Groupe, m.Groupe.code, "A1-G2")
     donnees = _nouvelle(
         ids.annee,
         "JOURS_TRAVAILLES",
@@ -231,7 +231,7 @@ def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
         p_jours=["lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi"],
         niveau="important",
     )
-    apercu = site.post("/regles/apercu", data=donnees, headers=HTMX).text
+    apercu = site.post("/regles/apercu", data=donnees, headers=HX).text
     assert "« La classe A1-G2 a aussi cours le samedi. »" in apercu
 
     vide = site.post("/regles/nouveau", data={**donnees, "p_jours": []})
@@ -241,7 +241,7 @@ def test_ajout_jours_travailles_avec_apercu_et_erreurs(site, ids):
     assert 'id="erreur-cible_groupe"' in sans_cible.text
     # Saisie refusée : l'aperçu est redemandé au chargement, il liste ce qui reste à corriger.
     assert re.search(r'<section class="apercu-regle"[^>]*hx-trigger="load, ', sans_cible.text)
-    apercu_vide = site.post("/regles/apercu", data={**donnees, "p_jours": []}, headers=HTMX).text
+    apercu_vide = site.post("/regles/apercu", data={**donnees, "p_jours": []}, headers=HX).text
     assert "À compléter ou corriger" in apercu_vide and "Jours travaillés" in apercu_vide
 
     cree = site.post("/regles/nouveau", data=donnees, follow_redirects=True)
@@ -267,7 +267,7 @@ def test_ajout_pause_dejeuner_d_un_enseignant(site, ids):
     trop = site.post("/regles/nouveau", data=donnees)
     assert trop.status_code == 422 and 'id="erreur-p_duree"' in trop.text
     assert 'value="11:45"' in trop.text  # la saisie est conservée
-    apercu = site.post("/regles/apercu", data=donnees, headers=HTMX).text
+    apercu = site.post("/regles/apercu", data=donnees, headers=HX).text
     assert apercu.count("Durée minimale") == 1  # libellé non répété devant le message
     sans_semestre = site.post("/regles/nouveau", data={**donnees, "p_duree": "75", "semestre": ""})
     assert re.search(r'id="erreur-semestre">Choisir le semestre', sans_semestre.text)
@@ -279,7 +279,7 @@ def test_ajout_pause_dejeuner_d_un_enseignant(site, ids):
 
 
 def test_ajout_salles_imposees_et_portee_refusee(site, ids):
-    tp = _id(m.TypeSeance, m.TypeSeance.code, "TP")
+    tp = identifiant(m.TypeSeance, m.TypeSeance.code, "TP")
     donnees = _nouvelle(
         ids.annee,
         "SALLES",
@@ -325,7 +325,7 @@ def test_modification_preremplie_et_doublon_refuse(site, ids):
     apercu = site.post(
         "/regles/apercu",
         data={**donnees, "type": "PAUSE_DEJEUNER", "annee": str(ids.annee), "_id": r002.id},
-        headers=HTMX,
+        headers=HX,
     )
     assert "1 h 30" in apercu.text  # pas de doublon avec elle-même
     reponse = site.post(f"/regles/{r002.id}/modifier", data=donnees, follow_redirects=False)
@@ -362,7 +362,7 @@ def test_etats_activer_ecarter_desactiver_tout_confirmer(site, ids):
 def test_suppression_d_une_regle_sur_place_et_sans_javascript(site, ids):
     r003 = _regle(ids.annee, "R003")
     liste = f"/regles?annee={ids.annee}&etat=proposee"
-    entetes = {**HTMX, "HX-Current-URL": f"http://testserver{liste}"}
+    entetes = {**HX, "HX-Current-URL": f"http://testserver{liste}"}
     ligne = site.get(f"/regles/{r003.id}/ligne/suppression", headers=entetes).text
     assert "Supprimer définitivement la règle R003 ?" in ligne and 'colspan="7"' in ligne
     zone = site.post(f"/regles/{r003.id}/ligne/supprimer", headers=entetes).text
@@ -419,7 +419,7 @@ def test_suppression_d_une_cible_et_de_ses_regles(site, ids, caplog):
 
 
 def test_salle_citee_retiree_des_regles_et_cible_bloquee(site, ids):
-    tp = _id(m.TypeSeance, m.TypeSeance.code, "TP")
+    tp = identifiant(m.TypeSeance, m.TypeSeance.code, "TP")
     with session_base() as session:
         for salles in (["L115", "N310"], ["L115"]):
             service_regles.creer(
@@ -431,10 +431,10 @@ def test_salle_citee_retiree_des_regles_et_cible_bloquee(site, ids):
                     "parametres": {"mode": "imposer", "salles": salles},
                 },
             )
-    l115 = _id(m.Salle, m.Salle.code, "L115")
+    l115 = identifiant(m.Salle, m.Salle.code, "L115")
     ligne = site.get(
         f"/salles/{l115}/ligne/suppression",
-        headers={**HTMX, "HX-Current-URL": "http://testserver/salles"},
+        headers={**HX, "HX-Current-URL": "http://testserver/salles"},
     ).text
     assert "L115 sera retiré de ses salles" in ligne
     assert "Sera supprimée (elle ne vaut plus sans L115)" in ligne
@@ -443,7 +443,7 @@ def test_salle_citee_retiree_des_regles_et_cible_bloquee(site, ids):
     zone = site.post(
         f"/salles/{l115}/ligne/supprimer",
         data={"_regles": ids_regles.group(1)},
-        headers={**HTMX, "HX-Current-URL": "http://testserver/salles"},
+        headers={**HX, "HX-Current-URL": "http://testserver/salles"},
     ).text
     assert "Salle « L115 (ISSY) » supprimée. 2 règles personnalisées" in zone
     assert _regle(ids.annee, "R005").regle.parametres["salles"] == ["N310"]
@@ -457,7 +457,7 @@ def test_salle_citee_retiree_des_regles_et_cible_bloquee(site, ids):
 
 
 def test_type_de_seance_cite_par_une_regle_de_base(site, ids):
-    cm = _id(m.TypeSeance, m.TypeSeance.code, "CM")
+    cm = identifiant(m.TypeSeance, m.TypeSeance.code, "CM")
     page = site.get(f"/types-seance/{cm}/supprimer").text
     assert "R003" in page and "Sera supprimée (elle ne vaut plus sans CM)" in page
 
@@ -509,7 +509,7 @@ def test_creation_d_une_annee_propose_les_regles(site, ids):
     )
     assert "Année scolaire 2027-2028 créée" in reponse.text
     assert "2 règles proposées, à revoir dans Règles personnalisées." in reponse.text
-    nouvelle = _id(m.AnneeScolaire, m.AnneeScolaire.libelle, "2027-2028")
+    nouvelle = identifiant(m.AnneeScolaire, m.AnneeScolaire.libelle, "2027-2028")
     page = site.get(f"/regles?annee={nouvelle}").text
     assert _codes(page) == ["R001", "R002"] and "2 règles proposées à confirmer" in page
 
@@ -523,7 +523,7 @@ def test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees(sit
         data={"libelle": "2028-2029", "date_debut": "2028-09-01", "date_fin": "2029-08-31"},
         follow_redirects=True,
     )
-    nouvelle = _id(m.AnneeScolaire, m.AnneeScolaire.libelle, "2028-2029")
+    nouvelle = identifiant(m.AnneeScolaire, m.AnneeScolaire.libelle, "2028-2029")
     assert str(reponse.url).endswith(f"/regles?annee={nouvelle}&etat=proposee")
     assert (
         "Année scolaire « 2028-2029 » créée. 2 règles personnalisées proposées pour cette "
@@ -570,7 +570,7 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
         p_maximum="3",
         niveau="important",
     )
-    apercu = client.post("/regles/apercu", data=donnees, headers=HTMX).text
+    apercu = client.post("/regles/apercu", data=donnees, headers=HX).text
     assert "apercu-phrase" in apercu and groupe.code in apercu
     cree = client.post("/regles/nouveau", data=donnees, follow_redirects=True).text
     assert "créée" in cree and len(_codes(cree)) == avant + 1
@@ -610,7 +610,7 @@ def test_aucune_page_des_regles_ne_renvoie_de_trace(site, ids):
         assert "Traceback" not in reponse.text and "Une erreur inattendue" not in reponse.text
     for type_regle in CATALOGUE_TYPES:  # aperçu d'un formulaire vide : message, jamais de 500
         apercu = site.post(
-            "/regles/apercu", data={"type": type_regle, "annee": ids.annee}, headers=HTMX
+            "/regles/apercu", data={"type": type_regle, "annee": ids.annee}, headers=HX
         )
         assert apercu.status_code == 200, type_regle
     assert site.get("/regles/999/modifier").status_code == 404
@@ -618,7 +618,7 @@ def test_aucune_page_des_regles_ne_renvoie_de_trace(site, ids):
 
 
 # --------------------------------------------------------------------------- #
-# Cas limites (inventaire n° 10 et 11)
+# Cas limites : identifiants énormes, aucune année scolaire
 # --------------------------------------------------------------------------- #
 
 
@@ -637,14 +637,15 @@ def test_identifiants_enormes_des_regles_sont_introuvables(site, ids):
         reponse = site.get(adresse)
         assert reponse.status_code == 404, adresse
         assert "introuvable" in reponse.text and "Une erreur inattendue" not in reponse.text
-    ligne = site.get(f"/regles/{enorme}/ligne", headers=HTMX)
+    ligne = site.get(f"/regles/{enorme}/ligne", headers=HX)
     assert ligne.status_code == 404 and f"Règle n° {enorme} introuvable" in ligne.text
     etat = site.post(f"/regles/{enorme}/etat", data={"etat": "active"})
     assert etat.status_code == 404
-    # Une cible de vingt chiffres (liste de choix fabriquée) : « inconnue », pas OverflowError.
+    # Une cible de vingt chiffres (liste de choix fabriquée) : identifiant invalide, dit comme
+    # tel sous le champ (pas un « code inconnu » jamais saisi), et pas OverflowError.
     cible = site.post("/regles/nouveau", data=saisie_regle(ids, cible_groupe=enorme))
     assert cible.status_code == 422 and re.search(
-        r'id="erreur-cible_groupe">[^<]*inconnu', cible.text
+        rf'id="erreur-cible_groupe">Identifiant de groupe invalide : {enorme} ', cible.text
     )
 
 
@@ -661,3 +662,36 @@ def test_regles_sans_annee_scolaire_affiche_un_bandeau(client):
         assert reponse.status_code == 200, adresse
         assert "Aucune année scolaire pour l'instant" in reponse.text
         assert 'href="/calendrier"' in reponse.text and "Ouvrir le calendrier" in reponse.text
+
+
+@pytest.mark.cas_limite
+def test_regle_supprimee_entre_temps_dit_introuvable(site, ids):
+    """Cas : une règle supprimée dans un autre onglet, puis sa fiche ou son changement d'état
+    demandés depuis une page restée ouverte. Risque : un message différent selon le numéro
+    (« n'existe pas » ou « introuvable »), qui ne dit pas que la règle a pu être supprimée."""
+    regle = identifiant(m.Regle, m.Regle.code, "R001")
+    site.post(f"/regles/{regle}/supprimer", data={"_retour": "/regles"})
+    for reponse in (
+        site.get(f"/regles/{regle}/modifier"),
+        site.post(f"/regles/{regle}/etat", data={"etat": "active"}),
+    ):
+        assert reponse.status_code == 404
+        attendu = f"Règle n° {regle} introuvable : elle a peut-être été supprimée."
+        assert attendu in texte_visible(reponse)
+
+
+@pytest.mark.cas_limite
+def test_code_de_regle_en_minuscules_dans_la_base(site, ids):
+    """Cas : la base tient une règle dont le code est en minuscules (« r009 », écrit sans passer
+    par le service, qui met les codes en majuscules). Risque : la règle devient introuvable par
+    son code (changer son état répond « n'existe pas »), et le code attribué à la règle suivante
+    la double (« R009 » à côté de « r009 »)."""
+    with session_base() as session:
+        lignes = session.scalars(select(m.Regle).where(m.Regle.annee_scolaire_id == ids.annee))
+        derniere = max(lignes, key=lambda ligne: int(ligne.code[1:]))
+        numero, regle = int(derniere.code[1:]), derniere.id
+        derniere.code = derniere.code.lower()
+    etat = site.post(f"/regles/{regle}/etat", data={"etat": "inactive"})
+    assert etat.status_code == 200 and f"Règle r{numero:03d} désactivée" in texte_visible(etat)
+    cree = site.post("/regles/nouveau", data=saisie_regle(ids))
+    assert f"Règle R{numero + 1:03d} créée" in texte_visible(cree)

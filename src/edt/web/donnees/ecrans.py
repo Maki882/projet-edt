@@ -52,6 +52,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData, QueryParams
 
+from edt.db.moteur import identifiant_valide
 from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services.referentiels import operations
 from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
@@ -197,12 +198,18 @@ def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
     return _etat_depuis(_parametres_de_liste(request, ecran), ecran)
 
 
-def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
-    """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
+def numero_de_page(parametres: QueryParams) -> int:
+    """Numéro de page lu dans une adresse (1 par défaut) ; `ErreurDonneesInvalides` s'il est illisible."""
     brute = parametres.get("page", "1").strip() or "1"
     numero = entier_naturel(brute)
     if numero is None or not 1 <= numero <= ENTIER_MAX:
         raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute[:30]} ».")
+    return numero
+
+
+def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
+    """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
+    numero = numero_de_page(parametres)
     noms = {filtre.nom for filtre in ecran.entite.filtres}
     return EtatListe(
         prefixe=ecran.prefixe,
@@ -368,7 +375,7 @@ def regles_confirmees(formulaire: FormData) -> list[int] | None:
         if not morceau:
             continue
         ident = entier_naturel(morceau)
-        if ident is None or ident > ENTIER_MAX:
+        if not identifiant_valide(ident):
             raise ErreurDonneesInvalides(
                 f"Règles confirmées illisibles : « {morceau[:30]} » n'est pas un identifiant. "
                 "Rien n'a été supprimé."
