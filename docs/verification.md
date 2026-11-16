@@ -368,8 +368,8 @@ actives disjointes). `nb_semaines` permet d'afficher une moyenne
 hebdomadaire.
 
 **Emploi du temps d'un groupe.** Pour les trous et les changements de campus,
-on prend l'emploi du temps des **étudiants** d'un groupe : les séances du
-groupe et de ses ascendants (classe, promotion). On le calcule pour chaque
+l'emploi du temps retenu est celui des **étudiants** d'un groupe : les séances du
+groupe et de ses ascendants (classe, promotion). Il est calculé pour chaque
 groupe **feuille** de l'arbre (sans sous-groupe), ce qui évite de compter deux
 fois la même journée. Limite connue : sans liste d'étudiants, les séances d'un
 groupe transverse (langue, option) ne sont pas vues dans la journée des

@@ -902,7 +902,7 @@ besoin sont gardés ; une séance ponctuelle ne change pas de date.
 (`date_debut`, `date_fin`), coût d'éloignement (`cout_semaine` = 100 par
 semaine d'écart, `cout_jour` = 10 par jour, `cout_horaire` = 1 si l'heure
 change). La même semaine passe donc toujours avant une semaine voisine, et à
-date égale on garde l'heure puis la salle d'origine.
+date égale l'heure puis la salle d'origine sont gardées.
 
 Méthode : les occurrences sont traitées une par une, les plus contraintes
 d'abord (moins de salles compatibles, puis les plus longues) ; chacune prend

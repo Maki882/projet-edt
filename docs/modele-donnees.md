@@ -298,7 +298,7 @@ Le comportement à la suppression est porté par les clés étrangères (SQLite,
   sous-groupes, ses inscriptions, ses indisponibilités et les matières de sa
   promotion ; un besoin emporte ses séances placées ; une version emporte
   ses séances et ses occurrences.
-- **NO ACTION** (suppression refusée) : on ne modifie jamais une demande en
+- **NO ACTION** (suppression refusée) : une demande n'est jamais modifiée en
   silence. Supprimer un groupe, un enseignant, une matière, un type de
   séance, un type de salle, un équipement, une salle imposée ou un campus
   encore utilisés par un besoin (ou un campus qui a des salles) est refusé :

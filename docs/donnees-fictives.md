@@ -298,7 +298,7 @@ placer : tout besoin préparé est créé ou écarté, jamais omis.
 fin, salle)` ; `RapportJeu.placements(code)` le donne au format du
 vérificateur). Avec `enregistrer_reference=True`, il est aussi enregistré
 comme version « référence » **non active** de chaque semestre : le solveur
-n'en reçoit aucun indice, mais on peut lui comparer sa solution.
+n'en reçoit aucun indice, mais sa solution peut lui être comparée.
 
 ## Jeu sur mesure
 
