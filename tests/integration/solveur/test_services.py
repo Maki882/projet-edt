@@ -604,14 +604,12 @@ def test_calcul_refuse_pendant_une_execution_des_tests(jeu_minimal, processus_vi
     verrou.write_text(json.dumps(info), encoding="utf-8")
     with pytest.raises(ErreurRegleMetier, match="exécution des tests est en cours") as refus:
         generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
-    assert "Tests unitaires" in refus.value.message and "relancer" in refus.value.message
+    assert "onglet des tests" in refus.value.message and "relancer" in refus.value.message
     verrou.unlink()
 
-    dans_ce_processus = types.SimpleNamespace(
-        en_cours=True, cible=types.SimpleNamespace(libelle="Tests d'intégration")
-    )
-    monkeypatch.setattr(execution, "execution_courante", lambda: dans_ce_processus)
-    with pytest.raises(ErreurRegleMetier, match="Tests d'intégration"):
+    dans_ce_processus = types.SimpleNamespace(en_cours=True)
+    monkeypatch.setattr(execution, "_courante", dans_ce_processus)
+    with pytest.raises(ErreurRegleMetier, match="exécution des tests est en cours"):
         generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Calcul)) == 0
