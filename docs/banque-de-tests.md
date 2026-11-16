@@ -816,8 +816,8 @@ dépendent d'un vrai navigateur, d'un vrai tableur ou du serveur de
 production. Ils se vérifient à la main avant une démonstration ou après un
 changement de la partie concernée.
 
-**Rendu de l'emploi du temps.** Ouvrir la page « Emploi du temps » du jeu
-`moyen` sur un téléphone (ou avec l'émulation mobile du navigateur), puis en
+**Rendu de l'emploi du temps.** Ouvrir la page « Emploi du temps » de
+l'établissement fictif `moyen` sur un téléphone (ou avec l'émulation mobile du navigateur), puis en
 aperçu avant impression, sur la semaine la plus chargée. Attendu : la grille
 reste lisible, aucune séance n'est tronquée ni masquée.
 
@@ -845,9 +845,10 @@ non inscriptible (ou remplir son disque), puis lancer un calcul. Attendu : le
 calcul a lieu et signale que son journal dédié est indisponible, en renvoyant
 au journal général `edt.log` et à `EDT_LOG_DIR`.
 
-**Rechargements répétés d'un jeu fictif.** Recharger dix fois de suite le
-jeu `moyen` avec remise à zéro (`python -m edt jeu --taille moyen --reset
---oui`) en observant la mémoire du processus. Attendu : la mémoire se
+**Rechargements répétés d'un établissement fictif.** Recharger dix fois de
+suite l'établissement `moyen` avec remise à zéro
+(`python -m edt jeu --taille moyen --reset --oui`) en observant la mémoire
+du processus. Attendu : la mémoire se
 stabilise après le premier chargement.
 
 **Exploitation du serveur.** Les procédures qui touchent au serveur

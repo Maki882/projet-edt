@@ -1078,7 +1078,7 @@ Mécanisme (`edt.services.generation`) :
 |---|---|---|---|
 | `objectif_actif` | oui | - | un calcul optimisé rend au pire la solution du mode faisable, dans le même délai |
 | `temps_limite_s` | 300 s | 1 à 900 s | la première solution du jeu grand arrive en 20 à 45 s selon la machine ; il faut ensuite plusieurs minutes pour que les trous disparaissent. C'est un plafond : un petit établissement rend la main en quelques dizaines de secondes (arrêt sur stagnation) |
-| `temps_limite_long_s` | 900 s | 1 à 1 800 s | durée du bouton de relance longue |
+| `temps_limite_long_s` | 900 s | 1 à 1 800 s | durée de la recherche longue : choix « Rechercher jusqu'à … » de l'écran Générer et bouton « Relancer en cherchant jusqu'à … » |
 | `nb_workers` | 0 (deux fils au plus) | 0 à 8 | le moteur n'utilise de toute façon jamais plus de fils que de cœurs |
 
 Le site est public : ces bornes empêchent un visiteur d'enregistrer un
@@ -1471,7 +1471,7 @@ jointe à chacune.
   progrès. Elle peut couper un petit problème avant une dernière
   amélioration tardive (une dizaine de pour cent de l'objectif, sans effet
   sur les trous ni les samedis dans les mesures), et son résultat dépend de
-  la vitesse de la machine. Une relance longue s'arrête sur le même
+  la vitesse de la machine. Une recherche longue s'arrête sur le même
   critère : après « plus de progrès », c'est « proposer une autre solution »
   qui peut donner autre chose, pas un temps limite plus long.
 - **Temps limite et retard de CP-SAT.** Le calcul peut dépasser son temps

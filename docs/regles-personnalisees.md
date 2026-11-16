@@ -143,7 +143,7 @@ sans créneau reste donc inutilisable. La règle est gardée, la grille pouvant
   rattachée, comme les groupes. Le code est unique dans l'année (`R007` peut
   exister en 2025-2026 et en 2026-2027).
 - Une règle **proposée** n'a aucun effet (ni posée, ni vérifiée) : elle
-  apparaît « à confirmer », se confirme une à une ou en bloc, se modifie ou
+  apparaît « à activer », s'active une à une ou en bloc, se modifie ou
   se supprime. Une règle **inactive** est gardée sans effet ; elle se
   réactive d'un clic.
 - `proposer_pour_annee(session, annee)` crée en une fois, à l'état
@@ -436,8 +436,8 @@ la page Générer : chaque règle porte son propre niveau.
   module `web/routes/donnees_regles_personnalisees.py`), filtrée par année
   (l'année en cours par défaut). Liste : phrase, niveau, portée, période,
   origine, état (bascule active ou inactive) ; filtres, recherche et
-  pagination. Un bandeau signale les règles proposées à confirmer, avec
-  « Tout confirmer » (celles qui feraient doublon restent proposées).
+  pagination. Un bandeau signale les règles proposées à activer, avec
+  « Activer les N règles » (celles qui feraient doublon restent proposées).
   Bouton « Proposer les règles de base » (§ 1.5).
 - **Ajout guidé** : le type, la portée (nature puis cible), les paramètres
   (formulaire tiré du schéma : cases de jours, heures, durées, listes), puis
@@ -453,9 +453,9 @@ la page Générer : chaque règle porte son propre niveau.
   blocage, le bouton supprime la cible et ses règles (§ 4.1).
 - **Paramètres** : `jours_travailles` en sept cases. **Calendrier** : la
   création d'une année annonce les règles proposées.
-- **Générer** : sous le tableau des contraintes, un bloc « Règles
+- **Générer** : sous le tableau des règles du catalogue, un bloc « Règles
   personnalisées » (règles actives du semestre) : phrase, type, portée,
-  période, niveau prérempli depuis la règle, choix « ignorer » (champs
+  période, niveau prérempli depuis la règle, choix « Ignorer pour ce calcul » (champs
   `niveau_regle_<id>` et `ignorer_regle_<id>`). Le choix vaut pour ce calcul
   seulement. Au-delà de vingt règles, regroupement par type, replié.
 - **Résultat, À traiter, panneau des anomalies** : phrase de la règle ;

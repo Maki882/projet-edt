@@ -1,7 +1,7 @@
 # Données fictives
 
-Ce document décrit le générateur de jeux de données fictifs : son usage, ce
-qu'il produit et comment il garantit la faisabilité. Il s'adresse aux
+Ce document décrit le générateur d'établissements fictifs (les « jeux » du
+code) : son usage, ce qu'il produit et comment il garantit la faisabilité. Il s'adresse aux
 développeurs.
 
 Toutes les données de l'application sont fictives. Le paquet `edt.synthese`
@@ -23,13 +23,17 @@ python -m edt jeu --taille grand --reset --oui         # remise à zéro puis ch
 python -m edt jeu --taille petit --reference           # + témoin enregistré comme référence
 ```
 
+Dans l'interface, l'écran s'appelle « Établissement fictif », la graine
+« numéro de variante » et le témoin « emploi du temps de référence » ;
+l'option `--graine` de la commande garde son nom.
+
 | Fonction | Rôle |
 |---|---|
 | `edt.synthese.generer_jeu(session, taille, graine=0, annee_debut=None, enregistrer_reference=False) -> RapportJeu` | génère le jeu dans une base initialisée et vide de référentiels ; ne valide pas la transaction |
 | `edt.services.jeux.charger_jeu_fictif(session, taille, graine, ...)` | même chose, refusée pendant un calcul |
 | `edt.services.jeux.recharger_jeu_fictif(taille, graine, reinitialiser=..., ...)` | remise à zéro facultative puis chargement, dans ses propres sessions (à appeler depuis une route web) |
 | `edt.services.jeux.remettre_a_zero()` | supprime tout et recrée la base avec ses données par défaut |
-| `edt.services.jeux.tailles_disponibles()` | les trois tailles et leur description, pour l'écran de configuration |
+| `edt.services.jeux.tailles_disponibles()` | les trois tailles et leur description, pour l'écran « Établissement fictif » |
 
 `taille` est `"petit"`, `"moyen"`, `"grand"` ou une `ConfigurationJeu`.
 `graine` est un entier de 0 à 2 147 483 647 (la borne du formulaire web) ; une
