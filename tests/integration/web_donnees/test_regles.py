@@ -21,6 +21,7 @@ from tests.outils.web_donnees.aides import (
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
+from edt.domaine.contraintes import DEFINITION_NIVEAUX
 from edt.domaine.parametres import JOURS_TRAVAILLES_PAR_DEFAUT
 from edt.domaine.regles import CATALOGUE_TYPES, EtatRegle, TypeRegle
 from edt.services import regles as service_regles
@@ -112,6 +113,21 @@ def test_choix_du_type_puis_formulaire_tire_du_schema(site, ids):
     section = re.search(r'<section class="apercu-regle"[^>]*>', page).group(0)
     assert 'hx-post="/regles/apercu"' in section and 'hx-include="closest form"' in section
     assert "from:closest form" in section and "load" not in section  # pas d'erreurs d'emblée
+
+
+@pytest.mark.cas_limite
+def test_niveaux_definis_comme_sur_l_ecran_generer(site, ids, jeu_minimal):
+    """Cas : le formulaire d'une règle personnalisée et l'écran Générer expliquent les niveaux.
+
+    Risque : deux définitions différentes (« jamais enfreinte, respectée au mieux » d'un côté,
+    « enfreinte seulement faute de mieux, avec un avertissement » de l'autre) : l'utilisateur
+    ne sait plus ce qu'« important » veut dire.
+    """
+    import html
+
+    regle = html.unescape(site.get(f"/regles/nouveau?annee={ids.annee}&type=JOURS_TRAVAILLES").text)
+    generer = html.unescape(site.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text)
+    assert DEFINITION_NIVEAUX in regle and DEFINITION_NIVEAUX in generer
 
 
 def test_personnes_concernees_seulement_pour_la_portee_etablissement(site, ids):

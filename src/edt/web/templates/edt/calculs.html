@@ -74,7 +74,7 @@
     <legend>Règles</legend>
     <details class="repliable"{% if "regles" in ouvert %} open{% endif %}>
       <summary>{{ resumes.regles }}</summary>
-      <p class="aide"><strong>Nécessaire</strong> : toujours respectée. <strong>Important</strong> : enfreinte seulement faute de mieux, avec un avertissement. <strong>Facultatif</strong> : un souhait, signalé pour information s'il n'est pas tenu. Les règles « Toujours nécessaire » ne se règlent pas ; les niveaux choisis sont rappelés dans le résultat.</p>
+      <p class="aide">{{ fmt.DEFINITION_NIVEAUX }} Les règles « Toujours nécessaire » ne se règlent pas ; les niveaux choisis sont rappelés dans le résultat.</p>
       <div class="tableau-defilant">
         <table class="tableau edt-regles">
           <thead>
