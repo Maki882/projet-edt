@@ -306,8 +306,13 @@ def import_en_cours() -> bool:
     Le lancement d'un calcul le consulte : un calcul ne doit pas lire des
     données en train d'être importées, de même qu'un import est refusé
     pendant un calcul. Une simulation compte aussi : elle réserve la base en
-    écriture. Comme `services.jeux.operation_en_cours`, le marqueur ne couvre
-    que le processus (le serveur web en est un seul).
+    écriture.
+
+    Limite : le compteur est propre au processus. Un import lancé en ligne
+    de commande pendant que le serveur lance un calcul n'est pas vu ici (à la
+    différence de `services.jeux.operation_en_cours`, qui pose un fichier
+    marqueur) ; le verrou d'écriture de la base sérialise alors les deux, et
+    le calcul peut lire les données d'avant ou d'après l'import.
     """
     return _imports_actifs > 0
 

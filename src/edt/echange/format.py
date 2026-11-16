@@ -675,7 +675,7 @@ FEUILLES: tuple[Feuille, ...] = (
                 "Contrainte dure",
                 T.BOOLEEN,
                 defaut=True,
-                aide="Oui : respectée par le calcul. Non : conservée, mais ignorée par le calcul et la vérification.",
+                aide="Oui : respectée par le calcul. Non : ignorée par le calcul et la vérification.",
             ),
             _c(
                 "poids",

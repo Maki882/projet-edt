@@ -233,24 +233,15 @@ def test_recurrence_ancienne_bornee_par_la_periode_sans_refus(debut, regle, atte
 @pytest.mark.parametrize(
     ("regle", "attendu"),
     [
-        (
-            "FREQ=DAILY;INTERVAL=0;BYMONTH=2",
-            "intervalle 0",
-        ),  # boucle sans fin sans la vérification préalable
-        (
-            "FREQ=DAILY;INTERVAL=-1",
-            "intervalle -1",
-        ),  # ValueError hors du filet sans la vérification préalable
+        ("FREQ=DAILY;INTERVAL=0;BYMONTH=2", "intervalle 0"),  # sinon : boucle sans fin
+        ("FREQ=DAILY;INTERVAL=-1", "intervalle -1"),  # sinon : ValueError hors du filet
         ("FREQ=SECONDLY;BYMONTH=2;BYMONTHDAY=31", "répétition « SECONDLY »"),
         ("FREQ=HOURLY", "répétition « HOURLY »"),
         ("FREQ=DAILY;BYMONTH=13", "BYMONTH=13 n'existe pas"),
         ("FREQ=DAILY;BYMONTHDAY=40", "BYMONTHDAY=40 n'existe pas"),
         ("FREQ=MONTHLY;BYMONTH=2;BYMONTHDAY=30,31", "comme un 31 février"),
         ("FREQ=DAILY;BYSETPOS=2", "BYSETPOS dans une répétition quotidienne"),
-        (
-            "FREQ=MONTHLY;BYDAY=9MO",
-            "BYDAY=9MO n'existe pas",
-        ),  # IndexError sans la vérification préalable
+        ("FREQ=MONTHLY;BYDAY=9MO", "BYDAY=9MO n'existe pas"),  # sinon : IndexError
         ("FREQ=DAILY;INTERVAL=7;BYDAY=TU", "aucune date possible"),  # début un lundi
     ],
     ids=[
