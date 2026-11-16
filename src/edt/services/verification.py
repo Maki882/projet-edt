@@ -342,8 +342,7 @@ def verifier_modification(
         )
     if type(salle_id) is int and salle_id not in {salle.id for salle in instantane.salles}:
         raise ErreurIntrouvable(
-            f"La salle n° {salle_id} n'existe pas dans le semestre « {instantane.libelle} » : "
-            "choisir une salle de la liste."
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
         )
     propose = Placement(seance_id, jour, debut, fin, salle_id)
     enregistres = charger_placements(session, version.id)
@@ -416,7 +415,9 @@ def version_a_verifier(
     semestre `semestre_id`, ou à défaut du semestre proposé par défaut
     (`semestre_par_defaut`). Lève `ErreurIntrouvable` si la version ou le
     semestre n'existe pas ou si le semestre n'a pas de version active,
-    `ErreurRegleMetier` si la version n'appartient pas au semestre donné.
+    `ErreurRegleMetier` si la version n'appartient pas au semestre donné ou si
+    plusieurs versions du semestre sont actives (base créée sans l'index qui
+    l'interdit) : vérifier l'une d'elles au hasard tromperait.
     """
     if version_id is not None:
         version = _version(session, version_id)
@@ -431,15 +432,24 @@ def version_a_verifier(
         semestre = session.get(Semestre, semestre_id) if identifiant_valide(semestre_id) else None
         if semestre is None:
             raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
-    version_active = session.scalar(
-        select(VersionEdt).where(VersionEdt.semestre_id == semestre.id, VersionEdt.active.is_(True))
-    )
-    if version_active is None:
+    actives = session.scalars(
+        select(VersionEdt)
+        .where(VersionEdt.semestre_id == semestre.id, VersionEdt.active.is_(True))
+        .order_by(VersionEdt.id)
+    ).all()
+    if not actives:
         raise ErreurIntrouvable(
             f"Le semestre « {semestre.libelle} » n'a pas de version active : générer ou importer "
             "un emploi du temps, ou désigner une version précise."
         )
-    return version_active.id
+    if len(actives) > 1:
+        # L'index unique partiel l'interdit ; une base créée sans lui peut en avoir deux.
+        raise ErreurRegleMetier(
+            f"Plusieurs versions d'emploi du temps sont actives pour « {semestre.libelle} » "
+            f"(versions {', '.join(str(v.id) for v in actives)}) : en garder une seule, ou "
+            "désigner la version à vérifier (--version)."
+        )
+    return actives[0].id
 
 
 # --------------------------------------------------------------------------- #
