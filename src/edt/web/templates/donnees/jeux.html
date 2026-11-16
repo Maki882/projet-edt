@@ -1,8 +1,8 @@
-{# Jeux de données : charger un établissement fictif, remettre la base à zéro. #}
+{# Établissement fictif : en charger un, remettre la base à zéro. #}
 {% extends "base.html" %}
 {% import "macros.html" as ui %}
 
-{% block titre %}Jeux de données{% endblock %}
+{% block titre %}Établissement fictif{% endblock %}
 
 {% macro effacement(contenu) -%}
 <ul class="liste-simple">
@@ -38,14 +38,16 @@
       {%- endfor %}
       {%- if erreurs.taille %}<p class="erreur-champ">{{ erreurs.taille }}</p>{% endif %}
     </fieldset>
-    <div class="grille-champs">
-      {{ ui.champ("graine", "Graine", valeur=saisies.graine, type="number", attributs={"min": 0, "step": 1}, erreur=erreurs.graine, aide="Même graine, mêmes données ; une autre graine donne un autre établissement.") }}
-    </div>
-    {{ ui.champ("reference", "Enregistrer aussi un emploi du temps de référence", valeur=saisies.reference, type="checkbox", aide="Le générateur fournit une solution qu'il sait valide ; elle est enregistrée comme version « référence » (non active) de chaque semestre, pour comparer.") }}
+    <details class="repliable"{% if erreurs.graine %} open{% endif %}>
+      <summary>Options avancées</summary>
+      <div class="grille-champs">
+        {{ ui.champ("graine", "Numéro de variante", valeur=saisies.graine, type="number", attributs={"min": 0, "step": 1}, erreur=erreurs.graine, aide="0 par défaut. Un autre numéro donne un autre établissement fictif, toujours le même pour un même numéro.") }}
+      </div>
+      {{ ui.champ("reference", "Enregistrer aussi un emploi du temps de référence", valeur=saisies.reference, type="checkbox", aide="L'établissement fictif est livré avec un emploi du temps valide : il est enregistré comme version « Référence » (non active) de chaque semestre, pour comparer.") }}
+    </details>
     {%- if donnees_presentes %}
     <div class="message message-attention">
-      <p><strong>La base contient déjà des données : le chargement les efface toutes</strong>, puis recrée les données par défaut avant de charger l'établissement fictif. Seront effacés :</p>
-      {{ effacement(contenu) }}
+      <p><strong>La base contient déjà des données : le chargement les efface toutes</strong> (le détail est dans « Remettre la base à zéro », ci-dessous), puis recrée les données par défaut avant de charger l'établissement fictif.</p>
     </div>
     {{ ui.champ("confirmation", "Je confirme l'effacement de toutes les données actuelles", type="checkbox", erreur=erreurs.confirmation) }}
     {%- endif %}
@@ -56,8 +58,8 @@
   </form>
 </section>
 
-<section class="carte carte-attention">
-  <h2>Remettre la base à zéro</h2>
+<details class="carte carte-attention repliable"{% if erreurs.confirmation_zero %} open{% endif %}>
+  <summary>Remettre la base à zéro</summary>
   <p>
     Supprime <strong>toutes</strong> les données, puis recrée les données par défaut : grille
     horaire, types de salle, équipements, types de séance, paramètres, année scolaire en cours
@@ -75,6 +77,6 @@
       <button type="submit" class="bouton bouton-danger-plein">Remettre la base à zéro</button>
     </div>
   </form>
-</section>
+</details>
 {%- endif %}
 {% endblock %}

@@ -142,7 +142,7 @@ def _seul_a_la_fois(action: str, url: str | None = None) -> Iterator[None]:
             "Demande refusée (%s) : un chargement ou une remise à zéro est en cours", action
         )
         raise ErreurChargementEnCours(
-            f"Impossible de {action} : un chargement de jeu de données ou une remise à zéro "
+            f"Impossible de {action} : un chargement d'établissement fictif ou une remise à zéro "
             "est déjà en cours. Attendre quelques secondes, puis recharger la page."
         )
     marqueur = fichier_marqueur(url)
@@ -176,9 +176,12 @@ class TailleJeu:
 
 
 _DESCRIPTIONS = {
-    "petit": "Une promotion de 1re année, deux classes, le semestre 1 (essais rapides).",
-    "moyen": "Une promotion complète de 3e année avec apprentis, langues, partiels et stage.",
-    "grand": "L'établissement complet : cinq années, trois sites, les deux semestres.",
+    "petit": "une promotion de 1re année, deux classes, le semestre 1 ; calcul en quelques secondes.",
+    "moyen": (
+        "une promotion complète de 3e année avec apprentis, langues, partiels et stage ; "
+        "calcul en moins d'une minute."
+    ),
+    "grand": "l'établissement complet : cinq années, trois sites, les deux semestres.",
 }
 
 
@@ -217,7 +220,7 @@ def charger_jeu_fictif(
     verrou d'écriture ; `session` ne doit pas encore avoir exécuté de requête
     (`ErreurConfiguration` sinon).
     """
-    with _seul_a_la_fois("charger un jeu fictif"):
+    with _seul_a_la_fois("charger un établissement fictif"):
         return _charger(session, taille, graine, annee_debut, enregistrer_reference)
 
 
@@ -247,7 +250,9 @@ def _charger(
                 "La base n'est pas initialisée : lancer d'abord « python -m edt init-db », "
                 "ou demander la remise à zéro."
             )
-        _refuser_pendant_un_calcul("charger un jeu fictif")  # tables présentes : contrôle direct
+        _refuser_pendant_un_calcul(
+            "charger un établissement fictif"
+        )  # tables présentes : contrôle direct
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     journal.info("Chargement du jeu fictif « %s » (graine %d) demandé", configuration.nom, graine)
     return generer_jeu(
@@ -312,9 +317,9 @@ def recharger_jeu_fictif(
     # Une graine ou une année de début hors bornes sont refusées ici, AVANT la remise à
     # zéro : la génération les refuserait aussi, mais une fois les données effacées.
     valider_demande(graine, annee_debut)
-    with _seul_a_la_fois("charger un jeu fictif", url):
+    with _seul_a_la_fois("charger un établissement fictif", url):
         if reinitialiser:
-            _remettre_a_zero(aujourdhui, url, "charger un jeu fictif")
+            _remettre_a_zero(aujourdhui, url, "charger un établissement fictif")
         try:
             with session_base(url) as session:
                 return _charger(
@@ -342,9 +347,10 @@ def recharger_jeu_fictif(
                 )
                 cause = f"{type(erreur).__name__} : {erreur}"
             raise ErreurRegleMetier(
-                f"La base a été remise à zéro, mais le chargement du jeu « {configuration.nom} » "
-                f"a échoué ({cause}) : aucun jeu n'est chargé, la base est vide avec ses données "
-                "par défaut. Réessayer le chargement ; la trace est dans le journal."
+                "La base a été remise à zéro, mais le chargement de l'établissement fictif "
+                f"« {configuration.nom} » a échoué ({cause}) : aucun établissement n'est chargé, "
+                "la base est vide avec ses données par défaut. Réessayer le chargement ; la trace "
+                "est dans le journal."
             ) from erreur
 
 

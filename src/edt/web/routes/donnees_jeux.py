@@ -1,4 +1,4 @@
-"""Écran « Données > Jeux de données » : charger un établissement fictif, remettre à zéro.
+"""Écran « Données > Établissement fictif » : charger un établissement fictif, remettre à zéro.
 
 Les deux actions passent par `edt.services.jeux`, qui ouvre ses propres
 sessions : une remise à zéro supprime les tables et ne doit jamais se faire
@@ -26,9 +26,10 @@ from edt.services.jeux import (
 )
 from edt.services.referentiels.conversion import entier_naturel
 from edt.synthese.configuration import GRAINE_MAX
+from edt.synthese.rapport import RapportJeu
 from edt.web.donnees.ecrans import Formulaire
 from edt.web.gabarits import Message, rediriger, rendre
-from edt.web.menu import GROUPE_JEUX, SECTION_DONNEES, EntreeMenu
+from edt.web.menu import SECTION_DONNEES, EntreeMenu
 
 journal = logging.getLogger(__name__)
 
@@ -49,7 +50,7 @@ ENTITES_SAISIES = (
 
 routeur = APIRouter(prefix="/jeux")
 MENU = [
-    EntreeMenu("Jeux de données", "/jeux", section=SECTION_DONNEES, ordre=480, groupe=GROUPE_JEUX),
+    EntreeMenu("Établissement fictif", "/jeux", section=SECTION_DONNEES, ordre=430),
 ]
 
 
@@ -81,6 +82,27 @@ def _rendre(
         statut=statut,
         messages=[message] if message else (),
     )
+
+
+def _nombre(n: int, singulier: str, pluriel: str) -> str:
+    return f"{n} {singulier if n <= 1 else pluriel}"
+
+
+def synthese(rapport: RapportJeu) -> list[str]:
+    """Ce qui a été chargé, en quatre lignes lisibles (le résumé complet reste replié)."""
+    c = rapport.compteurs.get
+    proposees = sum(1 for regle in rapport.regles if regle.etat == "proposee")
+    regles = _nombre(len(rapport.regles), "règle personnalisée", "règles personnalisées")
+    return [
+        f"{_nombre(c('campus', 0), 'campus', 'campus')}, {_nombre(c('salle', 0), 'salle', 'salles')}",
+        f"{_nombre(c('groupe', 0), 'groupe', 'groupes')}, "
+        f"{_nombre(c('etudiant', 0), 'étudiant', 'étudiants')}",
+        f"{_nombre(c('enseignant', 0), 'enseignant', 'enseignants')}, "
+        f"{_nombre(c('matiere', 0), 'matière', 'matières')}, "
+        f"{_nombre(rapport.nb_besoins, 'besoin', 'besoins')} d'enseignement",
+        f"{regles} d'exemple"
+        + (f", dont {_nombre(proposees, 'proposée', 'proposées')} à activer" if proposees else ""),
+    ]
 
 
 @routeur.get("", name="jeux")
@@ -141,7 +163,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
     return rendre(
         request,
         "donnees/jeux_resultat.html",
-        {"rapport": rapport, "resume": rapport.resume()},
+        {"rapport": rapport, "resume": rapport.resume(), "synthese": synthese(rapport)},
         messages=[
             Message(
                 f"Établissement fictif « {saisies['taille']} » chargé : "

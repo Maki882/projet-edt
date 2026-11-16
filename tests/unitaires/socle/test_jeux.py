@@ -46,7 +46,7 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
             recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=AUJOURDHUI)
 
     message = capture.value.message
-    assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
+    assert "remise à zéro" in message and "aucun établissement n'est chargé" in message
     assert "panne simulée" in message and "journal" in message
     assert "Traceback" in caplog.text  # la trace est au journal, pas à l'écran
     assert compter(m.Salle) == 0 and base_initialisee(obtenir_moteur())  # vidée mais prête

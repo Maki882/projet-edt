@@ -136,7 +136,7 @@ def test_refus_apres_la_remise_a_zero_dit_que_la_base_est_videe(jeu_minimal, mon
     with pytest.raises(ErreurRegleMetier) as capture:
         jeux.recharger_jeu_fictif("petit", reinitialiser=True)
     message = capture.value.message
-    assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
+    assert "remise à zéro" in message and "aucun établissement n'est chargé" in message
     assert "refus simulé" in message
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Besoin)) == 0
@@ -180,7 +180,7 @@ def test_chargement_refuse_pendant_un_calcul_nomme_le_chargement(jeu_minimal, mo
     monkeypatch.setattr(jeux, "calcul_en_cours", lambda: SimpleNamespace(id=4, semestre_id=1))
     with pytest.raises(ErreurCalculEnCours) as capture:
         jeux.recharger_jeu_fictif("petit", reinitialiser=True)
-    assert capture.value.message.startswith("Impossible de charger un jeu")
+    assert capture.value.message.startswith("Impossible de charger un établissement fictif")
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Besoin)) == 16
 

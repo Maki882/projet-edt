@@ -1,17 +1,25 @@
-{# Résultat du chargement d'un établissement fictif : résumé du rapport et liens vers les données. #}
+{# Résultat du chargement d'un établissement fictif : ce qui a été chargé, l'étape suivante, les données. #}
 {% extends "base.html" %}
 
 {% block titre %}Établissement fictif chargé{% endblock %}
 
 {% block actions %}
-<a class="bouton" href="/jeux">Retour aux jeux de données</a>
-<a class="bouton bouton-principal" href="/besoins">Voir les besoins</a>
+<a class="bouton" href="/besoins">Voir les besoins</a>
+<a class="bouton bouton-principal" href="/calculs">Générer l'emploi du temps</a>
 {% endblock %}
 
 {% block contenu %}
 <section class="carte">
-  <h2>Résumé du chargement</h2>
-  <pre class="resume-jeu">{{ resume }}</pre>
+  <h2>Ce qui a été chargé</h2>
+  <ul class="liste-simple">
+    {%- for ligne in synthese %}
+    <li>{{ ligne }}</li>
+    {%- endfor %}
+  </ul>
+  <details class="repliable">
+    <summary>Rapport détaillé du chargement (technique)</summary>
+    <pre class="resume-jeu">{{ resume }}</pre>
+  </details>
 </section>
 <section class="carte">
   <h2>Consulter les données</h2>

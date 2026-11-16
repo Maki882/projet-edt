@@ -46,6 +46,18 @@ def test_chargement_du_jeu_petit(client, monkeypatch):
     assert 'href="/besoins"' in reponse.text
     assert _compter(Campus) == 2 and _compter(Besoin) > 0
     assert len(prechauffages) == 1  # écrans suivants préparés pendant la lecture du résumé
+    # Compte rendu lisible et étape suivante ; le rapport technique reste replié.
+    page = html.unescape(reponse.text)
+    assert 'class="bouton bouton-principal" href="/calculs">Générer l\'emploi du temps</a>' in page
+    for ligne in (
+        "2 campus, 14 salles",
+        "13 groupes, 65 étudiants",
+        "7 enseignants, 7 matières, 23 besoins d'enseignement",
+        "9 règles personnalisées d'exemple, dont 2 proposées à activer",
+    ):
+        assert f"<li>{ligne}</li>" in page
+    assert '<details class="repliable">\n    <summary>Rapport détaillé' in page
+    assert "Retour aux jeux de données" not in page
 
 
 @pytest.mark.cas_limite
@@ -59,12 +71,15 @@ def test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran(client):
     reponse = client.post("/jeux/charger", data={"taille": "petit", "graine": str(GRAINE_MAX + 1)})
     assert reponse.status_code == 422
     assert f"de 0 à {GRAINE_MAX}" in reponse.text
+    assert '<details class="repliable" open>\n      <summary>Options avancées' in reponse.text
     assert _compter(Campus) == 0
 
 
 def test_rechargement_exige_une_confirmation_d_effacement(jeu_minimal, client):
     page = client.get("/jeux").text
     assert "Seront effacés" in page and "Salles : 6" in page
+
+    assert page.count("Seront effacés") == 1  # liste donnée une seule fois
 
     refus = client.post("/jeux/charger", data={"taille": "petit", "graine": "0"})
     assert refus.status_code == 422 and "Cochez la case" in refus.text

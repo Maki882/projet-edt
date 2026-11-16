@@ -306,7 +306,7 @@ def regle_horaire_enseignant(enseignant: EnseignantTemoin, fermeture: int) -> Re
         enseignant,
         {"debut": "09:00", "fin": f"{fermeture // 60:02d}:{fermeture % 60:02d}", "jours": []},
         Niveau.NECESSAIRE,
-        commentaire="Garde ses enfants le matin.",
+        commentaire="Contrainte de service déclarée par l'enseignant.",
     )
 
 
