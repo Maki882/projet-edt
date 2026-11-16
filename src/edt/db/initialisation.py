@@ -93,13 +93,15 @@ class ErreurSchemaPerime(ErreurRegleMetier):
     """Des tables existantes de la base n'ont plus les colonnes du modèle.
 
     `ecarts` (repris dans `details`) liste les différences ; le texte complet
-    de l'erreur se termine par la marche à suivre.
+    de l'erreur se termine par la marche à suivre. « Rien n'a été modifié »
+    n'y figure que si l'appelant le garantit (`rien_modifie`) : l'erreur peut
+    survenir après une remise à zéro.
     """
 
-    def __init__(self, ecarts: list[str]) -> None:
+    def __init__(self, ecarts: list[str], rien_modifie: bool = False) -> None:
         super().__init__(
-            f"Le schéma de la base ne correspond plus au modèle ({len(ecarts)} écart(s)). "
-            "Rien n'a été modifié.",
+            f"Le schéma de la base ne correspond plus au modèle ({len(ecarts)} écart(s))."
+            + (" Rien n'a été modifié." if rien_modifie else ""),
             ecarts,
         )
         self.ecarts: tuple[str, ...] = tuple(ecarts)
@@ -179,6 +181,7 @@ def creer_schema(moteur: Engine) -> None:
     """
     with connexion_immediate(moteur) as connexion:
         Base.metadata.create_all(connexion)
+    _renouveler_connexions(moteur)
 
 
 def copier_base(source: Path, cible: Path) -> int:
@@ -252,6 +255,20 @@ def supprimer_schema(moteur: Engine) -> None:
         existant = MetaData()
         existant.reflect(bind=connexion)
         existant.drop_all(connexion)
+    _renouveler_connexions(moteur)
+
+
+def _renouveler_connexions(moteur: Engine) -> None:
+    """Ferme les connexions en attente du groupe après un changement de schéma.
+
+    Chaque connexion SQLite garde le schéma en mémoire et ne le relit qu'à la
+    requête qui en vérifie la version ; les PRAGMA de réflexion ne la vérifient
+    pas. Après une suppression ou une création de tables, les connexions
+    suivantes repartent donc neuves. Une connexion en cours d'usage dans un
+    autre fil n'est pas touchée : elle est fermée quand elle est rendue.
+    """
+    moteur.dispose()
+    journal.debug("Connexions de la base renouvelées après un changement de schéma")
 
 
 def tables_manquantes(moteur: Engine) -> list[str]:
@@ -291,52 +308,57 @@ def ecarts_schema(moteur: Engine) -> list[str]:
     index partiel (`sqlite_where`). Après un tel changement du modèle,
     recréer la base avec `reset=True`.
     """
-    inspecteur = inspect(moteur)
-    presentes = set(inspecteur.get_table_names())
-    ecarts: list[str] = []
-    for nom in sorted(Base.metadata.tables):
-        if nom not in presentes:
-            continue
-        table = Base.metadata.tables[nom]
-        reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
-        permises = (
-            _valeurs_permises(inspecteur, nom)
-            if any(isinstance(colonne.type, EnumSQL) for colonne in table.columns)
-            else {}
-        )
-        for colonne in table.columns:
-            reelle = reelles.pop(colonne.name, None)
-            if reelle is None:
-                ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
+    # Une seule connexion pour toute la réflexion, et la liste des tables d'abord : cette
+    # lecture de `sqlite_master` recharge le schéma que la connexion garde en mémoire. Les
+    # PRAGMA de réflexion (`index_list`...) ne le rechargent pas : sur une connexion qui a
+    # supprimé une table qu'une autre a recréée ensuite, ils la croiraient encore absente.
+    with moteur.connect() as connexion:
+        inspecteur = inspect(connexion)
+        presentes = set(inspecteur.get_table_names())
+        ecarts: list[str] = []
+        for nom in sorted(Base.metadata.tables):
+            if nom not in presentes:
                 continue
-            prefixe = f"table {nom} : colonne {colonne.name}"
-            attendu = _nom_de_type(colonne.type, moteur)
-            lu = _nom_de_type(reelle["type"], moteur)
-            if lu != attendu:
-                ecarts.append(f"{prefixe} de type {lu} dans la base, {attendu} dans le modèle")
-            if bool(reelle["nullable"]) != bool(colonne.nullable):
-                dans_la_base, dans_le_modele = (
-                    ("facultative", "obligatoire")
-                    if reelle["nullable"]
-                    else ("obligatoire", "facultative")
-                )
-                ecarts.append(
-                    f"{prefixe} {dans_la_base} dans la base, {dans_le_modele} dans le modèle"
-                )
-            if isinstance(colonne.type, EnumSQL) and colonne.name in permises:
-                du_modele, de_la_base = set(colonne.type.enums), permises[colonne.name]
-                if du_modele - de_la_base:
-                    ecarts.append(
-                        f"{prefixe} : valeur(s) du modèle refusée(s) par la base : "
-                        + ", ".join(sorted(du_modele - de_la_base))
+            table = Base.metadata.tables[nom]
+            reelles = {colonne["name"]: colonne for colonne in inspecteur.get_columns(nom)}
+            permises = (
+                _valeurs_permises(inspecteur, nom)
+                if any(isinstance(colonne.type, EnumSQL) for colonne in table.columns)
+                else {}
+            )
+            for colonne in table.columns:
+                reelle = reelles.pop(colonne.name, None)
+                if reelle is None:
+                    ecarts.append(f"table {nom} : colonne {colonne.name} absente de la base")
+                    continue
+                prefixe = f"table {nom} : colonne {colonne.name}"
+                attendu = _nom_de_type(colonne.type, moteur)
+                lu = _nom_de_type(reelle["type"], moteur)
+                if lu != attendu:
+                    ecarts.append(f"{prefixe} de type {lu} dans la base, {attendu} dans le modèle")
+                if bool(reelle["nullable"]) != bool(colonne.nullable):
+                    dans_la_base, dans_le_modele = (
+                        ("facultative", "obligatoire")
+                        if reelle["nullable"]
+                        else ("obligatoire", "facultative")
                     )
-                if de_la_base - du_modele:
                     ecarts.append(
-                        f"{prefixe} : valeur(s) de la base inconnue(s) du modèle : "
-                        + ", ".join(sorted(de_la_base - du_modele))
+                        f"{prefixe} {dans_la_base} dans la base, {dans_le_modele} dans le modèle"
                     )
-        ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
-        ecarts.extend(_ecarts_unicites_et_index(inspecteur, nom, table))
+                if isinstance(colonne.type, EnumSQL) and colonne.name in permises:
+                    du_modele, de_la_base = set(colonne.type.enums), permises[colonne.name]
+                    if du_modele - de_la_base:
+                        ecarts.append(
+                            f"{prefixe} : valeur(s) du modèle refusée(s) par la base : "
+                            + ", ".join(sorted(du_modele - de_la_base))
+                        )
+                    if de_la_base - du_modele:
+                        ecarts.append(
+                            f"{prefixe} : valeur(s) de la base inconnue(s) du modèle : "
+                            + ", ".join(sorted(de_la_base - du_modele))
+                        )
+            ecarts.extend(f"table {nom} : colonne en trop : {en_trop}" for en_trop in reelles)
+            ecarts.extend(_ecarts_unicites_et_index(inspecteur, nom, table))
     return ecarts
 
 
@@ -407,11 +429,14 @@ def _valeurs_permises(inspecteur: Inspector, nom_table: str) -> dict[str, set[st
     return permises
 
 
-def exiger_schema_a_jour(moteur: Engine) -> None:
-    """Lève `ErreurSchemaPerime` si une table existante ne correspond plus au modèle."""
+def exiger_schema_a_jour(moteur: Engine, rien_modifie: bool = False) -> None:
+    """Lève `ErreurSchemaPerime` si une table existante ne correspond plus au modèle.
+
+    `rien_modifie` : l'appelant n'a encore rien écrit, le message peut le dire.
+    """
     ecarts = ecarts_schema(moteur)
     if ecarts:
-        raise ErreurSchemaPerime(ecarts)
+        raise ErreurSchemaPerime(ecarts, rien_modifie=rien_modifie)
 
 
 def base_initialisee(moteur: Engine) -> bool:
@@ -673,7 +698,7 @@ def initialiser_base(
         )
         supprimer_schema(moteur)
     else:
-        exiger_schema_a_jour(moteur)
+        exiger_schema_a_jour(moteur, rien_modifie=True)
     creer_schema(moteur)
     with session_base(url) as session:
         transaction_immediate(session)  # écrivain long : lit puis écrit, verrou pris d'emblée

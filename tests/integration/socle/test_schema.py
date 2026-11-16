@@ -36,7 +36,7 @@ def test_init_db_refuse_un_schema_perime_sans_rien_modifier(lanceur, jeu_minimal
     assert COLONNE_EN_TROP in sortie
     assert "--reset" in sortie and "EFFACE" in sortie
     assert sortie.rindex(COLONNE_EN_TROP) < sortie.rindex(MARCHE_A_SUIVRE_SCHEMA_PERIME)
-    assert "Base initialisée" not in sortie
+    assert "Base initialisée" not in sortie and "Rien n'a été modifié" in sortie
     # Rien n'a bougé : ni table créée, ni donnée par défaut reposée, ni donnée perdue.
     assert tables_manquantes(obtenir_moteur()) == ["occurrence"]
     assert compter(Parametre) == nb_parametres

@@ -185,7 +185,7 @@ def verifier_schema() -> None:
 def jeu_minimal() -> None:
     """Charge un tout petit jeu de données fictif et cohérent dans une base vide."""
     moteur = obtenir_moteur()
-    exiger_schema_a_jour(moteur)
+    exiger_schema_a_jour(moteur, rien_modifie=True)
     if tables_manquantes(moteur):
         raise ErreurRegleMetier(
             "La base n'est pas initialisée : lancer d'abord « python -m edt init-db »."
