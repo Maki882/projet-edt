@@ -1,17 +1,18 @@
 ## Quoi
 
-<!-- Une ou deux phrases : ce que fait cette PR. -->
+<!-- Une ou deux phrases : ce que change cette pull request. -->
 
 ## Pourquoi
 
-<!-- Le besoin, l'issue liée (ex. "Ferme #12"). -->
+<!-- Le besoin et la tâche liée (par exemple « Ferme #12 »). -->
 
 ## Comment vérifier
 
-<!-- Commande à lancer ou étapes à suivre pour tester. -->
+<!-- Commandes à lancer ou étapes à suivre dans l'application. -->
 
-## Checklist
+## Liste de contrôle
 
-- [ ] Les tests passent en local
-- [ ] Pas de fichier généré ou secret committé
-- [ ] La spec (`docs/spec.md`) est à jour si le comportement change
+- [ ] `python -m pytest -m "not perf"`, `python -m ruff check .` et `python -m ruff format --check .` passent en local
+- [ ] Les tests ajoutés sont rangés selon `tests/README.md` et échouent sans la modification
+- [ ] Aucun fichier généré ni secret n'est commité
+- [ ] La documentation concernée est à jour (`docs/README.md` dit laquelle)
