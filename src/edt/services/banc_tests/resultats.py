@@ -71,7 +71,7 @@ FICHIER_JOURNAL = "derniere-execution.log"
 
 VERSION_FORMAT = 1
 NB_ESSAIS_REMPLACEMENT = 5
-"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : on réessaie."""
+"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : il est retenté."""
 
 
 def dossier_resultats() -> Path:

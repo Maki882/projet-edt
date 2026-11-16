@@ -351,10 +351,10 @@ SALLE = Entite(
             lambda s, i: (
                 compter_ou(s, SeanceHebdo.salle_id, i) + compter_ou(s, Occurrence.salle_id, i)
             ),
-            "1 séance déjà placée restera sans salle : elle apparaîtra dans « À traiter » et "
-            "retrouvera une salle au prochain calcul ou par un replacement à la main",
-            "{n} séances déjà placées resteront sans salle : elles apparaîtront dans « À traiter » "
-            "et retrouveront une salle au prochain calcul ou par un replacement à la main",
+            "1 séance déjà placée restera sans salle : elle apparaîtra dans « Points à traiter » "
+            "(onglet Générer) et retrouvera une salle au prochain calcul ou par un replacement à la main",
+            "{n} séances déjà placées resteront sans salle : elles apparaîtront dans « Points à "
+            "traiter » (onglet Générer) et retrouveront une salle au prochain calcul ou par un replacement à la main",
         ),
     ),
 )

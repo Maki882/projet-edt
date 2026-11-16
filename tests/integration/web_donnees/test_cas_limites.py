@@ -1,7 +1,7 @@
 """Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués.
 
 Chaque test commence par « Cas : ... Risque : ... ». Les mêmes situations sur
-les écrans Générer, Emploi du temps et À traiter sont dans
+les écrans Générer, Emploi du temps et Points à traiter sont dans
 `tests/integration/web_edt/test_cas_limites.py`.
 
 Les autres cas limites de l'espace sont rangés avec leur écran :

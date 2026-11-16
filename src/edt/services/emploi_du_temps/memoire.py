@@ -2,7 +2,7 @@
 
 Vérifier une version, pré-vérifier un semestre ou en faire le récapitulatif
 charge l'instantané du semestre : environ une seconde sur l'établissement
-complet. Les écrans de consultation (accueil, « Générer », « À traiter »,
+complet. Les écrans de consultation (accueil, « Générer », « Points à traiter »,
 grilles, pastille de l'onglet) redemandent ces mêmes résultats à chaque
 affichage alors que rien n'a changé. Ils passent donc par `memoriser`, qui
 garde le dernier résultat de chaque calcul avec une **empreinte** de la base

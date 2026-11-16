@@ -11,6 +11,7 @@ Projet PTS Informatique, ISEP, année 2026-2027
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
 | Date | 16 novembre 2026 |
 | Version | 1.1 |
+| Application décrite | EDT 1.0.0 |
 
 Ce livret décrit l'application du point de vue de la personne qui l'utilise : à quoi elle
 sert, ce qu'elle permet de faire et comment elle s'organise. Il ne contient aucun détail de
@@ -97,8 +98,9 @@ puis l'exporte ou l'imprime.
   donne qu'une séance à la fois, un groupe n'a jamais deux cours en même temps.
 - **Respecter les personnes** : indisponibilités, heures maximales des enseignants, pause
   déjeuner, temps de trajet entre campus, salles accessibles.
-- **Améliorer le confort** : sur demande, l'application cherche un emploi du temps avec moins
-  de trous dans les journées, moins de changements de campus et moins de séances le samedi.
+- **Améliorer le confort** : par défaut, l'application cherche un emploi du temps avec moins
+  de trous dans les journées, moins de changements de campus et moins de séances le samedi ;
+  l'option peut être décochée.
 - **Rester maître des décisions** : l'utilisateur choisit l'importance de chaque règle, peut
   retoucher le résultat et garde l'historique de toutes les versions.
 
@@ -149,11 +151,11 @@ donnée puis relancer le calcul, ou retoucher directement une séance.*
 
 | Onglet | Rôle |
 |---|---|
-| **Accueil** | Indique la « prochaine étape » utile (charger un établissement fictif ou importer des fichiers, générer l'emploi du temps, le consulter, voir ce qui reste à traiter), la version active de chaque semestre et le nombre de points à traiter. |
+| **Accueil** | Indique la « prochaine étape » utile (charger un établissement fictif ou importer des fichiers, générer l'emploi du temps, le consulter, voir ce qui reste à traiter), puis la version active et le nombre de points à traiter du semestre en cours. |
 | **Données** | Regroupe tout ce qui décrit l'établissement, en cinq familles : *Établissement* (campus et trajets, salles, enseignants, groupes, étudiants, matières), *Besoins et disponibilités*, *Règles et calendrier* (calendrier, règles personnalisées, grille horaire, paramètres), *Import et export* (import, export, établissement fictif) et *Listes de référence* (types de salle, équipements, types de séance). |
 | **Générer** | Trois écrans. « Générer un emploi du temps » montre ce que le calcul va placer et les points bloquants éventuels ; ses réglages (niveau de chaque règle, règles personnalisées, pause déjeuner, durée et options) sont repliés derrière des résumés ; il lance et suit le calcul, puis présente le résultat. « Historique et versions » liste les calculs et les versions. « Points à traiter » liste les anomalies relevées par la vérification, classées par gravité, et les séances datées restées « à programmer » ; un compteur sur l'onglet en donne le nombre. |
 | **Emploi du temps** | Affiche l'emploi du temps d'un groupe, d'un enseignant ou d'une salle, en semaine type, en semaine datée ou jour par jour ; une séance s'ouvre d'un clic pour être déplacée, verrouillée ou annulée. Exporte et imprime. |
-| **Tests unitaires**, **Tests d'intégration** | Présentent les tests automatiques du logiciel, avec un schéma de leur organisation. Chaque test, fichier, composant ou famille se lance d'un clic ; chaque test affiche son résultat et la date de sa dernière exécution (fonctionnalité optionnelle P4). |
+| **Tests unitaires**, **Tests d'intégration** | Présentent les tests automatiques du logiciel, avec un schéma de leur organisation. Chaque test, fichier, composant ou famille se lance d'un clic, sauf les tests de charge, longs, réservés à une commande de l'administrateur ; chaque test affiche son résultat et la date de sa dernière exécution (fonctionnalité optionnelle P4). |
 
 Un bouton **Assistant**, présent sur chaque page, ouvre un panneau de dialogue en langage
 courant (fonctionnalité optionnelle P3).
@@ -189,13 +191,13 @@ de ce qui est prévu.
 | U2 | Niveau de chaque règle | Choisir, à chaque calcul, si une règle est *nécessaire*, *importante* ou *facultative* (section 2.3). Les niveaux choisis sont rappelés dans le résultat. | Réalisée |
 | U3 | Règles personnalisées | Ajouter des exceptions et exigences propres à l'établissement, parmi quatorze types (section 2.3), en précisant qui elle concerne (établissement, groupe, enseignant, campus, type de séance, matière, besoin) et sur quelle période ; les activer, les désactiver ; activer d'un clic les règles de base proposées et celles reprises de l'année précédente. | Réalisée |
 | U4 | Pause déjeuner réglable | Choisir entre une plage fixe laissée libre (12 h 45 à 13 h 45 par défaut), une pause d'une durée minimale placée librement dans une plage, ou aucune pause réservée. | Réalisée |
-| U5 | Emploi du temps plus confortable | Demander moins de trous, moins de changements de campus et moins de samedis ; le calcul s'arrête de lui-même quand il ne trouve plus mieux, en gardant toujours la meilleure solution trouvée. | Réalisée |
+| U5 | Emploi du temps plus confortable | Obtenir moins de trous, moins de changements de campus et moins de samedis (option cochée par défaut, décochable) ; le calcul s'arrête de lui-même quand il ne trouve plus mieux, en gardant toujours la meilleure solution trouvée. | Réalisée |
 | U6 | Suivre et piloter un calcul | Choisir la durée maximale du calcul (5 ou 15 minutes), suivre l'avancement, arrêter, demander une autre solution que la précédente. Pendant le calcul, l'écran annonce dès qu'un emploi du temps est trouvé : le calcul cherche ensuite à l'améliorer, et un arrêt garde le meilleur. | Réalisée |
 | U7 | Historique et versions | Chaque calcul crée une version ; une seule est active par semestre ; une version peut être consultée, rendue active ou supprimée. Un emploi du temps de référence, fourni avec l'établissement fictif ou importé, sert de comparaison. | Réalisée |
 | U8 | Vues semaine type, semaine datée et jour | Passer de la semaine type aux semaines réelles du semestre, naviguer de semaine en semaine, afficher une seule journée. | Réalisée |
 | U9 | Retouches et verrous | Verrouiller une séance à sa place pour les calculs suivants ; déplacer ou annuler une seule séance datée (avec un motif) sans toucher aux autres semaines ; recalculer les séances datées en conservant ces retouches. | Réalisée |
 | U10 | Points à traiter | Dans la page « Points à traiter » de l'onglet Générer, voir les anomalies classées en erreurs, avertissements et informations, et les séances à programmer, avec un lien vers la séance concernée. | Réalisée |
-| U11 | Tableau de bord | L'accueil indique la prochaine étape et l'état de chaque semestre ; le résultat d'un calcul donne des indicateurs de qualité (séances placées, conflits, utilisation des salles, changements de campus). | Réalisée |
+| U11 | Tableau de bord | L'accueil indique la prochaine étape et l'état du semestre en cours ; le résultat d'un calcul donne des indicateurs de qualité (séances placées, conflits, utilisation des salles, changements de campus). | Réalisée |
 | U12 | Agenda et impression | Exporter l'emploi du temps vers un agenda (format iCal) et l'imprimer, ou l'enregistrer en PDF, depuis le navigateur. | Réalisée |
 | U13 | Échanges de fichiers complets | Télécharger un gabarit vide (classeur Excel ou fichiers CSV) ; simuler un import avant de l'appliquer, avec un rapport ligne par ligne (les lignes valides entrent, les autres sont listées) ; réimporter un fichier sans créer de doublon ; exporter toutes les données dans le même format ; importer un emploi du temps existant comme référence, comme séances verrouillées ou comme séances à replacer, y compris depuis un agenda. | Réalisée |
 
@@ -206,7 +208,7 @@ de ce qui est prévu.
 | P1 | Consultation sur téléphone | Afficher l'application sur un petit écran : menus et emploi du temps s'adaptent à la largeur. | Réalisée |
 | P2 | Commandes pour un administrateur | Réaliser chaque opération (installation, chargement d'un établissement fictif, calcul, vérification, import, export, sauvegarde) par une commande tapée au clavier, sans ouvrir l'application. | Réalisée |
 | P3 | Assistant conversationnel | Poser une question en langage courant sur les données ou l'emploi du temps (« Quelles salles de plus de 40 places sont libres le jeudi après-midi ? ») et recevoir une réponse fondée sur les données de l'application, que l'assistant consulte sans rien modifier ; demander une modification (« Mme Bertin n'est pas disponible le mercredi matin ») et recevoir une proposition : une règle personnalisée, sa modification, son activation ou sa désactivation, ou une indisponibilité. Rien n'est enregistré avant le clic sur « Confirmer ». L'assistant ne lance pas de calcul et ne supprime rien. Le nombre de messages et la dépense de la journée sont limités ; sans service configuré, le panneau le dit et le reste de l'application fonctionne. | Réalisée |
-| P4 | Tests du logiciel lancés depuis l'application | Dans les onglets « Tests unitaires » et « Tests d'intégration », lire un schéma de l'organisation des tests, lancer un test, un fichier, un composant ou toute une famille, suivre l'exécution et l'arrêter ; chaque test affiche son résultat (réussi, échec avec son message, ignoré avec sa raison, jamais lancé) et la date de sa dernière exécution. Les tests tournent à part : les données de l'application ne sont jamais touchées. Cette fonctionnalité sert à montrer la qualité du logiciel ; le travail du responsable des emplois du temps ne l'exige pas. | Réalisée |
+| P4 | Tests du logiciel lancés depuis l'application | Dans les onglets « Tests unitaires » et « Tests d'intégration », lire un schéma de l'organisation des tests, lancer un test, un fichier, un composant ou toute une famille (les tests de charge, longs, se lancent seulement par une commande de l'administrateur), suivre l'exécution et l'arrêter ; chaque test affiche son résultat (réussi, échec avec son message, ignoré avec sa raison, jamais lancé) et la date de sa dernière exécution. Les tests tournent à part : les données de l'application ne sont jamais touchées. Cette fonctionnalité sert à montrer la qualité du logiciel ; le travail du responsable des emplois du temps ne l'exige pas. | Réalisée |
 | P5 | Réaménagement sur imprévu | Replacer automatiquement les séances touchées par un imprévu (absence, salle fermée) en modifiant le moins possible le reste de l'emploi du temps. | Prévue |
 | P6 | Comptes et rôles | Se connecter, avec des droits différents selon le rôle (gestionnaire, consultation). | Prévue |
 | P7 | Glisser-déposer | Déplacer une séance en la faisant glisser dans la grille. | Prévue |
@@ -384,7 +386,7 @@ Les captures suivantes proviennent de la démonstration, sur l'établissement fi
 
 ![Écran d'accueil : encadré « Prochaine étape » et état du semestre 1](images/ecran-accueil.png)
 
-*Figure 2. Accueil : la prochaine étape utile et l'état de chaque semestre.*
+*Figure 2. Accueil : la prochaine étape utile et l'état du semestre en cours.*
 
 ![Liste des besoins d'enseignement avec filtres par semestre, promotion, groupe, matière, type, enseignant et volume](images/ecran-besoins.png)
 
@@ -420,7 +422,7 @@ autres semaines.*
 *Figure 9. Générer › Points à traiter : anomalies classées par gravité et séances à
 programmer.*
 
-![Écran d'import : choix des fichiers, nature du contenu, semestre et bouton « Simuler l'import »](images/ecran-import.png)
+![Écran d'import : choix des fichiers, nature du contenu, case « Tout remplacer » et bouton « Simuler l'import »](images/ecran-import.png)
 
 *Figure 10. Données › Import : un import se simule avant d'être appliqué.*
 
@@ -452,8 +454,8 @@ et ses opérations (ce que l'application lui demande de faire).
   groupe ; un jour fermé peut ne concerner qu'un groupe ; une règle personnalisée a un niveau.
 - **Dépendance** (flèche en pointillés) : une règle personnalisée consulte la définition de son
   type (ses paramètres, sa description, ses exemples) pour se valider et s'écrire en phrase.
-- **Héritage** (flèche à triangle vide) : dix classes héritent de « Donnée importable », qui
-  retient le fichier et la ligne d'où provient une donnée importée ainsi que les colonnes non
+- **Héritage** (flèche à triangle vide) : les dix classes du diagramme reliées à « Donnée
+  importable » en héritent, ainsi que les étudiants, non représentés ; elle retient le fichier et la ligne d'où provient une donnée importée ainsi que les colonnes non
   reconnues du fichier. Une donnée saisie à la main laisse ces attributs vides.
 - **Multiplicités** : « 1 » exactement un, « 0..1 » au plus un, « * » zéro ou plusieurs,
   « 1..* » au moins un. Par exemple, un besoin concerne au moins un groupe (1..*) et un nombre
@@ -481,7 +483,7 @@ chaque règle personnalisée vers sa cible, représenté par l'attribut « conce
 
 | Terme | Définition |
 |---|---|
-| À programmer | État d'une séance datée pour laquelle aucune place valide n'a été trouvée ; elle apparaît dans « À traiter ». |
+| À programmer | État d'une séance datée pour laquelle aucune place valide n'a été trouvée ; elle apparaît dans la page « Points à traiter » de l'onglet Générer. |
 | Anomalie | Constat de la vérification d'un emploi du temps. Sa gravité est *erreur* (règle nécessaire enfreinte), *avertissement* (règle importante enfreinte) ou *information* (entorse à une règle facultative, ou entorse admise comme un créneau imposé hors de la grille). |
 | Besoin | Ce qu'il faut enseigner : une matière, un type de séance, des groupes, des enseignants, une durée, un volume et des exigences de salle. C'est la demande que le calcul satisfait. |
 | Calcul | Une exécution du générateur, qui cherche l'emploi du temps d'un semestre (« calcul n° 3 »). Chaque calcul réussi produit une version. |

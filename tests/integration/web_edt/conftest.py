@@ -1,4 +1,4 @@
-"""Fixtures des tests d'intégration des écrans « Générer », « Emploi du temps », « À traiter »
+"""Fixtures des tests d'intégration des écrans « Générer », « Emploi du temps », « Points à traiter »
 et de l'accueil.
 
 Fixtures partagées avec les tests unitaires (`sans_prechauffage`, appliquée

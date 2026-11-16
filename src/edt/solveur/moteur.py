@@ -286,12 +286,15 @@ def resoudre(
             f"semestre (n° {', '.join(map(str, inconnues))} : supprimée(s), inactive(s) ou "
             "d'une autre année) : ignoré."
         )
-        journal.warning(avertissement)
+        # Rendu dans `avertissements` : l'appelant le journalise en avertissement (le service
+        # de génération, avec le numéro du calcul). Ici, une ligne d'information suffit.
+        journal.info(avertissement)
         avertissements.append(avertissement)
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     for anomalie in anomalies:
-        niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
+        # Les situations tendues sont rendues dans `avertissements` (voir plus haut).
+        niveau = logging.ERROR if anomalie.bloquante else logging.INFO
         journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
     avertissements.extend(anomalie.message for anomalie in erreurs)
     avertissements.extend(anomalie.message for anomalie in anomalies if not anomalie.bloquante)
@@ -323,10 +326,22 @@ def resoudre(
         "Calcul arrêté à votre demande avant qu'un emploi du temps soit trouvé : rien n'a "
         "été enregistré."
     )
-    message_temps = (
-        f"Aucun emploi du temps n'a été trouvé en {options.temps_limite_s:g} s. Ce n'est pas "
-        "une preuve d'impossibilité : relancer avec plus de temps peut aboutir."
-    )
+
+    def message_temps(salles_interrompues: bool = False) -> str:
+        """« Pas trouvé », avec la durée réellement écoulée (pas le temps limite)."""
+        ecoule = time.perf_counter() - debut
+        duree = "en moins d'une seconde" if ecoule < 1 else f"en {round(ecoule)} s"
+        cause = (
+            " Des horaires ont été trouvés, mais l'attribution des salles s'est interrompue sur "
+            f"son temps maximal ({TEMPS_SALLES_MAX_S:g} s) sans aboutir."
+            if salles_interrompues
+            else ""
+        )
+        return (
+            f"Aucun emploi du temps n'a été trouvé {duree}.{cause} Ce n'est pas une preuve "
+            "d'impossibilité : relancer avec plus de temps peut aboutir."
+        )
+
     message_infaisable = (
         "Aucun emploi du temps ne peut respecter toutes les règles retenues pour ce calcul : "
         "c'est prouvé, relancer le calcul ne changera rien. Alléger les données (salles, "
@@ -341,7 +356,7 @@ def resoudre(
     except _Interruption as interruption:
         if interruption.statut is StatutSolveur.ARRETE:
             return conclure(StatutSolveur.ARRETE, message_arret)
-        return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
+        return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps())
     stats["nb_variables"] = modele.nb_variables
     stats["nb_contraintes"] = modele.nb_contraintes
     stats["duree_construction_s"] = round(time.perf_counter() - debut_modele, 3)
@@ -455,7 +470,7 @@ def resoudre(
                 return conclure(StatutSolveur.ARRETE, message_arret)
             if code == cp_model.INFEASIBLE:
                 return conclure(StatutSolveur.INFAISABLE, message_infaisable)
-            return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
+            return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps())
         essai = donner_des_salles(suivi.solutions[-1][1])
         if isinstance(essai, _Solution):
             solution = essai
@@ -463,7 +478,9 @@ def resoudre(
         if arret_demande():
             return conclure(StatutSolveur.ARRETE, message_arret)
         if reste() <= 0 or not essai:
-            return conclure(StatutSolveur.TEMPS_DEPASSE, message_temps)
+            return conclure(
+                StatutSolveur.TEMPS_DEPASSE, message_temps(salles_interrompues=not essai)
+            )
         journal.info(
             "Les salles ne suivent pas : %d combinaison(s) d'horaires écartée(s), nouvelle "
             "recherche des horaires",

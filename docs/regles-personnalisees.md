@@ -458,7 +458,7 @@ la page Générer : chaque règle porte son propre niveau.
   période, niveau prérempli depuis la règle, choix « Ignorer pour ce calcul » (champs
   `niveau_regle_<id>` et `ignorer_regle_<id>`). Le choix vaut pour ce calcul
   seulement. Au-delà de vingt règles, regroupement par type, replié.
-- **Résultat, À traiter, panneau des anomalies** : phrase de la règle ;
+- **Résultat, page « Points à traiter », panneau des anomalies** : phrase de la règle ;
   entorses par règle dans le résultat.
 
 ### 4.6 Import et export
@@ -544,7 +544,7 @@ Brouillon (année en cours si `annee` est omise) :
 ```
 
 Une erreur revient champ par champ, pour que l'appelant reformule :
-`{"parametres.duree": "La pause dure de 15 à 180 minutes (lu : 200)."}`.
+`{"parametres.duree": "Durée minimale : au plus 180 (lu : 200)."}`.
 
 ## 5. Limites connues
 

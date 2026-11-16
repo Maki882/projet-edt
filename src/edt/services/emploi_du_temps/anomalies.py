@@ -181,7 +181,7 @@ class ATraiter:
 
 
 def a_traiter(session: Session, semestre_id: int | None = None) -> tuple[ATraiter, ...]:
-    """La liste « À traiter » des versions actives (d'un seul semestre si `semestre_id`)."""
+    """La liste « Points à traiter » des versions actives (d'un seul semestre si `semestre_id`)."""
     resultat = []
     for semestre in lister_semestres(session):
         if semestre_id is not None and semestre.id != semestre_id:

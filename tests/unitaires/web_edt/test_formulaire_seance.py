@@ -104,3 +104,48 @@ def test_heure_annoncee_possible_est_acceptee_avec_la_salle_proposee(jeu_minimal
             salle_id,
         )
         assert mention == ("possible" if verification.valide else "refusé"), debut
+
+
+def test_heure_acceptee_avec_un_avertissement_le_dit(seance, session, faux_verificateur):
+    faux_verificateur.modification = [
+        Anomalie("PAUSE", Gravite.AVERTISSEMENT, "Entorse à une règle importante.")
+    ]
+    formulaire = modifications.formulaire_seance(session, seance.id)
+    assert set(mentions(formulaire)) == {"actuelle", "possible, avec avertissement"}
+    assert formulaire.conseil_debuts is None
+
+    faux_verificateur.modification = [Anomalie("HORAIRES", Gravite.INFORMATION, "Écart admis.")]
+    assert set(mentions(modifications.formulaire_seance(session, seance.id))) == {
+        "actuelle",
+        "possible",
+    }
+
+
+@pytest.mark.cas_limite
+def test_jour_sans_aucune_heure_possible_dit_quoi_faire(
+    seance, session, faux_verificateur, monkeypatch
+):
+    """Cas : toutes les heures du jour choisi sont refusées (CM d'une promotion entière).
+
+    Risque : une liste de « (refusé) » sans explication : l'utilisateur ne sait ni pourquoi ni
+    quoi essayer.
+    """
+    faux_verificateur.modification = [
+        Anomalie("GROUPE_UNIQUE", Gravite.ERREUR, "Le groupe a deux séances."),
+        Anomalie("SALLE_UNIQUE", Gravite.AVERTISSEMENT, "Remarque sur la salle."),
+    ]
+    autre_jour = modifications.formulaire_seance(session, seance.id, jour=seance.jour + 1)
+    assert set(mentions(autre_jour)) == {"refusé"}
+    assert autre_jour.conseil_debuts == (
+        "Aucune heure possible le mardi avec les salles proposées : essayer un autre jour "
+        "(règle la plus souvent en cause : Une séance par groupe)."
+    )
+    meme_jour = modifications.formulaire_seance(session, seance.id)
+    assert meme_jour.conseil_debuts.startswith("Aucune autre heure possible le lundi")
+
+    faux_verificateur.modification = []  # une heure possible : pas de conseil
+    assert modifications.formulaire_seance(session, seance.id).conseil_debuts is None
+    # Budget dépassé : des heures restent sans mention, rien n'est affirmé.
+    monkeypatch.setattr(modifications, "BUDGET_ANNOTATION_S", -1.0)
+    faux_verificateur.modification = [Anomalie("GROUPE_UNIQUE", Gravite.ERREUR, "Conflit.")]
+    assert modifications.formulaire_seance(session, seance.id).conseil_debuts is None

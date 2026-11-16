@@ -15,7 +15,7 @@ Racine du dépôt (`trouver_racine`), dans cet ordre :
 Le catalogue est gardé en mémoire tant que les fichiers de tests ne changent
 pas (mêmes noms, mêmes dates de modification, mêmes tailles).
 
-Une cible (`Cible`) est ce qu'on demande de lancer : toute une famille, un
+Une cible (`Cible`) est ce qui est demandé à lancer : toute une famille, un
 composant, un fichier ou un test. Elle est toujours cherchée dans le
 catalogue (`resoudre_cible`) ; seuls les chemins du catalogue vont à pytest,
 jamais un texte reçu de l'utilisateur.

@@ -12,7 +12,11 @@ ou exploitant du serveur.
 - **Enseignant, jury** : les trois livrets, dans l'ordre :
   [spécifications fonctionnelles](livrets/1-specifications-fonctionnelles.md),
   [spécifications techniques et organisation](livrets/2-specifications-techniques-et-organisation.md),
-  [guide de l'utilisateur](livrets/3-guide-utilisateur.md) ; puis la
+  [guide de l'utilisateur](livrets/3-guide-utilisateur.md) ; leurs versions
+  PDF : [livret 1](livrets/pdf/1-specifications-fonctionnelles.pdf),
+  [livret 2](livrets/pdf/2-specifications-techniques-et-organisation.pdf),
+  [livret 3](livrets/pdf/3-guide-utilisateur.pdf), aussi jointes à la
+  version 1.0.0 publiée sur GitHub (page « Releases » du dépôt) ; puis la
   [stratégie de test](../tests/README.md). Les tests se lancent aussi depuis
   l'application, dans les onglets « Tests unitaires » et « Tests d'intégration »
   (commande équivalente : `python -m edt tests`).
@@ -45,4 +49,7 @@ ou exploitant du serveur.
 | [Guide de contribution](../CONTRIBUTING.md) | Git et GitHub, conventions de code et d'écriture, tests | développeur |
 | [Consignes des assistants de programmation](../AGENTS.md) | méthode de travail propre aux assistants | développeur |
 
-Les captures d'écran des livrets et du README sont dans `docs/images/`.
+Les captures d'écran du README sont dans `docs/images/` ; celles des livrets,
+avec leurs schémas, dans `docs/livrets/images/`. Les PDF des livrets sont dans
+`docs/livrets/pdf/` ; `python docs/livrets/produire_pdf.py` les produit à
+partir du texte Markdown (il faut Chrome ou Chromium).

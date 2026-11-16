@@ -101,12 +101,17 @@ _LIBELLES_NIVEAU = {
     Niveau.FACULTATIF: "Facultatif",
 }
 _DESCRIPTIONS_NIVEAU = {
-    Niveau.NECESSAIRE: "Toujours respectée : un emploi du temps qui l'enfreint est refusé.",
-    Niveau.IMPORTANT: "Respectée sauf si rien d'autre n'est possible ; une entorse est signalée "
-    "comme avertissement.",
-    Niveau.FACULTATIF: "Souhait : respectée quand c'est possible, une entorse est seulement "
-    "signalée pour information.",
+    Niveau.NECESSAIRE: "Toujours respectée.",
+    Niveau.IMPORTANT: "Enfreinte seulement faute de mieux, avec un avertissement.",
+    Niveau.FACULTATIF: "Un souhait, signalé pour information s'il n'est pas tenu.",
 }
+
+DEFINITION_NIVEAUX = " ".join(
+    f"{niveau.libelle} : {niveau.description[0].lower()}{niveau.description[1:]}"
+    for niveau in Niveau
+)
+"""Définition des trois niveaux, la même sur chaque écran qui les explique (Générer,
+formulaire d'une règle personnalisée)."""
 
 POIDS_NIVEAU: dict[Niveau, int] = {Niveau.IMPORTANT: 1000, Niveau.FACULTATIF: 20}
 """Pénalité d'une entorse dans l'objectif du solveur, par niveau souple.

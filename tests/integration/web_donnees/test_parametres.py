@@ -133,7 +133,7 @@ def test_enregistrement_puis_retour_aux_valeurs_par_defaut(client):
 def test_parametres_refuses_pendant_un_calcul(site, calcul_retenu):
     """Cas : pendant un calcul, les paramètres sont enregistrés ou remis à leur valeur par
     défaut. Risque : le calcul, qui relit les paramètres pour contrôler et dater sa solution,
-    produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter),
+    produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans Points à traiter),
     alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul."""
     with session_base() as session:
         avant = lire_parametres(session)

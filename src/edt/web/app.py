@@ -134,7 +134,7 @@ async def _preparer(app: ASGIApp, *, avec_pages: bool) -> None:
     La première visite d'une page compile ses gabarits et calcule des
     résultats coûteux gardés ensuite en mémoire tant que la base ne change
     pas (`edt.services.emploi_du_temps.memoire` : vérification de la version
-    active, pré-vérifications, compteur « À traiter ») : plusieurs secondes
+    active, pré-vérifications, compteur « Points à traiter ») : plusieurs secondes
     sur un serveur modeste. Tous les gabarits sont donc compilés, puis les
     pages de `PAGES_A_PREPARER` servies une fois, en interne, par
     l'application elle-même : exactement les calculs d'une vraie visite, sans

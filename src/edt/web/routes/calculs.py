@@ -8,7 +8,7 @@ Adresses :
   calcul tourne déjà, la page le montre au lieu de proposer d'en lancer un
   second ;
 - `GET /calculs/verifications` : fragment des vérifications préalables,
-  recalculé quand on change le niveau d'une règle (champs `niveau_<CODE>`) ;
+  recalculé quand le niveau d'une règle change (champs `niveau_<CODE>`) ;
 - `POST /calculs` : lit les niveaux (`niveau_<CODE>`) et les choix sur les
   règles personnalisées (`niveau_regle_<id>`, `ignorer_regle_<id>`), enregistre la pause
   déjeuner choisie (mode, heures, durée minimale) si elle diffère des paramètres, lance un calcul puis mène
@@ -103,6 +103,9 @@ def _page_calculs(
     if semestre is not None:
         suivi = generation.calcul_en_cours()
         en_cours = calculs.resultat_calcul(session, suivi.id, indicateurs=False) if suivi else None
+        tests = calculs.avertissement_tests_en_cours() if suivi is None else None
+        if tests is not None:
+            messages = [*messages, Message(tests, "attention")]
         dernier = generation.dernier_calcul(semestre.id)
         if niveaux is None:
             niveaux = calculs.niveaux_proposes(dernier)
@@ -279,6 +282,11 @@ def lancer(
             "Un calcul est déjà en cours : voici son avancement.",
             "attention",
         )
+    except generation.ErreurLancementRefuse as erreur:
+        # Tests, import ou chargement en cours : retour sur Générer, avec la cause et le remède.
+        return rediriger(
+            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
+        )
     except ErreurCalculEnCours:
         # Autre semestre ou autres réglages : les réglages envoyés n'ont pas été appliqués.
         suivi = generation.calcul_en_cours()
@@ -378,11 +386,26 @@ def relancer(
         relance = calculs.relancer_calcul(
             session, calcul_id, longue=longue, autre_solution=autre_solution
         )
+    except calculs.ErreurMemeCalculEnCours as erreur:
+        # Double envoi de la relance : même semestre, mêmes réglages, lancé à l'instant.
+        if erreur.suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S:
+            return rediriger(request, f"/calculs/{erreur.suivi.id}", "Calcul relancé.")
+        return rediriger(
+            request,
+            f"/calculs/{erreur.suivi.id}",
+            "Un calcul est déjà en cours : voici son avancement.",
+            "attention",
+        )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
+        )
+    except generation.ErreurLancementRefuse as erreur:
+        semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
+        return rediriger(
+            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
         )
     except calculs.ErreurPreVerification as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id

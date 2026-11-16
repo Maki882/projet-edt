@@ -18,11 +18,13 @@ jeux fictifs générés ([`donnees-fictives.md`](donnees-fictives.md)).
 - La démonstration est l'application complète : un établissement entier
   (toutes les promotions, plusieurs campus), sans mode de démonstration ni
   placement de secours.
-- Déployée sur un serveur (2 cœurs, 3,7 Go de mémoire, Python 3.14 sur le VPS),
+- Déployée sur un serveur (2 cœurs, 3,7 Go de mémoire, Python 3.14),
   accessible par le web, **sans écran de connexion**. L'usage est celui d'une
   seule personne à la fois, mais rien dans le code ne suppose un seul
-  utilisateur : aucun état global en mémoire hors du suivi des calculs, tout
-  passe par la base.
+  utilisateur : tout passe par la base, sauf quelques états en mémoire perdus
+  au redémarrage (suivi des calculs, mémoire des écrans, conversations de
+  l'assistant, exécution des tests en cours), décrits dans
+  [`architecture.md`](architecture.md).
 - Un visiteur manipule librement l'application : aucun écran ne plante ni
   n'affiche d'erreur brute.
 - Toutes les données sont **créables, modifiables et supprimables** dans
@@ -48,7 +50,9 @@ jeux fictifs générés ([`donnees-fictives.md`](donnees-fictives.md)).
 | Tests | pytest ; ruff pour le format et le lint ; GitHub Actions sur chaque pull request |
 | Déploiement | service systemd (uvicorn) derrière nginx, scripts de `deploy/` |
 
-Architecture en couches, sans exception :
+Architecture en couches (seule exception : les commandes d'administration
+`init-db` et `jeu-minimal` appellent directement la couche base, voir
+[`architecture.md`](architecture.md)) :
 
 ```mermaid
 flowchart LR
@@ -181,7 +185,8 @@ Noms de tables en français, au singulier. Le détail des colonnes est dans
   limite du maximum par semaine).
 - Une séance datée qui tombe un **jour fermé** est **replacée
   automatiquement** pour préserver le volume. Si aucune place ne respecte les
-  règles, elle passe « à programmer » et apparaît dans « À traiter ».
+  règles, elle passe « à programmer » et apparaît dans la page « Points à
+  traiter » de l'onglet Générer.
 - Les semaines spéciales reçoivent un planning saisi à la main (besoins
   ponctuels) ; une semaine entièrement fermée n'a pas de séances datées.
 - Apprentis : seule leur semaine type « école » est gérée.
@@ -247,7 +252,8 @@ Préférences (objectif à minimiser, actif par défaut) :
   anomalie de gravité « erreur » signifie un emploi du temps valide.
 - Il sert d'**oracle aux tests du solveur**, contrôle chaque solution du
   solveur avant son enregistrement, valide les modifications manuelles,
-  audite un emploi du temps importé et alimente la page « À traiter ».
+  audite un emploi du temps importé et alimente la page « Points à
+  traiter ».
 - Indicateurs calculés au même endroit : pourcentage de séances placées,
   nombre de conflits, taux d'utilisation des salles, changements de campus,
   trous.
@@ -331,12 +337,14 @@ Préférences (objectif à minimiser, actif par défaut) :
 
 ## 11. Interface
 
-- Cinq onglets : Accueil, Données, Générer, Emploi du temps, À traiter.
+- Six onglets : Accueil, Données, Générer, Emploi du temps, Tests unitaires,
+  Tests d'intégration. La page « Points à traiter » est rangée dans l'onglet
+  Générer, qui affiche le nombre de points à traiter.
 - Écrans d'édition pour toutes les entités : liste triable, recherche,
   formulaire, suppression avec confirmation.
 - Écrans de configuration : calendrier, grille horaire, paramètres, règles
-  personnalisées, import et export, chargement d'un jeu fictif, remise à
-  zéro.
+  personnalisées, import et export, chargement d'un établissement fictif,
+  remise à zéro.
 - Écran « Besoins » : c'est l'entrée du générateur.
 - Lancement d'un calcul : pré-vérifications, niveau de chaque règle, mode de
   la pause déjeuner, suivi en direct, résultat ou explication de l'échec.
@@ -344,7 +352,8 @@ Préférences (objectif à minimiser, actif par défaut) :
   type), par enseignant et par salle ; semaine type et semaines datées avec
   navigation ; modification par formulaire dans un panneau latéral (créneau,
   salle parmi les salles compatibles), contrôlée par le vérificateur.
-- Page « À traiter » : anomalies et séances « à programmer ».
+- Page « Points à traiter » (onglet Générer) : anomalies et séances « à
+  programmer ».
 - Supprimer un élément visé par des règles personnalisées : la confirmation
   liste ces règles et propose de les supprimer avec lui.
 - Panneau de l'assistant conversationnel sur toutes les pages

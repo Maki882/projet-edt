@@ -347,8 +347,11 @@ main:has(.banc-integration) .entete-page h1 {
   text-align: right;
 }
 
-.banc-libelle-mobile {
-  display: none;
+/* Libellé de la date d'un test : au-dessus de la date sur ordinateur (la colonne garde sa
+   largeur, les lignes restent alignées), devant elle sur téléphone. */
+.banc-libelle {
+  display: block;
+  font-size: 0.75rem;
 }
 
 .banc-par-commande {
@@ -408,8 +411,12 @@ main:has(.banc-integration) .entete-page h1 {
     margin-left: auto;
   }
 
-  .banc-libelle-mobile {
+  .banc-libelle {
     display: inline;
+  }
+
+  .banc-libelle::after {
+    content: " :";
   }
 }
 

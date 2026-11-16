@@ -29,7 +29,7 @@ l'option `--graine` de la commande garde son nom.
 
 | Fonction | Rôle |
 |---|---|
-| `edt.synthese.generer_jeu(session, taille, graine=0, annee_debut=None, enregistrer_reference=False) -> RapportJeu` | génère le jeu dans une base initialisée et vide de référentiels ; ne valide pas la transaction |
+| `edt.synthese.generateur.generer_jeu(session, taille="petit", graine=0, annee_debut=None, enregistrer_reference=False) -> RapportJeu` | génère le jeu dans une base initialisée et vide de référentiels ; ne valide pas la transaction |
 | `edt.services.jeux.charger_jeu_fictif(session, taille, graine, ...)` | même chose, refusée pendant un calcul |
 | `edt.services.jeux.recharger_jeu_fictif(taille, graine, reinitialiser=..., ...)` | remise à zéro facultative puis chargement, dans ses propres sessions (à appeler depuis une route web) |
 | `edt.services.jeux.remettre_a_zero()` | supprime tout et recrée la base avec ses données par défaut |
@@ -308,7 +308,8 @@ n'en reçoit aucun indice, mais sa solution peut lui être comparée.
 
 ```python
 import dataclasses
-from edt.synthese import GRAND, ConfigPromotion, SallesSite
+from edt.synthese import GRAND, ConfigPromotion
+from edt.synthese.generateur import generer_jeu
 
 config = dataclasses.replace(
     GRAND,
@@ -316,6 +317,7 @@ config = dataclasses.replace(
     promotions=(ConfigPromotion(1, 6), ConfigPromotion(3, 5, nb_classes_apprentis=1)),
     semestres=("S1",),
     part_vacataires=0.4,
+    annees_stage=(),  # GRAND met la 4e année en stage : elle est absente ici
 )
 rapport = generer_jeu(session, config, graine=12)
 ```
