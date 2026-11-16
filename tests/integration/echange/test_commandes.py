@@ -3,18 +3,15 @@
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import pytest
 from icalendar import Calendar
-from tests.echange.fabrique import compter
+from tests.outils.echange.fabrique import DOSSIER_FICHIERS, compter
 from typer.testing import CliRunner
 
 from edt import cli
 from edt.db import modeles as m
 from edt.echange.lecture import FichierEnvoye, lire_fichier
-
-DOSSIER_FICHIERS = Path(__file__).parent / "fichiers"
 
 
 @pytest.fixture

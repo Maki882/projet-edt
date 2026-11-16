@@ -1,36 +1,29 @@
-"""Outils communs aux tests du lot « import et export ».
+"""Fixtures partagées par les tests unitaires et d'intégration du lot « import et export ».
 
-Les fixtures de `tests/conftest.py` (base temporaire, jeu minimal, client
-web) s'appliquent ; s'y ajoutent :
+Elles sont définies ici une seule fois, puis importées par leur nom dans le
+`conftest.py` de chaque côté qui s'en sert. Les fixtures de `tests/conftest.py`
+(base temporaire, jeu minimal, client web) s'appliquent ; s'y ajoutent :
 
-- `fichier_exemple(nom)` : un fichier fictif de `tests/echange/fichiers/` ;
+- `fichier_exemple(nom)` : un fichier fictif de `tests/outils/echange/fichiers/` ;
 - `importer(fichiers, ...)` : applique (ou simule) un import dans sa propre
   session validée, et renvoie le rapport ;
-- `exporter()` : l'export des données de la base, en valeurs typées ;
-- `version_generee` : une version produite par un calcul sur le jeu minimal ;
 - `version_reference` : une version importée (mode référence) depuis
-  `seances_existantes.csv`, sans calcul : plus rapide.
+  `seances_existantes.csv`, sans calcul : plus rapide qu'une version générée.
 
 Banque de cas limites : un test de cas limite porte le marqueur
 `cas_limite` et commence par une docstring « Cas : ... Risque : ... » ; ses
-fichiers se construisent avec `tests/echange/fabrique.py` (CSV, classeur,
+fichiers se construisent avec `tests/outils/echange/fabrique.py` (CSV, classeur,
 archive, iCal, en mémoire et fictifs).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
+from tests.outils.echange.fabrique import DOSSIER_FICHIERS
 
 from edt.db.moteur import session_base
-from edt.echange import donnees
 from edt.services import echange as service
-from edt.services import generation
 from edt.services.echange import FichierEnvoye, ModeImport, OptionsImport
-
-DOSSIER_FICHIERS = Path(__file__).parent / "fichiers"
-DELAI = 30
 
 
 @pytest.fixture
@@ -64,24 +57,6 @@ def importer():
             return service.appliquer_import(session, fichiers, reglages)
 
     return importer_
-
-
-@pytest.fixture
-def exporter():
-    """Fabrique : export des données d'une base, en valeurs typées par feuille."""
-
-    def exporter_(url: str | None = None) -> dict[str, list[dict]]:
-        with session_base(url) as session:
-            return {feuille.nom: lignes for feuille, lignes in donnees.exporter_donnees(session)}
-
-    return exporter_
-
-
-@pytest.fixture
-def version_generee(jeu_minimal) -> int:
-    """Identifiant d'une version générée (moteur provisoire) sur le jeu minimal."""
-    suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
-    return generation.exiger_reussite(suivi).version_id
 
 
 @pytest.fixture

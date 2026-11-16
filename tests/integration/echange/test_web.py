@@ -7,7 +7,7 @@ import html
 import os
 
 import pytest
-from tests.echange.fabrique import compter
+from tests.outils.echange.fabrique import compter
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base

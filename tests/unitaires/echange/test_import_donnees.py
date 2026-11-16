@@ -9,7 +9,7 @@ import time
 
 import pytest
 from sqlalchemy import func, select
-from tests.echange.fabrique import compter, csv_envoye, messages, seul
+from tests.outils.echange.fabrique import compter, csv_envoye, messages, seul
 
 from edt.db import modeles as m
 from edt.db.initialisation import initialiser_base

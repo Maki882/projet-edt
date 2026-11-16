@@ -7,7 +7,7 @@ import io
 import zipfile
 
 import pytest
-from tests.echange.fabrique import classeur, csv_envoye, messages, seul
+from tests.outils.echange.fabrique import classeur, csv_envoye, messages, seul
 
 from edt.domaine.enumerations import Gravite, NatureGroupe
 from edt.echange import valeurs as v
