@@ -1,4 +1,4 @@
-"""Fabrique des fichiers et des contrôles communs aux tests du lot « import et export ».
+"""Fabrique des fichiers et des contrôles communs aux tests de l'import et de l'export.
 
 Les tests de cas limites forment une banque durable : chacun construit ses
 fichiers ici, en mémoire et avec des données fictives (codes du jeu minimal

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from tests.outils.synthese.controle_temoin import violations
 
+from edt.db import modeles as m
 from edt.services.instantane import charger_instantane, charger_placements
 
 
@@ -35,6 +36,9 @@ def test_version_de_reference_reprend_le_temoin(jeu_moyen):
     with jeu_moyen.session() as session:
         for code, version_id in rapport.versions_reference.items():
             assert set(charger_placements(session, version_id)) == set(rapport.placements(code))
+            libelle = session.get(m.VersionEdt, version_id).libelle
+            # Vocabulaire de l'écran : ni « témoin » ni « graine » (graine 0 : pas de variante).
+            assert libelle == "Emploi du temps de référence de l'établissement fictif moyen"
 
 
 def test_controle_detecte_une_violation(jeu_petit):

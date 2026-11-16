@@ -27,6 +27,18 @@ refusé avec un signalement d'erreur lisible, jamais tronqué en silence :
 - envoi : `MAX_LIGNES_ENVOI` lignes de données pour tous les fichiers et
   onglets réunis (`Limites`).
 
+Pièges signalés (avertissement, la lecture continue ; erreur pour le dernier) :
+
+- cellules fusionnées d'un onglet : seule la première porte la valeur ;
+- caractères de contrôle invisibles dans une cellule (gardés, à retirer s'ils
+  ne sont pas voulus) ; dans un classeur, la notation `_xHHHH_` est d'abord
+  restituée (`valeurs.restituer_controle`) ;
+- colonne reconnue deux fois : seule la première est lue ;
+- fichier sans aucune cellule remplie : erreur « rien à importer ».
+
+Les noms des membres d'une archive sont assainis (`nom_sur` : ni « .. », ni
+lecteur, ni racine) ; le contenu n'est jamais écrit sur le disque.
+
 Un fichier `.ics` n'est pas un tableau : il est lu par `edt.echange.ical`.
 """
 
@@ -40,7 +52,10 @@ import zipfile
 import zlib
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from pathlib import PurePosixPath
 from typing import Any
+
+from openpyxl import load_workbook
 
 from edt.domaine.enumerations import Gravite
 from edt.echange.format import Colonne, Feuille, TypeColonne, est_lisez_moi
@@ -168,6 +183,45 @@ def nature_fichier(fichier: FichierEnvoye) -> str:
     return "csv"
 
 
+EXTENSIONS_TEXTE = ("", ".csv", ".txt", ".tsv")
+"""Extensions lues comme un tableau CSV (sans extension : le contenu décide)."""
+
+FORMATS_ACCEPTES = (
+    "Formats acceptés : CSV (.csv, .txt, .tsv), classeur Excel (.xlsx), archive ZIP de "
+    "fichiers CSV, agenda iCal (.ics)."
+)
+
+
+def _format_refuse(fichier: FichierEnvoye, nature: str) -> str | None:
+    """Pourquoi le fichier n'est pas d'un format lisible ici, ou `None` s'il l'est.
+
+    Un fichier d'un autre format (image, PDF, document Word) serait sinon lu
+    comme un CSV et finirait en « encodage illisible » ou « tableau non
+    reconnu », messages qui n'aident pas à comprendre l'erreur.
+    """
+    extension = PurePosixPath(fichier.nom.replace("\\", "/")).suffix.lower()
+    if nature == "csv" and extension in (".xlsx", ".xlsm"):
+        return (
+            f"« {fichier.nom} » porte l'extension {extension} mais n'est pas un classeur Excel "
+            "valide (fichier abîmé, ou fichier d'un autre format renommé). L'ouvrir dans un "
+            "tableur, puis l'enregistrer au format .xlsx ou .csv."
+        )
+    if nature == "csv" and extension == ".zip":
+        return f"« {fichier.nom} » n'est pas une archive ZIP valide (fichier abîmé ou incomplet)."
+    if nature == "csv" and (extension not in EXTENSIONS_TEXTE or _binaire(fichier.contenu)):
+        return f"« {fichier.nom} » n'est pas un fichier de données lisible ici. {FORMATS_ACCEPTES}"
+    if nature == "zip" and extension not in ("", ".zip"):
+        # Document Word, OpenDocument, archive Java : des archives qui ne sont pas des données.
+        return f"« {fichier.nom} » n'est pas un fichier de données lisible ici. {FORMATS_ACCEPTES}"
+    return None
+
+
+def _binaire(contenu: bytes) -> bool:
+    """Vrai si le début du fichier contient un octet nul hors d'un texte UTF-16 annoncé."""
+    debut = contenu[:4096]
+    return b"\x00" in debut and not debut.startswith((b"\xff\xfe", b"\xfe\xff"))
+
+
 def lire_fichier(
     fichier: FichierEnvoye, limites: Limites | None = None
 ) -> tuple[FichierLu, list[Signalement]]:
@@ -181,6 +235,10 @@ def lire_fichier(
     signalements: list[Signalement] = []
     if not fichier.contenu.strip():
         signalements.append(_erreur(fichier.nom, "Fichier vide : rien à importer."))
+        return FichierLu(fichier.nom), signalements
+    if (refus := _format_refuse(fichier, nature)) is not None:
+        journal.info("Fichier %s refusé : format non pris en charge (%s)", fichier.nom, nature)
+        signalements.append(_erreur(fichier.nom, refus))
         return FichierLu(fichier.nom), signalements
     if nature == "xls":
         signalements.append(
@@ -308,8 +366,6 @@ def lire_xlsx(
     fichier: FichierEnvoye, signalements: list[Signalement], limites: Limites | None = None
 ) -> list[Tableau]:
     """Un tableau par onglet (l'onglet d'explications est sauté)."""
-    from openpyxl import load_workbook
-
     limites = limites if limites is not None else Limites()
     if not _archive_acceptable(fichier, MAX_MEMBRES_CLASSEUR, "Classeur Excel", signalements):
         return []
@@ -395,7 +451,7 @@ def lire_zip(
     tableaux: list[Tableau] = []
     with zipfile.ZipFile(io.BytesIO(fichier.contenu)) as archive:  # lisible : vérifiée avant
         for membre in archive.infolist():
-            if membre.is_dir() or est_lisez_moi(membre.filename.rsplit("/", 1)[-1]):
+            if membre.is_dir() or est_lisez_moi(nom_sur(membre.filename).rsplit("/", 1)[-1]):
                 continue
             nom_complet = f"{fichier.nom}/{nom_sur(membre.filename)}"
             try:
@@ -419,10 +475,16 @@ def lire_zip(
                     if tableau is not None:
                         tableaux.append(tableau)
             else:
+                conseil = (
+                    "un agenda iCal s'envoie à part, pour importer un emploi du temps existant"
+                    if nature == "ics"
+                    else "une archive ne contient que des fichiers CSV ou XLSX"
+                )
                 signalements.append(
                     _erreur(
                         nom_complet,
-                        f"Fichier de type {nature} non pris en charge dans une archive.",
+                        f"Fichier de type {nature} non pris en charge dans une archive : "
+                        f"{conseil}. Fichier ignoré.",
                     )
                 )
     return tableaux

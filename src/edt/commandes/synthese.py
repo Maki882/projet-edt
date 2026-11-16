@@ -1,7 +1,7 @@
-"""Commande du lot « données fictives » : `python -m edt jeu`.
+"""Commande des jeux de données fictifs : `python -m edt jeu`.
 
 Charge un établissement fictif (petit, moyen ou grand) dans la base, après
-une remise à zéro si on la demande, puis affiche le résumé du rapport :
+une remise à zéro si elle est demandée, puis affiche le résumé du rapport :
 contenu, charges, verdict du vérificateur sur le témoin, besoins écartés.
 
     python -m edt jeu --taille grand --graine 0 --reset --oui --reference
@@ -14,7 +14,6 @@ confirmation, sauf avec `--oui`. La graine (0 à 2 147 483 647) et l'année
 
 from __future__ import annotations
 
-import logging
 from typing import Annotated
 
 import typer
@@ -24,7 +23,6 @@ from edt.synthese.configuration import configuration_nommee
 from edt.synthese.generateur import valider_demande
 
 commandes = typer.Typer()
-journal = logging.getLogger(__name__)
 
 
 @commandes.command("jeu")

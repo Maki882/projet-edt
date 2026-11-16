@@ -46,7 +46,7 @@ def test_panne_de_generation_apres_remise_a_zero_est_dite(
             recharger_jeu_fictif("petit", 1, reinitialiser=True, aujourdhui=aujourdhui)
 
     message = capture.value.message
-    assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
+    assert "remise à zéro" in message and "aucun établissement n'est chargé" in message
     assert "panne simulée" in message and "journal" in message
     assert "Traceback" in caplog.text  # la trace est au journal, pas à l'écran
     assert compter(m.Salle) == 0 and base_initialisee(obtenir_moteur())  # vidée mais prête
@@ -113,7 +113,8 @@ def test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur(
     marqueur = fichier_marqueur()
     assert marqueur == environnement / "edt.db.operation" and not operation_en_cours()
 
-    marqueur.write_text("4242 remise à zéro", encoding="utf-8")
+    # Processus vivant, autre que celui des tests : le parent de pytest.
+    marqueur.write_text(f"{os.getppid()} remise à zéro", encoding="utf-8")
     assert operation_en_cours()
     perime = time.time() - 3600
     os.utime(marqueur, (perime, perime))

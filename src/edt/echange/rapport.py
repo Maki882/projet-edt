@@ -215,6 +215,20 @@ class RapportImport:
         return sum(bilan.nombre(cle) for bilan in self.bilans for cle in COMPTEURS_DE_REJET)
 
     @property
+    def a_des_ecritures(self) -> bool:
+        """Vrai si l'application écrirait quelque chose (création, mise à jour, suppression...).
+
+        Faux quand tout est rejeté, mis de côté ou déjà identique : appliquer ne
+        changerait rien.
+        """
+        sans_ecriture = (*COMPTEURS_DE_REJET, "inchanges", "lues", "annulees", "retirees")
+        return any(
+            nombre and cle not in sans_ecriture
+            for bilan in self.bilans
+            for cle, nombre in bilan.compteurs.items()
+        )
+
+    @property
     def a_des_rejets(self) -> bool:
         """Vrai si quelque chose n'est pas entré (ligne, séance ou fichier entier)."""
         return self.nb_erreurs > 0 or self.nb_rejets > 0

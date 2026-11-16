@@ -72,7 +72,8 @@ def test_ical_hebdo_tolere_un_semestre_raccourci_apres_la_version(version_refere
     """Cas : la fin du semestre est avancée au 20/09/2026 après l'enregistrement d'une version.
 
     Risque : « Semaine 3 absent(e) » : page 404 « Élément introuvable » qui ne parle
-    ni de la version ni des dates, alors que l'export CSV de la même version passe.
+    ni de la version ni des dates, alors que l'export CSV de la même version passe ; ou
+    un avertissement par séance, des centaines de lignes de journal pour un export.
     """
     fin = dt.date(2026, 9, 20)
     with session_base() as session:
@@ -88,8 +89,7 @@ def test_ical_hebdo_tolere_un_semestre_raccourci_apres_la_version(version_refere
         assert evenement.decoded("dtstart").date() <= fin
         limite = evenement.get("rrule", {}).get("UNTIL", [None])[0]
         assert limite is None or limite.date() <= fin
-    assert any(
-        f"version {version_reference}" in message and "hors du semestre" in message
-        for message in caplog.messages
-    )
+    avertissements = [message for message in caplog.messages if "hors du semestre" in message]
+    assert len(avertissements) == 1  # une ligne par export, pas une par séance
+    assert f"version {version_reference}" in avertissements[0]
     assert _lignes(_exporter(version_reference, "csv", "hebdo"))  # le CSV passe toujours

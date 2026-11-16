@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import html
+import os
+import re
+import socket
+import subprocess
+import sys
+import time
+from pathlib import Path
 from types import SimpleNamespace
 
+import httpx2
+import pytest
 from sqlalchemy import func, select
+from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan
 
 from edt.db.modeles import Besoin, Campus
 from edt.db.moteur import session_base
+from edt.services.emploi_du_temps import prechauffage
+from edt.synthese.configuration import GRAINE_MAX
 
 
 def _compter(modele) -> int:
@@ -23,7 +36,9 @@ def test_page_decrit_les_tailles(client):
     assert "data-attente=" in page  # bouton désactivé pendant l'envoi
 
 
-def test_chargement_du_jeu_petit(client):
+def test_chargement_du_jeu_petit(client, monkeypatch):
+    prechauffages = []
+    monkeypatch.setattr(prechauffage, "lancer", prechauffages.append)
     reponse = client.post("/jeux/charger", data={"taille": "petit", "graine": "0"})
 
     assert reponse.status_code == 200
@@ -31,11 +46,63 @@ def test_chargement_du_jeu_petit(client):
     assert "Jeu fictif « petit » (graine 0)" in reponse.text  # résumé du rapport
     assert 'href="/besoins"' in reponse.text
     assert _compter(Campus) == 2 and _compter(Besoin) > 0
+    assert len(prechauffages) == 1  # écrans suivants préparés pendant la lecture du résumé
+    # Compte rendu lisible et étape suivante ; le rapport technique reste replié.
+    page = html.unescape(reponse.text)
+    assert 'class="bouton bouton-principal" href="/calculs">Générer l\'emploi du temps</a>' in page
+    for ligne in (
+        "2 campus, 14 salles",
+        "13 groupes, 65 étudiants",
+        "7 enseignants, 7 matières, 23 besoins d'enseignement",
+        "9 règles personnalisées d'exemple, dont 2 proposées à activer",
+    ):
+        assert f"<li>{ligne}</li>" in page
+    assert '<details class="repliable">\n    <summary>Rapport détaillé' in page
+    assert "Retour aux jeux de données" not in page
+
+
+@pytest.mark.cas_limite
+def test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran(client):
+    """Cas : la graine saisie à l'écran vaut un de plus que la plus grande graine admise par
+    le générateur (et par la commande `python -m edt jeu`).
+
+    Risque : l'écran accepte la graine, la génération la refuse ensuite ; ou l'écran refuse
+    une graine que la commande accepte. Le message donne la borne exacte.
+    """
+    reponse = client.post("/jeux/charger", data={"taille": "petit", "graine": str(GRAINE_MAX + 1)})
+    assert reponse.status_code == 422
+    assert f"de 0 à {GRAINE_MAX}" in reponse.text
+    assert '<details class="repliable" open>\n      <summary>Options avancées' in reponse.text
+    assert _compter(Campus) == 0
+
+
+@pytest.mark.cas_limite
+def test_page_rechargee_pendant_un_chargement_le_dit(client, generation_lente):
+    """Cas : la page des établissements fictifs est rechargée (F5) pendant un chargement.
+
+    Risque : la page montre une base vide ou à moitié recréée sans explication ; un second
+    clic relance un chargement qui sera refusé.
+    """
+    entre, liberer = generation_lente
+    fil, premier = _en_arriere_plan(
+        lambda: client.post("/jeux/charger", data={"taille": "petit", "graine": "1"})
+    )
+    assert entre.wait(DELAI_S)
+    pendant = html.unescape(client.get("/jeux").text)
+    liberer.set()
+    fil.join(DELAI_S)
+
+    assert "chargement d'établissement fictif ou une remise à zéro est en cours" in pendant
+    assert premier["valeur"].status_code == 200
+    apres = html.unescape(client.get("/jeux").text)
+    assert "est en cours" not in apres
 
 
 def test_rechargement_exige_une_confirmation_d_effacement(jeu_minimal, client):
     page = client.get("/jeux").text
     assert "Seront effacés" in page and "Salles : 6" in page
+
+    assert page.count("Seront effacés") == 1  # liste donnée une seule fois
 
     refus = client.post("/jeux/charger", data={"taille": "petit", "graine": "0"})
     assert refus.status_code == 422 and "Cochez la case" in refus.text
@@ -75,3 +142,73 @@ def test_remise_a_zero_confirmee(jeu_minimal, client):
     assert "La base a été remise à zéro" in reponse.text
     assert _compter(Campus) == 0 and _compter(Besoin) == 0
     assert client.get("/salles").status_code == 200
+
+
+def _port_libre() -> int:
+    with socket.socket() as sonde:
+        sonde.bind(("127.0.0.1", 0))
+        return sonde.getsockname()[1]
+
+
+def _attendre_calcul(client: httpx2.Client, reponse: httpx2.Response) -> int:
+    calcul_id = int(re.search(r"/calculs/(\d+)", str(reponse.url)).group(1))
+    for _ in range(600):
+        etat = client.get(f"/calculs/{calcul_id}/etat", headers={"HX-Request": "true"})
+        if "every 1s" not in etat.text:
+            return calcul_id
+        time.sleep(0.5)
+    raise AssertionError(f"le calcul {calcul_id} ne finit pas")
+
+
+@pytest.mark.perf
+@pytest.mark.cas_limite
+def test_recharger_apres_une_autre_solution_sur_un_vrai_serveur(tmp_path):
+    """Cas : sur le serveur réel (uvicorn, autre processus), charger le jeu moyen, calculer,
+    « Proposer une autre solution », puis recharger un jeu avec confirmation.
+
+    Risque : la base est vidée, puis le chargement refusé « Le schéma de la base ne
+    correspond plus au modèle... Rien n'a été modifié » ; chaque essai suivant échoue de
+    même jusqu'au redémarrage. Défaut intermittent, propre au processus du serveur (le
+    client de test ne le reproduit pas) : ce test rejoue le parcours de la démonstration.
+    """
+    port = _port_libre()
+    environnement = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[3] / "src"),
+        "EDT_DB_URL": f"sqlite:///{(tmp_path / 'edt.db').as_posix()}",
+        "EDT_LOG_DIR": str(tmp_path / "journaux"),
+    }
+    serveur = subprocess.Popen(
+        [sys.executable, "-m", "edt", "serve", "--port", str(port)],
+        env=environnement,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        with httpx2.Client(
+            base_url=f"http://127.0.0.1:{port}", timeout=120, follow_redirects=True
+        ) as client:
+            for _ in range(100):
+                try:
+                    client.get("/sante")
+                    break
+                except httpx2.TransportError:
+                    time.sleep(0.2)
+            charge = {"taille": "moyen", "graine": "0", "confirmation": "1"}
+            assert client.post("/jeux/charger", data=charge).status_code == 200
+            semestre = re.search(
+                r'name="semestre_id"[^>]*>\s*<option value="(\d+)"', client.get("/calculs").text
+            )
+            lancement = {"semestre_id": semestre.group(1), "duree": "court", "optimiser": "1"}
+            calcul = _attendre_calcul(client, client.post("/calculs", data=lancement))
+            client.get(f"/calculs/{calcul}")
+            relance = client.post(f"/calculs/{calcul}/relancer", data={"autre_solution": "1"})
+            client.get(f"/calculs/{_attendre_calcul(client, relance)}")
+
+            reponse = client.post("/jeux/charger", data={**charge, "taille": "petit"})
+
+            assert reponse.status_code == 200, reponse.text[:2000]
+            assert "« petit » chargé : 14 salles" in html.unescape(reponse.text)
+    finally:
+        serveur.terminate()
+        serveur.wait(10)

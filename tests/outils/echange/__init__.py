@@ -1,1 +1,1 @@
-"""Aides partagées des tests du lot « import et export » : fabriques, fichiers fictifs, fixtures."""
+"""Aides partagées des tests de l'import et de l'export : fabriques, fichiers fictifs, fixtures."""

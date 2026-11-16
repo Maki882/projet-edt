@@ -286,16 +286,16 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **455 fonctions de test** dans 9 composants, dont 168 marquées `cas_limite` et 3 marquées `perf`.
+Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquées `cas_limite` et 4 marquées `perf`.
 
-### `echange/` : Import et export par le site et la ligne de commande (32 fonctions)
+### `echange/` : Import et export par le site et la ligne de commande (33 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`echange/test_bornes.py`](echange/test_bornes.py) | Fichiers hostiles envoyés au site, pages bornées | 6 |
 | [`echange/test_commandes.py`](echange/test_commandes.py) | Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 |
 | [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 |
-| [`echange/test_web.py`](echange/test_web.py) | Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 13 |
+| [`echange/test_web.py`](echange/test_web.py) | Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 14 |
 
 ### `exploitation/` : Contrats du déploiement (32 fonctions)
 
@@ -350,7 +350,7 @@ Ce dossier compte **455 fonctions de test** dans 9 composants, dont 168 marquée
 |---|---|---:|
 | [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (119 fonctions)
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (122 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -359,7 +359,7 @@ Ce dossier compte **455 fonctions de test** dans 9 composants, dont 168 marquée
 | [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | Un seul chargement de jeu fictif ou une seule remise à zéro à la fois | 3 |
 | [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 |
 | [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 |
-| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 5 |
+| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 8 |
 | [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce | 5 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |

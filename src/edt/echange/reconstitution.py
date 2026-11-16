@@ -9,8 +9,8 @@ Trois modes (`ModeImport`) :
   hebdomadaires sont **verrouillées** : le générateur les gardera à leur place ;
 - **à replacer** : crée seulement les besoins, que le générateur placera.
 
-Règles décidées par l'équipe
-----------------------------
+Règles de résolution
+--------------------
 - Séance annulée : non comptée (tracée dans le rapport). Séance déplacée :
   comptée à sa position finale. Sans statut : réalisée.
 - Enseignant absent, « à recruter » ou inconnu : l'enseignant fictif propre à
@@ -215,7 +215,7 @@ class ResultatReconstitution:
 
 
 class Resolveur:
-    """Résout les références d'une séance selon les règles de l'équipe."""
+    """Résout les références d'une séance selon les règles de résolution (en-tête du module)."""
 
     def __init__(
         self,

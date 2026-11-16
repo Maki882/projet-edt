@@ -23,6 +23,7 @@ def _rapport_factice(graine: int) -> SimpleNamespace:
         duree_s=0.0,
         compteurs={"salle": 0, "enseignant": 0},
         nb_besoins=0,
+        regles=(),
         resume=lambda: f"Jeu fictif (graine {graine})",
     )
 

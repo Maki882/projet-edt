@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 import sqlite3
 import sys
 import time
@@ -486,7 +487,8 @@ def test_remise_a_zero_par_un_autre_processus_donne_base_occupee(
     """
     supprimer_schema(obtenir_moteur())
     marqueur = environnement / "edt.db.operation"
-    marqueur.write_text("4242 remise à zéro", encoding="utf-8")
+    # Processus vivant, autre que celui des tests : le parent de pytest.
+    marqueur.write_text(f"{os.getppid()} remise à zéro", encoding="utf-8")
 
     pendant = client_etendu.post("/essai/campus", params={"code": "X"}, follow_redirects=False)
     assert pendant.status_code == 503

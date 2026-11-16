@@ -16,7 +16,7 @@ def test_page_donnees_affiche_onglets_et_sous_navigation(site):
     sous_navigation = re.search(r'<nav class="sous-navigation".*?</nav>', page, re.S).group(0)
     for titre in ("Établissement", "Besoins et disponibilités", "Règles et calendrier"):
         assert f"<h2>{titre}</h2>" in sous_navigation
-    assert "Jeux de données" in sous_navigation
+    assert "Établissement fictif" in sous_navigation and "Jeux de données" not in sous_navigation
     assert '<a href="/salles" class="actif" aria-current="page">Salles</a>' in sous_navigation
 
 
