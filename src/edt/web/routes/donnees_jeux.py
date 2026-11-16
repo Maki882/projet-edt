@@ -183,7 +183,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
         rapport.graine,
         rapport.duree_s,
     )
-    # Les écrans suivants (accueil, « À traiter », Générer) sont préparés pendant la lecture.
+    # Les écrans suivants (accueil, « Points à traiter », Générer) sont préparés pendant la lecture.
     prechauffage.lancer(charger_configuration().db_url)
     global _dernier_chargement
     with _verrou_dernier:

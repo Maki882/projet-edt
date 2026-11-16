@@ -1,4 +1,4 @@
-"""Aides des tests des écrans « Générer », « Emploi du temps », « À traiter » et de l'accueil.
+"""Aides des tests des écrans « Générer », « Emploi du temps », « Points à traiter » et de l'accueil.
 
 Partagées par les tests unitaires (`tests/unitaires/web_edt`), les tests
 d'intégration (`tests/integration/web_edt`) et leurs fixtures

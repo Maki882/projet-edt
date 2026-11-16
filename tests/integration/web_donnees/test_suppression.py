@@ -217,7 +217,7 @@ def test_parcours_reel_sur_le_jeu_moyen(client):
 
     # Une salle où des séances sont placées : la suite est expliquée.
     page = client.get(f"/salles/{placee}/supprimer").text
-    assert "resteront sans salle" in page and "« À traiter »" in page
+    assert "resteront sans salle" in page and "« Points à traiter » (onglet Générer)" in page
     assert "prochain calcul" in page
 
     # Imposée à deux besoins : refus, et le lien mène à ces deux besoins.

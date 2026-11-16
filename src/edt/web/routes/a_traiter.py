@@ -50,7 +50,7 @@ def fragment_compteur(request: Request, session: SessionRequete):
 
     Mémorisé tant que la base ne change pas (`compteur.compteur_a_traiter`) :
     l'appeler depuis chaque page ne coûte presque rien. Ouvert sans HTMX, il
-    mène à la page « À traiter » au lieu d'un nombre nu.
+    mène à la page « Points à traiter » au lieu d'un nombre nu.
     """
     if not est_htmx(request):
         return rediriger(request, "/a-traiter")

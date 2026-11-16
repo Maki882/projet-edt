@@ -352,7 +352,7 @@ def controler_occurrences(
     """Contrôle des séances datées d'une version (ou d'une période), mémorisé ; voir `controler_version`.
 
     Toutes les séances datées de la version sont vérifiées une fois (résultat
-    mémorisé, partagé par « À traiter », l'accueil et chaque semaine
+    mémorisé, partagé par « Points à traiter », l'accueil et chaque semaine
     affichée) ; une période ne garde que les anomalies qui la concernent :
     date de l'anomalie ou date d'une séance qu'elle cite.
     """

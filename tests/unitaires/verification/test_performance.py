@@ -137,10 +137,10 @@ def test_conflits_detectes_a_grande_echelle():
 
 @pytest.mark.cas_limite
 def test_un_semestre_entier_de_13000_occurrences_en_moins_de_10_secondes():
-    """Cas : tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran À traiter le vérifie.
+    """Cas : tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran Points à traiter le vérifie.
 
     Risque : une régression de coût (règles reconstruites par séance et par date, emplois
-    par personne) rendrait À traiter lent de plusieurs secondes sans qu'aucun test ne le voie.
+    par personne) rendrait Points à traiter lent de plusieurs secondes sans qu'aucun test ne le voie.
     """
     f, placements = fabrique_etablissement()
     for promo in (g.id for g in f.groupes if g.parent_id is None):

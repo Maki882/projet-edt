@@ -256,7 +256,7 @@ def test_contrainte_desactivee_inconnue_nommee_dans_l_erreur(version_maximum_dep
     """Cas : un ancien calcul a enregistré une contrainte désactivée au code inconnu (code disparu, retouche).
 
     Risque : « Contrainte inconnue : 'PAS_UN_CODE'. » sans version ni calcul : une erreur de
-    vérification inexplicable dans À traiter.
+    vérification inexplicable dans Points à traiter.
     """
     attacher_calcul(session, version_maximum_depasse, {}, ["PAS_UN_CODE"])
     calcul_id = session.get(m.VersionEdt, version_maximum_depasse).calcul_id

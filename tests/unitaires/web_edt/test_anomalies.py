@@ -1,4 +1,4 @@
-"""Liste « À traiter » : séances datées qui ne font que répéter la semaine type."""
+"""Liste « Points à traiter » : séances datées qui ne font que répéter la semaine type."""
 
 from __future__ import annotations
 

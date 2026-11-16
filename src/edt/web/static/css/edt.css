@@ -1,5 +1,5 @@
 /*
- * Écrans « Générer », « Emploi du temps », « À traiter » et accueil.
+ * Écrans « Générer », « Emploi du temps », « Points à traiter » et accueil.
  * Complète app.css (variables, cartes, boutons, messages).
  *
  * La grille : une colonne d'axe horaire puis une colonne par jour. Chaque
@@ -689,7 +689,7 @@
   font-size: 0.75rem;
 }
 
-/* ----- Anomalies et « À traiter » --------------------------------------------------- */
+/* ----- Anomalies et « Points à traiter »------------------------------------------------ */
 
 .edt-anomalies {
   list-style: none;

@@ -102,7 +102,7 @@ Chaque famille est découpée en composants :
 - `web_donnees` : écrans de l'espace « Données » (formulaires génériques,
   besoins, règles, paramètres, jeux, suppression, concurrence) ;
 - `web_edt` : page Générer et emploi du temps (calculs, suivi, grille,
-  retouches, À traiter, accueil) ;
+  retouches, Points à traiter, accueil) ;
 - `echange` : import et export (gabarit, lecture XLSX et CSV, rapport
   d'import, exports CSV et iCal, feuille des règles) ;
 - `synthese` : générateur de données fictives (jeux petit, moyen et grand,
