@@ -321,10 +321,10 @@ def test_date_tres_ancienne_ou_lointaine_sans_erreur(version_generee, client):
 @pytest.mark.parametrize(
     ("parametres", "attendu"),
     [
-        ("couche=xyz", "couche"),
-        ("affichage=mois", "affichage"),
-        ("etendu=peutetre", "etendu"),
-        ("date=pas-une-date", "date"),
+        ("couche=xyz", "Semaine type ou semaine datée : valeur manquante ou invalide"),
+        ("affichage=mois", "Affichage (semaine ou jour) : valeur manquante ou invalide"),
+        ("etendu=peutetre", "Afficher aussi les autres séances : valeur manquante ou invalide"),
+        ("date=pas-une-date", "Date : valeur manquante ou invalide"),
         ("affichage=jour&jour=-1", "Jour invalide"),
         ("affichage=jour&jour=99", "Jour invalide"),
         ("groupe_id=1&salle_id=2", "Choisir un seul groupe"),

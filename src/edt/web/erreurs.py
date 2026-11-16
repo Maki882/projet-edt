@@ -101,6 +101,9 @@ NOMS_DE_CHAMPS = {
     "date": "Date",
     "jour": "Jour",
     "debut": "Heure de début",
+    "couche": "Semaine type ou semaine datée",
+    "affichage": "Affichage (semaine ou jour)",
+    "etendu": "Afficher aussi les autres séances",
 }
 """Libellé affiché d'un champ refusé par la validation ; un champ absent n'est pas cité."""
 
