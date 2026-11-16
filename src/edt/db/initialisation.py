@@ -64,6 +64,8 @@ from edt.db.modeles import (
     TypeSeance,
 )
 from edt.db.moteur import (
+    REMEDE_BASE_ILLISIBLE,
+    base_illisible,
     chemin_base,
     connexion_immediate,
     obtenir_moteur,
@@ -236,10 +238,20 @@ def sauvegarder_base(url: str | None = None) -> Path | None:
         partiel.replace(copie)
     except (ErreurDonneesInvalides, OSError) as erreur:
         _retirer_copie_partielle(partiel)
+        # Une base illisible, abîmée ou sans table ne se sauvegarde pas : de l'espace disque ou
+        # des droits n'y changeraient rien.
+        cause = erreur.__cause__ if isinstance(erreur, ErreurDonneesInvalides) else erreur
+        disque_ou_droits = isinstance(erreur, OSError) or (
+            isinstance(cause, sqlite3.Error) and not base_illisible(cause)
+        )
+        remede = (
+            "Libérer de l'espace disque ou corriger les droits du dossier, puis relancer."
+            if disque_ou_droits
+            else f"La base elle-même est illisible : {REMEDE_BASE_ILLISIBLE}"
+        )
         raise ErreurRegleMetier(
             f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
-            "remise à zéro annulée, rien n'a été modifié. Libérer de l'espace disque ou "
-            "corriger les droits du dossier, puis relancer."
+            f"remise à zéro annulée, rien n'a été modifié. {remede}"
         ) from erreur
     journal.info("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
     return copie

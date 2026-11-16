@@ -169,6 +169,33 @@ def test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_
 
 
 @pytest.mark.cas_limite
+@pytest.mark.parametrize("env", ["dev", "prod"])
+def test_base_illisible_le_remede_annonce_permet_d_en_sortir(
+    lanceur, base, environnement, monkeypatch, corrompre_base, env
+):
+    """Cas : le fichier de la base n'est plus une base SQLite (abîmé ou remplacé), et
+    `init-db --reset --oui` est lancé pour la recréer, en développement puis en production.
+
+    Risque : en développement, le refus conseille cette même commande (l'utilisateur tourne en
+    rond) ; en production, il conclut « libérer de l'espace disque ou corriger les droits »,
+    qui ne sert à rien. Le remède annoncé doit permettre de recréer la base.
+    """
+    monkeypatch.setenv("EDT_ENV", env)
+    chemin = corrompre_base()
+
+    refus = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert refus.exit_code == cli.CODE_ERREUR_METIER, refus.output
+    sortie = " ".join(refus.output.split())
+    assert "init-db --reset" not in sortie and "espace disque" not in sortie, sortie
+    assert "de côté" in sortie and "« python -m edt init-db »" in sortie, sortie
+    # Le remède annoncé : mettre le fichier de côté, puis « init-db ».
+    chemin.rename(chemin.with_name("edt-illisible.db"))
+    recree = lanceur.invoke(cli.app, ["init-db"])
+    assert recree.exit_code == 0, recree.output
+
+
+@pytest.mark.cas_limite
 def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours(
     lanceur, jeu_minimal, environnement, monkeypatch, compter
 ):
