@@ -177,7 +177,7 @@ def test_chargement_refuse_pendant_un_calcul_nomme_le_chargement(jeu_minimal, mo
     Risque : le refus dit « Impossible de remettre la base à zéro » alors que l'utilisateur a
     demandé un chargement ; ou la base est vidée avant le refus.
     """
-    monkeypatch.setattr(jeux, "calcul_en_cours", lambda: SimpleNamespace(id=4, semestre_id=1))
+    monkeypatch.setattr(jeux, "calcul_en_cours", lambda **_: SimpleNamespace(id=4, semestre_id=1))
     with pytest.raises(ErreurCalculEnCours) as capture:
         jeux.recharger_jeu_fictif("petit", reinitialiser=True)
     assert capture.value.message.startswith("Impossible de charger un établissement fictif")

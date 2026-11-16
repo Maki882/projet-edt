@@ -240,6 +240,14 @@ class _CalculActif:
 
 
 _verrou = threading.Lock()
+DELAI_VERROU_ECRITURE_S = 1.0
+"""Attente maximale de `_verrou` par un appelant qui tient déjà le verrou d'écriture de la base
+(voir `calcul_en_cours`). Les lectures le tiennent quelques millisecondes ; au-delà, c'est un
+lancement ou un arrêt de calcul qui attend lui-même la base."""
+MESSAGE_LANCEMENT_EN_COURS = (
+    "Un calcul d'emploi du temps est en cours de lancement ou d'arrêt : attendre quelques "
+    "secondes, puis réessayer."
+)
 _actifs: dict[int, _CalculActif] = {}
 _deja_signales: set[tuple[int, dt.datetime, str]] = set()
 """Lignes de calcul corrompues déjà signalées au journal (voir `_avertir_une_fois`)."""
@@ -279,11 +287,13 @@ def lancer_calcul(
         raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
     config = charger_configuration()
     moteur = moteur or solveur.resoudre
-    # L'attente du verrou d'écriture de la base (plus bas) se fait en tenant `_verrou`. Toutes les
-    # fonctions de ce module prennent les deux verrous dans cet ordre (`_verrou`, puis la base) :
-    # aucun interblocage possible. Limite : quand un autre processus écrit longtemps, les appels
-    # qui prennent `_verrou` (`calcul_en_cours`, `demander_arret`) attendent avec le lancement,
-    # au plus le délai de verrou de la base.
+    # L'attente du verrou d'écriture de la base (plus bas) se fait en tenant `_verrou`. Les
+    # fonctions de ce module prennent les deux verrous dans cet ordre (`_verrou`, puis la base).
+    # Une requête d'écriture tient déjà la base quand elle vérifie qu'aucun calcul ne tourne :
+    # elle appelle `calcul_en_cours(ecriture=True)`, qui renonce au bout d'un délai court au lieu
+    # d'attendre ce lancement, qui l'attend. Limite : quand un autre processus écrit longtemps,
+    # les lectures qui prennent `_verrou` (`calcul_en_cours`, `demander_arret`) attendent avec le
+    # lancement, au plus le délai de verrou de la base.
     with _verrou:
         if operation_en_cours():
             journal.info(
@@ -417,7 +427,7 @@ def etat_calcul(calcul_id: int) -> SuiviCalcul:
         return _suivi(session, calcul)
 
 
-def calcul_en_cours() -> SuiviCalcul | None:
+def calcul_en_cours(*, ecriture: bool = False) -> SuiviCalcul | None:
     """Le calcul en cours, s'il y en a un.
 
     Un calcul abandonné par son processus ne compte pas. Il est clos au
@@ -425,8 +435,25 @@ def calcul_en_cours() -> SuiviCalcul | None:
     attendre** : cette fonction est appelée par des requêtes web d'écriture
     (import, remise à zéro, paramètres) qui tiennent déjà le verrou d'écriture
     dans le même fil, et l'attendre serait s'attendre soi-même jusqu'au délai.
+
+    `ecriture` : l'appelant tient le verrou d'écriture de la base. Un lancement
+    de calcul tient alors peut-être `_verrou` en attendant ce même verrou :
+    l'attente de `_verrou` est bornée à `DELAI_VERROU_ECRITURE_S`, puis
+    `ErreurCalculEnCours` est levée (l'appelant annule sa transaction et le
+    lancement passe). Sans `ecriture`, l'attente n'est pas bornée.
     """
-    with _verrou, session_base() as session:
+    if not _verrou.acquire(timeout=DELAI_VERROU_ECRITURE_S if ecriture else -1):
+        journal.info("Écriture refusée : un calcul est en cours de lancement ou d'arrêt")
+        raise ErreurCalculEnCours(MESSAGE_LANCEMENT_EN_COURS)
+    try:
+        return _calcul_en_cours()
+    finally:
+        _verrou.release()
+
+
+def _calcul_en_cours() -> SuiviCalcul | None:
+    """Corps de `calcul_en_cours`, à appeler en tenant `_verrou`."""
+    with session_base() as session:
         abandonnes = _calculs_abandonnes(session)
         ignores = {calcul.id for calcul in abandonnes}
         if abandonnes:

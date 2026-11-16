@@ -364,7 +364,7 @@ def _exiger_aucun_calcul(action: str, url: str | None = None) -> None:
 
 def _refuser_pendant_un_calcul(action: str) -> None:
     """Lève `ErreurCalculEnCours` si un calcul tourne ; la base doit avoir ses tables."""
-    suivi = calcul_en_cours()
+    suivi = calcul_en_cours(ecriture=True)
     if suivi is not None:
         raise ErreurCalculEnCours(
             f"Impossible de {action} : un calcul d'emploi du temps est en cours "

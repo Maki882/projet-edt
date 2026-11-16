@@ -145,7 +145,7 @@ def test_rechargement_exige_une_confirmation_d_effacement(jeu_minimal, client):
 
 def test_refus_clair_pendant_un_calcul(jeu_minimal, client, monkeypatch):
     monkeypatch.setattr(
-        "edt.services.jeux.calcul_en_cours", lambda: SimpleNamespace(id=42, semestre_id=1)
+        "edt.services.jeux.calcul_en_cours", lambda **_: SimpleNamespace(id=42, semestre_id=1)
     )
     charge = client.post(
         "/jeux/charger", data={"taille": "petit", "graine": "0", "confirmation": "1"}

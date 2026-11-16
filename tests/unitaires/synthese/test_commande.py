@@ -35,7 +35,7 @@ def test_base_non_initialisee_refusee(environnement):
 def test_refus_pendant_un_calcul(base, monkeypatch):
     """Cas : chargement ou remise à zéro demandés pendant un calcul d'emploi du temps.
     Risque : le calcul lit une base qui change ou disparaît sous lui."""
-    monkeypatch.setattr(jeux, "calcul_en_cours", lambda: types.SimpleNamespace(id=42))
+    monkeypatch.setattr(jeux, "calcul_en_cours", lambda **_: types.SimpleNamespace(id=42))
     with pytest.raises(ErreurCalculEnCours, match="n°42"):
         jeux.recharger_jeu_fictif("petit", reinitialiser=True)
     with session_base() as session, pytest.raises(ErreurCalculEnCours):
