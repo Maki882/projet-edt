@@ -4,7 +4,11 @@
 """
 
 import pytest
-from tests.outils.assistant.fixtures import cle_factice, sans_cle  # noqa: F401
+from tests.outils.assistant.fixtures import (  # noqa: F401
+    cle_factice,
+    sans_cle,
+    version_minimale,
+)
 
 
 @pytest.fixture(autouse=True)

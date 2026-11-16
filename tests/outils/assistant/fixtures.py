@@ -7,16 +7,21 @@ Chaque côté les importe par leur nom dans son `conftest.py` :
   vide), aucune adresse de service personnalisée, aucune variable
   `EDT_ASSISTANT_*` héritée, registre et compteurs de l'assistant neufs ;
 - `cle_factice` : pose une valeur d'identifiant factice (`CLE_FACTICE`), pour
-  les tests « configuré » ; elle ne sert jamais à appeler le service.
+  les tests « configuré » ; elle ne sert jamais à appeler le service ;
+- `version_minimale` : jeu minimal et sa version de référence active (repères).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from tests.outils.verification.versions import enregistrer_version
 
+from edt.db.jeux import JeuMinimal
+from edt.db.moteur import session_base
 from edt.services.assistant.configuration import oublier_annonce
 
 CLE_FACTICE = "sk-ant-test-NE-JAMAIS-AFFICHER"
@@ -56,3 +61,24 @@ def cle_factice(monkeypatch: pytest.MonkeyPatch) -> str:
     """Identifiant factice dans l'environnement : l'assistant se dit configuré."""
     monkeypatch.setenv("ANTHROPIC_API_KEY", CLE_FACTICE)
     return CLE_FACTICE
+
+
+@dataclass(frozen=True)
+class Reperes:
+    """Repères du jeu minimal avec sa version saisie à la main (`version_minimale`)."""
+
+    annee_id: int
+    semestre_id: int
+    version_id: int
+
+
+@pytest.fixture
+def version_minimale(jeu_minimal: JeuMinimal) -> Reperes:
+    """Jeu minimal et sa version de référence active (`tests.outils.verification.versions`).
+
+    Jeudi après-midi : N016 accueille le devoir surveillé (une semaine), N105,
+    N204 et L115 sont libres ; L115 est en travaux du 2 au 6 novembre 2026.
+    """
+    with session_base() as session:
+        version_id = enregistrer_version(session, jeu_minimal.semestre_id)
+    return Reperes(jeu_minimal.annee_scolaire_id, jeu_minimal.semestre_id, version_id)
