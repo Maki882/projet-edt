@@ -25,6 +25,9 @@
  *    ouverts (`<details data-noeud="...">`) d'une page à l'autre ; les boutons
  *    `data-arbre-action="deplier|replier"` et `data-arbre-cible="id"` ouvrent
  *    ou ferment tout (masqués sans JavaScript).
+ * 9. Champ invalide replié : quand le navigateur refuse l'envoi d'un formulaire
+ *    pour un champ invalide placé dans un `<details>` fermé, ce bloc (et ceux
+ *    qui le contiennent) s'ouvre pour que la bulle du navigateur soit visible.
  *
  * Les points 4 et 5 s'appliquent aussi aux fragments chargés par HTMX.
  */
@@ -370,6 +373,17 @@
       });
     });
   }
+
+  /* ---- 9. Champ invalide dans un bloc replié -------------------------------- */
+
+  // « invalid » ne remonte pas : écouté en phase de capture.
+  document.addEventListener("invalid", function (evenement) {
+    var bloc = evenement.target.closest ? evenement.target.closest("details") : null;
+    while (bloc) {
+      bloc.open = true;
+      bloc = bloc.parentElement ? bloc.parentElement.closest("details") : null;
+    }
+  }, true);
 
   /* ---- Démarrage ---------------------------------------------------------- */
 
