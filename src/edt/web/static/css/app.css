@@ -349,6 +349,8 @@ main {
   flex: 1;
   min-width: 0;
   padding: calc(var(--espace) * 1.5);
+  /* Le bouton « Assistant », fixé en bas à droite, ne cache pas la dernière ligne. */
+  padding-bottom: 4.5rem;
   max-width: 84rem;
 }
 
@@ -835,6 +837,8 @@ main {
   border-top: 1px solid var(--bordure);
   margin: 0 0 0.5rem;
   padding: 0.75rem 0 0;
+  /* Un fieldset s'élargit par défaut à son contenu : sur téléphone, il élargirait la page. */
+  min-width: 0;
 }
 
 .formulaire fieldset:first-of-type {
@@ -1540,7 +1544,12 @@ fieldset.champ {
   }
 
   main {
-    padding: var(--espace);
+    padding: var(--espace) var(--espace) 4.5rem;
+  }
+
+  /* Un long libellé de bouton passe à la ligne au lieu d'élargir la page. */
+  .bouton {
+    white-space: normal;
   }
 
   .bouton-assistant {

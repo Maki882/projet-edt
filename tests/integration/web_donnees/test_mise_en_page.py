@@ -1,4 +1,4 @@
-"""Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, panneau Assistant."""
+"""Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce."""
 
 from __future__ import annotations
 
@@ -27,14 +27,15 @@ def test_accueil_sans_sous_navigation_mais_avec_menu_deroulant(site):
     assert '<a href="/besoins">Besoins</a>' in page  # toutes les pages restent accessibles
 
 
-def test_panneau_assistant_present_sur_toutes_les_pages(site):
+def test_aucune_page_n_annonce_une_fonction_a_venir(site):
     for adresse in ("/", "/salles", "/parametres", "/jeux", "/n-existe-pas"):
-        page = site.get(adresse).text
-        assert 'id="bouton-assistant"' in page and 'aria-controls="assistant"' in page
-        assert '<aside class="assistant" id="assistant"' in page
-        assert "Bientôt" in page and "langage courant" in page
-        assert re.search(r'<textarea id="assistant-question"[^>]*disabled', page)
-    assert "Données fictives" not in page  # plus de bandeau sur les données
+        reponse = site.get(adresse)
+        assert reponse.status_code in (200, 404), adresse
+        page = reponse.text
+        assert "</footer>" in page and "</html>" in page  # gabarit de base rendu en entier
+        for annonce in ("Bientôt", "Disponible prochainement", "pas encore disponible"):
+            assert annonce not in page, (adresse, annonce)
+        assert "Données fictives" not in page  # pas de bandeau sur les données
 
 
 def test_cinq_onglets_de_l_application_et_import_export_dans_donnees(site):

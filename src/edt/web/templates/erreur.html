@@ -12,11 +12,14 @@
     {% endfor %}
   </ul>
   {% endif %}
-  {% if id_requete %}
+  {#- La référence retrouve la requête dans le journal ; « incident » seulement pour une panne. #}
+  {% if id_requete and statut|default(500) >= 500 %}
   <p class="discret">
     Référence de l'incident : <code>{{ id_requete }}</code>
     (à communiquer pour retrouver le détail dans le journal).
   </p>
+  {% elif id_requete %}
+  <p class="discret">Référence : <code>{{ id_requete }}</code></p>
   {% endif %}
   <p>
     <a class="bouton" href="javascript:history.back()">Revenir à la page précédente</a>

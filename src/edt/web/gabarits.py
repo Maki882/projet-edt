@@ -18,12 +18,13 @@ Ce qui vient du navigateur n'est jamais cru sur parole :
 - `adresse_locale` dit si une adresse de retour reste dans l'application
   (pas de redirection ouverte, aucun caractère de contrôle qui finirait dans
   un en-tête) ; `rediriger` écarte en dernier recours une adresse qui en
-  contient (un retour à la ligne dans `HX-Redirect` ajouterait un en-tête) ;
+  contient (un retour à la ligne dans `HX-Redirect` ajouterait un en-tête) et
+  code les caractères non ASCII (« é », « 日 ») qu'un en-tête ne peut pas porter ;
 - `adresse_courante` lit l'en-tête `HX-Current-URL` sans planter s'il est
   illisible ;
 - un identifiant d'adresse (`{n:int}`) de plus de `CHIFFRES_ADRESSE_MAX`
   chiffres ne correspond à aucune page (404) : Python refuse de convertir plus
-  de 4 300 chiffres, ce qui donnait une erreur 500 dans le routage.
+  de 4 300 chiffres, ce qui provoquerait une erreur 500 dans le routage.
 """
 
 from __future__ import annotations
@@ -44,8 +45,9 @@ from starlette.convertors import IntegerConvertor, register_url_convertor
 
 from edt import __version__
 from edt.domaine.enumerations import JOURS
-from edt.domaine.heures import duree_vers_texte, minutes_vers_hhmm, minutes_vers_texte
+from edt.domaine.heures import duree_vers_texte, minutes_vers_texte
 from edt.journal import contexte_requete
+from edt.web.menu import onglet_actif
 
 journal = logging.getLogger(__name__)
 
@@ -57,6 +59,8 @@ COOKIE_MESSAGES = "edt_messages"
 CHIFFRES_ADRESSE_MAX = 30
 """Au-delà, un identifiant d'adresse ne désigne rien : la route ne correspond pas (404)."""
 NIVEAUX = ("succes", "info", "attention", "erreur")
+CARACTERES_SURS_ADRESSE = ":/%#?=@[]!$&'()*+,;"
+"""Caractères laissés tels quels en codant une adresse (les mêmes que `RedirectResponse`)."""
 
 
 @dataclass(frozen=True)
@@ -80,10 +84,6 @@ def _duree(minutes: int | None) -> str:
     return "" if minutes is None else duree_vers_texte(minutes)
 
 
-def _hhmm(minutes: int | None) -> str:
-    return "" if minutes is None else minutes_vers_hhmm(minutes)
-
-
 def _date_fr(valeur: dt.date | None) -> str:
     return "" if valeur is None else valeur.strftime("%d/%m/%Y")
 
@@ -95,13 +95,32 @@ def _dateheure_fr(valeur: dt.datetime | None) -> str:
 gabarits = Jinja2Templates(directory=DOSSIER_GABARITS)
 gabarits.env.filters.update(
     heure=_heure,
-    hhmm=_hhmm,
     duree=_duree,
     jour=_jour,
     date_fr=_date_fr,
     dateheure_fr=_dateheure_fr,
 )
-gabarits.env.globals.update(version_application=__version__, JOURS=JOURS)
+gabarits.env.globals.update(version_application=__version__, JOURS=JOURS, onglet_actif=onglet_actif)
+
+
+def precompiler_gabarits() -> int:
+    """Compile tous les gabarits d'avance (au démarrage du serveur) ; renvoie leur nombre.
+
+    Jinja compile un gabarit à son premier affichage (0,1 à 0,3 s par écran) :
+    compilés au démarrage, ils ne retardent pas la première visite de chaque
+    page. Un gabarit invalide est journalisé et n'empêche pas de compiler les
+    autres ; il lèvera de nouveau, lisiblement, à son affichage.
+    """
+    noms = gabarits.env.list_templates(extensions=("html",))
+    compiles = 0
+    for nom in noms:
+        try:
+            gabarits.env.get_template(nom)
+        except Exception:
+            journal.exception("Gabarit %s : compilation d'avance impossible", nom)
+        else:
+            compiles += 1
+    return compiles
 
 
 class _IdentifiantBorne(IntegerConvertor):
@@ -192,16 +211,20 @@ def rediriger(
 ) -> Response:
     """Redirige après une action (POST puis GET) en laissant un message pour la page suivante.
 
-    Pour une requête HTMX, la redirection passe par l'en-tête `HX-Redirect`.
-    Une adresse qui contient un caractère de contrôle (fabriquée : les écrans
-    vérifient leurs adresses de retour avec `adresse_locale`) est remplacée par
-    l'accueil, jamais recopiée dans un en-tête.
+    Pour une requête HTMX, la redirection passe par l'en-tête `HX-Redirect`,
+    où l'adresse est codée comme le fait `RedirectResponse` : un en-tête
+    n'accepte que le latin-1, et un « 日 » recopié tel quel ferait échouer la
+    réponse (erreur 500, écriture annulée). Une adresse qui contient un
+    caractère de contrôle (fabriquée : les écrans vérifient leurs adresses de
+    retour avec `adresse_locale`) est remplacée par l'accueil, jamais recopiée
+    dans un en-tête.
     """
     if _CARACTERES_DE_CONTROLE.intersection(url):
         journal.warning("Redirection vers une adresse invalide écartée : %r", url[:200])
         url = "/"
     if est_htmx(request):
-        reponse: Response = Response(status_code=204, headers={"HX-Redirect": url})
+        en_tete = quote(url, safe=CARACTERES_SURS_ADRESSE)
+        reponse: Response = Response(status_code=204, headers={"HX-Redirect": en_tete})
     else:
         reponse = RedirectResponse(url, status_code=303)
     if message:

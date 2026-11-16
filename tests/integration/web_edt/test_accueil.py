@@ -7,26 +7,26 @@ Seulement ce dont l'équipe pédagogique a besoin : aucune statistique
 from __future__ import annotations
 
 import sqlite3
-import threading
 import time
 
 import pytest
-from tests.outils.web_edt.aides import DELAI
+from fastapi.testclient import TestClient
+from tests.outils.web_edt.aides import DELAI, calcul_qui_tourne
 
 from edt import solveur
 from edt.config import charger_configuration
 from edt.db import modeles as m
+from edt.db import moteur as module_moteur
 from edt.db.moteur import chemin_base, expliquer_erreur_base, session_base
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.services import etat, generation
+from edt.services.emploi_du_temps import memoire, raccords
 from edt.services.emploi_du_temps.presentation import pluriel
 from edt.services.emploi_du_temps.tableau_de_bord import tableau_de_bord
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
-
-DELAI_SANS_ATTENTE_S = 5.0
-"""Bien moins que l'attente sur verrou de la base (10 s) : `/sante` n'a pas attendu."""
+from edt.web import app as module_app
 
 
 def test_base_vide_propose_un_etablissement_fictif(client):
@@ -38,9 +38,10 @@ def test_base_vide_propose_un_etablissement_fictif(client):
         in page
     )
     assert 'href="/import"' in page and 'href="/salles"' in page
-    # Base vide : le bloc de la base apparaît, avec l'invitation à charger un jeu.
-    assert "État de la base de données" in page
-    assert "La base ne contient encore aucune donnée" in page
+    # Base vide : la prochaine étape suffit, ni bloc sur la base ni carte du semestre.
+    assert "État de la base de données" not in page
+    assert "La base ne contient encore aucune donnée" not in page
+    assert "<h2>Emploi du temps du" not in page
 
 
 def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, aujourdhui_fige):
@@ -50,7 +51,7 @@ def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, 
     assert f'href="/calculs?semestre_id={jeu_minimal.semestre_id}"' in page
     bloc = page.split("<h2>Emploi du temps du semestre", 1)[1].split("</section>", 1)[0]
     assert "Aucun emploi du temps n'a encore été généré pour ce semestre." in bloc
-    assert "besoin" not in bloc  # plus le nombre de besoins saisis
+    assert "besoin" not in bloc  # pas de nombre de besoins saisis
 
 
 def test_version_active_sans_verificateur(
@@ -60,8 +61,9 @@ def test_version_active_sans_verificateur(
 
     assert "Consulter l&#39;emploi du temps" in page or "Consulter l'emploi du temps" in page
     assert f"/emploi-du-temps?version_id={version_generee.version_id}" in page
-    assert "les vérifications automatiques ne sont pas encore disponibles" in page
-    assert "anomalies non comptées : vérifications pas encore disponibles" in page
+    assert "(vérifications automatiques indisponibles)." in page
+    assert "(vérifications automatiques indisponibles : points non comptés)" in page
+    assert "pas encore disponible" not in page
     assert "conflit" not in page  # pas de « 0 conflit » inventé
 
 
@@ -91,27 +93,15 @@ def test_points_a_traiter_sans_indicateurs(
     page = client.get("/").text
 
     assert "1 point à traiter" in page
-    assert f'href="/a-traiter?semestre_id={version_generee.semestre_id}"' in page
+    # Une seule fois : le bouton de la prochaine étape, pas de second lien dans la carte.
+    assert page.count(f'href="/a-traiter?semestre_id={version_generee.semestre_id}"') == 1
     _sans_statistique(page)
 
 
 def test_calcul_en_cours_conseille_de_le_suivre(jeu_minimal, client, aujourdhui_fige, monkeypatch):
-    demarre = threading.Event()
-
-    def moteur_lent(instantane, options, arret=None):
-        demarre.set()
-        arret.wait(DELAI)
-        return ResultatSolveur(StatutSolveur.ARRETE)
-
-    monkeypatch.setattr(solveur, "resoudre", moteur_lent)
-    calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
-    try:
-        assert demarre.wait(DELAI)
+    with calcul_qui_tourne(jeu_minimal.semestre_id, monkeypatch) as calcul_id:
         page = client.get("/").text
         assert "Suivre le calcul" in page and f'href="/calculs/{calcul_id}"' in page
-    finally:
-        generation.demander_arret(calcul_id)
-        generation.attendre_calcul(calcul_id, DELAI)
 
 
 def test_tout_va_bien_version_a_consulter_et_rien_d_autre(version_generee, client, aujourdhui_fige):
@@ -122,8 +112,11 @@ def test_tout_va_bien_version_a_consulter_et_rien_d_autre(version_generee, clien
         reste = tableau_de_bord(session, aujourdhui_fige).nb_a_traiter
     assert "Version active" in page and libelle in page
     adresse = f"/emploi-du-temps?version_id={version_generee.version_id}"
-    assert f'<a href="{adresse}">Consulter</a>' in page
     assert reste is not None  # le vrai vérificateur a compté
+    # Chaque adresse n'apparaît qu'une fois : pas de lien qui double la prochaine étape.
+    assert page.count(f'href="{adresse}"') == 1
+    if not reste:
+        assert f'<a class="bouton bouton-principal" href="{adresse}">' in page
     attendu = "Aucun point à traiter" if not reste else f"{pluriel(reste, 'point')} à traiter"
     assert attendu in page
     # Le calcul réussi ne s'affiche pas : la version active le dit déjà.
@@ -218,9 +211,9 @@ def test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante(
 @pytest.mark.cas_limite
 def test_base_occupee_par_une_ecriture_n_est_pas_une_panne(jeu_minimal, client):
     """Cas : un autre processus tient le verrou d'écriture (calcul, import, commande) pendant
-    que la supervision interroge `/sante` et qu'on ouvre l'accueil.
+    que la supervision interroge `/sante` et que l'accueil est ouvert.
     Risque : `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai
-    d'attente sur verrou (dix secondes) ; l'écriture d'essai doit être sautée, sans attente.
+    d'attente sur verrou (`DELAI_VERROU_MS`) ; l'écriture d'essai doit être sautée, sans attente.
     """
     detenteur = sqlite3.connect(
         chemin_base(charger_configuration().db_url), isolation_level=None, timeout=0
@@ -229,10 +222,44 @@ def test_base_occupee_par_une_ecriture_n_est_pas_une_panne(jeu_minimal, client):
         detenteur.execute("BEGIN IMMEDIATE")
         debut = time.perf_counter()
         sante = client.get("/sante")
-        assert time.perf_counter() - debut < DELAI_SANS_ATTENTE_S
+        ecoule = time.perf_counter() - debut
+        # La moitié du délai d'attente sur verrou : `/sante` n'a pas attendu le verrou.
+        assert ecoule < module_moteur.DELAI_VERROU_MS / 1000 / 2, f"/sante a attendu {ecoule:.2f} s"
         assert sante.status_code == 200 and sante.json()["base"]["inscriptible"] is None
         assert "refuse les écritures" not in client.get("/").text
     finally:
         detenteur.rollback()
         detenteur.close()
     assert client.get("/sante").json()["base"]["inscriptible"] is True  # verrou rendu
+
+
+@pytest.mark.cas_limite
+def test_le_demarrage_du_serveur_prepare_l_accueil(
+    version_generee, environnement, aujourdhui_fige, monkeypatch
+):
+    """Cas : premier visiteur de l'accueil juste après le démarrage du serveur.
+    Risque : il attend la vérification de la version active et la compilation des gabarits
+    (plusieurs secondes sur un serveur modeste) que la préparation du démarrage a déjà faites.
+    """
+    appels = []
+    verifier = raccords.verifier_version
+
+    def verifier_compte(*args, **kwargs):
+        appels.append(args)
+        return verifier(*args, **kwargs)
+
+    monkeypatch.setattr(raccords, "verifier_version", verifier_compte)
+    # L'accueil seul, sans compiler les autres gabarits : le test reste court.
+    monkeypatch.setattr(module_app, "PAGES_A_PREPARER", (("/", ()),))
+    monkeypatch.setattr(module_app, "precompiler_gabarits", lambda: 0)
+    memoire.oublier()
+    journal = environnement / "logs" / "edt.log"
+    with TestClient(module_app.creer_app()) as client:
+        limite = time.monotonic() + DELAI
+        while "Premières pages préparées" not in journal.read_text(encoding="utf-8"):
+            assert time.monotonic() < limite, "préparation du démarrage non terminée"
+            time.sleep(0.05)
+        assert len(appels) == 1  # la version active, vérifiée pendant la préparation
+        assert client.get("/").status_code == 200
+        assert len(appels) == 1  # l'accueil est servi de la mémoire
+    assert "/ 200 en" in journal.read_text(encoding="utf-8")

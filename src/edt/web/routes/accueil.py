@@ -1,11 +1,13 @@
-"""Routes du socle : page d'accueil (ce qu'il faut faire maintenant) et contrôle de santé.
+"""Routes générales : page d'accueil (ce qu'il faut faire maintenant) et contrôle de santé.
 
 L'accueil ne montre que ce dont l'équipe pédagogique a besoin pour avancer
 (`edt.services.emploi_du_temps.tableau_de_bord`) : la prochaine étape
 conseillée ; l'emploi du temps du semestre en cours (calcul en cours, version
-active à consulter, points à traiter) ; le dernier calcul **seulement** s'il
-s'est terminé sans emploi du temps ; l'état de la base **seulement** s'il y a
-un problème ou si la base est vide (`base_a_signaler`). Aucune statistique :
+active à consulter, points à traiter), dès qu'il y a un calcul à lancer ; le
+dernier calcul **seulement** s'il s'est terminé sans emploi du temps ; l'état
+de la base **seulement** s'il y a un problème (`base_a_signaler`). Une base
+vide ne montre que la prochaine étape, qui propose de charger un établissement
+fictif. Aucune statistique :
 les indicateurs restent sur le résultat d'un calcul, les nombres dans les
 listes de l'onglet Données, l'emplacement et l'environnement de la base dans
 `/sante` et `python -m edt doctor`.
@@ -67,17 +69,17 @@ def accueil(request: Request) -> HTMLResponse:
 
 
 def base_a_signaler(etat: EtatBase) -> bool:
-    """Vrai si l'accueil doit parler de la base : panne, écriture refusée, schéma périmé, base
-    non initialisée ou vide.
+    """Vrai si l'accueil doit parler de la base : panne, écriture refusée, schéma périmé ou
+    base non initialisée.
 
-    Quand tout va bien, le bloc « État de la base de données » n'est pas affiché.
+    Quand tout va bien, y compris sur une base vide (la prochaine étape le dit déjà), le
+    bloc « État de la base de données » n'est pas affiché.
     """
     return (
         not etat.accessible
         or etat.inscriptible is False
         or etat.schema_perime
         or not etat.initialisee
-        or etat.vide
     )
 
 
