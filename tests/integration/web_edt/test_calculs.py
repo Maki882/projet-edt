@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select, update
 from tests.outils.web_edt.aides import DELAI, HX
 
 from edt import solveur
@@ -14,7 +14,7 @@ from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte
 from edt.domaine.enumerations import EtatCalcul, Gravite
 from edt.services import generation
-from edt.services.emploi_du_temps import calculs, presentation
+from edt.services.emploi_du_temps import calculs, prechauffage, presentation
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
@@ -61,7 +61,7 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
     catalogue = page.count('name="niveau_') - page.count('name="niveau_regle_')
     assert catalogue == 3 * len(MODIFIABLES)  # trois niveaux par règle du catalogue
-    assert 'name="contraintes"' not in page  # plus de case pour ignorer une règle
+    assert 'name="contraintes"' not in page  # pas de case pour ignorer une règle
     assert page.count(">Lancer le calcul</button>") == 2  # en tête de page et en bas du formulaire
     assert 'form="formulaire-calcul"' in page  # le bouton du haut soumet le même formulaire
     assert all(
@@ -72,7 +72,7 @@ def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     court, long_ = _durees()
     assert f"Rechercher jusqu'à {presentation.duree_secondes(court)}" in page
     assert f"Rechercher jusqu'à {presentation.duree_secondes(long_)}" in page
-    # Les vraies pré-vérifications ont tourné : plus d'encart « pas encore disponible ».
+    # Les vraies pré-vérifications ont tourné : pas d'encart « pas encore disponible ».
     assert "pas encore disponible" not in page
     assert "Vérifications avant le calcul" in page
     assert "Le calcul ne peut pas être lancé" not in page
@@ -109,6 +109,12 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis(jeu_minima
 def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
     jeu_minimal, client, monkeypatch
 ):
+    """Cas : double clic sur « Lancer le calcul » (second envoi pendant que le premier calcul
+    tourne), suivi sans rechargement, puis arrêt depuis le suivi.
+    Risque : deux calculs en parallèle sur le même semestre, ou un formulaire de lancement
+    proposé pendant le calcul ; le second envoi doit mener au suivi du calcul en cours, et
+    l'arrêt laisser « Calcul arrêté » sans version enregistrée.
+    """
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -412,8 +418,8 @@ def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
 @pytest.mark.cas_limite
 def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
     """Cas : « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé.
-    Risque : « Arrêt demandé » affiché : on croit avoir interrompu un calcul fini dont la
-    version est déjà active.
+    Risque : « Arrêt demandé » affiché : l'utilisateur croit avoir interrompu un calcul fini dont
+    la version est déjà active.
     """
     calcul_id = version_generee.calcul_id
 
@@ -430,3 +436,68 @@ def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
     suivi = generation.etat_calcul(calcul_id)
     assert suivi.reussi and suivi.version_id == version_generee.version_id
     assert not suivi.arret_demande
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("version_enregistree", [False, True], ids=["sans version", "avec version"])
+def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_enregistree):
+    """Cas : le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours »
+    est clos ; il avait pu, ou non, enregistrer sa version avant ses séances datées.
+    Risque : page du calcul qui parle d'un « problème dans les données » ou affirme qu'aucun
+    emploi du temps n'a été enregistré alors qu'une version active sans séances datées existe ;
+    aucun moyen de relancer depuis la page.
+    """
+    calcul_id = version_generee.calcul_id
+    with session_base() as session:
+        # Tel que le laisse un processus tué : « en cours », sans numéro de processus vivant.
+        session.execute(
+            update(m.Calcul)
+            .where(m.Calcul.id == calcul_id)
+            .values(etat=EtatCalcul.EN_COURS, statistiques={}, message="", termine_le=None)
+        )
+        session.execute(
+            delete(m.Occurrence).where(m.Occurrence.version_id == version_generee.version_id)
+        )
+        if not version_enregistree:
+            session.execute(delete(m.VersionEdt).where(m.VersionEdt.calcul_id == calcul_id))
+    assert generation.cloturer_calculs_interrompus() == 1  # ce que fait le démarrage du serveur
+
+    page = client.get(f"/calculs/{calcul_id}").text
+    assert "Le calcul n&#39;a pas pu aboutir" in page
+    assert "interrompu par un arrêt de l&#39;application" in page and "problème" not in page
+    assert "Relancer le même calcul" in page
+    if version_enregistree:
+        assert "Aucun emploi du temps n&#39;a été enregistré" not in page
+        assert "Produire les séances datées" in page and "Voir l'emploi du temps" in page
+    else:
+        assert "Aucun emploi du temps n&#39;a été enregistré" in page
+        assert "Voir l'emploi du temps" not in page
+    relance = client.post(f"/calculs/{calcul_id}/relancer", follow_redirects=False)
+    assert relance.status_code == 303, relance.text
+    nouveau = int(relance.headers["location"].rsplit("/", 1)[1])
+    assert generation.attendre_calcul(nouveau, DELAI).reussi
+
+
+@pytest.mark.cas_limite
+def test_prechauffage_qui_ne_peut_pas_demarrer_ne_casse_pas_la_page(
+    version_generee, client, monkeypatch, caplog
+):
+    """Cas : le fil de préchauffage des écrans ne peut pas démarrer (plus de fil disponible)
+    quand la page d'un calcul réussi s'affiche.
+    Risque : RuntimeError remontée dans la requête (page du calcul en erreur 500), et
+    préchauffage tenu pour « en cours » à jamais : plus aucun préchauffage jusqu'au redémarrage.
+    """
+
+    class FilImpossible:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def start(self):
+            raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr(prechauffage, "ACTIF", True)
+    monkeypatch.setattr(prechauffage.threading, "Thread", FilImpossible)
+    page = client.get(f"/calculs/{version_generee.calcul_id}")
+    assert page.status_code == 200 and "Emploi du temps généré" in page.text
+    assert any("Préchauffage des écrans non lancé" in r.getMessage() for r in caplog.records)
+    assert not prechauffage._en_cours  # la demande suivante pourra relancer le préchauffage

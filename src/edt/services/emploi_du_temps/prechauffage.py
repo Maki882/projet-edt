@@ -10,8 +10,11 @@ suite.
 
 - au plus un préchauffage à la fois (les demandes suivantes sont ignorées
   tant qu'il tourne) ;
-- il ne fait que remplir la mémoire : une erreur est journalisée avec sa
-  trace et n'a pas d'autre effet (l'écran recalculera lui-même) ;
+- il ne fait que lire et remplir la mémoire, dans une transaction de lecture
+  (aucun verrou d'écriture : les requêtes et un calcul qui écrivent ne
+  l'attendent jamais) ; une erreur, y compris l'impossibilité de démarrer le
+  fil, est journalisée avec sa trace et n'a pas d'autre effet (l'écran
+  recalculera lui-même) ;
 - `ACTIF` permet de le couper (les tests le coupent : un fil qui survit à sa
   base temporaire n'a pas de sens).
 """
@@ -44,9 +47,16 @@ def lancer(url_base: str) -> bool:
         if _en_cours:
             return False
         _en_cours = True
-    threading.Thread(
-        target=_prechauffer, args=(url_base,), name="prechauffage-ecrans", daemon=True
-    ).start()
+    try:
+        threading.Thread(
+            target=_prechauffer, args=(url_base,), name="prechauffage-ecrans", daemon=True
+        ).start()
+    except RuntimeError:
+        # Plus de fil disponible : la page qui a demandé le préchauffage s'affiche quand même.
+        journal.exception("Préchauffage des écrans non lancé (sans effet sur les données)")
+        with _verrou:
+            _en_cours = False
+        return False
     return True
 
 

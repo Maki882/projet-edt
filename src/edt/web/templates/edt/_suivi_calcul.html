@@ -72,7 +72,7 @@
   <p><strong>Qualité :</strong> {{ r.qualite }}</p>
   {%- endif %}
   {%- if r.datees and r.datees.erreur %}
-  {{ ui.message("La semaine type est enregistrée, mais ses séances datées n'ont pas pu être produites : les recalculer depuis l'emploi du temps (semaine datée).", "attention") }}
+  {{ ui.message("La semaine type a été enregistrée, mais pas ses séances datées : les produire depuis l'écran « Emploi du temps » (bouton « Produire les séances datées »).", "attention") }}
   {%- endif %}
   {%- if r.datees and r.datees.a_programmer %}
   <details class="edt-groupe-contrainte" open>
@@ -124,7 +124,13 @@
     {%- if r.journal_nom %}, fichier journal <code>{{ r.journal_nom }}</code>{% endif %}.
   </p>
   <div class="edt-boutons">
-    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revenir à l'écran « Générer »</a>
+    {%- if r.suivi.version_id %}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {%- endif %}
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+      <button type="submit" class="bouton{% if not r.suivi.version_id %} bouton-principal{% endif %}">Relancer le même calcul</button>
+    </form>
+    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Revenir à l'écran « Générer »</a>
   </div>
   {%- endif %}
 
