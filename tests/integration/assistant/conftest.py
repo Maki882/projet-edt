@@ -9,6 +9,7 @@ from tests.outils.assistant.fixtures import (  # noqa: F401
     sans_cle,
     version_minimale,
 )
+from tests.outils.socle.fixtures import delai_verrou_court, verrou_ecriture  # noqa: F401
 
 
 @pytest.fixture(autouse=True)
