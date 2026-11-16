@@ -20,8 +20,8 @@ sous-navigation : pour l'onglet Données, « Établissement » (section
 Référentiels), « Besoins et disponibilités » (Planification), « Règles et
 calendrier » (Configuration), « Import et export » (Données) ; dans l'onglet
 Générer, la section À traiter (page « Points à traiter ») rejoint le groupe
-« Générer ». Une entrée peut
-choisir son groupe avec le champ `groupe` (par exemple « Jeux de données »).
+« Générer ». Une entrée peut choisir son groupe avec le champ `groupe` (par
+exemple « Jeux de données »).
 
 Un onglet peut recevoir une classe de couleur (`CLASSES_ONGLETS`), posée sur
 son élément de la barre : les deux onglets de tests ont chacun la leur.
