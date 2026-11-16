@@ -132,9 +132,9 @@ La description détaillée se trouve dans [architecture.md](../architecture.md).
 
 | Langage | Volume (fichiers suivis) | Utilité |
 |---|---|---|
-| Python 3.11 ou plus | 155 fichiers, 65 731 lignes dans `src/` ; 236 fichiers, 44 780 lignes de tests | Tout le code de l'application : services, générateur, vérificateur, interface web, ligne de commande, import et export, création des établissements fictifs, assistant, banc de tests. Choisi pour sa lisibilité et pour ses bibliothèques (programmation par contraintes, tableurs, agendas). |
+| Python 3.11 ou plus | 155 fichiers, 66 045 lignes dans `src/` ; 237 fichiers, 45 476 lignes de tests | Tout le code de l'application : services, générateur, vérificateur, interface web, ligne de commande, import et export, création des établissements fictifs, assistant, banc de tests. Choisi pour sa lisibilité et pour ses bibliothèques (programmation par contraintes, tableurs, agendas). |
 | HTML (gabarits Jinja2) | 65 gabarits | Structure des pages ; les variables et les boucles des gabarits sont remplies par le serveur. |
-| CSS | 4 fichiers, 3 188 lignes | Mise en page, couleurs par matière, grille d'emploi du temps, impression, petits écrans. |
+| CSS | 4 fichiers, 3 195 lignes | Mise en page, couleurs par matière, grille d'emploi du temps, impression, petits écrans. |
 | JavaScript | 3 fichiers, 810 lignes (hors HTMX) | Petits comportements d'interface : demande de confirmation avant une suppression, champs qui n'apparaissent qu'au besoin, recherche rapide dans les listes, blocs repliables, impression, panneau de l'assistant (envoi, suivi d'un échange, clavier). |
 | Bash | 10 scripts, 2 175 lignes | Installation du serveur, déploiement, clé de l'assistant, état et journaux. |
 | SQL | aucun fichier | Les requêtes sont produites par SQLAlchemy à partir des classes Python. |
@@ -238,14 +238,14 @@ les énumérations affichables dérivent de `EnumLibelle`. Un test vérifie que
 
 Les nombres ci-dessous sont ceux du tableau généré dans [tests/README.md](../../tests/README.md)
 (`python -m tests.outils.classement`), qui compte les fonctions de test ; pytest, qui compte
-chaque cas d'une fonction paramétrée à part, collecte 2 242 cas.
+chaque cas d'une fonction paramétrée à part, collecte 2 262 cas.
 
 | Famille | Fonctions | Contenu |
 |---|---|---|
-| Tests unitaires (`tests/unitaires/`) | 1 113 | Un module exercé seul : règles du vérificateur, modèles du générateur, lecture des fichiers, services, outils de l'assistant, catalogue du banc de tests... |
-| Tests d'intégration (`tests/integration/`) | 523 | Plusieurs couches assemblées : requêtes HTTP au vrai serveur de test, commandes, calculs complets ; dont 6 parcours de bout en bout. |
+| Tests unitaires (`tests/unitaires/`) | 1 121 | Un module exercé seul : règles du vérificateur, modèles du générateur, lecture des fichiers, services, outils de l'assistant, catalogue du banc de tests... |
+| Tests d'intégration (`tests/integration/`) | 533 | Plusieurs couches assemblées : requêtes HTTP au vrai serveur de test, commandes, calculs complets ; dont 6 parcours de bout en bout. |
 | Contrôle du rangement (`tests/test_rangement.py`) | 11 | Vérifie que chaque test est rangé dans la bonne famille et que les tableaux de nombres des documents sont à jour. |
-| dont cas limites (marqueur `cas_limite`) | 522 | Cas limites et pannes plausibles, chacun documenté par « Cas : … Risque : … ». |
+| dont cas limites (marqueur `cas_limite`) | 538 | Cas limites et pannes plausibles, chacun documenté par « Cas : … Risque : … ». |
 | dont tests de charge (marqueur `perf`) | 24 | Calculs longs sur l'établissement fictif grand, exclus de l'intégration continue. |
 
 Le vérificateur sert d'oracle aux tests du générateur : un emploi du temps produit est valide si
@@ -271,11 +271,12 @@ d'intégration » s'appuient sur le service `edt.services.banc_tests`, que la co
 - le résultat et la date de la dernière exécution de chaque test sont gardés dans
   `logs/tests/resultats.json`, avec le journal complet de la dernière exécution.
 
-Mesure faite sur le serveur de démonstration (Linux, deux cœurs), à la version 1.0.0 : la
-famille des tests unitaires, lancée par `python -m edt tests --famille unitaires`, a duré
-2 min 22 s : 1 093 tests (les 20 tests de charge ne partent pas avec la famille), 1 093
-réussis, 0 échec, 0 ignoré ; la famille des tests d'intégration, 4 min 07 s : 519 tests (hors
-les 4 tests de charge), 519 réussis.
+Mesure faite sur le serveur de démonstration (Linux, deux cœurs) le 16 novembre, avec le
+code de la version 1.0.0 : la famille des tests unitaires, lancée par
+`python -m edt tests --famille unitaires`, a duré 2 min 33 s : 1 101 tests (les
+20 tests de charge ne partent pas avec la famille), 1 101 réussis, 0 échec, 0 ignoré ;
+la famille des tests d'intégration, 5 min 00 s : 529 tests (hors les
+4 tests de charge), 529 réussis.
 
 ### 1.12 Assistant conversationnel
 
@@ -323,7 +324,7 @@ dépôt (discussions, décisions en séance, relectures orales) n'y figure pas.
 
 | Membre | Compte GitHub | Contributions visibles dans l'historique |
 |---|---|---|
-| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 50 des 51 pull requests ; 748 des 756 commits de la branche principale (code, tests, documentation, déploiement). 618 des 756 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
+| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 52 des 53 pull requests ; 812 des 820 commits de la branche principale (code, tests, documentation, déploiement). 680 des 820 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
 | Hugo | HugoLec94 | Premier vérificateur de conflits du planning et ses tests, versé par la première pull request ; il a ensuite été généralisé dans le vérificateur actuel. |
 | Kerime | kerime-2 | Réponses au questionnaire de cadrage (deux commits). |
 | — | dzzmimou48-cmd | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
@@ -376,7 +377,7 @@ partie concernée.
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
-41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 293 le 16/11 sur la branche principale.
+41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 357 le 16/11 sur la branche principale.
 
 ### 2.4 Environnement de développement
 
@@ -397,7 +398,7 @@ réglages sont exclus du suivi (`.gitignore`).
 > **Encadré : usage des assistants de programmation**
 >
 > Le projet a été réalisé avec des assistants de programmation fondés sur l'intelligence
-> artificielle ; 618 des 756 commits de la branche principale portent leur co-signature.
+> artificielle ; 680 des 820 commits de la branche principale portent leur co-signature.
 > Outils employés : Claude Code (Anthropic) ; le fichier `AGENTS.md` sert aussi à Codex.
 > Ils ont été employés selon les principes suivants.
 >
@@ -424,7 +425,7 @@ réglages sont exclus du suivi (`.gitignore`).
 | Méthode | Description |
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
-| Pull requests | 51 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 21 dernières (31 à 51) datent de la journée de finalisation du 16/11. |
+| Pull requests | 53 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 23 dernières (31 à 53) datent de la journée de finalisation du 16/11. |
 | Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il n'a pas servi : aucune issue n'a été ouverte (voir ci-dessous). |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |

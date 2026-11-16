@@ -304,6 +304,11 @@ rien n'est supprimé et la page le dit. Ce calcul est fait par
   version active).
 - **Un seul calcul à la fois** : si un calcul tourne, `/calculs` montre son
   suivi ; un second lancement mène au suivi du calcul en cours.
+- **Pendant une exécution des tests, un import ou un chargement
+  d'établissement fictif** : « Lancer », « Relancer le même calcul » et
+  « Proposer une autre solution » sont refusés et reviennent sur Générer avec
+  la cause et le remède ; pendant les tests, l'écran Générer le signale avant
+  le clic (`calculs.avertissement_tests_en_cours`).
 - **Résultat** : succès (séances placées, bilan des séances datées, liens
   vers l'emploi du temps et « Points à traiter », indicateurs, qualité) ; arrêté
   avec une solution (meilleure solution conservée, version enregistrée) ;

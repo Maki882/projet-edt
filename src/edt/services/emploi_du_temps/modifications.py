@@ -46,13 +46,17 @@ introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
 Le formulaire de déplacement d'une séance de la semaine type annonce, pour
 chaque heure de début, si le déplacement serait accepté (« possible ») ou
-refusé avec la salle que le formulaire présélectionne à cette heure
-(`_salle_proposee` : la salle déjà choisie si elle est libre à ce moment,
-sinon la salle actuelle si elle est libre, sinon la première salle libre).
-Le formulaire rechargé après le choix d'une heure présélectionne la même
-salle : « possible » garantit que l'enregistrement réussit sans toucher à la
-salle. Une salle occupée choisie explicitement part telle quelle et est
-refusée à l'enregistrement, avec sa raison. Les règles qui dépendent de la
+refusé avec la salle que le formulaire présélectionnera après le choix de
+cette heure (`_salle_proposee` : la salle présélectionnée du formulaire
+affiché si elle est libre à cette heure, sinon la salle actuelle si elle est
+libre, sinon la première salle libre). Le navigateur renvoie avec l'heure
+choisie la salle présélectionnée (`hx-include`), et le formulaire rechargé en
+déduit la même salle : « possible » garantit que l'enregistrement réussit
+sans toucher à la salle, après l'ouverture du panneau comme après un ou
+plusieurs changements du jour ou de l'heure. Hors garantie : une salle
+changée à la main (la liste des salles ne recharge pas le formulaire) est
+vérifiée à l'enregistrement seulement ; une salle occupée choisie ainsi est
+refusée, avec sa raison. Les règles qui dépendent de la
 salle (trajet entre campus, salle occupée, règles de salle) comptent donc.
 « possible, avec avertissement » : accepté, avec une entorse à une règle
 importante signalée. Quand aucune heure du jour n'est possible, le
@@ -318,9 +322,11 @@ def formulaire_seance(
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
     exigences = _Exigences.du_besoin(session, besoin)
-    annonce = _annoter_debuts(session, seance, exigences, jour, duree, debuts, salle_id)
     salles = _salles_hebdo(session, seance, exigences, jour, debut, fin)
     salle_id = _salle_proposee(salles, salle_id, seance.salle_id)
+    # Les heures sont annoncées à partir de la salle présélectionnée : c'est elle que le
+    # navigateur renverra avec l'heure choisie (hx-include), pas la salle reçue.
+    annonce = _annoter_debuts(session, seance, exigences, jour, duree, debuts, salle_id)
     return FormulaireSeance(
         bloc=bloc_seance(session, seance_hebdo_id),
         version_id=seance.version_id,
@@ -373,8 +379,11 @@ def _annoter_debuts(
     """Chaque heure de début suivie de « (possible) », « (possible, avec avertissement) »,
     « (refusé) » ou « (actuelle) ».
 
-    La vérification se fait avec la salle que le formulaire présélectionnerait à
-    cette heure (`_salle_proposee`), par le même raccord que l'enregistrement
+    `salle_demandee` : la salle présélectionnée du formulaire affiché, que le
+    navigateur renverra avec l'heure choisie. Chaque heure est vérifiée avec la
+    salle que le formulaire rechargé présélectionnera alors
+    (`_salle_proposee(salles de cette heure, salle_demandee, …)`), par le même
+    raccord que l'enregistrement
     (`raccords.verifier_modification`) ; les valeurs ne changent pas. Au-delà
     de `BUDGET_ANNOTATION_S`, les heures suivantes restent sans mention. Si la
     vérification est impossible, aucune mention, et la raison est rendue. Si

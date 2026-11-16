@@ -178,7 +178,7 @@ de ce qui est prévu.
 | O5 | Générer l'emploi du temps d'un semestre | Lancer le calcul de la semaine type puis des séances datées de tout le semestre ; les séances qui tombent un jour fermé sont replacées automatiquement. | Réalisée |
 | O6 | Être prévenu quand c'est impossible | Le résultat distingue « impossible (prouvé) » et « pas trouvé dans le temps imparti », avec les raisons connues. Aucun emploi du temps partiel n'est produit. | Réalisée |
 | O7 | Consulter l'emploi du temps | Par groupe, par enseignant ou par salle, avec une couleur par matière et le détail de chaque séance. | Réalisée |
-| O8 | Modifier une séance | Déplacer une séance (jour, heure, salle choisie parmi les salles qui conviennent). Pour une séance de la semaine type, chaque heure de début proposée est marquée « possible » ou « refusé » avant tout choix ; la modification est vérifiée avant d'être enregistrée et une salle occupée est refusée. | Réalisée |
+| O8 | Modifier une séance | Déplacer une séance (jour, heure, salle choisie parmi les salles qui conviennent). Pour une séance de la semaine type, chaque heure de début proposée est marquée « possible », « possible, avec avertissement » ou « refusé » avant tout choix ; la modification est vérifiée avant d'être enregistrée et une salle occupée est refusée. | Réalisée |
 | O9 | Importer des données | Charger les données de l'établissement depuis des fichiers CSV. | Réalisée |
 | O10 | Exporter l'emploi du temps | Exporter l'emploi du temps en fichier CSV, pour tout l'établissement ou pour une seule ressource. | Réalisée |
 | O11 | Charger un établissement fictif | Charger en une fois un établissement fictif réaliste, de trois tailles (petit, moyen, grand) ; un autre numéro de variante donne un autre établissement de même taille. | Réalisée |
@@ -325,7 +325,8 @@ membre de l'équipe du projet ou un examinateur.
   1. Dans **Emploi du temps**, en « Semaine type », l'utilisateur clique sur la séance : un
      panneau en donne le détail.
   2. Sous « Déplacer la séance (toutes les semaines) », il choisit le jour ; chaque heure de
-     début est marquée « (possible) » ou « (refusé) », et chaque salle occupée est signalée avec
+     début est marquée « (possible) », « (possible, avec avertissement) » ou « (refusé) », et
+     chaque salle occupée est signalée avec
      la séance qui l'occupe.
   3. Il choisit une heure possible et une salle libre, puis « Vérifier et enregistrer » ; il
      peut aussi cocher « Verrouiller la séance à sa nouvelle place ».

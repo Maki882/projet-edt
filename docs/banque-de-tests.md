@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 537 cas : 324 cas en tests unitaires et 213 cas en tests d'intégration.
+Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -83,8 +83,8 @@ Le catalogue compte 537 cas : 324 cas en tests unitaires et 213 cas en tests d'i
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
-| `web_edt` | 9 | 46 |
-| **Total** | **324** | **213** |
+| `web_edt` | 9 | 47 |
+| **Total** | **324** | **214** |
 
 ### Tests unitaires (324 cas)
 
@@ -757,7 +757,7 @@ Le catalogue compte 537 cas : 324 cas en tests unitaires et 213 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (213 cas)
+### Tests d'intégration (214 cas)
 
 #### `assistant` (7 cas)
 
@@ -1067,7 +1067,7 @@ Le catalogue compte 537 cas : 324 cas en tests unitaires et 213 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (46 cas)
+#### `web_edt` (47 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1138,6 +1138,7 @@ Le catalogue compte 537 cas : 324 cas en tests unitaires et 213 cas en tests d'i
 |---|---|---|
 | Heure possible choisie puis enregistree reussit | l'utilisateur choisit une heure « (possible) » ; HTMX recharge le formulaire en renvoyant la salle actuelle de la séance, occupée à cette heure par une autre séance. | la salle occupée reste sélectionnée et « Vérifier et enregistrer » refuse le déplacement (« Une séance par salle »), alors que l'heure était annoncée possible. |
 | Chaque heure possible du jeu minimal s enregistre | pour chaque séance de la version et chaque jour, la première heure annoncée « (possible) », choisie puis enregistrée telle que le formulaire se présente. | une annonce « possible » démentie à l'enregistrement par le bandeau rouge. |
+| Changer le jour puis choisir une heure possible | l'utilisateur change le jour ; le navigateur renvoie l'heure et la salle affichées, occupée ce jour-là, et le formulaire présélectionne une autre salle. Il choisit ensuite une heure « (possible) » en renvoyant cette autre salle. | l'heure a été annoncée avec la salle reçue, pas avec la salle présélectionnée que le navigateur renverra : l'enregistrement est refusé (trajet entre campus, salle indisponible). |
 
 [`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
 

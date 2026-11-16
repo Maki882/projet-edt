@@ -8,4 +8,4 @@ Le paquet est organisé en couches (voir `docs/architecture.md`) :
 - `edt.db` : moteur SQLAlchemy, modèles ORM, données par défaut.
 """
 
-__version__ = "0.1.0"
+__version__ = "1.0.0"

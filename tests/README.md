@@ -138,9 +138,9 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 135 | 172 |
-| **Total** | **1 121** | **531** | **1 652** |
-| dont cas limites (`cas_limite`) | 324 | 213 | 537 |
+| `web_edt` | 37 | 137 | 174 |
+| **Total** | **1 121** | **533** | **1 654** |
+| dont cas limites (`cas_limite`) | 324 | 214 | 538 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
