@@ -6,10 +6,12 @@ import sys
 import types
 
 import pytest
+from starlette.requests import Request
 from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
 
 from edt.erreurs import ErreurConfiguration
 from edt.web import app as module_app
+from edt.web.gabarits import rediriger
 
 
 def test_module_de_routes_sans_routeur_refuse(base, monkeypatch):
@@ -46,3 +48,25 @@ def test_macros_tableau_formulaire_et_message():
     assert '<option value="2" selected>Cours</option>' in page
     assert 'class="message message-succes"' in page
     assert "8 h 30 / 2 h / mercredi" in page
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("adresse", "attendue"),
+    [
+        ("/salles?q=日", "/salles?q=%E6%97%A5"),
+        ("/regles?q=été&annee=1", "/regles?q=%C3%A9t%C3%A9&annee=1"),
+        ("/salles?q=N%C3%A9", "/salles?q=N%C3%A9"),  # déjà codée : laissée telle quelle
+    ],
+)
+def test_redirection_htmx_vers_une_adresse_non_ascii(adresse, attendue):
+    """Cas : une action envoyée par HTMX revient à une adresse dont la recherche contient
+    « é » ou « 日 » (champ caché `retour`).
+
+    Risque : l'en-tête `HX-Redirect` n'accepte que le latin-1 : page 500 et écriture valide
+    annulée au lieu de la redirection.
+    """
+    requete = Request({"type": "http", "method": "POST", "headers": [(b"hx-request", b"true")]})
+    reponse = rediriger(requete, adresse, "Enregistré.")
+    assert reponse.status_code == 204
+    assert reponse.headers["HX-Redirect"] == attendue

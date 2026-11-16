@@ -13,7 +13,8 @@ import pytest
 from fastapi import APIRouter, Request
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, ProgrammingError
+from starlette.exceptions import HTTPException
 from tests.outils.socle.extension_web import NOM_MODULE_ESSAI
 
 from edt.db.initialisation import supprimer_schema
@@ -37,6 +38,7 @@ def _app_etendue(monkeypatch):
 
     Les routes d'essai provoquent ce qu'une vraie route pourrait faire : une
     panne, un refus métier, une erreur du pilote de base (`/essai/panne-base?cause=…`),
+    une erreur de programmation signalée par le pilote, un envoi trop volumineux,
     une écriture (`POST /essai/campus?code=…`).
     """
     routeur = APIRouter(prefix="/essai")
@@ -52,6 +54,14 @@ def _app_etendue(monkeypatch):
     @routeur.get("/panne-base")
     def panne_base(cause: str):
         raise OperationalError("UPDATE parametre ...", {}, sqlite3.OperationalError(cause))
+
+    @routeur.get("/requete-fausse")
+    def requete_fausse():
+        raise ProgrammingError("SELECT ?", (), sqlite3.ProgrammingError("Incorrect bindings"))
+
+    @routeur.get("/trop-gros")
+    def trop_gros():
+        raise HTTPException(status_code=413)
 
     @routeur.post("/campus")
     def creer_campus(request: Request, session: SessionRequete, code: str):
@@ -332,6 +342,7 @@ def test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_de
     ("cause", "mot"),
     [
         ("database is locked", "occupée"),
+        ("database is busy", "occupée"),
         ("no such table: parametre", "init-db"),
         ("file is not a database", "pas une base SQLite"),
     ],
@@ -363,6 +374,31 @@ def test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes(client_etendu,
     """
     reponse = client_etendu.get("/essai/panne-base", params={"cause": cause})
     assert reponse.status_code == 503 and mot in reponse.text
+
+
+@pytest.mark.cas_limite
+def test_une_erreur_de_programmation_du_pilote_est_une_page_500(client_etendu, environnement):
+    """Cas : le pilote de base signale une erreur de programmation (paramètres faux, curseur
+    fermé) : un défaut du code, pas une panne de la base.
+
+    Risque : page 503 « réessayer dans quelques instants », conseil inopérant, au lieu de la
+    page 500 qui donne la référence à communiquer.
+    """
+    reponse = client_etendu.get("/essai/requete-fausse")
+    assert reponse.status_code == 500
+    assert "erreur inattendue" in reponse.text and reponse.headers["X-Request-ID"] in reponse.text
+    assert "Incorrect bindings" in _journal(environnement)
+
+
+@pytest.mark.cas_limite
+def test_un_envoi_trop_volumineux_donne_une_page_qui_dit_quoi_faire(client_etendu):
+    """Cas : l'application refuse un envoi trop volumineux (413).
+
+    Risque : page générique « Requête refusée » qui ne dit ni la cause ni le remède.
+    """
+    reponse = client_etendu.get("/essai/trop-gros")
+    assert reponse.status_code == 413
+    assert "Envoi trop volumineux" in reponse.text and "découper" in reponse.text
 
 
 @pytest.mark.cas_limite

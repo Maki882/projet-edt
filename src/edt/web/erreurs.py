@@ -11,7 +11,9 @@ Aucun écran n'affiche d'erreur brute :
 - une panne du pilote de base (base occupée, non initialisée, fichier qui
   n'est pas une base SQLite, en lecture seule, disque plein, inaccessible)
   devient un 503 qui dit quoi faire ;
-- toute autre exception est interceptée par l'intergiciel
+- une erreur de programmation signalée par le pilote (`ProgrammingError`,
+  `InternalError`, `NotSupportedError` : paramètres faux, curseur fermé) et
+  toute autre exception sont interceptées par l'intergiciel
   (`edt.web.intergiciels`), journalisée avec sa trace, et rendue par la même
   page d'erreur avec l'identifiant de la requête.
 
@@ -28,7 +30,13 @@ from collections.abc import Iterable
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy.exc import DatabaseError, IntegrityError
+from sqlalchemy.exc import (
+    DatabaseError,
+    IntegrityError,
+    InternalError,
+    NotSupportedError,
+    ProgrammingError,
+)
 from starlette.exceptions import HTTPException as ErreurHTTP
 
 from edt.erreurs import (
@@ -53,15 +61,38 @@ STATUTS: tuple[tuple[type[ErreurEDT], int, str], ...] = (
     (ErreurRegleMetier, 409, "Opération refusée"),
     (ErreurInfaisable, 422, "Emploi du temps impossible"),
     (ErreurTempsDepasse, 422, "Temps de calcul dépassé"),
-    (ErreurNonLivre, 501, "Fonction pas encore disponible"),
+    (ErreurNonLivre, 501, "Fonction indisponible"),
     (ErreurConfiguration, 500, "Configuration invalide"),
 )
 """Statut HTTP et titre de page par classe d'erreur métier (la première qui correspond)."""
 
 TITRES_HTTP = {
-    404: ("Page introuvable", "Cette page n'existe pas ou n'existe plus."),
-    405: ("Action non permise", "Cette action n'est pas permise sur cette page."),
+    404: (
+        "Page introuvable",
+        "Cette page n'existe pas ou n'existe plus. Vérifier l'adresse, ou passer par le menu "
+        "pour retrouver l'écran voulu.",
+    ),
+    405: (
+        "Action non permise",
+        "Cette page ne permet pas cette action : rien n'a été modifié. Revenir à la page "
+        "précédente et utiliser ses boutons.",
+    ),
+    413: (
+        "Envoi trop volumineux",
+        "Le fichier ou le formulaire envoyé dépasse la taille admise : rien n'a été reçu ni "
+        "modifié. Envoyer un fichier plus petit, ou découper l'envoi en plusieurs fichiers.",
+    ),
 }
+"""Titre et message des erreurs HTTP courantes ; les autres reçoivent `TITRE_HTTP_AUTRE`."""
+
+TITRE_HTTP_AUTRE = (
+    "Demande refusée",
+    "Cette demande n'a pas pu être traitée : rien n'a été modifié. Revenir à la page "
+    "précédente et réessayer.",
+)
+
+ERREURS_DE_PROGRAMMATION = (ProgrammingError, InternalError, NotSupportedError)
+"""Erreurs du pilote qui révèlent un défaut du code, pas une panne de la base : page 500."""
 
 
 def veut_du_json(request: Request) -> bool:
@@ -116,9 +147,7 @@ async def _erreur_metier(request: Request, erreur: ErreurEDT) -> Response:
 
 
 async def _erreur_http(request: Request, erreur: ErreurHTTP) -> Response:
-    titre, message = TITRES_HTTP.get(
-        erreur.status_code, ("Requête refusée", "Cette demande n'a pas pu être traitée.")
-    )
+    titre, message = TITRES_HTTP.get(erreur.status_code, TITRE_HTTP_AUTRE)
     journal.info("Erreur HTTP %d sur %s", erreur.status_code, request.url.path)
     return reponse_erreur(request, statut=erreur.status_code, titre=titre, message=message)
 
@@ -127,13 +156,17 @@ async def _saisie_invalide(request: Request, erreur: RequestValidationError) -> 
     details = []
     for anomalie in erreur.errors():
         champ = " / ".join(str(e) for e in anomalie.get("loc", ()) if e not in ("body", "query"))
-        details.append(f"{champ or 'requête'} : valeur manquante ou invalide")
+        details.append(f"{champ or 'formulaire'} : valeur manquante ou invalide")
     journal.warning("Saisie invalide sur %s : %s", request.url.path, erreur.errors())
     return reponse_erreur(
         request,
         statut=422,
         titre="Saisie invalide",
-        message="Certaines valeurs envoyées sont manquantes ou invalides.",
+        message=(
+            "Certaines valeurs envoyées sont manquantes ou invalides : rien n'a été "
+            "enregistré. Revenir au formulaire, corriger les champs cités ci-dessous, puis "
+            "renvoyer."
+        ),
         details=details,
     )
 
@@ -160,10 +193,14 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     supprimées puis recréées : une requête qui tombe à ce moment-là reçoit
     « occupée, réessayer », pas le conseil d'initialiser la base. Un fichier
     qui n'est pas une base SQLite (`sqlite3.DatabaseError`, qui n'est pas une
-    `OperationalError`) reçoit le même traitement, avec son remède.
+    `OperationalError`) reçoit le même traitement, avec son remède. Une erreur
+    de programmation (`ERREURS_DE_PROGRAMMATION`) est relevée : l'intergiciel
+    en fait la page 500 avec sa référence, au lieu d'un « réessayer » inopérant.
     """
+    if isinstance(erreur, ERREURS_DE_PROGRAMMATION):
+        raise erreur
     cause = str(erreur.orig or erreur).lower()
-    if operation_en_cours() or "locked" in cause:
+    if operation_en_cours() or "locked" in cause or "busy" in cause:
         journal.warning("Base de données occupée sur %s : %s", request.url.path, erreur.orig)
         return reponse_erreur(
             request,
@@ -179,15 +216,16 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     titre = "Base de données indisponible"
     if "no such table" in cause:
         message = (
-            "La base de données n'est pas prête : elle n'est pas initialisée. Lancer "
-            "« python -m edt init-db », ou la remettre à zéro dans Données > Jeux de "
-            "données, puis réessayer."
+            "La base de données n'est pas prête : elle n'est pas initialisée. La remettre à "
+            "zéro dans Données > Jeux de données, ou faire lancer « python -m edt init-db » "
+            "par l'administrateur du serveur, puis réessayer."
         )
     elif "not a database" in cause or "malformed" in cause:
         message = (
             "Le fichier de la base de données est illisible : ce n'est pas une base SQLite, "
-            "ou il est corrompu. Restaurer une sauvegarde, ou recréer la base avec "
-            "« python -m edt init-db --reset » (les données sont perdues), puis réessayer."
+            "ou il est corrompu. À faire par l'administrateur du serveur : restaurer une "
+            "sauvegarde, ou recréer la base avec « python -m edt init-db --reset » (les "
+            "données sont perdues), puis réessayer."
         )
     elif "readonly" in cause or "read-only" in cause:
         titre = "Base de données en lecture seule"
@@ -207,7 +245,8 @@ async def _base_indisponible(request: Request, erreur: DatabaseError) -> Respons
     else:
         message = (
             "La base de données n'est pas accessible. Réessayer dans quelques instants ; si "
-            "le problème persiste, communiquer la référence ci-dessous à l'administrateur."
+            "le problème persiste, communiquer la référence ci-dessous à l'administrateur "
+            "du serveur."
         )
     return reponse_erreur(request, statut=503, titre=titre, message=message)
 

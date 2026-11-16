@@ -1,8 +1,9 @@
 """Intergiciels : journalisation des requêtes, HEAD servi comme GET.
 
 `IntergicielHead` : FastAPI ne déclare que GET pour `@routeur.get`
-(Starlette, lui, y ajoute HEAD) ; une sonde de supervision ou `curl -I`
-recevait donc 405 partout. HEAD suit le chemin de GET, corps retiré.
+(Starlette, lui, y ajoute HEAD) ; sans cet intergiciel, une sonde de
+supervision ou `curl -I` recevrait 405 partout. HEAD suit le chemin de GET,
+corps retiré.
 
 `IntergicielJournal`, pour chaque requête HTTP :
 
@@ -97,8 +98,9 @@ class IntergicielJournal:
                     statut=500,
                     titre="Une erreur inattendue s'est produite",
                     message=(
-                        "L'opération n'a pas pu aboutir. L'incident a été enregistré : la "
-                        "référence ci-dessous permet de le retrouver dans le journal."
+                        "L'opération n'a pas abouti et l'incident a été enregistré. Réessayer ; "
+                        "si le problème revient, communiquer la référence ci-dessous à "
+                        "l'administrateur du serveur."
                     ),
                 )
                 await reponse(scope, receive, envoyer)
