@@ -3,7 +3,7 @@
 Il n'y a pas de migrations : `initialiser_base(reset=True)` supprime tout et
 recrée. Sans `reset`, l'initialisation est **idempotente** : elle crée les
 tables manquantes et ajoute les données par défaut absentes, sans jamais
-modifier une ligne existante (on peut donc la relancer à chaque déploiement).
+modifier une ligne existante : elle se relance sans risque à chaque déploiement.
 Les listes par défaut (grille horaire, types de salle, équipements, types de
 séance) ne sont posées que dans une base **neuve** (qui n'a encore aucun
 paramètre enregistré) : une ligne supprimée exprès par l'utilisateur, ou une
@@ -16,8 +16,8 @@ Schéma périmé
 Créer les tables manquantes ne suffit pas : après une mise à jour du code,
 une table **déjà là** peut ne plus avoir les colonnes du modèle, et
 l'application planterait à la première requête qui les touche.
-`ecarts_schema()` compare donc chaque table existante au modèle, colonne par
-colonne. Tant qu'il reste un écart, `initialiser_base()` sans `reset` refuse
+`ecarts_schema()` compare donc chaque table existante au modèle : colonnes,
+unicités et index. Tant qu'il reste un écart, `initialiser_base()` sans `reset` refuse
 de continuer (`ErreurSchemaPerime`) sans rien modifier, et la base n'est pas
 considérée comme initialisée (`base_initialisee`). Le seul remède est
 `reset=True`, qui efface les données.
@@ -286,10 +286,10 @@ def ecarts_schema(moteur: Engine) -> list[str]:
     crée, voir `tables_manquantes`) et une table de la base inconnue du
     modèle (elle est simplement ignorée).
 
-    Limite assumée : les clés étrangères (règle de suppression) et les
-    contrôles entre colonnes (CHECK autres que les énumérations) ne sont pas
-    comparés. Après un tel changement du modèle, recréer la base avec
-    `reset=True`.
+    Limite : ne sont pas comparés les clés étrangères (règle de suppression),
+    les contrôles (CHECK autres que les énumérations) ni la condition d'un
+    index partiel (`sqlite_where`). Après un tel changement du modèle,
+    recréer la base avec `reset=True`.
     """
     inspecteur = inspect(moteur)
     presentes = set(inspecteur.get_table_names())
@@ -572,7 +572,7 @@ def _inserer_types_seance(session: Session, neuve: bool) -> int:
             code=code,
             libelle=libelle,
             samedi_autorise=samedi,
-            type_salle_defaut=types_salle.get(salle_defaut) if salle_defaut else None,
+            type_salle_defaut=_type_salle_defaut(types_salle, code, salle_defaut),
             couleur=couleur,
         )
         for code, libelle, samedi, salle_defaut, couleur in TYPES_SEANCE
@@ -582,17 +582,42 @@ def _inserer_types_seance(session: Session, neuve: bool) -> int:
     return len(nouveaux)
 
 
+def _type_salle_defaut(
+    types_salle: dict[str, TypeSalle], type_seance: str, code: str | None
+) -> TypeSalle | None:
+    """Type de salle par défaut d'un type de séance, s'il existe dans la base.
+
+    Une base sans paramètre mais dont les types de salle sont déjà saisis peut ne pas
+    avoir celui de la liste par défaut : le type de séance est alors créé sans type de
+    salle par défaut, et c'est journalisé.
+    """
+    if code is None:
+        return None
+    if code not in types_salle:
+        journal.warning(
+            "Type de séance %s créé sans type de salle par défaut : le type de salle %s "
+            "n'existe pas dans la base",
+            type_seance,
+            code,
+        )
+        return None
+    return types_salle[code]
+
+
 ANCIENNE_CLE_DEJEUNER = "dejeuner_horaires_determines"
-"""Paramètre booléen d'avant `dejeuner_mode`, encore présent dans les bases d'alors."""
+"""Clé booléenne du réglage du déjeuner, que `dejeuner_mode` remplace.
+
+Une base qui la porte encore est reprise par `init-db` (voir `_inserer_parametres`)."""
 
 
 def _inserer_parametres(session: Session) -> int:
-    """Ajoute les paramètres absents avec leur défaut ; reprend l'ancien réglage du déjeuner.
+    """Ajoute les paramètres absents avec leur défaut, et reprend la clé `dejeuner_horaires_determines`.
 
-    Une base d'avant `dejeuner_mode` porte le booléen `dejeuner_horaires_determines` :
+    Si la base porte le booléen `dejeuner_horaires_determines` sans `dejeuner_mode`,
     le mode inséré en découle (vrai : horaires déterminés, faux : pas de pause) au
-    lieu du défaut, puis la ligne devenue inutile est supprimée. Sans cela, le
-    choix « pas de pause » de l'utilisateur basculerait en silence au défaut.
+    lieu du défaut ; dans tous les cas, cette clé est ensuite supprimée. Le choix
+    « pas de pause » enregistré sous cette clé ne bascule donc pas en silence au
+    défaut.
     """
     enregistres = dict(session.execute(select(Parametre.cle, Parametre.valeur)).all())
     defauts = {entree.cle: entree.defaut for entree in definitions()}
@@ -606,13 +631,13 @@ def _inserer_parametres(session: Session) -> int:
                 )
             defauts["dejeuner_mode"] = DEJEUNER_FIXE if ancien else DEJEUNER_AUCUN
             journal.info(
-                "Ancien paramètre « %s » = %r : le mode de déjeuner « %s » est enregistré à sa place.",
+                "Paramètre « %s » = %r : le mode de déjeuner « %s » est enregistré à sa place.",
                 ANCIENNE_CLE_DEJEUNER,
                 ancien,
                 defauts["dejeuner_mode"],
             )
         session.delete(session.get(Parametre, ANCIENNE_CLE_DEJEUNER))
-        journal.info("Ancien paramètre « %s » supprimé de la base.", ANCIENNE_CLE_DEJEUNER)
+        journal.info("Paramètre « %s » supprimé de la base.", ANCIENNE_CLE_DEJEUNER)
     nouveaux = [
         Parametre(cle=cle, valeur=valeur)
         for cle, valeur in defauts.items()

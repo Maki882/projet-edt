@@ -13,17 +13,12 @@ from __future__ import annotations
 
 import unicodedata
 
-_ESPACES_EXOTIQUES = dict.fromkeys(
-    map(
-        ord,
-        "\u00a0\u202f\u2007\u2009\u200a\u2002\u2003\u2004\u2005\u2006\u2008\u3000\t",
-    ),
-    " ",
-)
-"""Espaces insécables, fines ou idéographiques et tabulations : ramenés à l'espace simple."""
-
 _INVISIBLES = dict.fromkeys(map(ord, "\u200b\u200c\u200d\u2060\ufeff"), None)
-"""Caractères de largeur nulle (dont la marque d'ordre des octets) : supprimés."""
+"""Caractères de largeur nulle (dont la marque d'ordre des octets) : supprimés.
+
+Ce ne sont pas des espaces pour Python (`isspace()` faux) : `str.split()` ne les retire pas.
+Les espaces insécables, fines, idéographiques et les tabulations, eux, sont des espaces :
+`str.split()` sans argument coupe dessus."""
 
 
 def normaliser_code(valeur: str) -> str:
@@ -37,5 +32,4 @@ def normaliser_code(valeur: str) -> str:
     if not isinstance(valeur, str):
         return valeur
     texte = unicodedata.normalize("NFC", valeur)
-    texte = texte.translate(_INVISIBLES).translate(_ESPACES_EXOTIQUES)
-    return " ".join(texte.split())
+    return " ".join(texte.translate(_INVISIBLES).split())

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import logging
 from pathlib import Path
 
 import pytest
@@ -406,6 +407,30 @@ def test_init_db_relance_ne_recree_pas_un_referentiel_supprime_volontairement(ba
         # Un paramètre absent, lui, est toujours reposé (paramètre nouveau d'une version).
         session.delete(session.get(m.Parametre, "pause_min"))
     assert initialiser_base(aujourdhui=aujourdhui).ajouts["parametre"] == 1
+
+
+@pytest.mark.cas_limite
+def test_un_type_de_seance_par_defaut_sans_son_type_de_salle_est_signale(base, aujourdhui, caplog):
+    """Cas : base sans aucun paramètre ni type de séance, mais dont les types de salle sont
+    déjà saisis sans « AMPHI » (base remplie à la main, puis `init-db`).
+
+    Risque : le type de séance « CM » créé sans type de salle par défaut, sans un mot ; la
+    création continue, mais l'écart est journalisé avec les deux codes.
+    """
+    with session_base() as session:
+        session.execute(delete(m.Parametre))
+        session.execute(delete(m.TypeSeance))
+        session.delete(session.scalar(select(m.TypeSalle).where(m.TypeSalle.code == "AMPHI")))
+
+    with caplog.at_level(logging.WARNING, logger="edt.db.initialisation"):
+        rapport = initialiser_base(aujourdhui=aujourdhui)
+
+    assert rapport.ajouts["type_seance"] > 0
+    with session_base() as session:
+        cm = session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "CM"))
+        td = session.scalar(select(m.TypeSeance).where(m.TypeSeance.code == "TD"))
+        assert cm.type_salle_defaut is None and td.type_salle_defaut.code == "COURS"
+    assert "CM" in caplog.text and "AMPHI" in caplog.text
 
 
 @pytest.mark.cas_limite

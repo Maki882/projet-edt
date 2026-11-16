@@ -8,7 +8,7 @@ import time
 
 import pytest
 from sqlalchemy import func, select
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import DatabaseError, OperationalError
 
 from edt.db import moteur as module_moteur
 from edt.db.modeles import Campus
@@ -83,6 +83,10 @@ def test_un_identifiant_hors_des_entiers_sqlite_est_invalide():
         ("file is not a database", "n'est pas une base SQLite"),
         ("database or disk is full", "disque"),
         ("une autre cause", "inaccessible : une autre cause"),
+        (
+            "RIGHT and FULL OUTER JOINs are not currently supported",
+            "inaccessible : RIGHT and FULL",
+        ),
     ],
 )
 def test_les_erreurs_du_pilote_sont_expliquees_avec_leur_remede(cause, mot):
@@ -90,9 +94,15 @@ def test_les_erreurs_du_pilote_sont_expliquees_avec_leur_remede(cause, mot):
     disque plein).
 
     Risque : un message technique sans remède ; l'opérateur pourrait effacer la base pour un
-    simple verrou.
+    simple verrou, ou libérer du disque pour une requête que la version de SQLite refuse
+    (« FULL OUTER JOIN » ne veut pas dire « disque plein »). Chaque cause est enveloppée
+    dans la classe que le pilote lève vraiment : `DatabaseError` pour un fichier qui n'est
+    pas une base, `OperationalError` sinon.
     """
-    erreur = OperationalError("INSERT ...", {}, sqlite3.OperationalError(cause))
+    if "not a database" in cause:
+        erreur = DatabaseError("SELECT ...", {}, sqlite3.DatabaseError(cause))
+    else:
+        erreur = OperationalError("INSERT ...", {}, sqlite3.OperationalError(cause))
     assert mot in expliquer_erreur_base(erreur)
 
 
@@ -153,7 +163,7 @@ def test_transaction_immediate_prend_le_verrou_d_ecriture_des_l_ouverture(base, 
 
     Risque : avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire
     échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et
-    deux imports pouvaient commencer en même temps ; les lecteurs doivent rester servis.
+    deux imports pourraient commencer en même temps ; les lecteurs doivent rester servis.
     """
     chemin = environnement / "edt.db"
     with session_base() as session:

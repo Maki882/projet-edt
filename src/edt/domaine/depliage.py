@@ -47,9 +47,6 @@ from edt.domaine.instantane import Besoin, JourFerme, ProblemeDepliage, SeanceAP
 JOURS_OUVRES_PAR_DEFAUT: tuple[int, ...] = (0, 1, 2, 3, 4)
 """Lundi à vendredi : valeur par défaut du paramètre `jours_travailles`."""
 
-JOURS_OUVRES = JOURS_OUVRES_PAR_DEFAUT
-"""Ancien nom, conservé pour les appelants : préférer `Parametres.jours_travailles`."""
-
 _JoursFermes = tuple[frozenset[int], tuple[tuple[frozenset[int], range], ...]]
 """Jours fermés pour tous, puis plages de jours fermés pour certains groupes (numéros de jour)."""
 

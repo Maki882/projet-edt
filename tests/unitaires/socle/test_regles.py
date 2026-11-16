@@ -1124,8 +1124,10 @@ def test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes(etab,
     """Cas : la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne
     convient au TD.
 
-    Risque : `jours_permis()` vide sans un mot ; la pré-vérification ne savait dire que « la
+    Risque : `jours_permis()` vide sans un mot ; la pré-vérification ne saurait dire que « la
     grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles.
+    Inversement, un avertissement par séance noierait le journal : un seul par ensemble de
+    règles, qui compte et cite les séances.
     """
     etab.regle(TypeRegle.JOURS_TRAVAILLES, groupe_portee(etab, 2), {"jours": ["lundi"]})
     etab.regle(TypeRegle.JOURS_TRAVAILLES, enseignant_portee(etab, 1), {"jours": ["mardi"]})
@@ -1136,6 +1138,10 @@ def test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes(etab,
     assert jours.jours_permis() == frozenset()
     assert [r.code for r in jours.regles_incompatibles] == ["R001", "R002"]
     assert "2-1" in caplog.text and "R001, R002" in caplog.text
+    avertissements = [r for r in caplog.records if "sans aucun jour permis" in r.getMessage()]
+    seances_sans_jour = [s for s, j in reglages.jours.items() if j.regles_incompatibles]
+    assert len(seances_sans_jour) > 1 and len(avertissements) == 1
+    assert avertissements[0].getMessage().startswith(f"{len(seances_sans_jour)} séance(s)")
     assert reglages.jours_de("4-1").regles_incompatibles == ()  # TD de A1-G2 par Mme Roux
 
 

@@ -9,7 +9,7 @@ le mode WAL et un délai d'attente sur verrou.
 Transactions : le pilote `sqlite3` de Python n'ouvre une transaction qu'avant
 une écriture, si bien qu'un SAVEPOINT émis avant toute écriture ouvrirait
 lui-même la transaction et que son RELEASE la validerait, malgré un rollback
-englobant. On lui retire donc la main (`isolation_level=None`) et SQLAlchemy
+englobant. Le pilote est donc réglé en `isolation_level=None` et SQLAlchemy
 émet le `BEGIN` au début de chaque transaction (recommandation de sa
 documentation) : un point de sauvegarde libéré reste annulable par la
 transaction qui le contient. Deux modes :
@@ -62,6 +62,13 @@ OPTION_ECRITURE_IMMEDIATE = "edt_ecriture_immediate"
 _verrou = threading.Lock()
 _moteurs: dict[str, Engine] = {}
 
+# SQLAlchemy avertit (et ignore l'option) quand `transaction_immediate` vise une connexion déjà
+# établie : `transaction_immediate` contrôle ce cas et en fait une erreur. Le filtre est posé
+# une fois pour tout le processus, car `warnings.catch_warnings` n'est pas sûr entre fils.
+warnings.filterwarnings(
+    "ignore", message="Connection is already established for the given bind", category=SAWarning
+)
+
 
 def identifiant_valide(valeur: object) -> bool:
     """Vrai si `valeur` peut désigner une ligne : entier strictement positif dans les bornes de SQLite.
@@ -103,14 +110,14 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
             "corrompu, tronqué ou remplacé) : restaurer une sauvegarde, ou recréer la base avec "
             "« python -m edt init-db --reset » (les données sont perdues)."
         )
-    if "full" in minuscule:
+    if "disk is full" in minuscule:
         return "Le disque de la base de données est plein : libérer de l'espace, puis réessayer."
     return f"La base de données est inaccessible : {cause}"
 
 
 def _preparer_sqlite(connexion_dbapi, _enregistrement) -> None:
     """Réglages appliqués à chaque nouvelle connexion SQLite."""
-    # Le pilote ne doit plus ouvrir de transaction lui-même (voir l'en-tête du module).
+    # Le pilote n'ouvre pas de transaction lui-même : SQLAlchemy émet le BEGIN (voir l'en-tête).
     connexion_dbapi.isolation_level = None
     curseur = connexion_dbapi.cursor()
     try:
@@ -123,7 +130,7 @@ def _preparer_sqlite(connexion_dbapi, _enregistrement) -> None:
 
 
 def _commencer_transaction(connexion) -> None:
-    """Ouvre explicitement la transaction SQLite (le pilote ne le fait plus, voir l'en-tête).
+    """Ouvre explicitement la transaction SQLite (le pilote ne le fait pas, voir l'en-tête).
 
     `BEGIN IMMEDIATE` si la connexion porte l'option `OPTION_ECRITURE_IMMEDIATE`
     (`transaction_immediate`), `BEGIN` différé sinon.
@@ -152,11 +159,9 @@ def transaction_immediate(session: Session) -> None:
     l'option, le `BEGIN` différé est déjà émis et la transaction resterait
     différée en silence.
     """
-    with warnings.catch_warnings():
-        # SQLAlchemy avertit (et ignore l'option) si la connexion existe déjà : le cas est
-        # contrôlé juste après et devient une erreur, pas un avertissement perdu.
-        warnings.simplefilter("ignore", SAWarning)
-        connexion = session.connection(execution_options={OPTION_ECRITURE_IMMEDIATE: True})
+    # Connexion déjà établie : SQLAlchemy ignore l'option (avertissement filtré en tête du
+    # module), le cas est contrôlé juste après et devient une erreur.
+    connexion = session.connection(execution_options={OPTION_ECRITURE_IMMEDIATE: True})
     if not connexion.get_execution_options().get(OPTION_ECRITURE_IMMEDIATE):
         raise ErreurConfiguration(
             "Le verrou d'écriture immédiat se demande avant la première requête de la "

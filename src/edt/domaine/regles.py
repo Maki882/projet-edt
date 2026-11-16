@@ -2048,7 +2048,7 @@ def seances_concernees(regle: Regle | RegleResolue, instantane: Instantane) -> f
 def resoudre_regle(
     regle: Regle,
     instantane: Instantane,
-    identifiants: Mapping[str, Mapping[str, int]] | None = None,
+    identifiants: Mapping[str, Mapping[str, int | Collection[int]]] | None = None,
 ) -> RegleResolue:
     """Résout une règle active sur un instantané (valeurs, semaines, cibles, phrase).
 
@@ -2141,6 +2141,7 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
 
     jt = TypeRegle.JOURS_TRAVAILLES
     jours: dict[str, ReglesJours] = {}
+    sans_jour: dict[tuple[str, ...], list[str]] = {}
     for seance in instantane.seances:
         besoin = seance.besoin
         axes: list[Lignee] = []
@@ -2178,13 +2179,18 @@ def resoudre_reglages(instantane: Instantane) -> Reglages:
         )
         incompatibles = jours[seance.id].regles_incompatibles
         if incompatibles:
-            journal.warning(
-                "Séance %s (%s) : aucun jour permis, les règles de jours retenues sont "
-                "incompatibles entre elles : %s",
-                seance.id,
-                besoin.libelle,
-                ", ".join(r.code for r in incompatibles),
-            )
+            sans_jour.setdefault(tuple(r.code for r in incompatibles), []).append(seance.id)
+    # Un même couple de règles contradictoires touche souvent des dizaines de séances :
+    # un avertissement par ensemble de règles, pas un par séance.
+    for codes, seances_sans_jour in sans_jour.items():
+        journal.warning(
+            "%d séance(s) sans aucun jour permis : les règles de jours %s sont incompatibles "
+            "entre elles (séances %s%s)",
+            len(seances_sans_jour),
+            ", ".join(codes),
+            ", ".join(seances_sans_jour[:5]),
+            ", ..." if len(seances_sans_jour) > 5 else "",
+        )
 
     toutes = frozenset(semaine.numero for semaine in instantane.semaines)
 
