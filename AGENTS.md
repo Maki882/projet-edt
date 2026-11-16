@@ -107,7 +107,7 @@ src/edt/
   synthese/           générateur d'établissements fictifs (petit, moyen, grand)
   echange/            import et export (XLSX, CSV, iCal)
   web/                application FastAPI (découvre web/routes/), gabarits, CSS, HTMX
-tests/                tests automatisés : conftest.py et un dossier par lot
+tests/                tests automatisés : unitaires/ et integration/ (un dossier par composant), outils/ (aides partagées), conftest.py ; voir tests/README.md
 deploy/               installation et déploiement sur le serveur (nginx, systemd)
 ```
 

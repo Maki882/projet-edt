@@ -737,11 +737,11 @@ intermédiaire ; il ne touche ni à la base ni à la reconstitution.
    reconstitution avec un message.
 2. Reconnaître le fichier dans `edt.services.echange._importer` (nature du
    fichier ou en-têtes) et appeler le lecteur à la place du tableau plat.
-3. Ajouter un petit fichier d'exemple **fictif** dans `tests/echange/fichiers/`
+3. Ajouter un petit fichier d'exemple **fictif** dans `tests/outils/echange/fichiers/`
    et un test par particularité du format (encodage, fuseaux, statuts).
    Un test de cas limite (fichier abîmé ou hostile) porte le marqueur
    `cas_limite` et commence par une docstring « Cas : ... Risque : ... » ;
-   ses fichiers se construisent en mémoire avec `tests/echange/fabrique.py`
+   ses fichiers se construisent en mémoire avec `tests/outils/echange/fabrique.py`
    (CSV, classeur, archive, iCal).
 
 Le lecteur iCal (`edt.echange.ical`) est le premier adaptateur et sert de

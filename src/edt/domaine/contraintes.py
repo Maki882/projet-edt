@@ -35,8 +35,8 @@ une information. Côté solveur, une entorse à une contrainte souple coûte
 Pour ajouter une contrainte : ajouter un membre à `CodeContrainte`, son
 entrée dans `CATALOGUE` (avec son niveau par défaut et, si elle définit le
 problème, `_TOUJOURS_NECESSAIRES`), puis l'implémenter dans le vérificateur
-**et** dans le solveur (le test `tests/socle/test_contrats.py` vérifie que le
-catalogue couvre tous les codes).
+**et** dans le solveur (le test `tests/unitaires/socle/test_contrats.py`
+vérifie que le catalogue couvre tous les codes).
 
 Les préférences (objectif à minimiser) sont décrites par `PREFERENCES` ;
 leurs poids sont des paramètres globaux réglables (`edt.domaine.parametres`).

@@ -214,9 +214,9 @@ Le témoin le garde en dernier recours (le samedi passe après les jours de
 semaine dans son ordre de préférence) : selon la graine, il l'utilise ou non.
 
 **Contrôle** : le vérificateur et le solveur vérifient et posent les
-quatorze types de règle. `tests/synthese/test_verificateur.py` vérifie que
+quatorze types de règle. `tests/unitaires/synthese/test_verificateur.py` vérifie que
 le témoin des jeux petit, moyen et grand ne provoque **aucune anomalie
-`REGLE`**, à aucun niveau ; `tests/synthese/controle_temoin.py`
+`REGLE`**, à aucun niveau ; `tests/outils/synthese/controle_temoin.py`
 (`violations_regles`) en fait un second contrôle, direct et indépendant,
 à partir de `Instantane.regles`, `reglages` et `emplois`.
 
@@ -332,7 +332,8 @@ identifiants restent uniques.
 
 ## Cas limites
 
-La banque `tests/synthese/test_cas_limites.py` (marqueur `cas_limite`, une
+La banque `test_cas_limites.py` (`tests/unitaires/synthese/` et
+`tests/integration/synthese/`, marqueur `cas_limite`, une
 docstring « Cas / Risque » par test) fige le comportement aux bords :
 
 | Situation | Comportement |

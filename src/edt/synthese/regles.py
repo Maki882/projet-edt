@@ -24,8 +24,8 @@ samedi d'A3-APP1) lui est permis, mais il le garde en dernier recours, le
 samedi passant après les jours de semaine dans son ordre de préférence.
 
 Le vérificateur et le solveur vérifient et posent les quatorze types ; le
-test `tests/synthese/test_verificateur.py` s'assure que le témoin ne
-provoque aucune anomalie `REGLE`.
+test `tests/unitaires/synthese/test_verificateur.py` s'assure que le
+témoin ne provoque aucune anomalie `REGLE`.
 """
 
 from __future__ import annotations
