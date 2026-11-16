@@ -1,10 +1,13 @@
-"""Raccords vers les lots en cours : absence explicite, lecture du rapport, panne journalisée."""
+"""Raccords : absence explicite, lecture du rapport, panne journalisée."""
 
 from __future__ import annotations
 
+import inspect
 import logging
+import re
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -17,6 +20,29 @@ ERREUR = Anomalie(
     "SALLE_UNIQUE", Gravite.ERREUR, "La salle N204 est prise deux fois.", seances=("1-1",)
 )
 AVERTISSEMENT = Anomalie("PAUSE", Gravite.AVERTISSEMENT, "Pause courte.", seances=("2-1",))
+
+
+def test_dans_l_application_complete_chaque_raccord_trouve_sa_fonction():
+    # Les messages « indisponible » ne s'affichent que si une fonction appelée par un raccord
+    # manque : chaque appel de `_appeler` du module est relu ici, et sa fonction doit exister.
+    source = inspect.getsource(raccords)
+    appels = re.findall(r'_appeler\(\s*(MODULE_\w+),\s*"(\w+)",\s*(MESSAGE_\w+)', source)
+    assert len(appels) == 5, appels
+    for module, nom, message in appels:
+        fonction = raccords._fonction(getattr(raccords, module), nom, getattr(raccords, message))
+        assert callable(fonction), (module, nom)
+
+
+def test_aucun_module_de_l_application_ne_leve_erreur_non_livre():
+    # L'autre chemin vers les messages « indisponible » : une fonction qui lève ErreurNonLivre.
+    racine = Path(inspect.getfile(raccords)).parents[2]
+    levees = [
+        f"{chemin.relative_to(racine)}:{numero}"
+        for chemin in sorted(racine.rglob("*.py"))
+        for numero, ligne in enumerate(chemin.read_text(encoding="utf-8").splitlines(), 1)
+        if re.search(r"(?<!class )\bErreurNonLivre\(", ligne)
+    ]
+    assert levees == []
 
 
 def test_module_absent_donne_une_erreur_explicite_journalisee(session, sans_verificateur, caplog):

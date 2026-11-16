@@ -5,11 +5,14 @@
       {% import "edt/_ui.html" as edt with context %}
 
   - edt.encart_controle(controle)              vérification indisponible ou en échec : encart clair
-  - edt.indicateurs(controle, nb_a_programmer) les quatre indicateurs de l'équipe
-  - edt.anomalies(liste)                       anomalies en phrases, avec leur gravité
-  - edt.regle_citee(regle, message)             la règle personnalisée d'une anomalie, avec son lien
+  - edt.indicateurs(controle, nb_a_programmer) indicateurs de qualité (séances placées, conflits,
+                                               salles, campus, séances à programmer)
+  - edt.ecarts_decoches(controle)              écarts aux règles décochées lors du calcul
+  - edt.anomalies(liste, titre)                anomalies en phrases, avec leur gravité
+  - edt.regle_citee(regle, message)            la règle personnalisée d'une anomalie, avec son lien
   - edt.etiquette_gravite(gravite)             pastille « Erreur », « Avertissement »...
-  - edt.ressources(liste)                      feuilles de style et script des écrans
+  - edt.ressources(), edt.script()             feuille de style et script des écrans
+  - edt.choix_semestre(semestres, semestre, action)  sélecteur de semestre
   - edt.perimetre(vue, url_vue)                ce que la grille affiche et ce qu'elle laisse de côté
 #}
 {% import "macros.html" as ui %}
@@ -52,7 +55,7 @@
 {% macro regle_citee(regle, message="") -%}
 <small class="edt-regle-citee">
   {%- if regle.lien %}<a href="{{ regle.lien }}">{{ regle.code }}</a>{% else %}{{ regle.code }}{% endif %}
-  {%- if regle.phrase and regle.phrase not in message %} : {{ regle.phrase }}{% endif %}</small>
+  {%- if regle.phrase and regle.phrase.rstrip(".") not in message %} : {{ regle.phrase }}{% endif %}</small>
 {%- endmacro %}
 
 {% macro valeur(texte) -%}
@@ -81,7 +84,7 @@
   </li>
   <li class="compteur">
     <span class="compteur-nombre">{{ valeur(i.changements_campus if i else none) }}</span>
-    <span class="compteur-libelle">changements de campus
+    <span class="compteur-libelle">{{ "changement" if i is none or i.changements_campus is none or i.changements_campus < 2 else "changements" }} de campus
       {%- if i and i.changements_campus_par_semaine is not none %} <small>sur le semestre, soit {{ i.changements_campus_par_semaine|string|replace(".", ",") }} par semaine</small>{% endif %}</span>
   </li>
   {%- if nb_a_programmer %}
@@ -99,10 +102,10 @@
 {%- endif %}
 {%- endmacro %}
 
-{#- Rappel des écarts aux contraintes décochées lors du calcul : voulus, donc comptés à part. #}
+{#- Rappel des entorses aux règles ignorées pour le calcul : voulues, donc comptées à part. #}
 {% macro ecarts_decoches(controle) -%}
 {%- if controle is not none and controle.nb_ecarts_decoches %}
-<p class="discret">En plus, {{ fmt.pluriel(controle.nb_ecarts_decoches, "écart") }} aux règles décochées lors du calcul de cette version ({{ fmt.libelles_contraintes(controle.contraintes_decochees)|join(", ") }}) : voulus au lancement, ils ne sont pas comptés comme conflits.</p>
+<p class="discret">En plus, {{ fmt.pluriel(controle.nb_ecarts_decoches, "entorse") }} aux règles ignorées pour le calcul de cette version ({{ fmt.libelles_contraintes(controle.contraintes_decochees)|join(", ") }}) : voulues au lancement, elles ne sont pas comptées comme conflits.</p>
 {%- endif %}
 {%- endmacro %}
 
@@ -119,7 +122,7 @@
   {%- for cle, valeur_cachee in autres.items() %}
   <input type="hidden" name="{{ cle }}" value="{{ valeur_cachee }}">
   {%- endfor %}
-  <button type="submit" class="bouton">Afficher</button>
+  <button type="submit" class="bouton sans-js">Afficher</button>
 </form>
 {%- endmacro %}
 
@@ -151,7 +154,7 @@
     {%- if p.descendants and p.autres %} et{% endif %}
     {%- if p.autres %} celles des groupes qui réunissent une partie de ses étudiants ({{ codes(p.autres) }}){% endif %}
     {%- if p.nb_masquees %}, soit {{ fmt.pluriel(p.nb_masquees, "séance") }} de plus{% endif %}.</p>
-  <p><a class="bouton" href="{{ url_vue(etendu=('1' if not p.etendu_par_defaut else none), seance=none) }}">Afficher aussi les classes, demi-groupes et groupes de langues</a></p>
+  <p><a class="bouton" href="{{ url_vue(etendu=('1' if not p.etendu_par_defaut else none), seance=none) }}">Afficher aussi ces séances</a></p>
   {%- else %}
   <p>Aucun autre groupe ne partage ses étudiants : rien n'est laissé de côté.</p>
   {%- endif %}

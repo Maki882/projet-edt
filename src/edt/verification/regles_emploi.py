@@ -1,4 +1,4 @@
-"""Règles personnalisées sur l'emploi du temps des personnes et les relations entre séances (temps B).
+"""Règles personnalisées sur l'emploi du temps des personnes et les relations entre séances.
 
 Vérificateurs déclarés (`@enregistrer("verificateur", TypeRegle.X)`) pour
 `MAX_PAR_JOUR`, `JOURNEES_LIBRES`, `SANS_TROU`, `CAMPUS_PAR_JOUR`,
@@ -15,7 +15,7 @@ Pour une relation, seules les séances de la règle comptent
 Semaines : sur la semaine type, chaque séance est ramenée aux semaines de la
 règle, puis les semaines sont regroupées par ensemble de séances actives
 ensemble (deux séances aux semaines disjointes ne se gênent pas) ; sur les
-séances datées, on raisonne par date (jour) ou par semaine réelle, du lundi au
+séances datées, le compte se fait par date (jour) ou par semaine réelle, du lundi au
 dimanche, et au jour près pour la période de la règle.
 
 Unité d'une anomalie (une par entorse, au sens du § 2.2) :
@@ -317,7 +317,6 @@ def verifier_matieres_par_jour(
 
 
 def _par_semaine(
-    ctx: Contexte,
     seances: list[Element],
     mesure: Callable[[list[Element]], tuple[int, list[Element]]],
     en_defaut: Callable[[int], bool],
@@ -423,7 +422,6 @@ def verifier_journees_libres(
         (personne, c)
         for personne, seances in _par_personne(ctx, regle, elements).items()
         for c in _par_semaine(
-            ctx,
             seances,
             mesure,
             lambda libres: libres < nombre,
@@ -470,7 +468,6 @@ def verifier_sans_trou(
         (personne, c)
         for personne, seances in _par_personne(ctx, regle, elements).items()
         for c in _par_semaine(
-            ctx,
             seances,
             lambda actives: creneaux_de_trou(ctx, actives),
             lambda trous: trous > maximum,

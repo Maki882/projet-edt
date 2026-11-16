@@ -1,7 +1,8 @@
-"""Raccords vers les fonctions des autres lots : le SEUL endroit où les écrans les appellent.
+"""Raccords : SEUL point d'appel du vérificateur, des pré-vérifications et de l'instanciation.
 
-Les pré-vérifications, le vérificateur et l'instanciation datée sont écrits
-par d'autres lots ; tous sont livrés. Leurs noms et signatures :
+Ces fonctions vivent dans d'autres paquets (`edt.services.generation`,
+`edt.services.verification`, `edt.services.instanciation`). Leurs noms et
+signatures :
 
 - `edt.services.generation.pre_verifier_semestre(session, semestre_id,
   contraintes_desactivees=(), *, niveaux=None, version_base_id=None,
@@ -19,14 +20,16 @@ par d'autres lots ; tous sont livrés. Leurs noms et signatures :
 - `edt.services.instanciation.instancier_version(session, version_id,
   contraintes_desactivees=None) -> RapportInstanciation`.
 
-Chaque fonction est importée **au moment de l'appel** : le raccord reste un
-garde-fou. Si le module ou la fonction venait à manquer, ou si elle lève
-`ErreurNonLivre`, le raccord
-lève `ErreurRaccordIndisponible` (une `ErreurNonLivre`), journalisée en
+Chaque fonction est importée **au moment de l'appel** : le raccord est un
+garde-fou. Si le module ou la fonction est introuvable (installation
+incomplète), ou si elle lève `ErreurNonLivre`, le raccord lève
+`ErreurRaccordIndisponible` (une `ErreurNonLivre`), journalisée en
 avertissement, avec une phrase affichable telle quelle. Jamais de liste vide
 à la place : un écran qui reçoit cette erreur affiche un encart clair
-(voir `controler`). Une erreur d'import *à l'intérieur* d'un module livré
-n'est pas maquillée : elle remonte telle quelle.
+(voir `controler`). Une erreur d'import *à l'intérieur* d'un module présent
+n'est pas maquillée : elle remonte telle quelle. Dans l'application
+complète, les cinq fonctions existent : ces messages ne s'affichent pas
+(`tests/unitaires/web_edt/test_raccords.py` le vérifie).
 
 Le `RapportVerification` est lu une seule fois ici et ramené à une
 `Verification` (anomalies, comptes par gravité, indicateurs normalisés) :
@@ -59,14 +62,17 @@ MODULE_VERIFICATION = "edt.services.verification"
 MODULE_INSTANCIATION = "edt.services.instanciation"
 
 MESSAGE_VERIFICATION = (
-    "Les vérifications automatiques ne sont pas encore disponibles dans cette version."
+    "Les vérifications automatiques sont indisponibles : un module de l'application est "
+    "introuvable (installation incomplète, détail dans le journal). Réinstaller l'application."
 )
 MESSAGE_PRE_VERIFICATION = (
-    "Les vérifications préalables au calcul ne sont pas encore disponibles dans cette version."
+    "Les vérifications préalables au calcul sont indisponibles : un module de l'application est "
+    "introuvable (installation incomplète, détail dans le journal). Réinstaller l'application."
 )
 MESSAGE_INSTANCIATION = (
-    "La production des séances datées (semaine type appliquée au calendrier) n'est pas encore "
-    "disponible dans cette version."
+    "La production des séances datées (semaine type appliquée au calendrier) est indisponible : "
+    "un module de l'application est introuvable (installation incomplète, détail dans le "
+    "journal). Réinstaller l'application."
 )
 MESSAGE_ERREUR_INATTENDUE = (
     "La vérification automatique a rencontré une erreur inattendue. L'incident est enregistré "
@@ -75,7 +81,7 @@ MESSAGE_ERREUR_INATTENDUE = (
 
 
 class ErreurRaccordIndisponible(ErreurNonLivre):
-    """La fonction d'un autre lot n'est pas encore disponible (module, fonction ou lot non livré).
+    """La fonction appelée par un raccord est introuvable (module ou fonction absent).
 
     `fonction` est le nom complet de la fonction attendue (pour le journal) ;
     le message est une phrase pour l'utilisateur.
@@ -159,7 +165,7 @@ class Controle:
     """Une vérification qui a tourné, ou la raison pour laquelle elle n'a pas pu tourner.
 
     Les écrans affichent `motif` dans un encart (`niveau` : « attention » si
-    la fonction n'est pas encore livrée, « erreur » si elle a échoué) : une
+    la fonction est introuvable, « erreur » si elle a échoué) : une
     vérification absente n'est jamais présentée comme « aucune anomalie ».
     """
 
@@ -292,7 +298,7 @@ def instancier_version(session: Session, version_id: int) -> Any:
 def controler(fonction: Callable[..., Verification], *args, **kwargs) -> Controle:
     """Appelle un raccord de vérification pour un écran de consultation, sans jamais planter.
 
-    - fonction pas encore livrée : `Controle` avec le message d'indisponibilité ;
+    - fonction introuvable : `Controle` avec le message d'indisponibilité ;
     - refus métier (`ErreurEDT`) : `Controle` avec le message de l'erreur ;
     - toute autre exception : trace complète dans le journal, `Controle` avec
       un message d'erreur inattendue (l'écran reste utilisable).
@@ -499,18 +505,18 @@ def _entier(valeur: Any) -> int | None:
 
 
 def _fonction(module: str, nom: str, message: str) -> Callable[..., Any]:
-    """La fonction `module.nom`, ou `ErreurRaccordIndisponible` si elle n'existe pas encore."""
+    """La fonction `module.nom`, ou `ErreurRaccordIndisponible` si elle est introuvable."""
     complet = f"{module}.{nom}"
     try:
         espace = importlib.import_module(module)
     except ModuleNotFoundError as erreur:
         if erreur.name != module:
-            raise  # module livré mais cassé : ce n'est pas un raccord en attente
-        journal.warning("Raccord indisponible : le module %s n'existe pas encore", module)
+            raise  # module présent mais cassé : l'erreur remonte telle quelle
+        journal.warning("Raccord indisponible : le module %s est introuvable", module)
         raise ErreurRaccordIndisponible(complet, message) from erreur
     fonction = getattr(espace, nom, None)
     if not callable(fonction):
-        journal.warning("Raccord indisponible : %s n'existe pas encore", complet)
+        journal.warning("Raccord indisponible : %s est introuvable", complet)
         raise ErreurRaccordIndisponible(complet, message)
     return fonction
 
@@ -522,5 +528,5 @@ def _appeler(module: str, nom: str, message: str, *args: Any, **kwargs: Any) -> 
     except ErreurRaccordIndisponible:
         raise
     except ErreurNonLivre as erreur:
-        journal.warning("Raccord indisponible : %s.%s n'est pas livré (%s)", module, nom, erreur)
+        journal.warning("Raccord indisponible : %s.%s refuse l'appel (%s)", module, nom, erreur)
         raise ErreurRaccordIndisponible(f"{module}.{nom}", message) from erreur

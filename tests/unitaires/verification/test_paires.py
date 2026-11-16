@@ -1,8 +1,7 @@
 """Règles entre deux séances : SALLE_UNIQUE, ENSEIGNANT_UNIQUE, GROUPE_UNIQUE, PAUSE, CAMPUS_TRAJET.
 
-La première partie reprend, transposés à l'instantané, les scénarios du
-premier vérificateur de chevauchements de l'équipe (`tests/test_conflits.py`
-de Hugo) : ressources distinctes, chaque ressource en conflit, jours
+La première partie couvre les scénarios classiques de chevauchement,
+transposés à l'instantané : ressources distinctes, chaque ressource en conflit, jours
 distincts, séances contiguës, inclusion et égalité des intervalles, entrées
 invalides, identifiant dupliqué, emploi du temps vide.
 """
@@ -28,7 +27,7 @@ from edt.verification import verifier
 CHEVAUCHEMENTS = ["SALLE_UNIQUE", "ENSEIGNANT_UNIQUE", "GROUPE_UNIQUE"]
 
 
-def scenario_hugo(communes=(), jour_b=LUNDI, debut_b="9h30", fin_b="11h30"):
+def scenario_deux_seances(communes=(), jour_b=LUNDI, debut_b="9h30", fin_b="11h30"):
     """Deux séances : A le lundi de 8 h 30 à 10 h 30, B de 9 h 30 à 11 h 30 par défaut.
 
     `communes` liste les ressources que B partage avec A (« salle »,
@@ -56,12 +55,12 @@ TOUTES = ("salle", "enseignant", "groupe")
 
 
 # --------------------------------------------------------------------------- #
-# Scénarios repris du vérificateur de Hugo
+# Scénarios de chevauchement de base
 # --------------------------------------------------------------------------- #
 
 
 def test_ressources_distinctes():
-    instantane, placements = scenario_hugo()
+    instantane, placements = scenario_deux_seances()
     assert verifier(instantane, placements, CHEVAUCHEMENTS) == []
 
 
@@ -70,7 +69,7 @@ def test_ressources_distinctes():
     [("salle", "SALLE_UNIQUE"), ("enseignant", "ENSEIGNANT_UNIQUE"), ("groupe", "GROUPE_UNIQUE")],
 )
 def test_chaque_ressource_en_conflit(ressource, code):
-    instantane, placements = scenario_hugo(communes=(ressource,))
+    instantane, placements = scenario_deux_seances(communes=(ressource,))
     anomalies = verifier(instantane, placements, CHEVAUCHEMENTS)
     assert codes(anomalies) == [code]
     assert anomalies[0].seances == ("1-1", "2-1")
@@ -79,12 +78,14 @@ def test_chaque_ressource_en_conflit(ressource, code):
 
 
 def test_jours_distincts():
-    instantane, placements = scenario_hugo(TOUTES, jour_b=MARDI, debut_b="8h30", fin_b="10h30")
+    instantane, placements = scenario_deux_seances(
+        TOUTES, jour_b=MARDI, debut_b="8h30", fin_b="10h30"
+    )
     assert verifier(instantane, placements, CHEVAUCHEMENTS) == []
 
 
 def test_seances_contigues_sans_chevauchement():
-    instantane, placements = scenario_hugo(TOUTES, debut_b="10h30", fin_b="12h30")
+    instantane, placements = scenario_deux_seances(TOUTES, debut_b="10h30", fin_b="12h30")
     assert verifier(instantane, placements, CHEVAUCHEMENTS) == []
     # Contiguës, elles enfreignent en revanche la pause (même enseignant, même groupe).
     assert codes(verifier(instantane, placements, ["PAUSE"])) == ["PAUSE"]
@@ -92,7 +93,7 @@ def test_seances_contigues_sans_chevauchement():
 
 @pytest.mark.parametrize(("debut", "fin"), [("9h00", "10h00"), ("8h30", "10h30")])
 def test_inclusion_et_egalite_des_intervalles(debut, fin):
-    instantane, placements = scenario_hugo(TOUTES, debut_b=debut, fin_b=fin)
+    instantane, placements = scenario_deux_seances(TOUTES, debut_b=debut, fin_b=fin)
     anomalies = verifier(instantane, list(reversed(placements)), CHEVAUCHEMENTS)
     assert codes(anomalies) == CHEVAUCHEMENTS
 
@@ -113,7 +114,7 @@ def test_inclusion_et_egalite_des_intervalles(debut, fin):
 def test_entrees_invalides(changements):
     from dataclasses import replace
 
-    instantane, placements = scenario_hugo()
+    instantane, placements = scenario_deux_seances()
     with pytest.raises(ErreurDonneesInvalides) as erreur:
         verifier(instantane, [replace(placements[0], **changements), placements[1]])
     assert erreur.value.details  # chaque défaut est listé
@@ -122,7 +123,7 @@ def test_entrees_invalides(changements):
 def test_toutes_les_entrees_invalides_sont_listees():
     from dataclasses import replace
 
-    instantane, placements = scenario_hugo()
+    instantane, placements = scenario_deux_seances()
     with pytest.raises(ErreurDonneesInvalides) as erreur:
         verifier(instantane, [replace(p, jour=9) for p in placements])
     assert len(erreur.value.details) == 2
@@ -135,7 +136,7 @@ def test_identifiant_duplique():
     Risque : les deux copies en conflit « avec elles-mêmes » (salle, enseignant, groupe) :
     trois erreurs de plus pour un seul défaut, le doublon.
     """
-    instantane, placements = scenario_hugo()
+    instantane, placements = scenario_deux_seances()
     anomalies = verifier(instantane, [placements[0], placements[0], placements[1]])
     volume = [a for a in anomalies if str(a.code) == "VOLUME"]
     assert len(volume) == 1
@@ -143,7 +144,7 @@ def test_identifiant_duplique():
     # Le doublon est nommé une fois, par VOLUME : pas de conflit entre les deux copies...
     assert not set(codes(anomalies)) & set(CHEVAUCHEMENTS)
     # ... mais chaque copie reste vérifiée face aux autres séances.
-    instantane, placements = scenario_hugo(TOUTES)
+    instantane, placements = scenario_deux_seances(TOUTES)
     doublees = codes(verifier(instantane, [placements[0], placements[0], placements[1]]))
     assert [doublees.count(code) for code in CHEVAUCHEMENTS] == [2, 2, 2]
     # Sans VOLUME, le conflit des deux copies reste signalé : le doublon ne passe pas inaperçu.
@@ -276,7 +277,7 @@ def test_conflit_declare_entre_groupes_freres():
 
 
 def test_contrainte_desactivee():
-    instantane, placements = scenario_hugo(TOUTES)
+    instantane, placements = scenario_deux_seances(TOUTES)
     assert codes(verifier(instantane, placements, ["SALLE_UNIQUE"])) == ["SALLE_UNIQUE"]
     assert verifier(instantane, placements, []) == []
 
@@ -427,7 +428,7 @@ def test_aucune_contrainte_a_verifier_journalisee(caplog):
     Risque : une liste vide renvoyée sans un mot, prise pour « emploi du temps valide » (les
     services, eux, la refusent : voir test_service).
     """
-    instantane, placements = scenario_hugo(TOUTES)
+    instantane, placements = scenario_deux_seances(TOUTES)
     for verification in (
         lambda: verifier(instantane, placements, []),
         lambda: verifier(instantane, placements, niveaux={}),

@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'intégration.
+Le catalogue compte 376 cas : 218 cas en tests unitaires et 158 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -79,12 +79,12 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | `socle` | 58 | 32 |
 | `solveur` | 19 | 16 |
 | `synthese` | 28 | 5 |
-| `verification` | 25 | 0 |
+| `verification` | 27 | 0 |
 | `web_donnees` | 2 | 36 |
-| `web_edt` | 2 | 31 |
-| **Total** | **213** | **157** |
+| `web_edt` | 5 | 32 |
+| **Total** | **218** | **158** |
 
-### Tests unitaires (213 cas)
+### Tests unitaires (218 cas)
 
 #### `echange` (39 cas)
 
@@ -450,7 +450,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 |---|---|---|
 | Dejeuner global en mode libre | pause déjeuner réglée en mode libre pour tout l'établissement avant le chargement. | témoin qui prive une personne de sa pause (jeu invalide dès sa création). |
 
-#### `verification` (25 cas)
+#### `verification` (27 cas)
 
 [`tests/unitaires/verification/test_datee.py`](../tests/unitaires/verification/test_datee.py)
 
@@ -466,6 +466,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Cycle de groupes ne rend pas le verificateur muet | deux groupes parents l'un de l'autre (import, retouche de la base), un cours de B à midi en déjeuner libre. | plus aucun groupe feuille, donc plus aucune personne : déjeuner, pause, maxima et règles personnalisées ne vérifient plus rien, sans un mot. |
+| Groupe son propre parent nomme seul | un groupe est déclaré son propre parent (retouche de la base, import). | boucle d'un seul groupe non détectée (vérificateur muet sur ce groupe), ou message qui cite d'autres groupes que le fautif. |
 
 [`tests/unitaires/verification/test_horaires.py`](../tests/unitaires/verification/test_horaires.py)
 
@@ -509,6 +510,8 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
+| Modification d une seance non placee | la séance à placer n'est pas dans la semaine type (geste normal de « À traiter »). | le placement proposé n'était pas ajouté, ou l'anomalie « n'est pas placée » d'avant passait pour introduite : une séance non placée restait impossible à placer. |
+| Deux versions actives refusees au lieu d en verifier une au hasard | base créée sans l'index unique partiel ; deux versions du semestre sont actives. | `python -m edt verifier --semestre N` vérifiait la première ligne venue, sans rien dire, et le rapport portait sur une autre version que celle affichée. |
 | Version sans seance datee signalee explicitement | une version sans aucune séance datée (instanciation absente ou échouée) est vérifiée sur le calendrier. | rapport vide dit « valide » ; un écran afficherait « Aucune anomalie » pour un calendrier qui n'existe pas. |
 | Seances datees apres la fin d un semestre raccourci | le semestre est raccourci de deux semaines après l'instanciation de la version. | les séances datées d'après la nouvelle fin passent sans anomalie, et les règles personnalisées, bornées aux semaines du semestre, se taisent sur elles. |
 | Salle supprimee apres le calcul degrade en salle a definir | la salle N204 est supprimée après l'enregistrement et l'instanciation de la version. | un avertissement « salle à définir » par séance datée (une quinzaine pour une seule cause), ou une vérification impossible. |
@@ -535,7 +538,6 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Identifiant de seance illisible refuse proprement | un placement ou une séance datée porte un identifiant de séance aux chiffres non ASCII (« ²-1 », « ٣-1 »). | `str.isdigit` les accepte mais `int` lève `ValueError` : erreur 500 ou trace au lieu d'une anomalie ou d'une erreur métier. |
-| Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import). | `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui décomposent les identifiants (anomalies de l'emploi du temps, instanciation). |
 
 #### `web_donnees` (2 cas)
 
@@ -551,7 +553,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (2 cas)
+#### `web_edt` (5 cas)
 
 [`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
 
@@ -565,7 +567,25 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 |---|---|---|
 | Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
 
-### Tests d'intégration (157 cas)
+[`tests/unitaires/web_edt/test_cible_par_defaut.py`](../tests/unitaires/web_edt/test_cible_par_defaut.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Classe par defaut du jeu moyen remplie aux dates de demonstration | grille ouverte sans choix sur l'établissement fictif « moyen » (emploi du temps de référence et séances datées), en semaine datée le 16/11/2026 et le 14/12/2026. | la page s'ouvre sur la première classe par ordre alphabétique, une classe d'apprentis presque vide (cinq séances dans la semaine) : la démonstration commence sur une grille creuse. Les classes A3-G1 à A3-G6 en montrent sept chaque semaine (leurs séances et celles de la promotion ; celles des demi-groupes sont repliées par défaut). |
+
+[`tests/unitaires/web_edt/test_formulaire_seance.py`](../tests/unitaires/web_edt/test_formulaire_seance.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Budget depasse ou verificateur absent | la vérification des heures dépasse son budget, ou le vérificateur est absent. | un formulaire qui met des secondes à se recharger à chaque changement de jour, ou une erreur qui empêche d'ouvrir le panneau de la séance. |
+
+[`tests/unitaires/web_edt/test_memoire.py`](../tests/unitaires/web_edt/test_memoire.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Echec du premier calcul ne bloque pas le second | le premier fil échoue pendant que le second attend son résultat. | le second attend pour toujours (page qui ne répond plus), ou reçoit l'erreur d'un autre au lieu de calculer lui-même. |
+
+### Tests d'intégration (158 cas)
 
 #### `echange` (5 cas)
 
@@ -805,7 +825,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (31 cas)
+#### `web_edt` (32 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -832,8 +852,9 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Identifiants enormes ou negatifs donnent introuvable | lien mal copié ou périmé dont l'identifiant a vingt chiffres, est négatif ou n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, À traiter. | OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal, au lieu d'un « introuvable » (404). |
-| Cible enorme dans l adresse montre la premiere classe | groupe, enseignant ou salle de vingt chiffres dans l'adresse de la grille. | erreur 500 au lieu de la première classe, affichée en disant que la cible demandée n'existe pas. |
+| Identifiants enormes ou negatifs donnent introuvable | lien mal copié ou périmé dont l'identifiant a vingt chiffres ou n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, À traiter (et négatif sur les paramètres d'adresse : dans un chemin, « -1 » ne correspond à aucune route). | OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal, au lieu d'un « introuvable » (404) qui nomme l'élément manquant. |
+| Identifiant qui n est pas un entier donne saisie invalide | identifiant de version écrit en lettres, en décimal ou en booléen dans l'adresse de la grille (lien abîmé, adresse retapée). | erreur 500, ou `true` lu comme la version n° 1. |
+| Cible enorme dans l adresse montre la premiere classe | groupe, enseignant ou salle de vingt chiffres dans l'adresse de la grille. | erreur 500 au lieu de la classe par défaut, affichée en disant que la cible demandée n'existe pas. |
 | Seance enorme dans l adresse ouvre la page sans panneau | séance à ouvrir (`seance=h…` ou `o…`) de vingt ou 5 000 chiffres, nulle, en chiffres exotiques (« ² ») ou de préfixe inconnu dans l'adresse de la grille (lien abîmé, favori ancien). | erreur 500 (`int()` refuse « ² » et plus de 4 300 chiffres) au lieu de la page sans panneau, avec un message qui ne recopie pas les 5 000 chiffres. |
 | Cookie de cible illisible ou enorme est ignore | cookie de dernière cible forgé ou laissé par une autre instance du même hôte (identifiant énorme ou négatif, valeur illisible, nature inconnue). | l'onglet Emploi du temps répond 500 à chaque ouverture tant que le cookie n'est pas effacé. |
 | Fragments ouverts sans htmx menent a la page | fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau d'une séance, compteur d'« À traiter ») ouvert sans en-tête HX-Request : adresse saisie, nouvel onglet, lien. | un morceau de page nu, sans menu ni style, au lieu de la page complète. |
@@ -842,6 +863,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Seance annulee ni reannulee ni deplacee | séance datée annulée deux fois (deux onglets ouverts), puis déplacée. | motif répété dans le commentaire, ou séance annulée qui revient en étant déplacée. |
 | Deplacer une seance datee hors du semestre | séance datée déplacée au 4 janvier 1999 ou au 4 janvier 2100 (date saisie à la main). | séance placée hors du semestre, donc absente de la grille et des vérifications. |
 | Date tres ancienne ou lointaine sans erreur | grille datée demandée au 1er janvier de l'an 1 ou au 31 décembre 9999 (adresse modifiée à la main). | la semaine autour sort du calendrier de Python (OverflowError, erreur 500) au lieu de la semaine en cours du semestre, affichée en le disant. |
+| Adresse de retour fabriquee ramene a l emploi du temps | champ `retour` d'une action de la grille fabriqué (lien piégé, formulaire recopié) : autre site, adresse sans protocole, autre onglet, saut de ligne, barre oblique inverse. | redirection ouverte vers un autre site après un clic légitime, ou en-tête de réponse injecté par le saut de ligne. |
 | Filtres inconnus refuses lisiblement | paramètre d'affichage inconnu ou contradictoire dans l'adresse de la grille (couche, affichage, étendu, date, jour, deux cibles, nature de cible). | erreur 500, ou affichage faux sans le dire, au lieu d'une page 422 qui nomme le paramètre. |
 | Hx current url illisible dans les panneaux | panneau d'une séance ou d'une séance datée demandé avec un en-tête HX-Current-URL que `urlsplit` refuse (« http://[::1 » : navigateur ou extension qui l'abîme). | erreur 500 au clic sur chaque séance de la grille ; le panneau doit s'ouvrir avec son adresse de retour par défaut, l'en-tête ignoré et journalisé. |
 | Relance pendant un calcul mene au calcul en cours | « Relancer » (plus long, autre solution, simple) depuis le suivi d'un ancien calcul alors qu'un calcul du semestre tourne déjà. | deux calculs en parallèle sur le même semestre, ou une erreur, au lieu d'être mené au calcul en cours. |
@@ -855,7 +877,6 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Version sans seance s affiche et s exporte | version sans aucune séance (import resté vide, référence non remplie) affichée en semaine type, datée et par jour, listée dans l'historique, exportée en CSV et en iCal. | erreur 500 (minimum ou maximum d'une liste vide), blocs inventés, ou fichier d'export illisible par le tableur ou l'agenda. |
 | Version active vide sur a traiter et l accueil | la version active du semestre n'a aucune séance (import resté vide). | erreur 500 sur « À traiter » ou l'accueil, ou version vide présentée comme un emploi du temps sans défaut. |
 | Semestre sans grille reste utilisable | la grille de créneaux est vidée après la génération (grille en cours de refonte). | erreur 500 sur Générer ou sur la grille, ou séance proposée à une place qui n'existe plus. |
-| Export d une version enorme dit introuvable | export CSV ou iCal d'une version de vingt chiffres (lien mal copié). | OverflowError de SQLite non rattrapée : erreur 500 au lieu d'un « introuvable » (404). Corrigé par le lot échange ; `client_sans_trace` montre un retour du 500 comme un statut. |
 
 [`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
 

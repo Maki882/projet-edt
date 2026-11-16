@@ -30,8 +30,9 @@ jour près (`RegleResolue.couvre`). Les réglages de personne (`PAUSE_DEJEUNER`,
 `PAUSE_MINIMALE`) ne sont pas datables (`DefinitionType.periode_datable`) : ils
 valent tout le semestre, sans restriction de période.
 
-Une règle dont le type n'a pas encore de vérificateur donne un avertissement
-explicite (jamais de silence).
+Une règle dont le type n'a pas de vérificateur donne un avertissement
+explicite (jamais de silence) : garde-fou pour un type ajouté au catalogue
+sans son vérificateur (`edt.domaine.regles.types_non_couverts`).
 """
 
 from __future__ import annotations
@@ -91,7 +92,7 @@ def verifier_regles(ctx: Contexte, elements: Sequence[Element]) -> Iterator[Anom
                 CodeContrainte.REGLE,
                 Gravite.AVERTISSEMENT,
                 f"{entete(regle)} : ce type de règle (« {regle.type.libelle} ») n'est pas "
-                "encore vérifié automatiquement ; la contrôler à la main.",
+                "vérifié automatiquement ; la contrôler à la main.",
                 regle=regle,
             )
             continue
@@ -286,9 +287,7 @@ def verifier_salles(
 # --------------------------------------------------------------------------- #
 
 
-def _personnes_reglees(
-    ctx: Contexte, regle: RegleResolue, lire: Callable[[Personne], object]
-) -> list[Personne]:
+def _personnes_reglees(regle: RegleResolue, lire: Callable[[Personne], object]) -> list[Personne]:
     """Personnes de la portée dont le réglage vient de cette règle (et non d'une plus précise)."""
     personnes = []
     for personne in sorted(regle.personnes, key=lambda p: (p.nature, p.id)):
@@ -318,7 +317,7 @@ def verifier_pause_dejeuner(
     chaque jour où elle a cours dans la fenêtre, au moins `duree` minutes
     libres d'un seul tenant dans `[debut, fin]`. Mode « aucun » : rien.
     """
-    personnes = _personnes_reglees(ctx, regle, ctx.dejeuner_de)
+    personnes = _personnes_reglees(regle, ctx.dejeuner_de)
     if not personnes:
         return
     reglage = ctx.dejeuner_de(personnes[0])
@@ -383,7 +382,7 @@ def verifier_pause_minimale(
     la première et le début de la seconde est inférieur à `duree`. Une
     anomalie par paire, qui réunit les personnes concernées.
     """
-    personnes = _personnes_reglees(ctx, regle, ctx.pause_de)
+    personnes = _personnes_reglees(regle, ctx.pause_de)
     if not personnes:
         return
     minimum = regle.valeurs["duree"]
@@ -454,6 +453,6 @@ def _semaines_communes(a: Element, b: Element) -> frozenset[int] | None:
     return a.semaines & b.semaines
 
 
-# Vérificateurs du temps B (emploi du temps et relations) : importés ici pour que le
-# registre soit complet dès que `verifier_regles` est disponible.
+# Vérificateurs des règles d'emploi du temps et de relation entre séances : importés ici
+# pour que le registre soit complet dès que `verifier_regles` est disponible.
 from edt.verification import regles_emploi as _regles_emploi  # noqa: E402, F401

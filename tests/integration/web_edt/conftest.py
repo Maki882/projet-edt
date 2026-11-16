@@ -10,8 +10,6 @@ d'office, `faux_verificateur`, `sans_verificateur`, `aujourdhui_fige`) :
 - `seances_datees` : la même, après contrôle que ses séances datées existent ;
 - `reperes` : séance, occurrence, calcul, version et semestre réels de
   `version_generee`, lus dans la base (jamais écrits en dur) ;
-- `client_sans_trace` : client qui renvoie une erreur 500 comme une réponse
-  (pour un test `xfail` qui la constate) au lieu de lever l'exception ;
 - `delai_verrou_court` : l'attente sur verrou réduite, pour constater sans
   attendre dix secondes ce qui se passe au-delà du délai.
 """
@@ -84,19 +82,6 @@ def reperes(version_generee) -> Reperes:
             semestre=version_generee.semestre_id,
         )
     return resultat
-
-
-@pytest.fixture
-def client_sans_trace(base):
-    """Client qui rend une erreur 500 comme une réponse au lieu de lever l'exception.
-
-    Sert aux tests `xfail` qui constatent une erreur 500 d'un autre lot.
-    """
-    from fastapi.testclient import TestClient
-
-    from edt.web.app import creer_app
-
-    return TestClient(creer_app(), raise_server_exceptions=False)
 
 
 @pytest.fixture

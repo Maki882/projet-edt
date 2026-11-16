@@ -137,6 +137,10 @@ python -m pytest --collect-only -q tests/unitaires   # cas, fichier par fichier
 | [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | disposition des blocs dans la grille et mises en forme françaises | 9 | 9 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | raccords vers les autres composants : absence explicite, rapport, panne journalisée | 6 | 6 |
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | présentation d'une anomalie qui ne cite pas de règle | 1 | 1 |
+| [`web_edt/test_anomalies.py`](web_edt/test_anomalies.py) | liste « À traiter » : séances datées qui ne font que répéter la semaine type | 1 | 1 |
+| [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 | 1 |
+| [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 | 2 |
+| [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 | 2 |
 
 ### `echange/` : Import et export (139 fonctions, 206 cas)
 

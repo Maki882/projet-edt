@@ -11,7 +11,7 @@ import datetime as dt
 import logging
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 from tests.outils.verification.versions import enregistrer_version
 
 from edt.db import modeles as m
@@ -90,6 +90,8 @@ def version_tp_le_samedi(jeu_minimal, session) -> int:
     )
     tp.jour = 5  # samedi : permis aux TP par le standard, interdit à A1 par R001
     tp.debut_min, tp.fin_min = 8 * 60 + 30, 10 * 60 + 30
+    # Règles écrites avant le calcul attaché (`attacher_calcul`) : dates figées, pas l'horloge.
+    session.execute(update(m.Regle).values(modifie_le=AVANT))
     session.commit()
     return version_id
 
@@ -99,7 +101,7 @@ def attacher_calcul(session, version_id: int, parametres: dict) -> None:
     calcul = m.Calcul(
         semestre_id=version.semestre_id,
         etat=EtatCalcul.REUSSI,
-        demarre_le=dt.datetime.now() + dt.timedelta(minutes=1),
+        demarre_le=DEBUT_CALCUL,
         parametres=parametres,
         contraintes_desactivees=[],
     )

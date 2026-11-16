@@ -89,15 +89,16 @@ def verifier(
     Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
     suivent toujours le niveau de leur règle.
 
-    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
-    un placement est mal formé ; `ErreurIntrouvable` si l'instantané
+    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu, si
+    un placement est mal formé ou si l'arbre des groupes boucle
+    (`valider_groupes`) ; `ErreurIntrouvable` si l'instantané
     lui-même est incohérent (enseignant ou groupe d'un besoin absent...).
     """
     chrono = time.perf_counter()
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     placements = tuple(placements)
-    valider_placements(instantane, placements)
+    valider_placements(placements)
     ctx = Contexte(instantane, codes, datee=False, niveaux_regles=regles_retenues)
     elements, inconnus = construire_elements(instantane, placements)
     signaler_salles_disparues(elements)
@@ -127,7 +128,7 @@ def verifier(
     return anomalies
 
 
-def valider_placements(instantane: Instantane, placements: Sequence[Placement]) -> None:
+def valider_placements(placements: Sequence[Placement]) -> None:
     """Lève `ErreurDonneesInvalides` (avec tous les défauts) si un placement est mal formé.
 
     Une salle inconnue de l'instantané n'est pas un défaut de structure (voir l'en-tête).

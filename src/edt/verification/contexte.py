@@ -514,12 +514,6 @@ class Contexte:
         """Campus de la salle de la séance placée, `None` sans salle."""
         return None if element.salle_id is None else self.salle(element.salle_id).campus_id
 
-    def nom_personne(self, personne: Personne) -> str:
-        """« le groupe A1-G1 » ou le nom de l'enseignant."""
-        if personne.nature is NaturePersonne.ENSEIGNANT:
-            return self.nom_enseignant(personne.id)
-        return f"le groupe {self.code_groupe(personne.id)}"
-
     def nommer_groupes(self, groupes: Iterable[int]) -> tuple[list[int], list[int]]:
         """Groupes à nommer pour un ensemble de groupes feuilles, et tous les groupes en cause.
 
@@ -600,7 +594,8 @@ class Contexte:
         datée (l'occurrence qui tombe dessus est replacée ou passe « à
         programmer »). Couche datée : toutes (`Instantane.indisponibilites_de`),
         à évaluer à la date avec `Indisponibilite.concerne`. Celles dont `dure`
-        est faux (préférences des versions suivantes) sont écartées.
+        est faux (simples préférences, que le calcul ne respecte pas
+        obligatoirement) sont écartées.
         """
         cle = (cible, ressource_id)
         valeur = self._indisponibilites.get(cle)

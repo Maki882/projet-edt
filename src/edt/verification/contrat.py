@@ -27,8 +27,8 @@ Règles communes aux deux fonctions
   erreur ; important : avertissement ; facultatif : information), sans
   jamais dépasser la gravité que la règle donne déjà. Le message d'une
   entorse à une règle importante ou facultative commence par
-  `PREFIXES_ENTORSE[niveau]`. Sans niveaux, tout est vérifié en dur
-  (comportement d'origine) et `Anomalie.niveau` vaut `None`.
+  `PREFIXES_ENTORSE[niveau]`. Sans niveaux, tout est vérifié en dur et
+  `Anomalie.niveau` vaut `None`.
 - Règles personnalisées (`Instantane.regles`, code `REGLE`) : vérifiées si
   `REGLE` est vérifiée ; `niveaux_regles=` (facultatif, identifiant de règle
   → niveau) dit lesquelles et à quel niveau (défaut : toutes, au niveau de la
@@ -73,8 +73,8 @@ class Anomalie:
     - `salles`, `enseignants`, `groupes` : identifiants des ressources en cause ;
     - `jour` : jour de la semaine type (0 = lundi), pour une anomalie de semaine type ;
     - `date` : date, pour une anomalie de la couche datée ;
-    - `besoins` : identifiants des besoins concernés (ajouté par le lot
-      vérificateur : seul repère d'un problème de dépliage, qui n'a pas de séance) ;
+    - `besoins` : identifiants des besoins concernés (seul repère d'un
+      problème de dépliage, qui n'a pas de séance) ;
     - `niveau` : niveau appliqué à la contrainte quand la vérification a reçu
       des niveaux, `None` sinon. Pour un niveau important ou facultatif, le
       message commence par `PREFIXES_ENTORSE[niveau]`. Pour une anomalie de

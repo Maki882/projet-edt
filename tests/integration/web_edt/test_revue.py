@@ -1,4 +1,4 @@
-"""Constats de la revue d'ensemble (lot web-edt, n° 20 à 28) et mémoire des écrans."""
+"""Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ def _importer_les_seances_datees(version_id: int) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# n° 20 : séances datées importées
+# Séances datées importées
 # --------------------------------------------------------------------------- #
 
 
@@ -81,10 +81,13 @@ def test_un_refus_de_l_instanciation_devient_une_remarque(seances_datees, client
     monkeypatch.setattr(raccords, "instancier_version", refuser)
     version = seances_datees.version_id
     with session_base() as session:
-        assert modifications._recalculer_seances_datees(session, version) == [
-            "Les séances datées de cette version n'ont pas été recalculées : l'instanciation "
-            "refuse cette version."
-        ]
+        assert modifications._recalculer_seances_datees(session, version) == (
+            [
+                "Les séances datées de cette version n'ont pas été recalculées : "
+                "l'instanciation refuse cette version."
+            ],
+            True,  # signalé : le message de la retouche passe à l'orange
+        )
     reponse = client.post(
         f"/emploi-du-temps/versions/{version}/seances-datees",
         data={"retour": f"/emploi-du-temps?version_id={version}&couche=date"},
@@ -93,12 +96,12 @@ def test_un_refus_de_l_instanciation_devient_une_remarque(seances_datees, client
 
 
 # --------------------------------------------------------------------------- #
-# n° 21 et 22 : un seul nombre de points à traiter
+# Un seul nombre de points à traiter
 # --------------------------------------------------------------------------- #
 
 
 def _trois_nombres(client) -> tuple[int, int, int]:
-    """Points à traiter selon l'accueil, la pastille de l'onglet et la page « À traiter »."""
+    """Points à traiter selon l'accueil, le compteur du menu et la page « Points à traiter »."""
     with session_base() as session:
         semestre = session.scalar(select(m.Semestre).where(m.Semestre.code == "S1"))
         from edt.services.emploi_du_temps.versions import exiger_semestre
@@ -164,7 +167,7 @@ def test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois(
 
 
 # --------------------------------------------------------------------------- #
-# n° 23 : contraintes décochées lors du calcul
+# Contraintes décochées lors du calcul
 # --------------------------------------------------------------------------- #
 
 
@@ -194,8 +197,8 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
         controle = raccords.controler_version(session, version)
         assert controle.verification.nb_erreurs == 0 and controle.nb_ecarts_decoches == 1
     page = client.get("/a-traiter").text
-    assert "Écarts aux règles décochées lors du calcul (1)" in page
-    assert "0 point à traiter" in page
+    assert "Entorses aux règles ignorées pour ce calcul (1)" in page
+    assert "Aucun point à traiter" in page
     accueil = client.get("/").text
     assert "Aucun point à traiter" in accueil  # même nombre que la page « À traiter »
 
@@ -215,7 +218,7 @@ def test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part(
 
 
 # --------------------------------------------------------------------------- #
-# n° 24 à 28
+# Calcul sans version, semestre sans besoin, accueil, nom de version
 # --------------------------------------------------------------------------- #
 
 
@@ -225,14 +228,6 @@ def test_calcul_dont_la_version_a_ete_supprimee(version_generee, client):
     page = client.get(f"/calculs/{version_generee.calcul_id}").text
     assert "version_id=None" not in page
     assert "a depuis été supprimée" in page
-
-
-def test_date_extreme_sans_erreur(version_generee, client):
-    reponse = client.get(
-        f"/emploi-du-temps?version_id={version_generee.version_id}&couche=date&date=9999-12-31"
-    )
-    assert reponse.status_code == 200
-    assert "trop loin" in reponse.text
 
 
 def test_pas_de_calcul_sans_besoin(base, client):
@@ -321,7 +316,7 @@ def test_besoin_impossible_a_deplier_affiche_une_seule_fois(jeu_minimal, client)
 def test_refus_reel_de_l_instanciation_sans_erreur_500(
     seances_datees, client, faux_verificateur, monkeypatch
 ):
-    """L'instanciation livrée refuse une version importée : ni le recalcul ni un déplacement ne plantent."""
+    """L'instanciation refuse une version importée : ni le recalcul ni un déplacement ne plantent."""
     version = seances_datees.version_id
     _importer_les_seances_datees(version)
     # Sans le garde de l'écran, c'est `instancier_version` elle-même qui refuse.

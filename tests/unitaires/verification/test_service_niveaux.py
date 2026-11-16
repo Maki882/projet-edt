@@ -179,7 +179,7 @@ def test_verifier_version_niveaux_ou_contraintes_explicites(version_maximum_depa
 
 
 def test_contraintes_choisies_gardent_les_gravites_de_la_version(version_maximum_depasse, session):
-    # Revue : `-c CODE` ne doit pas transformer les entorses importantes en erreurs.
+    # `-c CODE` ne doit pas transformer les entorses importantes en erreurs.
     sans = verifier_version(session, version_maximum_depasse)  # référence : niveaux par défaut
     avec = verifier_version(session, version_maximum_depasse, ["MAX_ENSEIGNANT", "PAUSE"])
     gravites = [(a.code, a.gravite, a.niveau) for a in sans.anomalies]

@@ -14,9 +14,9 @@ pour ouvrir le panneau d'une séance `h<id>` ou d'une occurrence `o<id>`) :
 - `POST /emploi-du-temps/versions/{id}/seances-datees` : (re)calculer les
   séances datées d'une version (les retouches à la main sont conservées).
 
-Après une action, on revient sur la vue d'où l'on vient (`retour`, limité aux
-adresses de cet onglet). Les exports (CSV, iCal) sont servis par un autre
-lot, aux adresses `/export/emploi-du-temps.csv` et `.ics`.
+Après une action, la page revient sur la vue d'où vient la demande (`retour`,
+limité aux adresses de cet onglet). Les exports (CSV, iCal) sont servis par
+`edt.web.routes.echange`, aux adresses `/export/emploi-du-temps.csv` et `.ics`.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ from typing import Annotated
 from urllib.parse import parse_qsl, urlencode
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import RedirectResponse
 
 from edt.domaine.enumerations import JOURS
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
@@ -116,7 +115,7 @@ def _adresse_de_la_page(request: Request, retour: str | None, cle: str) -> str |
     """Adresse de retour d'un panneau : `retour` s'il est donné, sinon la page d'où vient HTMX.
 
     HTMX envoie l'adresse de la page dans l'en-tête `HX-Current-URL` : inutile
-    de la répéter dans chaque bloc de la grille. On y met la séance `cle` en
+    de la répéter dans chaque bloc de la grille. La séance `cle` y est mise en
     évidence, pour revenir sur elle après une action. Un en-tête illisible est
     ignoré (`adresse_courante` le journalise).
     """
@@ -167,7 +166,7 @@ def _message_resultat(resultat: modifications.ResultatModification) -> str:
         )
     reste = len(resultat.anomalies) - NB_ANOMALIES_DANS_MESSAGE
     if reste > 0:
-        morceaux.append(f"(et {reste} autre(s) remarque(s))")
+        morceaux.append(f"(et {presentation.pluriel(reste, 'autre remarque', 'autres remarques')})")
     return " ".join(morceaux)
 
 
@@ -196,7 +195,8 @@ def page(
     """L'emploi du temps choisi, et le panneau d'une séance si `seance` est donné.
 
     Sans cible dans l'adresse, la page s'ouvre sur la dernière cible consultée
-    (cookie du navigateur), sinon sur la première classe de l'année.
+    (cookie du navigateur), sinon sur la classe la plus chargée de l'année
+    (`vues.cible_par_defaut`).
     """
     semestre, version = _resolution(session, semestre_id, version_id)
     contexte: dict = {
@@ -228,7 +228,7 @@ def page(
         choisie = _cible_retenue(request)
         origine = "retenue" if choisie is not None else "defaut"
     if choisie is None:
-        choisie = vues.cible_par_defaut(session, annee_id)
+        choisie = vues.cible_par_defaut(session, annee_id, version.id)
 
     def construire(cible_vue, etendu_vue):
         return vues.construire_vue(
@@ -246,15 +246,13 @@ def page(
         vue = construire(choisie, etendu)
     except ErreurIntrouvable as erreur:
         # Lien ancien, cible retenue d'une autre année, ou changement de semestre sans
-        # JavaScript : on montre la cible par défaut.
-        defaut = vues.cible_par_defaut(session, annee_id)
+        # JavaScript : la cible par défaut est montrée.
+        defaut = vues.cible_par_defaut(session, annee_id, version.id)
         if choisie == defaut:
             raise
         if origine == "demandee":
             messages.append(
-                Message(
-                    f"{erreur.message} Affichage de la première classe à la place.", "attention"
-                )
+                Message(f"{erreur.message} Affichage d'une autre classe à la place.", "attention")
             )
         else:
             journal.info("Dernière cible consultée introuvable ici (%s) : cible par défaut", erreur)
@@ -353,7 +351,7 @@ def panneau_seance(
         f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}",
     )
     if not est_htmx(request):
-        return RedirectResponse(retour, status_code=303)
+        return rediriger(request, retour)
     return _rendre_panneau_seance(request, session, formulaire, retour)
 
 
@@ -368,7 +366,7 @@ def formulaire_seance(
     verrouiller: bool = False,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change le jour ou l'heure (débuts et salles libres).
+    """Formulaire recalculé au changement du jour ou de l'heure (débuts et salles libres).
 
     Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
     """
@@ -376,9 +374,9 @@ def formulaire_seance(
         session, seance_id, jour=jour, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
     if not est_htmx(request):
-        return RedirectResponse(
+        return rediriger(
+            request,
             _retour(retour, f"{ADRESSE}?version_id={formulaire.version_id}&seance=h{seance_id}"),
-            status_code=303,
         )
     return rendre(
         request,
@@ -471,7 +469,7 @@ def panneau_occurrence(
         f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
     )
     if not est_htmx(request):
-        return RedirectResponse(retour, status_code=303)
+        return rediriger(request, retour)
     return _rendre_panneau_occurrence(request, session, formulaire, retour)
 
 
@@ -485,7 +483,7 @@ def formulaire_occurrence(
     salle_id: str | None = None,
     retour: str | None = None,
 ):
-    """Formulaire recalculé quand on change la date ou l'heure.
+    """Formulaire recalculé au changement de la date ou de l'heure.
 
     Ouvert hors HTMX (adresse saisie, lien), il mène à la page avec le panneau de la séance.
     """
@@ -493,13 +491,13 @@ def formulaire_occurrence(
         session, occurrence_id, date=date, debut=debut, salle_id=_entier_ou_rien(salle_id, "Salle")
     )
     if not est_htmx(request):
-        return RedirectResponse(
+        return rediriger(
+            request,
             _retour(
                 retour,
                 f"{ADRESSE}?version_id={formulaire.version_id}&couche=date"
                 f"&date={formulaire.bloc.date.isoformat()}&seance=o{occurrence_id}",
             ),
-            status_code=303,
         )
     return rendre(
         request,
@@ -540,8 +538,8 @@ def annuler_occurrence(
     retour: Annotated[str, Form()] = "",
 ):
     """Annule une séance datée (après confirmation dans la page)."""
-    message = modifications.annuler_occurrence(session, occurrence_id, motif)
-    return rediriger(request, _retour(retour), message)
+    resultat = modifications.annuler_occurrence(session, occurrence_id, motif)
+    return rediriger(request, _retour(retour), resultat.message, resultat.niveau)
 
 
 @routeur.post("/versions/{version_id:int}/seances-datees", name="recalculer_seances_datees")
