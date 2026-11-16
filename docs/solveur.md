@@ -666,7 +666,8 @@ ensuite.
 
 | Ce qui arrive | Statut | Fin du message |
 |---|---|---|
-| le temps limite tombe avant l'étape 3 | `TEMPS_DEPASSE` | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » |
+| le temps limite tombe avant l'étape 3 | `TEMPS_DEPASSE` | « Aucun emploi du temps n'a été trouvé en n s. Ce n'est pas une preuve d'impossibilité... » ; n est la durée réellement écoulée |
+| des horaires sont trouvés, mais l'attribution des salles s'interrompt sur son temps maximal (`TEMPS_SALLES_MAX_S`) sans aboutir | `TEMPS_DEPASSE`, avant le temps limite | « Aucun emploi du temps n'a été trouvé en n s. Des horaires ont été trouvés, mais l'attribution des salles s'est interrompue sur son temps maximal (10 s) sans aboutir. Ce n'est pas une preuve d'impossibilité... » |
 | le temps limite tombe juste après l'étape 3 | `SOLUTION` (la solution valide) | « Le temps a manqué pour l'améliorer : relancer avec plus de temps donnera un emploi du temps plus confortable. » |
 | le temps limite tombe pendant l'amélioration | `SOLUTION` (la meilleure trouvée) | « L'amélioration s'est arrêtée au temps limite : relancer plus longtemps peut encore l'affiner. » |
 | l'optimum est prouvé | `SOLUTION` | « Impossible de faire mieux avec les préférences actuelles. » ; s'il reste des entorses de salle : « Les horaires ne peuvent pas être mieux notés ; les entorses qui restent viennent des salles. » ; si les horaires les mieux notés ont été écartés à cause de leurs salles : « Des horaires mieux notés existent, mais leurs salles coûteraient des entorses : ceux-ci sont gardés. » |
