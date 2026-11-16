@@ -52,6 +52,12 @@ def test_page_avec_schema_resume_et_tests_jamais_lances(client, depot):
     assert "Test de charge" in page
     assert '<title id="schema-i-titre">' in integration and "Six parcours" in integration
     assert 'class="banc banc-integration"' in integration
+    # Libellés des boutons accordés au nombre de tests (fichiers d'un seul test en intégration).
+    assert 'title="Lancer les 6 tests du fichier"' in page
+    assert 'title="Lancer les 5 tests du composant"' in page  # le test de charge est exclu
+    assert 'title="Lancer le test du fichier"' in integration
+    assert 'title="Lancer le test du composant"' in integration
+    assert "les 1 test" not in page + integration
 
 
 def test_lancement_suivi_et_resultats_par_la_route_web(client, depot):

@@ -3,6 +3,7 @@
   Variables attendues dans le contexte : t (TableauFamille), duree (texte d'une durée).
   - etat(ligne)                  pastille de l'état d'un test
   - compte(c)                    résumé « 12 réussis, 1 échec… » d'un groupe
+  - les_tests(n)                 « le test » ou « les N tests »
   - ligne(l, oob)                un test (remplacé tel quel par le suivi si oob)
   - entete_fichier(f, oob)       titre, résumé et bouton d'un fichier
   - resume_composant(c, oob)     résumé d'un composant (dans son <summary>)
@@ -25,6 +26,11 @@
   {%- if c.en_cours %}<span class="banc-compte-en-cours">{{ c.en_cours }} en cours</span>{% endif %}
   {%- if c.jamais %}<span class="banc-compte-jamais">{{ c.jamais }} jamais lancé{{ "s" if c.jamais > 1 }}</span>{% endif %}
 </span>
+{%- endmacro %}
+
+{#- « le test » ou « les N tests », accordé au nombre. #}
+{% macro les_tests(n) -%}
+{{ "le test" if n == 1 else "les " ~ n ~ " tests" }}
 {%- endmacro %}
 
 {% macro bouton(cible, libelle, titre, principal=false) -%}
@@ -69,7 +75,7 @@
   <h3><code>{{ f.fichier.nom }}</code></h3>
   {{ compte(f.compte) }}
   <span class="banc-date">{% if f.complet_le %}Fichier lancé en entier le {{ f.complet_le|dateheure_fr }}{% else %}Fichier jamais lancé en entier{% endif %}</span>
-  {{ bouton("fichier:" ~ f.fichier.chemin, "Lancer ce fichier", "Lancer les " ~ f.compte.total ~ " tests du fichier") }}
+  {{ bouton("fichier:" ~ f.fichier.chemin, "Lancer ce fichier", "Lancer " ~ les_tests(f.compte.total) ~ " du fichier") }}
 </div>
 {%- endmacro %}
 
@@ -83,7 +89,7 @@
 {% macro resume_famille(oob=false) -%}
 <div class="banc-resume-famille" id="banc-resume-famille"{% if oob %} hx-swap-oob="true"{% endif %}>
   <p class="banc-resume-nombres">
-    <strong>{{ t.compte.total }} tests</strong> {{ compte(t.compte) }}
+    <strong>{{ t.compte.total }} test{{ "s" if t.compte.total > 1 }}</strong> {{ compte(t.compte) }}
   </p>
   <p class="banc-date">
     {%- if t.complet_le %}Dernière exécution complète : le {{ t.complet_le|dateheure_fr }}.
