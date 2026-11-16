@@ -17,7 +17,8 @@
  *    (`portee:etablissement;p_mode:libre`).
  * 5. Choix multiples : filtre de la liste de cases à cocher (`.choix-multiple`).
  * 6. Attente : un formulaire portant `data-attente="..."` désactive ses boutons
- *    pendant l'envoi et affiche ce texte (opérations longues).
+ *    pendant l'envoi et affiche ce texte (opérations longues), y compris un
+ *    bouton placé hors du formulaire et rattaché par l'attribut `form=`.
  * 7. Blocs repliables : un `<details id="...">` ouvert le reste quand HTMX
  *    remplace la zone qui le contient.
  * 8. Arbres repliables : un conteneur `data-arbre="clé"` mémorise ses nœuds
@@ -43,6 +44,13 @@
 
   /* ---- 6. Attente pendant un envoi long ----------------------------------- */
 
+  function boutonsEnvoi(formulaire) {
+    // `elements` comprend les boutons rattachés par `form=`, placés hors du formulaire.
+    return Array.prototype.filter.call(formulaire.elements || [], function (element) {
+      return element.tagName === "BUTTON" && element.type === "submit";
+    });
+  }
+
   document.addEventListener("submit", function (evenement) {
     var formulaire = evenement.target;
     var texte = formulaire.dataset ? formulaire.dataset.attente : null;
@@ -51,7 +59,7 @@
     }
     // Désactivés après la construction des données envoyées : l'envoi n'est pas gêné.
     window.setTimeout(function () {
-      formulaire.querySelectorAll("button[type=submit]").forEach(function (bouton) {
+      boutonsEnvoi(formulaire).forEach(function (bouton) {
         bouton.disabled = true;
         bouton.textContent = texte;
       });
