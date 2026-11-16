@@ -211,7 +211,7 @@ def test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante(
 @pytest.mark.cas_limite
 def test_base_occupee_par_une_ecriture_n_est_pas_une_panne(jeu_minimal, client):
     """Cas : un autre processus tient le verrou d'écriture (calcul, import, commande) pendant
-    que la supervision interroge `/sante` et qu'on ouvre l'accueil.
+    que la supervision interroge `/sante` et que l'accueil est ouvert.
     Risque : `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai
     d'attente sur verrou (`DELAI_VERROU_MS`) ; l'écriture d'essai doit être sautée, sans attente.
     """

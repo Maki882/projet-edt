@@ -1,4 +1,4 @@
-"""Application web du socle : accueil, santé, erreurs lisibles, mécanisme d'extension."""
+"""Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension."""
 
 from __future__ import annotations
 

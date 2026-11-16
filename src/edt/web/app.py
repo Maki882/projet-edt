@@ -5,7 +5,7 @@ Mécanisme d'extension
 `creer_app()` importe tous les modules du paquet `edt.web.routes` et, pour
 chacun, inclut son `routeur` (un `fastapi.APIRouter`, obligatoire) et ajoute
 ses entrées de menu `MENU` (une liste d'`EntreeMenu`, facultative). Pour
-ajouter un écran, on crée donc un module dans `edt/web/routes/` et ses
+ajouter un écran, il suffit de créer un module dans `edt/web/routes/` et ses
 gabarits dans `edt/web/templates/`, sans toucher à ce fichier :
 
     # src/edt/web/routes/salles.py
