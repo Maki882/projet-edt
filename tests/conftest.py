@@ -28,6 +28,9 @@ from edt.db.moteur import fabrique_sessions, liberer_moteurs, session_base
 from edt.journal import reinitialiser_journalisation
 from edt.services.parametres import ecrire_parametre
 
+# Les aides de tests/outils gardent des messages d'assertion détaillés, comme les modules de tests.
+pytest.register_assert_rewrite("tests.outils")
+
 AUJOURDHUI = dt.date(2026, 10, 5)
 """Date de référence des tests : l'année scolaire créée par défaut est 2026-2027."""
 
