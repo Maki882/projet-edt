@@ -55,7 +55,7 @@ Chaque écran se range dans un onglet par la `section` de son entrée de menu
   salle », « Équipements » et « Types de séance » vont dans « Listes de
   référence » ; « Établissement fictif » reste dans « Import et export », et
   le groupe « Jeux de données » n'a plus d'entrée. Dans l'onglet Générer, la
-  section À traiter (page « Points à traiter ») rejoint le groupe « Générer ».
+  section `SECTION_A_TRAITER` (page « Points à traiter ») rejoint le groupe « Générer ».
 - Une entrée dont la section n'est rangée dans aucun onglet va dans l'onglet
   Données, sous un groupe portant le nom de sa section, et un avertissement
   est journalisé.

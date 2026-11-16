@@ -343,8 +343,8 @@ Préférences (objectif à minimiser, actif par défaut) :
 - Écrans d'édition pour toutes les entités : liste triable, recherche,
   formulaire, suppression avec confirmation.
 - Écrans de configuration : calendrier, grille horaire, paramètres, règles
-  personnalisées, import et export, chargement d'un jeu fictif, remise à
-  zéro.
+  personnalisées, import et export, chargement d'un établissement fictif,
+  remise à zéro.
 - Écran « Besoins » : c'est l'entrée du générateur.
 - Lancement d'un calcul : pré-vérifications, niveau de chaque règle, mode de
   la pause déjeuner, suivi en direct, résultat ou explication de l'échec.
