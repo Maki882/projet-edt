@@ -159,6 +159,6 @@ def _ecrire(session: Session, proposition: Proposition) -> tuple[str, Lien | Non
     element = operations.creer(session, "indisponibilite", donnees["valeurs"])
     return (
         f"Enregistrée : indisponibilité n° {element['id']}. Elle comptera au prochain calcul ; "
-        "les séances déjà placées sur ce créneau apparaîtront dans « À traiter ».",
+        "les séances déjà placées sur ce créneau apparaîtront dans la page Points à traiter (onglet Générer).",
         Lien("Voir l'indisponibilité", f"/indisponibilites/{element['id']}"),
     )

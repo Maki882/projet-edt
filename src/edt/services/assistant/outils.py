@@ -1219,7 +1219,7 @@ def _points_a_traiter(session: Session, entree: Mapping[str, Any], contexte: Con
             raise ErreurDonneesInvalides(f"Gravité inconnue : « {nom_gravite} ».")
         gravite = _GRAVITES[nom_gravite]
     resultats = anomalies.a_traiter(session, semestre.id)
-    contexte.lier("Voir « À traiter »", f"/a-traiter?semestre_id={semestre.id}")
+    contexte.lier("Voir les points à traiter", f"/a-traiter?semestre_id={semestre.id}")
     if not resultats:
         return f"Le semestre {semestre.code} n'a pas d'emploi du temps actif : rien à traiter."
     a_traiter = resultats[0]

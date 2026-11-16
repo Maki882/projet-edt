@@ -1,0 +1,43 @@
+{#- Carte d'une proposition (`proposition`) ; `message` et `apres_clic` après Confirmer ou Refuser. #}
+{%- import "macros.html" as ui %}
+{%- set etats = {"en_attente": ("À confirmer", "info"), "en_cours": ("Enregistrement en cours", "neutre"),
+                 "confirmee": ("Confirmée", "succes"), "refusee": ("Refusée", "neutre"),
+                 "echouee": ("Non enregistrée", "erreur")} %}
+<section class="assistant-proposition assistant-proposition-{{ proposition.etat.value }}"
+         id="proposition-{{ proposition.jeton }}" aria-label="Proposition {{ proposition.code }}">
+  <h3>{{ proposition.code }} · {{ proposition.titre }} {{ ui.etiquette(*etats[proposition.etat.value]) }}</h3>
+  {%- if proposition.phrase_avant %}
+  <p class="assistant-proposition-avant"><span class="assistant-qui">Avant : </span>{{ proposition.phrase_avant }}</p>
+  <p><span class="assistant-qui">Après : </span>{{ proposition.phrase }}</p>
+  {%- else %}
+  <p>{{ proposition.phrase }}</p>
+  {%- endif %}
+  {%- if proposition.details %}
+  <ul class="assistant-proposition-details">{% for detail in proposition.details %}<li>{{ detail }}</li>{% endfor %}</ul>
+  {%- endif %}
+  {%- if proposition.en_attente %}
+  <div class="assistant-proposition-boutons">
+    <form method="post" action="/assistant/propositions/{{ proposition.jeton }}/confirmer"
+          hx-post="/assistant/propositions/{{ proposition.jeton }}/confirmer"
+          hx-target="#proposition-{{ proposition.jeton }}" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <button type="submit" class="bouton bouton-principal" aria-label="{{ proposition.libelle_confirmer }} ({{ proposition.code }})">Confirmer</button>
+    </form>
+    <form method="post" action="/assistant/propositions/{{ proposition.jeton }}/refuser"
+          hx-post="/assistant/propositions/{{ proposition.jeton }}/refuser"
+          hx-target="#proposition-{{ proposition.jeton }}" hx-swap="outerHTML" hx-disabled-elt="find button">
+      <button type="submit" class="bouton" aria-label="Refuser la proposition {{ proposition.code }}">Refuser</button>
+    </form>
+  </div>
+  <p class="discret">Rien n'est enregistré avant Confirmer. Vérifiez la phrase : l'assistant peut se tromper.</p>
+  {%- endif %}
+  {%- if message %}
+  <p class="assistant-compte-rendu"{% if apres_clic %} tabindex="-1" data-focus{% endif %}>{{ message }}</p>
+  {%- endif %}
+  {%- if proposition.compte_rendu %}
+  <p class="assistant-compte-rendu"{% if apres_clic and not message %} tabindex="-1" data-focus{% endif %}>{{ proposition.compte_rendu }}</p>
+  {%- endif %}
+  {%- set lien = proposition.lien or proposition.lien_ecran %}
+  {%- if lien %}
+  <p><a href="{{ lien.adresse }}">{{ lien.libelle }}</a></p>
+  {%- endif %}
+</section>

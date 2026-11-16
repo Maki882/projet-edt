@@ -94,6 +94,9 @@
   margin-left: 2rem;
   background: var(--marque-pale);
   border-color: var(--marque-pale);
+}
+
+.assistant-texte-utilisateur {
   white-space: pre-line;
 }
 
