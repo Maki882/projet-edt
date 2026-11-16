@@ -40,6 +40,7 @@ import datetime as dt
 import logging
 import re
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -50,7 +51,7 @@ from sqlalchemy.exc import CompileError
 from sqlalchemy.orm import Session
 from sqlalchemy.types import TypeEngine
 
-from edt.config import url_affichable
+from edt.config import charger_configuration, url_affichable
 from edt.db.base import Base
 from edt.db.modeles import (
     AnneeScolaire,
@@ -180,26 +181,62 @@ def creer_schema(moteur: Engine) -> None:
         Base.metadata.create_all(connexion)
 
 
-def sauvegarder_base(url: str | None = None, suffixe: str = "avant-reset") -> Path | None:
-    """Copie cohérente du fichier SQLite à côté de lui (« edt-<date>-<suffixe>.db »).
+def copier_base(source: Path, cible: Path) -> int:
+    """Copie cohérente de `source` dans `cible` (API de sauvegarde SQLite), puis contrôle.
 
-    Utilise l'API de sauvegarde de SQLite : la copie inclut les écritures
-    encore dans le fichier -wal. Renvoie le chemin de la copie, ou `None` si
-    la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si la copie
-    échoue : on ne détruit pas une base qu'on n'a pas su sauvegarder.
+    La copie lit un instantané de la base, écritures encore dans le fichier
+    -wal comprises : le service peut écrire pendant ce temps. Renvoie le nombre
+    de tables de la copie ; lève `ErreurDonneesInvalides` si la base est
+    illisible, le disque plein ou la copie abîmée.
     """
-    chemin = chemin_base(url or str(obtenir_moteur(url).url))
-    if chemin is None or not chemin.exists():
-        return None
-    horodatage = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-    copie = chemin.with_name(f"{chemin.stem}-{horodatage}-{suffixe}{chemin.suffix or '.db'}")
     try:
-        with sqlite3.connect(chemin) as source, sqlite3.connect(copie) as cible:
-            source.backup(cible)
-    except (sqlite3.Error, OSError) as erreur:
+        with closing(sqlite3.connect(source, timeout=30)) as connexion_source:
+            with closing(sqlite3.connect(cible)) as connexion_cible:
+                connexion_source.backup(connexion_cible)
+                verdict = connexion_cible.execute("PRAGMA integrity_check").fetchone()[0]
+                nb_tables = connexion_cible.execute(
+                    "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
+                ).fetchone()[0]
+    except sqlite3.Error as erreur:
+        raise ErreurDonneesInvalides(
+            f"Sauvegarde impossible : base {source} illisible ou disque plein ({erreur})."
+        ) from erreur
+    if verdict != "ok":
+        raise ErreurDonneesInvalides(
+            f"Sauvegarde refusée : le contrôle d'intégrité de la copie échoue ({verdict}). La base "
+            f"{source} est sans doute abîmée (docs/deploiement.md, « Base corrompue »)."
+        )
+    if nb_tables == 0:
+        raise ErreurDonneesInvalides(f"Sauvegarde refusée : {source} ne contient aucune table.")
+    return nb_tables
+
+
+def sauvegarder_base(url: str | None = None) -> Path | None:
+    """Copie vérifiée de la base avant sa remise à zéro, dans le dossier « sauvegardes ».
+
+    Le fichier `sauvegardes/edt-<date et heure UTC>-avant-reset.db`, à côté de
+    la base, suit le nommage des sauvegardes du déploiement et tourne donc
+    avec elles. Il est écrit en « .partiel », puis renommé seulement si son
+    contrôle d'intégrité passe (`copier_base`). Renvoie le chemin de la copie,
+    ou `None` si la base n'a pas encore de fichier. Lève `ErreurRegleMetier` si
+    la copie échoue : une base qui n'a pas pu être sauvegardée n'est pas détruite.
+    """
+    chemin = chemin_base(url or charger_configuration().db_url)
+    if chemin is None or not chemin.is_file():
+        return None
+    horodatage = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
+    copie = chemin.parent / "sauvegardes" / f"edt-{horodatage}-avant-reset.db"
+    partiel = copie.with_name(copie.name + ".partiel")
+    try:
+        copie.parent.mkdir(parents=True, exist_ok=True)
+        copier_base(chemin, partiel)
+        partiel.replace(copie)
+    except (ErreurDonneesInvalides, OSError) as erreur:
+        partiel.unlink(missing_ok=True)
         raise ErreurRegleMetier(
             f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
-            "remise à zéro annulée, rien n'a été modifié."
+            "remise à zéro annulée, rien n'a été modifié. Libérer de l'espace disque ou "
+            "corriger les droits du dossier, puis relancer."
         ) from erreur
     journal.warning("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
     return copie

@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import datetime as dt
-import os
 import sqlite3
 import sys
 import types
+from contextlib import closing
 
 import pytest
 import typer
@@ -20,6 +20,7 @@ from edt.db.modeles import Besoin, Calcul, Parametre, Salle
 from edt.db.moteur import liberer_moteurs, obtenir_moteur, session_base
 from edt.domaine.enumerations import EtatCalcul
 from edt.erreurs import ErreurRegleMetier
+from edt.services import generation, jeux
 
 
 def test_version(lanceur):
@@ -172,20 +173,23 @@ def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_e
 
     Risque : base de production effacée par mégarde sans question ni sauvegarde, calcul en
     cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie
-    « edt-<date>-avant-reset.db » dans le troisième.
+    « sauvegardes/edt-<date>-avant-reset.db » dans le troisième.
     """
     monkeypatch.setattr(module_base, "_entree_interactive", lambda: True)
     refus = lanceur.invoke(cli.app, ["init-db", "--reset"], input="n\n")
     assert refus.exit_code != 0
     assert compter(Salle) == jeu_minimal.nb_salles  # rien d'effacé
 
-    # Un calcul en cours dans un autre processus (vivant) : refus, même avec --oui.
+    # Un calcul en cours dans un autre processus (vivant) : refus, même avec --oui. La
+    # vivacité du processus est simulée : elle ne dépend pas de l'arbre des processus du test.
+    pid_vivant = 4242
+    monkeypatch.setattr(generation, "_processus_vivant", lambda pid: pid == pid_vivant)
     with session_base() as session:
         calcul = Calcul(
             semestre_id=jeu_minimal.semestre_id,
             etat=EtatCalcul.EN_COURS,
             demarre_le=dt.datetime.now(),
-            statistiques={"pid": os.getppid()},
+            statistiques={"pid": pid_vivant},
         )
         session.add(calcul)
         session.flush()
@@ -201,11 +205,50 @@ def test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_e
     fait = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
     assert fait.exit_code == 0, fait.output
     assert "Sauvegarde" in fait.output and compter(Salle) == 0
-    (copie,) = environnement.glob("edt-*-avant-reset.db")
-    with sqlite3.connect(copie) as sauvegarde:
+    (copie,) = (environnement / "sauvegardes").glob("edt-*-avant-reset.db")
+    with closing(sqlite3.connect(copie)) as sauvegarde:
         assert (
             sauvegarde.execute("SELECT count(*) FROM salle").fetchone()[0] == jeu_minimal.nb_salles
         )
+
+
+@pytest.mark.cas_limite
+def test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue(
+    lanceur, jeu_minimal, environnement, monkeypatch, compter
+):
+    """Cas : `init-db --reset --oui` en production alors que la sauvegarde préalable échoue
+    (disque plein, dossier « sauvegardes » non inscriptible).
+
+    Risque : la remise à zéro détruirait une base qui n'a pas été sauvegardée ; la commande
+    doit s'arrêter avant, code 1, en nommant la sauvegarde et le remède, sans fichier partiel.
+    """
+    monkeypatch.setenv("EDT_ENV", "prod")
+    (environnement / "sauvegardes").write_text("pas un dossier", encoding="utf-8")
+
+    resultat = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert "sauvegarde de la base" in resultat.output and "remise à zéro annulée" in resultat.output
+    assert compter(Salle) == jeu_minimal.nb_salles
+    assert not list(environnement.rglob("*.partiel"))
+
+
+@pytest.mark.cas_limite
+def test_init_db_reset_est_refuse_pendant_un_chargement_de_jeu(
+    lanceur, jeu_minimal, environnement, compter
+):
+    """Cas : `init-db --reset --oui` lancé pendant qu'un chargement de jeu fictif tient le
+    verrou des opérations sur la base (écran de configuration, commande `jeu`).
+
+    Risque : tables supprimées sous le chargement en cours, et serveur qui ignore la remise
+    à zéro (pas de fichier marqueur) ; la commande doit refuser, code 1, sans rien effacer.
+    """
+    with jeux._verrou_base:
+        resultat = lanceur.invoke(cli.app, ["init-db", "--reset", "--oui"])
+
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    assert "déjà en cours" in resultat.output
+    assert compter(Salle) == jeu_minimal.nb_salles
 
 
 @pytest.mark.cas_limite
@@ -219,7 +262,7 @@ def test_init_db_reset_non_interactif_ne_pose_pas_de_question(
     """
     resultat = lanceur.invoke(cli.app, ["init-db", "--reset"])
     assert resultat.exit_code == 0, resultat.output
-    assert compter(Salle) == 0 and not list(environnement.glob("edt-*-avant-reset.db"))
+    assert compter(Salle) == 0 and not list(environnement.rglob("edt-*-avant-reset.db"))
 
 
 @pytest.mark.cas_limite

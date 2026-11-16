@@ -19,13 +19,13 @@ from typing import Annotated
 
 import typer
 from sqlalchemy import create_engine, text
-from sqlalchemy.engine import make_url
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
 from edt.db.base import Base
 from edt.db.initialisation import (
     MARCHE_A_SUIVRE_SCHEMA_PERIME,
+    copier_base,
     ecarts_schema,
     exiger_schema_a_jour,
     initialiser_base,
@@ -34,13 +34,13 @@ from edt.db.initialisation import (
 )
 from edt.db.jeux import creer_jeu_minimal
 from edt.db.moteur import (
+    chemin_base,
     expliquer_erreur_base,
     obtenir_moteur,
     session_base,
     transaction_immediate,
 )
 from edt.erreurs import (
-    ErreurCalculEnCours,
     ErreurConfiguration,
     ErreurDonneesInvalides,
     ErreurEDT,
@@ -49,6 +49,7 @@ from edt.erreurs import (
 )
 from edt.journal import DOSSIER_CALCULS, NOM_FICHIER, panne_journalisation
 from edt.services.etat import EtatBase, diagnostiquer_base
+from edt.services.jeux import remettre_a_zero
 
 commandes = typer.Typer()
 journal = logging.getLogger(__name__)
@@ -101,16 +102,20 @@ def init_db(
 
     --reset demande confirmation quand la commande est tapée dans un terminal
     (--oui l'évite ; un script non interactif n'est pas interrogé), refuse
-    d'agir pendant un calcul, et, en production, sauvegarde d'abord le fichier
-    de la base à côté de lui (« edt-<date>-avant-reset.db »).
+    d'agir pendant un calcul ou pendant un chargement de jeu, et, en
+    production, sauvegarde d'abord la base dans le dossier « sauvegardes »
+    à côté d'elle (« edt-<date>-avant-reset.db »).
     """
     sauvegarde = None
     if reset:
         _confirmer_remise_a_zero(oui)
-        _exiger_aucun_calcul_en_cours()
         if charger_configuration().est_prod:
             sauvegarde = sauvegarder_base()
-    rapport = initialiser_base(reset=reset)
+        # Même chemin que l'écran de configuration : verrou, fichier marqueur vu des autres
+        # processus, refus pendant un calcul.
+        rapport = remettre_a_zero()
+    else:
+        rapport = initialiser_base()
     action = "remise à zéro puis initialisée" if rapport.reinitialisee else "initialisée"
     if sauvegarde is not None:
         typer.echo(f"Sauvegarde de l'ancienne base : {sauvegarde}")
@@ -138,21 +143,6 @@ def _confirmer_remise_a_zero(oui: bool) -> None:
     typer.confirm(
         "La remise à zéro supprime TOUTES les données de la base. Continuer ?", abort=True
     )
-
-
-def _exiger_aucun_calcul_en_cours() -> None:
-    """Refuse la remise à zéro pendant un calcul : il lit la base et sa ligne disparaîtrait."""
-    from edt.db.initialisation import base_initialisee
-    from edt.services.generation import calcul_en_cours
-
-    if not base_initialisee(obtenir_moteur()):
-        return  # pas de table « calcul » : aucun calcul ne peut tourner
-    suivi = calcul_en_cours()
-    if suivi is not None:
-        raise ErreurCalculEnCours(
-            f"Impossible de remettre la base à zéro : un calcul d'emploi du temps est en cours "
-            f"(calcul n°{suivi.id}). Attendre sa fin ou l'arrêter."
-        )
 
 
 @commandes.command("verifier-schema")
@@ -332,7 +322,7 @@ def sauvegarder(
     _supprimer_partiels_abandonnes(dossier, prefixe)
     partiel = cible.with_name(cible.name + ".partiel")
     try:
-        nb_tables = _copier_base(base, partiel)
+        nb_tables = copier_base(base, partiel)
         partiel.replace(cible)
     except BaseException:
         partiel.unlink(missing_ok=True)
@@ -552,18 +542,15 @@ def _maintenant_utc() -> dt.datetime:
 
 
 def _fichier_de_la_base() -> Path:
-    """Fichier SQLite de la base configurée (`EDT_DB_URL`), tel que l'application l'ouvre."""
-    config = charger_configuration()
-    try:
-        url = make_url(config.db_url)
-    except Exception as erreur:
-        raise ErreurConfiguration(f"EDT_DB_URL invalide ({config.db_url!r}) : {erreur}") from erreur
-    if url.get_backend_name() != "sqlite" or not url.database or url.database == ":memory:":
-        raise ErreurConfiguration(
-            "Sauvegarde possible seulement pour une base SQLite sur fichier "
-            f"(EDT_DB_URL = {config.db_url_affichable})."
-        )
-    return Path(url.database)
+    """Fichier SQLite de la base configurée (`EDT_DB_URL`), tel que l'application l'ouvre.
+
+    `obtenir_moteur` refuse toute URL qui n'est pas un fichier SQLite, avec le remède.
+    """
+    obtenir_moteur()
+    chemin = chemin_base(charger_configuration().db_url)
+    if chemin is None:  # impossible après `obtenir_moteur`, gardé pour le typage
+        raise ErreurConfiguration("EDT_DB_URL ne désigne pas un fichier SQLite.")
+    return chemin
 
 
 def _taille_base(base: Path) -> int:
@@ -575,35 +562,6 @@ def _taille_base(base: Path) -> int:
 def _lisible(octets: int) -> str:
     """Taille lisible : « 3,2 Mo »."""
     return f"{octets / (1024 * 1024):.1f} Mo".replace(".", ",")
-
-
-def _copier_base(source: Path, cible: Path) -> int:
-    """Copie cohérente de `source` dans `cible` (API de sauvegarde SQLite), puis contrôle.
-
-    La copie lit un instantané de la base : le service peut écrire pendant ce
-    temps. Renvoie le nombre de tables de la copie ; lève `ErreurDonneesInvalides`
-    si la base est illisible, le disque plein ou la copie abîmée.
-    """
-    try:
-        with closing(sqlite3.connect(source, timeout=30)) as connexion_source:
-            with closing(sqlite3.connect(cible)) as connexion_cible:
-                connexion_source.backup(connexion_cible)
-                verdict = connexion_cible.execute("PRAGMA integrity_check").fetchone()[0]
-                nb_tables = connexion_cible.execute(
-                    "SELECT count(*) FROM sqlite_master WHERE type = 'table'"
-                ).fetchone()[0]
-    except sqlite3.Error as erreur:
-        raise ErreurDonneesInvalides(
-            f"Sauvegarde impossible : base {source} illisible ou disque plein ({erreur})."
-        ) from erreur
-    if verdict != "ok":
-        raise ErreurDonneesInvalides(
-            f"Sauvegarde refusée : le contrôle d'intégrité de la copie échoue ({verdict}). La base "
-            f"{source} est sans doute abîmée (docs/deploiement.md, « Base corrompue »)."
-        )
-    if nb_tables == 0:
-        raise ErreurDonneesInvalides(f"Sauvegarde refusée : {source} ne contient aucune table.")
-    return nb_tables
 
 
 def _supprimer_partiels_abandonnes(dossier: Path, prefixe: str) -> None:
