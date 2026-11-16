@@ -111,7 +111,7 @@ def operation_en_cours(url: str | None = None) -> bool:
         )
         return False
     pid = _pid_du_marqueur(contenu)
-    # Le verrou n'est pas tenu ici : un marqueur à notre numéro est un reste, pas une opération.
+    # Le verrou n'est pas tenu ici : un marqueur au numéro de ce processus est un reste.
     if pid is not None and (pid == os.getpid() or not _processus_vivant(pid)):
         journal.warning(
             "Marqueur d'opération %s laissé par le processus %d, qui ne l'exécute plus : ignoré",

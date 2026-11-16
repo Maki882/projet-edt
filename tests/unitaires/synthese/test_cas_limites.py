@@ -198,7 +198,7 @@ def test_marqueur_d_un_processus_arrete_n_immobilise_pas_le_serveur(base, monkey
     assert not jeux.operation_en_cours()  # processus arrêté : marqueur ignoré
 
     marqueur.write_text(f"{os.getpid()} charger un jeu fictif", encoding="utf-8")
-    assert not jeux.operation_en_cours()  # notre numéro, verrou libre : un reste
+    assert not jeux.operation_en_cours()  # numéro de ce processus, verrou libre : un reste
 
     marqueur.write_text("4343 charger un jeu fictif", encoding="utf-8")
     assert jeux.operation_en_cours()  # processus vivant : opération en cours
