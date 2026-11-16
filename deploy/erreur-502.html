@@ -22,7 +22,6 @@
   .edt-indisponible h1 { font-size: 1.4rem; margin-top: 0; }
   .edt-indisponible .technique { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #e4e7eb;
                                  font-size: .85rem; color: #52606d; }
-  .edt-indisponible code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
 </style>
 </head>
 <body>
@@ -31,10 +30,9 @@
   <p>Le serveur fonctionne, mais l'application ne répond pas. C'est normal
      pendant une mise à jour, qui dure en général moins d'une minute.</p>
   <p>Cette page se recharge toute seule toutes les 15 secondes. Si le problème
-     dure, prévenez l'équipe du projet.</p>
-  <p class="technique">Pour l'équipe : nginx n'arrive pas à joindre l'application
-     sur 127.0.0.1:8000 (erreur 502). Lancez <code>deploy/etat.sh</code>, puis voir
-     <code>docs/deploiement.md</code>, section « Pannes classiques » (erreur 502).</p>
+     dure, prévenez l'administrateur de l'application.</p>
+  <p class="technique">Détail technique : le serveur web n'arrive pas à joindre
+     l'application (erreur 502).</p>
 </main>
 </body>
 </html>

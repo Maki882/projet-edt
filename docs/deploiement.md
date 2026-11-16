@@ -1,28 +1,32 @@
-# Déploiement de l'application EDT
+# Guide d'exploitation de l'application EDT
 
-Ce guide explique comment l'application est installée sur le serveur, mise à
-jour, remise en arrière, sauvegardée, observée et réparée. Tous les scripts
-sont dans le dossier `deploy/` du dépôt.
+Ce guide explique comment installer l'application sur un serveur, la mettre à
+jour, vérifier son état, lire ses journaux, sauvegarder et restaurer sa base,
+activer le HTTPS et réagir à une panne. Tous les scripts sont dans le dossier
+`deploy/` du dépôt.
 
 | Quand | Où | Commande |
 |---|---|---|
-| Une fois (et après toute modification de `deploy/`) | serveur | `installer-serveur.sh` : nginx, Python, dossiers, service, lanceur `edt`, sauvegarde quotidienne |
+| Une fois, puis après toute modification de `deploy/` | serveur | `installer-serveur.sh` : nginx, Python, dossiers, service, lanceur `edt`, sauvegarde quotidienne |
 | Une fois | serveur | `activer-https.sh` : certificat Let's Encrypt et passage en HTTPS |
 | À chaque mise à jour | poste | `deploy/deployer.sh` : envoie et met en service une version |
 | Chaque nuit, tout seul | serveur | minuteur `edt-sauvegarde.timer` : sauvegarde vérifiée de la base |
-| Pour agir sur les données | serveur | `sudo edt <commande>` (ex. `sudo edt jeu --taille grand --graine 0`) |
+| Pour agir sur les données | serveur | `sudo edt <commande>` (par exemple `sudo edt jeu --taille moyen`) |
+| Pour l'assistant | serveur | `installer-cle-assistant.sh` : installe, remplace ou retire sa clé |
 | Pour regarder | poste | `deploy/etat.sh` (état complet), `deploy/journaux.sh` (en direct) |
 
-Adresse publique : **https://pts.jorund.xyz** (http:// avant l'activation du HTTPS).
+Dans ce guide, `edt.example.org`, `203.0.113.10` et `~/.ssh/cle_edt` sont des
+valeurs d'exemple : les vraies valeurs d'une installation sont dans
+`deploy/serveur.env` (section 2), fichier local que git ignore.
 
-## 1. Schéma de l'installation
+## 1. Architecture de l'installation
 
 ```
   Navigateur
-     │  https://pts.jorund.xyz            http://pts.jorund.xyz ou http://92.222.10.188
-     │  (port 443)                        (port 80 : redirigé vers https, sauf les défis
-     ▼                                     Let's Encrypt /.well-known/acme-challenge/)
-┌──────────────── Serveur Ubuntu 26.04 — 92.222.10.188 ─────────────────────────┐
+     │  https://edt.example.org          http://edt.example.org ou http://203.0.113.10
+     │  (port 443)                       (port 80 : redirigé vers https, sauf les défis
+     ▼                                    Let's Encrypt /.well-known/acme-challenge/)
+┌──────────────── Serveur Ubuntu ────────────────────────────────────────────────┐
 │ nginx (ports 80 et 443)                                                         │
 │   ├─ /static/…                    → /opt/edt/courant/code/src/edt/web/static    │
 │   │                                 (sinon transmis à l'application)            │
@@ -46,8 +50,9 @@ sur 127.0.0.1.
 | `/opt/edt/versions/<date UTC>-<commit>/` | `code/` (copie du commit), `venv/` (Python de cette version), `envoi-termine` (témoin d'un envoi complet), `DEPLOIEMENT.txt` (commit, auteur, dates), `installation-pip.log`, `paquets-installes.txt`, `deploiement-reussi` |
 | `/opt/edt/courant` | lien vers la version en service |
 | `/etc/edt/edt.env` | variables de production (modèle : `deploy/edt.env.exemple`) |
+| `/etc/edt/assistant.env` | clé de l'assistant, facultative (section 7) |
 | `/var/lib/edt/edt.db` | la base |
-| `/var/lib/edt/sauvegardes/` | sauvegardes : `quotidienne-*` (minuteur, 14 gardées), `edt-*-avant-<version>` (déploiement, 10 gardées), `manuelle-*` (jamais supprimées) |
+| `/var/lib/edt/sauvegardes/` | sauvegardes : `quotidienne-*` (minuteur, 14 gardées), `edt-*-avant-<version>` (déploiement, 10 gardées), `manuelle-*` (à la main), `corrompue-*` (base abîmée mise de côté) |
 | `/var/log/edt/edt.log`, `/var/log/edt/generations/` | journaux de l'application et des calculs |
 | `/var/log/edt-deploiements/` | `<version>.log` (journal complet de chaque déploiement), `historique.log` (une ligne par déploiement, date avec décalage horaire) |
 | `/var/log/nginx/edt-acces.log`, `edt-erreurs.log` | journaux nginx du site |
@@ -62,7 +67,10 @@ sur 127.0.0.1.
 Fichiers du dossier `deploy/` :
 
 - serveur, idempotents : `installer-serveur.sh` (installation) et `activer-https.sh` (certificat) ;
-- poste : `deployer.sh`, `etat.sh`, `journaux.sh`, et `commun.sh` (leurs paramètres et fonctions communes) ;
+- serveur, pour l'assistant : `installer-cle-assistant.sh` (clé de l'API) ;
+- poste : `deployer.sh`, `etat.sh`, `journaux.sh`, et `commun.sh` (leurs fonctions communes) ;
+- paramètres de l'installation : `serveur.env.exemple` (modèle de `deploy/serveur.env`)
+  et `configuration.sh` (lecture de ce fichier, par les scripts du poste et du serveur) ;
 - `deployer-distant.sh` : partie serveur de `deployer.sh`, envoyée automatiquement ;
 - `lanceur-edt.sh` : devient `/usr/local/bin/edt` ;
 - unités systemd : `edt.service`, `edt-sauvegarde.service`, `edt-sauvegarde.timer` ;
@@ -72,94 +80,129 @@ Fichiers du dossier `deploy/` :
 - pages d'erreur : `erreur-502.html` et `erreur-413.html`.
 
 Les tests automatiques de ces fichiers sont dans `tests/unitaires/exploitation/` et
-`tests/integration/exploitation/` (syntaxe des
-scripts, cohérence entre fichiers, sauvegardes, arrêt brutal) ; ce qui ne peut se
-vérifier que sur le serveur est décrit en section 10.
+`tests/integration/exploitation/` (syntaxe des scripts, cohérence entre fichiers,
+sauvegardes, arrêt brutal, clé de l'assistant) ; ce qui ne peut se vérifier que
+sur le serveur est décrit en section 13.
 
-## 2. Avant de commencer (poste du développeur)
+## 2. Prérequis et paramètres
 
-- Ouvrir **Git Bash** à la racine du dépôt (le chemin contient une espace,
-  d'où les guillemets) : `cd "/c/Users/Axel/projet edt"`.
-- La clé SSH dédiée `~/.ssh/edt_vps_ed25519` doit exister. Se connecter une
-  première fois à la main pour accepter l'empreinte du serveur :
-  `ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188` puis `exit`.
-- Variables lues par les scripts du poste (défaut entre parenthèses) :
-  `EDT_SSH_HOTE` (92.222.10.188), `EDT_SSH_UTILISATEUR` (ubuntu),
-  `EDT_SSH_CLE` (~/.ssh/edt_vps_ed25519), `EDT_DOMAINE` (pts.jorund.xyz).
-- Seul du **code commité** est déployé ; il faut `pyproject.toml` à la racine
-  et le paquet dans `src/edt/`.
+**Serveur.**
+Serveur de référence : Ubuntu 26.04 (Python 3.14), 2 cœurs, 3,7 Go de mémoire.
+Toute Ubuntu ou Debian récente avec Python 3.11 ou plus convient. Il faut
+un compte SSH avec `sudo` sans mot de passe (le compte `ubuntu` des images Ubuntu),
+dont le shell de connexion est bash, et un nom de domaine dont l'enregistrement
+DNS de type A désigne l'adresse du serveur.
 
-## 3. Première installation, pas à pas
+**Poste.** Git Bash (sous Windows) ou un terminal bash, `ssh`, `git` et `curl` ; le
+dépôt cloné ; une clé SSH dédiée au serveur. Seul du **code commité** est déployé ;
+il faut `pyproject.toml` à la racine et le paquet dans `src/edt/`.
 
-**Étape 1 : copier le dossier `deploy/` sur le serveur** (c'est le contenu de
-votre dossier local qui est copié : faites d'abord `git pull`) :
+**Paramètres de l'installation.** Ils ne sont dans aucun fichier suivi par git.
+À la racine du dépôt, créer le fichier local à partir du modèle, puis y écrire
+les vraies valeurs :
 
 ```bash
-cd "/c/Users/Axel/projet edt"
-tar -cf - deploy | ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'mkdir -p ~/edt-installation && tar -xf - -C ~/edt-installation'
+cp deploy/serveur.env.exemple deploy/serveur.env
+nano deploy/serveur.env
+```
+
+| Paramètre | Rôle | Lu par |
+|---|---|---|
+| `EDT_SSH_HOTE` | adresse du serveur | scripts du poste |
+| `EDT_SSH_UTILISATEUR` | compte SSH (sudo sans mot de passe) | scripts du poste |
+| `EDT_SSH_CLE` | clé privée SSH, chemin sur le poste | scripts du poste |
+| `EDT_DOMAINE` | nom de domaine public | poste, `installer-serveur.sh`, `activer-https.sh` |
+| `EDT_CERTBOT_EMAIL` | facultatif : adresse de contact Let's Encrypt | `activer-https.sh` |
+| `EDT_IP_PUBLIQUE` | facultatif : adresse IPv4 publique, si la détection échoue | `activer-https.sh` |
+
+Une variable d'environnement du même nom l'emporte sur le fichier
+(`EDT_SSH_HOTE=203.0.113.10 deploy/etat.sh`). Un script lancé sans un
+paramètre obligatoire s'arrête avant toute action et dit quoi créer. Le fichier
+est lu, jamais exécuté : une ligne qui n'a pas la forme `NOM=valeur` ou un nom
+inconnu arrête le script avec le numéro de la ligne.
+
+**Raccourci des commandes sur le serveur.** Dans chaque fenêtre Git Bash, à la
+racine du dépôt, charger les paramètres et définir le raccourci utilisé dans
+tout ce guide :
+
+```bash
+. deploy/serveur.env
+serveur() { ssh -i "$EDT_SSH_CLE" "$EDT_SSH_UTILISATEUR@$EDT_SSH_HOTE" "$@"; }
+```
+
+`serveur 'commande'` lance la commande sur le serveur ; `serveur -t 'commande'`
+lui donne un terminal (commande qui affiche sa progression ou pose une question) ;
+`serveur` seul ouvre une session. La toute première connexion demande d'accepter
+l'empreinte du serveur : `serveur exit`.
+
+## 3. Installer un serveur
+
+**Étape 1 : copier le dossier `deploy/` sur le serveur**, avec `deploy/serveur.env`
+(c'est le contenu du dossier local qui est copié : faire d'abord `git pull`) :
+
+```bash
+tar -cf - deploy | serveur 'mkdir -p ~/edt-installation && tar -xf - -C ~/edt-installation'
 ```
 
 **Étape 2 : préparer le serveur** (quelques minutes, surtout `apt-get`) :
 
 ```bash
-ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo bash ~/edt-installation/deploy/installer-serveur.sh'
+serveur 'sudo bash ~/edt-installation/deploy/installer-serveur.sh'
 ```
 
 Chaque étape est affichée et horodatée ; la fin dit « Serveur prêt ». Le script
 installe aussi la sauvegarde quotidienne de la base (sautée tant qu'aucune
 version n'est déployée) et les pages d'erreur. Il ne touche ni à SSH ni au
-pare-feu. À ce stade, http://pts.jorund.xyz affiche la page « application
+pare-feu. À ce stade, `http://<domaine>` affiche la page « application
 momentanément indisponible » : normal, rien n'est déployé.
 
-**Étape 3 : activer le HTTPS** (pts.jorund.xyz doit déjà pointer sur le serveur) :
+**Étape 3 : activer le HTTPS** (le nom de domaine doit déjà désigner le serveur ;
+détail en section 11) :
 
 ```bash
-ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo env EDT_CERTBOT_EMAIL=adresse@example.org bash ~/edt-installation/deploy/activer-https.sh'
+serveur 'sudo bash ~/edt-installation/deploy/activer-https.sh'
 ```
 
-`EDT_CERTBOT_EMAIL` est l'adresse de contact du compte Let's Encrypt (facultative ;
-sans elle, un avertissement est affiché). Let's Encrypt n'envoie plus d'alerte
-d'expiration depuis juin 2025 : le seul garde-fou est `deploy/etat.sh`, à lancer
-régulièrement (il signale un certificat qui expire dans moins de 14 jours). Le
-script vérifie d'abord, sans rien modifier, que le DNS pointe sur le serveur et
-que le port 80 répond ; puis il obtient le certificat, passe nginx en HTTPS
-(http:// et l'adresse IP redirigent vers https://pts.jorund.xyz) et teste le
-renouvellement automatique.
-
-**Étape 4 : premier déploiement** (depuis le poste ; la première installation
+**Étape 4 : premier déploiement**, depuis le poste (la première installation
 des dépendances, OR-Tools compris, prend plusieurs minutes) :
 
 ```bash
-cd "/c/Users/Axel/projet edt"
 deploy/deployer.sh
 ```
 
 **Étape 5 : charger le jeu de données fictif** (section 6) puis vérifier :
 
 ```bash
-ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo edt jeu --taille grand --graine 0'
+serveur -t 'sudo edt jeu --taille moyen'
 deploy/etat.sh
 ```
 
-Pour appliquer plus tard une modification de `deploy/` (service, minuteur,
+Pour appliquer ensuite une modification de `deploy/` (service, minuteur,
 lanceur, nginx, pages d'erreur) : refaire les étapes 1 et 2 ; `deployer.sh`
 signale les fichiers du serveur qui ne sont plus ceux du dépôt. Le script
-conserve `/etc/edt/edt.env`, ne redemande rien à Let's Encrypt et ne redémarre
-le service que si son unité a changé ou s'il était arrêté.
+conserve `/etc/edt/edt.env` et `/etc/edt/assistant.env`, ne redemande rien à
+Let's Encrypt et ne redémarre le service que si son unité a changé ou s'il
+était arrêté.
 
-## 4. Mise à jour courante
+**Sécurité du serveur.** Les scripts ne modifient ni la configuration SSH ni le
+pare-feu. Il est recommandé de n'accepter que les connexions SSH par clé et, si
+un pare-feu est activé, d'ouvrir les ports **22** (SSH), **80** (HTTP,
+indispensable au renouvellement du certificat) et **443** (HTTPS).
+
+## 4. Déployer une version
 
 ```bash
-cd "/c/Users/Axel/projet edt"
-git switch main && git pull          # en général on déploie main à jour
+git switch main && git pull          # en général, main à jour
 deploy/deployer.sh                   # déploie HEAD
 deploy/deployer.sh --ref 1a2b3c4d    # ou un commit, une branche, une étiquette
+deploy/deployer.sh --reset-base      # recrée la base vide (section 10)
 ```
 
 Ce que fait `deployer.sh` (chaque étape est affichée et horodatée) :
 
-1. contrôles locaux ; avertit si des fichiers ne sont pas commités (ils ne sont
-   **pas** envoyés) ou si le commit n'est pas sur GitHub ;
+1. contrôles locaux : paramètres, outils, clé, référence git ; avertit si des
+   fichiers ne sont pas commités (ils ne sont **pas** envoyés) ou si le commit
+   n'est sur aucune branche distante ;
 2. contrôles du serveur : connexion, sudo, installation faite ; avertit si des
    fichiers installés par `installer-serveur.sh` sont absents du serveur ou
    différents du dépôt ;
@@ -171,15 +214,16 @@ Ce que fait `deployer.sh` (chaque étape est affichée et horodatée) :
    - **préparation**, l'ancienne version reste en ligne : verrou, envoi complet,
      fichiers de la base à l'utilisateur `edt`, **aucune commande `sudo edt`
      ni autre processus de l'application hors du service** (sinon refus, avec
-     la liste des processus), venv propre à la version, `pip install`,
-     chargement de l'application avec la configuration de production (elle
+     la liste des processus), venv propre à la version, `pip install` aux
+     versions exactes de `contraintes.txt` (section 15), chargement de l'application avec la configuration de production (elle
      indique elle-même la base qu'elle utilise), contrôle du port 8000 ;
    - **bascule** : arrêt du service (au plus 20 s d'attente, puis arrêt forcé),
      nouveau contrôle qu'aucun processus de l'application ne tient la base,
-     sauvegarde de la base, `edt init-db`, `edt verifier-schema`, bascule du
-     lien `/opt/edt/courant`, démarrage, `GET http://127.0.0.1:8000/sante` → 200
-     en 30 s au plus ;
-   - **finalisation** : version marquée réussie, `edt version` et `edt doctor`
+     sauvegarde vérifiée de la base, `edt init-db`, `edt verifier-schema`,
+     bascule du lien `/opt/edt/courant`, démarrage, `GET http://127.0.0.1:8000/sante`
+     → 200 en 30 s au plus ;
+   - **finalisation** : version marquée réussie, page d'accueil demandée une
+     fois (échec signalé, sans effet sur la version), `edt version` et `edt doctor`
      (informatifs), nettoyage (5 versions, 10 sauvegardes de déploiement,
      versions jamais mises en service, sauvegardes partielles), historique ;
 5. vérification de l'URL publique depuis le poste : un échec est signalé, rien
@@ -191,27 +235,33 @@ secondes ; **un calcul d'emploi du temps en cours est interrompu** (il est clos
 « interrompu » au redémarrage) : prévenir avant de déployer. Une coupure réseau
 ou un Ctrl+C pendant l'étape « Déploiement sur le serveur » n'arrête pas le
 travail côté serveur ; son journal est dans `/var/log/edt-deploiements/<version>.log`.
+Un seul déploiement à la fois : un second est refusé par le verrou du serveur.
 
-**Heures.** Les noms de version et de sauvegarde sont en **heure UTC** (pas
-d'heure répétée au passage à l'heure d'hiver, l'ordre des noms suit l'ordre des
-déploiements) ; les messages du déploiement et de l'application sont en heure de
-Paris ; `historique.log` porte le décalage horaire (`2026-11-02T15:05:12+0100`).
+**Démarrage du service.** Dès que l'application écoute, le service demande
+lui-même sa page d'accueil (`ExecStartPost` de `edt.service`) : le premier
+visiteur n'attend pas le chargement initial, après un déploiement comme après
+un redémarrage automatique. Cette requête est bornée à 50 s et son échec
+n'empêche pas le démarrage.
+
+**Heures.** Les noms de version sont horodatés par l'horloge du serveur, et les
+noms de sauvegarde aussi, en **heure UTC** : pas d'heure répétée au passage à
+l'heure d'hiver, et l'ordre des noms suit l'ordre des déploiements quel que soit
+le poste qui les lance. Les messages du déploiement et de l'application sont en
+heure de Paris ; `historique.log` porte le décalage horaire
+(`2026-11-02T15:05:12+0100`).
 
 **Changement de schéma : `--reset-base` obligatoire.** Il n'y a pas de
-migrations. Un commit qui ajoute, renomme ou supprime une table ou une colonne
-existante ne se déploie qu'avec :
-
-```bash
-deploy/deployer.sh --reset-base
-```
-
-Sans cette option, `init-db` ou `verifier-schema` le détecte, le déploiement est
-annulé (retour arrière) et le message l'explique. Avec l'option, le script
-demande de taper `EFFACER`, sauvegarde la base, la recrée vide
-(`init-db --reset`, sans autre question) ; il reste à la repeupler (section 6).
-Si la version déployée ne fournit pas encore `verifier-schema`, un avertissement
-le dit et le schéma n'est contrôlé que par `init-db` et `/sante` (qui répond 503
-si le schéma est périmé).
+migrations. `init-db` et `verifier-schema` comparent la base au modèle de la
+version : tables et colonnes manquantes ou en trop, unicités, index, valeurs
+permises des énumérations. Un écart de ce type annule le déploiement (retour
+arrière) avec un message qui l'explique. **Ne sont pas comparés** : les
+contraintes entre colonnes (`CHECK` autres que les énumérations) et les clés
+étrangères. Après un changement de ce type dans `src/edt/db/modeles.py`, la base
+existante passerait le contrôle avec son ancien schéma : déployer cette version
+avec `deploy/deployer.sh --reset-base`. Une table nouvelle seule est créée par
+`init-db` sans perte de données. Si la version déployée ne fournit pas
+`verifier-schema`, un avertissement le dit et le schéma n'est contrôlé que par
+`init-db` et `/sante` (qui répond 503 si le schéma est périmé).
 
 ## 5. Retour arrière
 
@@ -235,21 +285,18 @@ liste les versions présentes et les derniers déploiements avec leur commit) :
 deploy/deployer.sh --ref <commit-qui-marchait>
 ```
 
-C'est un déploiement normal (sauvegarde, schéma, santé, retour arrière). Si un
-`--reset-base` a eu lieu entre les deux versions, le schéma a pu changer : il
-faudra alors `--reset-base` aussi.
+C'est un déploiement normal (sauvegarde, schéma, santé, retour arrière). Si le
+schéma a changé entre les deux versions, il faut aussi `--reset-base` (puis,
+pour retrouver les données, restaurer la sauvegarde faite avant la remise à
+zéro : section 9).
 
-**Manuel, méthode express : rebasculer sur une version présente** (sur le
-serveur, vers une version marquée `OK` par `etat.sh`, sans changement de schéma
-entre les deux) :
+**Manuel, méthode express : rebasculer sur une version présente** (vers une
+version marquée `OK` par `etat.sh`, sans changement de schéma entre les deux) :
 
 ```bash
-ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188
-sudo systemctl stop edt
-sudo ln -sfn /opt/edt/versions/<version> /opt/edt/courant.nouveau
-sudo mv -Tf /opt/edt/courant.nouveau /opt/edt/courant
-sudo systemctl reset-failed edt && sudo systemctl start edt
-curl -s http://127.0.0.1:8000/sante
+serveur 'sudo systemctl stop edt'
+serveur 'sudo ln -sfn /opt/edt/versions/<version> /opt/edt/courant.nouveau && sudo mv -Tf /opt/edt/courant.nouveau /opt/edt/courant'
+serveur 'sudo systemctl reset-failed edt && sudo systemctl start edt && curl -s http://127.0.0.1:8000/sante'
 ```
 
 **« LE RETOUR ARRIÈRE A ÉCHOUÉ »** : le service est probablement arrêté. Lire
@@ -264,59 +311,239 @@ Toujours par le lanceur, sur le serveur :
 ```bash
 sudo edt --help                          # liste des commandes
 sudo edt doctor                          # diagnostic : base utilisée, schéma, journaux, OR-Tools
-sudo edt jeu --taille grand --graine 0   # charge le jeu fictif (base initialisée et vide)
+sudo edt jeu --taille moyen              # charge le jeu fictif (base initialisée et vide)
 sudo edt verifier                        # vérifie l'emploi du temps
 sudo edt sauvegarder --prefixe manuelle --garder 0   # sauvegarde vérifiée, jamais supprimée
 sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<fichier>.db   # contrôle sans modifier
 ```
 
-Depuis le poste : `ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo edt doctor'`
-(ajouter `-t` après `ssh` pour une commande qui pose une question).
+Depuis le poste : `serveur 'sudo edt doctor'` (`serveur -t` pour une commande
+qui pose une question).
 
 Le lanceur exécute `python -m edt …` avec la version en service, sous
-l'utilisateur `edt`, avec `/etc/edt/edt.env` lu par systemd : exactement comme
-le service. Il refuse tout autre compte que root ou ubuntu via sudo, et **refuse
-de démarrer pendant un déploiement** (« un déploiement est en cours sur ce
-serveur ») ; inversement, un déploiement refuse de commencer tant qu'une commande
-`sudo edt` tourne. **Ne jamais lancer `/opt/edt/courant/venv/bin/python -m edt …`
-à la main** : sans l'environnement de production, la commande crée ou modifie une
-autre base (`data/edt.db` dans le dossier courant) sans aucune erreur, ou laisse
-des fichiers appartenant à root (`edt.db-wal`…) qui empêchent le service d'écrire.
+l'utilisateur `edt`, avec `/etc/edt/edt.env` (et `/etc/edt/assistant.env` s'il
+existe) lus par systemd : exactement comme le service. Il ne s'exécute qu'en
+root (par `sudo`) et **refuse de démarrer pendant un déploiement** (« un
+déploiement est en cours sur ce serveur ») ; inversement, un déploiement refuse
+de commencer tant qu'une commande `sudo edt` tourne. **Ne jamais lancer
+`/opt/edt/courant/venv/bin/python -m edt …` à la main** : sans l'environnement
+de production, la commande crée ou modifie une autre base (`data/edt.db` dans le
+dossier courant) sans aucune erreur, ou laisse des fichiers appartenant à root
+(`edt.db-wal`…) qui empêchent le service d'écrire.
 
 - Charger un jeu ou remettre la base à zéro **pendant un calcul** est refusé
   par l'application : attendre la fin du calcul ou l'arrêter.
-- Pour repartir d'une base vide, préférer `deploy/deployer.sh --reset-base`
-  (sauvegarde faite avant) puis `sudo edt jeu …`. `sudo edt jeu --reset`
-  efface la base **sans sauvegarde** ; faire d'abord
-  `sudo edt sauvegarder --prefixe manuelle --garder 0` (section 9). Sa question
-  de confirmation demande `ssh -t`, ou l'option `--oui`.
+- Pour repartir d'une base vide : section 10.
 
-## 7. Journaux et état
+## 7. Assistant conversationnel
+
+L'assistant utilise l'API Claude. Sa clé est installée dans
+`/etc/edt/assistant.env` (propriétaire root, groupe `edt`, mode 640), lu par
+systemd (`EnvironmentFile=-/etc/edt/assistant.env` dans `edt.service`, « - » :
+fichier facultatif) et par le lanceur `sudo edt`. Elle ne va **jamais** dans
+`/etc/edt/edt.env`, que `installer-serveur.sh` affiche. Sans clé, l'assistant
+est « non configuré » et le reste de l'application fonctionne.
+
+**Installer ou remplacer la clé**, en une commande depuis le poste, à la racine
+du dépôt, après `. deploy/serveur.env` (section 2) ; `-t` : terminal
+interactif, obligatoire pour la saisie masquée :
+
+```bash
+ssh -t -i "$EDT_SSH_CLE" "$EDT_SSH_UTILISATEUR@$EDT_SSH_HOTE" 'sudo bash /opt/edt/courant/code/deploy/installer-cle-assistant.sh'
+```
+
+Le script demande la clé sans l'afficher, refuse une saisie vide ou un
+caractère inattendu, demande confirmation si elle ne commence pas par
+`sk-ant-`, l'écrit dans `/etc/edt/assistant.env`, redémarre le service, attend
+`/sante`, puis lance `sudo edt assistant --essai` si la version en service a
+cette commande, et dit le résultat. La clé ne passe jamais en argument d'une
+commande et n'est ni affichée ni journalisée. Le script fait partie du code
+déployé : il faut au moins une version en service.
+
+**Retirer la clé** :
+
+```bash
+serveur -t 'sudo bash /opt/edt/courant/code/deploy/installer-cle-assistant.sh --retirer'
+```
+
+**Essayer l'assistant** : `serveur -t 'sudo edt assistant --essai'` (un appel
+réel au modèle, compté dans la consommation du jour). `deploy/etat.sh` indique
+« Assistant : clé installée » ou « clé absente » (existence du fichier
+seulement, jamais son contenu).
+
+**Couper l'assistant sans retirer la clé, ou changer ses limites** : réglages
+`EDT_ASSISTANT_*` de `/etc/edt/edt.env`, décrits avec leur valeur par défaut
+dans `deploy/edt.env.exemple` (par exemple `EDT_ASSISTANT_ACTIF=non`, ou
+`EDT_ASSISTANT_MESSAGES_PAR_ADRESSE` relevé le jour d'une démonstration), puis
+`sudo systemctl restart edt`. Une valeur invalide rend l'assistant
+indisponible, avec un message dans le journal, sans empêcher l'application de
+démarrer.
+
+## 8. Vérifier l'état et lire les journaux
 
 Depuis le poste :
 
 ```bash
 deploy/etat.sh                # photo complète : service (arrêts pour mémoire épuisée compris), version,
-                              # /sante, certificat, disque, edt doctor, fichiers de la base, sauvegardes, journal
+                              # /sante, certificat, disque, edt doctor, fichiers de la base, clé de
+                              # l'assistant, sauvegardes, journal
 deploy/journaux.sh            # en direct : service et application (uvicorn + edt.log), Ctrl+C pour arrêter
 deploy/journaux.sh nginx      # accès et erreurs nginx
 deploy/journaux.sh calcul     # journal du dernier calcul d'emploi du temps
 ```
 
-Sur le serveur : `sudo journalctl -u edt -n 100` (ou `-f`, `--since "1 hour ago"`),
-`sudo journalctl -u edt-sauvegarde -n 30` (sauvegarde quotidienne),
-`/var/log/edt/edt.log`, `/var/log/edt/generations/`, `/var/log/nginx/edt-*.log`,
-`/var/log/edt-deploiements/`, `/opt/edt/versions/<version>/installation-pip.log`,
-`/var/log/letsencrypt/letsencrypt.log`. Le champ `id=` du journal d'accès nginx
-est l'identifiant attribué par l'application à la requête (en-tête
-`X-Request-ID`, repris dans `edt.log` et sur les pages d'erreur) : il relie une
-ligne nginx aux lignes de l'application.
+`etat.sh` sort avec le code 0 si tout va bien, 1 si un problème est détecté
+(lignes « !!! »). Pendant un déploiement, il le dit et saute le diagnostic de
+l'application (refusé par le verrou).
 
-## 8. Pannes classiques
+Sur le serveur : `sudo journalctl -u edt -n 100` (ou `-f`, `--since "1 hour ago"`),
+`sudo journalctl -u edt-sauvegarde -n 30` (sauvegarde quotidienne), et les
+fichiers `/var/log/edt/edt.log`, `/var/log/edt/generations/`,
+`/var/log/nginx/edt-*.log`, `/var/log/edt-deploiements/`,
+`/opt/edt/versions/<version>/installation-pip.log`,
+`/var/log/letsencrypt/letsencrypt.log` (à lire avec `sudo`). Le champ `id=` du
+journal d'accès nginx est l'identifiant attribué par l'application à la requête
+(en-tête `X-Request-ID`, repris dans `edt.log` et sur les pages d'erreur) : il
+relie une ligne nginx aux lignes de l'application.
+
+## 9. Sauvegarder et restaurer la base
+
+**Quotidienne** : chaque nuit vers 3 h 30 (heure de Paris), le minuteur
+`edt-sauvegarde.timer` lance `edt-sauvegarde.service`, c'est-à-dire
+`python -m edt sauvegarder --dossier /var/lib/edt/sauvegardes --garder 14` de la
+version en service, sous l'utilisateur `edt`. La copie est cohérente même
+pendant le service (API de sauvegarde de SQLite), écrite en `.partiel` puis
+renommée seulement si son contrôle d'intégrité passe : en cas d'échec (base
+illisible, disque plein) il ne reste rien. Les 14 plus récentes
+`quotidienne-<date UTC>.db` sont gardées. Une nuit manquée (serveur éteint) est
+rattrapée au démarrage. État : `systemctl list-timers edt-sauvegarde.timer`,
+`deploy/etat.sh`.
+
+**À chaque déploiement** : juste après l'arrêt du service, même méthode,
+`edt-<date UTC>-avant-<version>.db` (10 gardées).
+
+**Manuelle** : le préfixe `manuelle` avec `--garder 0` n'est jamais supprimé
+automatiquement (sans `--garder 0`, les 14 plus récentes de ce préfixe sont
+gardées) :
+
+```bash
+sudo edt sauvegarder --prefixe manuelle --garder 0
+sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<fichier>.db   # code 0 = restaurable
+```
+
+`verifier-sauvegarde` travaille sur une copie temporaire (la sauvegarde n'est
+jamais modifiée) : intégrité, nombre de lignes par table, schéma comparé au
+modèle de la version en service. Code 0 : restaurable telle quelle avec cette
+version ; code 1 : abîmée, étrangère à l'application, ou d'un autre schéma (à
+restaurer avec la version qui l'a produite, voir section 5).
+
+**Copier une sauvegarde sur le poste** (la sauvegarde quotidienne reste sur le
+disque du serveur : en garder régulièrement une copie ailleurs) :
+
+```bash
+serveur 'sudo cat /var/lib/edt/sauvegardes/<fichier>.db' > "<fichier>.db"
+```
+
+**Restaurer** (sur le serveur, tout en utilisateur `edt`) :
+
+```bash
+sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<sauvegarde>.db   # d'abord : code 0 attendu
+sudo edt sauvegarder --prefixe manuelle --garder 0                     # la base actuelle, au cas où
+sudo systemctl stop edt
+sudo -u edt rm -f /var/lib/edt/edt.db-wal /var/lib/edt/edt.db-shm
+sudo -u edt install -m 640 /var/lib/edt/sauvegardes/<sauvegarde>.db /var/lib/edt/edt.db
+sudo systemctl start edt
+```
+
+Puis `deploy/etat.sh`. Exercice de restauration à faire chaque mois : section 13.8.
+
+## 10. Remettre la base à zéro
+
+Pour repartir d'une base vide (changement de schéma, section 4, ou nouvelles
+données de démonstration), depuis le poste :
+
+```bash
+deploy/deployer.sh --reset-base
+serveur -t 'sudo edt jeu --taille moyen'
+```
+
+Déroulement de `--reset-base` :
+
+1. sur le poste, avant toute connexion : avertissement « la base de PRODUCTION
+   … va être EFFACÉE », puis il faut taper exactement `EFFACER` ; toute autre
+   réponse arrête tout, rien n'est fait ;
+2. sur le serveur, service arrêté : **sauvegarde vérifiée** de la base
+   (étape « Sauvegarde de la base », qui affiche le chemin
+   `/var/lib/edt/sauvegardes/edt-<date UTC>-avant-<version>.db` et « contrôle
+   d'intégrité de la sauvegarde : ok »). Si elle échoue, le déploiement s'arrête
+   avant d'effacer quoi que ce soit (retour arrière) ;
+3. l'étape « Initialisation de la base » rappelle où est la sauvegarde, puis
+   `init-db --reset --oui` efface toutes les tables et recrée le schéma vide ;
+   si `init-db` de la version propose `--sans-sauvegarde`, le déploiement le
+   lui passe ; sinon, en production, `init-db --reset` écrit en plus une copie
+   brute à côté de la base, `/var/lib/edt/edt-<date>-avant-reset.db` (heure
+   locale, hors rotation) : elle double la sauvegarde vérifiée et peut être
+   supprimée après contrôle (`sudo rm /var/lib/edt/edt-<date>-avant-reset.db`) ;
+4. la fin du déploiement rappelle que la base est vide : la repeupler
+   (`sudo edt jeu …`).
+
+Pour retrouver les anciennes données : restaurer la sauvegarde de l'étape 2
+avec la version qui l'a produite (sections 5 et 9).
+
+`sudo edt jeu --reset` efface aussi la base, **sans la sauvegarde vérifiée du
+déploiement** : faire d'abord `sudo edt sauvegarder --prefixe manuelle --garder 0`.
+Sa question de confirmation demande `serveur -t`, ou l'option `--oui`.
+
+## 11. HTTPS
+
+`activer-https.sh` (section 3, étape 3) vérifie d'abord, sans rien modifier,
+que le DNS du domaine désigne le serveur et que le port 80 répond ; puis il
+installe certbot, obtient le certificat (méthode « webroot »), installe un
+crochet qui recharge nginx après chaque renouvellement, passe nginx en HTTPS
+(`http://` et l'adresse IP redirigent vers `https://<domaine>`) et teste le
+renouvellement automatique (`certbot renew --dry-run`).
+
+`EDT_CERTBOT_EMAIL` (dans `deploy/serveur.env`) est l'adresse de contact du
+compte Let's Encrypt, facultative ; sans elle, un avertissement est affiché.
+Let's Encrypt n'envoie aucune alerte d'expiration : le garde-fou est
+`deploy/etat.sh`, à lancer régulièrement (il signale un certificat qui expire
+dans moins de 14 jours). Le certificat dure 90 jours ; `certbot.timer` le
+renouvelle environ 30 jours avant la fin.
+
+**DNS pas encore propagé.** `activer-https.sh` s'arrête sans rien modifier et
+indique vers quelle adresse pointe le nom. Corriger l'enregistrement A chez le
+registraire (adresse du serveur), attendre l'expiration de l'ancien (durée
+TTL), puis relancer. Vérifier depuis le poste : `nslookup <domaine>`. Un
+enregistrement AAAA (IPv6) vers une autre machine fait aussi échouer la
+validation : le script le signale.
+
+**Port 80 fermé vu de l'extérieur.** Let's Encrypt valide le domaine par
+`http://<domaine>/.well-known/acme-challenge/` : le port 80 doit rester ouvert,
+même en HTTPS (renouvellements). Le test du script est fait depuis le serveur ;
+si certbot signale « Timeout during connect », un pare-feu (serveur ou
+hébergeur) bloque le port 80.
+
+**Limite de débit de Let's Encrypt** (« too many certificates », « too many failed
+authorizations ») : 5 certificats identiques par semaine, 5 validations ratées
+par heure. Les scripts ne redemandent jamais un certificat valide
+(`--keep-until-expiring`) et testent le renouvellement sur le serveur de test
+(`--dry-run`). Corriger la cause, puis attendre le délai indiqué.
+
+**Certificat expiré.** Diagnostic : `systemctl list-timers certbot.timer`,
+`sudo certbot renew --dry-run`, `sudo less /var/log/letsencrypt/letsencrypt.log`.
+Ensuite `sudo certbot renew` (nginx est rechargé par
+`/etc/letsencrypt/renewal-hooks/deploy/edt-recharger-nginx.sh`) ou relancer
+`activer-https.sh`.
+
+**Alerte de certificat sur `https://<adresse IP>`** : normal, le certificat est
+au nom du domaine (`http://<adresse IP>` redirige d'ailleurs vers lui).
+
+## 12. Que faire en cas de panne
 
 **Page « application momentanément indisponible » (erreur 502).** nginx ne
-joint pas 127.0.0.1:8000. `deploy/etat.sh`, puis `sudo journalctl -u edt -n 100`.
-Causes habituelles : exception au démarrage (traceback dans le journal),
+joint pas l'application. `deploy/etat.sh`, puis `sudo journalctl -u edt -n 100`.
+Causes habituelles : redémarrage en cours (la page se recharge toute seule
+toutes les 15 secondes), exception au démarrage (trace dans le journal),
 `/etc/edt/edt.env` incorrect, aucune version déployée (`/opt/edt/courant`
 absent), service abandonné après trop d'échecs (« start-limit-hit » : corriger
 puis `sudo systemctl reset-failed edt && sudo systemctl start edt`, ou redéployer).
@@ -325,19 +552,22 @@ puis `sudo systemctl reset-failed edt && sudo systemctl start edt`, ou redéploy
 non initialisée, schéma périmé, ou écriture refusée (`base.inscriptible` à
 `false` : fichier de la base ou son dossier en lecture seule, disque plein).
 `sudo edt doctor` dit laquelle ; schéma périmé :
-`deploy/deployer.sh --reset-base` (section 4) ; lecture seule : voir
+`deploy/deployer.sh --reset-base` (section 10) ; lecture seule : voir
 « Fichiers de la base appartenant à root » ci-dessous. `base.inscriptible` à
 `null` n'est pas une panne : une autre écriture tenait le verrou, l'essai a
 été sauté. `/sante` accepte aussi HEAD (`curl -I`).
 
 **Épuisement de la mémoire.** Le service est limité à 3 Go (`MemoryMax=3G` dans
-`edt.service`, sur 3,7 Go) : au-delà, le noyau le tue, systemd note « killed by
-the OOM killer » (et le plus souvent « oom-kill ») et le redémarre trois secondes
-plus tard ; un calcul en cours est perdu et clos
-« interrompu par l'arrêt de l'application ». `deploy/etat.sh` compte ces arrêts
+`edt.service`, à adapter à la mémoire du serveur) : au-delà, le noyau le tue,
+systemd note « killed by the OOM killer » (et le plus souvent « oom-kill ») et
+le redémarre trois secondes plus tard ; un calcul en cours est perdu et clos
+« interrompu par l'arrêt de l'application ». Repère : un calcul du jeu fictif
+« grand » occupe jusqu'à 2 Go et près de 2 cœurs pendant 5 minutes ; les
+commandes `sudo edt` et la sauvegarde quotidienne tournent dans leurs propres
+unités, hors de cette limite, mais sur la même mémoire du serveur. `deploy/etat.sh` compte ces arrêts
 sur 7 jours. Remède : relancer le calcul avec un temps limite plus court ou
 moins de fils de calcul (`--fils`), ou réduire le périmètre ; procédure de
-vérification en section 10.
+vérification en section 13.6.
 
 **Le service redémarre en boucle.** Même diagnostic que l'erreur 502 ; `oom-kill`
 dans le journal : voir ci-dessus.
@@ -378,28 +608,41 @@ Si c'est voulu (base corrompue mise de côté, ci-dessous), relancer avec `--res
 
 **Base corrompue** (la sauvegarde du déploiement ou la sauvegarde quotidienne
 échoue au contrôle d'intégrité ; `sudo edt doctor` en échec). La mettre de côté
-puis recréer une base vide, ou restaurer la dernière sauvegarde saine (section 9) :
+sous le préfixe `corrompue-`, qu'aucune rotation ne touche, puis recréer une
+base vide ou restaurer la dernière sauvegarde saine (section 9) :
 
 ```bash
 sudo systemctl stop edt
 d=$(date +%Y%m%d-%H%M%S)
-for f in edt.db edt.db-wal edt.db-shm; do if sudo test -e /var/lib/edt/$f; then sudo mv /var/lib/edt/$f /var/lib/edt/sauvegardes/manuelle-corrompue-$d-$f; fi; done
+for f in edt.db edt.db-wal edt.db-shm; do if sudo test -e /var/lib/edt/$f; then sudo mv /var/lib/edt/$f /var/lib/edt/sauvegardes/corrompue-$d-$f; fi; done
 sudo ls -l /var/lib/edt /var/lib/edt/sauvegardes
 ```
 
 puis, depuis le poste, `deploy/deployer.sh --reset-base` et `sudo edt jeu …`.
 
 **Sauvegarde quotidienne en échec.** `deploy/etat.sh` le signale (unité
-`edt-sauvegarde` en échec, ou aucune sauvegarde de moins de 2 jours). Lire
+`edt-sauvegarde` en échec, ou aucune sauvegarde de moins de 2 jours alors
+qu'une version est en service depuis au moins 2 jours). Lire
 `sudo journalctl -u edt-sauvegarde -n 30` : base illisible (voir « Base
-corrompue »), disque plein (`df -h /`), ou aucune version déployée.
+corrompue »), disque plein (`df -h /`), aucune version déployée, ou
+déploiement en cours à 3 h 30 (limite connue : la sauvegarde quotidienne ne
+prend pas le verrou du déploiement ; elle échoue sans rien laisser et la
+suivante la remplace).
 
 **Une dépendance ne s'installe pas** (échec à l'étape « Environnement Python et
 dépendances » ; l'ancienne version reste en ligne). Lire le message de pip et
 `/opt/edt/versions/<version>/installation-pip.log`. Causes : pas de paquet
-précompilé pour Python 3.14 (compilation : `build-essential` et `python3-dev` sont
-installés ; sinon fixer une version compatible dans `pyproject.toml`), version
-introuvable sur PyPI, serveur sans Internet, disque plein (`df -h /`).
+précompilé pour la version de Python du serveur (compilation : `build-essential`
+et `python3-dev` sont installés ; sinon rafraîchir `contraintes.txt`, section
+15), version introuvable sur PyPI, serveur sans Internet, disque plein
+(`df -h /`). Une version sans `contraintes.txt` est installée avec les
+dernières versions compatibles, et le déploiement l'annonce par un
+avertissement.
+
+**Assistant « non configuré » ou « indisponible ».** `deploy/etat.sh` dit si la
+clé est installée ; `serveur -t 'sudo edt assistant --essai'` dit si elle est
+acceptée et ce qui ne va pas (clé refusée, modèle, limite atteinte). Clé
+refusée : la remplacer (section 7). Le reste de l'application n'est pas touché.
 
 **« Read-only file system » ou « Permission denied » dans le journal.** Le service
 n'écrit que dans `/var/lib/edt` et `/var/log/edt` (`ProtectSystem=strict`).
@@ -414,115 +657,36 @@ montre la place prise par chaque dossier.
 `deployer.sh` distingue les deux cas. « Host key verification failed » : le
 serveur a été réinstallé ; vérifier puis corriger `~/.ssh/known_hosts`.
 
-### Pannes du HTTPS
+**Paramètre manquant.** « paramètre(s) manquant(s) : … » : créer ou compléter
+`deploy/serveur.env` (section 2) ; sur le serveur, recopier le dossier `deploy/`
+avec ce fichier (section 3, étape 1).
 
-**DNS pas (encore) propagé.** `activer-https.sh` s'arrête sans rien modifier et
-indique vers quelle adresse pointe le nom. Corriger l'enregistrement A chez le
-registraire (92.222.10.188), attendre l'expiration de l'ancien (durée TTL), puis
-relancer. Vérifier depuis le poste : `nslookup pts.jorund.xyz`. Un
-enregistrement AAAA (IPv6) vers une autre machine fait aussi échouer la
-validation : le script le signale.
-
-**Port 80 fermé vu de l'extérieur.** Let's Encrypt valide le domaine par
-http://pts.jorund.xyz/.well-known/acme-challenge/ : le port 80 doit rester
-ouvert, même en HTTPS (renouvellements). Le test du script est fait depuis le
-serveur ; si certbot signale « Timeout during connect », un pare-feu (serveur ou
-hébergeur) bloque le port 80.
-
-**Limite de débit de Let's Encrypt** (« too many certificates », « too many failed
-authorizations ») : 5 certificats identiques par semaine, 5 validations ratées
-par heure. Les scripts ne redemandent jamais un certificat valide
-(`--keep-until-expiring`) et testent le renouvellement sur le serveur de test
-(`--dry-run`). Corriger la cause, puis attendre le délai indiqué.
-
-**Certificat expiré.** Il dure 90 jours ; `certbot.timer` le renouvelle environ
-30 jours avant la fin et `etat.sh` alerte sous 14 jours. Diagnostic :
-`systemctl list-timers certbot.timer`, `sudo certbot renew --dry-run`,
-`/var/log/letsencrypt/letsencrypt.log`. Ensuite `sudo certbot renew` (nginx est
-rechargé par `/etc/letsencrypt/renewal-hooks/deploy/edt-recharger-nginx.sh`) ou
-relancer `activer-https.sh`.
-
-**Alerte de certificat sur https://92.222.10.188** : normal, le certificat est au
-nom de pts.jorund.xyz (http://92.222.10.188 redirige d'ailleurs vers lui).
-
-## 9. Sauvegarde et restauration de la base
-
-**Quotidienne** : chaque nuit vers 3 h 30 (heure de Paris), le minuteur
-`edt-sauvegarde.timer` lance `edt-sauvegarde.service`, c'est-à-dire
-`python -m edt sauvegarder --dossier /var/lib/edt/sauvegardes --garder 14` de la
-version en service, sous l'utilisateur `edt`. La copie est cohérente même
-pendant le service (API de sauvegarde de SQLite), écrite en `.partiel` puis
-renommée seulement si son contrôle d'intégrité passe : en cas d'échec (base
-illisible, disque plein) il ne reste rien. Les 14 plus récentes
-`quotidienne-<date UTC>.db` sont gardées. Une nuit manquée (serveur éteint) est
-rattrapée au démarrage. État : `systemctl list-timers edt-sauvegarde.timer`,
-`deploy/etat.sh`.
-
-**À chaque déploiement** : juste après l'arrêt du service, même méthode,
-`edt-<date UTC>-avant-<version>.db` (10 gardées).
-
-**Manuelle** (jamais supprimée automatiquement) :
-
-```bash
-sudo edt sauvegarder --prefixe manuelle --garder 0
-sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<fichier>.db   # code 0 = restaurable
-```
-
-`verifier-sauvegarde` travaille sur une copie temporaire (la sauvegarde n'est
-jamais modifiée) : intégrité, nombre de lignes par table, schéma comparé au
-modèle de la version en service. Code 0 : restaurable telle quelle avec cette
-version ; code 1 : abîmée, étrangère à l'application, ou d'un autre schéma (à
-restaurer avec la version qui l'a produite, voir section 5).
-
-Rapatrier une sauvegarde sur le poste (Git Bash) :
-
-```bash
-ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 'sudo cat /var/lib/edt/sauvegardes/<fichier>.db' > "<fichier>.db"
-```
-
-**Restaurer** (sur le serveur, tout en utilisateur `edt`) :
-
-```bash
-sudo edt verifier-sauvegarde /var/lib/edt/sauvegardes/<sauvegarde>.db   # d'abord : code 0 attendu
-sudo edt sauvegarder --prefixe manuelle --garder 0                     # la base actuelle, au cas où
-sudo systemctl stop edt
-sudo -u edt rm -f /var/lib/edt/edt.db-wal /var/lib/edt/edt.db-shm
-sudo -u edt install -m 640 /var/lib/edt/sauvegardes/<sauvegarde>.db /var/lib/edt/edt.db
-sudo systemctl start edt
-```
-
-Puis `deploy/etat.sh`. Exercice de restauration à faire chaque mois : section 10.
-
-## 10. Vérifications d'exploitation
+## 13. Vérifications d'exploitation
 
 Ces procédures vérifient sur le serveur ce que les tests automatiques ne peuvent
 pas reproduire (systemd, nginx, droits Unix, coupures réseau). Chacune se rejoue
 telle quelle ; les faire **hors des heures d'utilisation** (certaines arrêtent
 le service quelques secondes), après chaque modification de `deploy/` et au
-moins une fois par trimestre. Dans chaque fenêtre Git Bash utilisée, à la racine
-du dépôt, définir d'abord le raccourci utilisé par toutes les procédures :
-
-```bash
-serveur() { ssh -i ~/.ssh/edt_vps_ed25519 ubuntu@92.222.10.188 "$@"; }
-```
-
-`serveur 'commande'` lance la commande sur le serveur ; `serveur -t 'commande'`
-lui donne un terminal (commande qui affiche sa progression ou pose une question).
+moins une fois par trimestre. Elles utilisent le raccourci `serveur` de la
+section 2, défini dans chaque fenêtre Git Bash, à la racine du dépôt.
 
 | Ce qui est vérifié | Automatiquement (`tests/unitaires/exploitation/`, `tests/integration/exploitation/`) | À la main (ci-dessous) |
 |---|---|---|
 | Syntaxe, fins de ligne, cohérence des scripts et unités | oui | non |
+| Paramètres de `deploy/serveur.env`, aucune adresse réelle dans le dépôt | oui | non |
 | Code Python de la sauvegarde du déploiement | oui | non |
-| `edt sauvegarder`, `edt verifier-sauvegarde` | oui | sur le serveur : 10.8 |
-| Base intacte après un arrêt brutal, calcul tué clos au redémarrage | oui | sur le serveur : 10.5 |
-| Verrou déploiement / `sudo edt`, recherche des processus | en partie (Linux) | 10.1 |
-| Échec de sauvegarde pendant la bascule, envoi interrompu | en partie | 10.2, 10.4 |
-| Mémoire épuisée : lecture du journal par `etat.sh` | oui | arrêt réel : 10.6 |
-| Page 413 : configuration nginx, texte, styles | oui | affichage réel : 10.7 |
-| Fichiers à root, fuseaux horaires | en partie (contrôles présents) | 10.3, 10.9 |
+| `edt sauvegarder`, `edt verifier-sauvegarde`, restauration | oui | sur le serveur : 13.8 |
+| Base intacte après un arrêt brutal, calcul tué clos au redémarrage | oui | sur le serveur : 13.5 |
+| Verrou déploiement / `sudo edt`, recherche des processus | en partie (Linux) | 13.1 |
+| Échec de sauvegarde pendant la bascule, envoi interrompu | en partie | 13.2, 13.4 |
+| Mémoire épuisée : lecture du journal par `etat.sh` | oui | arrêt réel : 13.6 |
+| Page 413 : configuration nginx, texte, styles | oui | affichage réel : 13.7 |
+| Fichiers à root, fuseaux horaires | en partie (contrôles présents) | 13.3, 13.9 |
+| Clé de l'assistant : lecture, écriture, droits, aucune trace | oui | 13.10 |
 | Commandes du guide : sudo, lignes entières, cible SSH | oui | non |
+| Versions fixées (`contraintes.txt`) pour le contrôle automatique et le déploiement | oui | non |
 
-### 10.1 Déploiement pendant une commande « sudo edt »
+### 13.1 Déploiement pendant une commande « sudo edt »
 
 **Prérequis** : une version en service avec le jeu fictif chargé ; deux
 fenêtres Git Bash (A et B) à la racine du dépôt.
@@ -533,7 +697,7 @@ fenêtres Git Bash (A et B) à la racine du dépôt.
 2. Fenêtre A, pendant que le calcul tourne : `deploy/deployer.sh`.
 3. Une fois le calcul fini, fenêtre A : relancer `deploy/deployer.sh` et, pendant
    l'étape « Environnement Python et dépendances », fenêtre B :
-   `serveur 'sudo edt doctor'`.
+   `serveur 'sudo edt doctor'`, puis `deploy/etat.sh`.
 4. Processus hors du lanceur, fenêtre B :
    `serveur 'sudo systemd-run --uid=edt --gid=edt --unit=essai-edt sleep 300'`,
    puis fenêtre A : `deploy/deployer.sh`.
@@ -543,15 +707,16 @@ fenêtres Git Bash (A et B) à la racine du dépôt.
 - étape 2 : refus en préparation, « un autre déploiement, ou une commande « sudo
   edt », est en cours », avec la liste des processus (numéro, unité `run-u….service`,
   commande) ; « Le service en place n'a pas été touché » ; le calcul de B va au bout ;
-- étape 3 : B répond « edt : un déploiement est en cours sur ce serveur » (code 1),
-  le déploiement de A réussit ;
+- étape 3 : B répond « edt : un déploiement est en cours sur ce serveur » (code 1) ;
+  `etat.sh` affiche « Déploiement en cours » et « diagnostic de l'application
+  sauté » ; le déploiement de A réussit ;
 - étape 4 : refus en préparation, « des processus de l'application tournent hors
   du service », avec `essai-edt.service` dans la liste.
 
-### 10.2 Échec de la sauvegarde pendant un déploiement
+### 13.2 Échec de la sauvegarde pendant un déploiement
 
 **Prérequis** : une version en service ; le système de fichiers de `/var/lib/edt`
-accepte `chattr` (ext4, cas du serveur).
+accepte `chattr` (ext4).
 
 **Étapes**
 1. Rendre le dossier des sauvegardes non modifiable :
@@ -566,7 +731,7 @@ accepte `chattr` (ext4, cas du serveur).
   `historique.log` : « ECHEC en bascule (étape : Sauvegarde de la base) » ;
 - étape 3 : `/sante` à 200, aucun fichier `.partiel` signalé.
 
-### 10.3 Fuseau horaire et noms de version
+### 13.3 Fuseau horaire et noms de version
 
 **Prérequis** : aucun (un déploiement normal suffit).
 
@@ -581,7 +746,7 @@ accepte `chattr` (ext4, cas du serveur).
   démarrée » de `edt.log` et la date de `historique.log` sont à la même heure de Paris, et
   `historique.log` porte le décalage (`+0100` ou `+0200`).
 
-### 10.4 Envoi du code interrompu
+### 13.4 Envoi du code interrompu
 
 **Prérequis** : une version en service.
 
@@ -601,7 +766,7 @@ accepte `chattr` (ext4, cas du serveur).
 - étape 4 : la finalisation affiche « Supprimé (jamais mis en service : envoi
   coupé ou déploiement annulé) : 20260101-000000-deadbeef ».
 
-### 10.5 Arrêt brutal pendant une écriture
+### 13.5 Arrêt brutal pendant une écriture
 
 **Prérequis** : une version en service avec le jeu fictif chargé.
 
@@ -609,7 +774,7 @@ accepte `chattr` (ext4, cas du serveur).
 1. Dans l'application, lancer un calcul (page Générer) avec un temps limite d'au
    moins deux minutes.
 2. Pendant le calcul : `serveur 'sudo systemctl kill --signal=SIGKILL edt'`
-   (le noyau tue le service comme à la fin du délai d'arrêt de 20 s ou quand la
+   (le noyau tue le service comme à la fin du délai d'arrêt ou quand la
    mémoire est épuisée).
 3. Attendre 5 secondes, puis :
    `serveur 'sudo edt doctor; sudo -u edt sqlite3 /var/lib/edt/edt.db "PRAGMA integrity_check"'`.
@@ -621,10 +786,10 @@ accepte `chattr` (ext4, cas du serveur).
 - le calcul tué est clos : « Le calcul a été interrompu par un arrêt de
   l'application… Il peut être relancé » ; le nouveau calcul démarre.
 
-### 10.6 Épuisement de la mémoire pendant un calcul
+### 13.6 Épuisement de la mémoire pendant un calcul
 
 **Prérequis** : le jeu fictif « grand » chargé sur une base vide
-(`serveur 'sudo edt jeu --taille grand --graine 0'`) ; hors des heures
+(`serveur -t 'sudo edt jeu --taille grand --graine 0'`) ; hors des heures
 d'utilisation.
 
 **Étapes**
@@ -642,15 +807,15 @@ d'utilisation.
   `/sante` à 200 ; nginx et SSH n'ont pas été touchés ;
 - le calcul est clos « interrompu par l'arrêt de l'application ».
 
-### 10.7 Envoi trop volumineux (page 413)
+### 13.7 Envoi trop volumineux (page 413)
 
-**Prérequis** : HTTPS actif ; sur le poste, un fichier de 23 Mo et un de 20,3 Mo :
+**Prérequis** : HTTPS actif ; sur le poste, un fichier de 23 Mo et un de 21,3 Mo :
 `head -c 23000000 /dev/urandom > gros.xlsx` et `head -c 21300000 /dev/urandom > moyen.xlsx`.
 
 **Étapes**
 1. Dans l'application, page Import : choisir `gros.xlsx`, « Simuler l'import ».
 2. Depuis le poste :
-   `curl -s -o /dev/null -w '%{http_code}\n' -F "fichiers=@gros.xlsx" https://pts.jorund.xyz/import/simuler`.
+   `curl -s -o /dev/null -w '%{http_code}\n' -F "fichiers=@gros.xlsx" "https://$EDT_DOMAINE/import/simuler"`.
 3. Recommencer l'étape 1 avec `moyen.xlsx`.
 
 **Résultat attendu**
@@ -659,7 +824,7 @@ d'utilisation.
 - étape 2 : `413` (le corps de la réponse est la page française `erreur-413.html`) ;
 - étape 3 : le message de l'application elle-même (« … Mo reçus, 20 Mo au plus »).
 
-### 10.8 Sauvegarde quotidienne et exercice de restauration
+### 13.8 Sauvegarde quotidienne et exercice de restauration
 
 **Prérequis** : `installer-serveur.sh` relancé avec cette version de `deploy/` ;
 une version en service. À faire une fois par mois.
@@ -670,8 +835,8 @@ une version en service. À faire une fois par mois.
 3. Chemin de la plus récente :
    `serveur 'sudo sh -c "ls -t /var/lib/edt/sauvegardes/quotidienne-*.db | head -n 1"'`,
    puis `serveur 'sudo edt verifier-sauvegarde <chemin affiché>'`.
-4. Restauration d'essai sur le poste, sans toucher à la production : rapatrier ce
-   fichier (section 9) sous `essai.db`, puis à la racine du dépôt :
+4. Restauration d'essai sur le poste, sans toucher à la production : copier ce
+   fichier sur le poste (section 9) sous `essai.db`, puis à la racine du dépôt :
    `EDT_DB_URL=sqlite:///essai.db python -m edt doctor` et
    `EDT_DB_URL=sqlite:///essai.db python -m edt serve`, et parcourir l'application
    (http://127.0.0.1:8000). Supprimer `essai.db` ensuite.
@@ -683,7 +848,7 @@ une version en service. À faire une fois par mois.
 - étape 3 : code 0, « Schéma conforme au modèle : sauvegarde restaurable avec cette version » ;
 - étape 4 : `doctor` « Tout est prêt », les données du serveur s'affichent.
 
-### 10.9 Fichiers de la base appartenant à root
+### 13.9 Fichiers de la base appartenant à root
 
 **Prérequis** : une version en service.
 
@@ -698,7 +863,31 @@ une version en service. À faire une fois par mois.
 - `deployer.sh` : refus en préparation avec la même liste et la commande
   `sudo chown edt:edt <fichier>` ; le service n'a pas été touché.
 
-## 11. Modifier la configuration
+### 13.10 Clé de l'assistant
+
+**Prérequis** : une version en service ; une clé de l'API Claude valide à portée
+de main (gestionnaire de mots de passe), jamais copiée dans un fichier du poste.
+
+**Étapes**
+1. Installer la clé (section 7) avec la commande `ssh -t …` ; à la question,
+   la coller puis Entrée.
+2. `serveur 'sudo ls -l /etc/edt/assistant.env; sudo grep -c ANTHROPIC_API_KEY /etc/edt/edt.env'`.
+3. `serveur 'sudo journalctl -u edt -n 200 --no-pager | grep -c sk-ant-'` et
+   `deploy/etat.sh`.
+4. Retirer la clé (`--retirer`), puis `deploy/etat.sh`, puis la réinstaller.
+
+**Résultat attendu**
+- étape 1 : la clé ne s'affiche pas pendant la saisie ; « Clé installée dans
+  /etc/edt/assistant.env (root:edt, mode 640) », « Service redémarré », « Essai
+  réussi » ;
+- étape 2 : `-rw-r----- 1 root edt … /etc/edt/assistant.env` ; `0` (aucune clé
+  dans `edt.env`) ;
+- étape 3 : `0` (aucune trace de la clé dans le journal) ; `etat.sh` :
+  « Assistant : clé installée » ;
+- étape 4 : « Clé retirée », puis `etat.sh` : « Assistant : clé absente » ;
+  l'application répond normalement.
+
+## 14. Modifier la configuration
 
 - **Variables d'environnement** : `sudo nano /etc/edt/edt.env`, puis
   `sudo systemctl restart edt`. Le fichier est lu par systemd (pour le service,
@@ -707,16 +896,38 @@ une version en service. À faire une fois par mois.
 - **Service, minuteur, lanceur, nginx ou pages d'erreur** : modifier le fichier
   dans `deploy/`, committer, puis refaire les étapes 1 et 2 de la section 3. Si
   `nginx -t` refuse la nouvelle configuration, l'ancienne est remise automatiquement.
-- **Autre nom de domaine** : `EDT_DOMAINE=autre.exemple.fr` pour les scripts du
-  poste, `sudo env EDT_DOMAINE=autre.exemple.fr bash …` pour ceux du serveur.
+- **Autre serveur ou autre nom de domaine** : modifier `deploy/serveur.env`,
+  puis, pour le domaine, refaire les étapes 1 à 3 de la section 3.
 
-## 12. À faire plus tard
+## 15. Versions des dépendances
 
-- **Désactiver la connexion SSH par mot de passe** (clé uniquement), après avoir
-  vérifié la connexion par clé, en gardant une session ouverte pendant le changement.
-- **Pare-feu** : s'il est activé un jour, il devra laisser passer les ports
-  **22** (SSH), **80** (HTTP, indispensable au renouvellement du certificat) et
-  **443** (HTTPS).
-- **Sauvegardes hors du serveur** : la sauvegarde quotidienne reste sur le même
-  disque ; copier régulièrement une sauvegarde ailleurs (commande « Rapatrier »
-  de la section 9).
+`pyproject.toml` donne les bornes de chaque dépendance ; `contraintes.txt`, à
+la racine du dépôt, fixe la version exacte de chaque paquet installé
+(dépendances directes et indirectes, exécution et développement). Toutes les
+installations l'utilisent : le contrôle automatique et le poste
+(`python -m pip install -e ".[dev]" -c contraintes.txt`), et le déploiement
+(`deployer-distant.sh`). Le serveur reçoit ainsi exactement les versions que le
+contrôle automatique a testées, jamais une version parue entre-temps. Un test
+vérifie que chaque dépendance de `pyproject.toml` y a sa ligne, dans ses bornes.
+
+**Rafraîchir le fichier** (nouvelle dépendance, correctif de sécurité, version
+de Python nouvelle), sur une branche :
+
+1. dans un environnement neuf, sous Linux de préférence, installer les
+   dernières versions compatibles, sans le fichier :
+
+   ```bash
+   python3.13 -m venv /tmp/edt-versions
+   /tmp/edt-versions/bin/python -m pip install -e ".[dev]"
+   /tmp/edt-versions/bin/python -m pytest -q -m "not perf"
+   /tmp/edt-versions/bin/python -m pip freeze --exclude-editable
+   ```
+
+2. reporter dans `contraintes.txt` chaque ligne `nom==version` affichée, en
+   gardant l'en-tête ; recommencer avec `python3.11` : un paquet dont la
+   version diffère selon Python (numpy aujourd'hui) reçoit une ligne par
+   version avec un marqueur (`numpy==2.4.6; python_version < "3.13"`) ; les
+   paquets propres à Windows (colorama) se relèvent de même sous Windows ;
+3. pousser la branche : le contrôle automatique installe le fichier sous
+   Python 3.11, 3.13 et 3.14 et lance tous les tests ; après fusion, le
+   prochain `deploy/deployer.sh` installe ces versions sur le serveur.

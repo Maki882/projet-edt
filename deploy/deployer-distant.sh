@@ -16,8 +16,9 @@
 #   arrêt du service, plus aucun processus de l'utilisateur edt, sauvegarde de
 #   la base, init-db, verifier-schema, bascule du lien /opt/edt/courant,
 #   démarrage, GET /sante → 200 en 30 s maximum.
-# FINALISATION : version marquée réussie, nettoyage (5 versions, 10 sauvegardes,
-#   versions jamais mises en service et sauvegardes partielles d'un échec antérieur).
+# FINALISATION : version marquée réussie, page d'accueil préparée, nettoyage
+#   (5 versions, 10 sauvegardes, versions jamais mises en service et
+#   sauvegardes partielles d'un échec antérieur).
 #
 # Retour arrière : 50 dernières lignes du journal du service, base restaurée,
 # lien remis sur la version précédente, redémarrage. Sans version précédente
@@ -45,6 +46,9 @@ readonly UTILISATEUR_APP="edt"
 readonly DOSSIER_VERSIONS="/opt/edt/versions"
 readonly LIEN_COURANT="/opt/edt/courant"
 readonly FICHIER_ENV="/etc/edt/edt.env"
+# Clé de l'assistant (installer-cle-assistant.sh) : facultative, lue comme le
+# fait le service (EnvironmentFile=-/etc/edt/assistant.env dans edt.service).
+readonly FICHIER_ASSISTANT="/etc/edt/assistant.env"
 readonly DOSSIER_DONNEES="/var/lib/edt"
 readonly DOSSIER_SAUVEGARDES="/var/lib/edt/sauvegardes"
 readonly DOSSIER_JOURNAUX_DEPLOIEMENT="/var/log/edt-deploiements"
@@ -100,8 +104,8 @@ RESULTAT_RETOUR=""      # résultat du retour arrière, pour l'historique
 JOURNAL_DEPLOIEMENT=""
 
 # --- Gestion des erreurs -----------------------------------------------------
-# Toute commande en échec (hors condition testée) arrive ici : on dit quelle
-# étape a échoué et à quelle ligne, puis on agit selon la phase.
+# Toute commande en échec (hors condition testée) arrive ici : message qui
+# dit quelle étape a échoué et à quelle ligne, puis action selon la phase.
 sur_erreur() {
   local code=$1 ligne=$2 commande=$3
   case "$commande" in
@@ -206,19 +210,22 @@ retour_arriere() {
 # « set -e ») : chaque commande y est donc suivie de « || return 1 ».
 
 # Lance une commande dans les conditions du service : utilisateur edt,
-# variables de /etc/edt/edt.env lues par systemd lui-même, dossier du code de
-# la NOUVELLE version. Le code de sortie de la commande est transmis.
+# variables de /etc/edt/edt.env (et de /etc/edt/assistant.env s'il existe)
+# lues par systemd lui-même, dossier du code de la NOUVELLE version. Le code
+# de sortie de la commande est transmis.
 lancer_comme_app() {
+  local environnement=(-p EnvironmentFile="$FICHIER_ENV")
+  if [ -e "$FICHIER_ASSISTANT" ]; then environnement+=(-p EnvironmentFile="$FICHIER_ASSISTANT"); fi
   systemd-run --quiet --wait --pipe --collect --service-type=exec \
     --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
-    -p EnvironmentFile="$FICHIER_ENV" -p WorkingDirectory="$DOSSIER_CODE" \
+    "${environnement[@]}" -p WorkingDirectory="$DOSSIER_CODE" \
     -E PYTHONUNBUFFERED=1 "$@"
 }
 
 # Processus de l'utilisateur edt qui ne font pas partie du service : commandes
 # « sudo edt … » (unités systemd-run), sauvegarde quotidienne, sqlite3 lancé à
-# la main... Ils tiennent la base ouverte : on ne la sauvegarde ni ne la
-# remplace sous leurs pieds. Affiche une ligne par processus (numéro, unité
+# la main... Ils tiennent la base ouverte : elle n'est ni sauvegardée ni
+# remplacée sous leurs pieds. Affiche une ligne par processus (numéro, unité
 # systemd, durée, commande) ; ne renvoie 1 que si la recherche elle-même échoue.
 processus_hors_service() {
   local pids pid cgroup unite commande code=0
@@ -402,7 +409,7 @@ info "Espace libre : $((espace_libre_ko / 1024)) Mo"
 
 # Un fichier de la base (ou un -wal, -shm) créé par root, par exemple par une
 # commande lancée hors du lanceur « sudo edt », empêcherait le service d'écrire :
-# on le dit avant de toucher à quoi que ce soit.
+# c'est signalé avant de toucher à quoi que ce soit.
 etrangers="$(find "$DOSSIER_DONNEES" -maxdepth 2 ! -user "$UTILISATEUR_APP" -print)"
 if [ -n "$etrangers" ]; then
   echouer "fichiers de $DOSSIER_DONNEES qui n'appartiennent pas à $UTILISATEUR_APP (créés par une commande lancée en root hors du lanceur « sudo edt » ?) : le service ne pourrait pas les modifier.
@@ -446,8 +453,17 @@ EOF
 etape "Environnement Python et dépendances"
 python3 -m venv "$DOSSIER_VERSION/venv"
 info "Installation du paquet edt et de ses dépendances (journal détaillé : $DOSSIER_VERSION/installation-pip.log)"
+# contraintes.txt fixe la version de chaque paquet : le serveur reçoit celles
+# que le contrôle automatique a testées, jamais une version parue depuis.
+contraintes=()
+if [ -e "$DOSSIER_CODE/contraintes.txt" ]; then
+  contraintes=(-c "$DOSSIER_CODE/contraintes.txt")
+  info "Versions fixées par contraintes.txt."
+else
+  avertir "cette version n'a pas de contraintes.txt : pip installe les dernières versions compatibles avec pyproject.toml, que le contrôle automatique n'a peut-être pas testées."
+fi
 "$PYTHON_VENV" -m pip install --no-input --disable-pip-version-check --progress-bar off \
-  --log "$DOSSIER_VERSION/installation-pip.log" "$DOSSIER_CODE"
+  --log "$DOSSIER_VERSION/installation-pip.log" "${contraintes[@]}" "$DOSSIER_CODE"
 "$PYTHON_VENV" -m pip freeze --all > "$DOSSIER_VERSION/paquets-installes.txt"
 nombre_paquets="$(wc -l < "$DOSSIER_VERSION/paquets-installes.txt")"
 info "$nombre_paquets paquets installés (liste : $DOSSIER_VERSION/paquets-installes.txt)."
@@ -494,6 +510,9 @@ if [ "$RESET_BASE" = 1 ]; then
     echouer "« python -m edt init-db --help » a échoué : $aide"
   fi
   if [[ "$aide" == *--oui* ]]; then options_init+=(--oui); fi
+  # La sauvegarde vérifiée vient d'être faite par ce script : si la version le
+  # permet, init-db n'en écrit pas une seconde à côté de la base.
+  if [[ "$aide" == *--sans-sauvegarde* ]]; then options_init+=(--sans-sauvegarde); fi
 fi
 
 pid_service="$(systemctl show -p MainPID --value "$SERVICE")"
@@ -510,9 +529,13 @@ PHASE="bascule"
 etape "Arrêt du service $SERVICE"
 systemctl stop "$SERVICE"
 info "Service arrêté (un calcul d'emploi du temps en cours est interrompu)."
-# Un processus démarré entre le contrôle de la préparation et l'arrêt (le
-# lanceur « sudo edt » est refusé pendant le déploiement, pas un sqlite3 lancé
-# à la main) : on ne touche pas à la base sous ses pieds.
+# Un processus démarré entre le contrôle de la préparation et l'arrêt : la
+# base n'est pas touchée sous ses pieds. Le lanceur « sudo edt » est refusé
+# pendant le déploiement (verrou) ; la sauvegarde quotidienne et un sqlite3
+# lancé à la main ne prennent pas ce verrou. Limite : un tel processus qui
+# démarre APRÈS ce contrôle (minuteur de 3 h 30 pendant la bascule) n'est pas
+# détecté ; la sauvegarde quotidienne lit alors la base pendant son
+# remplacement et peut échouer (unité en échec, signalée par etat.sh).
 autres="$(processus_hors_service)"
 if [ -n "$autres" ]; then
   echouer "un processus de l'application a démarré pendant le déploiement et tient la base ouverte :
@@ -524,6 +547,9 @@ etape "Sauvegarde de la base"
 sauvegarder_base
 
 etape "Initialisation de la base (python -m edt init-db${options_init:+ ${options_init[*]}})"
+if [ "$RESET_BASE" = 1 ]; then
+  info "Remise à zéro demandée : la base actuelle est sauvegardée dans « ${SAUVEGARDE:-aucune (pas de base)} » ; elle va être effacée puis recréée vide."
+fi
 BASE_MODIFIEE=1
 if ! lancer_comme_app "$PYTHON_VENV" -m edt init-db "${options_init[@]}"; then
   echouer "init-db a échoué (message de l'application ci-dessus). S'il parle de colonnes ou d'un schéma différent du modèle : $EXPLICATION_SCHEMA"
@@ -553,6 +579,16 @@ fi
 PHASE="finalisation"
 etape "Finalisation"
 horodatage_iso > "$DOSSIER_VERSION/$MARQUE_REUSSITE"
+# Page d'accueil demandée une fois (en plus de la préparation d'edt.service) :
+# le premier visiteur après le déploiement n'attend pas les calculs à froid.
+# Un échec est signalé, la version reste en service.
+debut_accueil=$SECONDS
+if code_accueil="$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "http://127.0.0.1:$PORT_APP/")" \
+  && [ "$code_accueil" = "200" ]; then
+  info "Page d'accueil préparée en $((SECONDS - debut_accueil)) s."
+else
+  avertir "la page d'accueil n'a pas répondu 200 (résultat : ${code_accueil:-aucune réponse}) : le premier visiteur pourra attendre ; la version reste en service."
+fi
 printf 'mise_en_service=%s\n' "$(horodatage_iso)" >> "$FICHIER_INFOS"
 if version_appli="$(lancer_comme_app "$PYTHON_VENV" -m edt version)"; then
   info "Version annoncée par l'application : $version_appli"

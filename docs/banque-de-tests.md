@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'intégration.
+Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
-| `exploitation` | 30 | 23 |
+| `exploitation` | 40 | 32 |
 | `socle` | 48 | 24 |
 | `solveur` | 18 | 16 |
 | `synthese` | 28 | 5 |
 | `verification` | 25 | 0 |
 | `web_donnees` | 1 | 36 |
 | `web_edt` | 1 | 30 |
-| **Total** | **190** | **139** |
+| **Total** | **200** | **148** |
 
-### Tests unitaires (190 cas)
+### Tests unitaires (200 cas)
 
 #### `echange` (39 cas)
 
@@ -162,14 +162,14 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 | Nombre de serie excel refuse avec un indice | une date (46300) ou une heure (0,354166 pour 8 h 30) gardée en nombre par le tableur. | refus sans explication pour un non-informaticien, ou conversion silencieuse en une date ou une heure fausse. |
 | Heure entiere ecrite en nombre reste une heure | une heure saisie « 8 », ou 8.0 dans une cellule de format Nombre. | l'indice « nombre de série » refuserait aussi une heure entière légitime ; un nombre qui n'est pas une heure garde le message ordinaire. |
 
-#### `exploitation` (30 cas)
+#### `exploitation` (40 cas)
 
 [`tests/unitaires/exploitation/test_commandes_exploitation.py`](../tests/unitaires/exploitation/test_commandes_exploitation.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Une commande inconnue donne le code 2 attendu par le deploiement | on déploie une version qui n'a pas encore la commande verifier-schema. | si une commande inconnue ne donnait plus le code 2, le déploiement échouerait au lieu d'avertir (deployer-distant.sh teste « verifier-schema --help »). |
-| Le message d un calcul interrompu aide a eviter la recidive | un calcul du jeu « grand » épuise la mémoire du service (MemoryMax) et le tue. | l'utilisateur relance le même calcul, qui retombe pour la même raison. |
+| Une commande inconnue donne le code 2 attendu par le deploiement | déploiement d'une version qui n'a pas la commande verifier-schema, ou installation de la clé de l'assistant sous une version sans « edt assistant ». | si une commande inconnue ne donnait plus le code 2, le déploiement échouerait au lieu d'avertir (deployer-distant.sh teste « verifier-schema --help », installer-cle-assistant.sh « assistant --help »). |
+| La base annoncee au deploiement est celle du service | EDT_DB_URL est saisie avec des blancs en fin de ligne dans /etc/edt/edt.env. | le déploiement sauvegarde ou cherche une autre base que celle du service (base jugée absente, remise à zéro sans sauvegarde). |
 
 [`tests/unitaires/exploitation/test_scripts_deploiement.py`](../tests/unitaires/exploitation/test_scripts_deploiement.py)
 
@@ -184,18 +184,26 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 | La bascule attend la fin des commandes qui tiennent la base | « sudo edt jeu --taille grand » tourne quand un déploiement commence. | sauvegarde au milieu de sa transaction, init-db bloqué par le verrou, base remplacée sous ses pieds au retour arrière : écritures perdues, cause masquée. |
 | Fichiers de la base appartenant a root refuses avant la bascule | une commande lancée en root hors du lanceur a créé edt.db-wal (ou -shm) à root. | le service, utilisateur edt, ne peut plus écrire et ne redémarre pas. |
 | La finalisation purge les sauvegardes partielles du deploiement | un déploiement précédent a échoué pendant la sauvegarde (disque plein). | des fichiers .partiel s'accumulent dans /var/lib/edt/sauvegardes sans alerte. |
-| Horodatages du deploiement sans ambiguite | deux déploiements pendant l'heure répétée du passage à l'heure d'hiver ; journaux du déploiement en heure du serveur (UTC), ceux de l'application en heure de Paris. | nom de version déjà pris (déploiement abandonné sans explication), rotation qui garde les mauvaises sauvegardes, incidents mal recoupés d'une à deux heures. |
+| Horodatages du deploiement sans ambiguite | deux déploiements pendant l'heure répétée du passage à l'heure d'hiver, ou depuis deux postes dont les horloges diffèrent ; journaux du déploiement en heure du serveur (UTC), ceux de l'application en heure de Paris. | nom de version déjà pris (déploiement abandonné sans explication), rotation qui supprime l'envoi d'un autre poste ou garde les mauvaises sauvegardes, incidents mal recoupés d'une à deux heures. |
 | L envoi du code ecrit un temoin de fin controle par le serveur | la connexion est coupée pendant l'envoi du code (git archive \| ssh tar -x). | un dossier de version tronqué reste parmi les versions gardées, et une relance manuelle l'installerait (gabarits manquants : pages en 500 avec /sante à 200). |
 | Seules les versions mises en service comptent dans la rotation | plusieurs déploiements de suite sont annulés (envoi coupé, retour arrière). | leurs dossiers occupent les 5 places gardées et poussent dehors les versions saines : plus de version vers laquelle revenir à la main. |
 | La remise a zero du deploiement reste non interactive | init-db --reset se met à demander une confirmation (option --oui). | « deployer.sh --reset-base » échoue sur le serveur, où personne ne peut répondre. |
-| Le deploiement reconnait une version sans verifier schema | on redéploie une ancienne version qui n'a pas la commande verifier-schema. | sans la convention « commande inconnue = code 2 », le déploiement échoue au lieu d'avertir (contrat vérifié côté application dans test_commandes_exploitation.py). |
-| La ci teste la version de python du serveur | une dépendance ou une syntaxe ne fonctionne pas avec le Python du serveur (3.14). | la CI est verte et le déploiement échoue à l'étape « Environnement Python ». |
+| Le deploiement reconnait une version sans verifier schema | redéploiement d'une version antérieure à la commande verifier-schema. | sans la convention « commande inconnue = code 2 », le déploiement échoue au lieu d'avertir (contrat vérifié côté application dans test_commandes_exploitation.py). |
+| La remise a zero sauvegarde avant d effacer et le dit | « deployer.sh --reset-base » sur une base de production pleine. | la base est effacée avant d'être sauvegardée (ou malgré une sauvegarde en échec), ou l'exploitant ne sait pas où retrouver l'ancienne base. |
+| La cle de l assistant ne passe que par des commandes internes | le script d'installation de la clé est modifié (message, contrôle, écriture). | la clé passe en argument d'un programme (visible par « ps »), est exportée, tracée par « bash -x », ou écrite dans edt.env qu'installer-serveur.sh affiche. |
+| Le script de la cle redemarre puis essaie l assistant | la clé est installée sur un serveur dont la version n'a pas encore l'assistant, ou qui n'a aucune version déployée. | le script échoue alors que la clé est bonne, ou annonce un succès sans avoir redémarré le service ni essayé l'assistant. |
+| Etat ne lit jamais la cle et saute le diagnostic pendant un deploiement | deploy/etat.sh est lancé pendant un déploiement (comme le conseille deployer.sh après une coupure), ou sur un serveur où la clé de l'assistant est installée. | « edt doctor » refusé par le verrou compté comme une panne, ou contenu du fichier de la clé affiché dans le terminal. |
+| Etat n exige une sauvegarde quotidienne qu apres deux jours de service | deploy/etat.sh juste après la première installation : le minuteur de 3 h 30 n'a pas encore tourné. | « 1 problème détecté » (code 1) alors que rien n'est en panne, qui apprend à ignorer les alertes. |
+| La ci teste la version de python du serveur | une dépendance ou une syntaxe ne fonctionne pas avec le Python du serveur de référence (docs/deploiement.md, « Prérequis et paramètres »). | la CI est verte et le déploiement échoue à l'étape « Environnement Python ». |
+| Chaque dependance a une version fixee dans ses bornes | une dépendance est ajoutée à pyproject.toml sans être fixée dans contraintes.txt, ou sa version fixée sort des bornes déclarées ; une version de Python reçoit deux versions d'un même paquet, ou aucune. | le serveur installe le jour de la démonstration une version jamais testée, ou l'installation échoue (« conflicting dependencies ») au déploiement. |
+| Le controle automatique et le deploiement installent les versions fixees | une installation (contrôle automatique, déploiement) n'utilise pas contraintes.txt. | le contrôle automatique teste des versions que le serveur ne reçoit pas, ou passe au rouge à la parution d'une version sans changement du code. |
 
 [`tests/unitaires/exploitation/test_systemd_nginx.py`](../tests/unitaires/exploitation/test_systemd_nginx.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Le service lance l application comme le decrit le guide | edt.service est modifié (point d'entrée, nombre de processus, journal, mémoire). | service qui ne démarre plus, calculs dupliqués entre processus, ou serveur qui s'effondre faute de mémoire au lieu du seul service. |
+| La preparation au demarrage ne peut ni bloquer ni faire echouer le service | la requête de préparation lancée au démarrage (ExecStartPost) n'obtient pas de réponse : application lente, plantée, ou port différent. | « systemctl start » échoue ou dépasse son délai, et chaque déploiement finit en retour arrière alors que l'application démarre bien. |
 | La sauvegarde quotidienne utilise la commande de l application | la base n'est sauvegardée qu'au moment d'un déploiement. | une panne de disque entre deux déploiements perd toutes les saisies ; un minuteur mal écrit ne sauvegarderait rien sans que personne le voie. |
 | Le lanceur et le service partagent le meme environnement | « sudo edt … » est lancé avec une autre version, un autre utilisateur ou un autre fichier d'environnement que le service. | la commande travaille sur une autre base sans le dire, ou laisse des fichiers appartenant à root qui empêchent le service de démarrer. |
 | La limite d envoi de nginx laisse l application repondre | un classeur de 20,3 Mo est envoyé, ou la limite de nginx change. | nginx coupe avant l'application (page 413 au lieu de son message « 20 Mo au plus »), ou laisse passer des envois énormes jusqu'à l'application. |
@@ -205,7 +213,9 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 | Chaque site nginx inclut la partie commune installee | un des deux modes du site (HTTP avant le certificat, HTTPS après) diverge. | pages d'erreur, limite d'envoi ou proxy absents dans un seul des deux modes. |
 | Le guide decrit chaque verification d exploitation | un développeur doit rejouer à la main une vérification impossible à automatiser. | procédure absente, ou sans prérequis, étapes et résultat attendu. |
 | Le guide cite chaque fichier de deploy et chaque chemin installe | un fichier est ajouté à deploy/ ou installé ailleurs sur le serveur. | personne ne sait qu'il existe ni où le chercher en cas de panne. |
-| Les procedures visent le serveur des scripts | l'adresse du serveur, le compte SSH ou la clé change dans deploy/commun.sh. | les procédures manuelles et les commandes du guide visent encore l'ancien serveur, ou échouent faute de clé. |
+| Les commandes du guide visent le serveur des scripts | le guide donne ses commandes avec une adresse, un compte ou une clé écrits en dur, ou un raccourci « serveur » qui ne compose pas la cible comme les scripts. | les procédures manuelles visent un autre serveur que les scripts, ou publient l'adresse réelle d'une installation. |
+| Aucune adresse reelle dans les fichiers du deploiement | une adresse IP de serveur, un nom de domaine ou un nom de clé d'une installation réelle est écrit comme valeur par défaut ou exemple dans deploy/ ou le guide. | le dépôt publié révèle l'adresse du serveur, ou un script lancé sans configuration vise en silence le serveur de quelqu'un d'autre. |
+| Le fichier local des parametres est ignore et son modele complet | deploy/serveur.env (adresse, domaine, chemin de la clé) est ajouté par erreur à git, ou son modèle oublie un paramètre que les scripts lisent. | les valeurs d'une installation publiées avec le dépôt, ou une installation neuve qui s'arrête sur un paramètre que personne n'a su renseigner. |
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
@@ -527,7 +537,7 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 |---|---|---|
 | Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
 
-### Tests d'intégration (139 cas)
+### Tests d'intégration (148 cas)
 
 #### `echange` (5 cas)
 
@@ -546,7 +556,7 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 | Ressource hostile dans l adresse donne une erreur lisible | un filtre groupe, enseignant ou salle énorme ou négatif, ou un identifiant non numérique. | OverflowError dans la recherche du filtre : « erreur inattendue » 500 au lieu de « n'existe pas » (404), ou de « nombre attendu » (422) pour « ² ». |
 | Semestre enorme ou negatif a l import donne une erreur lisible | un import d'emploi du temps envoyé avec semestre_id=99999999999999999999 ou -7. | OverflowError dans la recherche du semestre : « erreur inattendue » au lieu de dire que la valeur est hors limites ou que le semestre n'existe pas. |
 
-#### `exploitation` (23 cas)
+#### `exploitation` (32 cas)
 
 [`tests/integration/exploitation/test_commandes_exploitation.py`](../tests/integration/exploitation/test_commandes_exploitation.py)
 
@@ -554,32 +564,41 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 |---|---|---|
 | Init db relance a chaque deploiement n ajoute rien | init-db est relancé à chaque déploiement sur une base déjà initialisée. | doublons de données par défaut, ou échec qui annule tous les déploiements. |
 | Init db reset du deploiement ne pose aucune question | « deployer.sh --reset-base » lance init-db --reset sur le serveur, sans terminal. | une question de confirmation bloque ou fait échouer la remise à zéro. |
-| La base annoncee au deploiement est celle du service | EDT_DB_URL est saisie avec des blancs en fin de ligne dans /etc/edt/edt.env. | le déploiement sauvegarde ou cherche une autre base que celle du service (base jugée absente, remise à zéro sans sauvegarde). |
 | Doctor tolere le port tenu par le service | la finalisation du déploiement (ou etat.sh) lance doctor pendant que le service tient le port 8000. | un contrôle en échec à chaque déploiement réussi, qui masquerait les vrais échecs. |
 | Serve et le service lancent la meme application | le point d'entrée change dans « serve » ou dans edt.service, pas dans l'autre. | le poste de développement et le serveur ne servent plus la même application. |
 | Serve refuse un port ou une adresse invalide | « serve » reçoit un port hors de 1-65535 ou une adresse vide. | trace « erreur inattendue » (OverflowError), ou valeur remplacée en silence par celle de la configuration (port 0 → 8000). |
 | La base reste saine apres un arret brutal en pleine ecriture | systemd tue le service (fin de TimeoutStopSec, mémoire épuisée) pendant qu'il écrit une grosse transaction, déjà en partie dans le journal WAL. | base abîmée ou à moitié écrite au redémarrage ; init-db, verifier-schema ou doctor qui refusent ensuite de travailler. |
 | Le redemarrage clot le calcul tue avec le service | le service est tué (mémoire épuisée, arrêt forcé) pendant un calcul, puis systemd le redémarre. | le calcul reste « en cours » pour toujours et bloque tout nouveau calcul ; /sante ne revient pas à 200. |
 | Sauvegarder ecrit une copie verifiee et garde les plus recentes | la sauvegarde quotidienne tourne chaque nuit depuis des semaines. | copie incohérente ou invérifiée, ou disque rempli faute de rotation. |
+| La commande de la sauvegarde quotidienne fonctionne telle quelle | edt-sauvegarde.service lance chaque nuit « sauvegarder » avec ses options (--dossier, --garder), que seule cette unité emploie. | une option renommée ou d'un autre type laisse l'unité en échec chaque nuit, sans aucune sauvegarde, alors que les tests de la commande sans option restent verts. |
 | Sauvegarder garde toutes les sauvegardes manuelles | un développeur sauvegarde à la main avant une opération risquée. | sa sauvegarde est emportée par la rotation des sauvegardes quotidiennes. |
 | Sauvegarder une base illisible echoue sans laisser de fichier | la base de production est abîmée (fichier écrasé, disque défaillant). | une « sauvegarde » de la base abîmée remplace les bonnes dans la rotation. |
 | Sauvegarder refuse quand le disque est plein | le disque du serveur est presque plein au moment de la sauvegarde. | copie interrompue, fichier partiel, et disque rempli au point de bloquer le service. |
 | Sauvegarder sans base le dit | la sauvegarde quotidienne tourne alors que la base a été déplacée ou supprimée. | réussite silencieuse sans rien sauvegarder, ou base vide créée à sa place. |
-| Sauvegarder refuse un prefixe reserve ou invalide | on choisit le préfixe « edt », celui des sauvegardes du déploiement, ou un nom avec des espaces ou des majuscules. | la rotation du déploiement efface des sauvegardes qu'elle n'a pas faites. |
+| Sauvegarder refuse un prefixe reserve ou invalide | sauvegarde demandée avec le préfixe « edt », celui des sauvegardes du déploiement, ou un nom avec des espaces ou des majuscules. | la rotation du déploiement efface des sauvegardes qu'elle n'a pas faites. |
 | Sauvegarder retire un fichier partiel abandonne | une sauvegarde précédente a été interrompue (serveur éteint, disque plein). | fichiers « .partiel » accumulés, pris à tort pour des sauvegardes. |
-| Verifier sauvegarde accepte une sauvegarde conforme sans la modifier | exercice de restauration : on contrôle la dernière sauvegarde avant d'en avoir besoin. | on découvre le jour de la panne qu'elle est abîmée, ou le contrôle la modifie. |
+| Verifier sauvegarde accepte une sauvegarde conforme sans la modifier | exercice de restauration : contrôle de la dernière sauvegarde avant d'en avoir besoin. | découvrir le jour de la panne qu'elle est abîmée, ou un contrôle qui la modifie. |
 | Verifier sauvegarde signale un schema different | la sauvegarde vient d'une version dont le modèle avait une autre colonne. | restaurée sous cette version, elle donnerait une application en 503 ou en 500. |
-| Verifier sauvegarde refuse un fichier abime vide ou absent | on contrôle un fichier abîmé, une base qui n'est pas celle de l'application, ou un chemin mal tapé. | un fichier inutilisable est pris pour une sauvegarde restaurable. |
+| Verifier sauvegarde refuse un fichier abime vide ou absent | contrôle d'un fichier abîmé, d'une base qui n'est pas celle de l'application, ou d'un chemin mal tapé. | un fichier inutilisable est pris pour une sauvegarde restaurable. |
+| Une sauvegarde restauree a la place de la base est relue par l application | la procédure « Restaurer » du guide : service arrêté, fichiers -wal et -shm retirés, sauvegarde copiée à la place de la base, service redémarré. | la base restaurée est refusée par l'application, ou un -wal périmé laissé à côté rejoue des écritures postérieures à la sauvegarde. |
 
 [`tests/integration/exploitation/test_scripts_deploiement.py`](../tests/integration/exploitation/test_scripts_deploiement.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Chaque script passe le controle de syntaxe de bash | un script de deploy/ modifié par une PR contient une erreur de syntaxe. | le déploiement ou l'installation s'arrête sur le serveur, au pire en pleine bascule. |
+| Chaque script passe le controle de syntaxe de bash | un script de deploy/ modifié contient une erreur de syntaxe. | le déploiement ou l'installation s'arrête sur le serveur, au pire en pleine bascule. |
+| Les commandes du deploiement lisent la cle comme le service | le déploiement lance init-db, doctor ou version (systemd-run) sur un serveur avec ou sans clé de l'assistant. | sans clé, systemd-run refuse un fichier d'environnement absent et chaque déploiement échoue ; avec clé, les commandes ne voient pas la configuration du service. |
 | Processus hors service liste une commande de l utilisateur | un processus de l'utilisateur de l'application tourne hors du service. | la recherche ne le voit pas (lecture de /proc, format de ps) et la bascule remplace la base qu'il est en train d'écrire. |
 | Processus hors service ignore les processus du service | seuls les processus du service lui-même tiennent la base. | la recherche les compte comme étrangers et chaque déploiement est refusé. |
 | La sauvegarde du deploiement reussit puis retire sa copie en cas d echec | la base à sauvegarder pendant la bascule est illisible (ou le disque se remplit). | une copie partielle reste sous un nom de sauvegarde et le script continue. |
 | Etat compte les arrets pour memoire epuisee | un calcul dépasse MemoryMax ; le noyau tue le service, que systemd redémarre aussitôt (/sante répond de nouveau 200). | la panne passe inaperçue et se répète à chaque gros calcul, parce que etat.sh cherche une ligne que systemd n'a pas écrite cette fois-là (résultat 'signal'). |
+| La configuration lit le modele et l environnement l emporte | deploy/serveur.env copié du modèle, enregistré sous Windows (CRLF), avec des guillemets, des blancs, « ~/ » ; une variable passée sur la ligne de commande. | un paramètre mal lu (retour chariot collé à l'adresse, « ~ » non développé) fait viser un autre serveur ou une clé introuvable, ou la variable de la ligne de commande est ignorée. |
+| La configuration refuse une ligne douteuse sans l executer | deploy/serveur.env contient une faute de frappe dans un nom, une ligne d'un autre format, ou une commande shell. | le paramètre mal nommé est ignoré en silence (script qui vise une autre adresse), ou le contenu du fichier est exécuté par les scripts. |
+| Un script sans parametres s arrete avant toute action | un script de deploy/ est lancé sur un poste (ou un serveur) où deploy/serveur.env n'a pas été créé. | le script se connecte à une adresse vide ou périmée, ou demande une confirmation de remise à zéro, avant de dire qu'il manque la configuration. |
+| La cle saisie est ecrite sans jamais etre affichee | l'exploitant colle la clé de l'assistant à la question du script. | la clé apparaît à l'écran ou dans un journal, reste dans la mémoire du script, ou le fichier est écrit sans les droits root:edt 640 (lisible par tous). |
+| Une cle vide ou mal copiee est refusee sans rien ecrire | Entrée sans rien coller, terminal fermé, ou clé copiée avec un espace, des guillemets ou un retour chariot. | un fichier de clé invalide remplace une clé qui marchait, et l'assistant tombe sans que le script l'ait dit. |
+| Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
+| Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
 #### `socle` (24 cas)
 
