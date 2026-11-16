@@ -268,7 +268,7 @@ def lancer_calcul(
 
     Lève `ErreurCalculEnCours` si un calcul tourne déjà (dans ce processus ou
     un autre, même lancé la même seconde), `ErreurRegleMetier` pendant un
-    chargement de jeu de données, une remise à zéro ou un import,
+    chargement d'établissement fictif, une remise à zéro ou un import,
     `ErreurIntrouvable` si le semestre n'existe pas.
     """
     # Imports locaux : `edt.services.jeux` et `edt.services.echange` importent ce module.
@@ -291,7 +291,7 @@ def lancer_calcul(
                 semestre_id,
             )
             raise ErreurRegleMetier(
-                "Impossible de lancer un calcul : un chargement de jeu de données ou une remise "
+                "Impossible de lancer un calcul : un chargement d'établissement fictif ou une remise "
                 "à zéro est en cours, les tables sont en train d'être recréées. Attendre sa fin, "
                 "puis réessayer."
             )

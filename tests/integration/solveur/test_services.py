@@ -1080,7 +1080,7 @@ def test_lancer_un_calcul_pendant_un_chargement_est_refuse(jeu_minimal):
     """
     assert jeux._verrou_base.acquire(blocking=False)
     try:
-        with pytest.raises(ErreurRegleMetier, match="chargement de jeu de données"):
+        with pytest.raises(ErreurRegleMetier, match="chargement d'établissement fictif"):
             generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
         assert _nb_lignes(m.Calcul) == 0
     finally:
