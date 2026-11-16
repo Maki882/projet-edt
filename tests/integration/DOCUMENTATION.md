@@ -1,9 +1,12 @@
 # Tests d'intégration
 
 Document du dossier de rendu (module PTS Informatique). Il présente la
-stratégie de test du projet EDT et, en détail, les tests d'intégration du
-dossier `tests/integration/`. Résumé visuel pour une présentation orale :
-[`tests/integration/README.md`](README.md).
+stratégie de test du projet EDT et, en détail, les six parcours de bout en
+bout du dossier `tests/integration/parcours/`. Le dossier `tests/integration/`
+contient aussi les tests d'intégration propres à chaque composant (un
+sous-dossier par composant). Résumé visuel pour une présentation orale :
+[`tests/integration/README.md`](README.md) ; règle de classement et nombres
+de tests : [`tests/README.md`](../README.md).
 
 ## 1. Objectifs
 
@@ -25,15 +28,21 @@ Les tests d'intégration répondent à trois questions :
 
 | Niveau | Où | Comment le lancer | Rôle |
 |---|---|---|---|
-| Unitaire | `tests/<lot>/` (socle, solveur, verification, web_donnees, web_edt, echange, synthese, exploitation) | `python -m pytest tests/solveur` | une pièce à la fois, comportement observable |
-| Cas limites | dans les mêmes dossiers, marqueur `cas_limite` | `python -m pytest -m cas_limite` | pannes plausibles et saisies piégées relevées par les campagnes de relecture ([banque de tests](banque-de-tests.md)) |
-| Intégration | `tests/integration/`, marqueur `integration` | `python -m pytest -m integration` | plusieurs composants réels assemblés, parcours complets |
-| Charge | marqueur `perf` | `python -m pytest -m perf` | gros jeux (moyen, grand), durées et mémoire ; exclus de la CI courante |
+| Unitaire | `tests/unitaires/<composant>/` (socle, solveur, verification, web_donnees, web_edt, echange, synthese, exploitation), marqueur `unitaire` | `python -m pytest tests/unitaires` | un module à la fois, par ses fonctions Python, comportement observable |
+| Intégration | `tests/integration/<composant>/` et `tests/integration/parcours/`, marqueur `integration` | `python -m pytest tests/integration` | plusieurs couches réelles assemblées : requête HTTP, ligne de commande, autre processus, calcul complet ; parcours de bout en bout |
+| Cas limites | dans les deux familles, marqueur `cas_limite` | `python -m pytest -m cas_limite` | pannes plausibles et saisies piégées relevées par les campagnes de relecture ([banque de tests](../../docs/banque-de-tests.md)) |
+| Charge | dans les deux familles, marqueur `perf` | `python -m pytest -m perf` | gros jeux (moyen, grand), durées et mémoire ; exclus de la CI courante |
 
-La CI (GitHub Actions) lance `python -m pytest -m "not perf"` à chaque envoi :
-les tests d'intégration en font partie.
+La règle qui sépare unitaire et intégration est donnée dans
+[`tests/README.md`](../README.md) ; `tests/test_rangement.py` vérifie que chaque
+test est dans le bon dossier.
 
-Règles communes à tous les tests (voir [banque de tests](banque-de-tests.md),
+La CI (GitHub Actions) enchaîne à chaque envoi trois étapes : contrôle du
+rangement (`python -m pytest tests/test_rangement.py`), tests unitaires
+(`python -m pytest tests/unitaires -m "not perf"`), tests d'intégration
+(`python -m pytest tests/integration -m "not perf"`).
+
+Règles communes à tous les tests (voir [banque de tests](../../docs/banque-de-tests.md),
 « Conventions ») : noms en français, base SQLite dans un dossier temporaire
 propre à chaque test, aucune dépendance à l'horloge ni à l'ordre des tests,
 jamais de solution particulière du solveur attendue en dur.
@@ -68,12 +77,14 @@ jamais de solution particulière du solveur attendue en dur.
 | Base SQLite | `src/edt/db/` | tous |
 
 **Rien n'est simulé** : aucun `monkeypatch` du solveur ni du vérificateur. La
-seule chose coupée (fixture `sans_prechauffage` du `conftest.py`) est le
+seule chose coupée (fixture `sans_prechauffage` de `parcours/conftest.py`) est le
 préchauffage des écrans, un fil d'arrière-plan qui calcule d'avance les pages
 après un calcul et qui survivrait à la base temporaire du test.
 
 ## 4. Les scénarios
 
+Les six fichiers sont dans `tests/integration/parcours/` ; leurs aides
+(`DELAI`, `calculer`, `compter`) sont dans `tests/outils/parcours/aides.py`.
 Chaque test porte le marqueur `@pytest.mark.integration` et un docstring en
 trois parties : **Scénario** (l'histoire), **Étapes**, **Ce que cela prouve**.
 Données : le jeu minimal (2 campus, 6 salles, 5 enseignants, 9 groupes,
@@ -140,49 +151,51 @@ emploi du temps valide, pas le meilleur.
 
 ### Sortie réelle de pytest
 
-`python -m pytest tests/integration -v -p no:cacheprovider --durations=0`, le
-9 novembre 2026 (Windows 11, Python 3.11.9) :
+`python -m pytest tests/integration/parcours -v -p no:cacheprovider --durations=6`,
+le 16 novembre 2026 (Windows 11, Python 3.11.9) :
 
 ```
 collecting ... collected 6 items
 
-tests/integration/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve PASSED [ 16%]
-tests/integration/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie PASSED [ 33%]
-tests/integration/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande PASSED [ 50%]
-tests/integration/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export PASSED [ 66%]
-tests/integration/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout PASSED [ 83%]
-tests/integration/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site PASSED [100%]
+tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve PASSED [ 16%]
+tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie PASSED [ 33%]
+tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande PASSED [ 50%]
+tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export PASSED [ 66%]
+tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout PASSED [ 83%]
+tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site PASSED [100%]
 
-============================== slowest durations ==============================
-1.86s call     tests/integration/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export
-1.03s call     tests/integration/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site
-1.03s call     tests/integration/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande
-0.49s call     tests/integration/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout
-0.43s call     tests/integration/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve
-0.41s call     tests/integration/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie
-======================== 6 passed, 1 warning in 9.19s =========================
+============================= slowest 6 durations =============================
+0.73s setup    tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve
+0.63s call     tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve
+0.53s call     tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export
+0.43s call     tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie
+0.32s call     tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site
+0.27s call     tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande
+============================== 6 passed in 3.61s ==============================
 ```
 
 Au premier lancement d'une session, le premier test paie le chargement des
-bibliothèques (2 à 3 s de plus) ; total observé : 9 à 13 s. Aucun test ne
-dépasse 30 secondes, aucun n'est donc marqué `perf`. L'avertissement est une
-dépréciation de la bibliothèque `starlette` (client de test), sans rapport
-avec le projet.
+bibliothèques (quelques secondes de plus) ; total observé : 3 à 13 s selon la
+machine et le cache. Aucun parcours ne dépasse 30 secondes, aucun n'est donc
+marqué `perf`.
 
 ## 5. Ce que couvre chaque niveau
 
-Chiffres relevés le 9 novembre 2026 par `python -m pytest --collect-only -q`
-(avec `-m integration`, `-m cas_limite`, `-m perf`) :
+Chiffres relevés le 16 novembre 2026 par `python -m pytest --collect-only -q`
+(avec `tests/unitaires`, `tests/integration`, `-m cas_limite`, `-m perf`) ;
+le détail par composant est dans [`tests/README.md`](../README.md) :
 
 | Niveau | Nombre de tests | Ce qu'il couvre | Ce qu'il ne couvre pas |
 |---|---|---|---|
-| Unitaire (sans marqueur) | 1 126 | chaque fonction, règle, écran ou commande pris isolément | l'enchaînement complet des composants |
-| Cas limites (`cas_limite`) | 548 (dont 10 aussi `perf`) | saisies extrêmes, concurrence, pannes de fichiers ou de base, identifiants hors bornes | le parcours normal d'un utilisateur |
-| Intégration (`integration`) | 6 | parcours complets web et ligne de commande, accord solveur/vérificateur, aller-retour des données | les cas rares (laissés aux cas limites) |
-| Charge (`perf`) | 27 | jeux moyen et grand, durées et mémoire | exclus de la CI courante |
-| **Total** | **1 697** | | |
+| Unitaire (`tests/unitaires/`) | 1 180 (dont 24 `perf`) | chaque fonction, règle ou service pris isolément, par ses fonctions Python | l'enchaînement des couches (HTTP, commandes, calcul complet) |
+| Intégration (`tests/integration/`) | 518 (dont 3 `perf`), dont les 6 parcours | écrans par HTTP, commandes, autres processus, calculs complets ; parcours de bout en bout web et ligne de commande, accord solveur/vérificateur, aller-retour des données | l'apparence et le JavaScript (pas de vrai navigateur) |
+| Contrôle du rangement (`tests/test_rangement.py`) | 12 | chaque test est dans le dossier de sa famille ; aucun fichier de tests égaré ; aucun import entre modules de tests | le contenu des tests |
+| **Total** | **1 710** | | |
+| dont cas limites (`cas_limite`) | 549 (347 unitaires, 202 d'intégration ; 10 aussi `perf`) | saisies extrêmes, concurrence, pannes de fichiers ou de base, identifiants hors bornes | le parcours normal d'un utilisateur |
+| dont charge (`perf`) | 27 | jeux moyen et grand, durées et mémoire | exclus de la CI courante |
 
-La CI (`-m "not perf"`) lance 1 670 tests, dont les 6 d'intégration.
+La CI (`-m "not perf"`) lance 1 683 tests : 12 de contrôle, 1 156 unitaires
+et 515 d'intégration, dont les 6 parcours.
 
 ## 6. Limites connues
 
@@ -191,7 +204,8 @@ La CI (`-m "not perf"`) lance 1 670 tests, dont les 6 d'intégration.
   ne juge pas l'apparence. Un test de bout en bout dans un navigateur
   (Playwright, par exemple) serait l'étape suivante.
 - **Pas de site déployé** : rien ne touche le VPS ni nginx ; le déploiement est
-  testé à part (`tests/exploitation/` : scripts, unité systemd, nginx).
+  testé à part (`tests/unitaires/exploitation/` et
+  `tests/integration/exploitation/` : scripts, unité systemd, nginx).
 - **Petits jeux seulement** : jeu minimal et jeu « petit », pour rester sous
   quelques secondes ; les gros jeux sont dans les tests de charge.
 - **Optimisation coupée** : les scénarios cherchent un emploi du temps valide,
@@ -201,5 +215,5 @@ La CI (`-m "not perf"`) lance 1 670 tests, dont les 6 d'intégration.
   précis ; une régression qui garderait un emploi du temps valide mais moins
   bon ne serait pas vue ici.
 - **Retouche limitée à l'annulation** : le déplacement d'une séance est couvert
-  par les tests de `tests/web_edt/test_emploi_du_temps.py`, pas par un scénario
-  d'intégration (voir le scénario e).
+  par les tests de `tests/integration/web_edt/test_emploi_du_temps.py`, pas par
+  un parcours de bout en bout (voir le scénario e).
