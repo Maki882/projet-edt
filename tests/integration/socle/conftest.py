@@ -41,6 +41,12 @@ def lecture_seule():
     def _lecture_seule(chemin: Path) -> Iterator[Path]:
         os.chmod(chemin, stat.S_IREAD)
         try:
+            # Un compte administrateur (root dans un conteneur) ignore ces droits : le test
+            # croirait éprouver la lecture seule sans qu'elle s'applique.
+            assert not os.access(chemin, os.W_OK), (
+                f"{chemin} reste inscriptible malgré la lecture seule (compte administrateur ?) : "
+                "lancer les tests avec un compte ordinaire"
+            )
             yield chemin
         finally:
             os.chmod(chemin, stat.S_IWRITE | stat.S_IREAD)

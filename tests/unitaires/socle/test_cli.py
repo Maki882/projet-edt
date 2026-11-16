@@ -75,15 +75,20 @@ def test_les_sorties_sont_forcees_en_utf8(monkeypatch):
 
 @pytest.mark.cas_limite
 def test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces():
-    """Cas : `generer -d pause --niveau " Pause = Facultatif "` (casse et espaces libres).
+    """Cas : `generer -d pause` et `generer --niveau " Pause = Facultatif "` (casse et espaces
+    libres), puis les deux options sur la même contrainte.
 
     Risque : refus surprenant alors que `--regle r007=Facultatif` tolère casse et espaces ;
-    fragile pour les scripts.
+    fragile pour les scripts. Une contrainte à la fois ignorée et dotée d'un niveau est
+    contradictoire : refus qui le dit.
     """
     from edt.commandes.generation import niveaux_choisis
     from edt.domaine.contraintes import CodeContrainte, Niveau
+    from edt.erreurs import ErreurDonneesInvalides
 
     assert CodeContrainte.PAUSE not in niveaux_choisis(["pause"], None)
     assert (
         niveaux_choisis(None, [" Pause = Facultatif "])[CodeContrainte.PAUSE] is Niveau.FACULTATIF
     )
+    with pytest.raises(ErreurDonneesInvalides, match="à la fois"):
+        niveaux_choisis(["pause"], ["PAUSE=facultatif"])

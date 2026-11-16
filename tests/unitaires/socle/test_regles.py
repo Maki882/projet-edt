@@ -583,9 +583,6 @@ def test_standard_sans_regle(etab):
     assert instantane.jours_travailles == frozenset(range(5))
     assert reglages.jours_de("2-1").jours_permis() == frozenset(range(5))
     assert reglages.jours_de("3-1").jours_permis() == frozenset(range(6))  # TP samedi autorisé
-    assert reglages.jours_de("2-1").entorses(SAMEDI) == (
-        pytest.approx(reglages.jours_de("2-1").entorses(SAMEDI)[0]),
-    )
     (source,) = reglages.jours_de("2-1").entorses(SAMEDI)
     assert source.est_standard and source.contrainte is CodeContrainte.JOURS
     assert reglages.jours_de("3-1").entorses(SAMEDI) == ()

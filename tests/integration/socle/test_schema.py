@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from sqlalchemy import func, select
 from tests.outils.socle.schema import (
     COLONNE_ABSENTE,
     COLONNE_EN_TROP,
@@ -12,6 +11,7 @@ from tests.outils.socle.schema import (
 )
 
 from edt import cli
+from edt.db.base import Base
 from edt.db.initialisation import (
     MARCHE_A_SUIVRE_SCHEMA_PERIME,
     base_initialisee,
@@ -22,17 +22,12 @@ from edt.db.modeles import Besoin, Parametre
 from edt.db.moteur import obtenir_moteur, session_base
 
 
-def _compter(modele) -> int:
-    with session_base() as session:
-        return session.scalar(select(func.count()).select_from(modele))
-
-
-def test_init_db_refuse_un_schema_perime_sans_rien_modifier(lanceur, jeu_minimal):
+def test_init_db_refuse_un_schema_perime_sans_rien_modifier(lanceur, jeu_minimal, compter):
     ajouter_colonne("besoin", "ancien_champ VARCHAR(10)")
     supprimer_table("occurrence")  # une table manquante qu'init-db créerait d'ordinaire
     with session_base() as session:
         session.delete(session.get(Parametre, "pause_min"))  # une donnée par défaut à reposer
-    nb_parametres = _compter(Parametre)
+    nb_parametres = compter(Parametre)
 
     resultat = lanceur.invoke(cli.app, ["init-db"])
 
@@ -44,12 +39,12 @@ def test_init_db_refuse_un_schema_perime_sans_rien_modifier(lanceur, jeu_minimal
     assert "Base initialisée" not in sortie
     # Rien n'a bougé : ni table créée, ni donnée par défaut reposée, ni donnée perdue.
     assert tables_manquantes(obtenir_moteur()) == ["occurrence"]
-    assert _compter(Parametre) == nb_parametres
-    assert _compter(Besoin) == jeu_minimal.nb_besoins
+    assert compter(Parametre) == nb_parametres
+    assert compter(Besoin) == jeu_minimal.nb_besoins
     assert ecarts_schema(obtenir_moteur()) == [COLONNE_EN_TROP]
 
 
-def test_init_db_reset_repare_un_schema_perime(lanceur, jeu_minimal):
+def test_init_db_reset_repare_un_schema_perime(lanceur, jeu_minimal, compter):
     ajouter_colonne("besoin", "ancien_champ VARCHAR(10)")
     recreer_table("creneau", sans="demi_journee")
 
@@ -60,7 +55,7 @@ def test_init_db_reset_repare_un_schema_perime(lanceur, jeu_minimal):
     moteur = obtenir_moteur()
     assert ecarts_schema(moteur) == []
     assert base_initialisee(moteur)
-    assert _compter(Besoin) == 0  # le prix à payer : les données sont effacées
+    assert compter(Besoin) == 0  # le prix à payer : les données sont effacées
 
 
 def test_verifier_schema_a_jour(lanceur, base):
@@ -98,7 +93,10 @@ def test_verifier_schema_avant_la_premiere_initialisation(lanceur, environnement
     resultat = lanceur.invoke(cli.app, ["verifier-schema"])
 
     assert resultat.exit_code == 0  # rien à comparer : init-db créera les tables
-    assert resultat.stdout.startswith("schéma à jour pour les tables existantes ; 29 table(s)")
+    nb_tables = len(Base.metadata.tables)
+    assert resultat.stdout.startswith(
+        f"schéma à jour pour les tables existantes ; {nb_tables} table(s)"
+    )
     assert "init-db" in resultat.stdout
 
 
@@ -114,14 +112,14 @@ def test_doctor_a_une_ligne_pour_le_schema(lanceur, base):
     assert "Tout est prêt." not in perime.output
 
 
-def test_jeu_minimal_refuse_une_base_au_schema_perime(lanceur, base):
+def test_jeu_minimal_refuse_une_base_au_schema_perime(lanceur, base, compter):
     ajouter_colonne("besoin", "ancien_champ VARCHAR(10)")
 
     resultat = lanceur.invoke(cli.app, ["jeu-minimal"])
 
     assert resultat.exit_code == cli.CODE_ERREUR_METIER
     assert COLONNE_EN_TROP in resultat.output
-    assert _compter(Besoin) == 0
+    assert compter(Besoin) == 0
 
 
 def test_sante_repond_503_quand_le_schema_est_perime(client):

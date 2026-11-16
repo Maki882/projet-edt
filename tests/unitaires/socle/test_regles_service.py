@@ -269,11 +269,8 @@ def test_cibles_par_code_et_par_description(jeu_minimal, session):
     )
     instantane = charger_instantane(session, jeu_minimal.semestre_id)
     resolue = instantane.regle(campus.id)
-    assert (
-        resolue.valeurs["campus"] == (instantane.campus[0].id,)
-        if instantane.campus[0].code == "NDC"
-        else True
-    )
+    ndc = next(c.id for c in instantane.campus if c.code == "NDC")
+    assert resolue.valeurs["campus"] == (ndc,)
     assert all(instantane.seance(s).besoin.type_seance_code == "TP" for s in resolue.seances)
 
 
@@ -368,7 +365,7 @@ def test_cycle_de_vie_sans_journal_perdu(jeu_minimal, session, caplog):
     assert f"Règle {detail.code} créée" in caplog.text and detail.phrase in caplog.text
     assert f"Règle {detail.code} supprimée" in caplog.text
     assert detail.regle.date_debut is None and detail.regle.periode_texte() == "toute l'année"
-    assert dt.date.today()  # le brouillon sans année prend l'année en cours (2026-2027 ici)
+    assert detail.annee_libelle == "2026-2027"  # une seule année : celle du brouillon sans année
 
 
 # --------------------------------------------------------------------------- #
@@ -580,13 +577,14 @@ def test_modifier_refuse_un_changement_d_annee_ou_de_code_et_garde_le_controle_d
 ):
     """Cas : `modifier()` reçoit « annee » (autre année) ou « code » dans les changements.
 
-    Risque : le doublon était cherché dans l'autre année mais la règle restait dans la sienne :
-    deux réglages actifs pour la même cible, et le semestre entier devenait inchargeable ; le
-    changement de code était ignoré en silence.
+    Risque : le doublon serait cherché dans l'autre année mais la règle resterait dans la
+    sienne : deux réglages actifs pour la même cible, et le semestre entier deviendrait
+    inchargeable ; le changement de code serait ignoré en silence.
     """
     annee = jeu_minimal.annee_scolaire_id
     assurer_annee_scolaire(session, 2027)
     brouillon = {
+        "annee": "2026-2027",  # sans elle, l'année suivrait la date du jour (deux années ici)
         "type": "PAUSE_MINIMALE",
         "portee": {"nature": "enseignant", "cible": "ENS004"},
         "parametres": {"duree": 30},
