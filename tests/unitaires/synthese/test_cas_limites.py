@@ -22,6 +22,7 @@ from __future__ import annotations
 import dataclasses
 import datetime as dt
 import itertools
+import os
 
 import pytest
 from faker import Faker
@@ -33,7 +34,7 @@ from tests.outils.synthese.empreinte import empreinte_semantique
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import NatureGroupe, NatureJourFerme
-from edt.erreurs import ErreurDonneesInvalides
+from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.parametres import ecrire_parametre
 from edt.services.regles import lister
@@ -118,13 +119,55 @@ def test_borne_de_graine_identique_au_formulaire_web():
 
 
 def test_service_refuse_une_graine_invalide_avant_la_remise_a_zero(base):
-    """Cas : le service de rechargement (écran, futur assistant) reçoit une graine refusée
+    """Cas : le service de rechargement (écran, assistant) reçoit une graine refusée
     avec la remise à zéro. Risque : toutes les données perdues pour une faute de saisie."""
     jeux.recharger_jeu_fictif("petit")
     with pytest.raises(ErreurDonneesInvalides):
         jeux.recharger_jeu_fictif("petit", graine=-1, reinitialiser=True)
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Besoin)) > 0
+
+
+def test_refus_apres_la_remise_a_zero_dit_que_la_base_est_videe(jeu_minimal, monkeypatch):
+    """Cas : la remise à zéro est faite, puis le chargement est refusé (calcul lancé entre-temps
+    par un autre processus, configuration refusée par le générateur).
+
+    Risque : le refus seul est affiché ; l'utilisateur croit ses données d'avant intactes
+    alors que la base a été vidée et qu'aucun jeu n'est chargé.
+    """
+
+    def refus(*_args, **_options):
+        raise ErreurDonneesInvalides("refus simulé")
+
+    monkeypatch.setattr(jeux, "generer_jeu", refus)
+    with pytest.raises(ErreurRegleMetier) as capture:
+        jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+    message = capture.value.message
+    assert "remise à zéro" in message and "aucun jeu n'est chargé" in message
+    assert "refus simulé" in message
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == 0
+
+
+def test_marqueur_d_un_processus_arrete_n_immobilise_pas_le_serveur(base, monkeypatch):
+    """Cas : `python -m edt jeu --reset` interrompu (fenêtre fermée, Ctrl+C brutal) laisse
+    son fichier marqueur à côté de la base.
+
+    Risque : pendant dix minutes, tout calcul et tout chargement sont refusés « opération en
+    cours » sans issue, alors que plus rien ne tourne.
+    """
+    marqueur = jeux.fichier_marqueur()
+    marqueur.write_text("4242 remettre la base à zéro", encoding="utf-8")
+    monkeypatch.setattr(jeux, "_processus_vivant", lambda pid: pid != 4242)
+    assert not jeux.operation_en_cours()  # processus arrêté : marqueur ignoré
+
+    marqueur.write_text(f"{os.getpid()} charger un jeu fictif", encoding="utf-8")
+    assert not jeux.operation_en_cours()  # notre numéro, verrou libre : un reste
+
+    marqueur.write_text("4343 charger un jeu fictif", encoding="utf-8")
+    assert jeux.operation_en_cours()  # processus vivant : opération en cours
+    marqueur.write_text("illisible", encoding="utf-8")
+    assert jeux.operation_en_cours()  # dans le doute, l'opération est tenue pour active
 
 
 # --------------------------------------------------------------------------- #
