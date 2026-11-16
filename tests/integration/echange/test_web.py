@@ -34,6 +34,9 @@ def test_menu_et_page_d_import(client):
     assert page.status_code == 200
     assert 'name="fichiers"' in page.text and 'hx-post="/import/simuler"' in page.text
     assert "Emploi du temps de référence" in page.text
+    # Semestre et semaine type ne s'affichent que pour un emploi du temps existant.
+    assert page.text.count('data-visible-si="mode:reference,verrous,a_replacer"') == 2
+    assert ".csv, .txt, .tsv, .xlsx, .zip ou .ics" in page.text
 
 
 def test_simulation_en_htmx_affiche_apercu_bilan_rapport(jeu_minimal, client, fichier_exemple):
@@ -167,7 +170,11 @@ def test_page_et_telechargements_d_export(jeu_minimal, client):
 
 
 def test_export_d_emploi_du_temps(version_generee, client):
-    assert "Version 1" in client.get("/export").text
+    page = client.get("/export").text
+    assert "Version 1" in page
+    principal = page[page.index("<main") : page.index("</main>")]
+    assert principal.count("bouton-principal") == 1  # « Télécharger en CSV »
+    assert page.index("<h2>Emploi du temps</h2>") < page.index("<h2>Gabarit vide</h2>")
 
     csv = client.get(
         "/export/emploi-du-temps.csv",

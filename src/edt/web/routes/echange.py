@@ -57,6 +57,8 @@ MARGE_ENTETES_OCTETS = 512 * 1024
 """Marge tolérée au-delà de 20 Mo pour l'enveloppe du formulaire (en-têtes des parties)."""
 MAX_FICHIERS = 50
 EXTENSIONS = ".csv,.txt,.tsv,.xlsx,.zip,.ics"
+EXTENSIONS_TEXTE = ", ".join(EXTENSIONS.split(",")[:-1]) + " ou " + EXTENSIONS.split(",")[-1]
+"""Les extensions acceptées, écrites pour l'aide du champ (« .csv, .txt, ... ou .ics »)."""
 LIMITE_SIGNALEMENTS = 200
 """Signalements affichés au plus (le rapport CSV les contient tous)."""
 LIMITE_BESOINS = 500
@@ -190,6 +192,7 @@ def _contexte_import(session) -> dict:
         "semestres": service.semestres_importables(session),
         "semestre_defaut": defaut,
         "extensions": EXTENSIONS,
+        "extensions_texte": EXTENSIONS_TEXTE,
         "taille_max_mo": service.TAILLE_MAX_OCTETS // (1024 * 1024),
     }
 

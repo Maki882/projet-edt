@@ -1999,14 +1999,17 @@ class _Generateur:
             version = m.VersionEdt(
                 semestre_id=semestre.id,
                 numero=numero,
-                libelle=f"Témoin du jeu fictif « {self.config.nom} » (graine {self.graine})",
+                libelle=(
+                    f"Emploi du temps de référence de l'établissement fictif {self.config.nom}"
+                    + (f", variante {self.graine}" if self.graine else "")
+                ),
                 origine=OrigineVersion.REFERENCE,
                 active=False,
                 cree_le=dt.datetime.combine(self.annee.date_debut, dt.time()),
                 commentaire=(
-                    "Emploi du temps témoin construit par le générateur de données fictives : "
-                    "preuve de faisabilité, à comparer au résultat du solveur. Version non "
-                    "active : le solveur n'en reçoit aucun indice."
+                    "Emploi du temps de référence fourni avec l'établissement fictif : il prouve "
+                    "qu'une solution existe et sert de comparaison. Version non active : le "
+                    "calcul n'en reçoit aucun indice."
                 ),
             )
             for seance, place in self.temoin[code].items():
