@@ -63,6 +63,8 @@ src/edt/
   journal.py                   configuration unique des journaux
   erreurs.py                   hiérarchie ErreurEDT
   commandes/                   un module par domaine, chacun expose `commandes`
+    assistant.py               assistant (état, appel d'essai, question)
+    banc_tests.py              tests
     base.py                    init-db, verifier-schema, jeu-minimal, serve, version,
                                doctor, sauvegarder, verifier-sauvegarde
     echange.py                 gabarit, importer, exporter-donnees, exporter-edt
@@ -92,9 +94,11 @@ src/edt/
     parametres.py, niveaux.py  paramètres ; niveaux des règles d'un calcul
     calendrier.py, etat.py     années scolaires ; état de la base
     regles.py                  règles personnalisées
-    echange.py, jeux.py        import et export ; jeux fictifs, remise à zéro
+    echange.py, jeux.py        import et export ; établissements fictifs, remise à zéro
+    assistant/                 assistant conversationnel (docs/assistant.md)
+    banc_tests/                lancement des tests depuis l'application, résultats
     referentiels/              édition générique des données de l'établissement
-    emploi_du_temps/           écrans Générer, Emploi du temps, À traiter, accueil
+    emploi_du_temps/           écrans Générer, Emploi du temps, Points à traiter, accueil
   verification/                vérificateur : une règle par code du catalogue, indicateurs
   solveur/                     CP-SAT : préparation, pré-vérifications, horaires (modele.py),
                                salles (salles.py), moteur, séances datées, replacement,
@@ -108,7 +112,8 @@ src/edt/
     intergiciels.py, erreurs.py  identifiant et journal des requêtes ; erreurs -> pages
     donnees/                   écrans génériques des données, formulaire des règles
     routes/                    un module par écran (accueil, données, Générer,
-                               Emploi du temps, À traiter, import et export)
+                               Emploi du temps, Points à traiter, import et
+                               export, assistant, tests)
     templates/, static/        gabarits Jinja2 ; CSS, JavaScript, HTMX embarqué
 tests/                         unitaires/, integration/, outils/ : voir tests/README.md
 ```
@@ -135,7 +140,7 @@ mémoire, un autre pilote ou un schéma inconnu sont refusés avec le remède.
 Une valeur vide prend le défaut. Les chemins relatifs partent du répertoire
 de lancement.
 
-Trois variables règlent le lancement des tests depuis l'application
+Quatre variables règlent le lancement des tests depuis l'application
 (onglets « Tests unitaires » et « Tests d'intégration », commande
 `python -m edt tests`) ; le service `edt.services.banc_tests` les lit avec
 les mêmes règles (valeur invalide refusée, valeur vide au défaut) :
