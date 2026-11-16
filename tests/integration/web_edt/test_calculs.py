@@ -120,6 +120,10 @@ def test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis(jeu_minima
     fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
     assert "<html" not in fragment
     assert "hx-trigger" not in fragment  # calcul fini : l'interrogation s'arrête
+    # Le bandeau « Calcul lancé. » de la page, périmé une fois le calcul fini, est vidé.
+    assert '<div id="messages" class="messages" aria-live="polite" hx-swap-oob="true"></div>' in (
+        fragment
+    )
 
 
 @pytest.mark.cas_limite
@@ -147,6 +151,7 @@ def test_suivi_sans_rechargement_second_lancement_refuse_puis_arret(
         assert demarre.wait(DELAI)
         fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
         assert 'hx-trigger="every 1s"' in fragment
+        assert "hx-swap-oob" not in fragment  # « Calcul lancé. » reste pendant le calcul
         assert "Temps écoulé" in fragment and "Arrêter le calcul" in fragment
 
         page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text

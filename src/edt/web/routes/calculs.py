@@ -338,7 +338,12 @@ def fragment_etat(request: Request, session: SessionRequete, calcul_id: int):
         return rediriger(request, f"/calculs/{calcul_id}")
     resultat = calculs.resultat_calcul(session, calcul_id)
     _prechauffer_si_fini(resultat)
-    return rendre(request, "edt/_suivi_calcul.html", {"r": resultat, "fmt": presentation})
+    # Calcul fini : le bandeau de la page (« Calcul lancé. ») est périmé, il est vidé.
+    return rendre(
+        request,
+        "edt/_suivi_calcul.html",
+        {"r": resultat, "fmt": presentation, "vider_messages": not resultat.en_cours},
+    )
 
 
 @routeur.post("/calculs/{calcul_id:int}/arreter", name="arreter_calcul")

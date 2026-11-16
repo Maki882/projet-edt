@@ -1,7 +1,9 @@
 {#
   Suivi et résultat d'un calcul (fragment). Tant que le calcul tourne, le bloc s'interroge
   lui-même chaque seconde (HTMX) et se remplace par la réponse ; à la fin, la réponse n'a
-  plus de déclencheur : l'interrogation s'arrête. Variable : r (calculs.ResultatCalcul).
+  plus de déclencheur : l'interrogation s'arrête. Variables : r (calculs.ResultatCalcul) ;
+  vider_messages (réponse au suivi d'un calcul fini) : le bandeau de la page (« Calcul
+  lancé. »), devenu périmé, est vidé par un remplacement hors du bloc (hx-swap-oob).
 #}
 {% import "macros.html" as ui %}
 {% import "edt/_ui.html" as edt with context %}
@@ -151,3 +153,6 @@
   </details>
   {%- endif %}
 </div>
+{%- if vider_messages %}
+<div id="messages" class="messages" aria-live="polite" hx-swap-oob="true"></div>
+{%- endif %}
