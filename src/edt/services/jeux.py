@@ -25,13 +25,12 @@ première est refusée tout de suite (`ErreurChargementEnCours`) au lieu de
 supprimer et recréer les tables en même temps qu'elle.
 `operation_en_cours()` dit si l'une d'elles tourne (pour expliquer une base
 momentanément occupée). Le verrou est propre au processus ; pour qu'une
-commande lancée dans un autre processus (`edt jeu`, avec ou sans `--reset`)
-soit vue du serveur, l'opération pose aussi un **fichier marqueur** à côté de
-la base (`edt.db.operation`, numéro du processus et action), retiré à la fin.
+commande lancée dans un autre processus (`edt jeu`, avec ou sans `--reset`,
+ou `init-db --reset`) soit vue du serveur, l'opération pose aussi un
+**fichier marqueur** à côté de la base (`edt.db.operation`, numéro du
+processus et action), retiré à la fin.
 Un marqueur laissé par un processus arrêté sans le retirer est ignoré dès que
 ce processus n'existe plus, et dans tous les cas passé `DUREE_MARQUEUR_S`.
-Limite : `init-db --reset` recrée la base sans passer par ce service, donc
-sans marqueur.
 
 Un échec du chargement après la remise à zéro (panne ou refus) est dit tel
 quel : la base a été vidée et aucun jeu n'est chargé (`ErreurRegleMetier`,
