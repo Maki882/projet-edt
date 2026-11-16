@@ -58,6 +58,19 @@ def test_un_groupe_inconnu_est_refuse():
         calculer_conflits_groupes(PARENTS, chevauchements=[(7, 99)])
 
 
+@pytest.mark.cas_limite
+def test_une_boucle_de_groupes_est_refusee_avec_le_remede():
+    """Cas : deux groupes sont chacun le parent de l'autre (base modifiée hors de l'écran).
+
+    Risque : message qui constate la boucle sans dire quel champ corriger ni où.
+    """
+    with pytest.raises(ErreurDonneesInvalides) as erreur:
+        calculer_conflits_groupes({1: 2, 2: 1})
+    message = erreur.value.message
+    assert "boucle autour du groupe n° 1" in message
+    assert "corriger son groupe parent (Données › Groupes)" in message
+
+
 def test_relation_du_jeu_minimal_lue_dans_la_base(jeu_minimal, session):
     ids = dict(session.execute(select(Groupe.code, Groupe.id)).all())
     conflits = conflits_groupes(session, jeu_minimal.annee_scolaire_id)
