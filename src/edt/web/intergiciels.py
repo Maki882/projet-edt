@@ -12,7 +12,8 @@ corps retiré.
   `request.state.id_requete` et dans l'en-tête de réponse `X-Request-ID` ;
 - journalise la méthode, le chemin, le statut et la durée (au niveau DEBUG
   pour les fichiers statiques et l'interrogation périodique du suivi d'un
-  calcul, qui écrirait sinon une ligne par seconde : `est_silencieux`) ;
+  calcul, d'un échange avec l'assistant ou d'une exécution des tests, qui
+  écrirait sinon une ligne par seconde : `est_silencieux`) ;
 - intercepte toute exception non prévue : la trace complète part dans le
   journal avec l'identifiant, et l'utilisateur reçoit une page d'erreur
   lisible portant ce même identifiant (jamais de trace brute à l'écran).
@@ -38,8 +39,12 @@ EN_TETE_ID = "X-Request-ID"
 PREFIXES_SILENCIEUX = ("/static/", "/assistant/echanges/")
 """Débuts de chemin journalisés au niveau DEBUG seulement : fichiers statiques, et suivi
 d'un échange avec l'assistant, interrogé chaque seconde."""
-MOTIFS_SILENCIEUX = (re.compile(r"/calculs/[0-9]+/etat"),)
-"""Chemins entiers journalisés au niveau DEBUG : suivi d'un calcul, interrogé chaque seconde."""
+MOTIFS_SILENCIEUX = (
+    re.compile(r"/calculs/[0-9]+/etat"),
+    re.compile(r"/tests/(unitaires|integration)/suivi"),
+)
+"""Chemins entiers journalisés au niveau DEBUG : suivi d'un calcul et suivi d'une exécution des
+tests, interrogés chaque seconde."""
 
 
 def est_silencieux(chemin: str, statut: int) -> bool:

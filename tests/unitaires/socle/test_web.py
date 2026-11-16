@@ -85,11 +85,17 @@ def test_redirection_htmx_vers_une_adresse_non_ascii(adresse, attendue):
         ("/assistant/echanges/abc123", 204, True),  # suivi d'un échange avec l'assistant
         ("/assistant/echanges/abc123", 404, False),
         ("/assistant/panneau", 200, False),
+        ("/tests/unitaires/suivi", 200, True),  # suivi d'une exécution des tests
+        ("/tests/integration/suivi", 200, True),
+        ("/tests/integration/suivi", 500, False),
+        ("/tests/integration", 200, False),
+        ("/tests/autre/suivi", 200, False),
     ],
 )
 def test_suivi_d_un_calcul_journalise_en_debug(chemin, statut, silencieux):
-    """Cas : la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, et
-    le panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange.
+    """Cas : la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, le
+    panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange, et l'onglet des
+    tests `/tests/<famille>/suivi` pendant une exécution.
 
     Risque : une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements.
     """
