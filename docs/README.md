@@ -13,7 +13,9 @@ ou exploitant du serveur.
   [spécifications fonctionnelles](livrets/1-specifications-fonctionnelles.md),
   [spécifications techniques et organisation](livrets/2-specifications-techniques-et-organisation.md),
   [guide de l'utilisateur](livrets/3-guide-utilisateur.md) ; puis la
-  [stratégie de test](../tests/README.md).
+  [stratégie de test](../tests/README.md). Les tests se lancent aussi depuis
+  l'application, dans les onglets « Tests unitaires » et « Tests d'intégration »
+  (commande équivalente : `python -m edt tests`).
 - **Développeur** : le [guide de contribution](../CONTRIBUTING.md), les
   [choix de conception](decisions.md) et l'[architecture](architecture.md),
   puis le document du sous-système à modifier.
@@ -37,7 +39,7 @@ ou exploitant du serveur.
 | [Données fictives](donnees-fictives.md) | générateur des jeux petit, moyen et grand | développeur |
 | [Interface web](interface.md) | navigation, mise en page, écrans, cas limites | développeur |
 | [Assistant](assistant.md) | assistant conversationnel : fonctionnement, garde-fous, limites | utilisateur, développeur |
-| [Tests](../tests/README.md) | rangement unitaire et intégration, commandes | développeur, enseignant |
+| [Tests](../tests/README.md) | rangement unitaire et intégration, commandes, tests lancés depuis l'application | développeur, enseignant |
 | [Banque de tests](banque-de-tests.md) | conventions des cas limites et inventaire | développeur |
 | [Déploiement](deploiement.md) | installation du serveur, mise à jour, sauvegardes, pannes | exploitant |
 | [Guide de contribution](../CONTRIBUTING.md) | Git et GitHub, conventions de code et d'écriture, tests | développeur |

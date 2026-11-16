@@ -41,7 +41,11 @@ Règles qui en découlent :
 - aucun état global en mémoire, sauf le suivi des calculs en cours
   (`edt.services.generation`) et la mémoire des écrans, invalidée à chaque
   écriture (`edt.services.emploi_du_temps.memoire`) : tout le reste est en
-  base ;
+  base ; deux autres exceptions : l'assistant garde en mémoire ses
+  conversations, ses compteurs par adresse et sa pause après un refus de clé
+  (`edt.services.assistant`, voir [`assistant.md`](assistant.md)), et le
+  lanceur de tests garde l'exécution en cours (`edt.services.banc_tests`) ;
+  tout cela est perdu au redémarrage ;
 - seule exception à l'ordre des couches : les commandes `init-db` et
   `jeu-minimal` appellent directement `edt.db.initialisation` et
   `edt.db.jeux`, outils d'administration de la base.

@@ -7,26 +7,26 @@
 <rect x="230" y="35" width="360" height="100" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="410.0" y="57.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Interface web</text>
 <text x="410.0" y="77.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">FastAPI, gabarits Jinja2, HTMX</text>
-<text x="410.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">cinq onglets, formulaires, pages d&#x27;erreur</text>
-<text x="410.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">lisibles</text>
+<text x="410.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">six onglets, dont deux pour lancer</text>
+<text x="410.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">les tests ; pages d&#x27;erreur lisibles</text>
 <rect x="615" y="35" width="340" height="100" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="785.0" y="57.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Ligne de commande</text>
 <text x="785.0" y="77.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">Typer : python -m edt &lt;commande&gt;</text>
-<text x="785.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">17 commandes (installation, calcul,</text>
-<text x="785.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">import, export, sauvegarde...)</text>
+<text x="785.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">19 commandes (installation, calcul, import,</text>
+<text x="785.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">export, sauvegarde, tests, assistant...)</text>
 <rect x="980" y="35" width="390" height="100" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4" stroke-dasharray="7,5"/>
-<text x="1175.0" y="57.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Assistant (optionnel, en cours)</text>
-<text x="1175.0" y="77.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">panneau de chaque page ; bibliothèque</text>
-<text x="1175.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">anthropic vers l&#x27;API Claude ; il n&#x27;agit</text>
-<text x="1175.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">que par les services, après confirmation</text>
+<text x="1175.0" y="57.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Assistant (service externe optionnel)</text>
+<text x="1175.0" y="77.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">panneau de chaque page ; client anthropic</text>
+<text x="1175.0" y="94.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">vers l&#x27;API Claude ; douze outils de lecture ;</text>
+<text x="1175.0" y="111.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">n&#x27;écrit qu&#x27;après « Confirmer », par les services</text>
 <rect x="20" y="175" width="1360" height="110" rx="8" fill="#f7f9fc" stroke="#2f4b6e" stroke-width="1.0"/>
 <text x="36.0" y="205.0" font-size="16" text-anchor="start" fill="#1b1f24" font-weight="700">Services</text>
 <text x="36.0" y="227.0" font-size="12.5" text-anchor="start" fill="#1b1f24" font-style="italic">fonctions typées,</text>
 <text x="36.0" y="245.0" font-size="12.5" text-anchor="start" fill="#1b1f24" font-style="italic">le seul point d&#x27;entrée</text>
 <rect x="230" y="190" width="1140" height="80" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="800.0" y="212.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Services (une fonction par fonctionnalité, paramètres et résultats explicites)</text>
-<text x="800.0" y="232.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">référentiels, besoins, règles personnalisées, paramètres, calendrier, génération et suivi des calculs,</text>
-<text x="800.0" y="249.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">emploi du temps (consultation, retouche, séances datées), vérification, échange de fichiers, établissements fictifs</text>
+<text x="800.0" y="232.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">référentiels, besoins, règles personnalisées, paramètres, calendrier, génération et suivi des calculs, emploi du temps,</text>
+<text x="800.0" y="249.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">vérification, échange de fichiers, établissements fictifs, assistant, banc de tests (pytest lancé dans un processus à part)</text>
 <rect x="20" y="310" width="1360" height="160" rx="8" fill="#f7f9fc" stroke="#2f4b6e" stroke-width="1.0"/>
 <text x="36.0" y="340.0" font-size="16" text-anchor="start" fill="#1b1f24" font-weight="700">Logique</text>
 <text x="36.0" y="362.0" font-size="12.5" text-anchor="start" fill="#1b1f24" font-style="italic">les trois premières</text>
@@ -65,7 +65,7 @@
 <rect x="810" y="510" width="560" height="90" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="1090.0" y="532.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Base de données</text>
 <text x="1090.0" y="552.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">SQLAlchemy 2 (modèles, transactions) sur SQLite,</text>
-<text x="1090.0" y="569.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">mode WAL, clés étrangères actives, 22 classes / 29 tables</text>
+<text x="1090.0" y="569.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">mode WAL, clés étrangères actives, 23 classes / 30 tables</text>
 <rect x="230" y="510" width="560" height="90" rx="6" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.4"/>
 <text x="510.0" y="532.0" font-size="14" text-anchor="middle" fill="#1b1f24" font-weight="700">Journaux</text>
 <text x="510.0" y="552.0" font-size="12.5" text-anchor="middle" fill="#1b1f24">module logging : console et fichier tournant,</text>
