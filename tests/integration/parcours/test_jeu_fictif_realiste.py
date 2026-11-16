@@ -17,7 +17,7 @@ def test_jeu_petit_calcule_et_verifie(base):
     """Scénario : le jeu fictif « petit » (une promotion, deux classes) est chargé puis calculé.
 
     Étapes :
-    1. Charger le jeu avec le service utilisé par l'écran « Jeux de démonstration ».
+    1. Charger le jeu avec le service utilisé par l'écran « Établissement fictif ».
     2. Lancer un vrai calcul sur chacun de ses semestres.
     3. Vérifier la semaine type et les séances datées : aucune anomalie bloquante.
 
