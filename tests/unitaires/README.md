@@ -172,6 +172,16 @@ python -m pytest --collect-only -q tests/unitaires   # cas, fichier par fichier
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | scripts de déploiement lus : syntaxe, fins de ligne, cohérence | 15 | 39 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | unités systemd, configuration nginx et pages d'erreur cohérentes avec l'application | 13 | 16 |
 
+### `banc_tests/` : Lancement des tests depuis l'application (36 fonctions, 46 cas)
+
+| Fichier | Ce qu'il vérifie | Fonctions | Cas |
+|---|---|---:|---:|
+| [`banc_tests/test_catalogue.py`](banc_tests/test_catalogue.py) | catalogue des tests lu sans les exécuter, racine du dépôt et cibles tirées du catalogue | 9 | 17 |
+| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | garde-fous du lancement sans sous-processus : réglages, refus, verrou, environnement | 11 | 13 |
+| [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | onglets des tests dans le menu, état affiché de chaque test et comptes | 8 | 8 |
+| [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | regroupement des cas paramétrés, historique des résultats écrit puis relu, fichier illisible | 8 | 8 |
+
+
 ## 4. Un exemple expliqué pas à pas
 
 Fichier [`solveur/test_contraintes.py`](solveur/test_contraintes.py) : chaque

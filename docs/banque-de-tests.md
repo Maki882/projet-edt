@@ -70,10 +70,11 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'intégration.
+Le catalogue compte 350 cas : 203 cas en tests unitaires et 147 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
+| `banc_tests` | 13 | 8 |
 | `echange` | 39 | 5 |
 | `exploitation` | 30 | 23 |
 | `socle` | 48 | 24 |
@@ -82,9 +83,44 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 | `verification` | 25 | 0 |
 | `web_donnees` | 1 | 36 |
 | `web_edt` | 1 | 30 |
-| **Total** | **190** | **139** |
+| **Total** | **203** | **147** |
 
-### Tests unitaires (190 cas)
+### Tests unitaires (203 cas)
+
+#### `banc_tests` (13 cas)
+
+[`tests/unitaires/banc_tests/test_catalogue.py`](../tests/unitaires/banc_tests/test_catalogue.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Fichier de tests illisible liste avec son erreur | un fichier de tests contient une erreur de syntaxe (modification en cours). | la page des tests répond 500, ou le fichier disparaît sans explication. |
+| Dossier de tests absent donne un catalogue vide explique | installation sans dossier « tests » (code déployé sans les tests), ou variable EDT_TESTS_RACINE fausse. | erreur 500 sur les deux onglets, ou lancement de pytest sur un dossier vide. |
+| Cible inconnue refusee | formulaire trafiqué, page restée ouverte après la suppression d'un test, option de pytest glissée dans la cible. | un texte reçu du navigateur passe tel quel dans la commande pytest. |
+
+[`tests/unitaires/banc_tests/test_garde_fous.py`](../tests/unitaires/banc_tests/test_garde_fous.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Reglage invalide refuse avec son nom | variable EDT_TESTS_* mal écrite dans le fichier d'environnement du serveur. | durée maximale ignorée en silence (tests sans limite sur un petit serveur). |
+| Lancement desactive laisse les resultats consultables | EDT_TESTS_LANCEMENT=non sur le serveur. | un visiteur lance quand même des tests, ou la page cache les résultats. |
+| Pytest absent refuse le lancement | serveur installé sans les dépendances de développement (pas de pytest). | sous-processus qui échoue aussitôt, avec un message incompréhensible. |
+| Refus pendant un calcul | un calcul d'emploi du temps tourne quand quelqu'un lance les tests. | les deux se disputent les deux cœurs du serveur ; le calcul atteint son temps limite. |
+| Verrou abandonne retire et interruption notee | serveur arrêté ou redémarré pendant une exécution des tests. | l'état « en cours » reste bloqué et plus aucun test ne peut être lancé. |
+| Verrou d un processus vivant refuse le lancement | la commande `python -m edt tests` tourne pendant qu'un visiteur clique sur « Lancer ». | deux exécutions en même temps, résultats écrasés l'un par l'autre. |
+
+[`tests/unitaires/banc_tests/test_menu_et_tableau.py`](../tests/unitaires/banc_tests/test_menu_et_tableau.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Supprime depuis sa derniere execution ignore | l'historique garde le résultat d'un test renommé ou supprimé depuis. | ligne fantôme, compte faux ou erreur à l'affichage. |
+
+[`tests/unitaires/banc_tests/test_resultats.py`](../tests/unitaires/banc_tests/test_resultats.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Historique illisible signale puis mis de cote | fichier des résultats tronqué (disque plein, arrêt brutal) ou modifié à la main. | erreur 500 sur les deux onglets, ou historique écrasé sans trace. |
+| Entrees mal formees ignorees une a une | une entrée du fichier des résultats a un état inconnu ou une date illisible. | tout l'historique perdu pour une seule ligne fausse. |
+| Ecriture impossible levee avec le chemin | dossier des journaux en lecture seule ou disque plein au moment d'enregistrer. | résultats perdus sans le dire. |
 
 #### `echange` (39 cas)
 
@@ -527,7 +563,27 @@ Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'i
 |---|---|---|
 | Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
 
-### Tests d'intégration (139 cas)
+### Tests d'intégration (147 cas)
+
+#### `banc_tests` (8 cas)
+
+[`tests/integration/banc_tests/test_ecrans.py`](../tests/integration/banc_tests/test_ecrans.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Double clic ne lance qu une execution sans erreur | double clic sur « Lancer » (deux envois du même formulaire). | deux exécutions en parallèle, ou une page d'erreur pour un geste banal. |
+| Cible inconnue refusee par la route web | formulaire envoyé avec une cible fabriquée (chemin hors du dépôt). | un texte du navigateur arrive dans la commande pytest. |
+| Lancement desactive par la route web | serveur réglé avec EDT_TESTS_LANCEMENT=non. | boutons actifs qui mènent à une erreur, ou résultats masqués. |
+| Pages lisibles sans dossier de tests et avec un historique illisible | installation sans dossier « tests », fichier des résultats abîmé. | erreur 500 sur les deux onglets pendant la démonstration. |
+
+[`tests/integration/banc_tests/test_execution.py`](../tests/integration/banc_tests/test_execution.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Seconde demande pendant une execution | double clic sur « Lancer », ou deux visiteurs qui lancent en même temps. | deux sous-processus pytest sur un petit serveur, résultats mêlés. |
+| Arret demande tue le processus et garde les resultats | « Arrêter l'exécution » pendant un test qui dure. | processus pytest orphelin qui continue de charger le serveur, état « en cours » bloqué. |
+| Duree maximale depassee | un test bloqué (attente sans fin) pendant une exécution. | le serveur reste chargé indéfiniment et plus aucun test ne peut être lancé. |
+| Fichier qui ne se charge pas | un fichier de tests importe un module absent (dépendance manquante sur le serveur). | ses tests restent « jamais lancés » sans explication, ou toute l'exécution échoue. |
 
 #### `echange` (5 cas)
 

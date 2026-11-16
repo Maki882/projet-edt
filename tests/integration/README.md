@@ -380,6 +380,15 @@ Voir la section 4 : [`parcours/test_parcours_web.py`](parcours/test_parcours_web
 | [`exploitation/test_commandes_exploitation.py`](exploitation/test_commandes_exploitation.py) | commandes et service : `init-db` relançable, codes de sortie, sauvegardes | 18 | 22 |
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | scripts de déploiement exécutés hors du serveur (bash, awk, Python) | 5 | 16 |
 
+### `banc_tests/` : Lancement des tests depuis l'application (19 fonctions, 19 cas)
+
+| Fichier | Ce qu'il vérifie | Fonctions | Cas |
+|---|---|---:|---:|
+| [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 3 | 3 |
+| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 9 | 9 |
+| [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | exécution réelle des tests d'un dépôt factice dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 |
+
+
 ## 7. Stratégie de test du projet
 
 | Niveau | Où | Comment le lancer | Rôle |
