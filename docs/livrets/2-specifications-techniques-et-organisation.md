@@ -11,13 +11,14 @@ Projet PTS Informatique, ISEP, année 2026-2027
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
 | Date | 16 novembre 2026 |
 | Version | 1.1 |
+| Application décrite | EDT 1.0.0 |
 
 Ce livret décrit comment l'application est construite (matériels, systèmes, technologies,
 langages, bibliothèques) et comment le projet a été organisé (lots, planning, outils, méthodes,
 référentiel). Il complète le livret 1, [Spécifications fonctionnelles](1-specifications-fonctionnelles.md),
-qui décrit l'application du point de vue de l'utilisateur, et du livret 3,
-[guide de l'utilisateur](3-guide-utilisateur.md). Les chiffres cités sont mesurés sur le
-dépôt au 16 novembre 2026, en fin de journée.
+qui décrit l'application du point de vue de l'utilisateur, et le livret 3,
+[guide de l'utilisateur](3-guide-utilisateur.md). Les chiffres cités sont mesurés sur la
+branche principale à la version 1.0.0 de l'application (16 novembre 2026).
 
 ---
 
@@ -108,7 +109,7 @@ La description détaillée se trouve dans [architecture.md](../architecture.md).
 
 | Stockage | Description |
 |---|---|
-| Base SQLite | Un seul fichier, sans serveur de base à administrer : suffisant pour un établissement complet et un utilisateur à la fois. Le mode WAL permet de lire pendant une écriture ; les clés étrangères sont actives ; une transaction qui lit puis écrit réserve l'écriture dès son début, ce qui évite les blocages. 23 classes enregistrées, 30 tables avec les tables d'association ([modele-donnees.md](../modele-donnees.md)) ; la dernière, `assistant_consommation`, compte la consommation quotidienne de l'assistant. |
+| Base SQLite | Un seul fichier, sans serveur de base à administrer : suffisant pour un établissement complet et un utilisateur à la fois. Le mode WAL permet de lire pendant une écriture ; les clés étrangères sont actives ; une transaction qui lit puis écrit réserve l'écriture dès son début, ce qui évite les blocages. 23 classes enregistrées, 30 tables avec les tables d'association ([modele-donnees.md](../modele-donnees.md)) ; la dernière, `assistant_consommation`, reste dans le modèle mais n'est ni lue ni écrite : la consommation du jour de l'assistant est gardée dans un fichier hors de la base ([assistant.md](../assistant.md), § 3). |
 | Schéma sans migrations | Le schéma est créé par la commande `init-db` ; une base au schéma périmé est détectée (`verifier-schema`) et se recrée puis se repeuple par commande. |
 | Journaux | Module `logging` de Python, configuré en un seul endroit : console, fichier tournant `logs/edt.log`, un fichier par calcul dans `logs/generations/` ; les résultats des tests lancés depuis l'application sont dans `logs/tests/`. Chaque requête web reçoit un identifiant, repris dans les journaux et affiché sur les pages d'erreur. Sur le serveur, les journaux vont aussi dans journald. |
 | Sauvegardes | Copie cohérente de la base, vérifiée avant d'être gardée (commande `sauvegarder`) ; sur le serveur, une sauvegarde chaque nuit à 3 h 30 (14 gardées) et une avant chaque déploiement. |
@@ -131,9 +132,9 @@ La description détaillée se trouve dans [architecture.md](../architecture.md).
 
 | Langage | Volume (fichiers suivis) | Utilité |
 |---|---|---|
-| Python 3.11 ou plus | 155 fichiers, 64 856 lignes dans `src/` ; 236 fichiers, 43 131 lignes de tests | Tout le code de l'application : services, générateur, vérificateur, interface web, ligne de commande, import et export, création des établissements fictifs, assistant, banc de tests. Choisi pour sa lisibilité et pour ses bibliothèques (programmation par contraintes, tableurs, agendas). |
+| Python 3.11 ou plus | 155 fichiers, 65 731 lignes dans `src/` ; 236 fichiers, 44 780 lignes de tests | Tout le code de l'application : services, générateur, vérificateur, interface web, ligne de commande, import et export, création des établissements fictifs, assistant, banc de tests. Choisi pour sa lisibilité et pour ses bibliothèques (programmation par contraintes, tableurs, agendas). |
 | HTML (gabarits Jinja2) | 65 gabarits | Structure des pages ; les variables et les boucles des gabarits sont remplies par le serveur. |
-| CSS | 4 fichiers, 3 174 lignes | Mise en page, couleurs par matière, grille d'emploi du temps, impression, petits écrans. |
+| CSS | 4 fichiers, 3 188 lignes | Mise en page, couleurs par matière, grille d'emploi du temps, impression, petits écrans. |
 | JavaScript | 3 fichiers, 810 lignes (hors HTMX) | Petits comportements d'interface : demande de confirmation avant une suppression, champs qui n'apparaissent qu'au besoin, recherche rapide dans les listes, blocs repliables, impression, panneau de l'assistant (envoi, suivi d'un échange, clavier). |
 | Bash | 10 scripts, 2 175 lignes | Installation du serveur, déploiement, clé de l'assistant, état et journaux. |
 | SQL | aucun fichier | Les requêtes sont produites par SQLAlchemy à partir des classes Python. |
@@ -194,9 +195,9 @@ valide est trouvé ; un arrêt demandé ensuite garde le meilleur trouvé.
 Mesures consignées dans [solveur.md](../solveur.md), première solution valide : 111 séances
 hebdomadaires (établissement fictif moyen, semestre 1) en 1,9 s ; 595 séances (établissement
 fictif grand, semestre 1, 99 salles) en 19,5 s. Sur l'établissement grand, 180 secondes
-d'amélioration ramènent les trous de 2 874 à 3 sur le semestre. Sur le poste de
-développement, le calcul complet du semestre 1 de l'établissement moyen, amélioration comprise,
-a pris 19,4 s le 16 novembre (mesuré pour ce livret).
+d'amélioration ramènent les trous de 2 874 à 3 sur le semestre. Une mesure faite pour ce
+livret sur le poste de développement : le calcul complet du semestre 1 de l'établissement
+moyen, amélioration comprise, a pris 19,4 s (la durée varie avec la charge de la machine).
 
 ### 1.10 Du diagramme des classes au code
 
@@ -237,14 +238,14 @@ les énumérations affichables dérivent de `EnumLibelle`. Un test vérifie que
 
 Les nombres ci-dessous sont ceux du tableau généré dans [tests/README.md](../../tests/README.md)
 (`python -m tests.outils.classement`), qui compte les fonctions de test ; pytest, qui compte
-chaque cas d'une fonction paramétrée à part, collecte 2 155 cas.
+chaque cas d'une fonction paramétrée à part, collecte 2 242 cas.
 
 | Famille | Fonctions | Contenu |
 |---|---|---|
-| Tests unitaires (`tests/unitaires/`) | 1 074 | Un module exercé seul : règles du vérificateur, modèles du générateur, lecture des fichiers, services, outils de l'assistant, catalogue du banc de tests... |
-| Tests d'intégration (`tests/integration/`) | 508 | Plusieurs couches assemblées : requêtes HTTP au vrai serveur de test, commandes, calculs complets ; dont 6 parcours de bout en bout. |
+| Tests unitaires (`tests/unitaires/`) | 1 113 | Un module exercé seul : règles du vérificateur, modèles du générateur, lecture des fichiers, services, outils de l'assistant, catalogue du banc de tests... |
+| Tests d'intégration (`tests/integration/`) | 523 | Plusieurs couches assemblées : requêtes HTTP au vrai serveur de test, commandes, calculs complets ; dont 6 parcours de bout en bout. |
 | Contrôle du rangement (`tests/test_rangement.py`) | 11 | Vérifie que chaque test est rangé dans la bonne famille et que les tableaux de nombres des documents sont à jour. |
-| dont cas limites (marqueur `cas_limite`) | 472 | Cas limites et pannes plausibles, chacun documenté par « Cas : … Risque : … ». |
+| dont cas limites (marqueur `cas_limite`) | 522 | Cas limites et pannes plausibles, chacun documenté par « Cas : … Risque : … ». |
 | dont tests de charge (marqueur `perf`) | 24 | Calculs longs sur l'établissement fictif grand, exclus de l'intégration continue. |
 
 Le vérificateur sert d'oracle aux tests du générateur : un emploi du temps produit est valide si
@@ -265,13 +266,16 @@ d'intégration » s'appuient sur le service `edt.services.banc_tests`, que la co
   touchée ;
 - une seule exécution à la fois, refusée pendant un calcul d'emploi du temps ; durée maximale
   réglable (`EDT_TESTS_DUREE_MAX_S`, 900 s par défaut) ; lancement désactivable
-  (`EDT_TESTS_LANCEMENT=non`) ; les tests de charge ne partent qu'un par un ;
+  (`EDT_TESTS_LANCEMENT=non`) ; les tests de charge ne se lancent que par la commande
+  `python -m edt tests --test …`, jamais depuis la page ;
 - le résultat et la date de la dernière exécution de chaque test sont gardés dans
   `logs/tests/resultats.json`, avec le journal complet de la dernière exécution.
 
-Mesure faite pour ce livret le 16 novembre, sur le poste de développement : la famille des
-tests unitaires, lancée par `python -m edt tests --famille unitaires`, a duré 2 min 33 s : 1 054 tests (les 20 tests de charge
-ne partent pas avec la famille), 1 053 réussis, 1 ignoré sous Windows avec sa raison, 0 échec.
+Mesure faite sur le serveur de démonstration (Linux, deux cœurs), à la version 1.0.0 : la
+famille des tests unitaires, lancée par `python -m edt tests --famille unitaires`, a duré
+2 min 22 s : 1 093 tests (les 20 tests de charge ne partent pas avec la famille), 1 093
+réussis, 0 échec, 0 ignoré ; la famille des tests d'intégration, 4 min 07 s : 519 tests (hors
+les 4 tests de charge), 519 réussis.
 
 ### 1.12 Assistant conversationnel
 
@@ -288,7 +292,7 @@ complète.
 |---|---|
 | Code | paquet `edt.services.assistant` (consignes, outils, boucle d'échange, limites, conversations, propositions, client) ; routes `edt.web.routes.assistant` ; commande `python -m edt assistant` (état, `--essai`, `--question`) |
 | Limites par défaut | 10 messages par conversation, 20 messages par adresse et par jour, 100 messages par jour pour le site, 2 échanges simultanés, budget estimé de 2 dollars par jour ; chaque limite est réglable par une variable `EDT_ASSISTANT_*` |
-| Mémoire | conversations gardées en mémoire, oubliées après 30 minutes sans activité ou au redémarrage ; le texte des conversations n'est pas enregistré en base, seule la consommation du jour l'est |
+| Mémoire | conversations gardées en mémoire, oubliées après 30 minutes sans activité ou au redémarrage ; le texte des conversations n'est enregistré nulle part ; seule la consommation du jour (échanges, appels, jetons, coût estimé) est gardée, dans un fichier du dossier des journaux |
 | Clé d'accès | installée sur le serveur par `deploy/installer-cle-assistant.sh`, en saisie masquée, dans un fichier d'environnement réservé au service ; jamais dans le dépôt ni dans les journaux |
 | Sans clé | le panneau dit que l'assistant n'est pas configuré ; le reste de l'application fonctionne |
 
@@ -319,18 +323,19 @@ dépôt (discussions, décisions en séance, relectures orales) n'y figure pas.
 
 | Membre | Compte GitHub | Contributions visibles dans l'historique |
 |---|---|---|
-| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 44 des 45 pull requests ; 665 des 673 commits de la branche principale (code, tests, documentation, déploiement). 543 des 673 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
+| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 50 des 51 pull requests ; 748 des 756 commits de la branche principale (code, tests, documentation, déploiement). 618 des 756 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
 | Hugo | HugoLec94 | Premier vérificateur de conflits du planning et ses tests, versé par la première pull request ; il a ensuite été généralisé dans le vérificateur actuel. |
 | Kerime | kerime-2 | Réponses au questionnaire de cadrage (deux commits). |
 | — | dzzmimou48-cmd | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
 | Nassim Khiri | — | Aucun commit n'est rattaché à son nom dans l'historique. |
 
-Les réponses au questionnaire données de vive voix ou par message sont consignées dans le
-dépôt sans que leur auteur soit précisé.
+Les réponses au questionnaire, données de vive voix ou par message, sont consolidées sans
+nom d'auteur dans le document des décisions ([decisions.md](../decisions.md)) ; les réponses
+brutes restent dans l'historique du dépôt.
 
 ### 2.2 Découpage en lots
 
-| Lot | Sous-étapes | Réalisé |
+| Lot | Sous-étapes | Réalisé (dates principales ; tous les jours de commits en figure 3) |
 |---|---|---|
 | **1. Cadrage** | Analyse du besoin (ébauche de spécification) ; questionnaire de 400 questions numérotées ; réponses de l'équipe ; document des décisions de cadrage, qui fait autorité. | 28/09 au 05/10 |
 | **2. Socle** | Modèle de données (22 classes) ; contrats partagés (instantané, catalogue des règles) ; configuration, journaux, erreurs ; ligne de commande ; détection d'un schéma périmé. | 05/10 |
@@ -343,10 +348,10 @@ dépôt sans que leur auteur soit précisé.
 | **9. Règles** | Niveaux nécessaire, important, facultatif ; pause déjeuner à trois modes ; conception puis réalisation des règles personnalisées (14 types). | 06/10 au 13/10 |
 | **10. Déploiement** | Scripts d'installation et de déploiement ; HTTPS ; sauvegardes ; intégration continue sous trois versions de Python ; versions figées ; paramètres d'installation hors du dépôt. | 05/10, puis 02/11 et 16/11 |
 | **11. Tests** | Tests écrits avec chaque lot ; banque de cas limites ; six parcours de bout en bout ; séparation des tests unitaires et d'intégration. | 05/10 au 16/11 |
-| **12. Finalisation** | Simplification de l'interface (réglages repliés, vocabulaire unique) ; textes et documentation ; livrets 1 et 2. | 16/11 |
+| **12. Finalisation** | Simplification de l'interface (réglages repliés, vocabulaire unique) ; textes et documentation ; livrets 1, 2 et 3. | 16/11 |
 | **13. Assistant (optionnel)** | Consignes et douze outils de lecture ; propositions confirmées d'un clic ; limites et budget quotidien ; commande d'état et d'essai ; script d'installation de la clé. | 16/11 |
 | **14. Tests lancés depuis l'application** | Catalogue des tests, exécution dans un processus à part, suivi et arrêt ; deux onglets avec un schéma de l'organisation des tests ; commande `tests`. | 16/11 |
-| **15. Guide utilisateur et soutenance** | Livret 3 ; scénario de démonstration. | prévu à partir du 23/11 |
+| **15. Soutenance** | Scénario de démonstration ; préparation de la soutenance. | prévu à partir du 23/11 |
 
 ### 2.3 Planning prévu et réalisé
 
@@ -366,25 +371,25 @@ partie concernée.
 | Démarrage des développements avec GitHub | 05/10 | 28/09 : base initiale et premier vérificateur ; 05/10 et 06/10 : socle, vérificateur, établissements fictifs, interface, import et export, générateur, déploiement. |
 | Tests unitaires | 12/10 | Écrits avec chaque lot dès le 05/10 ; 13/10 : règles personnalisées et leurs tests. |
 | Tests d'intégration | 02/11 | Premiers tests d'intégration des commandes le 05/10 ; banque de cas limites le 02/11 ; parcours de bout en bout le 09/11 ; séparation unitaires et intégration, tests lancés depuis l'application le 16/11. |
-| Finalisation des développements | 16/11 | 16/11 : ergonomie, textes, versions figées, assistant, onglets de tests, livrets 1 et 2. |
-| Documentation utilisateur, préparation de la soutenance | 23/11 | À venir. |
+| Finalisation des développements | 16/11 | 16/11 : ergonomie, textes, versions figées, assistant, onglets de tests, livrets 1, 2 et 3. |
+| Documentation utilisateur, préparation de la soutenance | 23/11 | Livret 3 (guide de l'utilisateur) rédigé le 16/11 ; préparation de la soutenance à venir. |
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
-41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 210 le 16/11 sur la branche principale.
+41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 293 le 16/11 sur la branche principale.
 
 ### 2.4 Environnement de développement
 
 | Outil | Usage |
 |---|---|
-| Python 3.11 et environnement virtuel (`venv`) | Une installation isolée par poste : `python -m venv .venv`, puis `pip install -e ".[dev]"` installe l'application et ses outils de développement. |
+| Python 3.11 et environnement virtuel (`venv`) | Une installation isolée par poste : `python -m venv .venv`, puis `python -m pip install -e ".[dev]" -c contraintes.txt` installe l'application et ses outils de développement aux versions figées. |
 | pip, `pyproject.toml` et `contraintes.txt` | Gestion des bibliothèques : les dépendances et leurs bornes sont déclarées dans `pyproject.toml` ; la version exacte de chaque paquet est figée dans `contraintes.txt` (section 1.8). |
 | pytest | Tests unitaires et d'intégration, lancés localement avant chaque pull request et par la CI. |
 | ruff | Style et erreurs courantes ; mise en forme automatique du code. |
 | Git, GitHub, GitHub CLI (`gh`) | Gestion de version, branches, pull requests, consultation de la CI. |
 | GitHub Actions | Intégration continue (section 1.6). |
 | Navigateur web | Essai des écrans en local (`python -m edt serve`). |
-| Assistants de programmation | Claude Code (Anthropic) ; le fichier de consignes `AGENTS.md` sert aussi à Codex. Leur usage est décrit ci-dessous. |
+| Assistants de programmation | Assistants fondés sur l'intelligence artificielle, encadrés par le fichier de consignes `AGENTS.md` ; outils et usage décrits dans l'encadré ci-dessous. |
 
 Les éditeurs de code employés par les membres ne sont pas consignés dans le dépôt : leurs
 réglages sont exclus du suivi (`.gitignore`).
@@ -392,8 +397,9 @@ réglages sont exclus du suivi (`.gitignore`).
 > **Encadré : usage des assistants de programmation**
 >
 > Le projet a été réalisé avec des assistants de programmation fondés sur l'intelligence
-> artificielle ; 543 des 673 commits de la branche principale portent leur co-signature. Ils
-> ont été employés selon les principes suivants.
+> artificielle ; 618 des 756 commits de la branche principale portent leur co-signature.
+> Outils employés : Claude Code (Anthropic) ; le fichier `AGENTS.md` sert aussi à Codex.
+> Ils ont été employés selon les principes suivants.
 >
 > - **L'équipe décide et vérifie ; l'assistant propose et exécute** dans un cadre écrit,
 >   le fichier [`AGENTS.md`](../../AGENTS.md) : architecture, conventions, ce qu'un assistant ne
@@ -418,8 +424,8 @@ réglages sont exclus du suivi (`.gitignore`).
 | Méthode | Description |
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
-| Pull requests | 45 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 15 dernières (31 à 45) datent de la journée de finalisation du 16/11. |
-| Modèle de tâche | Un modèle d'issue pour décrire une tâche ; des étiquettes reprennent le classement Obligatoire, Utile, Optionnelle. |
+| Pull requests | 51 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 21 dernières (31 à 51) datent de la journée de finalisation du 16/11. |
+| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il n'a pas servi : aucune issue n'a été ouverte (voir ci-dessous). |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |
 | Documentation de conception | Un document par partie de l'application (architecture, modèle de données, générateur, vérification, import et export, établissements fictifs, déploiement, tests), versé avec le code de cette partie. |
@@ -434,7 +440,7 @@ pull request) n'y est enregistrée.
 | Élément | Description |
 |---|---|
 | Dépôt | GitHub `Maki882/projet-edt`, privé, ouvert aux quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
-| Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-csv`, `fix/pause-dejeuner`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
+| Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
 | Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé avec l'offre gratuite de GitHub : la règle « pas d'envoi direct sur `main` » est une convention de l'équipe, appliquée depuis le 05/10. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
 | Langue | Code, commentaires, messages, commits et documentation en français. |
