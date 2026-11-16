@@ -3,13 +3,15 @@
 Ce document décrit le sous-système d'échange de données par fichiers :
 le **format d'échange** des données de l'établissement, l'**import d'un
 emploi du temps existant** et les **exports**. Les décisions qui le fondent
-sont dans [`decisions.md`](decisions.md) (sections 3, 10 et 12) ; le modèle
-de données est dans [`modele-donnees.md`](modele-donnees.md).
+sont dans [`decisions.md`](decisions.md) ; le modèle de données est dans
+[`modele-donnees.md`](modele-donnees.md). Il s'adresse aux développeurs et,
+pour les sections « Format d'échange » et « Feuilles », à qui prépare des
+fichiers à importer.
 
-L'école n'a fourni aucun fichier : le format est **le nôtre**. Tout format
-extérieur (export d'un autre logiciel) sera lu par un **adaptateur isolé**
-qui produit les mêmes structures intermédiaires (voir « Écrire un
-adaptateur »).
+Le format est propre à l'application. Un format extérieur (export d'un autre
+logiciel) se lit par un **adaptateur isolé** qui produit les mêmes
+structures intermédiaires (voir « Écrire un adaptateur ») ; le lecteur iCal
+en est un.
 
 ## Trois accès, les mêmes fonctions
 
@@ -603,7 +605,7 @@ reconstitution (`edt.echange.reconstitution`) transforme selon le mode.
 Un même fichier peut être réimporté dans un autre mode : les besoins sont
 retrouvés par leur identifiant métier, sans doublon.
 
-### Règles décidées par l'équipe
+### Règles de reconstitution
 
 - Une séance au statut **annulé** n'est pas comptée (information dans le
   rapport) ; une séance **déplacée** compte à sa position finale (celle de
@@ -778,9 +780,10 @@ modèle.
 - Une matière ambiguë (même code pour plusieurs promotions) se distingue par
   la colonne `promotion` dans les besoins ; dans un emploi du temps importé,
   par la promotion des groupes de la séance.
-- La couche `date` n'exporte que les occurrences enregistrées : une version
-  générée n'en a pas tant que le lot calendrier ne les instancie pas
-  (utiliser la couche `hebdo`).
+- La couche `date` n'exporte que les séances datées enregistrées : une
+  version qui n'en a pas (instanciation en échec, import en mode `verrous`)
+  donne un export vide ; produire ses séances datées par
+  `python -m edt instancier --version <n>`, ou utiliser la couche `hebdo`.
 - Les fichiers `.xls` (Excel 97-2003) et les classeurs protégés par mot de
   passe ne sont pas lus : retirer le mot de passe, enregistrer en `.xlsx` ou
   `.csv`. Pas d'assistant de correspondance de colonnes : le format est fixe

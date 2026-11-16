@@ -6,7 +6,7 @@ aucun autre processus, et n'enchaîne pas le calcul complet par le service de
 génération. Il peut utiliser une base SQLite temporaire. Le solveur appelé
 directement sur des données en mémoire reste unitaire.
 
-Ce dossier compte **860 fonctions de test, soit 1 180 cas collectés** (une
+Ce dossier compte **867 fonctions de test, soit 1 187 cas collectés** (une
 fonction paramétrée donne plusieurs cas), dont 347 cas limites et 24 tests de
 charge. La règle complète, la vue d'ensemble et les tests d'intégration sont
 décrits dans [`tests/README.md`](../README.md) et
@@ -36,8 +36,8 @@ jeu : un échec désigne donc directement le module fautif.
 
 ```mermaid
 flowchart TD
-    U["tests/unitaires : 1 180 cas"]
-    U --> S["socle : domaine, base, configuration, journaux - 316 cas"]
+    U["tests/unitaires : 1 187 cas"]
+    U --> S["socle : domaine, base, configuration, journaux - 323 cas"]
     U --> SO["solveur : contraintes CP-SAT, moteur, séances datées - 207 cas"]
     U --> V["verification : règles du vérificateur, indicateurs - 271 cas"]
     U --> E["echange : lecture, import, export, iCal - 206 cas"]
@@ -56,12 +56,13 @@ python -m tests.outils.classement                    # fonctions par composant
 python -m pytest --collect-only -q tests/unitaires   # cas, fichier par fichier
 ```
 
-### `socle/` : Domaine, base et services transverses (183 fonctions, 316 cas)
+### `socle/` : Domaine, base et services transverses (190 fonctions, 323 cas)
 
 | Fichier | Ce qu'il vérifie | Fonctions | Cas |
 |---|---|---:|---:|
 | [`socle/test_base.py`](socle/test_base.py) | initialisation de la base, unicités, règles de suppression, normalisation des codes | 14 | 32 |
 | [`socle/test_calendrier.py`](socle/test_calendrier.py) | Pâques, jours fériés, semaines d'une période, conversions d'heures | 8 | 16 |
+| [`socle/test_catalogue.py`](socle/test_catalogue.py) | catalogue des cas limites de `docs/banque-de-tests.md` : document à jour, « Cas » et « Risque » de chaque cas limite, générateur | 7 | 7 |
 | [`socle/test_charge.py`](socle/test_charge.py) | chargement rapide de l'instantané d'un établissement complet (`perf`) | 1 | 1 |
 | [`socle/test_cli.py`](socle/test_cli.py) | fonctions du module de commandes appelées directement : extension refusée, point d'entrée, sorties UTF-8 | 4 | 4 |
 | [`socle/test_config.py`](socle/test_config.py) | variables `EDT_*` invalides refusées, valeurs vides ramenées au défaut | 2 | 11 |

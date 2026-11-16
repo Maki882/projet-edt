@@ -1,14 +1,20 @@
 # Modèle de données
 
 Ce document décrit les tables de l'application et sert de **diagramme de
-classes UML** du projet. Il correspond exactement à
+classes UML** du projet. Il s'adresse aux développeurs. Il correspond exactement à
 `src/edt/db/modeles.py` : toute modification de l'un se répercute dans
 l'autre (un test vérifie que chaque table est décrite ici).
 
 La base est un fichier SQLite (`data/edt.db` par défaut), créé par
-`python -m edt init-db`. Il n'y a pas de migrations en V1 : après un
-changement de schéma, la base se recrée avec `python -m edt init-db --reset`
-et se repeuple par commande.
+`python -m edt init-db`. Le schéma n'a pas d'outil de migration : `init-db`
+crée les tables absentes et ajoute les données par défaut manquantes
+(paramètres compris), sans modifier une table ni une valeur existantes ;
+`python -m edt verifier-schema` signale les colonnes qui manquent. Après un
+changement de colonne, la base se recrée avec `python -m edt init-db --reset`
+et se repeuple par commande. Seule reprise de données : le paramètre booléen
+`dejeuner_horaires_determines`, s'il est présent, donne la valeur de
+`dejeuner_mode` à l'initialisation puis est supprimé, et sert à le déduire à
+la lecture.
 
 ## Conventions
 
@@ -292,7 +298,7 @@ Le comportement à la suppression est porté par les clés étrangères (SQLite,
   sous-groupes, ses inscriptions, ses indisponibilités et les matières de sa
   promotion ; un besoin emporte ses séances placées ; une version emporte
   ses séances et ses occurrences.
-- **NO ACTION** (suppression refusée) : on ne modifie jamais une demande en
+- **NO ACTION** (suppression refusée) : une demande n'est jamais modifiée en
   silence. Supprimer un groupe, un enseignant, une matière, un type de
   séance, un type de salle, un équipement, une salle imposée ou un campus
   encore utilisés par un besoin (ou un campus qui a des salles) est refusé :
@@ -627,8 +633,8 @@ Indisponibilité d'un enseignant, d'une salle ou d'un groupe. Classe ORM : `Indi
 | `debut_min` | entier | oui | Début de la plage horaire (défaut : 0 = minuit) |
 | `fin_min` | entier | oui | Fin de la plage horaire (défaut : 1440 = journée entière) |
 | `motif` | texte (255) | non | Motif affiché |
-| `dure` | booléen | oui | Contrainte dure (toujours vrai en V1) |
-| `poids` | entier | oui | Poids de la préférence (prévu pour les versions suivantes) |
+| `dure` | booléen | oui | Contrainte dure (vrai à la saisie ; une indisponibilité non dure, possible seulement par import, est ignorée par le solveur et le vérificateur) |
+| `poids` | entier | oui | Poids d'une préférence ; colonne lue par aucun calcul (une préférence horaire s'écrit en règle `CRENEAUX_INTERDITS` facultative) |
 | `source_fichier`, `source_ligne`, `extra` | texte, entier, JSON | non | Provenance d'une ligne importée (voir plus haut) |
 
 Contrôles : `(jour IS NOT NULL AND date_debut IS NULL AND date_fin IS NULL) OR (jour IS NULL AND date_debut IS NOT NULL AND date_fin IS NOT NULL AND date_debut <= date_fin)` ; `debut_min >= 0 AND debut_min < fin_min AND fin_min <= 1440` ; `jour IS NULL OR jour BETWEEN 0 AND 6` ; `(cible = 'enseignant' AND enseignant_id IS NOT NULL AND salle_id IS NULL AND groupe_id IS NULL) OR (cible = 'salle' AND salle_id IS NOT NULL AND enseignant_id IS NULL AND groupe_id IS NULL) OR (cible = 'groupe' AND groupe_id IS NOT NULL AND enseignant_id IS NULL AND salle_id IS NULL)`.
