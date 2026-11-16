@@ -13,8 +13,8 @@ ce module ajoute ce que l'écran doit dire :
   important ou facultatif pour chaque règle modifiable, les six règles qui
   définissent le problème restant toujours nécessaires ; préremplis avec
   les niveaux du dernier calcul du semestre (`niveaux_proposes`), lus dans
-  les champs `niveau_<CODE>` (`lire_niveaux`). L'écran ne propose plus
-  d'ignorer une règle ; un ancien calcul qui en ignorait reste lisible ;
+  les champs `niveau_<CODE>` (`lire_niveaux`). L'écran ne propose pas
+  d'ignorer une règle ; un calcul enregistré qui en ignorait reste lisible ;
 - les **règles personnalisées** actives du semestre
   (`bloc_regles_du_semestre`, voir `regles_personnalisees`) : un niveau par
   règle pour ce calcul ou « ignorer pour ce calcul », champs
@@ -62,8 +62,8 @@ from edt.domaine.contraintes import (
     niveaux_par_defaut,
     normaliser_niveaux,
 )
-from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
-from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
+from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineOccurrence, StatutOccurrence
+from edt.domaine.heures import minutes_vers_hhmm, minutes_vers_texte, texte_vers_minutes
 from edt.domaine.parametres import (
     DEJEUNER_AUCUN,
     DEJEUNER_FIXE,
@@ -90,7 +90,6 @@ from edt.services.emploi_du_temps import (
 from edt.services.emploi_du_temps.identifiants import (
     apercu,
     entier_ecrit,
-    exiger_identifiant,
     obtenir,
 )
 from edt.services.emploi_du_temps.versions import (
@@ -212,7 +211,7 @@ class PreVerification:
 
     `problemes` : besoins impossibles à planifier tels qu'ils sont saisis,
     dont la contrainte concernée est active (ils empêchent le calcul).
-    `motif` : pourquoi les pré-vérifications du lot solveur n'ont pas tourné.
+    `motif` : pourquoi les pré-vérifications du solveur n'ont pas tourné.
     """
 
     problemes: tuple[str, ...] = ()
@@ -226,6 +225,15 @@ class PreVerification:
     def bloquante(self) -> bool:
         """Vrai si le calcul ne doit pas être lancé."""
         return bool(self.problemes or self.erreurs)
+
+    @property
+    def rien_a_placer(self) -> bool:
+        """Vrai si le seul point bloquant est un semestre sans séance à placer (rien n'est faux)."""
+        messages = [*self.problemes, *(anomalie.message for anomalie in self.erreurs)]
+        return bool(messages) and all(
+            message in (MESSAGE_AUCUN_BESOIN, generation.MESSAGE_SANS_SEANCE)
+            for message in messages
+        )
 
     @property
     def vide(self) -> bool:
@@ -378,8 +386,8 @@ class ResultatCalcul:
     - `impossibilites` : raisons d'un refus par les vérifications préalables ;
     - `nb_seances` : séances de la semaine type placées (succès) ;
     - `datees` : bilan des séances datées (succès) ;
-    - `contraintes_desactivees` : règles ignorées, possibles seulement pour un
-      calcul lancé avant les niveaux de règles ;
+    - `contraintes_desactivees` : règles ignorées, présentes seulement dans un
+      calcul enregistré sans niveaux de règles ;
     - `regles` : règles dont le niveau s'écarte du défaut, en phrases
       (`presentation.libelles_niveaux`), vide si tout est par défaut ;
     - `entorses` : entorses aux règles importantes ou facultatives, une
@@ -475,8 +483,8 @@ def _recapitulatif(session: Session, semestre_id: int) -> Recapitulatif:
 def niveaux_proposes(dernier: generation.SuiviCalcul | None) -> Niveaux:
     """Niveaux à préremplir : ceux du dernier calcul du semestre, sinon les niveaux par défaut.
 
-    Toujours complet. Une règle qu'un ancien calcul ignorait (clé absente)
-    reprend son niveau par défaut : l'écran ne propose plus d'ignorer une règle.
+    Toujours complet. Une règle absente des niveaux enregistrés (règle ignorée)
+    reprend son niveau par défaut : l'écran ne propose pas d'ignorer une règle.
     """
     niveaux = niveaux_par_defaut()
     if dernier is not None:
@@ -601,10 +609,11 @@ def pre_verifier(
     """Vérifications préalables pour un calcul avec ces niveaux de règles (défaut : par défaut).
 
     Les niveaux sont transmis tels quels aux pré-vérifications du solveur
-    (clé absente : règle ignorée, seulement pour la relance d'un ancien
-    calcul), avec ceux des règles personnalisées (`None` : chacune à son
-    niveau ; absente : ignorée). Elles couvrent aussi les besoins impossibles à déplier ; ceux du
-    récapitulatif ne servent que si elles manquaient.
+    (clé absente : règle ignorée, seulement pour la relance d'un calcul
+    enregistré sans niveaux), avec ceux des règles personnalisées (`None` :
+    chacune à son niveau ; absente : ignorée). Elles couvrent aussi les besoins
+    impossibles à déplier et le semestre sans séance à placer ; les problèmes
+    du récapitulatif ne servent que si elles n'ont pas pu tourner.
     """
     niveaux = dict(niveaux) if niveaux is not None else niveaux_par_defaut()
     ignorees = {str(code) for code in CATALOGUE if code not in niveaux}
@@ -630,10 +639,135 @@ def pre_verifier(
         journal.warning("Pré-vérifications du semestre %d impossibles : %s", semestre_id, erreur)
         return PreVerification(problemes=problemes, motif=erreur.message, niveau_motif="erreur")
     return PreVerification(
-        problemes=problemes,
+        # Un semestre sans besoin n'a aucune séance : les pré-vérifications le disent déjà.
+        problemes=tuple(p for p in problemes if p != MESSAGE_AUCUN_BESOIN),
         erreurs=tuple(a for a in anomalies if a.gravite is Gravite.ERREUR),
         avertissements=tuple(a for a in anomalies if a.gravite is Gravite.AVERTISSEMENT),
         informations=tuple(a for a in anomalies if a.gravite is Gravite.INFORMATION),
+    )
+
+
+@dataclass(frozen=True)
+class ResumesReglages:
+    """Résumé d'une ligne de chaque section repliable du formulaire « Générer ».
+
+    Affiché sur la section repliée : l'utilisateur voit les réglages sans
+    ouvrir la section. Ne contient jamais « (par défaut) », marque réservée
+    aux boutons du tableau des règles.
+    """
+
+    regles: str
+    regles_personnalisees: str
+    dejeuner: str
+    duree_options: str
+
+
+def resumer_reglages(
+    regles: Iterable[RegleProposee],
+    bloc: regles_personnalisees.BlocRegles,
+    dejeuner: ChoixDejeuner,
+    options: OptionsFormulaire,
+    choix: Mapping[str, object],
+) -> ResumesReglages:
+    """Les quatre résumés du formulaire, d'après ce qu'il affiche (préremplissage ou saisie)."""
+    return ResumesReglages(
+        regles=_resume_regles(tuple(regles)),
+        regles_personnalisees=_resume_regles_personnalisees(bloc),
+        dejeuner=_resume_dejeuner(dejeuner),
+        duree_options=_resume_duree_options(options, choix),
+    )
+
+
+def _resume_regles(regles: tuple[RegleProposee, ...]) -> str:
+    modifiables = [regle for regle in regles if regle.modifiable]
+    ecarts = [regle for regle in modifiables if regle.niveau is not regle.niveau_defaut]
+    reglables = presentation.pluriel(len(modifiables), "règle réglable", "règles réglables")
+    fixes = presentation.pluriel(
+        len(regles) - len(modifiables), "toujours nécessaire", "toujours nécessaires"
+    )
+    if not ecarts:
+        return f"{reglables}, toutes à leur niveau par défaut ; {fixes}"
+    details = " ; ".join(f"{regle.libelle} : {regle.niveau.libelle.lower()}" for regle in ecarts)
+    return f"{reglables}, dont {len(ecarts)} à un autre niveau que par défaut ({details}) ; {fixes}"
+
+
+def _resume_regles_personnalisees(bloc: regles_personnalisees.BlocRegles) -> str:
+    if bloc.erreur:
+        return "Règles personnalisées illisibles (voir ci-dessous)"
+    if not bloc.regles:
+        return "Aucune règle personnalisée active"
+    actives = presentation.pluriel(len(bloc.regles), "règle active", "règles actives")
+    ignorees = sum(1 for regle in bloc.regles if regle.ignoree)
+    autres = sum(
+        1 for regle in bloc.regles if not regle.ignoree and regle.niveau is not regle.niveau_regle
+    )
+    if not ignorees and not autres:
+        if len(bloc.regles) == 1:
+            return f"{actives}, à son niveau habituel"
+        return f"{actives}, toutes à leur niveau habituel"
+    parties = []
+    if ignorees:
+        parties.append(presentation.pluriel(ignorees, "ignorée", "ignorées") + " pour ce calcul")
+    if autres:
+        parties.append(
+            presentation.pluriel(
+                autres, "à un autre niveau que le sien", "à un autre niveau que le leur"
+            )
+        )
+    return f"{actives} : " + ", ".join(parties)
+
+
+def _heure_lisible(texte: str) -> str:
+    """« 12:45 » devient « 12 h 45 » ; une saisie illisible (réaffichée après refus) reste telle."""
+    try:
+        return minutes_vers_texte(texte_vers_minutes(texte))
+    except ErreurDonneesInvalides:
+        return texte
+
+
+def _resume_dejeuner(dejeuner: ChoixDejeuner) -> str:
+    libelle = LIBELLES_DEJEUNER.get(dejeuner.mode, dejeuner.mode)
+    debut, fin = _heure_lisible(dejeuner.debut), _heure_lisible(dejeuner.fin)
+    if dejeuner.mode == DEJEUNER_FIXE:
+        return f"{libelle}, de {debut} à {fin}"
+    if dejeuner.mode == DEJEUNER_LIBRE:
+        return f"{libelle} : au moins {dejeuner.duree} min entre {debut} et {fin}"
+    return libelle
+
+
+def _resume_duree_options(options: OptionsFormulaire, choix: Mapping[str, object]) -> str:
+    longue = choix.get("duree") == "long"
+    resume = (
+        f"Recherche jusqu'à {options.temps_long_texte if longue else options.temps_court_texte}"
+    )
+    resume += (
+        " ; emploi du temps plus confortable"
+        if choix.get("optimiser")
+        else " ; sans recherche de confort"
+    )
+    if choix.get("autre_solution"):
+        resume += " ; autre solution que la précédente"
+    return resume
+
+
+def nb_retouches_version_active(session: Session, semestre_id: int) -> int:
+    """Séances datées retouchées à la main (déplacées ou annulées) dans la version active.
+
+    Un nouveau calcul crée une autre version sans ces retouches : l'écran le
+    dit avant le lancement.
+    """
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(m.Occurrence)
+            .join(m.VersionEdt, m.VersionEdt.id == m.Occurrence.version_id)
+            .where(
+                m.VersionEdt.semestre_id == semestre_id,
+                m.VersionEdt.active.is_(True),
+                m.Occurrence.origine == OrigineOccurrence.MANUELLE,
+            )
+        )
+        or 0
     )
 
 
@@ -762,7 +896,7 @@ def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Vale
     suivants. `session` ne doit donc pas avoir d'écriture en attente.
 
     Lève `ErreurSaisieDejeuner` (rien n'est enregistré), ou
-    `ErreurCalculEnCours` : on ne change pas les réglages sous un calcul qui
+    `ErreurCalculEnCours` : les réglages ne changent pas sous un calcul qui
     tourne.
     """
     changements = changements_dejeuner(session, choix)
@@ -842,8 +976,15 @@ def demarrer_calcul(
     return generation.lancer_calcul(semestre_id, options)
 
 
+SEANCES_DATEES_A_PRODUIRE = (
+    "La semaine type a été enregistrée, mais pas ses séances datées : les produire depuis l'écran "
+    "« Emploi du temps » (bouton « Produire les séances datées »)."
+)
+"""Ce que l'écran dit d'une version enregistrée sans ses séances datées (instanciation en échec,
+calcul interrompu juste après l'enregistrement)."""
+
 CALCUL_DEJA_TERMINE = "Ce calcul est déjà terminé : rien à arrêter."
-"""Ce que l'écran dit quand on demande l'arrêt d'un calcul déjà fini (deux onglets ouverts)."""
+"""Ce que l'écran dit d'une demande d'arrêt sur un calcul déjà fini (deux onglets ouverts)."""
 
 
 def arreter_calcul(calcul_id: int) -> tuple[generation.SuiviCalcul, bool]:
@@ -853,7 +994,6 @@ def arreter_calcul(calcul_id: int) -> tuple[generation.SuiviCalcul, bool]:
     demande est sans effet et l'écran doit le dire, pas annoncer un arrêt.
     Lève `ErreurIntrouvable` pour un calcul inconnu.
     """
-    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
     suivi = generation.demander_arret(calcul_id)
     if not suivi.en_cours:
         journal.info("Arrêt demandé pour le calcul %d, déjà terminé : sans effet", calcul_id)
@@ -877,8 +1017,8 @@ def relancer_calcul(
 ) -> Relance:
     """Relance un calcul avec les mêmes règles ; plus longtemps et/ou avec une autre graine.
 
-    Les niveaux sont ceux du calcul d'origine (`SuiviCalcul.niveaux` ; un
-    ancien calcul garde ses règles ignorées), de même que ceux des règles
+    Les niveaux sont ceux du calcul d'origine (`SuiviCalcul.niveaux` ; des
+    règles ignorées à l'origine le restent), de même que ceux des règles
     personnalisées ; une règle créée ou activée depuis s'applique à son
     propre niveau, jamais ignorée en silence
     (`regles_personnalisees.niveaux_pour_la_relance`). `longue=None` garde la durée
@@ -935,7 +1075,6 @@ def resultat_calcul(
     session: Session, calcul_id: int, *, indicateurs: bool = True
 ) -> ResultatCalcul:
     """Le calcul `calcul_id` raconté en phrases (voir l'en-tête du module)."""
-    exiger_identifiant(calcul_id, f"Le calcul n° {calcul_id} n'existe pas.")
     suivi = generation.etat_calcul(calcul_id)
     calcul = session.get(m.Calcul, calcul_id)
     if calcul is None:
@@ -1021,21 +1160,10 @@ def resultat_calcul(
 def dejeuner_actif_du_calcul(session: Session, suivi: generation.SuiviCalcul) -> bool:
     """Vrai si une pause déjeuner s'appliquait au calcul (pour citer ou non la règle `DEJEUNER`).
 
-    Lu dans ce qui est enregistré avec le calcul (`statistiques` ou options,
-    clé `dejeuner_actif`) quand il y figure ; à défaut, et c'est le cas
-    aujourd'hui (le calcul n'enregistre pas la pause déjeuner), dans les
-    paramètres courants, qui ont pu changer depuis.
+    Limite : le calcul n'enregistre pas la pause déjeuner ; elle est lue dans
+    les paramètres courants, qui ont pu changer depuis.
     """
-    for source in (suivi.statistiques or {}, _options_enregistrees(session, suivi.id)):
-        valeur = source.get("dejeuner_actif")
-        if isinstance(valeur, bool):
-            return valeur
     return lire_parametres(session).dejeuner_actif
-
-
-def _options_enregistrees(session: Session, calcul_id: int) -> dict:
-    calcul = session.get(m.Calcul, calcul_id)
-    return dict(calcul.parametres or {}) if calcul is not None else {}
 
 
 def relire_saisie_dejeuner(
@@ -1112,8 +1240,14 @@ def _phrases(
 ) -> tuple[str, str, str | None]:
     message = (suivi.message or "").strip()
     if issue == Issue.EN_COURS:
-        phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}. Temps écoulé : {temps}"
-        phrase += f" (au plus {limite})." if limite else "."
+        # Le temps écoulé est dit une seule fois, sous la phrase (gabarit du suivi).
+        phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}."
+        if suivi.premiere_solution_s is not None and not suivi.arret_demande:
+            phrase += (
+                " Un emploi du temps est déjà trouvé (après "
+                f"{presentation.duree_secondes(suivi.premiere_solution_s)}) ; le calcul cherche à "
+                "l'améliorer. Vous pouvez l'arrêter : le meilleur sera gardé."
+            )
         if suivi.arret_demande:
             phrase += " L'arrêt est demandé : le calcul s'interrompt dès que possible."
         return "Calcul en cours", phrase, None
@@ -1135,7 +1269,7 @@ def _phrases(
         return titre, phrase, None
     if issue == Issue.REFUSE:
         return (
-            "Calcul non lancé : impossibilités relevées avant la recherche",
+            "Calcul non lancé : points bloquants relevés avant la recherche",
             "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
             "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
             "enregistré. Corriger les points ci-dessous, puis relancer.",
@@ -1165,21 +1299,26 @@ def _phrases(
             "Le calcul a été arrêté à votre demande. Aucun emploi du temps n'a été enregistré.",
             None,
         )
-    if message in (generation.MESSAGE_ERREUR_INATTENDUE, generation.MESSAGE_INTERROMPU, ""):
+    # Le service ajoute au message d'erreur la phrase sur une version enregistrée sans ses
+    # séances datées : le début du message reconnaît le cas, la version le complète.
+    enregistre = (
+        f" {SEANCES_DATEES_A_PRODUIRE}"
+        if suivi.version_id is not None
+        else " Aucun emploi du temps n'a été enregistré."
+    )
+    if message.startswith(generation.MESSAGE_INTERROMPU):
+        phrase = "Le calcul a été interrompu par un arrêt de l'application." + enregistre
+        return "Le calcul n'a pas pu aboutir", phrase + " Il peut être relancé.", None
+    if not message or message.startswith(generation.MESSAGE_ERREUR_INATTENDUE):
         phrase = (
-            "Une erreur inattendue a interrompu le calcul. Aucun emploi du temps n'a été "
-            "enregistré. Pour obtenir de l'aide, communiquer les références ci-dessous."
+            "Une erreur inattendue a interrompu le calcul."
+            + enregistre
+            + " Pour obtenir de l'aide, communiquer les références ci-dessous."
         )
-        if message == generation.MESSAGE_INTERROMPU:
-            phrase = (
-                "Le calcul a été interrompu par un arrêt de l'application. Aucun emploi du temps "
-                "n'a été enregistré. Il peut être relancé."
-            )
         return "Le calcul n'a pas pu aboutir", phrase, None
     return (
         "Le calcul n'a pas pu aboutir",
-        "Le calcul s'est arrêté sur un problème dans les données. Aucun emploi du temps n'a été "
-        "enregistré.",
+        "Le calcul s'est arrêté avant d'aboutir (voir la précision)." + enregistre,
         message,
     )
 

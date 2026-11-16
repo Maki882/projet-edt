@@ -83,7 +83,6 @@ def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, c
         (f"/calculs/{g}/arreter", None, formulaire),
         (f"/calculs/{g}/relancer", None, formulaire),
         (f"/versions/{g}/activer", None, formulaire),
-        (f"/versions/{g}/supprimer", None, formulaire),
         (f"/emploi-du-temps/versions/{g}/seances-datees", None, formulaire),
         (f"/emploi-du-temps/seances/{g}/modifier", HX, formulaire),
         (f"/emploi-du-temps/seances/{g}/verrou", None, formulaire),
@@ -111,6 +110,10 @@ def test_identifiants_enormes_ou_negatifs_donnent_introuvable(reperes, client, c
     assert not erreurs, erreurs
     with session_base() as session:  # aucun calcul lancé sur un semestre introuvable
         assert session.scalar(select(func.count()).select_from(m.Calcul)) == 1
+    # Supprimer une version qui n'existe pas (ou plus : double clic) atteint le résultat voulu :
+    # retour à l'historique avec un message, pas de 404.
+    supprimer = client.post(f"/versions/{g}/supprimer", data=formulaire, follow_redirects=False)
+    assert supprimer.status_code == 303 and supprimer.headers["location"] == "/versions"
 
 
 @pytest.mark.cas_limite

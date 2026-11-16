@@ -56,7 +56,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquées `cas_limite` et 19 marquées `perf`.
+Ce dossier compte **914 fonctions de test** dans 8 composants, dont 221 marquées `cas_limite` et 19 marquées `perf`.
 
 ### `echange/` : Import et export (139 fonctions)
 
@@ -104,7 +104,7 @@ Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquée
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 5 |
 
-### `solveur/` : Solveur CP-SAT et préparation du calcul (193 fonctions)
+### `solveur/` : Solveur CP-SAT et préparation du calcul (194 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -116,7 +116,7 @@ Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquée
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles : des options du calcul jusqu'au suivi et à la commande | 23 |
 | [`solveur/test_preverification.py`](solveur/test_preverification.py) | Pré-vérifications : impossibilités certaines et situations tendues, dites en clair | 19 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |
-| [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 6 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Services du solveur sans calcul complet : pré-vérifications, graines, identifiants, clôture | 7 |
 
 ### `synthese/` : Générateur de données fictives (59 fonctions)
 
@@ -164,7 +164,7 @@ Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquée
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Un entier démesuré passé au service est refusé avec un message | 1 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression, côté service : les conséquences d'une suppression sont expliquées | 1 |
 
-### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (28 fonctions)
+### `web_edt/` : Fonctions pures des écrans de l'emploi du temps (33 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -176,7 +176,7 @@ Ce dossier compte **908 fonctions de test** dans 8 composants, dont 219 marquée
 | [`web_edt/test_formulaire_seance.py`](web_edt/test_formulaire_seance.py) | Formulaire de déplacement d'une séance : heures de début annoncées « possible » ou « refusé » | 2 |
 | [`web_edt/test_memoire.py`](web_edt/test_memoire.py) | Mémoire des écrans : un même calcul demandé par deux fils n'est fait qu'une fois | 2 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : absence explicite, lecture du rapport, panne journalisée | 8 |
-| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Règles personnalisées : présentation d'une anomalie qui ne cite pas de règle | 1 |
+| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 6 |
 
 <!-- tests-unitaires : fin de la partie générée -->
 

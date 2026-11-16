@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'intégration.
+Le catalogue compte 389 cas : 221 cas en tests unitaires et 168 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
 | `exploitation` | 40 | 32 |
 | `socle` | 59 | 32 |
-| `solveur` | 19 | 16 |
+| `solveur` | 20 | 19 |
 | `synthese` | 28 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 36 |
-| `web_edt` | 5 | 32 |
-| **Total** | **219** | **158** |
+| `web_edt` | 6 | 39 |
+| **Total** | **221** | **168** |
 
-### Tests unitaires (219 cas)
+### Tests unitaires (221 cas)
 
 #### `echange` (39 cas)
 
@@ -345,7 +345,7 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 | Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
 | Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script. |
 
-#### `solveur` (19 cas)
+#### `solveur` (20 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
@@ -393,8 +393,9 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 |---|---|---|
 | Version a verifier identifiant hors bornes est introuvable | `version_a_verifier(session, version_id=2**70)`. | OverflowError de SQLite au lieu d'ErreurIntrouvable : page 500 au lieu de 404. |
 | Regle dont la cible est hors bornes est invalide | brouillon de règle dont la cible est l'identifiant numérique 10^20. | OverflowError de SQLite au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles. |
-| Cloture renseigne la duree et nomme la version sans dates | calculs « en cours » abandonnés il y a sept minutes (processus tué), l'un juste après l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`. | « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une version active sans séances datées dont personne ne sait qu'il faut relancer l'instanciation. |
-| Calcul en cours ne s auto bloque pas sur un calcul abandonne | une requête d'écriture tient le verrou d'écriture (transaction immédiate et une écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête consulte `calcul_en_cours()` (import, remise à zéro, paramètres). | la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de la reporter et de répondre d'après ce qu'on a lu. |
+| Cloture renseigne la duree et nomme la version sans dates | calculs « en cours » abandonnés il y a sept minutes (processus tué), l'un juste après l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`. | « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une version active sans séances datées dont personne ne sait qu'il faut les produire. |
+| Calcul en cours ne s auto bloque pas sur un calcul abandonne | une requête d'écriture tient le verrou d'écriture (transaction immédiate et une écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête consulte `calcul_en_cours()` (import, remise à zéro, paramètres). | la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de la reporter et de répondre d'après ce qui a été lu. |
+| Cloture sans attendre retablit le delai de verrou de la connexion | un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion dont le délai de verrou n'est pas celui par défaut. | le délai est remis à une constante lue à l'import du module, pas à la valeur que la connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé en silence pour toutes les requêtes servies ensuite par cette connexion. |
 
 #### `synthese` (28 cas)
 
@@ -554,7 +555,7 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 |---|---|---|
 | Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
 
-#### `web_edt` (5 cas)
+#### `web_edt` (6 cas)
 
 [`tests/unitaires/web_edt/test_accueil.py`](../tests/unitaires/web_edt/test_accueil.py)
 
@@ -586,7 +587,13 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 |---|---|---|
 | Echec du premier calcul ne bloque pas le second | le premier fil échoue pendant que le second attend son résultat. | le second attend pour toujours (page qui ne répond plus), ou reçoit l'erreur d'un autre au lieu de calculer lui-même. |
 
-### Tests d'intégration (158 cas)
+[`tests/unitaires/web_edt/test_regles_web.py`](../tests/unitaires/web_edt/test_regles_web.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
+
+### Tests d'intégration (168 cas)
 
 #### `echange` (5 cas)
 
@@ -718,7 +725,7 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 | Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
 | Remise a zero par un autre processus donne base occupee | un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant que le serveur sert une requête. | « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé par l'autre processus doit faire répondre « occupée, réessayer ». |
 
-#### `solveur` (16 cas)
+#### `solveur` (19 cas)
 
 [`tests/integration/solveur/test_services.py`](../tests/integration/solveur/test_services.py)
 
@@ -728,10 +735,11 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 | Temps limite enregistre illisible ne bloque pas le suivi | calcul « en cours » d'un autre processus vivant dont le temps limite enregistré vaut l'infini ou un texte (ligne ancienne ou corrompue). | `timedelta(seconds=inf)` lève OverflowError et `float("abc")` ValueError dans le contrôle des calculs abandonnés : `calcul_en_cours()` plante, et toutes les pages avec lui. |
 | Identifiant hors bornes est introuvable | identifiant 2^70 (hors bornes des entiers SQLite) donné au suivi, à l'arrêt, au lancement, aux pré-vérifications, à l'instanciation ou au replacement. | `session.get` lève OverflowError au lieu de répondre « introuvable » : page 500 « erreur inattendue » avec trace, alors que -1 est correctement refusé. |
 | Donnees modifiees pendant le calcul sont dites | un besoin du semestre est supprimé pendant que le moteur calcule (les écrans Données ne consultent pas le calcul en cours). | IntegrityError à l'enregistrement de la version, état « erreur inattendue » avec trace, minutes de calcul perdues sans que la cause soit dite. |
-| Semestre sans besoin ne cree pas de version vide | Générer sur un semestre sans aucun besoin, qui a une version de référence active. | « Aucune séance à placer » pris pour un succès, version vide enregistrée et activée, l'ancienne désactivée : l'emploi du temps affiché se vide sans confirmation. |
+| Salle supprimee pendant le calcul est dite | une salle retenue par le moteur est supprimée juste avant l'enregistrement de la version (clé étrangère différente de celle du besoin : `ON DELETE SET NULL`). | IntegrityError non reconnue, état « erreur inattendue » avec trace, ou séance enregistrée sans salle. |
+| Semestre sans besoin ne cree pas de version vide | Générer sur un semestre sans aucun besoin, qui a une version de référence active. | « Aucune séance à placer » pris pour un succès, version vide enregistrée et activée, l'ancienne désactivée : l'emploi du temps affiché se vide sans confirmation. Ou refus en « erreur » (journal au niveau ERROR) que les pré-vérifications de l'écran n'annoncent pas. |
 | Journal de calcul impossible donne la vraie cause | `<EDT_LOG_DIR>/generations` est un fichier (ou un dossier non inscriptible). | tout calcul échouerait « Le détail est dans le journal du calcul » avec un journal inexistant ; plus aucun emploi du temps productible tant que personne ne lit edt.log. |
-| Doctor signale le dossier des journaux de calcul inutilisable | `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier (corrigé par le socle à la demande de ce lot ; le socle a son propre test, celui-ci garde le point de vue du calcul). | « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal. |
-| Un calcul illisible est clos sans bloquer l application | lignes de calcul aux JSON mal typés : « en cours » avec statistiques en texte et temps limite « abc » ; « réussi » avec avertissements en texte, niveaux « pause », niveaux de règles et règles illisibles, contraintes désactivées en texte. | AttributeError ou ValueError dans le suivi : accueil et écran Calculs en 500, lancement impossible jusqu'à une réparation SQL ; avertissements affichés lettre à lettre. |
+| Doctor signale le dossier des journaux de calcul inutilisable | `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier, vu du calcul (le socle a son propre test). | « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal. |
+| Un calcul illisible est clos sans bloquer l application | lignes de calcul aux JSON mal typés : « en cours » avec statistiques en texte et temps limite « abc » ; « en cours » avec un numéro de processus en texte ou booléen et une heure de lancement en texte ou NaN ; « réussi » avec avertissements en texte, niveaux « pause », niveaux de règles et règles illisibles, contraintes désactivées en texte. | AttributeError ou ValueError dans le suivi : accueil et écran Calculs en 500, lancement impossible jusqu'à une réparation SQL ; avertissements affichés lettre à lettre ; durée négative ; journal rempli du même avertissement à chaque page vue. |
 | Version enregistree sans instanciation dit de relancer l instanciation | l'instanciation échoue (exception) ou est interrompue (KeyboardInterrupt) juste après l'enregistrement de la version. | version active sans aucune séance datée et personne de prévenu (« erreur inattendue » ou succès muet) : l'utilisateur regarde un calendrier vide. |
 | Lancer un calcul pendant un chargement est refuse | Générer pendant qu'un chargement de jeu fictif ou une remise à zéro tient le verrou de la base (tables supprimées puis recréées). | calcul sur des tables en recréation (« no such table », erreur inattendue) ou version qui référence des besoins disparus ; l'inverse est refusé et l'asymétrie surprend. |
 | Lancer un calcul pendant un import est refuse | import de données en cours (fichier en cours de lecture), Générer depuis un autre onglet. | calcul sur des données en train de changer, version qui référence des besoins remplacés ; l'inverse (import pendant un calcul) est refusé, l'asymétrie surprend. Le test exerce le vrai marqueur `edt.services.echange.import_en_cours` (seule la lecture du fichier est remplacée, pour tenir l'import ouvert). |
@@ -739,7 +747,9 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 | Solution sans salle ou a salle inconnue du moteur est refusee | un moteur de remplacement rend des placements sans salle, ou avec une salle inconnue de l'instantané (le placement manquant est couvert par `test_solution_incomplete_refusee`). | version partielle ou incohérente enregistrée (contraire au tout-ou-rien), ou « erreur inattendue » à l'enregistrement. |
 | Verrous contradictoires toleres de bout en bout | deux séances verrouillées sur le même créneau et la même salle dans la version active ; nouveau calcul sans l'option, puis avec « tolérer les violations héritées ». | refus sans le conseil de tolérer, ou solution refusée par le vérificateur (« défaut du moteur ») alors que l'utilisateur a demandé de tolérer ces verrous. |
 | Echec de l ecriture finale est retente | la base est verrouillée au moment où le fil du calcul écrit son état final (longue écriture d'un import ou d'une remise à zéro au-delà du délai d'attente). | état final perdu, calcul « en cours » puis clos « interrompu par l'arrêt de l'application » alors que l'application tourne ; message et statistiques perdus. |
-| Un saut d horloge ne clot pas un calcul vivant | l'heure locale avance d'une heure (passage à l'heure d'été, correction NTP) pendant qu'un calcul d'un autre processus tourne depuis trente secondes. | échéance « temps limite + grâce » atteinte une heure trop tôt, calcul vivant clos « interrompu » à tort ; temps écoulé affiché majoré d'une heure. |
+| Ecriture finale toujours en echec | l'écriture de l'état final échoue à chaque tentative (base occupée au-delà des trois tentatives), ou échoue sur une erreur déterministe (erreur de programmation). | exception échappée du fil du calcul, calcul « en cours » pour toujours, ou erreur déterministe rejouée trois fois (deux secondes de pauses) avant d'être dite. |
+| Un saut d horloge ne clot pas un calcul vivant | l'heure locale avance d'une heure (heure d'été, changement de fuseau) pendant qu'un calcul d'un autre processus tourne depuis trente secondes. | échéance « temps limite + grâce » atteinte une heure trop tôt, calcul vivant clos « interrompu » à tort ; temps écoulé affiché majoré d'une heure. Limite : un saut de l'horloge système elle-même (correction NTP) déplace aussi `time.time()` et n'est pas couvert (`time.monotonic` l'éviterait, mais ne se compare pas d'un processus à l'autre). |
+| Instanciation quand un autre ecrivain valide entre lecture et ecriture | pendant que les séances datées d'une version sont produites (fin d'un calcul, commande `instancier`, bouton « Recalculer les séances datées »), une autre connexion valide une écriture entre la lecture de la version et le remplacement de ses séances datées. | `instancier_version` lit dans une transaction différée puis écrit sur un instantané périmé : SQLite répond aussitôt « database is locked » sans attendre, la commande échoue, le calcul réussi reste sans séances datées, ou la page répond « base occupée ». |
 
 #### `synthese` (5 cas)
 
@@ -826,7 +836,7 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (32 cas)
+#### `web_edt` (39 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -846,8 +856,15 @@ Le catalogue compte 377 cas : 219 cas en tests unitaires et 158 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Suivi sans rechargement second lancement refuse puis arret | *docstring « Cas : … Risque : … » absente ou incomplète* | *docstring « Cas : … Risque : … » absente ou incomplète* |
-| Arret d un calcul termine dit qu il est fini | « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé. | « Arrêt demandé » affiché : on croit avoir interrompu un calcul fini dont la version est déjà active. |
+| Suivi sans rechargement second lancement refuse puis arret | double clic sur « Lancer le calcul » (second envoi pendant que le premier calcul tourne), suivi sans rechargement, puis arrêt depuis le suivi. | deux calculs en parallèle sur le même semestre, ou un formulaire de lancement proposé pendant le calcul ; le second envoi doit mener au suivi du calcul en cours, et l'arrêt laisser « Calcul arrêté » sans version enregistrée. |
+| Double clic sur supprimer une version | double clic sur « Supprimer » d'une version : deux envois identiques, le navigateur affiche la réponse du second. | page « Élément introuvable » (404) alors que la suppression demandée a bien eu lieu. |
+| Double clic sur lancer le calcul | double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul lancé par le premier démarre. | bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le calcul demandé tourne ; deux calculs lancés. |
+| Arret d un calcul termine dit qu il est fini | « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé. | « Arrêt demandé » affiché : l'utilisateur croit avoir interrompu un calcul fini dont la version est déjà active. |
+| Calcul interrompu par un redemarrage | le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours » est clos ; il avait pu, ou non, enregistrer sa version avant ses séances datées. | page du calcul qui parle d'un « problème dans les données » ou affirme qu'aucun emploi du temps n'a été enregistré alors qu'une version active sans séances datées existe ; aucun moyen de relancer depuis la page. |
+| Prechauffage qui ne peut pas demarrer ne casse pas la page | le fil de préchauffage des écrans ne peut pas démarrer (plus de fil disponible) quand la page d'un calcul réussi s'affiche. | RuntimeError remontée dans la requête (page du calcul en erreur 500), et préchauffage tenu pour « en cours » à jamais : plus aucun préchauffage jusqu'au redémarrage. |
+| Retouches de la version active annoncees avant le calcul | une séance datée de la version active est annulée à la main, puis l'utilisateur revient sur Générer. | le nouveau calcul crée une version sans cette retouche et la séance annulée réapparaît, sans que personne ait été prévenu. |
+| Generer sans aucun besoin dit quoi faire | page Générer d'un semestre qui n'a encore aucun besoin (base neuve, remise à zéro). | bandeau d'erreur rouge sans issue, ou calcul lancé pour enregistrer une version vide. |
+| Suivi dit qu un emploi du temps est deja trouve | calcul long (grand établissement) qui a trouvé un emploi du temps complet et cherche à l'améliorer pendant des minutes. | l'utilisateur ne voit qu'un temps qui passe, ignore qu'arrêter garderait déjà un emploi du temps, et attend la fin pendant la démonstration. |
 
 [`tests/integration/web_edt/test_cas_limites.py`](../tests/integration/web_edt/test_cas_limites.py)
 

@@ -21,6 +21,7 @@ from tests.outils.solveur.en_base import journalise as _journalise
 from tests.outils.solveur.en_base import rendre_impossible as _rendre_impossible
 
 from edt.db import modeles as m
+from edt.db import moteur as module_moteur
 from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineVersion
 from edt.erreurs import ErreurIntrouvable
@@ -34,11 +35,9 @@ from edt.services.verification import version_a_verifier
 def _journal_capte_des_info(caplog: pytest.LogCaptureFixture) -> None:
     """Fait parvenir à `caplog` les messages INFO du journal, pour chaque test du module.
 
-    Dans l'ancien `tests/solveur/test_services.py`,
-    `test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne` ne voyait le message
-    INFO « reportée » que parce que des tests de commande lancés avant lui avaient configuré la
-    journalisation au niveau INFO (lancé seul, il échouait déjà). Séparé de ces tests, il reçoit
-    ici ce niveau explicitement ; `caplog` le rétablit à la fin de chaque test.
+    Sans ce réglage, un test qui attend un message INFO (« reportée ») dépendrait de l'ordre des
+    tests : il ne le verrait que si une commande lancée avant lui avait configuré la
+    journalisation au niveau INFO. `caplog` rétablit le niveau à la fin de chaque test.
     """
     caplog.set_level(logging.INFO)
 
@@ -115,7 +114,7 @@ def test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates(jeu_minimal):
     l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`.
 
     Risque : « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une
-    version active sans séances datées dont personne ne sait qu'il faut relancer l'instanciation.
+    version active sans séances datées dont personne ne sait qu'il faut les produire.
     """
     il_y_a_7_min = dt.datetime.now() - dt.timedelta(minutes=7)
     sans_version = _calcul_fictif(jeu_minimal.semestre_id, demarre_le=il_y_a_7_min)
@@ -139,12 +138,13 @@ def test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates(jeu_minimal):
     for calcul_id in (sans_version, avec_version):
         suivi = generation.etat_calcul(calcul_id)
         assert suivi.etat is EtatCalcul.ERREUR
-        assert 415 <= suivi.temps_ecoule_s <= 425, suivi.temps_ecoule_s
+        # Sept minutes, à la charge de la machine près ; le défaut visé est une durée nulle.
+        assert 410 <= suivi.temps_ecoule_s <= 480, suivi.temps_ecoule_s
     with session_base() as session:
         assert all(c.duree_s is not None for c in session.scalars(select(m.Calcul)))
     suivi = generation.etat_calcul(avec_version)
-    assert suivi.version_id is not None and "relancer l'instanciation" in suivi.message
-    assert "relancer l'instanciation" not in generation.etat_calcul(sans_version).message
+    assert suivi.version_id is not None and "Produire les séances datées" in suivi.message
+    assert "Produire les séances datées" not in generation.etat_calcul(sans_version).message
 
 
 @pytest.mark.cas_limite
@@ -155,7 +155,7 @@ def test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne(jeu_minima
 
     Risque : la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête
     tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de
-    la reporter et de répondre d'après ce qu'on a lu.
+    la reporter et de répondre d'après ce qui a été lu.
     """
     abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
     with session_base() as requete:
@@ -172,4 +172,28 @@ def test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne(jeu_minima
         assert _etat(abandonne) is EtatCalcul.EN_COURS  # clôture reportée, rien d'écrit
     # Verrou relâché : l'appel suivant clôt le calcul.
     assert generation.calcul_en_cours() is None
+    assert _etat(abandonne) is EtatCalcul.ERREUR
+
+
+@pytest.mark.cas_limite
+def test_cloture_sans_attendre_retablit_le_delai_de_verrou_de_la_connexion(jeu_minimal):
+    """Cas : un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion
+    dont le délai de verrou n'est pas celui par défaut.
+
+    Risque : le délai est remis à une constante lue à l'import du module, pas à la valeur que la
+    connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé
+    en silence pour toutes les requêtes servies ensuite par cette connexion.
+    """
+    abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
+    with session_base() as session:
+        brute = session.connection().connection.dbapi_connection
+        brute.execute("PRAGMA busy_timeout=4321")
+        try:
+            with generation._verrou:
+                abandonnes = generation._calculs_abandonnes(session)
+                assert generation._clore_sans_attendre(session, abandonnes)
+            (delai,) = brute.execute("PRAGMA busy_timeout").fetchone()
+        finally:
+            brute.execute(f"PRAGMA busy_timeout={module_moteur.DELAI_VERROU_MS}")
+    assert delai == 4321
     assert _etat(abandonne) is EtatCalcul.ERREUR

@@ -34,14 +34,25 @@
   <h2>Ce que le calcul va placer</h2>
   {%- if recap.erreur %}
   {{ ui.message("Les données du semestre ne peuvent pas être lues telles quelles :", "erreur", [recap.erreur]) }}
+  {%- elif not recap.nb_besoins %}
+  <p>Aucun besoin d'enseignement à placer pour ce semestre.</p>
+  <p class="edt-boutons">
+    <a class="bouton bouton-principal" href="/besoins">Saisir les besoins</a>
+    <a class="bouton" href="/import">Importer des fichiers</a>
+    <a class="bouton" href="/jeux">Charger un établissement fictif</a>
+  </p>
   {%- else %}
-  <ul class="compteurs">
-    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_besoins }}</span><span class="compteur-libelle">besoins d'enseignement</span></li>
-    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_seances }}</span><span class="compteur-libelle">séances par semaine type</span></li>
-    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_groupes }}</span><span class="compteur-libelle">groupes concernés</span></li>
-    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_enseignants }}</span><span class="compteur-libelle">enseignants concernés</span></li>
-    <li class="compteur"><span class="compteur-nombre">{{ recap.nb_salles }}</span><span class="compteur-libelle">salles disponibles</span></li>
-  </ul>
+  <p>{{ fmt.pluriel(recap.nb_besoins, "besoin d'enseignement", "besoins d'enseignement") }}, soit {{ fmt.pluriel(recap.nb_seances, "séance") }} par semaine type, pour {{ fmt.pluriel(recap.nb_groupes, "groupe") }} et {{ fmt.pluriel(recap.nb_enseignants, "enseignant") }}, dans {{ fmt.pluriel(recap.nb_salles, "salle disponible", "salles disponibles") }}.</p>
+  {%- endif %}
+  {%- if dernier %}
+  <p class="discret">Dernier calcul :
+    {{ ui.etiquette(dernier.titre, {"reussi": "succes", "en_cours": "info", "temps_depasse": "attention", "arrete": "attention"}.get(dernier.issue, "erreur")) }}
+    lancé le {{ dernier.suivi.demarre_le|dateheure_fr }}, durée : {{ dernier.temps_texte }}.
+    <a href="/calculs/{{ dernier.suivi.id }}">Voir le détail</a>
+  </p>
+  {%- endif %}
+  {%- if nb_retouches %}
+  {{ ui.message("La version active compte " ~ fmt.pluriel(nb_retouches, "retouche") ~ " à la main (séances datées déplacées ou annulées). Le nouveau calcul crée une autre version, sans ces retouches : seules les séances verrouillées gardent leur place. La version actuelle reste disponible dans « Historique et versions ».", "info") }}
   {%- endif %}
 </section>
 
@@ -50,39 +61,46 @@
 </section>
 
 {%- if not en_cours %}
-<form id="formulaire-calcul" class="formulaire edt-formulaire-calcul" method="post" action="/calculs">
-  <h2>Lancer le calcul</h2>
+<form id="formulaire-calcul" class="formulaire edt-formulaire-calcul" method="post" action="/calculs" data-attente="Lancement du calcul...">
+  <h2>Réglages du calcul</h2>
   <input type="hidden" name="semestre_id" value="{{ semestre.id }}">
-  {#- Règles : un niveau par règle modifiable (champs niveau_<CODE>), préremplis avec ceux du
+  {#- Chaque section garde sa légende ; son contenu est dans un <details> natif, replié derrière
+      le résumé d'une ligne de ses réglages (calculs.resumer_reglages). Sans JavaScript, tout
+      reste accessible, et les champs d'une section repliée sont envoyés comme les autres. Le
+      serveur déplie la section d'une saisie refusée (`ouvert`).
+      Règles : un niveau par règle modifiable (champs niveau_<CODE>), préremplis avec ceux du
       dernier calcul du semestre ; changer un niveau recalcule les vérifications (HTMX). #}
   <fieldset hx-get="/calculs/verifications" hx-trigger="change" hx-include="#formulaire-calcul" hx-target="#pre-verifications" hx-swap="innerHTML">
     <legend>Règles</legend>
-    <p class="aide">Pour chaque règle, choisir son niveau : <strong>nécessaire</strong>, elle est toujours respectée ; <strong>important</strong>, elle n'est enfreinte que faute de choix et l'entorse est signalée comme avertissement ; <strong>facultatif</strong>, c'est un souhait et l'entorse est signalée pour information. Les règles qui définissent le problème restent toujours nécessaires. Les niveaux choisis sont rappelés dans le résultat.</p>
-    <div class="tableau-defilant">
-      <table class="tableau edt-regles">
-        <thead>
-          <tr><th scope="col">Règle</th><th scope="col">Niveau</th></tr>
-        </thead>
-        <tbody>
-          {%- for regle in regles %}
-          <tr>
-            <th scope="row">{{ regle.libelle }}<small>{{ regle.description }}</small>{% if regle.note %}<small class="edt-regle-note">{{ regle.note }}</small>{% endif %}</th>
-            <td>
-              {%- if regle.modifiable %}
-              <div class="edt-niveaux" role="radiogroup" aria-label="Niveau de la règle « {{ regle.libelle }} »">
-                {%- for niveau in niveaux_proposes %}
-                <label title="{{ niveau.description }}"><input type="radio" name="{{ regle.champ }}" value="{{ niveau.value }}"{% if niveau == regle.niveau %} checked{% endif %}> {{ niveau.libelle }}{% if niveau == regle.niveau_defaut %} <small class="edt-niveau-defaut">(par défaut)</small>{% endif %}</label>
-                {%- endfor %}
-              </div>
-              {%- else %}
-              <span class="edt-toujours-necessaire" title="Cette règle définit le problème : son niveau ne se choisit pas.">Toujours nécessaire</span>
-              {%- endif %}
-            </td>
-          </tr>
-          {%- endfor %}
-        </tbody>
-      </table>
-    </div>
+    <details class="repliable"{% if "regles" in ouvert %} open{% endif %}>
+      <summary>{{ resumes.regles }}</summary>
+      <p class="aide"><strong>Nécessaire</strong> : toujours respectée. <strong>Important</strong> : enfreinte seulement faute de mieux, avec un avertissement. <strong>Facultatif</strong> : un souhait, signalé pour information s'il n'est pas tenu. Les règles « Toujours nécessaire » ne se règlent pas ; les niveaux choisis sont rappelés dans le résultat.</p>
+      <div class="tableau-defilant">
+        <table class="tableau edt-regles">
+          <thead>
+            <tr><th scope="col">Règle</th><th scope="col">Niveau</th></tr>
+          </thead>
+          <tbody>
+            {%- for regle in regles %}
+            <tr>
+              <th scope="row">{{ regle.libelle }}<small>{{ regle.description }}</small>{% if regle.note %}<small class="edt-regle-note">{{ regle.note }}</small>{% endif %}</th>
+              <td>
+                {%- if regle.modifiable %}
+                <div class="edt-niveaux" role="radiogroup" aria-label="Niveau de la règle « {{ regle.libelle }} »">
+                  {%- for niveau in niveaux_proposes %}
+                  <label title="{{ niveau.description }}"><input type="radio" name="{{ regle.champ }}" value="{{ niveau.value }}"{% if niveau == regle.niveau %} checked{% endif %}> {{ niveau.libelle }}{% if niveau == regle.niveau_defaut %} <small class="edt-niveau-defaut">(par défaut)</small>{% endif %}</label>
+                  {%- endfor %}
+                </div>
+                {%- else %}
+                <span class="edt-toujours-necessaire" title="Règle indispensable à tout emploi du temps : son niveau ne se choisit pas.">Toujours nécessaire</span>
+                {%- endif %}
+              </td>
+            </tr>
+            {%- endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
   </fieldset>
   {#- Règles personnalisées actives du semestre : un niveau par règle pour ce calcul (champs
       niveau_regle_<id>) ou « ignorer » (ignorer_regle_<id>) ; regroupées par type, repliées,
@@ -91,7 +109,7 @@
   <div class="tableau-defilant">
     <table class="tableau edt-regles edt-regles-perso">
       <thead>
-        <tr><th scope="col">Règle</th><th scope="col">Type</th><th scope="col">Portée</th><th scope="col">Période</th><th scope="col">Niveau pour ce calcul</th></tr>
+        <tr><th scope="col">Règle</th><th scope="col">Type</th><th scope="col">Concerne</th><th scope="col">Période</th><th scope="col">Niveau pour ce calcul</th></tr>
       </thead>
       <tbody>
         {%- for r in liste %}
@@ -117,24 +135,30 @@
   <fieldset hx-get="/calculs/verifications" hx-trigger="change" hx-include="#formulaire-calcul" hx-target="#pre-verifications" hx-swap="innerHTML">
     <legend>Règles personnalisées</legend>
     {%- if bloc_regles.erreur %}
+    <p>{{ resumes.regles_personnalisees }}</p>
     {{ ui.message("Les règles personnalisées n'ont pas pu être lues : " ~ bloc_regles.erreur, "erreur") }}
     {%- elif not bloc_regles.regles %}
     <p class="vide">Aucune règle personnalisée active pour ce semestre.</p>
     {%- else %}
-    <p class="aide">Chaque règle porte son propre niveau, prérempli avec celui du dernier calcul. Le changer, ou ignorer la règle, ne vaut que pour ce calcul : la règle elle-même ne change pas.</p>
-    {%- if bloc_regles.replie %}
-    {%- for libelle, liste in bloc_regles.par_type %}
-    <details class="edt-groupe-regles">
-      <summary>{{ libelle }} ({{ liste|length }})</summary>
-      {{ tableau_regles(liste) }}
+    <details class="repliable"{% if "regles_personnalisees" in ouvert %} open{% endif %}>
+      <summary>{{ resumes.regles_personnalisees }}</summary>
+      <p class="aide">Chaque règle porte son propre niveau, prérempli avec celui du dernier calcul. Le changer, ou ignorer la règle, ne vaut que pour ce calcul : la règle elle-même ne change pas.</p>
+      {%- if bloc_regles.replie %}
+      {%- for libelle, liste in bloc_regles.par_type %}
+      <details class="edt-groupe-regles">
+        <summary>{{ libelle }} ({{ liste|length }})</summary>
+        {{ tableau_regles(liste) }}
+      </details>
+      {%- endfor %}
+      {%- else %}
+      {{ tableau_regles(bloc_regles.regles) }}
+      {%- endif %}
     </details>
-    {%- endfor %}
-    {%- else %}
-    {{ tableau_regles(bloc_regles.regles) }}
     {%- endif %}
-    {%- endif %}
-    {%- if bloc_regles.rappel_proposees %}
-    {{ ui.message(bloc_regles.rappel_proposees, "info") }}
+    {%- if bloc_regles.nb_proposees == 1 %}
+    {{ ui.message("1 règle proposée n'est pas encore activée : elle n'a aucun effet sur le calcul tant qu'elle ne l'est pas.", "info") }}
+    {%- elif bloc_regles.nb_proposees %}
+    {{ ui.message(bloc_regles.nb_proposees ~ " règles proposées ne sont pas encore activées : elles n'ont aucun effet sur le calcul tant qu'elles ne le sont pas.", "info") }}
     {%- endif %}
     <p class="edt-boutons">
       <a class="bouton" href="{{ adresse_regles }}">Voir les règles personnalisées</a>
@@ -144,65 +168,59 @@
   {#- Pause déjeuner à trois modes : préremplie depuis les paramètres, enregistrée au lancement si
       elle change. Les heures ne sont visibles (et envoyées) qu'en « Horaires déterminés » et
       « Pause libre bornée », la durée minimale qu'en pause libre (static/js/app.js) ; sans
-      JavaScript tout est visible et le serveur ne lit que les champs du mode choisi. #}
+      JavaScript tout est visible et le serveur ne lit que les champs du mode choisi. Dépliée
+      d'office quand la saisie est refusée. #}
   <fieldset>
     <legend>Pause déjeuner</legend>
-    {%- macro champ_dejeuner(nom, valeur, libelle, avant="", type="time", attributs="") %}
-    {%- set erreur = erreurs_dejeuner.get(nom) %}
-    <label{% if erreur %} class="champ-en-erreur"{% endif %}>{{ avant }} <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur }}" required aria-label="{{ libelle }}"{{ attributs|safe }}{% if erreur %} aria-invalid="true" aria-describedby="erreur-{{ nom }}"{% endif %}></label>
-    {%- endmacro %}
-    <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="dejeuner" value="{{ dejeuner_fixe }}"{% if dejeuner.mode == dejeuner_fixe %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_fixe] }}</label>
-      <span class="discret">la plage du déjeuner reste libre pour tous les groupes et enseignants</span>
-    </div>
-    <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="dejeuner" value="{{ dejeuner_libre }}"{% if dejeuner.mode == dejeuner_libre %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_libre] }}</label>
-      <span data-visible-si="dejeuner:{{ dejeuner_libre }}">{{ champ_dejeuner("dejeuner_duree", dejeuner.duree, "Durée minimale de la pause libre, en minutes", "au moins", "number", ' min="' ~ bornes_duree_dejeuner[0] ~ '" max="' ~ bornes_duree_dejeuner[1] ~ '" step="1" inputmode="numeric"') }} minutes d'un seul tenant dans la plage du déjeuner, placées par le calcul pour chaque groupe et chaque enseignant</span>
-    </div>
-    <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="dejeuner" value="{{ dejeuner_aucun }}"{% if dejeuner.mode == dejeuner_aucun %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_aucun] }}</label>
-      <span class="discret">aucune plage réservée</span>
-    </div>
-    <div class="edt-choix-en-ligne" data-visible-si="dejeuner:{{ dejeuner_fixe }},{{ dejeuner_libre }}">
-      <span>Plage du déjeuner :</span>
-      {{ champ_dejeuner("dejeuner_debut", dejeuner.debut, "Début de la plage du déjeuner", "de") }}
-      {{ champ_dejeuner("dejeuner_fin", dejeuner.fin, "Fin de la plage du déjeuner", "à") }}
-    </div>
-    {%- for nom in ("dejeuner", "dejeuner_debut", "dejeuner_fin", "dejeuner_duree") if erreurs_dejeuner.get(nom) %}
-    <p class="erreur-champ" id="erreur-{{ nom }}">{{ erreurs_dejeuner[nom] }}</p>
-    {%- endfor %}
-    <p class="aide">Ce choix est enregistré dans les paramètres au lancement du calcul : la vérification de l'emploi du temps et les calculs suivants l'appliquent aussi.</p>
+    <details class="repliable"{% if "dejeuner" in ouvert %} open{% endif %}>
+      <summary>{{ resumes.dejeuner }}</summary>
+      {%- macro champ_dejeuner(nom, valeur, libelle, avant="", type="time", attributs="") %}
+      {%- set erreur = erreurs_dejeuner.get(nom) %}
+      <label{% if erreur %} class="champ-en-erreur"{% endif %}>{{ avant }} <input type="{{ type }}" id="champ-{{ nom }}" name="{{ nom }}" value="{{ valeur }}" required aria-label="{{ libelle }}"{{ attributs|safe }}{% if erreur %} aria-invalid="true" aria-describedby="erreur-{{ nom }}"{% endif %}></label>
+      {%- endmacro %}
+      <div class="edt-choix-en-ligne">
+        <label><input type="radio" name="dejeuner" value="{{ dejeuner_fixe }}"{% if dejeuner.mode == dejeuner_fixe %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_fixe] }}</label>
+        <span class="discret">la plage du déjeuner reste libre pour tous les groupes et enseignants</span>
+      </div>
+      <div class="edt-choix-en-ligne">
+        <label><input type="radio" name="dejeuner" value="{{ dejeuner_libre }}"{% if dejeuner.mode == dejeuner_libre %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_libre] }}</label>
+        <span data-visible-si="dejeuner:{{ dejeuner_libre }}">{{ champ_dejeuner("dejeuner_duree", dejeuner.duree, "Durée minimale de la pause libre, en minutes", "au moins", "number", ' min="' ~ bornes_duree_dejeuner[0] ~ '" max="' ~ bornes_duree_dejeuner[1] ~ '" step="1" inputmode="numeric"') }} minutes d'un seul tenant dans la plage du déjeuner, placées par le calcul pour chaque groupe et chaque enseignant</span>
+      </div>
+      <div class="edt-choix-en-ligne">
+        <label><input type="radio" name="dejeuner" value="{{ dejeuner_aucun }}"{% if dejeuner.mode == dejeuner_aucun %} checked{% endif %}> {{ libelles_dejeuner[dejeuner_aucun] }}</label>
+        <span class="discret">aucune plage réservée</span>
+      </div>
+      <div class="edt-choix-en-ligne" data-visible-si="dejeuner:{{ dejeuner_fixe }},{{ dejeuner_libre }}">
+        <span>Plage du déjeuner :</span>
+        {{ champ_dejeuner("dejeuner_debut", dejeuner.debut, "Début de la plage du déjeuner", "de") }}
+        {{ champ_dejeuner("dejeuner_fin", dejeuner.fin, "Fin de la plage du déjeuner", "à") }}
+      </div>
+      {%- for nom in ("dejeuner", "dejeuner_debut", "dejeuner_fin", "dejeuner_duree") if erreurs_dejeuner.get(nom) %}
+      <p class="erreur-champ" id="erreur-{{ nom }}">{{ erreurs_dejeuner[nom] }}</p>
+      {%- endfor %}
+      <p class="aide">Ce choix est enregistré dans les paramètres au lancement du calcul : la vérification de l'emploi du temps et les calculs suivants l'appliquent aussi.</p>
+    </details>
   </fieldset>
   <fieldset>
-    <legend>Durée de la recherche</legend>
-    <div class="edt-choix-en-ligne">
-      <label><input type="radio" name="duree" value="court"{% if choix.duree != "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_court_texte }}</label>
-      <label><input type="radio" name="duree" value="long"{% if choix.duree == "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_long_texte }}</label>
-    </div>
-  </fieldset>
-  <fieldset>
-    <legend>Options</legend>
-    {{ ui.champ("optimiser", "Chercher un emploi du temps plus confortable (moins de trous, moins de changements de campus, moins de samedis) : la recherche dure plus longtemps", choix.optimiser, type="checkbox") }}
-    {{ ui.champ("autre_solution", "Proposer une autre solution que la précédente", choix.autre_solution, type="checkbox") }}
+    <legend>Durée et options</legend>
+    <details class="repliable"{% if "duree_options" in ouvert %} open{% endif %}>
+      <summary>{{ resumes.duree_options }}</summary>
+      <div class="edt-choix-en-ligne">
+        <label><input type="radio" name="duree" value="court"{% if choix.duree != "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_court_texte }}</label>
+        <label><input type="radio" name="duree" value="long"{% if choix.duree == "long" %} checked{% endif %}> Rechercher jusqu'à {{ options.temps_long_texte }}</label>
+      </div>
+      <p class="aide">C'est un maximum : le calcul s'arrête plus tôt dès qu'il ne trouve plus mieux.</p>
+      {{ ui.champ("optimiser", "Emploi du temps plus confortable (moins de trous, moins de changements de campus, moins de samedis) : la recherche dure plus longtemps", choix.optimiser, type="checkbox") }}
+      {{ ui.champ("autre_solution", "Proposer une autre solution que la précédente", choix.autre_solution, type="checkbox") }}
+    </details>
   </fieldset>
   <div class="formulaire-actions">
     <button type="submit" class="bouton bouton-principal"{% if not recap.nb_besoins %} disabled title="Aucun besoin d'enseignement à placer"{% endif %}>Lancer le calcul</button>
-    <span class="discret">Le calcul tourne en arrière-plan ; on peut suivre son avancement et l'arrêter.</span>
+    <span class="discret">Le calcul tourne en arrière-plan : son avancement s'affiche, et il peut être arrêté à tout moment.</span>
   </div>
 </form>
 {%- else %}
 <p class="discret">Un seul calcul peut tourner à la fois : le formulaire de lancement revient à la fin du calcul en cours.</p>
-{%- endif %}
-
-{%- if dernier %}
-<section class="carte">
-  <h2>Dernier calcul de ce semestre</h2>
-  <p>
-    {{ ui.etiquette(dernier.titre, {"reussi": "succes", "en_cours": "info", "temps_depasse": "attention", "arrete": "attention"}.get(dernier.issue, "erreur")) }}
-    Lancé le {{ dernier.suivi.demarre_le|dateheure_fr }}, durée : {{ dernier.temps_texte }}.
-    <a href="/calculs/{{ dernier.suivi.id }}">Voir le détail</a>
-  </p>
-</section>
 {%- endif %}
 {%- endif %}
 {% endblock %}

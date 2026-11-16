@@ -622,12 +622,14 @@ def resoudre(
         mesures = []
         if bilan.trous is not None:
             stats["trous"] = bilan.trous
+            creneaux = "créneau libre" if bilan.trous <= 1 else "créneaux libres"
             mesures.append(
-                f"{bilan.trous} créneau(x) libre(s) entre deux cours dans les journées des groupes"
+                f"{bilan.trous} {creneaux} entre deux cours dans les journées des groupes"
             )
         if bilan.samedis is not None:
             stats["samedis"] = bilan.samedis
-            mesures.append(f"{bilan.samedis} séance(s) le samedi")
+            seances = "séance" if bilan.samedis <= 1 else "séances"
+            mesures.append(f"{bilan.samedis} {seances} le samedi")
         if mesures:
             message += f" Bilan sur l'ensemble du semestre : {' et '.join(mesures)}."
     if arret_demande():

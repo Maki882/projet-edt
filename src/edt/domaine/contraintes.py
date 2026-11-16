@@ -116,7 +116,7 @@ samedi, 1 par créneau extrême. Une contrainte importante vaut donc une
 centaine de trous-semaines (sept trous sur un semestre de quinze semaines),
 plus que tout gain de confort réaliste d'une seule entorse ; une facultative
 deux trous-semaines, qu'un vrai gain de confort peut emporter. Valeurs
-calibrées sur les jeux fictifs moyen et grand.
+calibrées sur les établissements fictifs moyen et grand.
 """
 
 Niveaux = dict[CodeContrainte, Niveau]
@@ -195,8 +195,8 @@ CATALOGUE: dict[CodeContrainte, Contrainte] = dict(
         _c(
             CodeContrainte.GROUPE_UNIQUE,
             "Une séance par groupe",
-            "Deux groupes en conflit (l'un contient l'autre, ils sont déclarés chevauchants "
-            "ou ils partagent un étudiant) n'ont pas cours en même temps.",
+            "Deux groupes qui ont des étudiants en commun (l'un contient l'autre, ou ils "
+            "partagent des étudiants) n'ont pas cours en même temps.",
         ),
         _c(
             CodeContrainte.CAMPUS_TRAJET,
@@ -225,8 +225,8 @@ CATALOGUE: dict[CodeContrainte, Contrainte] = dict(
         _c(
             CodeContrainte.PAUSE,
             "Pause entre deux séances",
-            "Deux séances consécutives d'une même ressource sont séparées par la pause "
-            "réglementaire (15 minutes par défaut).",
+            "Un groupe ou un enseignant a une pause entre deux séances qui se suivent (durée "
+            "réglée dans les paramètres).",
         ),
         _c(
             CodeContrainte.DEJEUNER,
@@ -266,14 +266,14 @@ CATALOGUE: dict[CodeContrainte, Contrainte] = dict(
         ),
         _c(
             CodeContrainte.MAX_ENSEIGNANT,
-            "Maxima horaires des enseignants",
-            "Les maxima par jour et par semaine d'un enseignant sont respectés lorsqu'ils "
-            "sont renseignés.",
+            "Heures maximales des enseignants",
+            "Les heures maximales par jour et par semaine d'un enseignant sont respectées "
+            "lorsqu'elles sont renseignées.",
         ),
         _c(
             CodeContrainte.VOLUME,
-            "Volume demandé",
-            "Toutes les séances demandées par les besoins sont placées.",
+            "Toutes les séances placées",
+            "Chaque séance demandée par les besoins a un jour, une heure et une salle.",
         ),
         _c(
             CodeContrainte.VERROU,
@@ -283,13 +283,12 @@ CATALOGUE: dict[CodeContrainte, Contrainte] = dict(
         _c(
             CodeContrainte.JOUR_FERME,
             "Jours fermés",
-            "Aucune séance datée un jour fermé pour les groupes concernés.",
+            "Aucune séance un jour fermé pour les groupes concernés.",
         ),
         _c(
             CodeContrainte.REGLE,
             "Règle personnalisée",
-            "Une règle personnalisée (`edt.domaine.regles`) est respectée ; chaque règle porte "
-            "son propre niveau, choisi à chaque calcul.",
+            "Chaque règle personnalisée de l'établissement est respectée, à son propre niveau.",
         ),
     ]
 )

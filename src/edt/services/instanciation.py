@@ -9,12 +9,16 @@ instancier`) et par l'interface :
   pendant une indisponibilité, et enregistre le tout dans la table
   `occurrence` ;
 - `replacer_occurrences(session, version_id, occurrence_ids, ...)` : replace
-  des séances datées désignées, dans une fenêtre de dates. C'est le point
-  d'entrée du futur réaménagement sur imprévu.
+  des séances datées désignées, dans une fenêtre de dates.
 
 Les deux délèguent aux fonctions pures `edt.solveur.instanciation.instancier`
 et `edt.solveur.replacement.replacer`. Elles ne valident pas la transaction :
-c'est l'appelant qui possède la session.
+c'est l'appelant qui possède la session. Elles lisent la version puis
+écrivent ses séances datées : la transaction de l'appelant doit s'ouvrir par
+`edt.db.moteur.transaction_immediate` avant sa première requête (c'est déjà
+le cas d'une requête web d'écriture), sinon une écriture validée entre la
+lecture et l'écriture par une autre connexion fait échouer SQLite aussitôt
+(« database is locked »).
 
 Ce qui est écrit
 ----------------
@@ -161,7 +165,8 @@ def instancier_version(
     """Calcule et enregistre les séances datées de la version `version_id`.
 
     `contraintes_desactivees` : par défaut, celles du calcul qui a produit la
-    version. Lève `ErreurIntrouvable` si la version n'existe pas, et
+    version. Transaction de `session` ouverte en écriture immédiate (voir
+    l'en-tête du module). Lève `ErreurIntrouvable` si la version n'existe pas, et
     `ErreurRegleMetier`, sans rien modifier, si ses séances datées ont été
     importées (elles ne viennent pas de la semaine type : les recalculer les
     doublerait).
@@ -385,9 +390,7 @@ def _contexte(
     ceux de la version (`edt.services.niveaux.niveaux_regles_de_version`,
     même lecture que le vérificateur).
     """
-    if not identifiant_valide(version_id):
-        raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
-    version = session.get(m.VersionEdt, version_id)
+    version = session.get(m.VersionEdt, version_id) if identifiant_valide(version_id) else None
     if version is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps {version_id} n'existe pas.")
     if contraintes_desactivees is not None:

@@ -1,4 +1,4 @@
-"""Commandes du lot « solveur » : `generer`, `pre-verifier`, `instancier`.
+"""Commandes de génération : `generer`, `pre-verifier`, `instancier`.
 
     python -m edt pre-verifier --semestre 1
     python -m edt pre-verifier --niveau PAUSE=facultatif  # mêmes options de règles que generer
@@ -27,13 +27,12 @@ impossibilité certaine est relevée ; `2` pour une erreur inattendue.
 from __future__ import annotations
 
 import dataclasses
-import logging
 from typing import Annotated
 
 import typer
 
 from edt.db.modeles import Semestre
-from edt.db.moteur import identifiant_valide, session_base
+from edt.db.moteur import identifiant_valide, session_base, transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     Niveau,
@@ -54,7 +53,6 @@ from edt.services.verification import version_a_verifier
 from edt.solveur.contrat import OptionsSolveur
 
 commandes = typer.Typer()
-journal = logging.getLogger(__name__)
 
 CODE_ECHEC = 1
 
@@ -221,7 +219,7 @@ def pre_verifier(
         niveaux_regles = niveaux_regles_choisis(session, cible, regle, sans_regle)
         rappel_regles = _recapitulatif_des_regles(session, cible, niveaux_regles)
         anomalies = generation.pre_verifier_semestre(
-            session, cible.id, desactiver or (), niveaux=niveaux, niveaux_regles=niveaux_regles
+            session, cible.id, niveaux=niveaux, niveaux_regles=niveaux_regles
         )
     for rappel in (_recapitulatif_des_niveaux(niveaux), rappel_regles):
         if rappel:
@@ -335,7 +333,7 @@ def generer(
         typer.echo(f"  Avertissement : {avertissement}")
     indicateurs = suivi.statistiques.get("indicateurs")
     if indicateurs and "trous" not in suivi.statistiques:
-        # Sans amélioration, le message du calcul ne dit rien de la qualité : on la donne ici.
+        # Sans amélioration, le message du calcul ne dit rien de la qualité : elle est donnée ici.
         typer.echo(
             f"Bilan sur l'ensemble du semestre : {indicateurs.get('trous_creneaux')} créneau(x) "
             f"libre(s) entre deux cours dans les journées des groupes et "
@@ -359,6 +357,9 @@ def instancier(
 ) -> None:
     """Produit les séances datées d'une version et replace celles qui tombent un jour fermé."""
     with session_base() as session:
+        # Lit la version puis remplace ses séances datées : verrou d'écriture pris avant la
+        # première lecture (voir `edt.services.instanciation`).
+        transaction_immediate(session)
         version_id = version_a_verifier(session, version_id=version, semestre_id=semestre)
         rapport = instancier_version(session, version_id)
     for ligne in lignes_du_rapport(rapport):

@@ -11,15 +11,19 @@
 {{ ui.message(pre.motif, pre.niveau_motif, ["Le calcul peut être lancé, mais ces contrôles n'ont pas été faits."] if pre.niveau_motif == "attention" else []) }}
 {%- endif %}
 {%- set bloquants = pre.problemes|list + pre.erreurs|map(attribute="message")|list %}
-{%- if bloquants %}
-{{ ui.message("Le calcul ne peut pas être lancé : " ~ fmt.pluriel(bloquants|length, "impossibilité certaine", "impossibilités certaines") ~ ". Corriger ces points :", "erreur", bloquants[:limite_liste]) }}
-{%- if bloquants|length > limite_liste %}<p class="discret">... et {{ bloquants|length - limite_liste }} autre(s).</p>{% endif %}
+{%- if pre.rien_a_placer %}
+{#- Semestre vide : rien n'est faux, il n'y a simplement rien à calculer (la carte du haut dit
+    quoi faire). Un message d'information, pas un bandeau d'erreur. #}
+{{ ui.message("Rien à calculer pour l'instant : ce semestre n'a aucune séance à placer (aucun besoin d'enseignement, ou aucun besoin qui donne une séance). Le calcul pourra être lancé une fois les besoins saisis, importés ou chargés.", "info") }}
+{%- elif bloquants %}
+{{ ui.message("Le calcul ne peut pas être lancé : " ~ fmt.pluriel(bloquants|length, "point bloquant", "points bloquants") ~ " à corriger :", "erreur", bloquants[:limite_liste]) }}
+{%- if bloquants|length > limite_liste %}<p class="discret">... et {{ fmt.pluriel(bloquants|length - limite_liste, "autre") }}.</p>{% endif %}
 {%- endif %}
 {%- if pre.avertissements %}
 <details class="edt-groupe-contrainte"{% if pre.avertissements|length <= 10 %} open{% endif %}>
   <summary>{{ fmt.pluriel(pre.avertissements|length, "avertissement") }} <small>- situations tendues : le calcul peut être lancé, mais il aura moins de marge</small></summary>
   {{ edt.anomalies(pre.avertissements[:limite_liste]) }}
-  {%- if pre.avertissements|length > limite_liste %}<p class="discret">... et {{ pre.avertissements|length - limite_liste }} autre(s).</p>{% endif %}
+  {%- if pre.avertissements|length > limite_liste %}<p class="discret">... et {{ fmt.pluriel(pre.avertissements|length - limite_liste, "autre") }}.</p>{% endif %}
 </details>
 {%- endif %}
 {%- if pre.informations %}
@@ -28,5 +32,5 @@
 {%- if pre.vide %}
 {{ ui.message("Aucun problème relevé avant le calcul.", "succes") }}
 {%- elif not pre.motif and not bloquants %}
-<p>{{ ui.etiquette("Prêt", "succes") }} Aucune impossibilité certaine : le calcul peut être lancé.</p>
+<p>{{ ui.etiquette("Prêt", "succes") }} Rien de bloquant : le calcul peut être lancé.</p>
 {%- endif %}
