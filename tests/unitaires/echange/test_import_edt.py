@@ -6,7 +6,7 @@ import datetime as dt
 
 import pytest
 from sqlalchemy import select
-from tests.echange.fabrique import compter, csv_envoye, seul
+from tests.outils.echange.fabrique import compter, csv_envoye, seul
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base

@@ -13,6 +13,10 @@ Fichiers
 - `calendrier_ical(*evenements)` : un fichier iCal ; chaque événement est
   donné par ses propriétés, une par ligne (le retrait est ignoré).
 
+Chemins
+-------
+- `DOSSIER_FICHIERS` : le dossier des fichiers d'exemple fictifs (`fichiers/`).
+
 Contrôles
 ---------
 - `compter(modele)` : nombre de lignes d'une table de la base du test ;
@@ -26,6 +30,7 @@ from __future__ import annotations
 import io
 import zipfile
 from collections.abc import Iterable, Mapping, Sequence
+from pathlib import Path
 from typing import Any
 
 from openpyxl import Workbook
@@ -35,6 +40,8 @@ from edt.db.moteur import session_base
 from edt.domaine.enumerations import Gravite
 from edt.echange.lecture import FichierEnvoye
 from edt.echange.rapport import Signalement
+
+DOSSIER_FICHIERS = Path(__file__).parent / "fichiers"
 
 # --------------------------------------------------------------------------- #
 # Fichiers

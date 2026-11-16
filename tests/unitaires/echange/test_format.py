@@ -20,7 +20,7 @@ from edt.echange.format import (
 )
 from edt.services import echange as service
 
-DOCUMENTATION = Path(__file__).parents[2] / "docs" / "import-export.md"
+DOCUMENTATION = Path(__file__).parents[3] / "docs" / "import-export.md"
 
 
 def test_gabarit_xlsx(base):

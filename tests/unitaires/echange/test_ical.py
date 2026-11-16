@@ -6,7 +6,7 @@ import datetime as dt
 import itertools
 
 import pytest
-from tests.echange.fabrique import calendrier_ical, erreurs, seul
+from tests.outils.echange.fabrique import calendrier_ical, erreurs, seul
 
 from edt.domaine.enumerations import Gravite
 from edt.echange import ical
