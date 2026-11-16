@@ -199,7 +199,7 @@ h3 {
   color: #ffffff;
 }
 
-/* Compteur d'un onglet (« À traiter ») : pastille chargée par HTMX, sans effet sur la hauteur. */
+/* Compteur d'un onglet (points à traiter, sur « Générer ») : pastille chargée par HTMX, sans effet sur la hauteur. */
 .onglet .edt-compteur-onglet {
   display: inline-block;
   min-width: 1.3rem;
@@ -1490,7 +1490,7 @@ fieldset.champ {
     padding: 0.5rem 0;
   }
 
-  /* Les cinq onglets restent tous visibles : ils passent sur deux rangées s'il le faut. */
+  /* Les six onglets restent tous visibles : ils passent sur deux rangées s'il le faut. */
   .onglets {
     flex-basis: 100%;
   }
