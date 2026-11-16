@@ -77,6 +77,32 @@ def test_contraintes_choisies(version_id, session):
         verifier_version(session, version_id, ["PAS_UN_CODE"])
 
 
+def test_instantane_charge_une_fois_par_session_tant_qu_elle_n_ecrit_rien(
+    version_id, session, monkeypatch
+):
+    # L'accueil vérifie la semaine type puis les séances datées de la même version.
+    from edt.services import verification
+
+    chargements = []
+    original = verification.charger_instantane
+
+    def espion(*args, **kwargs):
+        chargements.append(args[1:])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(verification, "charger_instantane", espion)
+    verifier_version(session, version_id)
+    verifier_occurrences_version(session, version_id)
+    assert len(chargements) == 1
+
+    # Une écriture de la session (ici un verrou posé) fait recharger l'instantané.
+    ligne = session.scalar(select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == version_id))
+    ligne.verrou = True
+    session.flush()
+    assert verifier_version(session, version_id).par_code == {}
+    assert len(chargements) == 2
+
+
 def test_modification_envisagee_sans_rien_enregistrer(version_id, jeu_minimal, session):
     instantane = charger_instantane(session, jeu_minimal.semestre_id)
     td_g2 = next(b for b in instantane.besoins if b.libelle == "TD Mathématiques - A1-G2")

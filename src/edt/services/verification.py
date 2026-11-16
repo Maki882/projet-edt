@@ -14,7 +14,10 @@ délèguent au vérificateur pur (`edt.verification`) ; elles n'écrivent rien.
   ou la version active d'un semestre, ou celle du semestre par défaut).
 
 L'instantané d'une version est chargé avec cette version comme version de
-base : les verrous sont ceux de la version vérifiée. Le résultat est un
+base : les verrous sont ceux de la version vérifiée. Il est gardé dans la
+session tant qu'elle n'écrit rien (`_instantane_de`) : vérifier la semaine
+type puis les séances datées d'une version, comme le fait l'accueil, ne le
+charge qu'une fois. Le résultat est un
 `RapportVerification` figé, sérialisable en JSON par `vers_dict()`.
 
 Niveaux des contraintes : sans `niveaux` ni `contraintes_actives`, chaque
@@ -52,8 +55,8 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import event, select
+from sqlalchemy.orm import ORMExecuteState, Session
 
 from edt.db.modeles import Semestre, VersionEdt
 from edt.db.moteur import identifiant_valide
@@ -214,7 +217,7 @@ def verifier_version(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     placements = charger_placements(session, version.id)
     anomalies = verifier(instantane, placements, codes, niveaux=retenus, niveaux_regles=regles)
     indicateurs = calculer_indicateurs(instantane, placements, anomalies)
@@ -264,7 +267,7 @@ def verifier_occurrences_version(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     toutes = charger_occurrences(session, version.id)
 
     def dans(date: dt.date, debut: dt.date | None, fin: dt.date | None) -> bool:
@@ -335,7 +338,7 @@ def verifier_modification(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     if seance_id not in {seance.id for seance in instantane.seances}:
         raise ErreurIntrouvable(
             f"La séance « {seance_id} » n'existe pas dans le semestre « {instantane.libelle} »."
@@ -455,6 +458,41 @@ def version_a_verifier(
 # --------------------------------------------------------------------------- #
 # Outils
 # --------------------------------------------------------------------------- #
+
+
+_CLE_INSTANTANES = "edt.services.verification.instantanes"
+"""Clé de `Session.info` où sont gardés les instantanés chargés par cette session."""
+
+
+def _instantane_de(session: Session, version: VersionEdt) -> Instantane:
+    """Instantané du semestre de `version` (sa version de base), chargé une fois par session.
+
+    Il est oublié dès que la session écrit (flush, instruction autre qu'une
+    lecture), valide ou annule (`_oublier_instantanes`) ; une session qui a
+    des modifications en attente le recharge toujours.
+    """
+    if session.new or session.dirty or session.deleted:
+        return charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    gardes = session.info.setdefault(_CLE_INSTANTANES, {})
+    cle = (version.semestre_id, version.id)
+    if cle not in gardes:
+        gardes[cle] = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    else:
+        journal.debug("Instantané de la version %d repris de la session", version.id)
+    return gardes[cle]
+
+
+@event.listens_for(Session, "after_flush")
+@event.listens_for(Session, "after_commit")
+@event.listens_for(Session, "after_rollback")
+def _oublier_instantanes(session: Session, *_: object) -> None:
+    session.info.pop(_CLE_INSTANTANES, None)
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _oublier_apres_ecriture(etat: ORMExecuteState) -> None:
+    if not etat.is_select:
+        etat.session.info.pop(_CLE_INSTANTANES, None)
 
 
 def _version(session: Session, version_id: int) -> VersionEdt:
