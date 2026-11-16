@@ -12,7 +12,6 @@ import dataclasses
 from sqlalchemy import select
 from tests.outils.solveur.en_base import regles_du_jeu as _regles_du_jeu
 from tests.outils.solveur.fabrique import OPTIONS
-from typer.testing import CliRunner
 
 from edt import cli
 from edt.db import modeles as m
@@ -68,8 +67,7 @@ def test_les_regles_sont_copiees_avec_le_calcul_et_rendues_au_suivi(jeu_minimal)
     assert niveaux["R001"] == "necessaire" and niveaux["R002"] == "important"
 
 
-def test_commande_generer_regle(jeu_minimal):
-    lanceur = CliRunner()
+def test_commande_generer_regle(jeu_minimal, lanceur):
     semestre = str(jeu_minimal.semestre_id)
     base = ["generer", "--semestre", semestre, "--sans-optimiser", "--temps-limite", "30"]
     resultat = lanceur.invoke(
@@ -106,8 +104,7 @@ def test_commande_generer_regle(jeu_minimal):
     assert resultat.exit_code == 0 and "Règles personnalisées : " not in resultat.output
 
 
-def test_commande_pre_verifier_regle(jeu_minimal):
-    lanceur = CliRunner()
+def test_commande_pre_verifier_regle(jeu_minimal, lanceur):
     resultat = lanceur.invoke(
         cli.app,
         ["pre-verifier", "--semestre", str(jeu_minimal.semestre_id), "--sans-regle", "R001"],

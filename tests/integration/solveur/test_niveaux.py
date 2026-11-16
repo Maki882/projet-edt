@@ -13,7 +13,6 @@ import pytest
 from sqlalchemy import select
 from tests.outils.solveur.aides import niveaux_avec
 from tests.outils.solveur.fabrique import NIVEAUX_DURS, OPTIONS
-from typer.testing import CliRunner
 
 from edt import cli
 from edt.db import modeles as m
@@ -69,8 +68,7 @@ def test_un_calcul_d_avant_les_niveaux_est_lu_avec_ses_contraintes_desactivees(j
 # --------------------------------------------------------------------------- #
 
 
-def test_commande_pre_verifier_niveau(jeu_minimal):
-    lanceur = CliRunner()
+def test_commande_pre_verifier_niveau(jeu_minimal, lanceur):
     semestre = str(jeu_minimal.semestre_id)
     resultat = lanceur.invoke(
         cli.app,
@@ -93,8 +91,7 @@ def test_commande_pre_verifier_niveau(jeu_minimal):
     assert refuse.exit_code != 0 and "Niveau inconnu" in refuse.output
 
 
-def test_commande_generer_niveau(jeu_minimal):
-    lanceur = CliRunner()
+def test_commande_generer_niveau(jeu_minimal, lanceur):
     semestre = str(jeu_minimal.semestre_id)
     resultat = lanceur.invoke(
         cli.app,
@@ -136,8 +133,8 @@ def test_commande_generer_niveau(jeu_minimal):
         (["--niveau", "INCONNUE=important"], "Contrainte inconnue"),
     ],
 )
-def test_commande_generer_niveau_refuse(jeu_minimal, arguments, attendu):
-    resultat = CliRunner().invoke(
+def test_commande_generer_niveau_refuse(jeu_minimal, lanceur, arguments, attendu):
+    resultat = lanceur.invoke(
         cli.app, ["generer", "--semestre", str(jeu_minimal.semestre_id), *arguments]
     )
     assert resultat.exit_code == 1, resultat.output
