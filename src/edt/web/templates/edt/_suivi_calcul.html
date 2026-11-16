@@ -87,7 +87,8 @@
   {%- endif %}
   <div class="edt-boutons">
     {%- if r.suivi.version_id %}
-    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {#- Sans séances datées, le bouton qui les produit n'existe que dans la vue datée. #}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}{% if r.datees and r.datees.erreur %}&amp;couche=date{% endif %}">Voir l'emploi du temps</a>
     {%- endif %}
     {%- if r.nb_a_programmer %}
     <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">{% if r.nb_a_programmer == 1 %}Programmer la séance restante{% else %}Programmer les {{ r.nb_a_programmer }} séances restantes{% endif %}</a>
@@ -121,7 +122,8 @@
   {%- elif r.issue == "erreur" %}
   <div class="edt-boutons">
     {%- if r.suivi.version_id %}
-    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {#- Version enregistrée sans ses séances datées : la vue datée porte le bouton qui les produit. #}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}&amp;couche=date">Voir l'emploi du temps</a>
     {%- endif %}
     <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
       <button type="submit" class="bouton{% if not r.suivi.version_id %} bouton-principal{% endif %}">Relancer le même calcul</button>

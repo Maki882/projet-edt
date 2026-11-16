@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import re
 import threading
 
 import pytest
@@ -48,6 +50,15 @@ def _durees() -> tuple[int, int]:
     with session_base() as session:
         parametres = lire_parametres(session)
     return parametres.temps_limite_s, parametres.temps_limite_long_s
+
+
+def _bouton_produire_au_bout_du_lien(client, page: str) -> bool:
+    """Vrai si le lien « Voir l'emploi du temps » de `page` mène au bouton qui produit les
+    séances datées (le message de la page renvoie à ce bouton)."""
+    (adresse,) = re.findall(r'href="([^"]+)">Voir l.emploi du temps<', page)
+    cible = client.get(html.unescape(adresse))
+    assert cible.status_code == 200, adresse
+    return ">Produire les séances datées</button>" in cible.text
 
 
 def _nb_calculs() -> int:
@@ -495,6 +506,28 @@ def test_arret_d_un_calcul_termine_dit_qu_il_est_fini(version_generee, client):
 
 
 @pytest.mark.cas_limite
+def test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit(
+    jeu_minimal, client, monkeypatch
+):
+    """Cas : le calcul enregistre sa semaine type, puis la production des séances datées échoue ;
+    la page du calcul dit de les produire avec le bouton « Produire les séances datées ».
+
+    Risque : le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas
+    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique.
+    """
+
+    def instanciation_en_panne(session, version_id, *args, **kwargs):
+        raise RuntimeError("panne simulée")
+
+    monkeypatch.setattr(generation, "instancier_version", instanciation_en_panne)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    assert generation.attendre_calcul(calcul_id, DELAI).reussi
+    page = client.get(f"/calculs/{calcul_id}").text
+    assert "Produire les séances datées" in page
+    assert _bouton_produire_au_bout_du_lien(client, page)
+
+
+@pytest.mark.cas_limite
 @pytest.mark.parametrize("version_enregistree", [False, True], ids=["sans version", "avec version"])
 def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_enregistree):
     """Cas : le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours »
@@ -529,7 +562,8 @@ def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_e
     assert "<summary>Références pour obtenir de l'aide</summary>" in fragment
     if version_enregistree:
         assert "Aucun emploi du temps n&#39;a été enregistré" not in page
-        assert "Produire les séances datées" in page and "Voir l'emploi du temps" in page
+        assert "Produire les séances datées" in page
+        assert _bouton_produire_au_bout_du_lien(client, page)
     else:
         assert "Aucun emploi du temps n&#39;a été enregistré" in page
         assert "Voir l'emploi du temps" not in page
