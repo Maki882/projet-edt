@@ -1,8 +1,12 @@
 # Données fictives
 
-L'école n'a fourni aucune donnée. Le paquet `edt.synthese` fabrique donc un
-établissement d'ingénieurs **fictif mais réaliste** (type ISEP) qui alimente
-les tests, le solveur et la démonstration. Tout y est inventé : noms tirés
+Ce document décrit le générateur de jeux de données fictifs : son usage, ce
+qu'il produit et comment il garantit la faisabilité. Il s'adresse aux
+développeurs.
+
+Toutes les données de l'application sont fictives. Le paquet `edt.synthese`
+fabrique un établissement d'ingénieurs **fictif mais réaliste** (type ISEP)
+qui alimente les tests, le solveur et la démonstration. Tout y est inventé : noms tirés
 par Faker (`fr_FR`), identifiants anonymes, aucune donnée de santé
 (l'accessibilité est un drapeau porté par un groupe).
 
@@ -332,9 +336,10 @@ identifiants restent uniques.
 
 ## Cas limites
 
-La banque `test_cas_limites.py` (`tests/unitaires/synthese/` et
-`tests/integration/synthese/`, marqueur `cas_limite`, une
-docstring « Cas / Risque » par test) fige le comportement aux bords :
+Les fichiers `test_cas_limites.py` de `tests/unitaires/synthese/` et
+`tests/integration/synthese/` (marqueur `cas_limite`, une docstring « Cas :
+… Risque : … » par test, catalogue dans
+[banque-de-tests.md](banque-de-tests.md)) figent le comportement aux bords :
 
 | Situation | Comportement |
 |---|---|
@@ -348,9 +353,9 @@ docstring « Cas / Risque » par test) fige le comportement aux bords :
 | Autre version de Faker, noms épuisés | même jeu hors noms ; homonymes admis, pas de boucle sans fin |
 | Graines 10 à 19 de chaque taille (test `perf`) | aucun besoin écarté, témoin et règles valides |
 
-Reste à corriger hors de ce lot (test `xfail` strict) : le service
-`recharger_jeu_fictif` remet la base à zéro avant que la génération ne
-refuse une graine ou une année ; il doit appeler `valider_demande` d'abord.
+Le service `recharger_jeu_fictif` contrôle la graine et l'année
+(`valider_demande`) avant toute remise à zéro : une demande refusée ne vide
+jamais la base.
 
 ## Limites
 
@@ -361,13 +366,13 @@ refuse une graine ou une année ; il doit appeler `valider_demande` d'abord.
   deux épreuves simultanées seraient refusées (`GROUPE_UNIQUE`). Le groupe
   tiers-temps n'a donc **ni inscriptions ni chevauchement déclaré** (son
   effectif est saisi), et la salle de la classe compte ces étudiants en trop.
-  Proposition : une colonne `Besoin.epreuve_principale_id` (le besoin
+  Évolution possible : une colonne `Besoin.epreuve_principale_id` (le besoin
   tiers-temps désigne l'épreuve dont il est le double) qui imposerait le même
   début et lèverait le conflit de groupes entre les deux seules séances.
 - **Fermetures et groupes transverses.** Une fermeture de portée « groupe »
   ne vaut que pour ses descendants : les partiels, le stage et la semaine
   d'intégration reçoivent donc une fermeture par groupe transverse et
-  tiers-temps de la promotion. Proposition : une colonne
+  tiers-temps de la promotion. Évolution possible : une colonne
   `Groupe.promotion_id` (rattachement sans inclusion) prise en compte par
   les fermetures.
 - **Matière et semestre.** Une matière n'a pas de semestre ; c'est le besoin
@@ -378,7 +383,8 @@ refuse une graine ou une année ; il doit appeler `valider_demande` d'abord.
 - **Option sans liste** : déclarée chevauchante avec sa promotion, elle n'est
   en conflit qu'avec la lignée de la promotion, pas avec les parcours (règle
   du projet).
-- **Apprentis** : semaine type « école » seulement (décision V1).
+- **Apprentis** : semaine type « école » seulement ; le calendrier
+  d'alternance avec l'entreprise n'est pas modélisé.
 - Le témoin est glouton : il prouve la faisabilité, pas la qualité. Ses
   indicateurs (trous, changements de campus) sont un plancher que le
   solveur doit améliorer. Malgré les relances, une graine peut encore
