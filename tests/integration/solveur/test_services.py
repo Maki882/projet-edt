@@ -12,6 +12,7 @@ import dataclasses
 import datetime as dt
 import logging
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -20,7 +21,6 @@ import types
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError
 from tests.outils.solveur.en_base import OPTIONS
@@ -31,8 +31,10 @@ from tests.outils.solveur.en_base import rendre_impossible as _rendre_impossible
 
 import edt
 from edt import cli, solveur
+from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db import moteur as module_moteur
+from edt.db.moteur import chemin_base, session_base
 from edt.domaine.calendrier import lundi_de
 from edt.domaine.contraintes import niveaux_depuis_desactivees
 from edt.domaine.enumerations import (
@@ -61,7 +63,6 @@ from edt.services.verification import (
 )
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
-from edt.web.app import creer_app
 
 DELAI = 60
 
@@ -571,21 +572,16 @@ def test_calcul_vivant_d_un_autre_processus_n_est_pas_clos(jeu_minimal):
     assert _etat(calcul_id) is EtatCalcul.ERREUR
 
 
-def test_calcul_en_cours_bien_au_dela_de_son_temps_limite_est_clos(jeu_minimal):
+def test_calcul_en_cours_bien_au_dela_de_son_temps_limite_est_clos(jeu_minimal, processus_vivant):
     """Numéro de processus réattribué : passé le délai de grâce, le calcul ne peut plus vivre."""
     il_y_a_longtemps = dt.datetime.now() - dt.timedelta(
         seconds=OPTIONS.temps_limite_s + generation.DELAI_DE_GRACE_S + 60
     )
-    vivant = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
-    try:
-        calcul_id = _calcul_en_cours_d_un_autre_processus(
-            jeu_minimal.semestre_id, vivant.pid, demarre_le=il_y_a_longtemps
-        )
-        assert generation.cloturer_calculs_interrompus() == 1
-        assert _etat(calcul_id) is EtatCalcul.ERREUR
-    finally:
-        vivant.kill()
-        vivant.wait()
+    calcul_id = _calcul_en_cours_d_un_autre_processus(
+        jeu_minimal.semestre_id, processus_vivant.pid, demarre_le=il_y_a_longtemps
+    )
+    assert generation.cloturer_calculs_interrompus() == 1
+    assert _etat(calcul_id) is EtatCalcul.ERREUR
 
 
 def test_commande_generer_interrompue_au_clavier(lanceur, jeu_minimal, monkeypatch):
@@ -774,7 +770,9 @@ def test_options_hors_bornes_refusees_par_la_commande(lanceur, jeu_minimal):
 
 
 @pytest.mark.cas_limite
-def test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi(jeu_minimal, processus_vivant):
+def test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi(
+    jeu_minimal, processus_vivant, caplog
+):
     """Cas : calcul « en cours » d'un autre processus vivant dont le temps limite enregistré vaut
     l'infini ou un texte (ligne ancienne ou corrompue).
 
@@ -782,6 +780,7 @@ def test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi(jeu_minimal, p
     contrôle des calculs abandonnés : `calcul_en_cours()` plante, et toutes les pages avec lui.
     """
     for temps in (float("inf"), "abc"):
+        caplog.clear()
         calcul_id = _calcul_en_cours_d_un_autre_processus(
             jeu_minimal.semestre_id,
             processus_vivant.pid,
@@ -789,6 +788,7 @@ def test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi(jeu_minimal, p
         )
         assert generation.calcul_en_cours().id == calcul_id
         assert generation.cloturer_calculs_interrompus() == 0
+        assert _journalise(caplog, "temps limite enregistré illisible"), temps  # repli dit
         with session_base() as session:
             session.get(m.Calcul, calcul_id).etat = EtatCalcul.ARRETE
 
@@ -810,6 +810,12 @@ def test_identifiant_hors_bornes_est_introuvable(jeu_minimal):
     ):
         with pytest.raises(ErreurIntrouvable):
             appel()
+    for identifiant in (enorme, 999):  # la même phrase partout, hors bornes ou simplement absent
+        for appel in (generation.etat_calcul, generation.demander_arret):
+            with pytest.raises(
+                ErreurIntrouvable, match=f"^Le calcul n° {identifiant} n'existe pas"
+            ):
+                appel(identifiant)
     assert generation.dernier_calcul(enorme) is None
     with session_base() as session:
         for appel in (
@@ -853,11 +859,37 @@ def test_donnees_modifiees_pendant_le_calcul_sont_dites(jeu_minimal, caplog):
 
 
 @pytest.mark.cas_limite
+def test_salle_supprimee_pendant_le_calcul_est_dite(jeu_minimal, caplog):
+    """Cas : une salle retenue par le moteur est supprimée juste avant l'enregistrement de la
+    version (clé étrangère différente de celle du besoin : `ON DELETE SET NULL`).
+
+    Risque : IntegrityError non reconnue, état « erreur inattendue » avec trace, ou séance
+    enregistrée sans salle.
+    """
+
+    def moteur_puis_suppression(instantane, options, arret=None):
+        resultat = generation.solveur.resoudre(instantane, options, arret)
+        with session_base() as session:
+            session.execute(delete(m.Salle).where(m.Salle.id == resultat.placements[0].salle_id))
+        return resultat
+
+    calcul_id = generation.lancer_calcul(
+        jeu_minimal.semestre_id, OPTIONS, moteur=moteur_puis_suppression
+    )
+    suivi = generation.attendre_calcul(calcul_id, DELAI)
+    assert suivi.etat is EtatCalcul.ERREUR, suivi.message
+    assert "ont changé pendant le calcul" in suivi.message
+    assert suivi.version_id is None and _nb_lignes(m.VersionEdt) == 0
+    assert not _journalise(caplog, "inattendue", logging.ERROR)
+
+
+@pytest.mark.cas_limite
 def test_semestre_sans_besoin_ne_cree_pas_de_version_vide(jeu_minimal):
     """Cas : Générer sur un semestre sans aucun besoin, qui a une version de référence active.
 
     Risque : « Aucune séance à placer » pris pour un succès, version vide enregistrée et activée,
-    l'ancienne désactivée : l'emploi du temps affiché se vide sans confirmation.
+    l'ancienne désactivée : l'emploi du temps affiché se vide sans confirmation. Ou refus en
+    « erreur » (journal au niveau ERROR) que les pré-vérifications de l'écran n'annoncent pas.
     """
     with session_base() as session:
         session.execute(delete(m.Besoin).where(m.Besoin.semestre_id == jeu_minimal.semestre_id))
@@ -870,8 +902,14 @@ def test_semestre_sans_besoin_ne_cree_pas_de_version_vide(jeu_minimal):
                 active=True,
             )
         )
+    with session_base() as session:
+        (refus,) = generation.pre_verifier_semestre(session, jeu_minimal.semestre_id)
+    assert refus.bloquante and refus.message == generation.MESSAGE_SANS_SEANCE
     suivi = generer(jeu_minimal.semestre_id)
-    assert suivi.etat is EtatCalcul.ERREUR and suivi.version_id is None
+    # Même visage que tout refus des pré-vérifications : impossible, refusé, raison listée.
+    assert suivi.etat is EtatCalcul.INFAISABLE and suivi.version_id is None
+    assert suivi.statistiques["refuse"] is True
+    assert suivi.statistiques["impossibilites"] == [generation.MESSAGE_SANS_SEANCE]
     assert "aucune séance à placer" in suivi.message
     with session_base() as session:
         (version,) = session.scalars(select(m.VersionEdt)).all()
@@ -899,8 +937,8 @@ def test_journal_de_calcul_impossible_donne_la_vraie_cause(jeu_minimal, environn
 def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
     lanceur, base, environnement
 ):
-    """Cas : `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier (corrigé par le socle
-    à la demande de ce lot ; le socle a son propre test, celui-ci garde le point de vue du calcul).
+    """Cas : `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier, vu du calcul (le
+    socle a son propre test).
 
     Risque : « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal.
     """
@@ -912,18 +950,27 @@ def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
 
 
 @pytest.mark.cas_limite
-def test_un_calcul_illisible_est_clos_sans_bloquer_l_application(jeu_minimal, caplog):
+def test_un_calcul_illisible_est_clos_sans_bloquer_l_application(jeu_minimal, client, caplog):
     """Cas : lignes de calcul aux JSON mal typés : « en cours » avec statistiques en texte et temps
-    limite « abc » ; « réussi » avec avertissements en texte, niveaux « pause », niveaux de règles
-    et règles illisibles, contraintes désactivées en texte.
+    limite « abc » ; « en cours » avec un numéro de processus en texte ou booléen et une heure de
+    lancement en texte ou NaN ; « réussi » avec avertissements en texte, niveaux « pause »,
+    niveaux de règles et règles illisibles, contraintes désactivées en texte.
 
     Risque : AttributeError ou ValueError dans le suivi : accueil et écran Calculs en 500,
-    lancement impossible jusqu'à une réparation SQL ; avertissements affichés lettre à lettre.
+    lancement impossible jusqu'à une réparation SQL ; avertissements affichés lettre à lettre ;
+    durée négative ; journal rempli du même avertissement à chaque page vue.
     """
     semestre_id = jeu_minimal.semestre_id
     illisible = _calcul_fictif(
         semestre_id, parametres={"temps_limite_s": "abc"}, statistiques="pas un dict"
     )
+    partiels = [
+        _calcul_fictif(
+            semestre_id,
+            statistiques={generation.CLE_PROCESSUS: pid, generation.CLE_DEMARRAGE: depart},
+        )
+        for pid, depart in (("abc", "hier"), (True, float("nan")))
+    ]
     corrompu = _calcul_fictif(
         semestre_id,
         etat=EtatCalcul.REUSSI,
@@ -934,16 +981,24 @@ def test_un_calcul_illisible_est_clos_sans_bloquer_l_application(jeu_minimal, ca
         statistiques={"avertissements": "Un seul avertissement"},
         message="Réussi malgré tout.",
     )
-    assert generation.calcul_en_cours() is None  # la ligne illisible est close, sans plantage
+    assert generation.calcul_en_cours() is None  # les lignes illisibles sont closes, sans plantage
     clos = generation.etat_calcul(illisible)
     assert clos.etat is EtatCalcul.ERREUR and "illisible" in clos.message
     assert _journalise(caplog, "illisible")
+    for calcul_id in partiels:  # numéro de processus illisible : abandonné, durée non négative
+        partiel = generation.etat_calcul(calcul_id)
+        assert partiel.etat is EtatCalcul.ERREUR and 0 <= partiel.temps_ecoule_s < 60
+    caplog.clear()
     suivi = generation.etat_calcul(corrompu)
     assert suivi.avertissements == ("Un seul avertissement",)
     assert suivi.niveaux == niveaux_depuis_desactivees(["PAUSE"])
     assert suivi.niveaux_regles is None and suivi.regles == ()
+    signales = len(caplog.records)
+    assert signales and all(r.levelno == logging.WARNING for r in caplog.records)
     assert generation.dernier_calcul(semestre_id).id == corrompu
-    client = TestClient(creer_app())
+    generation.etat_calcul(corrompu)
+    # Relu à chaque page : le même défaut n'est signalé qu'une fois au niveau WARNING.
+    assert sum(r.levelno == logging.WARNING for r in caplog.records) == signales
     for chemin in ("/", "/calculs"):
         assert client.get(chemin).status_code == 200, chemin
     assert generer(semestre_id).etat is EtatCalcul.REUSSI
@@ -966,7 +1021,7 @@ def test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation(
     monkeypatch.setattr(generation, "instancier_version", instanciation_en_panne)
     suivi = generer(jeu_minimal.semestre_id)
     assert suivi.etat is EtatCalcul.REUSSI and suivi.version_id is not None
-    assert "relancer l'instanciation" in suivi.message
+    assert "Produire les séances datées" in suivi.message
     assert suivi.statistiques["instanciation"] == {"erreur": True}
     assert occurrences(suivi.version_id) == []
 
@@ -976,7 +1031,7 @@ def test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation(
     monkeypatch.setattr(generation, "instancier_version", instanciation_interrompue)
     suivi = generer(jeu_minimal.semestre_id)
     assert suivi.etat is EtatCalcul.ERREUR and suivi.version_id is not None
-    assert "relancer l'instanciation" in suivi.message
+    assert "Produire les séances datées" in suivi.message
     assert f"--version {suivi.version_id}" in suivi.message
     # L'instanciation relancée à la main produit les séances datées.
     resultat = lanceur.invoke(cli.app, ["instancier", "--version", str(suivi.version_id)])
@@ -1100,19 +1155,29 @@ def test_deux_lancements_simultanes_dans_deux_processus(jeu_minimal, tmp_path):
                 str(jeu_minimal.semestre_id),
             ],
             stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
             env=environnement,
         )
         for pret in prets
     ]
-    echeance = time.monotonic() + DELAI
-    while not all(pret.exists() for pret in prets):
-        assert time.monotonic() < echeance, "les processus n'ont pas démarré"
-        assert all(p.poll() is None for p in processus), "un processus s'est arrêté avant le départ"
-        time.sleep(0.01)
-    temoin.write_text("partez", encoding="utf-8")
-    sorties = [p.communicate(timeout=DELAI)[0].split() for p in processus]
+    try:
+        echeance = time.monotonic() + DELAI
+        while not all(pret.exists() for pret in prets):
+            assert time.monotonic() < echeance, "les processus n'ont pas démarré"
+            assert all(p.poll() is None for p in processus), [p.communicate() for p in processus]
+            time.sleep(0.01)
+        temoin.write_text("partez", encoding="utf-8")
+        resultats = [p.communicate(timeout=DELAI) for p in processus]
+    finally:
+        for p in processus:  # rien ne survit au test, même en cas d'échec ou de dépassement
+            if p.poll() is None:
+                p.kill()
+                p.wait()
+    for sortie, erreur in resultats:
+        assert sortie.split(), erreur  # une trace du processus plutôt qu'un IndexError
+    sorties = [sortie.split() for sortie, _ in resultats]
     assert sorted(sortie[0] for sortie in sorties) == ["LANCE", "REFUSE"], sorties
     with session_base() as session:
         calculs = session.scalars(select(m.Calcul)).all()
@@ -1223,12 +1288,50 @@ def test_echec_de_l_ecriture_finale_est_retente(jeu_minimal, monkeypatch, caplog
 
 
 @pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("panne", "tentatives"),
+    [
+        (
+            OperationalError("UPDATE calcul", {}, Exception("database is locked")),
+            generation.NB_ESSAIS_CLOTURE,
+        ),
+        (TypeError("valeur non sérialisable"), 1),
+    ],
+    ids=["base toujours occupée", "erreur déterministe"],
+)
+def test_ecriture_finale_toujours_en_echec(jeu_minimal, monkeypatch, caplog, panne, tentatives):
+    """Cas : l'écriture de l'état final échoue à chaque tentative (base occupée au-delà des trois
+    tentatives), ou échoue sur une erreur déterministe (erreur de programmation).
+
+    Risque : exception échappée du fil du calcul, calcul « en cours » pour toujours, ou erreur
+    déterministe rejouée trois fois (deux secondes de pauses) avant d'être dite.
+    """
+    appels: list[int] = []
+
+    def toujours_en_panne(*args, **kwargs):
+        appels.append(1)
+        raise panne
+
+    monkeypatch.setattr(generation, "_enregistrer_fin", toujours_en_panne)
+    monkeypatch.setattr(generation, "DELAI_ENTRE_ESSAIS_S", 0.01)
+    suivi = generer(jeu_minimal.semestre_id)
+    assert len(appels) == tentatives
+    assert _journalise(caplog, "Impossible d'enregistrer la fin du calcul", logging.ERROR)
+    # L'état final n'a pas pu être écrit ; le fil disparu, le calcul est clos au prochain appel.
+    assert suivi.etat is EtatCalcul.EN_COURS
+    assert generation.calcul_en_cours() is None
+    assert _etat(suivi.id) is EtatCalcul.ERREUR
+
+
+@pytest.mark.cas_limite
 def test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant(jeu_minimal, processus_vivant, monkeypatch):
-    """Cas : l'heure locale avance d'une heure (passage à l'heure d'été, correction NTP) pendant
+    """Cas : l'heure locale avance d'une heure (heure d'été, changement de fuseau) pendant
     qu'un calcul d'un autre processus tourne depuis trente secondes.
 
     Risque : échéance « temps limite + grâce » atteinte une heure trop tôt, calcul vivant clos
-    « interrompu » à tort ; temps écoulé affiché majoré d'une heure.
+    « interrompu » à tort ; temps écoulé affiché majoré d'une heure. Limite : un saut de
+    l'horloge système elle-même (correction NTP) déplace aussi `time.time()` et n'est pas
+    couvert (`time.monotonic` l'éviterait, mais ne se compare pas d'un processus à l'autre).
     """
     depart = dt.datetime.now() - dt.timedelta(seconds=30)
     calcul_id = _calcul_en_cours_d_un_autre_processus(
@@ -1250,3 +1353,95 @@ def test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant(jeu_minimal, processus_v
     suivi = generation.etat_calcul(calcul_id)
     assert suivi.etat is EtatCalcul.EN_COURS
     assert 25 <= suivi.temps_ecoule_s <= 45, suivi.temps_ecoule_s
+
+
+@pytest.mark.cas_limite
+def test_cloture_sans_attendre_retablit_le_delai_de_verrou_de_la_connexion(jeu_minimal):
+    """Cas : un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion
+    dont le délai de verrou n'est pas celui par défaut.
+
+    Risque : le délai est remis à une constante lue à l'import du module, pas à la valeur que la
+    connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé
+    en silence pour toutes les requêtes servies ensuite par cette connexion.
+    """
+    abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
+    with session_base() as session:
+        brute = session.connection().connection.dbapi_connection
+        brute.execute("PRAGMA busy_timeout=4321")
+        try:
+            with generation._verrou:
+                abandonnes = generation._calculs_abandonnes(session)
+                assert generation._clore_sans_attendre(session, abandonnes)
+            (delai,) = brute.execute("PRAGMA busy_timeout").fetchone()
+        finally:
+            brute.execute(f"PRAGMA busy_timeout={module_moteur.DELAI_VERROU_MS}")
+    assert delai == 4321
+    assert _etat(abandonne) is EtatCalcul.ERREUR
+
+
+def _ecriture_concurrente_sans_attendre(calcul_id: int) -> bool:
+    """Une autre connexion écrit et valide aussitôt, sans attendre le verrou (`timeout=0`).
+
+    Renvoie vrai si elle a trouvé le verrou d'écriture déjà pris (elle n'attend jamais : pas de
+    blocage du test).
+    """
+    brute = sqlite3.connect(
+        chemin_base(charger_configuration().db_url), timeout=0, isolation_level=None
+    )
+    try:
+        brute.execute("BEGIN IMMEDIATE")
+        brute.execute(
+            "UPDATE calcul SET message = 'écriture d''un autre écrivain' WHERE id = ?", (calcul_id,)
+        )
+        brute.execute("COMMIT")
+        return False
+    except sqlite3.OperationalError as erreur:
+        assert "locked" in str(erreur)
+        return True
+    finally:
+        brute.close()
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("appelant", ["service de génération", "commande instancier", "page"])
+def test_instanciation_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture(
+    jeu_minimal, lanceur, client, monkeypatch, appelant
+):
+    """Cas : pendant que les séances datées d'une version sont produites (fin d'un calcul,
+    commande `instancier`, bouton « Recalculer les séances datées »), une autre connexion valide
+    une écriture entre la lecture de la version et le remplacement de ses séances datées.
+
+    Risque : `instancier_version` lit dans une transaction différée puis écrit sur un instantané
+    périmé : SQLite répond aussitôt « database is locked » sans attendre, la commande échoue, le
+    calcul réussi reste sans séances datées, ou la page répond « base occupée ».
+    """
+    suivi = generer(jeu_minimal.semestre_id)
+    assert suivi.reussi, suivi.message
+    from edt.services import instanciation
+
+    refus: list[bool] = []
+    lire_placements = instanciation.charger_placements
+
+    def placements_puis_ecriture(session, version_id):
+        placements = lire_placements(session, version_id)  # la version est déjà lue
+        refus.append(_ecriture_concurrente_sans_attendre(suivi.id))
+        return placements
+
+    monkeypatch.setattr(instanciation, "charger_placements", placements_puis_ecriture)
+    if appelant == "service de génération":
+        statistiques: dict = {}
+        generation._instancier(suivi.version_id, statistiques, charger_configuration())
+        assert "erreur" not in statistiques["instanciation"]
+    elif appelant == "commande instancier":
+        resultat = lanceur.invoke(cli.app, ["instancier", "--version", str(suivi.version_id)])
+        assert resultat.exit_code == 0, _sortie_complete(resultat)
+    else:
+        reponse = client.post(
+            f"/emploi-du-temps/versions/{suivi.version_id}/seances-datees", follow_redirects=False
+        )
+        assert reponse.status_code == 303, reponse.text
+    # Le verrou d'écriture était pris d'emblée : l'autre écrivain a dû attendre son tour.
+    assert refus == [True]
+    assert (
+        len(occurrences(suivi.version_id)) == suivi.statistiques["instanciation"]["nb_occurrences"]
+    )
