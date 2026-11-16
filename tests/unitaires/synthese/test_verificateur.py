@@ -8,13 +8,12 @@ partiels à 14 h).
 from __future__ import annotations
 
 import pytest
+from tests.outils.synthese.aides import Jeu
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
 from edt.services.instantane import charger_instantane
 from edt.verification import verifier
-
-from .conftest import Jeu
 
 
 def _anomalies_inattendues(jeu: Jeu) -> list[str]:

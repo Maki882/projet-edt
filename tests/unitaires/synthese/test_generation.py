@@ -7,6 +7,7 @@ import hashlib
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.synthese.aides import generer
 
 from edt.db import modeles as m
 from edt.db.base import Base
@@ -15,8 +16,6 @@ from edt.domaine.enumerations import NatureGroupe
 from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
 from edt.synthese import CONFIGURATIONS, PETIT, ConfigPromotion, configuration_nommee
 from edt.synthese.generateur import generer_jeu
-
-from .conftest import generer
 
 COLONNES_VOLATILES = {("parametre", "modifie_le")}
 """Colonnes remplies par l'horloge à l'initialisation de la base (hors générateur)."""
