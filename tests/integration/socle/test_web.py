@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import sqlite3
 import sys
+import time
 import types
 from pathlib import Path
 
@@ -92,11 +93,11 @@ def test_accueil_tait_une_base_en_bon_etat(jeu_minimal, client):
     assert reponse.status_code == 200
     assert reponse.headers["X-Request-ID"]
     page = reponse.text
-    assert "Données fictives" not in page  # plus de bandeau : les données sont celles du projet
+    assert "Données fictives" not in page  # pas de bandeau : les données sont celles du projet
     # Tout va bien : ni bloc sur la base, ni emplacement, ni environnement.
     assert "État de la base de données" not in page
     assert "Emplacement" not in page and "Environnement" not in page
-    assert "Contenu</h2>" not in page  # plus de compteurs d'entités sur l'accueil
+    assert "Contenu</h2>" not in page  # pas de compteurs d'entités sur l'accueil
     assert 'href="/" class="actif"' in page  # l'entrée de menu « Accueil » est active
 
 
@@ -206,8 +207,8 @@ def test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise(
     """Cas : démarrage puis arrêt du serveur sur une base prête, avec un calcul resté « en
     cours » depuis un processus disparu.
 
-    Risque : le cycle de vie n'était testé nulle part : journalisation du démarrage, clôture
-    des calculs abandonnés et message d'arrêt pouvaient casser sans signal.
+    Risque : journalisation du démarrage, clôture des calculs abandonnés et message d'arrêt
+    cassés sans signal.
     """
     abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
 
@@ -218,6 +219,38 @@ def test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise(
     assert "Application EDT" in journal and "démarrée" in journal and "arrêtée" in journal
     assert f"Calcul {abandonne} clôturé" in journal
     assert generation.etat_calcul(abandonne).etat is EtatCalcul.ERREUR
+
+
+def _attendre_preparation(dossier: Path) -> str:
+    """Journal, une fois la préparation des premières pages terminée (`edt.web.app._preparer`)."""
+    limite = time.monotonic() + 20
+    while "Premières pages préparées" not in (journal := _journal(dossier)):
+        assert time.monotonic() < limite, "préparation du démarrage non terminée"
+        time.sleep(0.05)
+    return journal
+
+
+@pytest.mark.cas_limite
+def test_une_panne_de_preparation_n_empeche_pas_de_servir(jeu_minimal, environnement, monkeypatch):
+    """Cas : la préparation des premières pages au démarrage échoue (gabarit illisible, page
+    qui lève une exception).
+
+    Risque : démarrage en échec, ou tâche de fond morte en silence ; la panne doit être
+    journalisée et le serveur servir normalement.
+    """
+
+    def panne(*args, **kwargs):
+        raise RuntimeError("préparation impossible")
+
+    monkeypatch.setattr(module_app, "precompiler_gabarits", panne)
+    monkeypatch.setattr(module_app, "_servir_en_interne", panne)
+    with TestClient(module_app.creer_app()) as client:
+        journal = _attendre_preparation(environnement)
+        assert client.get("/sante").status_code == 200
+        assert client.get("/").status_code == 200
+    assert "compilation des gabarits impossible" in journal
+    assert "Préparation de la page / impossible" in journal
+    assert "RuntimeError: préparation impossible" in journal
 
 
 @pytest.mark.cas_limite
@@ -251,6 +284,7 @@ def test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompu
         assert page.status_code == 200 and "not a database" in page.text
     journal = _journal(environnement)
     assert "indisponible au démarrage" in journal and "startup failed" not in journal
+    assert "n'est pas prête" not in journal  # « lancer init-db » n'est pas le remède ici
 
 
 @pytest.mark.cas_limite
@@ -275,7 +309,7 @@ def test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_de
     """Cas : un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné
     attend d'être clos.
 
-    Risque : la clôture (une écriture) faisait échouer le démarrage ; elle doit être reportée
+    Risque : la clôture (une écriture) fait échouer le démarrage ; elle doit être reportée
     (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ».
     """
     abandonne = _calcul_reste_en_cours(jeu_minimal.semestre_id)
