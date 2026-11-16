@@ -44,6 +44,9 @@ edt = ["web/templates/**/*.html", "web/static/**/*"]
 [tool.pytest.ini_options]
 pythonpath = ["src", "."]
 testpaths = ["tests"]
+# Niveau des journaux capturés pendant un test : fixe, pour que la lecture des messages
+# (caplog) ne dépende pas de l'ordre des tests.
+log_level = "INFO"
 markers = [
     "perf: test de charge long, exclu de la CI courante (pytest -m \"not perf\")",
     "cas_limite: test d'un cas limite ou d'une panne plausible (banque de tests, docs/banque-de-tests.md)",
