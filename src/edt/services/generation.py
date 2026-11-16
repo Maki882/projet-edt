@@ -596,8 +596,13 @@ def _message_calcul_introuvable(calcul_id: object) -> str:
 
 
 def _processus_vivant(pid: int) -> bool:
-    """Vrai si un processus de numéro `pid` existe sur cette machine."""
-    if pid <= 0:
+    """Vrai si un processus de numéro `pid` existe sur cette machine.
+
+    Un numéro hors des bornes du système (fichier abîmé ou écrit à la main) ne désigne aucun
+    processus : sans cette garde, `os.kill` lève `OverflowError` sous Linux, et Windows tronque
+    le numéro, qui peut alors désigner un autre processus.
+    """
+    if not _pid_lisible(pid):
         return False
     if os.name == "nt":
         # Sous Windows, `os.kill(pid, 0)` tuerait le processus : il est interrogé sans y toucher.
