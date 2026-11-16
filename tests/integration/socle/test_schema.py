@@ -12,6 +12,7 @@ from tests.outils.socle.schema import (
 )
 
 from edt import cli
+from edt.db.base import Base
 from edt.db.initialisation import (
     MARCHE_A_SUIVRE_SCHEMA_PERIME,
     base_initialisee,
@@ -98,7 +99,10 @@ def test_verifier_schema_avant_la_premiere_initialisation(lanceur, environnement
     resultat = lanceur.invoke(cli.app, ["verifier-schema"])
 
     assert resultat.exit_code == 0  # rien à comparer : init-db créera les tables
-    assert resultat.stdout.startswith("schéma à jour pour les tables existantes ; 29 table(s)")
+    nombre = len(Base.metadata.tables)
+    assert resultat.stdout.startswith(
+        f"schéma à jour pour les tables existantes ; {nombre} table(s)"
+    )
     assert "init-db" in resultat.stdout
 
 
