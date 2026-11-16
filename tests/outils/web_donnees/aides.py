@@ -1,21 +1,8 @@
-"""Fixtures et aides des tests de l'espace « Données » et de la mise en page commune.
-
-Fixtures :
-
-- `site` : client web sur une base chargée du jeu minimal ;
-- `ids` : identifiants utiles du jeu minimal (campus, groupes, semestre...) ;
-- `version_generee` : jeu minimal et une version produite par un vrai calcul
-  (son identifiant) ;
-- `calcul_retenu` : un calcul lancé sur le semestre du jeu minimal, retenu par
-  un moteur qui attend d'être libéré (`liberer()`), puis qui calcule pour de
-  vrai : de quoi agir « pendant le calcul » puis vérifier qu'il aboutit ;
-- `sans_prechauffage` (automatique) : aucun fil de préchauffage des écrans,
-  qui survivrait à la base temporaire du test.
-
-Aides (à importer : `from .conftest import HX, depuis, ...`) :
+"""Aides partagées des tests de l'espace « Données » et de la mise en page commune.
 
 - en-têtes : `HX` (requête HTMX), `depuis(adresse)` (requête HTMX partie
   d'une page, en-tête `HX-Current-URL`) ;
+- identifiants du jeu minimal : `Ids` (rendu par la fixture `ids`) ;
 - base : `identifiant`, `existe`, `compter`, `seance_placee`,
   `occurrence_prevue` ;
 - formulaires : `formulaire_de` (valeurs d'un élément existant, comme le
@@ -25,34 +12,21 @@ Aides (à importer : `from .conftest import HX, depuis, ...`) :
   `NOMBRE_DE_5000_CHIFFRES` (au-delà de ce que Python convertit) ;
 - `LOT_WEB_EDT` : début de la raison d'un `xfail` qui attend une correction du
   lot web-edt (Générer, Emploi du temps, À traiter).
-
-Les tests de la banque des cas limites portent le marqueur `cas_limite` et
-commencent par « Cas : ... Risque : ... ».
 """
 
 from __future__ import annotations
 
 import html
 import re
-import threading
 from dataclasses import dataclass
 from typing import Any
 
-import pytest
-from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
-from edt import solveur
 from edt.db import modeles as m
-from edt.db.jeux import JeuMinimal
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import StatutOccurrence
-from edt.services import generation
-from edt.services.emploi_du_temps import prechauffage
 from edt.services.referentiels import operations
-
-DELAI_CALCUL_S = 20
-"""Garde-fou : un calcul de test qui ne finit pas fait échouer le test au lieu de le bloquer."""
 
 HX = {"HX-Request": "true"}
 """En-têtes d'une requête HTMX."""
@@ -65,11 +39,6 @@ NOMBRE_DE_5000_CHIFFRES = "1" * 5000
 
 LOT_WEB_EDT = "à corriger par le lot web-edt : "
 """Début de la raison d'un `xfail(strict=True)` qui attend une correction du lot web-edt."""
-
-
-# --------------------------------------------------------------------------- #
-# Fixtures
-# --------------------------------------------------------------------------- #
 
 
 @dataclass(frozen=True)
@@ -87,91 +56,6 @@ class Ids:
     enseignant_martin: int
     matiere_maths: int
     type_td: int
-
-
-@pytest.fixture
-def site(jeu_minimal: JeuMinimal, client: TestClient) -> TestClient:
-    """Client web sur une base chargée du jeu minimal."""
-    return client
-
-
-@pytest.fixture
-def ids(jeu_minimal: JeuMinimal) -> Ids:
-    """Identifiants du jeu minimal, lus en base."""
-    with session_base() as session:
-
-        def ident(modele, colonne, valeur) -> int:
-            return session.scalar(select(modele.id).where(colonne == valeur))
-
-        return Ids(
-            annee=jeu_minimal.annee_scolaire_id,
-            semestre=jeu_minimal.semestre_id,
-            ndc=ident(m.Campus, m.Campus.code, "NDC"),
-            issy=ident(m.Campus, m.Campus.code, "ISSY"),
-            salle_n016=ident(m.Salle, m.Salle.code, "N016"),
-            type_cours=ident(m.TypeSalle, m.TypeSalle.code, "COURS"),
-            promo=ident(m.Groupe, m.Groupe.code, "A1"),
-            classe_g1=ident(m.Groupe, m.Groupe.code, "A1-G1"),
-            enseignant_martin=ident(m.Enseignant, m.Enseignant.identifiant, "ENS001"),
-            matiere_maths=ident(m.Matiere, m.Matiere.code, "IM.1101"),
-            type_td=ident(m.TypeSeance, m.TypeSeance.code, "TD"),
-        )
-
-
-@pytest.fixture(autouse=True)
-def sans_prechauffage(monkeypatch) -> None:
-    """Pas de préchauffage des écrans après un calcul : le fil survivrait à la base du test."""
-    monkeypatch.setattr(prechauffage, "ACTIF", False)
-
-
-@pytest.fixture
-def version_generee(jeu_minimal: JeuMinimal) -> int:
-    """Jeu minimal et une version active produite par le vrai moteur ; renvoie son identifiant."""
-    calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
-    suivi = generation.attendre_calcul(calcul_id, DELAI_CALCUL_S)
-    assert suivi.reussi, suivi.message
-    return suivi.version_id
-
-
-@dataclass(frozen=True)
-class CalculRetenu:
-    """Calcul en cours, retenu avant le moteur : `liberer()` le laisse calculer et finir."""
-
-    id: int
-    semestre_id: int
-    _liberation: threading.Event
-
-    def liberer(self) -> generation.SuiviCalcul:
-        """Laisse le vrai moteur calculer, attend la fin du calcul et renvoie son suivi."""
-        self._liberation.set()
-        return generation.attendre_calcul(self.id, DELAI_CALCUL_S)
-
-
-@pytest.fixture
-def calcul_retenu(jeu_minimal: JeuMinimal, monkeypatch):
-    """Calcul lancé sur le semestre du jeu minimal, retenu tant que le test ne le libère pas.
-
-    Le moteur attend d'être libéré, puis appelle le vrai moteur sur l'instantané
-    chargé au lancement : ce que le test a changé entre-temps ne s'y voit pas,
-    mais l'enregistrement de la solution, lui, se fait dans la base telle
-    qu'elle est devenue (c'est là que se voient les suppressions acceptées à tort).
-    """
-    demarre, liberation = threading.Event(), threading.Event()
-    vrai_moteur = solveur.resoudre
-
-    def moteur_retenu(instantane, options, arret=None):
-        demarre.set()
-        assert liberation.wait(DELAI_CALCUL_S), "le calcul retenu n'a pas été libéré"
-        return vrai_moteur(instantane, options, arret)
-
-    monkeypatch.setattr(solveur, "resoudre", moteur_retenu)
-    calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
-    assert demarre.wait(DELAI_CALCUL_S), "le calcul n'a pas atteint le moteur"
-    calcul = CalculRetenu(calcul_id, jeu_minimal.semestre_id, liberation)
-    yield calcul
-    # Le calcul doit être fini avant que la base temporaire ne disparaisse.
-    liberation.set()
-    generation.attendre_calcul(calcul_id, DELAI_CALCUL_S)
 
 
 # --------------------------------------------------------------------------- #

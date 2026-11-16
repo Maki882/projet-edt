@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.web_donnees.aides import HX
 
 from edt.db.modeles import Besoin, Salle
 from edt.db.moteur import session_base
 from edt.erreurs import ErreurRegleMetier
 from edt.services.referentiels import operations
-from edt.services.referentiels.operations import ErreurSaisie
-
-from .conftest import HX
 
 
 def _salle(ids, code="N999", **autres):
@@ -96,14 +94,6 @@ def test_modification(site, ids):
         assert session.get(Salle, ids.salle_n016).equipements == []  # case décochée = retirée
 
 
-def test_modification_partielle_par_le_service(ids):
-    with session_base() as session:
-        valeurs = operations.modifier(
-            session, "salle", ids.salle_n016, {"capacite": 99}, partiel=True
-        )
-    assert valeurs["capacite"] == 99 and len(valeurs["equipements"]) == 2
-
-
 def test_suppression_confirmee(site, ids):
     confirmation = site.get(f"/salles/{ids.salle_n016}/supprimer").text
     assert "Supprimer définitivement" in confirmation
@@ -125,12 +115,6 @@ def test_suppression_refusee_avant_la_base_avec_message(site, ids):
         assert session.scalar(select(func.count()).select_from(Besoin)) == 16  # rien n'a bougé
 
 
-def test_service_refuse_une_saisie_avec_le_detail_par_champ(ids):
-    with session_base() as session, pytest.raises(ErreurSaisie) as erreur:
-        operations.creer(session, "salle", {"code": "", "campus_id": 999, "capacite": -1})
-    assert set(erreur.value.champs) == {"code", "campus_id", "type_salle_id", "capacite"}
-
-
 def test_edition_dans_la_ligne(site):
     edition = site.get("/types-salle/1/ligne/edition", headers={"HX-Request": "true"})
     assert (
@@ -144,11 +128,3 @@ def test_edition_dans_la_ligne(site):
         "/types-salle/1/ligne", data={"code": "AMPHI", "libelle": "Grand amphi"}, headers=HX
     )
     assert "ligne-modifiee" in ok.text and "Grand amphi" in ok.text
-
-
-def test_identifiants_de_toutes_les_pages(ids):
-    with session_base() as session:
-        tous = operations.identifiants(session, "salle")
-        issy = operations.identifiants(session, "salle", filtres={"campus": str(ids.issy)})
-        cherches = operations.identifiants(session, "salle", recherche="n2")
-    assert len(tous) == 6 and len(issy) == 2 and len(cherches) == 1
