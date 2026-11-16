@@ -18,6 +18,7 @@ from tests.outils.solveur.fabrique import (
     JEUDI,
     LUNDI,
     MARDI,
+    NIVEAUX_DURS,
     OPTIONS,
     RENTREE,
     SAMEDI,
@@ -40,6 +41,7 @@ from edt.domaine.enumerations import (
 from edt.domaine.heures import ecart, se_chevauchent
 from edt.domaine.instantane import Creneau
 from edt.solveur import StatutSolveur, resoudre
+from edt.solveur.regles import Regles
 
 
 def sans(*codes: C):
@@ -330,6 +332,31 @@ def test_jours_samedi_reserve_aux_seances_qui_l_autorisent():
     instantane = f.instantane()
     places = verifier_solution(instantane, resoudre(instantane, OPTIONS))
     assert places["1-1"].jour == SAMEDI
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("ignorees", "attendus"),
+    [
+        ((), [C.HORAIRES]),
+        ((C.JOURS,), [C.HORAIRES]),
+        ((C.HORAIRES,), [C.JOURS]),
+        ((C.HORAIRES, C.JOURS), []),
+    ],
+)
+def test_jour_travaille_sans_creneau_une_seule_cause(ignorees, attendus):
+    """Cas : le mardi est un jour travaillé, mais la grille n'a de créneaux que le lundi.
+
+    Risque : la même cause portée par `JOURS` dans le moteur et par `HORAIRES`
+    dans le vérificateur, ou plus dite du tout quand l'une des deux est ignorée.
+    """
+    f = Fabrique(creneaux=grille(jours=[LUNDI], samedi=False))
+    f.salle()
+    f.besoin([f.groupe("A1")], [f.enseignant()])
+    regles = Regles(f.instantane(), ignorees, niveaux=NIVEAUX_DURS)
+    violations = regles.violations_de_jour("1-1", MARDI)
+    assert [v.code for v in violations] == attendus
+    assert all("aucun créneau le mardi" in v.raison for v in violations)
 
 
 # --------------------------------------------------------------------------- #
