@@ -41,12 +41,6 @@
     {%- if l.etat == "ignore" and l.resultat and l.resultat.raison %}
     <span class="banc-test-raison">Ignoré : {{ l.resultat.raison }}</span>
     {%- endif %}
-    {%- if l.resultat and l.resultat.etat == "echec" and l.resultat.detail %}
-    <details class="banc-detail">
-      <summary>Voir le détail de l'échec</summary>
-      <pre>{{ l.resultat.detail }}</pre>
-    </details>
-    {%- endif %}
   </div>
   <div class="banc-test-etat">
     {{ etat(l) }}
@@ -57,6 +51,12 @@
   <div class="banc-test-duree">{% if l.resultat %}{{ duree(l.resultat.duree_s) }}{% endif %}</div>
   <div class="banc-test-date">{% if l.resultat %}<span class="banc-libelle-mobile">Dernière exécution : </span>{{ l.resultat.le|dateheure_fr }}{% else %}<span class="discret">-</span>{% endif %}</div>
   <div class="banc-test-action">{{ bouton("test:" ~ l.test.cle, "Lancer", "Lancer ce test" ~ (" (tous ses cas)" if l.resultat and l.resultat.nb_cas > 1 else "")) }}</div>
+  {%- if l.resultat and l.resultat.etat == "echec" and l.resultat.detail %}
+  <details class="banc-detail">
+    <summary>Voir le détail de l'échec</summary>
+    <pre>{{ l.resultat.detail }}</pre>
+  </details>
+  {%- endif %}
 </div>
 {%- endmacro %}
 

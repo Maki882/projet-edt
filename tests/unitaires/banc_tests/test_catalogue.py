@@ -162,5 +162,6 @@ def test_premiere_phrase_et_nom_lisible():
     assert cat.premiere_phrase("Une phrase. Une autre.\n\nSecond paragraphe.") == "Une phrase."
     assert cat.premiere_phrase("Sur deux\nlignes sans point") == "Sur deux lignes sans point"
     assert cat.premiere_phrase(None) == ""
+    assert cat.premiere_phrase("Lit `docs/x.md` en entier.") == "Lit docs/x.md en entier."
     assert cat.nom_lisible("test_salle_trop_petite") == "Salle trop petite"
     assert cat.nom_lisible("TestGroupe.test_x") == "X"

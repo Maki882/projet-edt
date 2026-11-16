@@ -241,10 +241,10 @@ def nom_lisible(fonction: str) -> str:
 
 
 def premiere_phrase(docstring: str | None) -> str:
-    """Première phrase du premier paragraphe d'une docstring, sur une ligne."""
+    """Première phrase du premier paragraphe d'une docstring, sur une ligne, sans accents graves."""
     if not docstring:
         return ""
-    paragraphe = " ".join(docstring.strip().split("\n\n", 1)[0].split())
+    paragraphe = " ".join(docstring.strip().split("\n\n", 1)[0].replace("`", "").split())
     return _FIN_DE_PHRASE.split(paragraphe, maxsplit=1)[0]
 
 

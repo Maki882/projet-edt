@@ -352,7 +352,8 @@ main:has(.banc-integration) .entete-page h1 {
 }
 
 .banc-detail {
-  margin-top: 0.3rem;
+  grid-column: 1 / -1;
+  flex: 1 1 100%;
 }
 
 .banc-detail > summary {

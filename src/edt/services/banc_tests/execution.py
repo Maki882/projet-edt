@@ -37,6 +37,7 @@ ne reste jamais bloqué.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import datetime as dt
 import importlib.util
@@ -457,6 +458,21 @@ def lancer(cible: Cible, racine: Path, dossier: Path | None = None) -> Execution
         nouvelle.fil.start()
     journal.info("Exécution des tests %s lancée : %s", nouvelle.id, cible.libelle)
     return nouvelle
+
+
+@atexit.register
+def _arreter_a_la_sortie() -> None:
+    """Arrête le sous-processus en cours quand ce processus se termine normalement.
+
+    Le sous-processus a son propre groupe (pour être arrêté avec ses enfants) :
+    sans cela, il survivrait à un arrêt du serveur par Ctrl+C. Un arrêt brutal
+    (processus tué) ne passe pas ici ; sous systemd, l'arrêt du service arrête
+    tout son groupe de contrôle, sous-processus compris.
+    """
+    courante = _courante
+    if courante is not None and courante.en_cours and courante.processus is not None:
+        journal.warning("Arrêt du processus : exécution des tests %s interrompue", courante.id)
+        _tuer(courante.processus)
 
 
 def demander_arret() -> Execution | None:
