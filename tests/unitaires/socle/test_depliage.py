@@ -6,8 +6,9 @@ import datetime as dt
 import random
 
 import pytest
+from tests.outils.socle.depliage import semaines_ouvertes_de_reference
 
-from edt.domaine.calendrier import Semaine, semaines_entre
+from edt.domaine.calendrier import semaines_entre
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.depliage import deplier, repartition_reguliere, semaines_ouvertes
 from edt.domaine.enumerations import ModeVolume, NatureJourFerme
@@ -140,32 +141,6 @@ def test_semaine_d_examens_ferme_les_cours_mais_pas_les_seances_ponctuelles():
 # --------------------------------------------------------------------------- #
 # Non-régression : le calcul rapide des semaines ouvertes suit la règle à la lettre
 # --------------------------------------------------------------------------- #
-
-
-def semaines_ouvertes_de_reference(un_besoin, semaines, jours_fermes) -> tuple[Semaine, ...]:
-    """La règle écrite au plus simple, jour par jour, avec `JourFerme.concerne`.
-
-    C'est la définition (lente : une question par fermeture, par jour et par
-    semaine). `semaines_ouvertes` doit toujours donner exactement ce résultat.
-    """
-    ouvertes = []
-    for semaine in semaines:
-        if un_besoin.date_debut is not None and semaine.dimanche < un_besoin.date_debut:
-            continue
-        if un_besoin.date_fin is not None and semaine.lundi > un_besoin.date_fin:
-            continue
-        entierement_fermee = all(
-            any(
-                ferme.concerne(
-                    semaine.date_du(jour), un_besoin.groupes, ponctuelle=un_besoin.ponctuel
-                )
-                for ferme in jours_fermes
-            )
-            for jour in range(5)
-        )
-        if not entierement_fermee:
-            ouvertes.append(semaine)
-    return tuple(ouvertes)
 
 
 def _fermeture_au_hasard(tirage: random.Random) -> JourFerme:

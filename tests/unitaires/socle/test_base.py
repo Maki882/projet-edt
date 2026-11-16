@@ -28,7 +28,7 @@ from edt.domaine.parametres import definitions
 from edt.domaine.regles import NaturePortee, TypeRegle
 from edt.erreurs import ErreurRegleMetier
 
-RACINE = Path(__file__).resolve().parents[2]
+RACINE = Path(__file__).resolve().parents[3]
 
 
 def _compter(session, modele) -> int:
