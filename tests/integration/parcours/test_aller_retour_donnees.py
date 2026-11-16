@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import pytest
+from tests.outils.parcours.aides import compter
 
 from edt.db import modeles as m
 from edt.db.initialisation import initialiser_base
 from edt.db.moteur import session_base
 from edt.services import echange
 from edt.services.echange import FichierEnvoye, OptionsImport
-
-from .conftest import compter
 
 TABLES = (m.Salle, m.Enseignant, m.Groupe, m.Matiere, m.Besoin)
 

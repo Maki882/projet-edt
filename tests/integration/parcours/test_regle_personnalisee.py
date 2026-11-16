@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from tests.outils.parcours.aides import calculer
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.services import regles
 from edt.services.verification import verifier_version
-
-from .conftest import calculer
 
 LUNDI = 0  # jours de la semaine type : 0 = lundi ... 5 = samedi
 

@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import select
+from tests.outils.parcours.aides import calculer, compter
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import StatutOccurrence
 from edt.services.verification import verifier_occurrences_version
-
-from .conftest import calculer, compter
 
 
 @pytest.mark.integration

@@ -6,13 +6,12 @@ import csv
 import io
 
 import pytest
+from tests.outils.parcours.aides import DELAI, compter
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.services import generation
 from edt.services.verification import verifier_occurrences_version, verifier_version
-
-from .conftest import DELAI, compter
 
 
 @pytest.mark.integration
