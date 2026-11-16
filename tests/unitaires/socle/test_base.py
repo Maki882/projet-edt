@@ -327,7 +327,7 @@ def test_contraintes_de_controle_du_modele_et_maxima_positifs(
     lui-même).
 
     Risque : dernière ligne de défense avant un instantané incohérent ; un remaniement de
-    `modeles.py` perdrait ces CHECK sans signal, et les maxima négatifs rendaient
+    `modeles.py` perdrait ces CHECK sans signal, et des maxima négatifs rendraient
     `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde.
     """
     fabrique(session)
@@ -342,7 +342,7 @@ def test_un_code_aux_espaces_invisibles_est_le_meme_code(jeu_minimal, session, v
     """Cas : un code saisi ou importé porte une espace insécable, une espace de largeur nulle,
     des espaces aux bords ou une tabulation (collé depuis un traitement de texte).
 
-    Risque : « N105 » et « N105\u00a0 » passaient l'unicité et créaient un doublon invisible,
+    Risque : « N105 » et « N105\u00a0 » passeraient l'unicité et créeraient un doublon invisible,
     introuvable à la recherche ; le code doit être normalisé dès l'affectation.
     """
     salle = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))

@@ -89,12 +89,12 @@ def test_valeurs_d_une_enumeration_comparees(base):
 
 @pytest.mark.cas_limite
 def test_un_index_unique_partiel_absent_est_un_ecart(base):
-    """Cas : la base date d'avant l'index unique partiel « une seule version active par semestre ».
+    """Cas : la base n'a pas l'index unique partiel « une seule version active par semestre ».
 
-    Risque : `verifier-schema` disait « à jour », deux versions pouvaient être actives et
-    l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma.
+    Risque : `verifier-schema` dirait « à jour », deux versions pourraient être actives et
+    l'instantané en choisirait une au hasard ; l'index absent doit être un écart de schéma.
     """
-    # Base créée avant l'index qui garantit une seule version active par semestre.
+    # Base sans l'index qui garantit une seule version active par semestre.
     with obtenir_moteur().begin() as connexion:
         connexion.exec_driver_sql("DROP INDEX uq_version_edt_active_par_semestre")
 

@@ -63,7 +63,7 @@ def charger_instantane(
 ) -> Instantane:
     """Construit l'instantané du semestre `semestre_id`.
 
-    `version_base_id` désigne la version dont on reprend les verrous
+    `version_base_id` désigne la version dont sont repris les verrous
     (`SeanceAPlacer.verrou`) et les placements comme indices
     (`SeanceAPlacer.indice`) ; par défaut, la version active du semestre s'il
     y en a une.

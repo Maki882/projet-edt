@@ -222,8 +222,8 @@ def test_ponctuel_hors_des_dates_du_semestre_est_un_probleme_de_depliage():
     """Cas : le semestre commence un mercredi ; une séance ponctuelle est datée du lundi de la
     même semaine (saisie avant un raccourcissement du semestre).
 
-    Risque : le dépliage jugeait à la semaine et acceptait, le solveur plaçait, puis
-    l'instanciation rejetait la date avec une raison vague : la cause réelle (hors semestre)
+    Risque : le dépliage jugerait à la semaine et accepterait, le solveur placerait, puis
+    l'instanciation rejetterait la date avec une raison vague : la cause réelle (hors semestre)
     doit être dite avant le calcul.
     """
     debut, fin = dt.date(2026, 9, 9), dt.date(2026, 12, 18)  # un mercredi

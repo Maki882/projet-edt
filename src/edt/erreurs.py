@@ -63,8 +63,9 @@ class ErreurTempsDepasse(ErreurEDT):
 
 
 class ErreurNonLivre(ErreurEDT):
-    """La fonctionnalité appelée appartient à un lot qui n'est pas encore livré.
+    """La fonctionnalité appelée n'est pas disponible dans cette installation.
 
-    Levée par les implémentations provisoires des contrats partagés : mieux
-    vaut une erreur explicite qu'un résultat vide pris pour un succès.
+    Levée quand le module ou la fonction attendu manque (voir
+    `edt.services.emploi_du_temps.raccords`) : une erreur explicite plutôt
+    qu'un résultat vide pris pour un succès.
     """

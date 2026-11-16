@@ -1,4 +1,4 @@
-"""Ligne de commande : commandes du socle et mécanisme d'extension."""
+"""Ligne de commande : commandes générales et mécanisme d'extension."""
 
 from __future__ import annotations
 
@@ -137,7 +137,7 @@ def test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_
     """Cas : `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou
     d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite.
 
-    Risque : trace brute et code 2, et le script de déploiement enchaînait sur « --reset-base »
+    Risque : trace brute et code 2, et le script de déploiement enchaînerait sur « --reset-base »
     (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et
     le remède, code 1.
     """
@@ -286,7 +286,7 @@ def test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture(
 def test_doctor_signale_une_base_en_lecture_seule(lanceur, base, environnement, lecture_seule):
     """Cas : `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule).
 
-    Risque : doctor disait « Tout est prêt » alors qu'aucune écriture n'était possible ; il
+    Risque : doctor dirait « Tout est prêt » alors qu'aucune écriture n'est possible ; il
     doit échouer en nommant la lecture seule.
     """
     liberer_moteurs()
@@ -329,8 +329,8 @@ def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
     """Cas : `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le
     dossier racine des journaux va bien.
 
-    Risque : doctor disait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul
-    n'aurait de journal (cas transmis par le lot solveur).
+    Risque : doctor dirait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul
+    n'aurait de journal.
     """
     (environnement / "logs").mkdir(exist_ok=True)
     (environnement / "logs" / "generations").write_text("pas un dossier", encoding="utf-8")

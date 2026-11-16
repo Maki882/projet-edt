@@ -19,7 +19,7 @@ de l'établissement (lundi à vendredi par défaut). Un jour de la grille hors
 du standard (le samedi) est un jour d'appoint, ouvert seulement par une
 exception : la case « samedi autorisé » d'un type de séance ou une règle
 personnalisée (`edt.domaine.regles`). Le dépliage, la contrainte `JOURS` et
-les écrans lisent ce paramètre ; rien ne code plus « lundi à vendredi » en dur.
+les écrans lisent ce paramètre au lieu de supposer « lundi à vendredi ».
 
 Pause déjeuner
 --------------

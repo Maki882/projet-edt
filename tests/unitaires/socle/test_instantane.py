@@ -208,7 +208,7 @@ def test_regle_salles_avec_salles_homonymes_sur_deux_campus(jeu_minimal, session
     """Cas : une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la
     classe A1-G1.
 
-    Risque : la règle résolue ne visait qu'une des deux salles, au hasard de l'ordre de
+    Risque : la règle résolue ne viserait qu'une des deux salles, au hasard de l'ordre de
     lecture : résultat faux sans message ; les deux identifiants doivent être retenus.
     """
     ndc = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
@@ -234,7 +234,7 @@ def test_deux_versions_actives_sont_refusees_et_l_index_absent_est_un_ecart(jeu_
     """Cas : base créée sans l'index unique partiel « une version active par semestre » ; deux
     versions ont été activées.
 
-    Risque : l'instantané prenait la première ligne : verrous repris d'une version arbitraire,
+    Risque : l'instantané prendrait la première ligne : verrous repris d'une version arbitraire,
     affichage d'une version et calcul sur l'autre, sans message.
     """
     with obtenir_moteur().begin() as connexion:

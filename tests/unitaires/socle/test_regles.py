@@ -109,7 +109,7 @@ def test_regles_de_base_et_description_du_catalogue():
 
 
 def test_registre_des_implementations(monkeypatch):
-    # Registres vierges pour le test : les lots solveur et vérificateur remplissent les vrais.
+    # Registres vierges pour le test : le solveur et le vérificateur remplissent les vrais.
     import edt.domaine.regles as module_regles
 
     monkeypatch.setattr(module_regles, "REGISTRES", {"solveur": {}, "verificateur": {}})
@@ -860,12 +860,12 @@ def test_la_regle_resolue_garde_sa_periode_datee(jeu_minimal):
 
 
 # --------------------------------------------------------------------------- #
-# Corrections de la revue : validations, réglages datés, couche datée
+# Validations, réglages datés, couche datée
 # --------------------------------------------------------------------------- #
 
 
 def test_parmi_mixte_et_casse_des_choix():
-    # « mardi » et « mardi matin » : le jour entier absorbe sa demi-journée (plus de TypeError).
+    # « mardi » et « mardi matin » : le jour entier absorbe sa demi-journée, sans TypeError.
     valeurs = valider_parametres(
         TypeRegle.JOURNEES_LIBRES, {"unite": "journee", "parmi": ["mardi", "mardi matin", "lundi"]}
     )
@@ -1147,7 +1147,7 @@ def test_une_regle_sans_heures_a_une_phrase_ou_une_erreur_nommee_jamais_une_exce
     """Cas : une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause
     libre validée sans paramètres globaux.
 
-    Risque : `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondait
+    Risque : `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondrait
     500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur
     nomme le champ.
     """
@@ -1181,8 +1181,8 @@ def test_des_salles_homonymes_sur_deux_campus_sont_toutes_resolues():
     """Cas : deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle
     SALLES qui cite « N105 ».
 
-    Risque : un dictionnaire code → identifiant n'en gardait qu'une : le solveur imposait la
-    mauvaise salle et le vérificateur signalait « en N105, hors des salles imposées (N105) ».
+    Risque : un dictionnaire code → identifiant n'en garderait qu'une : le solveur imposerait la
+    mauvaise salle et le vérificateur signalerait « en N105, hors des salles imposées (N105) ».
     """
     valeurs = valeurs_resolues(
         TypeRegle.SALLES,

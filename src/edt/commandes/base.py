@@ -1,4 +1,4 @@
-"""Commandes du socle : `init-db`, `verifier-schema`, `jeu-minimal`, `serve`, `version`,
+"""Commandes générales : `init-db`, `verifier-schema`, `jeu-minimal`, `serve`, `version`,
 `doctor`, et l'exploitation de la base : `sauvegarder`, `verifier-sauvegarde`."""
 
 from __future__ import annotations
@@ -126,7 +126,7 @@ def init_db(
 
 
 def _entree_interactive() -> bool:
-    """Vrai si la commande est tapée dans un terminal (on peut poser une question)."""
+    """Vrai si la commande est tapée dans un terminal (une question peut y être posée)."""
     return sys.stdin is not None and sys.stdin.isatty()
 
 
@@ -146,7 +146,9 @@ def _confirmer_remise_a_zero(oui: bool) -> None:
 
 @commandes.command("verifier-schema")
 def verifier_schema() -> None:
-    """Vérifie que les tables de la base ont les colonnes du modèle (rien n'est modifié).
+    """Vérifie que les tables de la base correspondent au modèle : colonnes, unicités, index.
+
+    Rien n'est modifié.
 
     Code de sortie 0 si le schéma est à jour, 1 s'il est périmé (les écarts sont
     listés), 2 si la base est inaccessible. Une table pas encore créée n'est pas

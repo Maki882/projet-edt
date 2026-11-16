@@ -20,7 +20,7 @@ def test_un_identifiant_hors_des_entiers_sqlite_est_introuvable(
     par une adresse web ou une option de commande.
 
     Risque : `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors
-    que -1 donnait proprement « n'existe pas » ; tous doivent être introuvables.
+    que -1 donne proprement « n'existe pas » ; tous doivent être introuvables.
     """
     for chargeur in (charger_instantane, charger_placements, charger_occurrences):
         with pytest.raises(ErreurIntrouvable, match="n'existe pas"):

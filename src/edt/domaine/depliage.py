@@ -24,7 +24,7 @@ Règles par mode de volume
   sont espacées régulièrement et la première semaine est toujours servie.
   La séance de rang r est active les semaines qui reçoivent au moins r
   séances. Si `nombre` dépasse `S * max_par_semaine`, la demande est
-  impossible : on déplie ce qui tient et on signale le reste (`VOLUME`).
+  impossible : ce qui tient est déplié, le reste est signalé (`VOLUME`).
 - `ponctuel` : une séance (rang 1) active la seule semaine de sa date ; son
   jour est imposé par la date. Elle reste permise pendant une période
   d'examens ou une semaine spéciale, pas un jour férié ni pendant des vacances.
@@ -112,7 +112,7 @@ class _Fermetures:
         pour_tous: set[int] = set()
         par_groupes: list[tuple[frozenset[int], range]] = []
         for ferme in self._fermetures:
-            # Seuls comptent les jours des semaines données : on y borne la plage.
+            # Seuls comptent les jours des semaines données : la plage y est bornée.
             jours = range(
                 max(ferme.date_debut.toordinal(), premier),
                 min(ferme.date_fin.toordinal(), dernier) + 1,

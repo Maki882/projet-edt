@@ -51,7 +51,7 @@ contexte_requete: ContextVar[str | None] = ContextVar("edt_id_requete", default=
 contexte_calcul: ContextVar[int | None] = ContextVar("edt_id_calcul", default=None)
 
 _PREFIXE_JOURNAL_CALCUL = "edt.calcul."
-_MARQUE = "_edt_socle"
+_MARQUE = "_edt_journal"
 _etat: dict[str, object] = {"signature": None, "panne": None}
 
 journal = logging.getLogger(__name__)

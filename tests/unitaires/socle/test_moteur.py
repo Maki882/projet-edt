@@ -41,7 +41,7 @@ def test_un_point_de_sauvegarde_libere_reste_annule_par_la_transaction_englobant
     puis la route lève (rollback de la transaction).
 
     Risque : le pilote sqlite3 n'ouvre une transaction qu'avant une écriture ; sans le
-    contournement du moteur, le RELEASE du SAVEPOINT validait l'insertion malgré le rollback.
+    contournement du moteur, le RELEASE du SAVEPOINT validerait l'insertion malgré le rollback.
     """
     with session_base() as session:
         point = session.begin_nested()

@@ -1,4 +1,4 @@
-"""Pause déjeuner : trois modes, validation, propriétés, lecture d'une ancienne base."""
+"""Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne."""
 
 from __future__ import annotations
 
@@ -189,7 +189,7 @@ def test_ancien_booleen_ignore_quand_le_mode_est_enregistre(session, caplog):
 def test_init_db_reprend_l_ancien_booleen_et_supprime_la_cle_morte(
     session, aujourdhui, caplog, ancien, mode_attendu
 ):
-    """Une base d'hier passée par init-db garde le choix de l'utilisateur."""
+    """Une base qui porte encore la clé booléenne, passée par init-db, garde le choix enregistré."""
     _ancienne_base(session, ancien)
     session.commit()
 

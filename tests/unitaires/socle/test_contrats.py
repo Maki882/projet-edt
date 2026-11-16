@@ -45,7 +45,7 @@ CODES_DES_DECISIONS = {
     "JOUR_FERME",
     "REGLE",
 }
-"""Section 6 de docs/decisions.md : ces codes sont stables."""
+"""Codes du catalogue des contraintes : ils sont stables."""
 
 
 def test_le_catalogue_reprend_exactement_les_codes_des_decisions():
@@ -80,7 +80,9 @@ def test_identifiant_de_seance():
         decomposer_id_seance("douze")
 
 
-def test_le_moteur_provisoire_garantit_unicite_et_capacite(jeu_minimal, session):
+def test_le_solveur_place_toutes_les_seances_sans_conflit_ni_salle_trop_petite(
+    jeu_minimal, session
+):
     instantane = charger_instantane(session, jeu_minimal.semestre_id)
     resultat = resoudre(instantane, OptionsSolveur())
 
@@ -156,10 +158,10 @@ def test_reglages_du_calcul_bornes_pour_un_site_public(session):
 
 
 def test_valeur_enregistree_au_dela_des_bornes_ramenee_a_la_borne(session, caplog):
-    """Une base réglée avant le resserrement des bornes reste lisible, sans plantage."""
+    """Une valeur enregistrée hors des bornes actuelles reste lisible, sans plantage."""
     anciennes = {"nb_workers": 64, "temps_limite_s": 3600, "temps_limite_long_s": 7200}
     for cle, valeur in anciennes.items():
-        session.get(Parametre, cle).valeur = valeur  # écrit sans validation, comme autrefois
+        session.get(Parametre, cle).valeur = valeur  # écrit sans validation (script, import)
     session.commit()
 
     with caplog.at_level("WARNING", logger="edt.services.parametres"):
