@@ -340,7 +340,8 @@ def test_export_xlsx_tolere_les_caracteres_de_controle(format_, jeu_minimal, imp
     """Cas : un libellé de matière contient un caractère de contrôle invisible (U+0001 collé).
 
     Risque : openpyxl refuserait la cellule (IllegalCharacterError) et tout l'export
-    XLSX de l'établissement échouerait en 500 ; un réimport perdrait le caractère.
+    XLSX de l'établissement échouerait en 500 ; un réimport, du classeur comme des CSV de
+    l'archive, perdrait le caractère.
     """
     libelle = "Mathématiques\x01avancées"
     with session_base() as session:
@@ -353,6 +354,29 @@ def test_export_xlsx_tolere_les_caracteres_de_controle(format_, jeu_minimal, imp
     assert rapport.bilan("matieres").compteurs == {"inchanges": 6}  # caractère restitué
     avertissement = seul(rapport.signalements, Gravite.AVERTISSEMENT)
     assert "U+0001" in avertissement.message and avertissement.colonne == "libelle"
+
+
+@pytest.mark.cas_limite
+def test_notation_de_caractere_ecrite_telle_quelle_survit_a_l_aller_retour_xlsx(
+    jeu_minimal, importer, exporter
+):
+    """Cas : un libellé contient, écrites telles quelles, les suites « _x000B_ » et « _x005F_ »
+    (la notation des caractères spéciaux du format XLSX).
+
+    Risque : le réimport du classeur les prendrait pour des notations : le libellé
+    changerait (caractère de contrôle invisible, « _ » isolé) et serait signalé à tort.
+    """
+    libelle = "Code _x000B_ et _x005F_ littéraux"
+    with session_base() as session:
+        session.scalar(select(m.Matiere).where(m.Matiere.code == "IM.1101")).libelle = libelle
+    with session_base() as session:
+        fichier = service.exporter_donnees(session, "xlsx")
+
+    rapport = importer(FichierEnvoye(fichier.nom, fichier.contenu), simuler=True)
+
+    assert rapport.bilan("matieres").compteurs == {"inchanges": 6}
+    assert not [s for s in rapport.signalements if s.gravite is Gravite.AVERTISSEMENT]
+    assert any(x["libelle"] == libelle for x in exporter()["matieres"])
 
 
 @pytest.mark.cas_limite
