@@ -46,12 +46,20 @@ introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
 Le formulaire de déplacement d'une séance de la semaine type annonce, pour
 chaque heure de début, si le déplacement serait accepté (« possible ») ou
-refusé avec la salle que le formulaire propose à cette heure (la salle
-actuelle si elle est libre, sinon la première salle libre) : « possible »
-garantit que l'enregistrement réussit sans toucher à la salle. Les règles
-qui dépendent de la salle (trajet entre campus, salle occupée, règles de
-salle) comptent donc. Cette annonce tient dans `BUDGET_ANNOTATION_S`
-secondes ; au-delà, les heures suivantes restent sans mention.
+refusé avec la salle que le formulaire présélectionne à cette heure
+(`_salle_proposee` : la salle déjà choisie si elle est libre à ce moment,
+sinon la salle actuelle si elle est libre, sinon la première salle libre).
+Le formulaire rechargé après le choix d'une heure présélectionne la même
+salle : « possible » garantit que l'enregistrement réussit sans toucher à la
+salle. Une salle occupée choisie explicitement part telle quelle et est
+refusée à l'enregistrement, avec sa raison. Les règles qui dépendent de la
+salle (trajet entre campus, salle occupée, règles de salle) comptent donc.
+« possible, avec avertissement » : accepté, avec une entorse à une règle
+importante signalée. Quand aucune heure du jour n'est possible, le
+formulaire le dit et nomme la règle la plus souvent en cause
+(`FormulaireSeance.conseil_debuts`). Cette annonce tient dans
+`BUDGET_ANNOTATION_S` secondes ; au-delà, les heures suivantes restent sans
+mention.
 
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
@@ -64,6 +72,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import time
+from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -83,6 +92,7 @@ from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurIntrouvable, Er
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import raccords, regles_personnalisees
 from edt.services.emploi_du_temps.identifiants import apercu, exiger_identifiant, obtenir
+from edt.services.emploi_du_temps.presentation import libelle_contrainte
 from edt.services.emploi_du_temps.vues import Bloc, bloc_occurrence, bloc_seance
 from edt.services.parametres import lire_parametres
 from edt.verification.contrat import Anomalie
@@ -137,9 +147,11 @@ class FormulaireSeance:
     `remarque` : pourquoi le jour demandé n'a pas été retenu (jour non
     proposé pour cette séance, ou aucun début de créneau ce jour-là où elle
     tienne avant la fermeture) ; le jour actuel est alors gardé.
-    `debuts` : (valeur, texte) ; le texte dit « (possible) », « (refusé) » ou
-    « (actuelle) » (voir l'en-tête du module). `remarque_debuts` : pourquoi
-    les heures n'ont pas pu être vérifiées.
+    `debuts` : (valeur, texte) ; le texte dit « (possible) », « (possible,
+    avec avertissement) », « (refusé) » ou « (actuelle) » (voir l'en-tête du
+    module). `remarque_debuts` : pourquoi les heures n'ont pas pu être
+    vérifiées. `conseil_debuts` : aucune heure possible ce jour-là, et quoi
+    faire.
     """
 
     bloc: Bloc
@@ -154,6 +166,7 @@ class FormulaireSeance:
     exigences: str
     remarque: str | None = None
     remarque_debuts: str | None = None
+    conseil_debuts: str | None = None
 
 
 @dataclass(frozen=True)
@@ -305,15 +318,14 @@ def formulaire_seance(
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
     exigences = _Exigences.du_besoin(session, besoin)
-    debuts, remarque_debuts = _annoter_debuts(session, seance, exigences, jour, duree, debuts)
+    annonce = _annoter_debuts(session, seance, exigences, jour, duree, debuts, salle_id)
     salles = _salles_hebdo(session, seance, exigences, jour, debut, fin)
-    if salle_id is None or salle_id not in {s.id for s in salles}:
-        salle_id = _salle_par_defaut(salles, seance.salle_id)
+    salle_id = _salle_proposee(salles, salle_id, seance.salle_id)
     return FormulaireSeance(
         bloc=bloc_seance(session, seance_hebdo_id),
         version_id=seance.version_id,
         jours=jours,
-        debuts=debuts,
+        debuts=annonce.debuts,
         salles=salles,
         jour=jour,
         debut=debut,
@@ -321,8 +333,32 @@ def formulaire_seance(
         salle_id=salle_id,
         exigences=exigences.texte(session),
         remarque=remarque,
-        remarque_debuts=remarque_debuts,
+        remarque_debuts=annonce.remarque,
+        conseil_debuts=annonce.conseil,
     )
+
+
+@dataclass(frozen=True)
+class _Annonce:
+    """Heures de début annotées, raison d'une vérification impossible, conseil du jour."""
+
+    debuts: tuple[tuple[int, str], ...]
+    remarque: str | None = None
+    conseil: str | None = None
+
+
+def _salle_proposee(
+    salles: tuple[ChoixSalle, ...], demandee: int | None, actuelle: int | None
+) -> int | None:
+    """Salle présélectionnée : celle déjà choisie si elle est libre, sinon `_salle_par_defaut`.
+
+    Une salle choisie mais occupée à la nouvelle heure n'est pas gardée : le
+    formulaire rechargé après le choix d'une heure présélectionne la salle avec
+    laquelle cette heure a été vérifiée.
+    """
+    if demandee is not None and any(s.id == demandee and s.libre for s in salles):
+        return demandee
+    return _salle_par_defaut(salles, actuelle)
 
 
 def _annoter_debuts(
@@ -332,18 +368,25 @@ def _annoter_debuts(
     jour: int,
     duree: int,
     debuts: tuple[tuple[int, str], ...],
-) -> tuple[tuple[tuple[int, str], ...], str | None]:
-    """Chaque heure de début suivie de « (possible) », « (refusé) » ou « (actuelle) ».
+    salle_demandee: int | None,
+) -> _Annonce:
+    """Chaque heure de début suivie de « (possible) », « (possible, avec avertissement) »,
+    « (refusé) » ou « (actuelle) ».
 
-    La vérification se fait avec la salle proposée à cette heure (voir l'en-tête
-    du module), par le même raccord que l'enregistrement
+    La vérification se fait avec la salle que le formulaire présélectionnerait à
+    cette heure (`_salle_proposee`), par le même raccord que l'enregistrement
     (`raccords.verifier_modification`) ; les valeurs ne changent pas. Au-delà
     de `BUDGET_ANNOTATION_S`, les heures suivantes restent sans mention. Si la
-    vérification est impossible, aucune mention, et la raison est rendue.
+    vérification est impossible, aucune mention, et la raison est rendue. Si
+    toutes les heures vérifiées sont refusées, le conseil le dit, avec la règle
+    la plus souvent en cause (déjà connue : aucun calcul de plus).
     """
     chrono = time.monotonic()
     identifiant = id_seance(seance.besoin_id, seance.rang)
     annotes: list[tuple[int, str]] = []
+    causes: Counter[str] = Counter()
+    verifiees = possibles = 0
+    complet = True
     for position, (debut, texte) in enumerate(debuts):
         if jour == seance.jour and debut == seance.debut_min:
             annotes.append((debut, f"{texte} (actuelle)"))
@@ -356,9 +399,10 @@ def _annoter_debuts(
                 BUDGET_ANNOTATION_S,
             )
             annotes.extend(debuts[position:])
+            complet = False
             break
         salles = _salles_hebdo(session, seance, exigences, jour, debut, debut + duree)
-        salle_id = _salle_par_defaut(salles, seance.salle_id)
+        salle_id = _salle_proposee(salles, salle_demandee, seance.salle_id)
         try:
             verification = raccords.verifier_modification(
                 session, seance.version_id, identifiant, jour, debut, debut + duree, salle_id
@@ -367,11 +411,32 @@ def _annoter_debuts(
             journal.info(
                 "Formulaire de la séance %d : heures non vérifiées (%s)", seance.id, erreur
             )
-            return debuts, (
-                "Les heures possibles n'ont pas pu être vérifiées : " + _minuscule(erreur.message)
+            return _Annonce(
+                debuts,
+                remarque="Les heures possibles n'ont pas pu être vérifiées : "
+                + _minuscule(erreur.message),
             )
-        annotes.append((debut, f"{texte} ({'possible' if verification.valide else 'refusé'})"))
-    return tuple(annotes), None
+        verifiees += 1
+        if not verification.valide:
+            mention = "refusé"
+            causes.update({str(a.code) for a in verification.erreurs()})
+        elif _avertit(verification.anomalies):
+            mention, possibles = "possible, avec avertissement", possibles + 1
+        else:
+            mention, possibles = "possible", possibles + 1
+        annotes.append((debut, f"{texte} ({mention})"))
+    conseil = None
+    if complet and verifiees and not possibles:
+        autre = "autre " if jour == seance.jour else ""
+        conseil = (
+            f"Aucune {autre}heure possible le {JOURS[jour]} avec les salles proposées : "
+            "essayer un autre jour"
+        )
+        if causes:
+            code, _ = causes.most_common(1)[0]
+            conseil += f" (règle la plus souvent en cause : {libelle_contrainte(code)})"
+        conseil += "."
+    return _Annonce(tuple(annotes), conseil=conseil)
 
 
 def modifier_placement(
