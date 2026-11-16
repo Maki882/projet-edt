@@ -16,13 +16,13 @@ import time
 from collections.abc import Iterator
 
 import pytest
-from tests.solveur.fabrique import (
+from tests.outils.solveur.fabrique import (
     niveaux_regles_posables,
     options,
     verifier_dates,
     verifier_solution,
 )
-from tests.solveur.generateur import generer
+from tests.outils.solveur.generateur import generer
 
 from edt.db.initialisation import initialiser_base
 from edt.db.moteur import liberer_moteurs, session_base

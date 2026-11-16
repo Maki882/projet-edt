@@ -9,7 +9,8 @@ désactive (ou résolu autrement). Chaque solution passe par l'oracle
 from __future__ import annotations
 
 import pytest
-from tests.solveur.fabrique import (
+from tests.outils.solveur.aides import MATINEE, UN_CRENEAU
+from tests.outils.solveur.fabrique import (
     C1,
     C2,
     C3,
@@ -39,10 +40,6 @@ from edt.domaine.enumerations import (
 from edt.domaine.heures import ecart, se_chevauchent
 from edt.domaine.instantane import Creneau
 from edt.solveur import StatutSolveur, resoudre
-
-UN_CRENEAU = (Creneau(LUNDI, C1, C1 + 2 * H, DemiJournee.MATIN),)
-MATINEE = grille(jours=[LUNDI], samedi=False)[:2]
-"""Lundi matin : 8 h 30 - 10 h 30 puis 10 h 45 - 12 h 45."""
 
 
 def sans(*codes: C):

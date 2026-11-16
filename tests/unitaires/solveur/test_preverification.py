@@ -5,7 +5,8 @@ from __future__ import annotations
 import time
 
 import pytest
-from tests.solveur.fabrique import (
+from tests.outils.solveur.aides import niveaux_avec
+from tests.outils.solveur.fabrique import (
     C1,
     C2,
     LUNDI,
@@ -18,8 +19,7 @@ from tests.solveur.fabrique import (
     options,
     verifier_solution,
 )
-from tests.solveur.generateur import generer
-from tests.solveur.test_niveaux import niveaux_avec
+from tests.outils.solveur.generateur import generer
 
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.contraintes import CodeContrainte as C

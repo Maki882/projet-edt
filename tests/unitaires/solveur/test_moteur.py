@@ -10,7 +10,8 @@ import threading
 import time
 
 import pytest
-from tests.solveur.fabrique import (
+from tests.outils.solveur.aides import MATINEE, UN_CRENEAU
+from tests.outils.solveur.fabrique import (
     C1,
     C2,
     LUNDI,
@@ -23,8 +24,7 @@ from tests.solveur.fabrique import (
     options,
     verifier_solution,
 )
-from tests.solveur.generateur import generer
-from tests.solveur.test_contraintes import MATINEE, UN_CRENEAU
+from tests.outils.solveur.generateur import generer
 
 from edt.domaine.enumerations import ModeVolume
 from edt.erreurs import ErreurDonneesInvalides

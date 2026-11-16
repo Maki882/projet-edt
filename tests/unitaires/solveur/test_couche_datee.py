@@ -6,7 +6,8 @@ import datetime as dt
 import threading
 
 import pytest
-from tests.solveur.fabrique import (
+from tests.outils.solveur.aides import SEMAINE, UN_CRENEAU, instancier_et_replacer, place
+from tests.outils.solveur.fabrique import (
     C1,
     C2,
     C3,
@@ -21,21 +22,13 @@ from tests.solveur.fabrique import (
     grille,
     verifier_dates,
 )
-from tests.solveur.test_contraintes import UN_CRENEAU
 
 from edt.domaine.contraintes import CodeContrainte as C
-from edt.domaine.contraintes import niveaux_par_defaut
 from edt.domaine.enumerations import CibleIndisponibilite, StatutOccurrence
 from edt.domaine.instantane import Placement
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
 from edt.solveur.instanciation import instancier
 from edt.solveur.replacement import OptionsReplacement, replacer
-
-SEMAINE = dt.timedelta(days=7)
-
-
-def place(seance_id: str, jour: int, debut: int, salle: int, duree: int = 2 * H) -> Placement:
-    return Placement(seance_id, jour, debut, debut + duree, salle)
 
 
 def une_classe(nb_semaines: int = 3, creneaux=None, **besoin) -> Fabrique:
@@ -112,23 +105,6 @@ def test_indisponibilites_datees_signalees_a_replacer():
 # --------------------------------------------------------------------------- #
 # Replacement
 # --------------------------------------------------------------------------- #
-
-
-def instancier_et_replacer(f: Fabrique, placements, options=None, arret=None):
-    instantane = f.instantane()
-    instancie = instancier(instantane, placements)
-    resultat = replacer(
-        instantane,
-        instancie.occurrences,
-        [revoir.occurrence for revoir in instancie.a_replacer],
-        options,
-        arret,
-    )
-    assert len(resultat.replacements) == len(instancie.a_replacer)
-    placees = [r.occurrence for r in resultat.replacees]
-    niveaux = options.niveaux if options is not None else niveaux_par_defaut()
-    verifier_dates(instantane, [*instancie.occurrences, *placees], niveaux=niveaux)
-    return instantane, instancie, resultat
 
 
 def test_jour_ferie_l_occurrence_est_replacee_dans_la_meme_semaine():

@@ -1,9 +1,5 @@
-"""Fixtures du lot solveur, en plus de celles de `tests/conftest.py`.
+"""Fixtures des tests unitaires du solveur, en plus de celles de `tests/conftest.py`.
 
-- `lanceur` : lanceur de la ligne de commande `python -m edt` ;
-- `processus_vivant` : un autre processus qui vit pendant tout le test (un
-  calcul « en cours » attribué à son numéro n'est pas tenu pour abandonné),
-  tué à la fin du test ;
 - `guetter_journal` : événements levés par un message du journal, pour
   synchroniser un test sur une étape du moteur (première solution, début de
   l'amélioration, modèle construit) plutôt que sur un délai fixe. Un test qui
@@ -14,30 +10,10 @@
 from __future__ import annotations
 
 import logging
-import subprocess
-import sys
 import threading
 from collections.abc import Callable, Iterator
 
 import pytest
-from typer.testing import CliRunner
-
-
-@pytest.fixture
-def lanceur() -> CliRunner:
-    """Lanceur de la ligne de commande."""
-    return CliRunner()
-
-
-@pytest.fixture
-def processus_vivant() -> Iterator[subprocess.Popen]:
-    """Un processus qui dort deux minutes : vivant pendant le test, tué à la fin."""
-    processus = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(120)"])
-    try:
-        yield processus
-    finally:
-        processus.kill()
-        processus.wait()
 
 
 class _Guetteur(logging.Handler):
