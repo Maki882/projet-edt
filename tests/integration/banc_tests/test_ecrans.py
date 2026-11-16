@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
-from tests.outils.banc_tests.depot import CLE_ECHEC, CLE_LENT, CLE_REUSSI, attendre_fin
+from tests.outils.banc_tests.depot import CLE_CHARGE, CLE_ECHEC, CLE_LENT, CLE_REUSSI, attendre_fin
 
 from edt.services.banc_tests import execution as ex
 from edt.services.banc_tests import resultats as res
@@ -176,3 +176,51 @@ def test_suivi_d_une_execution_inconnue_et_adresses_hors_htmx(client, depot):
     assert client.get("/tests", follow_redirects=False).headers["location"] == "/tests/unitaires"
     assert client.get("/tests/fonctionnels").status_code == 404
     assert "Aucune exécution" in client.get("/tests/journal").text
+
+
+@pytest.mark.cas_limite
+def test_relance_depuis_le_site_retardee_et_resultats_de_la_commande_affiches(client, depot):
+    """Cas : un visiteur relance aussitôt après la fin d'une exécution ; puis la commande
+    `edt tests` (autre processus) enregistre des résultats plus récents.
+
+    Risque : serveur occupé sans répit ; page qui montre l'ancienne exécution du serveur au
+    lieu des résultats de la commande, jusqu'au redémarrage."""
+    client.post("/tests/unitaires/lancer", data={"cible": f"test:{CLE_REUSSI}"})
+    attendre_fin(ex.execution_courante())
+
+    relance = client.post("/tests/unitaires/lancer", data={"cible": f"test:{CLE_ECHEC}"})
+
+    assert "prochain lancement depuis le site est possible à" in relance.text
+    assert "message-attention" in relance.text
+    assert ex.execution_courante().cible.cle == f"test:{CLE_REUSSI}"  # rien de relancé
+
+    plus_tard = res.maintenant()
+
+    def commande(h: res.Historique) -> None:  # ce qu'écrit `edt tests` dans un autre processus
+        h.tests[CLE_REUSSI] = res.ResultatTest(
+            res.ECHEC, 0.5, plus_tard, detail="écrit par la commande"
+        )
+        h.derniere = res.BilanExecution(
+            "le composant banc_tests", "unitaires", plus_tard, plus_tard, res.ISSUE_TERMINEE, "Fin."
+        )
+
+    res.mettre_a_jour(commande)
+    page = client.get("/tests/unitaires").text
+    assert "Dernière exécution : le composant banc_tests" in page
+    assert "écrit par la commande" in page
+
+
+@pytest.mark.cas_limite
+def test_tests_de_charge_par_la_commande_seulement(client, depot):
+    """Cas : un visiteur lance un test de charge depuis la page (envoi fabriqué du formulaire).
+
+    Risque : test de quinze minutes au plus sur le serveur public, enchaînable un par un."""
+    page = client.get("/tests/unitaires").text
+    ligne = re.search(rf'id="{identifiant_html("t", CLE_CHARGE)}".*?</div>\s*</div>', page, re.S)
+    assert "Par la commande" in ligne.group(0) and 'value="test:' not in ligne.group(0)
+    assert "python -m edt tests --test" in page
+
+    refus = client.post("/tests/unitaires/lancer", data={"cible": f"test:{CLE_CHARGE}"})
+
+    assert "ne se lancent pas depuis le site" in refus.text and "message-attention" in refus.text
+    assert ex.execution_courante() is None

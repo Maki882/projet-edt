@@ -70,12 +70,12 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'intégration.
+Le catalogue compte 487 cas : 291 cas en tests unitaires et 196 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `assistant` | 26 | 5 |
-| `banc_tests` | 13 | 8 |
+| `banc_tests` | 19 | 10 |
 | `echange` | 58 | 12 |
 | `exploitation` | 40 | 32 |
 | `socle` | 61 | 33 |
@@ -84,9 +84,9 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 41 |
 | `web_edt` | 7 | 39 |
-| **Total** | **285** | **194** |
+| **Total** | **291** | **196** |
 
-### Tests unitaires (285 cas)
+### Tests unitaires (291 cas)
 
 #### `assistant` (26 cas)
 
@@ -146,7 +146,7 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | Modification qui change l annee ou le code refusee | le modèle propose de changer l'année ou le code d'une règle, ou envoie autre chose qu'un objet. | une règle déplacée d'année en silence, ou une erreur Python au lieu d'un refus. |
 | Activation qui ferait doublon refusee par la validation | l'assistant propose d'activer une pause déjeuner inactive pour la classe qui en a déjà une active sur le même semestre. | deux réglages contradictoires actifs ; le calcul ne saurait lequel appliquer. |
 
-#### `banc_tests` (13 cas)
+#### `banc_tests` (19 cas)
 
 [`tests/unitaires/banc_tests/test_catalogue.py`](../tests/unitaires/banc_tests/test_catalogue.py)
 
@@ -166,12 +166,18 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | Refus pendant un calcul | un calcul d'emploi du temps tourne quand quelqu'un lance les tests. | les deux se disputent les deux cœurs du serveur ; le calcul atteint son temps limite. |
 | Verrou abandonne retire et interruption notee | serveur arrêté ou redémarré pendant une exécution des tests. | l'état « en cours » reste bloqué et plus aucun test ne peut être lancé. |
 | Verrou d un processus vivant refuse le lancement | la commande `python -m edt tests` tourne pendant qu'un visiteur clique sur « Lancer ». | deux exécutions en même temps, résultats écrasés l'un par l'autre. |
+| Erreur avant le sous processus termine quand meme l execution | dossier temporaire impossible à créer (disque plein), ou, sous Windows, fichier de verrou tenu ouvert par un lecteur au moment de le retirer. | exécution « en cours » pour toujours, plus aucun lancement jusqu'au redémarrage. |
+| Verrou jamais vu vide par un lecteur | une page s'affiche pendant qu'un lancement écrit son fichier de verrou. | le lecteur voit un fichier vide, retire le verrou d'une exécution vivante (une seconde exécution peut partir) ou, sous Windows, répond par une erreur 500. |
+| Delai minimal entre deux lancements depuis le site | un visiteur (ou un script) relance les tests dès la fin de l'exécution précédente. | serveur de deux cœurs occupé en continu par les tests. |
+| De charge refuse depuis le site | un visiteur lance un à un les tests de charge (jusqu'à quinze minutes chacun). | serveur saturé pendant la démonstration ; ces tests se lancent par la commande. |
+| Verrou abandonne tenu ouvert par un autre lecteur | sous Windows, deux pages lisent en même temps un verrou abandonné ; la seconde ne peut pas le retirer tant que la première le tient ouvert. | erreur 500 sur la page des tests. |
 
 [`tests/unitaires/banc_tests/test_menu_et_tableau.py`](../tests/unitaires/banc_tests/test_menu_et_tableau.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Supprime depuis sa derniere execution ignore | l'historique garde le résultat d'un test renommé ou supprimé depuis. | ligne fantôme, compte faux ou erreur à l'affichage. |
+| Apres une execution l historique fait foi | après une exécution lancée depuis le site, la commande `edt tests` (autre processus) enregistre des résultats plus récents. | la page garde les résultats en mémoire du serveur et masque les nouveaux jusqu'au redémarrage. |
 
 [`tests/unitaires/banc_tests/test_resultats.py`](../tests/unitaires/banc_tests/test_resultats.py)
 
@@ -718,7 +724,7 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (194 cas)
+### Tests d'intégration (196 cas)
 
 #### `assistant` (5 cas)
 
@@ -732,7 +738,7 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | Envoi depuis un autre site refuse | une page d'un autre site fait envoyer des messages par le navigateur du visiteur. | le budget de l'assistant dépensé à l'insu du visiteur. |
 | Aucune reponse ne contient la cle | la clé est dans l'environnement du serveur. | la clé recopiée dans une page, un fragment ou un en-tête. |
 
-#### `banc_tests` (8 cas)
+#### `banc_tests` (10 cas)
 
 [`tests/integration/banc_tests/test_ecrans.py`](../tests/integration/banc_tests/test_ecrans.py)
 
@@ -742,6 +748,8 @@ Le catalogue compte 479 cas : 285 cas en tests unitaires et 194 cas en tests d'i
 | Cible inconnue refusee par la route web | formulaire envoyé avec une cible fabriquée (chemin hors du dépôt). | un texte du navigateur arrive dans la commande pytest. |
 | Lancement desactive par la route web | serveur réglé avec EDT_TESTS_LANCEMENT=non. | boutons actifs qui mènent à une erreur, ou résultats masqués. |
 | Pages lisibles sans dossier de tests et avec un historique illisible | installation sans dossier « tests », fichier des résultats abîmé. | erreur 500 sur les deux onglets pendant la démonstration. |
+| Relance depuis le site retardee et resultats de la commande affiches | un visiteur relance aussitôt après la fin d'une exécution ; puis la commande `edt tests` (autre processus) enregistre des résultats plus récents. | serveur occupé sans répit ; page qui montre l'ancienne exécution du serveur au lieu des résultats de la commande, jusqu'au redémarrage. |
+| S de charge par la commande seulement | un visiteur lance un test de charge depuis la page (envoi fabriqué du formulaire). | test de quinze minutes au plus sur le serveur public, enchaînable un par un. |
 
 [`tests/integration/banc_tests/test_execution.py`](../tests/integration/banc_tests/test_execution.py)
 

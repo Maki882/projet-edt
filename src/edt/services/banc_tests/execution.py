@@ -10,7 +10,10 @@ Déroulement
 1. Garde-fous, dans l'ordre : lancement permis (`EDT_TESTS_LANCEMENT`), pytest
    installé, aucune exécution en cours (dans ce processus ou un autre : fichier
    `execution-en-cours.json` du dossier des résultats), aucun calcul d'emploi
-   du temps en cours.
+   du temps en cours. Depuis le site (`depuis_le_site=True`), deux garde-fous
+   de plus, car tout visiteur peut cliquer : pas de test de charge (ils se
+   lancent par la commande), et un délai minimal (`EDT_TESTS_DELAI_S`, 60 s
+   par défaut) après la fin de l'exécution précédente.
 2. Un fil d'arrière-plan lance `sys.executable -m pytest <chemins du
    catalogue>` depuis la racine du dépôt, avec le greffon du banc
    (`-p edt.services.banc_tests.greffon`), sans cache ni couleur, et sans les
@@ -32,7 +35,17 @@ Déroulement
 Serveur arrêté pendant une exécution : le fichier `execution-en-cours.json`
 désigne un processus qui n'existe plus. Le prochain lecteur (page, lancement)
 le retire et note au bilan une exécution « interrompue » : l'état « en cours »
-ne reste jamais bloqué.
+ne reste jamais bloqué. Le fichier est écrit d'un bloc (fichier temporaire
+puis lien) : un lecteur ne le voit jamais vide. Une panne du fil lui-même
+(dossier temporaire impossible à créer, verrou impossible à retirer) termine
+quand même l'exécution, en erreur.
+
+Limite connue : sans écran de connexion, tout visiteur peut arrêter
+l'exécution lancée par un autre.
+
+Un autre service qui doit savoir si des tests tournent (le lancement d'un
+calcul, par exemple) appelle `tests_en_cours()`, qui ne lève pas et ne prend
+aucun verrou.
 """
 
 from __future__ import annotations
@@ -43,6 +56,7 @@ import datetime as dt
 import importlib.util
 import json
 import logging
+import math
 import os
 import secrets
 import shutil
@@ -57,7 +71,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import edt
-from edt.erreurs import ErreurConfiguration, ErreurRegleMetier
+from edt.erreurs import ErreurConfiguration, ErreurEDT, ErreurRegleMetier
 from edt.services.banc_tests import resultats as res
 from edt.services.banc_tests.catalogue import Catalogue, Cible
 from edt.services.banc_tests.greffon import VARIABLE_EVENEMENTS
@@ -67,6 +81,8 @@ journal = logging.getLogger(__name__)
 VARIABLE_DUREE_MAX = "EDT_TESTS_DUREE_MAX_S"
 DUREE_MAX_DEFAUT_S = 900
 VARIABLE_LANCEMENT = "EDT_TESTS_LANCEMENT"
+VARIABLE_DELAI = "EDT_TESTS_DELAI_S"
+DELAI_DEFAUT_S = 60
 GREFFON = "edt.services.banc_tests.greffon"
 FICHIER_VERROU = "execution-en-cours.json"
 PAS_LECTURE_S = 0.2
@@ -103,10 +119,12 @@ class Reglages:
 
     duree_max_s: int
     lancement_permis: bool
+    delai_s: int = DELAI_DEFAUT_S
+    """Délai minimal entre la fin d'une exécution et un lancement depuis le site (0 : aucun)."""
 
 
 def lire_reglages() -> Reglages:
-    """Lit `EDT_TESTS_DUREE_MAX_S` et `EDT_TESTS_LANCEMENT` ; `ErreurConfiguration` si invalides."""
+    """Lit les variables `EDT_TESTS_*` du banc ; `ErreurConfiguration` si l'une est invalide."""
     brut = os.environ.get(VARIABLE_DUREE_MAX, "").strip() or str(DUREE_MAX_DEFAUT_S)
     if not (brut.isascii() and brut.isdigit()) or int(brut) < 1:
         raise ErreurConfiguration(
@@ -118,7 +136,13 @@ def lire_reglages() -> Reglages:
         raise ErreurConfiguration(
             f"{VARIABLE_LANCEMENT} doit valoir « oui » ou « non » (valeur lue : {lancement!r})."
         )
-    return Reglages(duree_max_s=int(brut), lancement_permis=lancement == "oui")
+    delai = os.environ.get(VARIABLE_DELAI, "").strip() or str(DELAI_DEFAUT_S)
+    if not (delai.isascii() and delai.isdigit()):
+        raise ErreurConfiguration(
+            f"{VARIABLE_DELAI} doit être un nombre entier de secondes, 0 ou plus "
+            f"(valeur lue : {delai!r})."
+        )
+    return Reglages(duree_max_s=int(brut), lancement_permis=lancement == "oui", delai_s=int(delai))
 
 
 def pytest_installe() -> bool:
@@ -364,10 +388,40 @@ def execution_ailleurs(dossier: Path | None = None) -> dict | None:
             "debut": info.get("debut"),
             "pid": info.get("pid"),
         }
-    with contextlib.suppress(FileNotFoundError):
+    try:
         chemin.unlink()
-        _noter_interruption(info, dossier)
+    except FileNotFoundError:
+        return None  # un autre lecteur l'a retiré
+    except PermissionError as erreur:
+        # Windows : un autre lecteur tient le fichier ouvert ; le prochain le retirera.
+        journal.info("Verrou abandonné non retiré pour l'instant (%s) : %s", chemin, erreur)
+        return None
+    _noter_interruption(info, dossier)
     return None
+
+
+def tests_en_cours(dossier: Path | None = None) -> bool:
+    """Vrai si une exécution des tests tourne, dans ce processus ou dans un autre.
+
+    Pour les autres services (refuser un calcul pendant les tests) : ne lève
+    pas, ne prend aucun verrou, n'écrit rien. Un verrou illisible ou d'un
+    processus mort compte pour « aucune exécution » ; une panne de lecture est
+    journalisée et compte de même.
+    """
+    courante = _courante  # simple lecture d'une référence : pas besoin de `_verrou`
+    if courante is not None and courante.en_cours:
+        return True
+    try:
+        info = _lire_verrou((dossier or res.dossier_resultats()) / FICHIER_VERROU)
+    except ErreurEDT as erreur:
+        journal.warning("Exécution des tests en cours ou non : réglages illisibles (%s)", erreur)
+        return False
+    pid = (info or {}).get("pid")
+    if not isinstance(pid, int) or pid == os.getpid():
+        return False
+    from edt.services.generation import _processus_vivant
+
+    return _processus_vivant(pid)
 
 
 def _prendre_verrou(dossier: Path, execution: Execution) -> None:
@@ -382,19 +436,25 @@ def _prendre_verrou(dossier: Path, execution: Execution) -> None:
         },
         ensure_ascii=False,
     )
-    for _ in range(2):
-        try:
-            descripteur = os.open(chemin, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-        except FileExistsError:
-            if execution_ailleurs(dossier) is not None or chemin.exists():
-                raise ErreurTestsEnCours(
-                    "Des tests sont déjà en cours d'exécution dans un autre processus (ligne de "
-                    "commande) : attendre leur fin, puis relancer."
-                ) from None
-            continue
+    # Contenu écrit à part, puis lié sous le nom du verrou : le lien est atomique et échoue si
+    # le verrou existe déjà. Un lecteur voit donc le verrou complet, ou pas de verrou du tout.
+    descripteur, temporaire = tempfile.mkstemp(dir=dossier, prefix=".verrou-", suffix=".tmp")
+    try:
         with os.fdopen(descripteur, "w", encoding="utf-8") as flux:
             flux.write(contenu)
-        return
+        for _ in range(2):
+            try:
+                os.link(temporaire, chemin)
+            except FileExistsError:
+                if execution_ailleurs(dossier) is not None or chemin.exists():
+                    raise ErreurTestsEnCours(
+                        "Des tests sont déjà en cours d'exécution dans un autre processus (ligne "
+                        "de commande) : attendre leur fin, puis relancer."
+                    ) from None
+                continue
+            return
+    finally:
+        os.remove(temporaire)
     raise ErreurTestsEnCours("Des tests sont déjà en cours d'exécution : attendre leur fin.")
 
 
@@ -410,12 +470,50 @@ def _rendre_verrou(dossier: Path, execution: Execution) -> None:
 # --------------------------------------------------------------------------- #
 
 
-def lancer(cible: Cible, racine: Path, dossier: Path | None = None) -> Execution:
+def prochain_lancement_site(dossier: Path | None = None) -> dt.datetime | None:
+    """Heure à partir de laquelle le site peut relancer des tests, ou `None` si c'est permis.
+
+    Le délai `EDT_TESTS_DELAI_S` part de la fin de la dernière exécution
+    enregistrée (site ou commande).
+    """
+    delai = lire_reglages().delai_s
+    derniere = res.lire_historique(dossier).derniere
+    if not delai or derniere is None:
+        return None
+    permis = derniere.fin + dt.timedelta(seconds=delai)
+    return permis if permis > res.maintenant() else None
+
+
+def _exiger_permis_depuis_le_site(cible: Cible, dossier: Path) -> None:
+    if cible.charge:
+        test = cible.tests[0] if cible.tests else cible.cle
+        raise ErreurLancementImpossible(
+            "Les tests de charge, longs, ne se lancent pas depuis le site : ils occuperaient le "
+            f"serveur plusieurs minutes. Les lancer par la commande : python -m edt tests --test {test}"
+        )
+    permis = prochain_lancement_site(dossier)
+    if permis is not None:
+        attente = math.ceil((permis - res.maintenant()).total_seconds())
+        # Minute affichée arrondie au-dessus : relancer à l'heure dite est toujours accepté.
+        minute = permis.replace(second=0, microsecond=0)
+        if minute < permis:
+            minute += dt.timedelta(minutes=1)
+        raise ErreurLancementImpossible(
+            "Des tests viennent de tourner : pour laisser le serveur aux autres visiteurs, le "
+            f"prochain lancement depuis le site est possible à {minute:%H} h {minute:%M} "
+            f"(dans {attente} s)."
+        )
+
+
+def lancer(
+    cible: Cible, racine: Path, dossier: Path | None = None, *, depuis_le_site: bool = False
+) -> Execution:
     """Lance l'exécution de `cible` en arrière-plan et la renvoie tout de suite.
 
     Lève `ErreurLancementImpossible` (lancement désactivé, pytest absent, calcul
-    en cours) ou `ErreurTestsEnCours` (une exécution tourne déjà ; `meme_cible`
-    dit si c'est la même demande, par exemple un double clic).
+    en cours ; depuis le site, test de charge ou délai minimal pas encore écoulé)
+    ou `ErreurTestsEnCours` (une exécution tourne déjà ; `meme_cible` dit si
+    c'est la même demande, par exemple un double clic).
     """
     global _courante
     reglages = lire_reglages()
@@ -436,6 +534,8 @@ def lancer(cible: Cible, racine: Path, dossier: Path | None = None) -> Execution
                 "Une exécution des tests est déjà en cours : attendre sa fin ou l'arrêter.",
                 meme_cible=meme,
             )
+        if depuis_le_site:
+            _exiger_permis_depuis_le_site(cible, dossier)
         if calcul_en_cours():
             raise ErreurLancementImpossible(
                 "Un calcul d'emploi du temps est en cours : les tests attendent sa fin pour ne "
@@ -653,9 +753,10 @@ def _lancer_processus(execution: Execution, temporaire: Path, sortie) -> subproc
 
 def _executer(execution: Execution) -> None:
     """Corps du fil d'arrière-plan : lance, suit, arrête au besoin, enregistre."""
-    temporaire = Path(tempfile.mkdtemp(prefix="edt-tests-"))
+    temporaire: Path | None = None
     issue, code = res.ISSUE_ERREUR, None
     try:
+        temporaire = Path(tempfile.mkdtemp(prefix="edt-tests-"))
         with (execution.dossier / res.FICHIER_JOURNAL).open("w", encoding="utf-8") as sortie:
             processus = _lancer_processus(execution, temporaire, sortie)
             execution.processus = processus
@@ -682,19 +783,28 @@ def _executer(execution: Execution) -> None:
                 "journal du serveur donne le détail."
             )
     finally:
+        # Chaque étape de la fin est protégée : quoi qu'il arrive, l'exécution se termine,
+        # sinon elle resterait « en cours » et bloquerait tout lancement jusqu'au redémarrage.
         try:
             _enregistrer(execution, issue, code)
         except Exception:
             journal.exception("Résultats de l'exécution %s non enregistrés", execution.id)
-        _rendre_verrou(execution.dossier, execution)
         try:
-            shutil.rmtree(temporaire)
-        except OSError as erreur:
-            journal.warning("Dossier temporaire des tests non effacé : %s (%s)", temporaire, erreur)
+            _rendre_verrou(execution.dossier, execution)
+        except OSError:
+            # Resté en place, il désigne ce processus et une exécution finie : tenu pour
+            # abandonné au prochain lancement.
+            journal.exception("Verrou de l'exécution %s non retiré", execution.id)
+        if temporaire is not None:
+            try:
+                shutil.rmtree(temporaire)
+            except OSError as erreur:
+                journal.warning(
+                    "Dossier temporaire des tests non effacé : %s (%s)", temporaire, erreur
+                )
         with execution.verrou:
             execution.fin = time.monotonic()
             execution.issue = issue
-
         journal.info("Exécution des tests %s terminée : %s", execution.id, issue)
 
 

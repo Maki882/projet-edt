@@ -161,3 +161,30 @@ def test_texte_duree():
 def test_suivi_compte_par_etat():
     suivi = dataclasses.replace(_suivi(), issue=res.ISSUE_TERMINEE)
     assert suivi.compte(res.REUSSI) == 1 and not suivi.en_cours
+
+
+@pytest.mark.cas_limite
+def test_apres_une_execution_l_historique_fait_foi(depot, monkeypatch):
+    """Cas : après une exécution lancée depuis le site, la commande `edt tests` (autre
+    processus) enregistre des résultats plus récents.
+
+    Risque : la page garde les résultats en mémoire du serveur et masque les nouveaux jusqu'au
+    redémarrage."""
+    plus_tard = LE + dt.timedelta(minutes=5)
+    terminee = _suivi(issue=res.ISSUE_TERMINEE, test_en_cours=None)
+    monkeypatch.setattr(ex, "_courante", _ExecutionFigee(terminee))
+
+    def commande(h: res.Historique) -> None:
+        h.tests[CLE_REUSSI] = res.ResultatTest(res.ECHEC, 0.3, plus_tard, detail="assert")
+        h.derniere = res.BilanExecution(
+            "le composant demo", "unitaires", plus_tard, plus_tard, res.ISSUE_TERMINEE, "Terminée."
+        )
+
+    res.mettre_a_jour(commande)
+
+    t = tableau_famille("unitaires")
+
+    assert t.suivi is None and t.derniere.libelle == "le composant demo"
+    assert t.ligne(CLE_REUSSI).etat == res.ECHEC and t.ligne(CLE_REUSSI).resultat.le == plus_tard
+    suivi_demande = tableau_famille("unitaires", execution_suivie="e1")  # dernier appel du suivi
+    assert suivi_demande.suivi is not None and suivi_demande.ligne(CLE_REUSSI).etat == res.ECHEC
