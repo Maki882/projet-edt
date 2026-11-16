@@ -518,3 +518,28 @@ def test_emploi_du_temps_a_une_date_sans_seances_datees_lit_la_semaine_type(vers
     )["content"]
     assert "cette version n'a pas de séances datées : semaine type de la semaine n° 9" in texte
     assert "- lundi 8 h 30 - 10 h 30 : CM Mathématiques ; A1" in texte
+
+
+@pytest.mark.cas_limite
+def test_emploi_du_temps_d_une_classe_compte_ses_demi_groupes_et_ses_langues(version_minimale):
+    """Cas : « la classe A1-G1 a-t-elle cours le mercredi ? » ; ce jour-là, seuls ses
+    demi-groupes (TP) et le groupe de langue qui partage ses étudiants ont cours.
+
+    Risque : l'outil ne lit que la vue restreinte et répond « 0 séance » : l'assistant
+    annonce la classe libre.
+    """
+    texte = _appeler(
+        "emploi_du_temps",
+        nature="groupe",
+        code="A1-G1",
+        semestre=None,
+        date=None,
+        jour="mercredi",
+    )["content"]
+    assert "TP Algorithmique ; A1-G1a" in texte and "TP Algorithmique ; A1-G1b" in texte
+    assert "LANGUE Anglais ; A1-ANG-B2" in texte
+    assert "une partie du groupe" in texte
+    promotion = _appeler(
+        "emploi_du_temps", nature="groupe", code="A1", semestre=None, date=None, jour="mercredi"
+    )["content"]
+    assert "TP Algorithmique ; A1-G1a" in promotion and ": 0 séance." not in promotion

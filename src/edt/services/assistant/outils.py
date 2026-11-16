@@ -206,7 +206,9 @@ def _construire_outils() -> list[dict[str, Any]]:
             "description": "Séances d'un groupe, d'un enseignant ou d'une salle dans la version "
             "active d'un semestre : semaine type (date null) ou semaine datée qui contient la "
             "date ; jour pour se limiter à un jour. À appeler pour toute question sur les cours "
-            "de quelqu'un ou l'occupation d'une salle.",
+            "de quelqu'un ou l'occupation d'une salle. Pour un groupe, les séances de ses "
+            "sous-groupes et des groupes qui partagent ses étudiants sont incluses, marquées "
+            "« une partie du groupe ».",
             "input_schema": _objet(
                 {
                     "nature": {"type": "string", "enum": ["groupe", "enseignant", "salle"]},
@@ -1145,6 +1147,10 @@ def _emploi_du_temps(session: Session, entree: Mapping[str, Any], contexte: Cont
             jour=jour if date is None else None,
             verifier=False,
             aujourdhui=contexte.aujourdhui,
+            # Vue étendue : les séances des demi-groupes et des groupes qui partagent ses
+            # étudiants comptent aussi (marquées « une partie du groupe »), sinon une classe
+            # dont seuls les demi-groupes ont cours paraîtrait libre.
+            etendu=True,
         )
         blocs = sorted(vue.blocs, key=lambda b: (b.date or dt.date.min, b.jour, b.debut))
         if date is not None and not datees:

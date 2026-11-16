@@ -239,7 +239,7 @@ le nombre de lignes manquantes).
 | `lire_contexte` | date du jour, année en cours, semestres et version active, horaires, déjeuner, types de séance permis le samedi, demi-journées de la grille par jour, calcul en cours, nombre d'éléments |
 | `chercher` | éléments d'une entité par texte et filtres (codes, libellés acceptés), 25 par page ; sans résultat, cinq éléments proches |
 | `salles_libres` | salles libres toutes les semaines (par campus), libres certaines semaines, occupées, exceptions datées ; à une date, les séances datées et les fermetures |
-| `emploi_du_temps` | séances d'un groupe, d'un enseignant ou d'une salle (semaine type ou semaine datée, un jour) ; lien vers l'emploi du temps |
+| `emploi_du_temps` | séances d'un groupe, d'un enseignant ou d'une salle (semaine type ou semaine datée, un jour) ; pour un groupe, aussi celles de ses sous-groupes et des groupes qui partagent ses étudiants, marquées « une partie du groupe » ; lien vers l'emploi du temps |
 | `points_a_traiter` | total, par gravité et par règle les trois premiers messages, séances à programmer ; lien vers la page Points à traiter |
 | `lister_regles`, `expliquer_regle` | règles de l'année (phrase, état, niveau, période) ; explication d'une règle |
 | `proposer_regle`, `proposer_modification_regle`, `proposer_etat_regle`, `proposer_indisponibilite` | validation par le service, puis une proposition ajoutée à l'échange (trois au plus) ; erreurs par champ sinon |
