@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 
 import pytest
+from tests.outils.web_donnees.aides import erreur_sous_le_champ
 
 from edt.db.modeles import Parametre
 from edt.db.moteur import session_base
@@ -16,7 +17,12 @@ from edt.domaine.parametres import (
     Parametres,
     definitions,
 )
-from edt.services.parametres import anomalies_parametres, lire_parametres
+from edt.erreurs import ErreurCalculEnCours
+from edt.services.parametres import ANCIENNE_CLE_DEJEUNER, anomalies_parametres, lire_parametres
+from edt.services.referentiels.reglages import (
+    enregistrer_parametres_saisis,
+    remettre_parametres_par_defaut,
+)
 
 MAXIMUM_TEMPS_LIMITE = next(d.maximum for d in definitions() if d.cle == "temps_limite_s")
 
@@ -82,7 +88,7 @@ def test_pause_libre_plus_longue_que_sa_fenetre_signalee_sous_le_champ(client):
         "/parametres", data=_saisies(dejeuner_mode="libre", dejeuner_duree_min="90")
     )
     assert reponse.status_code == 422
-    message = re.search(r'id="erreur-dejeuner_duree_min">([^<]+)<', reponse.text).group(1)
+    message = erreur_sous_le_champ(reponse, "dejeuner_duree_min")
     assert message.startswith("Une pause de 90 min ne tient pas dans la fenêtre du déjeuner")
     with session_base() as session:
         assert lire_parametres(session) == Parametres()
@@ -142,6 +148,14 @@ def test_parametres_refuses_pendant_un_calcul(site, calcul_retenu):
     assert 'name="temps_limite_s" value="120"' in envoi.text  # la saisie est conservée
     with session_base() as session:
         assert lire_parametres(session) == avant
+        # Le refus est porté par le service : tout appelant, pas seulement l'écran.
+        with pytest.raises(ErreurCalculEnCours):
+            enregistrer_parametres_saisis(session, {"temps_limite_s": "120"})
+        with pytest.raises(ErreurCalculEnCours):
+            remettre_parametres_par_defaut(session)
+        session.rollback()
+    with session_base() as session:
+        assert lire_parametres(session) == avant
 
     assert calcul_retenu.liberer().reussi
     apres = site.post("/parametres", data=_saisies(temps_limite_s="120"), follow_redirects=True)
@@ -160,7 +174,7 @@ def test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran(site):
         session.get(Parametre, "pause_min").valeur = "quinze"
     page = site.get("/parametres")
     assert page.status_code == 200
-    erreur = re.search(r'id="erreur-pause_min">([^<]+)<', page.text).group(1)
+    erreur = erreur_sous_le_champ(page, "pause_min")
     assert erreur.startswith("Valeur enregistrée invalide (un nombre entier est attendu")
     assert "1 paramètre enregistré est invalide" in page.text
     defaut = next(d.defaut for d in definitions() if d.cle == "pause_min")
@@ -172,3 +186,27 @@ def test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran(site):
         assert anomalies_parametres(session) == {}
         assert lire_parametres(session).pause_min == defaut
     assert 'id="erreur-pause_min"' not in site.get("/parametres").text
+
+
+@pytest.mark.cas_limite
+def test_ancien_parametre_de_dejeuner_illisible_reste_reparable(site):
+    """Cas : la base ne tient pas `dejeuner_mode` mais l'ancien paramètre
+    `dejeuner_horaires_determines`, avec une valeur qui n'est ni oui ni non. Risque : la lecture
+    lève avant toute tolérance et l'écran des paramètres, seul moyen de réparer, ne s'ouvre plus
+    (comme Générer, qui lit les paramètres)."""
+    with session_base() as session:
+        session.delete(session.get(Parametre, "dejeuner_mode"))
+        session.add(Parametre(cle=ANCIENNE_CLE_DEJEUNER, valeur="peut-être"))
+    page = site.get("/parametres")
+    assert page.status_code == 200
+    erreur = erreur_sous_le_champ(page, "dejeuner_mode")
+    assert erreur.startswith("Valeur enregistrée invalide (l'ancien paramètre")
+    assert "'peut-être' au lieu de oui ou non" in erreur
+
+    repare = site.post(
+        "/parametres", data=_saisies(dejeuner_mode=DEJEUNER_FIXE), follow_redirects=True
+    )
+    assert "Paramètres enregistrés." in repare.text
+    with session_base() as session:
+        assert anomalies_parametres(session) == {}
+        assert lire_parametres(session).dejeuner_mode == DEJEUNER_FIXE
