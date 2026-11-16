@@ -1274,9 +1274,9 @@ def _phrases(
     if issue == Issue.REFUSE:
         return (
             "Calcul non lancé : points bloquants relevés avant la recherche",
-            "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
-            "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
-            "enregistré. Corriger les points ci-dessous, puis relancer.",
+            "Les vérifications préalables ont relevé des points bloquants : la recherche n'a pas "
+            "été lancée et aucun emploi du temps n'a été enregistré. Corriger les points "
+            "ci-dessous, puis relancer.",
             None,
         )
     if issue == Issue.IMPOSSIBLE:

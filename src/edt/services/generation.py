@@ -231,12 +231,29 @@ class SuiviCalcul:
         """Vrai si le calcul a produit une version d'emploi du temps."""
         return self.etat is EtatCalcul.REUSSI
 
+    @property
+    def libelle(self) -> str:
+        """Résultat en quelques mots (voir `libelle_resultat`)."""
+        return libelle_resultat(self.etat, self.statistiques)
+
 
 @dataclass
 class _CalculActif:
     fil: threading.Thread
     arret: threading.Event
     premiere_solution_s: float | None = None
+
+
+LIBELLE_NON_LANCE = "Non lancé (points bloquants)"
+"""Résultat affiché d'un calcul refusé par les pré-vérifications : l'état « impossible » qu'il
+porte en base ne dit pas que la recherche n'a pas eu lieu."""
+
+
+def libelle_resultat(etat: EtatCalcul, statistiques: object) -> str:
+    """Résultat d'un calcul en quelques mots : le libellé de l'état, sauf pour un refus."""
+    if isinstance(statistiques, dict) and statistiques.get("refuse") is True:
+        return LIBELLE_NON_LANCE
+    return etat.libelle
 
 
 _verrou = threading.Lock()

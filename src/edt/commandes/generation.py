@@ -327,7 +327,7 @@ def generer(
         generation.demander_arret(identifiant)
         suivi = generation.attendre_calcul(identifiant)
 
-    typer.echo(f"Calcul n° {suivi.id} : {suivi.etat.libelle} en {suivi.temps_ecoule_s:g} s.")
+    typer.echo(f"Calcul n° {suivi.id} : {suivi.libelle} en {suivi.temps_ecoule_s:g} s.")
     typer.echo(suivi.message)
     for avertissement in suivi.avertissements:
         typer.echo(f"  Avertissement : {avertissement}")
