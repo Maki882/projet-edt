@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
-from tests.outils.web_donnees.aides import HX
+from tests.outils.web_donnees.aides import HX, saisie_salle
 
 from edt.db.modeles import Besoin, Salle
 from edt.db.moteur import session_base
@@ -13,14 +13,8 @@ from edt.services.referentiels import operations
 
 
 def _salle(ids, code="N999", **autres):
-    return {
-        "code": code,
-        "campus_id": str(ids.ndc),
-        "type_salle_id": str(ids.type_cours),
-        "capacite": "30",
-        "accessibilite": "oui",
-        **autres,
-    }
+    """Salle valide à ajouter, de code « N999 » par défaut (absent du jeu minimal)."""
+    return saisie_salle(ids, code=code, **autres)
 
 
 def test_liste_triee_recherchee_et_filtree(site, ids):

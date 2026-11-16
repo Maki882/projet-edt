@@ -1,5 +1,4 @@
-"""Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand),
-inventaire n° 14.
+"""Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand).
 
 Le serveur sert une requête à la fois : une page de plusieurs secondes gèle
 tout le monde, et un tableau non paginé peut peser plusieurs mégaoctets. Ces
@@ -15,7 +14,7 @@ Deux précautions rendent la mesure stable :
   borné largement : un blocage ou une attente de verrou se verraient là ;
 - les pages sont mesurées dans un **interpréteur neuf** : en fin de suite
   complète, le processus des tests traîne l'état de mille tests et la page
-  Générer y coûtait jusqu'à 2,4 s de processeur, contre 1,65 s dans un
+  Générer y coûte jusqu'à 2,4 s de processeur, contre 1,65 s dans un
   interpréteur neuf (modules déjà chargés, pré-vérifications à froid).
 """
 

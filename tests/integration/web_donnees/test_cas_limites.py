@@ -1,11 +1,9 @@
 """Banque des cas limites de l'espace « Données » : calcul en cours, dates aberrantes,
 adresses et en-têtes fabriqués, fragments ouverts à la main, champs libres piégés.
 
-Chaque test reproduit un scénario de l'inventaire des cas limites (son numéro
-est rappelé dans les titres de section) et commence par « Cas : ... Risque :
-... ». Un cas qui relève d'un autre lot reste marqué `xfail(strict=True)` avec
-le fichier à corriger : le jour où ce lot l'aura corrigé, le test passera
-(XPASS) et échouera pour qu'on retire la marque.
+Chaque test commence par « Cas : ... Risque : ... ». Les mêmes situations sur
+les écrans Générer, Emploi du temps et À traiter sont dans
+`tests/integration/web_edt/test_cas_limites.py`.
 
 Les autres cas limites de l'espace sont rangés avec leur écran :
 `test_parametres.py` (calcul en cours), `test_saisies_extremes.py` (nombres de
@@ -24,6 +22,7 @@ from tests.outils.web_donnees.aides import (
     HX,
     compter,
     depuis,
+    erreur_sous_le_champ,
     existe,
     formulaire_de,
     identifiant,
@@ -50,7 +49,7 @@ EN_COURS = "calcul d'emploi du temps est en cours"
 
 
 # --------------------------------------------------------------------------- #
-# Calcul en cours : aucune suppression sous ses pieds (inventaire n° 1 et 2)
+# Calcul en cours : aucune suppression sous ses pieds
 # --------------------------------------------------------------------------- #
 
 
@@ -58,8 +57,10 @@ def test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee(
     site, ids, calcul_retenu, caplog
 ):
     """Cas : pendant un calcul, on supprime un besoin ou une salle du semestre calculé (page ou
-    ligne). Risque : la suppression passe, le calcul enregistre des séances qui pointent vers
-    elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont perdues."""
+    ligne), ou un élément qu'il ne lit pas (un équipement) : toute suppression est refusée
+    pendant un calcul. Risque : la suppression passe, le calcul enregistre des séances qui
+    pointent vers elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont
+    perdues."""
     besoin = identifiant(m.Besoin, m.Besoin.semestre_id, calcul_retenu.semestre_id)
     salle = ids.salle_n016
     suivi = f'href="/calculs/{calcul_retenu.id}"'
@@ -71,6 +72,12 @@ def test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee(
     ligne = site.get(f"/salles/{salle}/ligne/suppression", headers=depuis("/salles"))
     assert EN_COURS in texte_visible(ligne) and suivi in ligne.text
     assert "hx-post" not in ligne.text  # pas de bouton de suppression
+    # Le refus vaut quel que soit l'élément, même étranger au semestre calculé.
+    with session_base() as session:
+        equipement = session.scalar(select(m.Equipement.id).order_by(m.Equipement.id).limit(1))
+    assert equipement is not None
+    autre = site.get(f"/equipements/{equipement}/supprimer")
+    assert EN_COURS in texte_visible(autre) and "Supprimer définitivement" not in autre.text
 
     # Envois directs (formulaire resté ouvert, double clic) : refusés, rien n'est supprimé.
     page = site.post(
@@ -143,7 +150,7 @@ def test_regles_personnalisees_supprimables_pendant_un_calcul(site, calcul_reten
 
 
 # --------------------------------------------------------------------------- #
-# Dates aberrantes d'une année ou d'un semestre (inventaire n° 3)
+# Dates aberrantes d'une année ou d'un semestre
 # --------------------------------------------------------------------------- #
 
 
@@ -164,8 +171,7 @@ def test_duree_d_une_annee_bornee(site, debut, fin, champ, message):
         "/calendrier/annees", data={"libelle": "Aberrante", "date_debut": debut, "date_fin": fin}
     )
     assert reponse.status_code == 422
-    erreur = re.search(rf'id="erreur-{champ}">([^<]+)<', reponse.text)
-    assert erreur is not None and message in erreur.group(1)
+    assert message in erreur_sous_le_champ(reponse, champ)
     assert compter(m.AnneeScolaire, m.AnneeScolaire.libelle == "Aberrante") == 0
 
 
@@ -189,7 +195,7 @@ def test_duree_d_un_semestre_bornee(site):
         },
     )
     assert reponse.status_code == 422
-    erreur = re.search(r'id="erreur-date_fin">([^<]+)<', reponse.text).group(1)
+    erreur = erreur_sous_le_champ(reponse, "date_fin")
     assert "Un semestre dure un an au plus" in erreur
     assert identifiant(m.Semestre, m.Semestre.code, "SL") is None
 
@@ -202,7 +208,7 @@ def test_calculs_d_un_semestre_sain_sans_erreur(site, ids):
 
 
 # --------------------------------------------------------------------------- #
-# Adresse de retour fabriquée : jamais dans un en-tête (inventaire n° 4)
+# Adresse de retour fabriquée : jamais dans un en-tête, jamais vers un autre site
 # --------------------------------------------------------------------------- #
 
 
@@ -240,8 +246,44 @@ def test_adresse_de_retour_avec_saut_de_ligne_est_ecartee(site, ids, htmx):
             assert reponse.status_code == 303 and reponse.headers["location"] == defaut
 
 
+HORS_SITE = ("//exemple.org/", "https://exemple.org/", "/salles\\exemple.org")
+"""Adresses de retour qui mèneraient hors de l'application (redirection ouverte)."""
+
+
+@pytest.mark.parametrize("htmx", [True, False], ids=["htmx", "sans-javascript"])
+def test_adresse_de_retour_hors_site_est_ecartee(site, ids, htmx, caplog):
+    """Cas : le champ caché `_retour` (ou le paramètre `retour`) d'un formulaire est remplacé par
+    « //exemple.org/ », « https://exemple.org/ », une barre oblique inverse, ou la page d'un
+    autre écran. Risque : après l'enregistrement, le navigateur part vers un autre site
+    (en-tête Location ou HX-Redirect) qui imite l'application."""
+    entetes = HX if htmx else {}
+    regle = identifiant(m.Regle, m.Regle.code, "R001")
+    envois = [
+        (f"/salles/{ids.salle_n016}", formulaire_de("salle", ids.salle_n016), retour, "/salles")
+        for retour in (*HORS_SITE, "/besoins")
+    ] + [
+        (f"/regles/{regle}/etat", {"etat": "inactive"}, retour, f"/regles?annee={ids.annee}")
+        for retour in HORS_SITE
+    ]
+    for adresse, donnees, retour, defaut in envois:
+        caplog.clear()
+        with caplog.at_level(logging.INFO):
+            reponse = site.post(
+                adresse,
+                data={**donnees, "_retour": retour},
+                headers=entetes,
+                follow_redirects=False,
+            )
+        cle = "hx-redirect" if htmx else "location"
+        assert reponse.headers[cle] == defaut, (adresse, retour)
+        assert any("Adresse de retour écartée" in r.getMessage() for r in caplog.records), retour
+    for retour in HORS_SITE:
+        confirmation = site.get(f"/salles/{ids.salle_n016}/supprimer", params={"retour": retour})
+        assert confirmation.status_code == 200 and "exemple.org" not in confirmation.text, retour
+
+
 # --------------------------------------------------------------------------- #
-# En-tête HX-Current-URL illisible (inventaire n° 6)
+# En-tête HX-Current-URL illisible
 # --------------------------------------------------------------------------- #
 
 
@@ -267,19 +309,8 @@ def test_hx_current_url_illisible_est_ignore(site, ids, caplog):
         assert any("HX-Current-URL" in r.getMessage() for r in caplog.records), adresse
 
 
-def test_hx_current_url_illisible_dans_le_panneau_d_une_seance(site, version_generee):
-    """Cas : le panneau d'une séance (grille de l'emploi du temps) demandé avec un
-    HX-Current-URL illisible. Risque : erreur 500 au clic sur une séance."""
-    seance = seance_placee(version_generee)
-    reponse = site.get(
-        f"/emploi-du-temps/seances/{seance.id}/panneau",
-        headers={**HX, "HX-Current-URL": ILLISIBLE},
-    )
-    assert reponse.status_code == 200
-
-
 # --------------------------------------------------------------------------- #
-# Fragments HTMX ouverts sans HTMX (inventaire n° 9)
+# Fragments HTMX ouverts sans HTMX
 # --------------------------------------------------------------------------- #
 
 
@@ -317,26 +348,8 @@ def test_fragments_sans_htmx_redirigent_vers_la_page(site, ids):
     assert modifie.status_code == 303 and modifie.headers["location"] == "/campus"
 
 
-@pytest.mark.parametrize(
-    "adresse",
-    ["/a-traiter/compteur", "/calculs/verifications", "calcul_etat", "formulaire_seance"],
-)
-def test_fragments_des_autres_ecrans_sans_htmx(site, version_generee, adresse):
-    """Cas : un fragment des écrans Générer, Emploi du temps ou À traiter ouvert directement.
-    Risque : HTML nu sans mise en page (le compteur d'onglet, le suivi d'un calcul...)."""
-    with session_base() as session:
-        calcul = session.get(m.VersionEdt, version_generee).calcul_id
-    seance = seance_placee(version_generee).id
-    adresse = {
-        "calcul_etat": f"/calculs/{calcul}/etat",
-        "formulaire_seance": f"/emploi-du-temps/seances/{seance}/formulaire",
-    }.get(adresse, adresse)
-    reponse = site.get(adresse, follow_redirects=False)
-    assert reponse.status_code == 303 or "<html" in reponse.text, adresse
-
-
 # --------------------------------------------------------------------------- #
-# Champs libres piégés : échappés sur toutes les pages (inventaire n° 13)
+# Champs libres piégés : échappés sur toutes les pages
 # --------------------------------------------------------------------------- #
 
 CODE_PIEGE = "<b>x</b>"
@@ -416,15 +429,14 @@ def test_champs_libres_echappes_sur_les_pages_de_donnees(site, ids, donnees_pieg
 
 def test_champs_libres_echappes_sur_les_pages_de_l_emploi_du_temps(site, donnees_piegees):
     """Cas : les mêmes textes piégés, plus un motif d'annulation « <script> », dans la grille,
-    les panneaux de séance, l'export et À traiter. Risque : script exécuté au simple affichage
-    de l'emploi du temps."""
+    les panneaux de séance et l'export. Risque : script exécuté au simple affichage de
+    l'emploi du temps."""
     seance, occurrence = donnees_piegees["seance"], donnees_piegees["occurrence"]
     _controler_echappement(
         site,
         {
             f"/emploi-du-temps?version_id={donnees_piegees['version']}": "&lt;b&gt;x&lt;/b&gt;",
-            "/export": None,
-            "/a-traiter": None,
+            "/export": "&lt;b&gt;x&lt;/b&gt;",
         },
         {},
     )

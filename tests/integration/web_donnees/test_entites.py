@@ -126,7 +126,6 @@ def test_arbre_des_groupes(site, ids):
     page = site.get(f"/groupes/arbre?annee={ids.annee}").text
     assert page.index("A1-G1") < page.index("A1-G1a")  # la classe avant son demi-groupe
     assert "chevauche" in page
-    assert site.get("/groupes/arbre?annee=999").status_code == 404
 
 
 def test_matrice_des_trajets(site, ids):

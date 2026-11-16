@@ -7,11 +7,10 @@
   `occurrence_prevue` ;
 - formulaires : `formulaire_de` (valeurs d'un élément existant, comme le
   navigateur les renverrait), `saisie_salle`, `saisie_besoin`, `saisie_regle` ;
-- pages : `texte_visible` (texte sans balises, entités décodées) ;
+- pages : `texte_visible` (texte sans balises, entités décodées),
+  `erreur_sous_le_champ` (message affiché sous un champ de formulaire) ;
 - valeurs piégées : `NOMBRE_TROP_GRAND` (au-delà de ce que SQLite enregistre),
-  `NOMBRE_DE_5000_CHIFFRES` (au-delà de ce que Python convertit) ;
-- `LOT_WEB_EDT` : début de la raison d'un `xfail` qui attend une correction du
-  lot web-edt (Générer, Emploi du temps, À traiter).
+  `NOMBRE_DE_5000_CHIFFRES` (au-delà de ce que Python convertit).
 """
 
 from __future__ import annotations
@@ -36,9 +35,6 @@ NOMBRE_TROP_GRAND = "99999999999999999999"
 
 NOMBRE_DE_5000_CHIFFRES = "1" * 5000
 """Au-delà de 4 300 chiffres, `int()` lève ValueError (limite de Python)."""
-
-LOT_WEB_EDT = "à corriger par le lot web-edt : "
-"""Début de la raison d'un `xfail(strict=True)` qui attend une correction du lot web-edt."""
 
 
 @dataclass(frozen=True)
@@ -71,6 +67,17 @@ def depuis(adresse: str) -> dict[str, str]:
 def texte_visible(reponse) -> str:
     """Texte visible d'une page : balises retirées, entités décodées, espaces réduits."""
     return re.sub(r"\s+", " ", html.unescape(re.sub(r"<[^>]+>", " ", reponse.text)))
+
+
+def erreur_sous_le_champ(reponse, champ: str) -> str:
+    """Message affiché sous le champ `champ` (élément `erreur-<champ>`), entités décodées.
+
+    Échoue avec un extrait de la page si le champ n'a pas de message : le test dit
+    alors ce qui s'affichait, au lieu d'un `AttributeError` sur None.
+    """
+    trouve = re.search(rf'id="erreur-{re.escape(champ)}">([^<]+)<', reponse.text)
+    assert trouve is not None, f"aucun message sous « {champ} » : {texte_visible(reponse)[:600]}"
+    return html.unescape(trouve.group(1))
 
 
 # --------------------------------------------------------------------------- #
