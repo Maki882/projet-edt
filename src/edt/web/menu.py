@@ -14,25 +14,25 @@ les entrées de certaines sections.
 | À traiter        | À traiter                                               |
 
 Un onglet sans aucune entrée n'est pas affiché. Dans un onglet, les entrées
-sont regroupées sous des titres parlants (`SectionMenu`), affichés dans la
+sont regroupées sous des titres parlants (`GroupeMenu`), affichés dans la
 sous-navigation : pour l'onglet Données, « Établissement » (section
 Référentiels), « Besoins et disponibilités » (Planification), « Règles et
 calendrier » (Configuration), « Import et export » (Données). Une entrée peut
 choisir son groupe avec le champ `groupe` (par exemple « Jeux de données »).
 
-L'ordre ne range que les entrées d'un même onglet. Plages par section (chaque
-module de routes range ses écrans sans connaître les autres) :
+Sections et plages d'ordre convenues (pour que les écrans des différents
+lots se rangent sans se concerter) :
 
 | Section           | Ordre     | Contenu                                         |
 |-------------------|-----------|-------------------------------------------------|
 | (aucune)          | 0 - 99    | accueil                                         |
 | Référentiels      | 100 - 199 | campus, salles, enseignants, groupes, matières  |
-| Planification     | 200 - 249 | besoins, indisponibilités                       |
-| Générer           | 250 - 299 | lancement des calculs, historique et versions   |
-| Emploi du temps   | 300 - 349 | consultation des emplois du temps               |
-| À traiter         | 350 - 399 | anomalies, séances à programmer                 |
+| Planification     | 200 - 299 | besoins, indisponibilités                       |
+| Emploi du temps   | 300 - 399 | vues, versions                                  |
 | Données           | 400 - 499 | import, export, jeux de données                 |
-| Configuration     | 500 - 599 | calendrier, règles, grille, paramètres          |
+| Configuration     | 500 - 599 | calendrier, grille, paramètres                  |
+| Générer           | 600 - 699 | lancement et suivi des calculs                  |
+| À traiter         | 700 - 799 | anomalies, séances à programmer                 |
 
 Une entrée dont la section n'est rangée dans aucun onglet est placée dans
 l'onglet Données (sous un groupe portant le nom de sa section) et le fait est
@@ -146,6 +146,10 @@ class SectionMenu:
     titre: str
     entrees: tuple[EntreeMenu, ...]
     sections: tuple[str, ...] = ()
+
+
+GroupeMenu = SectionMenu
+"""Nom d'usage d'un groupe de la sous-navigation."""
 
 
 @dataclass(frozen=True)

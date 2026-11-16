@@ -12,7 +12,7 @@
   (référence de la requête : affichée par les pages d'erreur, pas par le pied de page).
 #}
 {% import "macros.html" as ui %}
-{%- set onglet_courant = onglet_actif(menu, chemin) %}
+{%- set nav = namespace(actif=onglet_actif(menu, chemin)) %}
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -36,7 +36,7 @@
     <nav class="onglets" aria-label="Navigation principale">
       <ul>
         {%- for onglet in menu %}
-        {%- set est_actif = onglet_courant is not none and onglet.titre == onglet_courant.titre %}
+        {%- set est_actif = nav.actif is not none and onglet.titre == nav.actif.titre %}
         <li class="onglet{% if onglet.a_menu_deroulant %} onglet-deroulant{% endif %}">
           <a href="{{ onglet.url }}"{% if est_actif %} class="actif" aria-current="{{ 'page' if onglet.url == chemin else 'true' }}"{% endif %}>{{ onglet.titre }}
             {%- if onglet.url_compteur %}<span hx-get="{{ onglet.url_compteur }}" hx-trigger="load" hx-swap="outerHTML" data-erreur-silencieuse></span>{% endif -%}
@@ -60,10 +60,10 @@
       </ul>
     </nav>
   </header>
-  <div class="cadre{% if onglet_courant is not none and onglet_courant.a_sous_navigation %} cadre-sous-navigation{% endif %}">
-    {%- if onglet_courant is not none and onglet_courant.a_sous_navigation %}
-    <nav class="sous-navigation" aria-label="{{ onglet_courant.titre }}">
-      {%- for groupe in onglet_courant.groupes %}
+  <div class="cadre{% if nav.actif is not none and nav.actif.a_sous_navigation %} cadre-sous-navigation{% endif %}">
+    {%- if nav.actif is not none and nav.actif.a_sous_navigation %}
+    <nav class="sous-navigation" aria-label="{{ nav.actif.titre }}">
+      {%- for groupe in nav.actif.groupes %}
       <h2>{{ groupe.titre }}</h2>
       <ul>
         {%- for entree in groupe.entrees %}
