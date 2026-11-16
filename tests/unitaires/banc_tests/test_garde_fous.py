@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import os
 import sys
@@ -29,9 +30,13 @@ def test_reglages_par_defaut_et_valeurs_lues(monkeypatch):
     monkeypatch.delenv(ex.VARIABLE_LANCEMENT, raising=False)
     assert ex.lire_reglages() == ex.Reglages(duree_max_s=900, lancement_permis=True)
 
+    monkeypatch.delenv(ex.VARIABLE_DELAI, raising=False)
+    assert ex.lire_reglages().delai_s == 60
+
     monkeypatch.setenv(ex.VARIABLE_DUREE_MAX, "120")
     monkeypatch.setenv(ex.VARIABLE_LANCEMENT, "NON")
-    assert ex.lire_reglages() == ex.Reglages(duree_max_s=120, lancement_permis=False)
+    monkeypatch.setenv(ex.VARIABLE_DELAI, "0")
+    assert ex.lire_reglages() == ex.Reglages(duree_max_s=120, lancement_permis=False, delai_s=0)
 
 
 @pytest.mark.cas_limite
@@ -41,6 +46,8 @@ def test_reglages_par_defaut_et_valeurs_lues(monkeypatch):
         (ex.VARIABLE_DUREE_MAX, "0"),
         (ex.VARIABLE_DUREE_MAX, "15 min"),
         (ex.VARIABLE_LANCEMENT, "peut-être"),
+        (ex.VARIABLE_DELAI, "-1"),
+        (ex.VARIABLE_DELAI, "une minute"),
     ],
 )
 def test_reglage_invalide_refuse_avec_son_nom(monkeypatch, variable: str, valeur: str):
@@ -184,3 +191,143 @@ def test_commande_pytest_faite_des_seuls_chemins_du_catalogue(depot, tmp_path):
         assert option in groupe
     assert seul[3] == CLE_CHARGE and "not perf" not in seul
     assert ex.commande_pytest(_cible(f"test:{CLE_REUSSI}"), depot, tmp_path)[3] == CLE_REUSSI
+
+
+# --- Constats de la relecture ------------------------------------------------
+
+LE = dt.datetime(2026, 10, 5, 14, 30)
+"""Heure fixe : les tests du délai ne dépendent pas de l'heure réelle."""
+
+
+def _bilan_termine_le(fin: dt.datetime) -> None:
+    def modifier(historique: res.Historique) -> None:
+        historique.derniere = res.BilanExecution(
+            "tous les tests unitaires",
+            "unitaires",
+            fin,
+            fin,
+            res.ISSUE_TERMINEE,
+            "Exécution terminée.",
+        )
+
+    res.mettre_a_jour(modifier)
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("verrou_coince", [False, True], ids=["disque-plein", "verrou-tenu-ouvert"])
+def test_erreur_avant_le_sous_processus_termine_quand_meme_l_execution(
+    depot, monkeypatch, verrou_coince: bool
+):
+    """Cas : dossier temporaire impossible à créer (disque plein), ou, sous Windows, fichier de
+    verrou tenu ouvert par un lecteur au moment de le retirer.
+
+    Risque : exécution « en cours » pour toujours, plus aucun lancement jusqu'au redémarrage."""
+
+    def disque_plein(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(ex.tempfile, "mkdtemp", disque_plein)
+    if verrou_coince:
+
+        def verrou_tenu(dossier, execution):
+            raise PermissionError(32, "fichier utilisé par un autre processus")
+
+        monkeypatch.setattr(ex, "_rendre_verrou", verrou_tenu)
+
+    suivi = ex.attendre(ex.lancer(_cible(), depot), 10)
+
+    assert not suivi.en_cours and suivi.issue == res.ISSUE_ERREUR
+    assert "No space left on device" in suivi.message
+    assert res.lire_historique().derniere.issue == res.ISSUE_ERREUR
+    if not verrou_coince:
+        assert not (res.dossier_resultats() / ex.FICHIER_VERROU).exists()
+    seconde = ex.lancer(_cible(), depot)  # pas « déjà en cours »
+    assert not ex.attendre(seconde, 10).en_cours
+
+
+@pytest.mark.cas_limite
+def test_verrou_jamais_vu_vide_par_un_lecteur(depot, monkeypatch):
+    """Cas : une page s'affiche pendant qu'un lancement écrit son fichier de verrou.
+
+    Risque : le lecteur voit un fichier vide, retire le verrou d'une exécution vivante (une
+    seconde exécution peut partir) ou, sous Windows, répond par une erreur 500."""
+    dossier = res.dossier_resultats()
+    dossier.mkdir(parents=True)
+    vus: list[object] = []
+    fdopen = os.fdopen
+
+    def ecriture_observee(*args, **kwargs):
+        try:  # un lecteur passe pendant l'écriture
+            vus.append(ex.execution_ailleurs(dossier))
+        except Exception as erreur:
+            vus.append(erreur)
+        return fdopen(*args, **kwargs)
+
+    monkeypatch.setattr(ex.os, "fdopen", ecriture_observee)
+    execution = ex.Execution(
+        id="e1", cible=_cible(), racine=depot, dossier=dossier, duree_max_s=900, debut=LE
+    )
+
+    ex._prendre_verrou(dossier, execution)
+
+    assert vus and all(v is None for v in vus), vus
+    contenu = json.loads((dossier / ex.FICHIER_VERROU).read_text(encoding="utf-8"))
+    assert (contenu["pid"], contenu["execution"]) == (os.getpid(), "e1")
+    assert res.lire_historique().derniere is None  # aucune interruption inventée
+    assert [f.name for f in dossier.iterdir()] == [ex.FICHIER_VERROU]  # aucun fichier temporaire
+
+
+@pytest.mark.cas_limite
+def test_delai_minimal_entre_deux_lancements_depuis_le_site(depot, monkeypatch):
+    """Cas : un visiteur (ou un script) relance les tests dès la fin de l'exécution précédente.
+
+    Risque : serveur de deux cœurs occupé en continu par les tests."""
+    monkeypatch.setattr(res, "maintenant", lambda: LE)
+    _bilan_termine_le(LE - dt.timedelta(seconds=10))
+
+    with pytest.raises(ex.ErreurLancementImpossible) as refus:
+        ex.lancer(_cible(), depot, depuis_le_site=True)
+
+    assert "14 h 31" in str(refus.value) and "50 s" in str(refus.value)
+    assert ex.execution_courante() is None
+    assert ex.prochain_lancement_site() == LE + dt.timedelta(seconds=50)
+    monkeypatch.setenv(ex.VARIABLE_DELAI, "5")
+    assert ex.prochain_lancement_site() is None  # délai écoulé
+
+
+@pytest.mark.cas_limite
+def test_test_de_charge_refuse_depuis_le_site(depot):
+    """Cas : un visiteur lance un à un les tests de charge (jusqu'à quinze minutes chacun).
+
+    Risque : serveur saturé pendant la démonstration ; ces tests se lancent par la commande."""
+    charge = _cible(f"test:{CLE_CHARGE}")
+    assert charge.charge and not _cible(f"test:{CLE_REUSSI}").charge
+
+    with pytest.raises(ex.ErreurLancementImpossible, match="python -m edt tests --test"):
+        ex.lancer(charge, depot, depuis_le_site=True)
+    assert ex.execution_courante() is None
+
+
+class _EnCours:
+    en_cours = True
+
+
+def test_tests_en_cours_pour_un_autre_service(depot, monkeypatch):
+    dossier = res.dossier_resultats()
+    assert ex.tests_en_cours() is False
+
+    monkeypatch.setattr(ex, "_courante", _EnCours())
+    assert ex.tests_en_cours() is True  # exécution de ce processus
+    monkeypatch.setattr(ex, "_courante", None)
+
+    dossier.mkdir(parents=True)
+    verrou = dossier / ex.FICHIER_VERROU
+    verrou.write_text(json.dumps({"pid": os.getppid(), "execution": "x"}), encoding="utf-8")
+    assert ex.tests_en_cours() is True  # exécution d'un autre processus vivant
+
+    verrou.write_text(json.dumps({"pid": PID_INEXISTANT, "execution": "x"}), encoding="utf-8")
+    assert ex.tests_en_cours() is False
+    verrou.write_text("{pas du json", encoding="utf-8")
+    assert ex.tests_en_cours() is False
+    assert verrou.exists()  # simple lecture : rien n'est retiré ni écrit
+    assert res.lire_historique().derniere is None

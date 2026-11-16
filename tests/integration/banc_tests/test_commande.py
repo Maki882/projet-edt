@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from tests.outils.banc_tests.depot import CLE_ECHEC, CLE_ENVIRONNEMENT
+from tests.outils.banc_tests.depot import CLE_CHARGE, CLE_ECHEC, CLE_ENVIRONNEMENT
 from typer.testing import CliRunner
 
 from edt.cli import construire_app
@@ -36,3 +36,14 @@ def test_commande_refuse_une_cible_inconnue(depot):
 
     assert inconnu.exit_code == 1 and "Composant de tests inconnu" in inconnu.output
     assert famille.exit_code == 1 and "Famille inconnue" in famille.output
+
+
+def test_commande_lance_un_test_de_charge_par_sa_cle(depot):
+    resultat = CliRunner().invoke(construire_app(), ["tests", "--test", CLE_CHARGE])
+
+    assert resultat.exit_code == 0, resultat.output
+    assert res.lire_historique().tests[CLE_CHARGE].etat == res.REUSSI
+    double = CliRunner().invoke(
+        construire_app(), ["tests", "--test", CLE_CHARGE, "--composant", "demo"]
+    )
+    assert double.exit_code == 1 and "pas les deux" in double.output
