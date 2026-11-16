@@ -27,6 +27,18 @@ refusé avec un signalement d'erreur lisible, jamais tronqué en silence :
 - envoi : `MAX_LIGNES_ENVOI` lignes de données pour tous les fichiers et
   onglets réunis (`Limites`).
 
+Pièges signalés (avertissement, la lecture continue ; erreur pour le dernier) :
+
+- cellules fusionnées d'un onglet : seule la première porte la valeur ;
+- caractères de contrôle invisibles dans une cellule (gardés, à retirer s'ils
+  ne sont pas voulus) ; dans un classeur, la notation `_xHHHH_` est d'abord
+  restituée (`valeurs.restituer_controle`) ;
+- colonne reconnue deux fois : seule la première est lue ;
+- fichier sans aucune cellule remplie : erreur « rien à importer ».
+
+Les noms des membres d'une archive sont assainis (`nom_sur` : ni « .. », ni
+lecteur, ni racine) ; le contenu n'est jamais écrit sur le disque.
+
 Un fichier `.ics` n'est pas un tableau : il est lu par `edt.echange.ical`.
 """
 

