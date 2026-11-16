@@ -1,476 +1,860 @@
-# Banque de tests
+# Banque de tests des cas limites
 
-Ce document décrit la banque de tests du projet : comment elle est organisée,
-comment la lancer en entier ou par lot, les conventions à respecter pour y
-ajouter un test, et l'inventaire des cas limites couverts. Il est destiné aux
-développeurs de l'équipe ; il se complète à chaque campagne.
+Ce document présente les tests de cas limites du projet : ce qu'ils sont, les
+conventions qui les régissent, leur catalogue complet et les vérifications qui
+restent manuelles. Il s'adresse aux développeurs. La stratégie de test
+d'ensemble (familles unitaire et intégration, règle de classement,
+arborescence, nombres de tests) est décrite dans [tests/README.md](../tests/README.md).
 
-## Lancer les tests
+## Ce qu'est un cas limite
 
-```bash
-python -m pytest                                        # toute la banque (quelques minutes)
-python -m pytest -m "not perf"                          # sans les essais de charge : ce que lance la CI
-python -m pytest -m cas_limite                          # la banque des cas limites seule
-python -m pytest -m perf                                # les essais de charge (jeux moyen et grand)
-python -m pytest tests/unitaires                        # les tests unitaires
-python -m pytest tests/integration                      # les tests d'intégration
-python -m pytest tests/unitaires/solveur tests/integration/solveur   # un composant
-python -m pytest tests/unitaires/socle/test_regles.py -k samedi    # un fichier, un mot du nom
-```
-
-Un test porte le marqueur `cas_limite` quand il protège contre un cas limite
-ou une panne plausible relevés par une campagne ; sa docstring commence par
-« Cas : … Risque : … » et dit ce qui casserait sans lui.
-
-## Organisation
-
-Les tests sont rangés en deux familles, chacune découpée par composant (règle
-de classement, schéma de l'arborescence et nombres de tests :
-[tests/README.md](../tests/README.md)) :
-
-- `tests/unitaires/<composant>/` : un module exercé seul, par ses fonctions
-  Python (marqueur `unitaire`, posé d'après le dossier) ;
-- `tests/integration/<composant>/` : plusieurs couches assemblées, par une
-  requête HTTP, la ligne de commande, un autre processus ou un calcul complet
-  (marqueur `integration`) ; `tests/integration/parcours/` contient six
-  parcours de bout en bout ;
-- `tests/outils/<composant>/` : aides et fixtures partagées par les deux
-  familles (aucun test).
-
-| Composant | Domaine | Ce qu'il couvre |
-|---|---|---|
-| `socle` | socle | domaine (règles, paramètres, dépliage, calendrier), base, services transverses, ligne de commande, cycle de vie du serveur |
-| `solveur` | solveur | préparation, modèle CP-SAT, salles, moteur, instanciation et replacement des séances datées, service de génération |
-| `verification` | vérificateur | règles du catalogue et règles personnalisées, couche datée, indicateurs, services de vérification |
-| `web_donnees` | écrans de données | écrans génériques, règles personnalisées, paramètres, jeux, suppression, concurrence |
-| `web_edt` | page Générer et emploi du temps | calculs, suivi, grille, retouches, À traiter, accueil |
-| `echange` | import/export | gabarit, import XLSX et CSV, rapport, exports, feuille des règles |
-| `synthese` | générateur de données | jeux petit, moyen, grand, témoin, règles d'exemple |
-| `exploitation` | exploitation | scripts de déploiement, unité systemd, nginx, commandes d'administration |
-| `parcours` (intégration seulement) | tous | six parcours de bout en bout : web, ligne de commande, aller-retour des données, règle personnalisée, retouche, jeu fictif |
-
-Les tests d'intégration assemblent les vrais composants (web, services,
-solveur, vérificateur, base SQLite temporaire) sans rien simuler ; ils se
-lancent par `python -m pytest tests/integration` (ou `-m integration`) et font
-partie de la CI. Voir
-[tests/integration/DOCUMENTATION.md](../tests/integration/DOCUMENTATION.md).
-Le classement de chaque test est contrôlé par `tests/test_rangement.py`.
+Un cas limite est une situation rare mais plausible qui ferait planter
+l'application, perdre des données ou afficher un résultat faux : saisie
+aberrante (nombre de cinq mille chiffres, texte piégé), base verrouillée ou
+corrompue, suppression pendant un calcul, fichier d'import hostile, semestre
+d'un seul jour, coupure pendant un déploiement. Chacun est protégé par un
+test qui échoue si le défaut revient.
 
 ## Conventions
 
-- Noms en français, qui disent le cas (`test_une_regle_hors_des_heures_d_ouverture_est_refusee`).
-- Un test vérifie un comportement observable, jamais une implémentation.
-- Déterministe : pas d'horloge, pas de dépendance à l'ordre des tests ni à une
-  solution du moteur qui n'est pas forcée (la fabrique de `tests/outils/solveur/fabrique.py`
-  permet de forcer un placement).
-- Rapide : moins de deux secondes, sinon marqué `perf`.
-- Base dans un dossier temporaire par test (fixtures `environnement`, `base`,
-  `jeu_minimal` de `tests/conftest.py`) ; jamais la base de travail.
-- Un défaut trouvé par un test se corrige dans le même lot ; s'il appartient à
-  un autre lot, le test reste en `xfail(strict=True)` avec la raison, jusqu'à la
-  correction.
+- **Marqueur.** Le test porte `@pytest.mark.cas_limite`, ou son module déclare
+  `pytestmark = pytest.mark.cas_limite` quand tous ses tests sont des cas
+  limites. Le marqueur est déclaré dans `pyproject.toml`.
+- **Docstring.** Elle suit la forme « Cas : … Risque : … ». Le cas décrit la
+  situation ; le risque dit ce qui casserait sans le test (erreur 500, donnée
+  perdue, message trompeur). Le catalogue ci-dessous est lu dans ces
+  docstrings.
+- **Déterminisme.** Aucun test ne dépend de l'heure réelle (la date de
+  référence est la fixture `aujourdhui`), du hasard, de l'ordre des tests, de
+  la charge de la machine ni d'une solution du solveur qui n'est pas forcée
+  (`tests/outils/solveur/fabrique.py` permet de forcer un placement).
+- **Isolement.** Chaque test travaille dans un dossier temporaire (fixtures
+  `environnement`, `base` et `jeu_minimal` de `tests/conftest.py`), jamais
+  sur la base de travail.
+- **Durée.** Moins de deux secondes par test ; au-delà, le test porte aussi le
+  marqueur `perf` et sort de l'intégration continue.
+- **Rangement.** Un cas limite se range, comme tout test, dans
+  `tests/unitaires/<composant>/` ou `tests/integration/<composant>/` selon la
+  règle de [tests/README.md](../tests/README.md).
 
-## Inventaire des cas limites
+## Lancer les cas limites
 
-Campagne du 2 novembre 2026 : sept relecteurs indépendants ont relevé 225 cas
-(181 non couverts), une synthèse en a retenu 131 répartis par lot ; chaque lot a
-écrit les tests ci-dessous et corrigé les défauts qu'ils ont révélés. Les
-rapports sont reproduits tels quels, lot par lot : la colonne « État » dit si le
-cas était déjà juste (couvert), corrigé pendant la campagne, laissé en `xfail`
-vers un autre lot, manuel (procédure dans la documentation du lot) ou écarté.
-Les chemins des tests sont ceux d'aujourd'hui (`tests/unitaires/...` ou
-`tests/integration/...`) ; les nombres de chaque rapport sont ceux de la
-campagne.
+Depuis la racine du dépôt :
 
-### Socle (domaine, base, services transverses)
+```sh
+python -m pytest -m cas_limite                         # tous les cas limites
+python -m pytest -m "cas_limite and not perf"          # sans les tests de charge
+python -m pytest -m "unitaire and cas_limite"          # ceux d'une famille
+python -m pytest -m cas_limite tests/unitaires/solveur tests/integration/solveur   # un composant
+```
 
-Validation : ruff propre ; pytest tests/unitaires/socle tests/integration/socle : 340 réussis, 9 xfail stricts, 1 skip Windows ; suite complète 1329 réussis, 9 xfail, 1 skip, 1 échec arbitré (synthèse : ponctuels hors des dates d'un semestre d'un jour → générateur adapté). 65 tests cas_limite ; nouveaux fichiers test_moteur.py, test_config.py, test_journal.py, test_parametres.py, test_jeux.py (dans tests/unitaires/socle/ et tests/integration/socle/) ; aides dans tests/outils/socle/fixtures.py (compter, delai_verrou_court, verrou_ecriture) et tests/integration/socle/conftest.py (lanceur, lecture_seule, corrompre_base).
+`pytest -m cas_limite` compte les cas collectés (une fonction paramétrée en
+donne plusieurs) ; le catalogue compte les fonctions de test.
 
-Défauts corrigés : salles homonymes sur deux campus (un code → tous ses identifiants, code ambigu refusé) ; base corrompue ou verrouillée au démarrage (cycle de vie protégé, 503 « pas une base SQLite ») ; paramètre corrompu réparable (lire_parametres tolerant, anomalies_parametres) ; EDT_DB_URL sans fichier, pilote ou schéma inconnus refusés ; garde commune edt.db.moteur.identifiant_valide (instantané, niveaux, règles) ; règles hors heures d'ouverture refusées par champ ; jours incompatibles signalés (ReglesJours.regles_incompatibles) ; règle sans heures sans exception brute ; préconditions du jeu minimal ; doctor détecte lecture seule et verrou ; SAVEPOINT pysqlite (isolation_level=None) ; DatabaseError → message et code 1 en CLI ; edt.log non ouvrable → ErreurConfiguration, repli console pour doctor ; init-db --reset avec confirmation en terminal (--oui), refus pendant un calcul, sauvegarde avant reset en prod ; purge au-delà de 50 journaux de calcul ; panne après remise à zéro dite ; service des règles (brouillon non objet, modifier annee/code refusés, filtres inconnus, code en majuscules, année mal formée) ; CHECK maxima > 0 ; ecarts_schema compare index et unicités, deux versions actives refusées ; listes par défaut posées dans une base neuve seulement ; ponctuel hors des dates du semestre = problème de dépliage ; variables EDT_* validées ; rotation de journal tolérante ; besoin sans groupe signalé ; jeu sur schéma périmé → --reset ; marqueur d'opération d'un autre processus ; normalisation Unicode NFC des codes et identifiants (domaine/normalisation.py) ; tests du cycle de vie du serveur.
-Complément 80e8258 (demande d'intégration) : transaction SQLite IMMEDIATE à la demande pour les écrivains longs (`OPTION_ECRITURE_IMMEDIATE`, `transaction_immediate(session)`, à appeler avant la première requête, sinon `ErreurConfiguration`) ; BEGIN différé par défaut (lecteurs servis sous verrou long) ; utilisée par l'import de données.
-Complément 959aa16 : les écrivains longs du socle ouvrent leur transaction en IMMEDIATE : `connexion_immediate(moteur)` (gestionnaire de contexte pour les écrivains hors session), `supprimer_schema`/`creer_schema`/`initialiser_base` (init-db, --reset, remise à zéro), `services/jeux.py::_charger` (première instruction, contrôle « base vide » refait sous le verrou), `jeu_minimal` ; fixture `verrou_ecriture_bref(duree_s)` dans tests/unitaires/socle/conftest.py.
-Points d'attention : ecarts_schema compare désormais index et unicités (une base créée avant un index ajouté sera dite périmée → --reset-base, données synthétiques) ; les listes par défaut ne sont plus reposées dans une base existante ; init-db --reset ne demande confirmation que dans un terminal (le déploiement l'appelle sans TTY).
+## Catalogue des cas limites
 
-| Cas | Test (chemin::nom) | État |
+Le catalogue est produit à partir des tests par `tests/outils/catalogue.py` :
+une ligne par fonction de test marquée `cas_limite`, rangée par famille, par
+composant et par fichier. Le nom du test est celui de la fonction, sans le
+préfixe `test_`. Il ne se modifie pas à la main : après l'ajout ou la
+modification d'un cas limite, le régénérer depuis la racine du dépôt.
+
+```sh
+python -m tests.outils.catalogue            # affiche le catalogue
+python -m tests.outils.catalogue --ecrire   # met à jour ce document
+```
+
+`tests/unitaires/socle/test_catalogue.py` échoue si la partie générée diffère
+de ce que produit le générateur, ou si un test `cas_limite` n'a pas de « Cas »
+ou de « Risque » dans sa docstring.
+
+<!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
+
+Le catalogue compte 329 cas : 190 cas en tests unitaires et 139 cas en tests d'intégration.
+
+| Composant | Tests unitaires | Tests d'intégration |
+|---|---:|---:|
+| `echange` | 39 | 5 |
+| `exploitation` | 30 | 23 |
+| `socle` | 48 | 24 |
+| `solveur` | 18 | 16 |
+| `synthese` | 28 | 5 |
+| `verification` | 25 | 0 |
+| `web_donnees` | 1 | 36 |
+| `web_edt` | 1 | 30 |
+| **Total** | **190** | **139** |
+
+### Tests unitaires (190 cas)
+
+#### `echange` (39 cas)
+
+[`tests/unitaires/echange/test_bornes.py`](../tests/unitaires/echange/test_bornes.py)
+
+| Test | Cas | Risque |
 |---|---|---|
-| 0 Règle SALLES, salles homonymes | tests/unitaires/socle/test_instantane.py::test_regle_salles_avec_salles_homonymes_sur_deux_campus ; tests/unitaires/socle/test_regles.py::test_des_salles_homonymes_sur_deux_campus_sont_toutes_resolues | corrigé |
-| 1 Base corrompue ou verrouillée au démarrage | tests/integration/socle/test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue ; tests/integration/socle/test_web.py::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs ; tests/integration/socle/test_web.py::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede ; tests/integration/socle/test_web.py::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire | corrigé |
-| 2 Paramètre corrompu | tests/unitaires/socle/test_parametres.py::test_un_parametre_corrompu_en_base_reste_reparable_par_l_ecriture_et_la_reinitialisation ; tests/integration/socle/test_parametres.py::test_l_ecran_des_parametres_reste_ouvrable_avec_une_valeur_corrompue | corrigé (écran : web données c32c81c, xfail levé) |
-| 3 EDT_DB_URL sans fichier | tests/integration/socle/test_moteur.py::test_une_url_sqlite_sans_fichier_est_refusee | corrigé |
-| 4 Identifiant au-delà de 2^63 | tests/unitaires/socle/test_moteur.py::test_un_identifiant_hors_des_entiers_sqlite_est_invalide ; tests/integration/socle/test_instantane.py::test_un_identifiant_hors_des_entiers_sqlite_est_introuvable ; tests/integration/socle/test_instantane.py::test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas | corrigé ; xfail vers solveur |
-| 5 Règles hors heures d'ouverture | tests/unitaires/socle/test_regles.py::test_une_regle_hors_des_heures_d_ouverture_est_refusee_avec_le_champ_fautif | corrigé (jours sans créneau : accepté par conception) |
-| 6 Intersection vide des jours | tests/unitaires/socle/test_regles.py::test_des_regles_de_jours_incompatibles_sont_signalees_avec_leurs_codes | corrigé |
-| 7 Règle sans début ni fin | tests/unitaires/socle/test_regles.py::test_une_regle_sans_heures_a_une_phrase_ou_une_erreur_nommee_jamais_une_exception_brute ; tests/unitaires/socle/test_regles_service.py::test_une_regle_enregistree_sans_heures_reste_lisible | corrigé |
-| 8 Préconditions du jeu minimal | tests/unitaires/socle/test_base.py::test_le_jeu_minimal_refuse_proprement_une_base_avec_regles_ou_sans_semestre_s1 | corrigé |
-| 9 Base en lecture seule | tests/integration/socle/test_cli.py::test_doctor_signale_une_base_en_lecture_seule ; tests/integration/socle/test_web.py::test_sante_signale_une_base_en_lecture_seule ; tests/integration/socle/test_web.py::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes | corrigé (doctor ; /sante et page 503 : web EDT bbe664d, xfail levés) |
-| 10 SAVEPOINT pysqlite | tests/unitaires/socle/test_moteur.py::test_un_point_de_sauvegarde_libere_reste_annule_par_la_transaction_englobante | corrigé |
-| 11 init-db et jeu-minimal sur base inaccessible | tests/integration/socle/test_cli.py::test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1 | corrigé |
-| 12 edt.log non ouvrable | tests/integration/socle/test_journal.py::test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit ; tests/unitaires/socle/test_journal.py::test_dossier_de_journaux_sous_un_fichier_est_une_erreur_de_configuration | corrigé |
-| 13 init-db --reset | tests/integration/socle/test_cli.py::test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours ; tests/integration/socle/test_cli.py::test_init_db_reset_non_interactif_ne_pose_pas_de_question | corrigé |
-| 14 HEAD 405 | tests/integration/socle/test_web.py::test_head_repond_comme_get_sans_corps ; tests/integration/socle/test_web.py::test_une_methode_non_permise_donne_une_page_405 | corrigé (IntergicielHead, web EDT bbe664d) ; couvert |
-| 15 Journaux de calcul | tests/unitaires/socle/test_journal.py::test_les_journaux_de_calcul_les_plus_anciens_sont_purges | corrigé (disque plein réel : manuel) |
-| 16 Panne après remise à zéro | tests/unitaires/socle/test_jeux.py::test_panne_de_generation_apres_remise_a_zero_est_dite | corrigé |
-| 17 Brouillon non objet | tests/unitaires/socle/test_regles_service.py::test_brouillon_qui_n_est_pas_un_objet_est_une_validation_invalide | corrigé |
-| 18 modifier annee/code | tests/unitaires/socle/test_regles_service.py::test_modifier_refuse_un_changement_d_annee_ou_de_code_et_garde_le_controle_des_doublons | corrigé |
-| 19 EDT_DB_URL pilote ou schéma inconnus | tests/integration/socle/test_moteur.py::test_une_url_sans_pilote_ou_de_schema_inconnu_est_une_erreur_de_configuration | corrigé |
-| 20 CHECK et maxima | tests/unitaires/socle/test_base.py::test_contraintes_de_controle_du_modele_et_maxima_positifs | corrigé |
-| 21 Versions actives, index | tests/unitaires/socle/test_instantane.py::test_deux_versions_actives_sont_refusees_et_l_index_absent_est_un_ecart ; tests/unitaires/socle/test_schema.py::test_un_index_unique_partiel_absent_est_un_ecart ; tests/unitaires/socle/test_schema.py::test_une_unicite_absente_ou_en_trop_est_un_ecart | corrigé |
-| 22 init-db relancé | tests/unitaires/socle/test_base.py::test_init_db_relance_ne_recree_pas_un_referentiel_supprime_volontairement | corrigé |
-| 23 Ponctuel hors des dates du semestre | tests/unitaires/socle/test_depliage.py::test_ponctuel_hors_des_dates_du_semestre_est_un_probleme_de_depliage | corrigé (générateur adapté en conséquence) |
-| 24 Variables EDT_* | tests/unitaires/socle/test_config.py::test_variables_d_environnement_invalides_levent_une_erreur_de_configuration ; tests/unitaires/socle/test_config.py::test_valeurs_vides_ou_entourees_d_espaces ; tests/integration/socle/test_config.py::test_doctor_signale_une_adresse_d_ecoute_introuvable | corrigé |
-| 25 Rotation concurrente des journaux | tests/unitaires/socle/test_journal.py::test_une_rotation_impossible_ne_perd_ni_ligne_ni_console ; tests/unitaires/socle/test_journal.py::test_le_fichier_journal_suit_une_rotation_faite_par_un_autre_processus (skip Windows) | corrigé ; deux processus : manuel |
-| 26 Écritures concurrentes | tests/unitaires/socle/test_moteur.py::test_une_ecriture_attend_la_fin_d_une_transaction_courte ; tests/unitaires/socle/test_moteur.py::test_sous_un_verrou_tenu_l_ecriture_echoue_apres_le_delai_et_les_lecteurs_sont_servis | couvert |
-| 27 Besoin sans groupe | tests/unitaires/socle/test_depliage.py::test_un_besoin_sans_groupe_est_signale_et_non_deplie ; tests/unitaires/socle/test_instantane.py::test_un_besoin_sans_groupe_est_signale_dans_l_instantane | corrigé |
-| 28 Filtre inconnu | tests/unitaires/socle/test_regles_service.py::test_filtre_inconnu_est_une_erreur_metier | corrigé |
-| 29 Code en minuscules | tests/unitaires/socle/test_regles_service.py::test_le_code_est_normalise_en_majuscules | corrigé |
-| 30 Année mal formée | tests/unitaires/socle/test_regles_service.py::test_annee_mal_formee_indique_le_format_attendu | corrigé |
-| 31 Jeu sur schéma périmé | tests/unitaires/socle/test_jeux.py::test_jeu_fictif_sur_schema_perime_indique_le_reset | corrigé |
-| 32 Commandes de calcul | tests/integration/socle/test_cli.py::test_commandes_de_calcul_avec_un_identifiant_inexistant ; tests/unitaires/socle/test_cli.py::test_options_de_niveau_insensibles_a_la_casse_et_aux_espaces | couvert ; xfail vers solveur |
-| 33 Opération d'un autre processus | tests/unitaires/socle/test_jeux.py::test_une_operation_d_un_autre_processus_est_vue_par_son_marqueur ; tests/integration/socle/test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee | corrigé |
-| Erreurs du pilote SQLite (verrou, lecture seule, corruption, disque plein) expliquées avec leur remède | tests/unitaires/socle/test_moteur.py::test_les_erreurs_du_pilote_sont_expliquees_avec_leur_remede | corrigé (expliquer_erreur_base) |
-| Transaction immédiate à la demande : verrou d'écriture pris dès l'ouverture, lecteur servi, appel tardif refusé, politique différée préservée (demande d'intégration pour l'import) | tests/unitaires/socle/test_moteur.py::test_transaction_immediate_prend_le_verrou_d_ecriture_des_l_ouverture ; tests/unitaires/socle/test_moteur.py::test_transaction_immediate_apres_une_requete_est_une_erreur_de_configuration ; tests/unitaires/socle/test_moteur.py::test_une_transaction_qui_lit_ne_bloque_pas_les_autres_ecrivains | corrigé (80e8258) |
-| Chargement d'un jeu ou remise à zéro pendant qu'un verrou d'écriture est tenu brièvement : attend et réussit | tests/unitaires/socle/test_jeux.py::test_un_chargement_attend_un_verrou_d_ecriture_tenu_brievement_et_reussit ; tests/unitaires/socle/test_jeux.py::test_une_remise_a_zero_attend_un_verrou_d_ecriture_tenu_brievement | corrigé (959aa16) |
-| Deux chargements simultanés (deux fils, puis deux transactions sans le verrou du processus) : un seul réussit, l'autre est refusé clairement, jamais « database is locked » | tests/unitaires/socle/test_jeux.py::test_deux_chargements_simultanes_un_seul_reussit_l_autre_est_refuse_clairement ; tests/unitaires/socle/test_jeux.py::test_deux_chargements_de_deux_processus_sont_serialises_sous_le_verrou | corrigé (959aa16) |
-| Unicode des codes | tests/unitaires/socle/test_base.py::test_un_code_aux_espaces_invisibles_est_le_meme_code ; tests/unitaires/socle/test_base.py::test_les_codes_et_identifiants_sont_normalises_en_nfc | corrigé |
-| Cycle de vie du serveur | tests/integration/socle/test_web.py::test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise ; tests/integration/socle/test_web.py::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer | couvert |
-| Graine ou année invalides avant la remise à zéro (transmis par la synthèse) | tests/unitaires/socle/test_jeux.py::test_une_graine_ou_une_annee_invalides_sont_refusees_avant_la_remise_a_zero | corrigé |
-| decomposer_id_seance aux chiffres non décimaux (transmis par le vérificateur) | tests/unitaires/socle/test_instantane.py::test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier | corrigé |
-| doctor et dossier generations/ (transmis par le solveur) | tests/integration/socle/test_cli.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable | corrigé |
-| Cible numérique hors bornes (transmis par le solveur) | tests/unitaires/socle/test_regles_service.py::test_regle_dont_la_cible_numerique_est_hors_bornes_est_invalide | corrigé |
+| Entier hors bornes sqlite rejette la ligne sans planter | une capacité, un effectif ou un nombre de séances de 10**20 parmi des lignes valides. | OverflowError au flush de SQLite, non capturée : tout l'import échouait (erreur 500 ou code 2) et aucune ligne du fichier n'entrait. |
+| Debordement d entier de sqlite rejette sa ligne seule | un entier au-delà de 2**63 atteint la base (borne de lecture levée pour le test). | sans filet, OverflowError au flush fait échouer tout l'import au lieu de la seule ligne fautive ; c'est la défense en profondeur derrière la borne. |
+| Import reserve la base des son ouverture | une autre connexion veut écrire pendant qu'un import a ouvert sa transaction. | en transaction différée (BEGIN émis par le moteur), l'import lisait sans verrou puis échouait aussitôt « database is locked » si une autre écriture avait validé entre-temps (SQLite n'attend pas dans ce cas). simulation_possible ouvre la transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE). |
+| Deux imports simultanes sont serialises sans erreur | deux imports appliqués au même moment (deux onglets du navigateur). | en transaction différée, le second échouait « base occupée » au lieu d'attendre la fin du premier, ou l'un écrasait l'autre. Chaque import ouvre sa transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE) : le second attend son tour, dans la limite du délai de verrou du socle. |
+| Import de dix mille lignes valides sous le seuil | un fichier de 10 000 enseignants valides, simulé (un point de sauvegarde par ligne). | une régression de performance (index perdu, requête par ligne) qui rendrait l'import d'un vrai établissement interminable, sans aucun test pour le voir. |
+| Archive aux chemins hostiles lue sans ecriture sur disque | une archive ZIP aux membres « ../../etc/campus.csv » et « C:\Windows\salles.csv ». | sûr tant que l'archive est lue en mémoire ; une évolution qui l'extrairait écrirait hors du dossier (zip slip), et le rapport afficherait des chemins trompeurs. |
+| Lecture ical faite avant de reserver la base | un import d'emploi du temps iCal dont les récurrences prennent du temps à calculer. | lu dans la transaction (BEGIN IMMEDIATE), l'agenda réservait la base pendant tout son calcul : une saisie simultanée attendait, puis échouait « base occupée ». |
+| Budget de calcul ical partage par l envoi | un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses. | avec un délai par fichier, un envoi de N fichiers hostiles occupait le serveur N fois DELAI_RECURRENCES ; le délai vaut pour tout l'envoi. |
+| Service appele avec un identifiant hors base repond introuvable | un appelant du service (commande, futur assistant) passe un identifiant de 10**20. | session.get levait OverflowError, « erreur inattendue » au lieu de « n'existe pas » : les bornes des adresses et des options ne protègent pas un appel direct du service. |
 
-### Solveur et service de génération
+[`tests/unitaires/echange/test_export_edt.py`](../tests/unitaires/echange/test_export_edt.py)
 
-Validation : ruff propre ; pytest tests/unitaires/solveur tests/integration/solveur : 575 réussis, 5 xfail stricts ; suite complète 1189 réussis, 4 xfail (3 échecs sous charge corrigés à la racine : tests synchronisés sur les événements du moteur, bornes larges, variante perf). Aides : tests/integration/solveur/conftest.py (lanceur, processus_vivant), tests/unitaires/solveur/conftest.py (guetter_journal), Fabrique.verrou(fin=), _calcul_fictif / _calcul_en_cours_d_un_autre_processus.
-Défauts transmis, tous corrigés par leurs lots (xfail levés) : socle — doctor et le dossier generations/ ; vérificateur — version_a_verifier hors bornes ; socle/règles — _resoudre_cible hors bornes ; échange — marqueur « import en cours » (`import_en_cours()`).
-Compléments d'intégration : 57ed9c4 garde commune `edt.db.moteur.identifiant_valide` (copie du lot retirée), `_semestre` et options `--niveau`/`-d` tolérantes à la casse et aux espaces, xfail du socle levés ; 5052909 `lancer_calcul` refuse un calcul pendant un import (`import_en_cours`, journalisé) ; 832c164 arbitrage du socle : deux besoins sans groupe → calcul refusé en nommant chaque besoin, unité fictive retirée de `modele.py`, codes de sortie par commande dans le test du socle (1 pre-verifier, 2 verifier) ; 28cc0bf puis 13ca7fe : verrou d'écriture pris en tête de transaction au lancement, à la mise à jour des paramètres, à l'enregistrement de la version et de l'état final (deux processus lançant la même seconde), par `transaction_immediate` du socle (quatre points d'appel, sessions ouvertes par le service lui-même). Constat transmis : une transaction qui lit puis écrit pendant une autre écriture échoue aussitôt « database is locked » (règle anti-interblocage de SQLite) → politique « écrivains longs et requêtes d'écriture en transaction immédiate » confiée au socle, au web et à l'échange.
-Non implémenté, volontairement : fils CP-SAT bornés par la mémoire (manque la mémoire disponible du cgroup et le coût par fil ; piste : mesurer le RSS par fil sur le VPS puis borner dans resoudre).
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| 1 Besoins sans groupe : calcul refusé en nommant chaque besoin (arbitrage du socle, unité fictive retirée) | tests/unitaires/solveur/test_contraintes.py::test_deux_besoins_sans_groupe_sont_refuses_en_les_nommant | corrigé (832c164) |
-| 2 Charges parasites « 0 min disponibles » | tests/unitaires/solveur/test_preverification.py::test_une_seance_sans_horaire_ne_produit_pas_de_fausse_charge | corrigé (preverification.py) |
-| 3 Options sans bornes (NaN, inf, 1e9, 1 000 fils) | tests/unitaires/solveur/test_moteur.py::test_options_invalides_refusees, tests/unitaires/solveur/test_moteur.py::test_options_aux_bornes_acceptees ; tests/integration/solveur/test_services.py::test_options_hors_bornes_refusees_par_la_commande, tests/integration/solveur/test_services.py::test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi | corrigé (contrat.py : TEMPS_LIMITE_MAX_S 24 h, NB_WORKERS_MAX 64 ; generation.py lecture robuste) |
-| 4 Salle/besoin supprimé pendant le calcul | tests/integration/solveur/test_services.py::test_donnees_modifiees_pendant_le_calcul_sont_dites | corrigé (IntegrityError → message clair) |
-| 5 Semestre sans besoin → version vide activée | tests/integration/solveur/test_services.py::test_semestre_sans_besoin_ne_cree_pas_de_version_vide | corrigé |
-| 6 Journal de calcul impossible à ouvrir | tests/integration/solveur/test_services.py::test_journal_de_calcul_impossible_donne_la_vraie_cause ; tests/integration/solveur/test_services.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable | corrigé (doctor : socle, xfail levé) |
-| 7 Ligne calcul corrompue (JSON mal typés) | tests/integration/solveur/test_services.py::test_un_calcul_illisible_est_clos_sans_bloquer_l_application | corrigé (pages / et /calculs en 200) |
-| 8 Version enregistrée sans instanciation | tests/integration/solveur/test_services.py::test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation, tests/unitaires/solveur/test_services.py::test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates | corrigé |
-| 9 Calcul pendant chargement / import | tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_chargement_est_refuse ; tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_import_est_refuse | corrigé (operation_en_cours ; import_en_cours de l'échange, 5052909) |
-| 10 Identifiant hors bornes SQLite | tests/integration/solveur/test_services.py::test_identifiant_hors_bornes_est_introuvable ; tests/unitaires/solveur/test_services.py::test_version_a_verifier_identifiant_hors_bornes_est_introuvable ; tests/unitaires/solveur/test_services.py::test_regle_dont_la_cible_est_hors_bornes_est_invalide | corrigé (garde commune identifiant_valide ; vérificateur et règles corrigés, xfail levés) |
-| 11 Séance finissant après minuit | tests/unitaires/solveur/test_contraintes.py::test_seance_finissant_apres_minuit_refusee_meme_sans_horaires | couvert |
-| 12 Verrou incohérent / salle inconnue / durée | tests/unitaires/solveur/test_preverification.py::test_verrou_incoherent_ou_contredisant_son_besoin_est_nomme | corrigé |
-| 13 Indisponibilité incohérente | tests/unitaires/solveur/test_preverification.py::test_indisponibilite_incoherente_refuse_le_calcul | couvert |
-| 14 niveaux_regles sur règle inconnue | tests/unitaires/solveur/test_regles.py::test_niveau_d_une_regle_inconnue_est_signale | corrigé |
-| 15 Toutes séances verrouillées | tests/unitaires/solveur/test_moteur.py::test_toutes_les_seances_verrouillees | couvert |
-| 16 Grille vide | tests/unitaires/solveur/test_preverification.py::test_grille_vide_refusee_en_clair | corrigé (HORAIRES ignorée posait une séance un jour sans créneau) |
-| 17 Arrêt avant la première solution | tests/unitaires/solveur/test_moteur.py::test_arret_pendant_la_premiere_recherche_rend_la_main_vite | couvert |
-| 18 Paramètres extrêmes | tests/unitaires/solveur/test_moteur.py::test_parametres_extremes_restent_valides | couvert |
-| 19 Deux processus lancent la même seconde | tests/integration/solveur/test_services.py::test_deux_lancements_simultanes_dans_deux_processus (perf) | corrigé (recomptage sous verrou d'écriture) |
-| 20 Semestre en milieu de semaine / d'un jour | tests/unitaires/solveur/test_couche_datee.py::test_semestre_commencant_en_milieu_de_semaine_et_semestre_d_un_jour | couvert |
-| 21 Moteur sans salle / salle inconnue | tests/integration/solveur/test_services.py::test_solution_sans_salle_ou_a_salle_inconnue_du_moteur_est_refusee | couvert |
-| 22 Placement hors bornes à l'instanciation | tests/unitaires/solveur/test_couche_datee.py::test_placement_hors_bornes_refuse_en_nommant_la_seance | corrigé |
-| 23 Verrous contradictoires tolérés bout en bout | tests/integration/solveur/test_services.py::test_verrous_contradictoires_toleres_de_bout_en_bout | corrigé (conseil « tolérer » dans le message) |
-| 24 Clôture « 0 s » | tests/unitaires/solveur/test_services.py::test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates | corrigé |
-| 25 Écriture de l'état final en échec | tests/integration/solveur/test_services.py::test_echec_de_l_ecriture_finale_est_retente | corrigé (3 tentatives) |
-| 26 Saut d'horloge | tests/integration/solveur/test_services.py::test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant | corrigé (demarre_epoch) |
-| Message d'un calcul tué (mémoire), transmis par exploitation | tests/unitaires/exploitation/test_commandes_exploitation.py::test_le_message_d_un_calcul_interrompu_aide_a_eviter_la_recidive | corrigé, xfail levé |
+| Ical hebdo tolere un semestre raccourci apres la version | la fin du semestre est avancée au 20/09/2026 après l'enregistrement d'une version. | « Semaine 3 absent(e) » : page 404 « Élément introuvable » qui ne parle ni de la version ni des dates, alors que l'export CSV de la même version passe. |
 
-### Vérificateur
+[`tests/unitaires/echange/test_format.py`](../tests/unitaires/echange/test_format.py)
 
-Validation : ruff propre ; pytest tests/unitaires/verification tests/integration/verification : 278 réussis, 2 xfail stricts ; -m cas_limite : 25 tests ; suite complète 1193 réussis (2 échecs chronométrés d'autres lots sous charge : tests/unitaires/socle/test_charge.py 0,361 s pour 0,3 s ; tests/unitaires/solveur/test_moteur.py 2,01 s pour 2 s).
-Aides réutilisables : tests/outils/verification/versions.py (emploi du temps, enregistrer_version), tests/unitaires/verification/conftest.py (version_id, version_sans_seances_datees, salle_n204_supprimee, salle_n204_orpheline), dates repères dans tests/outils/verification/fabrique.py.
-Choix validés : séance hors semestre → JOUR_FERME (comme l'instanciation) ; vérificateur pur tolère une liste de contraintes vide (services la refusent) ; doublons de séance tus seulement si VOLUME vérifiée ; salle inconnue → « salle à définir » nommant la salle disparue, verifier_modification refuse une salle proposée inconnue ; seuil de performance 10 s processeur.
-Défauts corrigés (12) : voir tableau. Complément 8e0dd97 : `_version` et `version_a_verifier` utilisent la garde commune `edt.db.moteur.identifiant_valide` (plus de copie locale) ; xfail de `decomposer_id_seance` levé après la correction du socle ; plus aucun xfail dans tests/unitaires/verification ni tests/integration/verification. Défauts transmis : socle — decomposer_id_seance accepte « ² » (isdigit) → isascii() and isdecimal() ; niveaux — règles copiées par le calcul mais introuvables ignorées sans journal (correction confiée au vérificateur lui-même).
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| 1. Séance datée hors du semestre | tests/unitaires/verification/test_datee.py::test_occurrence_hors_du_semestre_signalee ; tests/unitaires/verification/test_service.py::test_seances_datees_apres_la_fin_d_un_semestre_raccourci | corrigé |
-| 2. Doublon de séance (datée, semaine type) | tests/unitaires/verification/test_datee.py::test_occurrence_dupliquee_signalee_comme_doublon ; tests/unitaires/verification/test_paires.py::test_identifiant_duplique | corrigé |
-| 3. Version sans séance datée | tests/unitaires/verification/test_service.py::test_version_sans_seance_datee_signalee_explicitement | corrigé |
-| 4. Salle supprimée ou orpheline | tests/unitaires/verification/test_service.py::test_salle_supprimee_apres_le_calcul_degrade_en_salle_a_definir ; tests/unitaires/verification/test_service.py::test_salle_orpheline_nommee_sans_rendre_la_verification_impossible ; tests/unitaires/verification/test_salles.py::test_salle_inconnue_verifiee_comme_salle_a_definir ; tests/unitaires/verification/test_salles.py::test_salles_a_definir_regroupees_par_seance_dans_la_couche_datee | corrigé |
-| 5. Boucle de parenté entre groupes | tests/unitaires/verification/test_dejeuner_libre.py::test_cycle_de_groupes_ne_rend_pas_le_verificateur_muet | corrigé |
-| 6. Identifiant « ²-1 » (vérificateur) | tests/unitaires/verification/test_volume_verrou_maxima.py::test_identifiant_de_seance_illisible_refuse_proprement (3 variantes) | corrigé |
-| 6 bis. decomposer_id_seance("²-1") | tests/unitaires/verification/test_volume_verrou_maxima.py::test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier | corrigé par le socle (isascii() et isdecimal()), xfail levé |
-| 7. Date reçue en datetime | tests/unitaires/verification/test_datee.py::test_date_sous_forme_de_datetime_refusee | corrigé |
-| 8. Nom propre « Le Gall » mis en minuscule | tests/unitaires/verification/test_niveaux.py::test_prefixe_garde_la_majuscule_d_un_nom_propre | corrigé |
-| 9. Jour sans créneau signalé deux fois | tests/unitaires/verification/test_horaires.py::test_jour_sans_creneau_signale_une_seule_fois | corrigé |
-| 10. Période jusqu'à date.max | tests/unitaires/verification/test_service.py::test_periode_aux_bornes_extremes_du_calendrier | corrigé |
-| 11. Semestre de 12 900 séances datées (perf) | tests/unitaires/verification/test_performance.py::test_un_semestre_entier_de_13000_occurrences_en_moins_de_10_secondes | couvert |
-| 12. Règle supprimée ou désactivée après le calcul | tests/unitaires/verification/test_service_regles.py::test_regle_supprimee_ou_desactivee_apres_le_calcul_ignoree_sans_erreur (2 variantes) | couvert |
-| 12 bis. Trace des règles introuvables | tests/unitaires/verification/test_service_regles.py::test_regles_du_calcul_introuvables_nommees_dans_le_journal | corrigé (services/niveaux.py) |
-| 13. Contrainte désactivée au code inconnu | tests/unitaires/verification/test_service_niveaux.py::test_contrainte_desactivee_inconnue_nommee_dans_l_erreur | corrigé |
-| 14. Grille vide ou d'un seul créneau | tests/unitaires/verification/test_indicateurs.py::test_grille_vide_ou_d_un_seul_creneau | couvert |
-| 15. Liste de contraintes vide | tests/unitaires/verification/test_service.py::test_liste_de_contraintes_vide_refusee ; tests/unitaires/verification/test_paires.py::test_aucune_contrainte_a_verifier_journalisee | corrigé |
-| 16. Semaine réelle à cheval sur deux années | tests/unitaires/verification/test_datee.py::test_maxima_hebdomadaires_a_cheval_sur_deux_annees_civiles | couvert |
-| Identifiant de version ou de semestre hors bornes (2^70) dans une adresse ou la commande | tests/unitaires/verification/test_service.py::test_identifiant_hors_bornes_de_la_base_introuvable | corrigé (8e0dd97, garde commune identifiant_valide) |
+| Longueurs alignees sur le modele | la longueur d'une colonne du modèle change (un code de salle passe à 64 caractères). | la borne de l'import, recopiée dans LONGUEURS, refuserait des codes valides ou laisserait entrer des textes trop longs pour la base. |
+| Toute colonne de texte a une longueur | une nouvelle colonne de texte ou de code est ajoutée au format d'échange. | sans entrée dans LONGUEURS, elle accepterait un texte de plusieurs milliers de caractères (SQLite ne l'arrête pas). |
 
-### Écrans de données
+[`tests/unitaires/echange/test_ical.py`](../tests/unitaires/echange/test_ical.py)
 
-Validation : ruff propre ; pytest tests/unitaires/web_donnees tests/integration/web_donnees : 145 réussis, 7 xfail stricts ; suite complète 1195 réussis, 7 xfail. 49 tests cas_limite (test_cas_limites.py, test_performance.py perf, et dans test_parametres.py, test_saisies_extremes.py, test_regles.py, test_suppression.py). Aides dans tests/integration/web_donnees/conftest.py : fixtures version_generee, calcul_retenu (calcul retenu jusqu'à liberer()) ; aides depuis, formulaire_de, saisie_salle, saisie_besoin, saisie_regle, texte_visible, NOMBRE_TROP_GRAND, NOMBRE_DE_5000_CHIFFRES. Contre-épreuve : les 16 tests des cas corrigés échouent sur l'ancien code.
-Défauts corrigés (10) : suppression refusée pendant un calcul (lien « Suivre le calcul » ; règles personnalisées restent supprimables car copiées au lancement) ; année scolaire 2000-2100 et ≤ 2 ans, semestre ≤ 1 an ; adresse de retour avec caractère de contrôle écartée ; paramètres refusés pendant un calcul (409, saisie gardée) ; HX-Current-URL illisible ignoré et journalisé ; nombre de 5 000 chiffres sans 500 (conversion.entier_naturel ; routage global `{n:int}` limité à 30 chiffres dans gabarits.py ; cible de règle à 20 chiffres) ; textes libres bornés (5 000 caractères, commentaire de règle 2 000) ; fragments sans HTMX redirigés ; règle ou année énorme introuvable ; /regles sans année explique et renvoie au calendrier.
-Complément c32c81c : `/parametres` s'ouvre (200) malgré une valeur corrompue en base (lecture tolérante, valeur fautive affichée sous son champ avec la valeur par défaut à sa place, l'enregistrement répare la base) ; xfail du socle levé ; xfail `[calcul_etat]` et `[formulaire_seance]` levés (corrigés par le web EDT).
-Défauts transmis au web EDT, tous corrigés par lui (bbe664d, xfail levés) : urlsplit non protégé dans le panneau d'une séance ; seance=h<5000 chiffres> ; formulaire de séance sans HTMX ; niveau_regle_<5000 chiffres> ; /calculs/<n>/etat et /a-traiter/compteur sans HTMX ; motif d'annulation non borné. Marge : Générer à froid sur le jeu grand = 1,65 s CPU pour 2 s admis.
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| 1 Suppression d'un besoin ou d'une salle pendant le calcul | tests/integration/web_donnees/test_cas_limites.py::test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee ; tests/integration/web_donnees/test_cas_limites.py::test_regles_personnalisees_supprimables_pendant_un_calcul | corrigé / couvert |
-| 2 Suppression du semestre pendant son calcul | tests/integration/web_donnees/test_cas_limites.py::test_suppression_du_semestre_refusee_pendant_son_calcul | corrigé |
-| 3 Durées d'année et de semestre | tests/integration/web_donnees/test_cas_limites.py::test_duree_d_une_annee_bornee, tests/integration/web_donnees/test_cas_limites.py::test_duree_d_un_semestre_bornee, tests/integration/web_donnees/test_cas_limites.py::test_calculs_d_un_semestre_sain_sans_erreur | corrigé / couvert |
-| 4 Adresse de retour avec saut de ligne | tests/integration/web_donnees/test_cas_limites.py::test_adresse_de_retour_avec_saut_de_ligne_est_ecartee | corrigé |
-| 5 Paramètres enregistrés pendant un calcul | tests/integration/web_donnees/test_parametres.py::test_parametres_refuses_pendant_un_calcul | corrigé |
-| Valeur de paramètre corrompue en base : écran ouvrable, valeur signalée, réparée à l'enregistrement (transmis par le socle) | tests/integration/web_donnees/test_parametres.py::test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran | corrigé (c32c81c) |
-| 6 HX-Current-URL illisible | tests/integration/web_donnees/test_cas_limites.py::test_hx_current_url_illisible_est_ignore ; tests/integration/web_donnees/test_cas_limites.py::test_hx_current_url_illisible_dans_le_panneau_d_une_seance | corrigé (panneau : web EDT bbe664d) |
-| 7 Nombres de 5 000 chiffres | tests/integration/web_donnees/test_saisies_extremes.py::test_nombres_de_cinq_mille_chiffres_refuses ; tests/integration/web_donnees/test_saisies_extremes.py::test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps ; tests/integration/web_donnees/test_saisies_extremes.py::test_niveau_de_regle_de_cinq_mille_chiffres_au_lancement | corrigé (séance et niveau_regle : web EDT bbe664d) |
-| 8 Textes libres non bornés | tests/integration/web_donnees/test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur, tests/integration/web_donnees/test_saisies_extremes.py::test_commentaire_de_regle_borne_cote_serveur, tests/integration/web_donnees/test_saisies_extremes.py::test_motif_d_annulation_borne_cote_serveur | corrigé (motif : web EDT bbe664d) |
-| 9 Fragments ouverts sans HTMX | tests/integration/web_donnees/test_cas_limites.py::test_fragments_sans_htmx_redirigent_vers_la_page ; tests/integration/web_donnees/test_cas_limites.py::test_fragments_des_autres_ecrans_sans_htmx | corrigé ; couvert (/calculs/verifications) ; compteur, calcul_etat, formulaire_seance : web EDT bbe664d |
-| 10 Identifiants énormes des règles | tests/integration/web_donnees/test_regles.py::test_identifiants_enormes_des_regles_sont_introuvables | corrigé |
-| 11 Règles sans année scolaire | tests/integration/web_donnees/test_regles.py::test_regles_sans_annee_scolaire_affiche_un_bandeau | corrigé |
-| 12 Rejeu d'une suppression et d'une annulation | tests/integration/web_donnees/test_suppression.py::test_rejeu_d_une_suppression_et_d_une_annulation | couvert |
-| 13 Échappement des champs libres | tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_donnees, tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_l_emploi_du_temps | couvert |
-| 14 Pages du jeu grand sous deux secondes CPU, export sous dix | tests/integration/web_donnees/test_performance.py::test_pages_du_jeu_grand_sous_deux_secondes, tests/integration/web_donnees/test_performance.py::test_export_des_donnees_du_jeu_grand_sous_dix_secondes (perf) | couvert |
-| Saisies extrêmes antérieures (11 tests : adresses aberrantes, année de début exotique, capacité et effectif trop grands, chiffres exotiques, graine exotique, identifiant trop grand dans un choix, jours fériés d'une année inexistante, listes vides avec ou sans filtre, service bornant les entiers) | tests/integration/web_donnees/test_saisies_extremes.py::test_adresses_aberrantes ; tests/integration/web_donnees/test_saisies_extremes.py::test_annee_de_debut_exotique ; tests/integration/web_donnees/test_saisies_extremes.py::test_capacite_trop_grande ; tests/integration/web_donnees/test_saisies_extremes.py::test_chiffres_exotiques_refuses ; tests/integration/web_donnees/test_saisies_extremes.py::test_effectif_trop_grand ; tests/integration/web_donnees/test_saisies_extremes.py::test_graine_exotique ; tests/integration/web_donnees/test_saisies_extremes.py::test_identifiant_trop_grand_dans_un_choix ; tests/integration/web_donnees/test_saisies_extremes.py::test_jours_feries_d_une_annee_inexistante ; tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_avec_filtre_pose ; tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_sans_filtre_pose ; tests/unitaires/web_donnees/test_saisies_extremes.py::test_service_borne_les_entiers | couvert (marqués et documentés) |
+| Fuseau inconnu signale en avertissement | DTSTART et DTEND portent TZID=Mars/Phobos, fuseau inconnu et sans VTIMEZONE. | heure prise pour une heure de Paris sans un mot : séances décalées de plusieurs heures si l'agenda venait d'un autre fuseau. |
+| Recurrence ancienne bornee par la periode sans refus | une série quotidienne depuis 1998 ou hebdomadaire depuis 1800, lue sur 2026-2027. | les occurrences antérieures à la période comptaient dans la borne de 10 000 pas : « trop d'occurrences », et les séances du semestre étaient perdues. |
+| Regle de recurrence hostile refusee avant tout calcul | une règle à intervalle nul, trop fine ou sans occurrence possible (fichier abîmé ou hostile). | dateutil cherchait sans fin (INTERVAL=0) ou des secondes durant une occurrence inexistante, base réservée ; d'autres formes faisaient planter tout l'import (ValueError, IndexError). |
+| Regle de cours ordinaire toujours admise | des règles de cours ordinaires ou rares (tous les quinze jours, le 1er lundi, le 29 février). | la vérification des règles hostiles, trop large, refuserait des séries légitimes et des séances seraient perdues. |
+| Evenement aux dates incalculables ecarte sans arreter la lecture | un événement à la durée immense, au-delà de l'an 9999 à Paris, ou au RECURRENCE-ID illisible. | OverflowError ou erreur d'icalendar non capturée : tout l'import planté (« erreur inattendue ») à cause d'un seul événement. |
+| Fichier aux recurrences trop couteuses refuse en entier | des règles qui, ensemble, épuisent le temps de calcul d'un fichier (DELAI_RECURRENCES). | un fichier de quelques kilo-octets aux règles impossibles (près d'une seconde chacune) occupait le serveur et réservait la base des minutes durant. |
 
-### Page Générer et emploi du temps
+[`tests/unitaires/echange/test_import_donnees.py`](../tests/unitaires/echange/test_import_donnees.py)
 
-Validation : ruff propre ; pytest tests/unitaires/web_edt tests/integration/web_edt : 150 réussis, 2 xfail stricts ; -m cas_limite : 20 tests (31 cas paramétrés) ; suite complète 1183 réussis.
-Aides partagées : tests/outils/web_edt/aides.py (ENORME, HX, creer_version_vide, premiere_occurrence, calcul_qui_tourne) et tests/integration/web_edt/conftest.py (reperes, client_sans_trace).
-Défauts corrigés : paramètre vide (?semestre_id=) → « non précisé » ; identifiants > 2^63 ou négatifs sur 24 adresses → 404 ; cible/séance énorme ou cookie forgé → affichage par défaut ; jour sans créneau possible → formulaire lisible ; arrêt d'un calcul terminé → message juste ; fragments HTMX sans HX-Request → page complète.
-Défaut transmis à l'échange et corrigé par lui : export CSV/iCal avec version_id énorme → 500 (xfail levé).
-Complément bbe664d (neuf cas transmis par le web données et le socle, xfail levés) : HX-Current-URL illisible dans le panneau d'une séance (`gabarits.adresse_courante`) ; nombres reçus en texte (`seance=h…`, `niveau_regle_…`, `salle_id`, `cible=`, durée de pause) lus par `entier_ecrit` (chiffres ASCII, 30 au plus ; « ² », 5 000 chiffres et `niveau_regle_<5000>` des vérifications préalables donnaient 500), saisies recopiées coupées à 40 caractères ; compteur d'« À traiter » sans HTMX mène à la page ; motif d'annulation borné à 2 000 caractères (maxlength + 422 sans annuler) ; HEAD répond comme GET sans corps (`IntergicielHead`) ; `/sante` expose `base.inscriptible` (écriture d'essai annulée, sans attente sur verrou ; 503 si lecture seule, null si une autre écriture tient la base) et l'accueil le signale ; page 503 nommant la lecture seule et le disque plein avec le remède. Complément 4a34b8d (politique de verrou) : `session_requete` (`web/dependances.py`) ouvre la transaction par `transaction_immediate` pour POST, PUT, PATCH et DELETE (GET et HEAD restent différés), sauf lancer/relancer/arrêter un calcul (`ROUTES_ECRITURE_DELEGUEE`, leur session ne fait que lire et le service de génération écrit dans ses propres transactions ; `creer_app` refuse de démarrer si un de ces noms ne correspond plus à une route) ; la pause déjeuner choisie au lancement s'enregistre aussi en transaction immédiate ; au-delà du délai de verrou, page 503 « Base de données occupée » sans trace ; `test_bornes_des_identifiants` recentré sur `exiger_identifiant` et `obtenir` (la garde elle-même est testée par le socle). Risque résiduel transmis au solveur : `calcul_en_cours()` peut écrire (clôture d'un calcul abandonné) depuis une requête qui tient déjà le verrou. Mesure : Générer à froid sur le jeu grand = 1,65 s (0,3 s instantané du récapitulatif + 0,3 s second chargement du même instantané par `pre_verifier_semestre` + 0,9 s préparation du solveur) ; piste côté solveur : `pre_verifier_semestre` acceptant un instantané déjà chargé (−0,3 s).
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| Option « Tous les semestres » (`semestre_id=` vide) sur À traiter, Générer, historique, grille | `tests/integration/web_edt/test_a_traiter.py::test_option_tous_les_semestres_affiche_tous_les_semestres` | corrigé |
-| Identifiant nul, négatif, au-delà de 2^63, booléen, texte, décimal | `tests/unitaires/web_edt/test_cas_limites.py::test_bornes_des_identifiants` | corrigé |
-| Identifiant énorme, négatif ou inconnu sur 24 adresses | `tests/integration/web_edt/test_cas_limites.py::test_identifiants_enormes_ou_negatifs_donnent_introuvable` | corrigé |
-| Groupe, enseignant ou salle énorme dans l'adresse de la grille | `tests/integration/web_edt/test_cas_limites.py::test_cible_enorme_dans_l_adresse_montre_la_premiere_classe` | corrigé |
-| Séance à ouvrir énorme, nulle ou illisible | `tests/integration/web_edt/test_cas_limites.py::test_seance_enorme_dans_l_adresse_ouvre_la_page_sans_panneau` | corrigé |
-| Cookie de dernière cible forgé ou énorme | `tests/integration/web_edt/test_cas_limites.py::test_cookie_de_cible_illisible_ou_enorme_est_ignore` | corrigé |
-| Jour où la séance ne tient sur aucun créneau ; jour non proposé | `tests/integration/web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible` | corrigé |
-| Arrêter un calcul déjà terminé (deux onglets) | `tests/integration/web_edt/test_calculs.py::test_arret_d_un_calcul_termine_dit_qu_il_est_fini` | corrigé |
-| Fragment HTMX ouvert sans HTMX (suivi, vérifications, formulaires, panneaux) | `tests/integration/web_edt/test_cas_limites.py::test_fragments_ouverts_sans_htmx_menent_a_la_page` | corrigé / couvert |
-| Panneau ou enregistrement d'une séance supprimée entre-temps | `tests/integration/web_edt/test_cas_limites.py::test_panneau_d_une_seance_supprimee_entre_temps` | couvert |
-| Déplacement vers un début hors grille, un jour hors semaine ou illisible | `tests/integration/web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant` | couvert |
-| Séance datée annulée deux fois puis déplacée | `tests/integration/web_edt/test_cas_limites.py::test_seance_annulee_ni_reannulee_ni_deplacee` | couvert |
-| Séance datée déplacée hors du semestre | `tests/integration/web_edt/test_cas_limites.py::test_deplacer_une_seance_datee_hors_du_semestre` | couvert |
-| Grille datée au 01/01/0001 ou au 31/12/9999 | `tests/integration/web_edt/test_cas_limites.py::test_date_tres_ancienne_ou_lointaine_sans_erreur` | couvert |
-| Filtres d'affichage inconnus ou contradictoires | `tests/integration/web_edt/test_cas_limites.py::test_filtres_inconnus_refuses_lisiblement` | couvert |
-| Relancer pendant qu'un calcul tourne | `tests/integration/web_edt/test_cas_limites.py::test_relance_pendant_un_calcul_mene_au_calcul_en_cours` | couvert |
-| Version sans séance : grille, historique, export CSV et iCal | `tests/integration/web_edt/test_cas_limites.py::test_version_sans_seance_s_affiche_et_s_exporte` | couvert |
-| Version active vide sur À traiter et l'accueil | `tests/integration/web_edt/test_cas_limites.py::test_version_active_vide_sur_a_traiter_et_l_accueil` | couvert |
-| Semestre dont la grille de créneaux est vidée | `tests/integration/web_edt/test_cas_limites.py::test_semestre_sans_grille_reste_utilisable` | couvert |
-| Export CSV ou iCal d'une version à identifiant énorme | `tests/integration/web_edt/test_cas_limites.py::test_export_d_une_version_enorme_dit_introuvable` | corrigé par l'échange, xfail levé |
-| Base en lecture seule ou disque plein : `/sante` répond 503 avec `base.inscriptible` faux, l'accueil le signale, la page 503 nomme la cause et le remède (transmis par le socle) | `tests/integration/web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante` | corrigé (bbe664d) |
-| Base tenue par une autre écriture : `/sante` rend `inscriptible` null sans attendre, ce n'est pas une panne | `tests/integration/web_edt/test_accueil.py::test_base_occupee_par_une_ecriture_n_est_pas_une_panne` | corrigé (bbe664d) |
-| HX-Current-URL illisible dans le panneau d'une séance (transmis par le web données) | `tests/integration/web_edt/test_cas_limites.py::test_hx_current_url_illisible_dans_les_panneaux` | corrigé (bbe664d) |
-| Nombres de 5 000 chiffres ou « ² » au lancement (`seance=h…`, `niveau_regle_…`, `salle_id`, `cible=`, durée de pause) refusés sans 500 (transmis par le web données) | `tests/integration/web_edt/test_cas_limites.py::test_saisies_de_cinq_mille_chiffres_au_lancement` | corrigé (bbe664d) |
-| Motif d'annulation de 5 000 caractères refusé (422) sans annuler la séance (transmis par le web données) | `tests/integration/web_edt/test_cas_limites.py::test_motif_d_annulation_borne` | corrigé (bbe664d) |
-| HEAD sur les écrans de l'emploi du temps : même réponse que GET, sans corps (transmis par le socle) | `tests/integration/web_edt/test_cas_limites.py::test_head_sur_les_ecrans_de_l_emploi_du_temps` | corrigé (bbe664d) |
-| Écriture web pendant qu'un autre écrivain valide 0,3 s plus tard : la requête attend son tour et les deux écritures sont enregistrées | `tests/integration/web_edt/test_cas_limites.py::test_une_ecriture_attend_son_tour_pendant_un_autre_ecrivain` | corrigé (4a34b8d) |
-| Lecture (GET, HEAD) servie pendant qu'un verrou d'écriture est tenu | `tests/integration/web_edt/test_cas_limites.py::test_une_lecture_est_servie_pendant_un_autre_ecrivain` | couvert (4a34b8d) |
-| Verrou tenu au-delà du délai : page 503 « base occupée », séance non annulée | `tests/integration/web_edt/test_cas_limites.py::test_verrou_tenu_au_dela_du_delai_donne_la_page_base_occupee` | corrigé (4a34b8d) |
-| Double clic sur « Lancer le calcul » | `tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret` | couvert (antérieur) |
-| « Arrêter le calcul » quand un autre écrivain (le fil du calcul réveillé par l'arrêt) valide entre la lecture et l'écriture de `demander_arret` : plus de 503 « base occupée » (vu en CI sous Linux) | `tests/integration/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture` | corrigé (`demander_arret` en `BEGIN IMMEDIATE`) |
-| Rendu sur téléphone, impression, grille très chargée | — | manuel : rendu visuel |
-| Coupure réseau pendant le suivi d'un calcul | — | manuel : comportement du navigateur |
+| Export xlsx tolere les caracteres de controle | un libellé de matière contient un caractère de contrôle invisible (U+0001 collé). | openpyxl refusait la cellule (IllegalCharacterError) et tout l'export XLSX de l'établissement échouait en 500 ; un réimport perdait le caractère. |
+| Caractere de controle importe est garde et signale | un CSV dont un libellé contient U+0001 (copier-coller depuis un autre logiciel). | valeur corrigée en silence (perte), ou caractère invisible gardé sans que personne ne le sache. |
+| Besoin dont le debut impose et la duree depassent minuit est rejete | un besoin de 24 h imposé à 23:00, ou de 3 h imposé à 22:30. | durée et heure contrôlées séparément, le besoin entrait ; toute séance placée à ce début violait la contrainte de plage horaire à l'enregistrement de la version : plantage différé, au calcul, sans lien visible avec l'import. |
+| Salle au code contenant arobase reste referencable | une salle de code « A@B » imposée à un besoin, puis export et réimport. | la référence était coupée au premier « @ » (salle « A » du campus « B ») : « Salle inconnue », ligne rejetée, salle imposée perdue à l'aller-retour. |
+| Durees absurdes signalees | un trajet de 100 h entre deux campus, un maximum de 90 h par jour. | accepté sans borne, il rendait le calcul infaisable (trajet impossible) ou n'avait aucun sens, sans lien visible avec l'import. |
+| Groupe parent de lui meme rejete | un groupe parent de lui-même, nouveau (BOUCLE) ou déjà en base (A1-G1). | l'auto-parenté finissait en IntegrityError générique, ou en boucle sans fin dans le parcours des parents. |
+| Ordre des parents lineaire sur une chaine profonde | 20 000 groupes en chaîne, chaque enfant écrit avant son parent. | un ordonnancement récursif lèverait RecursionError au-delà de 1 000 niveaux, un algorithme quadratique prendrait des minutes. |
+| Hierarchie profonde et auto parente | l'import réel de 1 500 groupes en chaîne, enfants avant parents, plus une boucle. | un import de hiérarchie profonde qui s'effondre (pile, temps) ou qui laisse entrer la boucle ; mesuré de bout en bout, base comprise. |
+| Ical en mode donnees signale le mauvais mode | un agenda .ics envoyé avec le mode « données de l'établissement ». | correct aujourd'hui mais sans test ; une régression ignorerait l'agenda en silence, l'utilisateur croyant son emploi du temps importé. |
+| Import en cours signale pendant tout l import | un calcul est demandé depuis un autre onglet pendant qu'un import lit ses fichiers. | sans marqueur consultable, le lancement d'un calcul ne pouvait pas savoir qu'un import tournait (calcul sur des données en train de changer), alors que l'import, lui, refuse un calcul en cours. |
+| Import sur une session deja engagee refuse clairement | un appelant lit avec la session, puis lui confie un import (simulation_possible). | la transaction, déjà ouverte en mode différé, ne réserverait pas la base : deux imports simultanés échoueraient au hasard « database is locked », sans que rien ne dise pourquoi. |
 
-### Import et export
+[`tests/unitaires/echange/test_import_edt.py`](../tests/unitaires/echange/test_import_edt.py)
 
-Validation : ruff propre ; pytest tests/unitaires/echange tests/integration/echange : 239 réussis (perf compris) ; suite complète 1230 réussis, 0 échec ; contre-épreuve sur main : 61 des nouveaux tests échouent sur l'ancien code, 15 protègent un comportement déjà juste. 40 fonctions (78 variantes, 2 perf) marquées cas_limite avec docstring Cas/Risque. Aides : tests/outils/echange/fabrique.py (CSV, classeur avec fusions, ZIP, iCal en mémoire ; compter, messages, erreurs, seul), fixture version_reference dans le conftest, test_format vérifie LONGUEURS.
-
-Défauts corrigés : cas 1 à 13, 15 à 17, 19, 20, noms d'archive du 18 ; iCal (ical.py) : INTERVAL=0 (lecture sans fin, base réservée), INTERVAL=-1 / BYDAY=9MO / durée immense / an 10000 / RECURRENCE-ID illisible (plantage), règles impossibles coûteuses (2 à 20 s) → refus avant calcul, erreur par événement sans arrêter la lecture, 3 s de calcul par fichier ; cas transmis par web EDT : version_id négatif/nul/énorme → 404, texte → 422.
-Complément (b6402dc, services/echange.py) : les fichiers, récurrences iCal comprises, sont lus avant l'ouverture de la transaction (seule l'écriture réserve la base) ; le budget de 3 s de calcul iCal vaut pour tout l'envoi ; le semestre de l'import et la version de resoudre_filtre passent par obtenir_par_id ; `import_en_cours()` (vrai pendant tout import, simulé ou appliqué, faux même après une erreur) est exposé pour `lancer_calcul`. Validation du complément : pytest tests/unitaires/echange tests/integration/echange 243 réussis ; suite complète 1234 réussis.
-Complément d'intégration (a52ca6b, 309e3d9) : la fusion du socle (BEGIN émis par l'événement de début de transaction, `isolation_level=None`) rendait sans effet le `BEGIN IMMEDIATE` de l'import (deux tests de verrou en échec) ; `simulation_possible` appelle désormais `edt.db.moteur.transaction_immediate(session)` en tête (`ouvrir_transaction` supprimée), le semestre de l'import se lit dans une session à part pour que la session de l'import n'ait encore rien exécuté, une session déjà engagée est refusée explicitement (`ErreurConfiguration`). pytest tests/unitaires/echange tests/integration/echange tests/unitaires/socle tests/integration/socle : 626 réussis. 11401cd : `obtenir_par_id` et `exporter-edt --version` reposent sur la garde commune `edt.db.moteur.identifiant_valide` (`ENTIER_SQLITE_MAX` supprimée, plus aucune borne écrite à la main dans le lot).
-Cas manuels : classeur chiffré par Excel ; fusions et formats réels d'un tableur ; imports simultanés depuis deux onglets. Écarté : zéros de tête perdus par le tableur (indétectable, documenté). Résiduel : 10 000 lignes ≈ 20 s (seuil 30 s) ; 50 000 lignes réserveraient la base ≈ 100 s (piste d'optimisation).
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| 1. Entier énorme qui fait planter l'import | tests/unitaires/echange/test_bornes.py::test_entier_hors_bornes_sqlite_rejette_la_ligne_sans_planter (6 variantes) ; tests/unitaires/echange/test_bornes.py::test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule | corrigé |
-| 2. Caractère de contrôle qui casse l'export XLSX | tests/unitaires/echange/test_import_donnees.py::test_export_xlsx_tolere_les_caracteres_de_controle (xlsx, zip) ; tests/unitaires/echange/test_import_donnees.py::test_caractere_de_controle_importe_est_garde_et_signale | corrigé |
-| 3. Identifiant énorme dans l'adresse ou la commande | tests/integration/echange/test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable (csv, ics) ; tests/integration/echange/test_web.py::test_ressource_hostile_dans_l_adresse_donne_une_erreur_lisible (csv, ics) ; tests/integration/echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible ; tests/integration/echange/test_commandes.py::test_version_hors_limites_en_ligne_de_commande_donne_un_message (3 variantes) | corrigé (CLI -7 et 0 : couvert) |
-| 4. Deux imports simultanés | tests/unitaires/echange/test_bornes.py::test_import_reserve_la_base_des_son_ouverture ; tests/unitaires/echange/test_bornes.py::test_deux_imports_simultanes_sont_serialises_sans_erreur | corrigé (+ manuel ; verrou par `transaction_immediate` du socle depuis 309e3d9) |
-| 5. Réimport sans enseignants | tests/unitaires/echange/test_import_edt.py::test_reimport_sans_enseignants_signale_le_remplacement_des_enseignants_existants | corrigé |
-| 6. iCal hebdo après un semestre raccourci | tests/unitaires/echange/test_export_edt.py::test_ical_hebdo_tolere_un_semestre_raccourci_apres_la_version | corrigé |
-| 7. Fichier sans cellule remplie | tests/unitaires/echange/test_lecture.py::test_fichier_sans_cellule_remplie_est_signale_comme_vide (6 variantes) ; tests/unitaires/echange/test_lecture.py::test_fichier_d_en_tetes_seuls_dit_rien_a_traiter | corrigé / couvert |
-| 8. Classeur protégé par mot de passe | tests/unitaires/echange/test_lecture.py::test_classeur_protege_par_mot_de_passe_signale_clairement | corrigé (+ manuel) |
-| 9. Début imposé + durée au-delà de minuit | tests/unitaires/echange/test_import_donnees.py::test_besoin_dont_le_debut_impose_et_la_duree_depassent_minuit_est_rejete | corrigé |
-| 10. Salle au code contenant « @ » | tests/unitaires/echange/test_import_donnees.py::test_salle_au_code_contenant_arobase_reste_referencable | corrigé |
-| 11. Date dans une colonne de codes | tests/unitaires/echange/test_lecture.py::test_cellule_date_dans_une_colonne_code_est_refusee_avec_explication (3 variantes) | corrigé (+ manuel) |
-| 12. Fuseau iCal inconnu | tests/unitaires/echange/test_ical.py::test_fuseau_inconnu_signale_en_avertissement | corrigé |
-| 13. Récurrence ancienne refusée | tests/unitaires/echange/test_ical.py::test_recurrence_ancienne_bornee_par_la_periode_sans_refus (2 variantes) | corrigé |
-| 14. 10 000 lignes valides | tests/unitaires/echange/test_bornes.py::test_import_de_dix_mille_lignes_valides_sous_le_seuil (perf) | couvert |
-| 15. Durées absurdes | tests/unitaires/echange/test_import_donnees.py::test_durees_absurdes_signalees | corrigé |
-| 16. Texte trop long | tests/unitaires/echange/test_lecture.py::test_valeur_trop_longue_pour_sa_colonne_rejetee ; tests/unitaires/echange/test_format.py::test_longueurs_alignees_sur_le_modele ; tests/unitaires/echange/test_format.py::test_toute_colonne_de_texte_a_une_longueur | corrigé |
-| 17. Colonne en double | tests/unitaires/echange/test_lecture.py::test_colonne_en_double_lue_une_seule_fois_et_signalee_une_fois | corrigé |
-| 18. ZIP aux chemins hostiles | tests/unitaires/echange/test_bornes.py::test_archive_aux_chemins_hostiles_lue_sans_ecriture_sur_disque | couvert ; noms affichés corrigés |
-| 19. Cellules fusionnées | tests/unitaires/echange/test_lecture.py::test_cellule_fusionnee_signalee_comme_telle | corrigé (+ manuel) |
-| 20. Nombre de série Excel | tests/unitaires/echange/test_lecture.py::test_nombre_de_serie_excel_refuse_avec_un_indice (5 variantes) ; tests/unitaires/echange/test_lecture.py::test_heure_entiere_ecrite_en_nombre_reste_une_heure | corrigé |
-| 21. Hiérarchie profonde, auto-parenté | tests/unitaires/echange/test_import_donnees.py::test_groupe_parent_de_lui_meme_rejete ; tests/unitaires/echange/test_import_donnees.py::test_ordre_des_parents_lineaire_sur_une_chaine_profonde ; tests/unitaires/echange/test_import_donnees.py::test_hierarchie_profonde_et_auto_parente (perf) | couvert |
-| 22. iCal en mode données, dossier mélangé | tests/unitaires/echange/test_import_donnees.py::test_ical_en_mode_donnees_signale_le_mauvais_mode ; tests/integration/echange/test_commandes.py::test_dossier_melange_signale_l_agenda_en_mode_donnees | couvert |
-| Règle iCal hostile (boucle sans fin, plantage, 2 à 20 s) | tests/unitaires/echange/test_ical.py::test_regle_de_recurrence_hostile_refusee_avant_tout_calcul (10 variantes) ; tests/unitaires/echange/test_ical.py::test_regle_de_cours_ordinaire_toujours_admise (6 variantes) | corrigé |
-| Dates iCal incalculables | tests/unitaires/echange/test_ical.py::test_evenement_aux_dates_incalculables_ecarte_sans_arreter_la_lecture (4 variantes) | corrigé |
-| Récurrences trop coûteuses | tests/unitaires/echange/test_ical.py::test_fichier_aux_recurrences_trop_couteuses_refuse_en_entier | corrigé |
-| Version négative, nulle ou énorme à l'export (transmis par web EDT) | tests/integration/echange/test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable | corrigé |
-| Lecture iCal dans la transaction (base réservée pendant le développement des récurrences) | tests/unitaires/echange/test_bornes.py::test_lecture_ical_faite_avant_de_reserver_la_base | corrigé (b6402dc) |
-| Budget de calcul iCal par fichier contourné par N fichiers hostiles | tests/unitaires/echange/test_bornes.py::test_budget_de_calcul_ical_partage_par_l_envoi | corrigé (b6402dc) |
-| Service appelé avec un identifiant hors bornes (semestre, version) : OverflowError | tests/unitaires/echange/test_bornes.py::test_service_appele_avec_un_identifiant_hors_base_repond_introuvable | corrigé (b6402dc) |
-| Marqueur « import en cours » consultable par le lancement d'un calcul | tests/unitaires/echange/test_import_donnees.py::test_import_en_cours_signale_pendant_tout_l_import | corrigé (b6402dc) |
-| Import lancé sur une session déjà engagée (lecture préalable) : refus explicite au lieu d'une transaction différée silencieuse | tests/unitaires/echange/test_import_donnees.py::test_import_sur_une_session_deja_engagee_refuse_clairement | corrigé (309e3d9) |
-| Zéros de tête perdus par le tableur | — | écarté : indétectable, documenté |
+| Reimport sans enseignants signale le remplacement des enseignants existants | un tableau de séances sans colonne enseignants pour le besoin IM.1101 CM A1 (ENS001). | le besoin retrouvé était « mis à jour » avec l'enseignant fictif à la place d'ENS001, sans autre trace qu'« enseignant fictif créé » : affectation perdue. |
 
-### Générateur de données fictives
+[`tests/unitaires/echange/test_lecture.py`](../tests/unitaires/echange/test_lecture.py)
 
-Validation : ruff propre ; pytest tests/unitaires/synthese tests/integration/synthese : 101 réussis, 0 xfail (perf compris, après le complément 4c4f38e et la correction du socle) ; 22 tests dans test_cas_limites.py (tests/unitaires/synthese/ et tests/integration/synthese/) (38 cas paramétrés), 8 cas existants annotés ; aides : conftest (generer_dans, total_prevu, lanceur), controle_temoin.problemes_du_temoin, empreinte.py.
-Défauts corrigés (14) : année de début bornée 2000-2100 ; graine bornée 0..2^31-1 (une graine négative donnait le même jeu que son opposée) ; jeu --reset vérifie tout avant la remise à zéro ; S2 trop court sans stage ; configuration sans site ou salles négatives refusée ; division par zéro des taux de charge ; semaines d'intégration et partiels fermés du lundi au dimanche ; conférences et épreuves sans date comptées avec raison ; boucle infinie au-delà de 800 enseignants (noms Faker épuisés) ; tirages découplés de Faker, empreinte figée ; témoin relancé jusqu'à quatre fois (aucun besoin écarté sur 40 graines du moyen, 30 du grand) ; message « grille vide » ; contrôle des jours permis ; graine négative refusée par la commande.
-Défaut transmis au socle et corrigé par lui (c96a1b7) : services/jeux.py remettait la base à zéro avant le refus d'une graine invalide. Complément 4c4f38e : le générateur ne crée aucun besoin ponctuel (amphi de rentrée, rencontres avec les tuteurs, conférence métiers, partiels) hors des dates ouvertes du semestre ; sans date possible, le besoin est écarté avec sa raison (demande du socle, dont le dépliage refuse désormais un ponctuel hors semestre).
-
-| Cas | Test (chemin::nom) | État |
+| Test | Cas | Risque |
 |---|---|---|
-| Année de début hors bornes (0, 1999, 2101, 9999) | tests/unitaires/synthese/test_cas_limites.py::test_annee_de_debut_hors_bornes_refusee_lisiblement | corrigé |
-| Année passée ou lointaine (2019, 2035) | tests/unitaires/synthese/test_cas_limites.py::test_annee_passee_ou_lointaine_donne_un_jeu_valide | couvert |
-| Graine négative, trop grande ou non entière | tests/unitaires/synthese/test_cas_limites.py::test_graine_hors_bornes_refusee | corrigé |
-| Graines extrêmes admises (0, 2^31-1), déterministes | tests/unitaires/synthese/test_cas_limites.py::test_graines_extremes_admises_et_deterministes | couvert |
-| Même borne de graine à l'écran et en commande | tests/unitaires/synthese/test_cas_limites.py::test_borne_de_graine_identique_au_formulaire_web | couvert |
-| `jeu --reset --oui` avec graine ou année refusée | tests/integration/synthese/test_cas_limites.py::test_commande_refuse_sans_toucher_a_la_base | corrigé |
-| Service : remise à zéro avant le refus | tests/unitaires/synthese/test_cas_limites.py::test_service_refuse_une_graine_invalide_avant_la_remise_a_zero | corrigé par le socle (c96a1b7) |
-| Configuration sans site ou sans salle | tests/unitaires/synthese/test_cas_limites.py::test_configuration_sans_salle_refusee_a_la_construction | corrigé |
-| Capacité ≤ 0, nombre de salles négatif | tests/unitaires/synthese/test_cas_limites.py::test_salles_site_negatives_refusees | corrigé |
-| Une seule salle pour une promotion | tests/unitaires/synthese/test_cas_limites.py::test_configuration_qui_ne_tient_pas_dans_les_salles | couvert |
-| Classe d'un étudiant (demi-groupe vide) | tests/unitaires/synthese/test_cas_limites.py::test_configuration_minimale_un_etudiant_par_classe | couvert |
-| Semestre d'un jour, un créneau, samedi seul, dimanche sans créneau, pause de 2 h | tests/unitaires/synthese/test_cas_limites.py::test_calendrier_et_grille_degeneres_sans_plantage | corrigé (ponctuels bornés aux dates du semestre, 4c4f38e) |
-| Besoin impossible d'avance (conférence sans date) | tests/unitaires/synthese/test_cas_limites.py::test_besoin_impossible_d_avance_ecarte_et_explique | corrigé |
-| S2 trop court pour un stage | tests/unitaires/synthese/test_cas_limites.py::test_semestre_tres_court_avec_stage_ne_plante_pas | corrigé |
-| Grille vide | tests/unitaires/synthese/test_cas_limites.py::test_grille_vide_refusee_lisiblement | corrigé |
-| Semestre manquant | tests/unitaires/synthese/test_cas_limites.py::test_semestre_manquant_refuse_lisiblement | couvert |
-| Jeu différent d'une machine à l'autre | tests/unitaires/synthese/test_cas_limites.py::test_empreinte_figee_du_jeu_petit_graine_0 | corrigé (3.13 à confirmer en CI) |
-| Autre version de Faker | tests/unitaires/synthese/test_cas_limites.py::test_jeu_independant_des_noms_proposes_par_faker | corrigé |
-| Noms épuisés (plus de 800 enseignants) | tests/unitaires/synthese/test_cas_limites.py::test_noms_epuises_homonymes_admis_sans_boucle_infinie | corrigé |
-| Graine difficile (moyen, graine 13) | tests/unitaires/synthese/test_cas_limites.py::test_graine_difficile_du_moyen_sans_besoin_ecarte | corrigé |
-| Témoin et règles valides sur 3 graines du petit | tests/unitaires/synthese/test_cas_limites.py::test_temoin_et_regles_valides_sur_trois_graines_du_petit | couvert |
-| Témoin et règles valides sur 10 graines par taille | tests/unitaires/synthese/test_cas_limites.py::test_temoin_et_regles_valides_sur_dix_graines (perf) | couvert |
-| Génération bornée en temps | tests/unitaires/synthese/test_cas_limites.py::test_generation_bornee_en_temps ; tests/unitaires/synthese/test_performance.py::test_jeu_grand_en_moins_d_une_minute | couvert |
-| Taille inconnue | tests/integration/synthese/test_commande.py::test_taille_inconnue | couvert |
-| Remise à zéro refusée à la confirmation | tests/integration/synthese/test_commande.py::test_remise_a_zero_demande_confirmation | couvert |
-| `jeu --reset` sur une base neuve | tests/integration/synthese/test_commande.py::test_remise_a_zero_sur_une_base_neuve | couvert |
-| Second chargement | tests/integration/synthese/test_commande.py::test_second_chargement_refuse_avec_un_message_clair | couvert |
-| Base non initialisée | tests/unitaires/synthese/test_commande.py::test_base_non_initialisee_refusee | couvert |
-| Chargement pendant un calcul | tests/unitaires/synthese/test_commande.py::test_refus_pendant_un_calcul | couvert |
-| Configuration incohérente (apprentis en 1re année) | tests/unitaires/synthese/test_generation.py::test_configuration_invalide_refusee_avec_le_detail | couvert |
-| Base déjà garnie | tests/unitaires/synthese/test_generation.py::test_base_deja_garnie_refusee | couvert |
-| Déjeuner libre pour tout l'établissement | tests/unitaires/synthese/test_regles.py::test_dejeuner_global_en_mode_libre | couvert |
-| Rechargements répétés (fuite mémoire) | — | manuel : objets stables sur une même base |
-| Lenteur sous pytest | — | écarté : charge de la machine, profil identique |
-| Chargements simultanés | — | écarté : verrou du socle, hors lot |
+| Fichier sans cellule remplie est signale comme vide | un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...). | rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » : l'utilisateur croyait son fichier pris en compte. |
+| Fichier d en tetes seuls dit rien a traiter | un gabarit rempli de ses seuls en-têtes (aucune ligne de données). | confondu avec un fichier vide, il serait signalé en erreur ; il doit au contraire passer et dire « rien à traiter » pour sa feuille. |
+| Classeur protege par mot de passe signale clairement | un classeur .xlsx enregistré avec un mot de passe (conteneur OLE2 chiffré). | annoncé « format Excel 97-2003 (.xls) », il laissait l'utilisateur, qui envoie déjà un .xlsx, sans comprendre qu'il fallait retirer le mot de passe. |
+| Cellule date dans une colonne code est refusee avec explication | un code « 1-2 » (ou « 8:30 ») que le tableur a converti en date ou en heure. | « 2026-01-02 00:00:00 » enregistré comme code, sans avertissement ; les références à ce groupe échouaient ensuite sans explication. |
+| Valeur trop longue pour sa colonne rejetee | une feuille salles avec un code de 5 000 caractères, un bâtiment de 10 000. | SQLite n'impose pas la longueur VARCHAR : la ligne entrait et déformait listes, menus et noms de fichiers d'export. |
+| Colonne en double lue une seule fois et signalee une fois | en-têtes « code;campus;capacite;type;Capacité », capacité 30 puis 99. | deux avertissements contradictoires, et la seconde valeur rangée parmi les colonnes libres (extra) de la salle : trace trompeuse. |
+| Cellule fusionnee signalee comme telle | un onglet salles où le code N904 est fusionné sur deux lignes (A2:A3). | openpyxl rend vide la cellule absorbée : ligne 3 rejetée « Valeur obligatoire manquante » sans que la fusion, vraie cause, soit nommée. |
+| Nombre de serie excel refuse avec un indice | une date (46300) ou une heure (0,354166 pour 8 h 30) gardée en nombre par le tableur. | refus sans explication pour un non-informaticien, ou conversion silencieuse en une date ou une heure fausse. |
+| Heure entiere ecrite en nombre reste une heure | une heure saisie « 8 », ou 8.0 dans une cellule de format Nombre. | l'indice « nombre de série » refuserait aussi une heure entière légitime ; un nombre qui n'est pas une heure garde le message ordinaire. |
 
-### Exploitation et déploiement
+#### `exploitation` (30 cas)
 
-Validation : pytest tests/unitaires/exploitation tests/integration/exploitation + test_cli + test_schema : 120 réussis, 2 sautés (Linux seulement), 2 xfail stricts ; bash -n propre ; suite complète 1236 réussis. 53 tests (95 cas) dans test_scripts_deploiement.py (20), test_commandes_exploitation.py (20) et test_systemd_nginx.py (13), aujourd'hui répartis entre tests/unitaires/exploitation/ et tests/integration/exploitation/ ; fixtures dans tests/integration/exploitation/conftest.py.
+[`tests/unitaires/exploitation/test_commandes_exploitation.py`](../tests/unitaires/exploitation/test_commandes_exploitation.py)
 
-Défauts corrigés : déploiement pendant un « sudo edt » (verrou) ; sauvegarde du déploiement en échec (.partiel purgés, etat.sh) ; horodatages UTC/Paris (versions nommées en UTC) ; envoi coupé (témoin envoi-termine, versions jamais mises en service purgées) ; liste des fichiers installés complète ; fichiers de /var/lib/edt appartenant à root refusés ; sauvegarde quotidienne (commandes `edt sauvegarder`, `edt verifier-sauvegarde`, service + minuteur systemd 3 h 30 Paris) ; page erreur-413.html et style de la 502 limité ; `serve` borne le port ; etat.sh compte « killed by the OOM killer » ; guide (sudo, bloc base corrompue, commandes coupées, message de démarrage).
-
-Défauts transmis : CI sans Python 3.14 (xfail test_la_ci_teste_la_version_de_python_du_serveur) ; services : MESSAGE_INTERROMPU (generation.py:116) ne parle pas de mémoire ni de réduire temps/fils (xfail test_le_message_d_un_calcul_interrompu_aide_a_eviter_la_recidive) ; suggestion solveur : borner les fils CP-SAT selon la mémoire (3 Go) ; docs/architecture.md devrait citer sauvegarder/verifier-sauvegarde ; si un lot ajoute une confirmation à init-db --reset, l'option doit s'appeler --oui.
-
-Procédures manuelles (docs/deploiement.md § 10) : 10.1 déploiement pendant sudo edt ; 10.2 échec de sauvegarde (chattr +i) ; 10.3 fuseaux ; 10.4 envoi interrompu ; 10.5 SIGKILL pendant une écriture ; 10.6 mémoire épuisée (MemoryMax=400M) ; 10.7 page 413 ; 10.8 sauvegarde quotidienne et exercice de restauration (mensuel) ; 10.9 fichiers appartenant à root.
-
-Après fusion : 1) deployer.sh ; 2) recopier deploy/ et relancer installer-serveur.sh (APRÈS le code : le minuteur lance `edt sauvegarder`) ; 3) `sudo systemctl start edt-sauvegarde` ; 4) etat.sh = 0 problème ; 5) rejouer § 10 hors heures d'usage (10.5 et 10.6 arrêtent le service). Versions nommées en UTC désormais ; anciennes versions en échec purgées au prochain déploiement.
-
-| Cas | Test (chemin::nom) ou procédure | État |
+| Test | Cas | Risque |
 |---|---|---|
-| Déploiement pendant une commande « sudo edt » | tests/unitaires/exploitation/test_scripts_deploiement.py::test_la_bascule_attend_la_fin_des_commandes_qui_tiennent_la_base ; tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_liste_une_commande_de_l_utilisateur ; tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_ignore_les_processus_du_service (Linux) ; procédure 10.1 | corrigé |
-| Sauvegarde du déploiement en échec, `.partiel` jamais purgés | tests/integration/exploitation/test_scripts_deploiement.py::test_la_sauvegarde_du_deploiement_reussit_puis_retire_sa_copie_en_cas_d_echec ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_la_finalisation_purge_les_sauvegardes_partielles_du_deploiement ; procédure 10.2 | corrigé |
-| Horodatages UTC / Paris, collision au changement d'heure | tests/unitaires/exploitation/test_scripts_deploiement.py::test_horodatages_du_deploiement_sans_ambiguite ; procédure 10.3 | corrigé |
-| Syntaxe bash, fins de ligne, exemple d'environnement | tests/integration/exploitation/test_scripts_deploiement.py::test_chaque_script_passe_le_controle_de_syntaxe_de_bash ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_chaque_script_s_arrete_a_la_premiere_erreur ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_fichiers_du_deploiement_en_utf8_et_fins_de_ligne_lf ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_le_depot_impose_des_fins_de_ligne_lf ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_l_exemple_d_environnement_est_accepte_par_l_application | couvert |
-| Port et fichiers installés recopiés d'un script à l'autre | tests/unitaires/exploitation/test_scripts_deploiement.py::test_un_seul_port_et_une_seule_adresse_pour_l_application ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_le_deploiement_compare_chaque_fichier_installe | corrigé |
-| CI sans le Python du serveur (3.14) | tests/unitaires/exploitation/test_scripts_deploiement.py::test_la_ci_teste_la_version_de_python_du_serveur | xfail vers CI |
-| Envoi du code interrompu | tests/unitaires/exploitation/test_scripts_deploiement.py::test_l_envoi_du_code_ecrit_un_temoin_de_fin_controle_par_le_serveur ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_seules_les_versions_mises_en_service_comptent_dans_la_rotation ; procédure 10.4 | corrigé |
-| Arrêt brutal (SIGKILL) en pleine écriture, WAL | tests/integration/exploitation/test_commandes_exploitation.py::test_la_base_reste_saine_apres_un_arret_brutal_en_pleine_ecriture ; tests/integration/exploitation/test_commandes_exploitation.py::test_le_redemarrage_clot_le_calcul_tue_avec_le_service ; procédure 10.5 | couvert |
-| Fichier `-wal` appartenant à root | tests/unitaires/exploitation/test_scripts_deploiement.py::test_fichiers_de_la_base_appartenant_a_root_refuses_avant_la_bascule ; procédure 10.9 | corrigé |
-| Sauvegarde faite seulement au déploiement | tests/unitaires/exploitation/test_systemd_nginx.py::test_la_sauvegarde_quotidienne_utilise_la_commande_de_l_application ; tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_* (7) et tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_* (3) ; procédure 10.8 | corrigé |
-| Page 413 brute de nginx | tests/unitaires/exploitation/test_systemd_nginx.py::test_nginx_sert_une_page_d_erreur_installee ; tests/unitaires/exploitation/test_systemd_nginx.py::test_la_page_413_annonce_la_limite_de_l_application ; tests/unitaires/exploitation/test_systemd_nginx.py::test_une_page_d_erreur_inseree_par_htmx_ne_restyle_pas_l_application ; tests/unitaires/exploitation/test_systemd_nginx.py::test_la_limite_d_envoi_de_nginx_laisse_l_application_repondre ; procédure 10.7 | corrigé |
-| Mémoire épuisée : redémarrage, lecture du journal | tests/unitaires/exploitation/test_systemd_nginx.py::test_le_service_lance_l_application_comme_le_decrit_le_guide ; tests/integration/exploitation/test_scripts_deploiement.py::test_etat_compte_les_arrets_pour_memoire_epuisee ; procédure 10.6 | corrigé |
-| Mémoire épuisée : message à l'utilisateur | tests/unitaires/exploitation/test_commandes_exploitation.py::test_le_message_d_un_calcul_interrompu_aide_a_eviter_la_recidive | xfail vers services (generation.py) |
-| Fils CP-SAT bornés par la mémoire | — | écarté : suggestion transmise au solveur |
-| Lanceur et service : même environnement | tests/unitaires/exploitation/test_systemd_nginx.py::test_le_lanceur_et_le_service_partagent_le_meme_environnement | couvert |
-| Sites nginx HTTP et HTTPS : partie commune | tests/unitaires/exploitation/test_systemd_nginx.py::test_chaque_site_nginx_inclut_la_partie_commune_installee | couvert |
-| `init-db` relancé à chaque déploiement, `--reset` sans terminal | tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_relance_a_chaque_deploiement_n_ajoute_rien ; tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_reset_du_deploiement_ne_pose_aucune_question ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_la_remise_a_zero_du_deploiement_reste_non_interactive | couvert |
-| Version sans `verifier-schema` (commande inconnue = code 2) | tests/unitaires/exploitation/test_commandes_exploitation.py::test_une_commande_inconnue_donne_le_code_2_attendu_par_le_deploiement ; tests/unitaires/exploitation/test_scripts_deploiement.py::test_le_deploiement_reconnait_une_version_sans_verifier_schema | couvert |
-| Base annoncée au déploiement, `doctor` pendant que le service tourne | tests/integration/exploitation/test_commandes_exploitation.py::test_la_base_annoncee_au_deploiement_est_celle_du_service ; tests/integration/exploitation/test_commandes_exploitation.py::test_doctor_tolere_le_port_tenu_par_le_service | couvert |
-| `serve` : même application que le service, port ou adresse invalide | tests/integration/exploitation/test_commandes_exploitation.py::test_serve_et_le_service_lancent_la_meme_application ; tests/integration/exploitation/test_commandes_exploitation.py::test_serve_refuse_un_port_ou_une_adresse_invalide | corrigé |
-| Guide : procédures complètes et rejouables | tests/unitaires/exploitation/test_systemd_nginx.py::test_le_guide_decrit_chaque_verification_d_exploitation ; tests/unitaires/exploitation/test_systemd_nginx.py::test_le_guide_cite_chaque_fichier_de_deploy_et_chaque_chemin_installe ; tests/unitaires/exploitation/test_systemd_nginx.py::test_les_procedures_visent_le_serveur_des_scripts ; tests/unitaires/exploitation/test_systemd_nginx.py::test_les_commandes_du_guide_passent_par_sudo_pour_les_dossiers_proteges ; tests/unitaires/exploitation/test_systemd_nginx.py::test_aucune_commande_du_guide_n_est_coupee_sur_deux_lignes | corrigé |
+| Une commande inconnue donne le code 2 attendu par le deploiement | on déploie une version qui n'a pas encore la commande verifier-schema. | si une commande inconnue ne donnait plus le code 2, le déploiement échouerait au lieu d'avertir (deployer-distant.sh teste « verifier-schema --help »). |
+| Le message d un calcul interrompu aide a eviter la recidive | un calcul du jeu « grand » épuise la mémoire du service (MemoryMax) et le tue. | l'utilisateur relance le même calcul, qui retombe pour la même raison. |
 
-### Cas écartés par la synthèse
+[`tests/unitaires/exploitation/test_scripts_deploiement.py`](../tests/unitaires/exploitation/test_scripts_deploiement.py)
 
-- Deux lancements dans le même processus (double clic) — déjà couvert par tests/integration/socle/test_generation.py::test_un_seul_calcul_a_la_fois
-- Moteur rendant une solution incomplète, sans salle ou avec une salle inconnue — variante « un placement manquant » déjà couverte par test_solution_incomplete_refusee ; les variantes salle None / 999 sont gardées dans le lot services
-- EDT_DB_URL=sqlite:// (base en mémoire) : le fil du calcul voit une base vide — doublon, fusionné dans « EDT_DB_URL sans fichier » (socle)
-- EDT_DB_URL=sqlite:// (base mémoire) acceptée : chaque fil voit une base vide différente — doublon, fusionné dans « EDT_DB_URL sans fichier » (socle)
-- EDT_DB_URL vers un pilote absent (postgresql://…) : doctor plante avec une trace — doublon, fusionné dans « schéma inconnu ou pilote absent » (socle)
-- Paramètre invalide en base : l'écran des paramètres lui-même est inaccessible (422) — doublon, fusionné dans « Paramètre corrompu en base » (socle)
-- init-db ressuscite à chaque déploiement un type de séance, type de salle, équipement ou la grille supprimés exprès — doublon, fusionné dans « init-db relancé … ressuscite » (socle)
-- init-db --reset sans confirmation ni contrôle de calcul en production — doublon, fusionné dans « init-db --reset sans confirmation » (socle)
-- Validation d'une pause déjeuner libre sans paramètres globaux : KeyError 'fin' — doublon, fusionné dans « Règle sans debut/fin : KeyError » (socle)
-- jeu-minimal quand l'année 2026-2027 n'a pas de semestre « S1 » : StopIteration — doublon, fusionné dans « creer_jeu_minimal : préconditions incomplètes » (socle)
-- Verrou réel d'un autre processus : lecteurs servis, écrivain qui patiente — doublon, fusionné dans « Écritures concurrentes : busy_timeout et WAL » (socle)
-- Maxima horaires négatifs ou incohérents acceptés par la base — doublon, fusionné dans « Contraintes CHECK du modèle » (socle)
-- Changement d'unicité, de clé étrangère ou d'index non détecté — doublon, fusionné dans « Deux versions actives / ecarts_schema » (socle)
-- Dossier des journaux impossible à créer : toute commande échoue, doctor compris — doublon, fusionné dans « edt.log ou son dossier non ouvrable » (socle)
-- init-db ou jeu-minimal sur un fichier qui n'est pas une base SQLite : erreur brute — doublon, fusionné dans « init-db sur une base verrouillée, en lecture seule ou corrompue » (socle)
-- Fichier SQLite corrompu : pages en 500 « erreur inattendue » au lieu de « base indisponible » — doublon, fusionné dans « Base corrompue ou verrouillée au démarrage » (socle)
-- Supervision par requête HEAD : /sante répond 405 — doublon, fusionné dans « Requête HEAD refusée (405) » (socle)
-- Deux processus écrivent edt.log : rotation concurrente — doublon, fusionné dans « Rotation d'edt.log par deux processus » (socle)
-- EDT_PORT avec un chiffre Unicode non décimal (²) — doublon, fusionné dans « Variables EDT_* invalides » (socle)
-- EDT_HOST invalide ou IPv6 : doctor dit « le serveur tourne peut-être déjà » — doublon, fusionné dans « Variables EDT_* invalides » (socle)
-- Règle SALLES et salles homonymes sur deux campus (inventaire vérification) — doublon, fusionné dans le cas bloquant du socle
-- Dossier de la base impossible à créer : ErreurConfiguration lisible — hors quota socle : comportement sain constaté, à reprendre en seconde vague
-- convertir_texte avec un texte None : AttributeError — hors quota socle : chemin peu probable (porte d'entrée protégée par les formulaires), seconde vague
-- Arbre des groupes dégénéré (cycle A↔B, parent d'une autre année) : refus nommant le groupe — hors quota socle : comportement sain constaté ; le cycle est gardé côté vérification où il fait taire le vérificateur
-- Version de base d'un autre semestre refusée — hors quota socle : comportement sain constaté
-- Bornes de dates : semestre d'un seul jour, à cheval, 29 février — hors quota socle : comportement sain constaté ; les bornes datées sont gardées côté services (instanciation) et vérification (semaine à cheval)
-- Sessions imbriquées en écriture dans un même fil : attente de 10 s — hors quota socle : preuve de contrat pour développeurs, seconde vague
-- Limites de taille : 10 000 séances et 1 000 règles — hors quota socle : 0,25 s mesuré, aucune dérive constatée
-- serve --port 0 ignoré en silence, --port 70000 plante — hors quota socle : usage de développement, seconde vague
-- serve --port 0 / --host '' : repli silencieux sur la configuration — doublon du précédent (écarté)
-- Cookie de messages corrompu ou mal typé — hors quota socle : les quatre formes sont déjà ignorées sans erreur
-- Salle (ou besoin) supprimée pendant un calcul : calcul perdu en « erreur inattendue » — doublon, fusionné dans « Salle, besoin ou semestre supprimé pendant un calcul » (services)
-- Suppression d'un besoin (ou d'une salle) pendant un calcul : échec masqué — doublon, fusionné dans le même cas (services)
-- Semestre sans aucun besoin : version vide créée et activée (second inventaire) — doublon, fusionné (services)
-- Dossier des journaux de calcul impossible à créer : tout calcul échoue — doublon, fusionné dans « Journal de calcul impossible à ouvrir » (services)
-- Journal dédié impossible à ouvrir : tous les calculs échouent — doublon, fusionné (services)
-- Journal de calcul impossible à ouvrir : le calcul échoue en renvoyant à un journal qui n'existe pas — doublon, fusionné (services)
-- Colonne JSON corrompue (statistiques ou parametres en liste) — doublon, fusionné dans « Ligne calcul corrompue » (services)
-- Ligne « calcul » illisible en base : accueil et écran des calculs en 500 — doublon, fusionné (services)
-- Avertissements enregistrés en texte : un avertissement par caractère — doublon, fusionné (services)
-- Calcul enregistré avec des niveaux illisibles : l'historique doit rester consultable — doublon, fusionné (services)
-- Clôture d'un calcul abandonné après l'enregistrement de la version — doublon, fusionné dans « Interruption ou échec entre l'enregistrement de la version et l'instanciation » (services)
-- Échec de l'instanciation après l'enregistrement de la version — doublon, fusionné (services)
-- Lancement d'un calcul pendant un import de données — doublon, fusionné dans « Lancement d'un calcul pendant un chargement, une remise à zéro ou un import » (services)
-- modifier ignore en silence un changement de code (et d'année) — doublon, fusionné dans « modifier() avec annee ou code » (services)
-- Cible numérique énorme dans un brouillon : OverflowError — doublon, fusionné dans « Identifiant hors bornes SQLite dans generation, verification et regles » (services)
-- Identifiant hors bornes SQLite : OverflowError au lieu d'introuvable (inventaire services) — fusionné dans le même cas
-- Deux lancements au même instant depuis deux processus : contrôle puis insertion non atomiques — doublon, fusionné dans « Deux processus lancent un calcul » (services)
-- Semestre d'un seul jour (instanciation) — doublon, fusionné dans « Semestre d'un seul jour ou commençant en milieu de semaine » (services)
-- Semestre qui commence ou finit en milieu de semaine — doublon, fusionné (services)
-- Séances hebdomadaires orphelines après réduction du nombre d'un besoin — hors quota services : comportement sain constaté (« ne correspondent plus à aucun besoin »)
-- Casse des codes et niveaux incohérente entre --niveau, -d et --regle — doublon, fusionné dans « Commandes generer / pre-verifier / instancier » (services)
-- Identifiants inexistants ou négatifs en ligne de commande — doublon, fusionné (services)
-- Saut d'horloge (changement d'heure, correction NTP) : un calcul vivant est clôturé — doublon, fusionné dans « Changement d'heure ou saut d'horloge » (services)
-- Options de calcul sans bornes en ligne de commande : temps limite infini, NaN, 1 000 fils — doublon, fusionné dans « Options du solveur sans bornes » (solveur)
-- Export CSV/iCal avec version_id ou groupe_id énorme → 500 — doublon, fusionné dans « Identifiant énorme dans l'adresse ou le formulaire d'échange » (echange) ; gravité ramenée à sérieux (adresse forgée, pas un chemin normal)
-- Besoin supprimé pendant un calcul : le calcul finit en « erreur inattendue » (inventaire web-edt) — fusionné dans le cas bloquant web-donnees « Suppression d'un besoin ou d'une salle acceptée pendant un calcul »
-- Panne de base au démarrage : le serveur ne démarre pas du tout — gardé mais fusionné avec le cas des pages 500 sous le titre « Base corrompue ou verrouillée au démarrage » (socle)
-- Identifiant au-delà de 2^63 : OverflowError (inventaire socle, commandes pre-verifier/instancier) — gardé comme cas socle ; les routes web-edt et web-donnees restent des cas distincts car les correctifs sont dans chaque couche
+| Test | Cas | Risque |
+|---|---|---|
+| Chaque script s arrete a la premiere erreur | un script sans « set -euo pipefail » rencontre une commande en échec. | le script continue sur un état faux (base non sauvegardée, lien mal basculé). |
+| Fichiers du deploiement en utf8 et fins de ligne lf | un fichier de deploy/ enregistré sous Windows avec des fins de ligne CRLF. | copié par tar sur le serveur, il casse bash (« $'\r': command not found »), systemd ou nginx. |
+| Le depot impose des fins de ligne lf | un poste Windows en core.autocrlf=true extrait le dépôt. | sans eol=lf dans .gitattributes, les scripts arrivent en CRLF dans le dossier local. |
+| L exemple d environnement est accepte par l application | edt.env.exemple reçoit une valeur invalide, un commentaire en fin de ligne ou des guillemets (systemd les garde dans la valeur). | installer-serveur.sh copie ce modèle et le service refuse de démarrer (page 502). |
+| Un seul port et une seule adresse pour l application | le port de l'application est changé dans un seul des fichiers qui le recopient. | nginx répond 502 ou la vérification de santé interroge le mauvais port, et chaque déploiement finit en retour arrière sans cause visible. |
+| Le deploiement compare chaque fichier installe | un fichier est ajouté à installer-serveur.sh sans l'ajouter à la liste comparée par deployer.sh (ou avec une autre destination). | sa modification n'est jamais signalée « à réinstaller » et le serveur garde l'ancienne version sans que personne le sache. |
+| La bascule attend la fin des commandes qui tiennent la base | « sudo edt jeu --taille grand » tourne quand un déploiement commence. | sauvegarde au milieu de sa transaction, init-db bloqué par le verrou, base remplacée sous ses pieds au retour arrière : écritures perdues, cause masquée. |
+| Fichiers de la base appartenant a root refuses avant la bascule | une commande lancée en root hors du lanceur a créé edt.db-wal (ou -shm) à root. | le service, utilisateur edt, ne peut plus écrire et ne redémarre pas. |
+| La finalisation purge les sauvegardes partielles du deploiement | un déploiement précédent a échoué pendant la sauvegarde (disque plein). | des fichiers .partiel s'accumulent dans /var/lib/edt/sauvegardes sans alerte. |
+| Horodatages du deploiement sans ambiguite | deux déploiements pendant l'heure répétée du passage à l'heure d'hiver ; journaux du déploiement en heure du serveur (UTC), ceux de l'application en heure de Paris. | nom de version déjà pris (déploiement abandonné sans explication), rotation qui garde les mauvaises sauvegardes, incidents mal recoupés d'une à deux heures. |
+| L envoi du code ecrit un temoin de fin controle par le serveur | la connexion est coupée pendant l'envoi du code (git archive \| ssh tar -x). | un dossier de version tronqué reste parmi les versions gardées, et une relance manuelle l'installerait (gabarits manquants : pages en 500 avec /sante à 200). |
+| Seules les versions mises en service comptent dans la rotation | plusieurs déploiements de suite sont annulés (envoi coupé, retour arrière). | leurs dossiers occupent les 5 places gardées et poussent dehors les versions saines : plus de version vers laquelle revenir à la main. |
+| La remise a zero du deploiement reste non interactive | init-db --reset se met à demander une confirmation (option --oui). | « deployer.sh --reset-base » échoue sur le serveur, où personne ne peut répondre. |
+| Le deploiement reconnait une version sans verifier schema | on redéploie une ancienne version qui n'a pas la commande verifier-schema. | sans la convention « commande inconnue = code 2 », le déploiement échoue au lieu d'avertir (contrat vérifié côté application dans test_commandes_exploitation.py). |
+| La ci teste la version de python du serveur | une dépendance ou une syntaxe ne fonctionne pas avec le Python du serveur (3.14). | la CI est verte et le déploiement échoue à l'étape « Environnement Python ». |
 
-### Manques relevés par la synthèse
+[`tests/unitaires/exploitation/test_systemd_nginx.py`](../tests/unitaires/exploitation/test_systemd_nginx.py)
 
-- Aucune authentification ni protection anti-CSRF sur un site public (pts.jorund.xyz) : tout POST destructeur (/jeux/charger avec remise à zéro, suppressions, import « tout remplacer », /parametres/defaut) est exécutable par quiconque connaît l'adresse ou pose un formulaire sur un autre site. Hors périmètre V1 décidé (docs/decisions.md), mais risque de perte de données réel tant que l'application est en ligne : au minimum un test qui vérifie la protection nginx (auth_basic ou liste d'IP) ou un jeton anti-rejeu sur les actions irréversibles.
-- Arrêt systemd pendant l'écriture d'une version : TimeoutStopSec=20 s puis SIGKILL alors qu'un calcul de 15 min tourne ; la clôture au redémarrage est couverte, mais pas l'intégrité du fichier WAL après SIGKILL en pleine écriture (checkpoint, -wal orphelin) ni le cas d'un fichier -wal appartenant à root après une commande sudo edt lancée hors du lanceur.
-- Normalisation Unicode des codes : « Étude » en NFC et en NFD, ou un code avec espace insécable (U+00A0) collé depuis Word, passent l'unicité et créent des doublons invisibles ; les références (import, règles par code) ne se résolvent pas sans explication. Aucun inventaire ne teste la normalisation NFC + strip des espaces exotiques à la saisie et à l'import.
-- Sauvegarde uniquement au moment d'un déploiement : aucune sauvegarde périodique (timer systemd) ni exercice de restauration ; une panne de disque entre deux déploiements perd toutes les saisies. Test d'exploitation : présence d'un timer de sauvegarde et d'un script de restauration vérifiable (integrity_check + comptage de tables).
-- Au-delà de client_max_body_size (21 Mo) nginx répond une page 413 brute, hors de la mise en page et sans le message « 20 Mo au plus, découper l'envoi » que l'application sait donner : à vérifier manuellement et à documenter (page d'erreur nginx personnalisée).
-- Cycle de vie du serveur jamais exercé en test : aucun test n'utilise `with TestClient(creer_app())`, donc le lifespan (base_initialisee, cloturer_calculs_interrompus, journalisation au démarrage) n'est couvert par rien ; une fixture de session qui entre dans le contexte au moins une fois protégerait tous les cas de démarrage.
-- Épuisement mémoire pendant un calcul (MemoryMax=3G, 8 fils CP-SAT sur le jeu grand) : le processus est tué par le noyau, systemd redémarre, le calcul est clos « interrompu par l'arrêt de l'application » : message juste mais qui n'invite ni à réduire les fils ni le temps ; aucun test ne couvre la lecture d'un OOM dans le journal ni une borne de fils dépendant de la mémoire disponible.
+| Test | Cas | Risque |
+|---|---|---|
+| Le service lance l application comme le decrit le guide | edt.service est modifié (point d'entrée, nombre de processus, journal, mémoire). | service qui ne démarre plus, calculs dupliqués entre processus, ou serveur qui s'effondre faute de mémoire au lieu du seul service. |
+| La sauvegarde quotidienne utilise la commande de l application | la base n'est sauvegardée qu'au moment d'un déploiement. | une panne de disque entre deux déploiements perd toutes les saisies ; un minuteur mal écrit ne sauvegarderait rien sans que personne le voie. |
+| Le lanceur et le service partagent le meme environnement | « sudo edt … » est lancé avec une autre version, un autre utilisateur ou un autre fichier d'environnement que le service. | la commande travaille sur une autre base sans le dire, ou laisse des fichiers appartenant à root qui empêchent le service de démarrer. |
+| La limite d envoi de nginx laisse l application repondre | un classeur de 20,3 Mo est envoyé, ou la limite de nginx change. | nginx coupe avant l'application (page 413 au lieu de son message « 20 Mo au plus »), ou laisse passer des envois énormes jusqu'à l'application. |
+| Nginx sert une page d erreur installee | l'application est arrêtée (502) ou un envoi dépasse la limite de nginx (413). | page brute de nginx, en anglais et hors de la mise en page, ou page absente du serveur parce que l'installateur ne la copie pas. |
+| Une page d erreur inseree par htmx ne restyle pas l application | la page d'erreur répond à une requête HTMX (import, bouton) : app.js l'insère telle quelle dans la zone des messages de la page ouverte. | ses styles visant body, html ou main défigurent toute la page de l'application. |
+| La page 413 annonce la limite de l application | la limite d'envoi de l'application change (20 Mo aujourd'hui). | la page 413 de nginx annonce une limite fausse à l'utilisateur. |
+| Chaque site nginx inclut la partie commune installee | un des deux modes du site (HTTP avant le certificat, HTTPS après) diverge. | pages d'erreur, limite d'envoi ou proxy absents dans un seul des deux modes. |
+| Le guide decrit chaque verification d exploitation | un développeur doit rejouer à la main une vérification impossible à automatiser. | procédure absente, ou sans prérequis, étapes et résultat attendu. |
+| Le guide cite chaque fichier de deploy et chaque chemin installe | un fichier est ajouté à deploy/ ou installé ailleurs sur le serveur. | personne ne sait qu'il existe ni où le chercher en cas de panne. |
+| Les procedures visent le serveur des scripts | l'adresse du serveur, le compte SSH ou la clé change dans deploy/commun.sh. | les procédures manuelles et les commandes du guide visent encore l'ancien serveur, ou échouent faute de clé. |
+| Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
+| Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-Le manque sur l'authentification est une décision d'équipe (site de démonstration
-sans connexion) ; les autres sont traités par le lot exploitation (sauvegarde
-quotidienne, page 413, mémoire, arrêt du service) ou par le socle (Unicode des
-codes, cycle de vie du serveur).
+#### `socle` (48 cas)
+
+[`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Contraintes de controle du modele et maxima positifs | une écriture qui contourne les services viole une règle de cohérence du modèle (créneau à l'envers, besoin de durée nulle, ponctuel sans date, trajet inversé, indisponibilité ni récurrente ni datée, maxima horaires négatifs ou nuls, groupe parent de lui-même). | dernière ligne de défense avant un instantané incohérent ; un remaniement de `modeles.py` perdrait ces CHECK sans signal, et les maxima négatifs rendaient `MAX_ENSEIGNANT` infaisable sans dire que la donnée est absurde. |
+| Un code aux espaces invisibles est le meme code | un code saisi ou importé porte une espace insécable, une espace de largeur nulle, des espaces aux bords ou une tabulation (collé depuis un traitement de texte). | « N105 » et « N105 » passaient l'unicité et créaient un doublon invisible, introuvable à la recherche ; le code doit être normalisé dès l'affectation. |
+| Les codes et identifiants sont normalises en nfc | le même code en forme Unicode décomposée (« e » + accent) et précomposée ; identifiant d'enseignant avec une espace insécable. | doublons invisibles de campus ou d'enseignants ; la forme enregistrée doit être NFC et l'unicité doit jouer. |
+| Init db relance ne recree pas un referentiel supprime volontairement | l'utilisateur a supprimé un type de séance, un équipement et toute la grille pour la ressaisir ; le déploiement suivant relance `init-db`. | lignes ressuscitées sans un mot (choix de l'utilisateur annulé à chaque mise à jour) ; seul un paramètre absent doit être reposé. |
+| Le jeu minimal refuse proprement une base avec regles ou sans semestre s1 | `jeu-minimal` sur une base sans référentiel mais avec une règle déjà créée, puis sur une base dont les semestres ont été renommés. | `IntegrityError` brute (unicité (année, code) de la règle) puis `StopIteration` (semestre S1 introuvable) : code 2 / 500 au lieu d'un refus qui dit quoi faire. |
+
+[`tests/unitaires/socle/test_cli.py`](../tests/unitaires/socle/test_cli.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Options de niveau insensibles a la casse et aux espaces | `generer -d pause --niveau " Pause = Facultatif "` (casse et espaces libres). | refus surprenant alors que `--regle r007=Facultatif` tolère casse et espaces ; fragile pour les scripts. |
+
+[`tests/unitaires/socle/test_config.py`](../tests/unitaires/socle/test_config.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Variables d environnement invalides levent une erreur de configuration | une variable EDT_* porte une valeur hors domaine (port « ² », hôte avec espace, niveau de journal ou environnement inconnus). | `ValueError` brute au démarrage (code 2, trace) ou repli silencieux sur le défaut ; le message doit nommer la variable et la valeur lue. |
+| Valeurs vides ou entourees d espaces | variables présentes mais vides, ou avec espaces et casse libres. | une variable vide refusée au lieu de prendre son défaut, ou « PROD » non reconnu. |
+
+[`tests/unitaires/socle/test_depliage.py`](../tests/unitaires/socle/test_depliage.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Ponctuel hors des dates du semestre est un probleme de depliage | le semestre commence un mercredi ; une séance ponctuelle est datée du lundi de la même semaine (saisie avant un raccourcissement du semestre). | le dépliage jugeait à la semaine et acceptait, le solveur plaçait, puis l'instanciation rejetait la date avec une raison vague : la cause réelle (hors semestre) doit être dite avant le calcul. |
+| Un besoin sans groupe est signale et non deplie | un besoin dont la liste des groupes est vide (import partiel, groupe retiré par un script) ; la base l'accepte, la conception non. | déplié avec un effectif nul (toute salle convient), planifié comme si de rien n'était ; la demande incomplète doit être signalée, pas placée. |
+
+[`tests/unitaires/socle/test_instantane.py`](../tests/unitaires/socle/test_instantane.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Regle salles avec salles homonymes sur deux campus | une seconde salle « N105 » existe à Issy ; une règle SALLES impose « N105 » à la classe A1-G1. | la règle résolue ne visait qu'une des deux salles, au hasard de l'ordre de lecture : résultat faux sans message ; les deux identifiants doivent être retenus. |
+| Deux versions actives sont refusees et l index absent est un ecart | base créée sans l'index unique partiel « une version active par semestre » ; deux versions ont été activées. | l'instantané prenait la première ligne : verrous repris d'une version arbitraire, affichage d'une version et calcul sur l'autre, sans message. |
+| Un besoin sans groupe est signale dans l instantane | un besoin du jeu perd tous ses groupes (script, import partiel) puis le semestre est chargé. | besoin déplié avec un effectif nul et planifié ; il doit figurer dans les problèmes de dépliage et n'avoir aucune séance. |
+| Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | un identifiant de séance venu d'une adresse ou d'un fichier porte un chiffre Unicode (« ² », chiffres d'une autre écriture) ou une forme bancale. | `isdigit()` acceptait « ² » puis `int()` levait une `ValueError` brute (500 / code 2) ; l'erreur doit être métier et nommer l'identifiant (cas transmis par le lot vérificateur). |
+
+[`tests/unitaires/socle/test_jeux.py`](../tests/unitaires/socle/test_jeux.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Panne de generation apres remise a zero est dite | `recharger_jeu_fictif(..., reinitialiser=True)` et la génération du jeu plante (bogue, disque plein) après que la remise à zéro a été validée. | `RuntimeError` brute (500 / code 2) sans dire que la base a été effacée ni qu'aucun jeu n'est chargé ; la docstring promettait « rien n'est écrit sinon ». |
+| Jeu fictif sur schema perime indique le reset | une table a une colonne en trop (base d'une autre version) ; on charge un jeu sans remise à zéro, par le service puis par le chemin direct. | « lancer init-db » conseillé alors qu'init-db refusera ; le chemin direct continuait jusqu'à une `OperationalError` (code 2). Le bon remède est « --reset ». |
+| Une operation d un autre processus est vue par son marqueur | `edt jeu --reset` ou `init-db --reset` tourne dans un autre processus pendant que le serveur sert des pages. | le verrou étant propre au processus, le serveur répondait « base non initialisée : lancer init-db » (faux) pendant la recréation des tables ; le marqueur posé à côté de la base doit être vu, et un marqueur périmé ignoré. |
+| Une graine ou une annee invalides sont refusees avant la remise a zero | l'écran (ou l'assistant) demande un rechargement avec remise à zéro et une graine ou une année de début hors bornes. | la base était remise à zéro, puis la génération refusait la demande : toutes les données perdues pour une faute de saisie (cas transmis par le lot synthèse). |
+| Un chargement attend un verrou d ecriture tenu brievement et reussit | un jeu est chargé pendant qu'une autre connexion (autre processus) tient le verrou d'écriture quelques dixièmes de seconde. | avec un BEGIN différé, le chargement lisait puis échouait aussitôt « database is locked » à sa première écriture (SQLite n'attend pas pour une transaction qui a déjà lu) ; ouvert en IMMEDIATE, il attend son tour et réussit. |
+| Une remise a zero attend un verrou d ecriture tenu brievement | `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion écrit brièvement. | suppression du schéma (lecture du catalogue puis DROP) en échec « database is locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit. |
+| Deux chargements simultanes un seul reussit l autre est refuse clairement | deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux onglets). | les deux passent le contrôle « base vide » puis l'un échoue « database is locked » brut ou les données sont doublées ; un seul doit réussir, l'autre être refusé par un message clair (opération en cours, ou base déjà garnie). |
+| Deux chargements de deux processus sont serialises sous le verrou | deux chargements depuis deux processus (le verrou du processus ne joue pas) : deux transactions distinctes, lancées ensemble, sur la même base. | les deux lisent « base vide », le second échoue « database is locked » brut à sa première écriture ; en IMMEDIATE le second attend la fin du premier puis est refusé « la base contient déjà des données ». |
+
+[`tests/unitaires/socle/test_journal.py`](../tests/unitaires/socle/test_journal.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Dossier de journaux sous un fichier est une erreur de configuration | EDT_LOG_DIR désigne un chemin sous un fichier existant. | `NotADirectoryError` brute au lieu d'un message qui nomme la variable. |
+| Une rotation impossible ne perd ni ligne ni console | la rotation d'`edt.log` échoue parce qu'un autre processus tient le fichier (service web et commande `edt` en même temps, cas de Windows). | « --- Logging error --- » répété sur la console et lignes perdues ; la ligne doit être écrite dans le fichier courant, sans bruit. |
+| Le fichier journal suit une rotation faite par un autre processus | un autre processus (ou logrotate) a renommé `edt.log` pendant que celui-ci écrit. | les lignes suivantes partiraient dans l'archive ou un fichier délié (incidents introuvables) ; le flux doit être rouvert sur le nouveau fichier. |
+| Les journaux de calcul les plus anciens sont purges | des centaines de calculs ont laissé chacun leur fichier dans `generations/`. | disque plein à terme (« database or disk is full » sur toute écriture) ; seuls les `NB_JOURNAUX_CALCUL` fichiers les plus récents doivent rester, et la purge est dite. |
+
+[`tests/unitaires/socle/test_moteur.py`](../tests/unitaires/socle/test_moteur.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un point de sauvegarde libere reste annule par la transaction englobante | un service ouvre un point de sauvegarde avant toute écriture, écrit, le libère, puis la route lève (rollback de la transaction). | le pilote sqlite3 n'ouvre une transaction qu'avant une écriture ; sans le contournement du moteur, le RELEASE du SAVEPOINT validait l'insertion malgré le rollback. |
+| Un identifiant hors des entiers sqlite est invalide | un identifiant venu d'une adresse ou d'une option vaut 0, -1, 2**63, 10**30… | `session.get` ferait lever `OverflowError` au pilote (500 / code 2) au lieu de répondre « n'existe pas » ; la garde `identifiant_valide` doit tout refuser. |
+| Les erreurs du pilote sont expliquees avec leur remede | le pilote SQLite refuse une opération (verrou, lecture seule, fichier corrompu, disque plein). | un message technique sans remède ; l'opérateur pourrait effacer la base pour un simple verrou. |
+| Une ecriture attend la fin d une transaction courte | deux fils écrivent presque en même temps (fil de calcul et requête web). | sans `busy_timeout`, la seconde écriture échouerait aussitôt « database is locked » et la saisie ou la version serait perdue ; elle doit attendre puis réussir. |
+| Sous un verrou tenu l ecriture echoue apres le delai et les lecteurs sont servis | un autre processus (sqlite3, commande) tient le verrou d'écriture longtemps. | sans mode WAL les lectures seraient bloquées aussi (/sante rouge à chaque import) ; sans délai borné l'écriture attendrait sans fin. Elle doit échouer après le délai, « locked », sans rien écrire, pendant que les lecteurs sont servis. |
+| Transaction immediate prend le verrou d ecriture des l ouverture | un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa transaction, avant toute lecture. | avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et deux imports pouvaient commencer en même temps ; les lecteurs doivent rester servis. |
+| Transaction immediate apres une requete est une erreur de configuration | le verrou immédiat est demandé après une première requête de la transaction. | SQLAlchemy ignore alors l'option avec un simple avertissement : la transaction resterait différée en silence et l'import croirait tenir le verrou. |
+| Une transaction qui lit ne bloque pas les autres ecrivains | une transaction ordinaire a lu (BEGIN différé) pendant qu'un autre processus veut écrire. | si le défaut devenait IMMEDIATE, chaque page lue tiendrait le verrou d'écriture et bloquerait les écrivains ; la politique par défaut doit rester le BEGIN différé. |
+
+[`tests/unitaires/socle/test_parametres.py`](../tests/unitaires/socle/test_parametres.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un parametre corrompu en base reste reparable par l ecriture et la reinitialisation | `parametre.valeur` mal typée après un import, un script ou une requête SQL (« quinze » pour une durée, « vrai » pour un booléen). | la lecture levait partout (422 sur /parametres et /calculs) et l'écriture comme la réinitialisation commençaient par lire : l'application ne pouvait plus se réparer, seul `init-db --reset` restait (perte des données). |
+
+[`tests/unitaires/socle/test_regles.py`](../tests/unitaires/socle/test_regles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Une regle hors des heures d ouverture est refusee avec le champ fautif | une règle d'horaires ou de déjeuner cite une heure hors des heures d'ouverture de l'établissement (8 h 30 - 18 h 00 par défaut), ou un créneau interdit y est entièrement extérieur. | règle acceptée alors que le paramètre global équivalent est refusé ; un déjeuner « réservé » à 6 h ne protège rien, une plage 20 h - 22 h rend sa portée infaisable sans nommer la règle, un créneau interdit à 22 h n'interdit rien. |
+| Des regles de jours incompatibles sont signalees avec leurs codes | la classe n'a cours que le lundi et son enseignant que le mardi : aucun jour ne convient au TD. | `jours_permis()` vide sans un mot ; la pré-vérification ne savait dire que « la grille n'offre aucun jour permis », blocage inexplicable parmi des dizaines de règles. |
+| Une regle sans heures a une phrase ou une erreur nommee jamais une exception brute | une règle enregistrée sans `debut` ni `fin` (import ancien, script), ou une pause libre validée sans paramètres globaux. | `KeyError` dans `phrase()` et `_coherence` : toute la liste des règles répondait 500 pour une seule ligne. Les défauts globaux complètent la phrase ; sans eux, l'erreur nomme le champ. |
+| Des salles homonymes sur deux campus sont toutes resolues | deux salles « N105 » sur deux campus (l'unicité est (code, campus)) et une règle SALLES qui cite « N105 ». | un dictionnaire code → identifiant n'en gardait qu'une : le solveur imposait la mauvaise salle et le vérificateur signalait « en N105, hors des salles imposées (N105) ». |
+
+[`tests/unitaires/socle/test_regles_service.py`](../tests/unitaires/socle/test_regles_service.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Brouillon qui n est pas un objet est une validation invalide | l'assistant ou un client JSON envoie une liste, un texte, `null` ou un nombre à `valider()` ou `creer()`. | `dict(brouillon)` levait `ValueError`/`TypeError` (500) : le contrat « valider ne lève pas, renvoie une validation invalide » était rompu ; `creer` doit refuser sans écrire. |
+| Modifier refuse un changement d annee ou de code et garde le controle des doublons | `modifier()` reçoit « annee » (autre année) ou « code » dans les changements. | le doublon était cherché dans l'autre année mais la règle restait dans la sienne : deux réglages actifs pour la même cible, et le semestre entier devenait inchargeable ; le changement de code était ignoré en silence. |
+| Filtre inconnu est une erreur metier | `lister()` ou `regles_visant()` reçoit un filtre hors énumération (paramètre de requête, valeur de l'assistant). | `ValueError` brute (500) au lieu d'une erreur métier (422) qui liste les valeurs admises. |
+| Le code est normalise en majuscules | `creer()` reçoit le code « r002 » alors que R002 existe, puis « r007 » ; la ligne de commande met les codes en majuscules. | « r002 » créé à côté de R002 (unicité sensible à la casse), ignoré par l'attribution automatique des codes et introuvable par la commande. |
+| Annee mal formee indique le format attendu | le brouillon donne l'année comme entier, « 2026 », booléen ou « 2026/2027 ». | « L'année scolaire 2026 n'existe pas » : l'assistant ne savait ni le format « 2026-2027 » ni les années existantes, et bouclait sur des corrections. |
+| Une regle enregistree sans heures reste lisible | une règle enregistrée (import ancien, script) de type PLAGE_HORAIRE sans `debut` ni `fin` ; la liste et la fiche des règles sont ouvertes. | `KeyError` dans la phrase : toute la liste répondait 500 pour une ligne ; la phrase doit se compléter avec les heures d'ouverture de l'établissement. |
+| Regle dont la cible numerique est hors bornes est invalide | brouillon de règle dont la cible est un identifiant numérique hors des entiers de SQLite, négatif ou nul (assistant, adresse forgée). | `OverflowError` du pilote au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles (cas transmis par le lot solveur). |
+
+[`tests/unitaires/socle/test_schema.py`](../tests/unitaires/socle/test_schema.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un index unique partiel absent est un ecart | la base date d'avant l'index unique partiel « une seule version active par semestre ». | `verifier-schema` disait « à jour », deux versions pouvaient être actives et l'instantané en choisissait une au hasard ; l'index absent doit être un écart de schéma. |
+| Une unicite absente ou en trop est un ecart | une table recréée par une ancienne version sans l'unicité du modèle (ou avec une autre). | doublons acceptés (ou refusés à tort) sans que rien ne signale le schéma périmé. |
+
+#### `solveur` (18 cas)
+
+[`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Deux besoins sans groupe sont refuses en les nommant | deux besoins sans aucun groupe inscrit (données hors interface), d'enseignants différents, un seul créneau et deux salles. | une donnée incomplète tolérée en silence, ou une exception brute. Le dépliage ne produit aucune séance pour un tel besoin et la pré-vérification refuse le calcul en nommant chaque besoin ; autrefois, le moteur réunissait les séances sans groupe en une unité fictive « aucun groupe » et prouvait une infaisabilité fausse. |
+| Seance finissant apres minuit refusee meme sans horaires | besoin de 25 h, ou besoin de 2 h au début imposé 23 h, la grille active puis ignorée. | placement dont la fin dépasse minuit (occurrence débordant sur le lendemain, refusée ensuite par la base), ou refus muet qui ne dit pas pourquoi. |
+
+[`tests/unitaires/solveur/test_couche_datee.py`](../tests/unitaires/solveur/test_couche_datee.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Placement hors bornes refuse en nommant la seance | semaine type importée avec une séance au jour 7, une séance finissant après minuit (23 h - 25 h) ou une séance de durée nulle. | « Jour invalide : 7 » sans nommer la séance, ou des occurrences débordant minuit enregistrées (contrainte de plage de la base violée plus tard, ou acceptée). |
+| Semestre commencant en milieu de semaine et semestre d un jour | semestre du mercredi 09/09 au vendredi 18/09 avec une séance le lundi ; semestre d'un seul jour (un mercredi) avec cinq séances par semaine pour quatre créneaux ce jour-là. | occurrence hors semestre créée ou perdue, replacée dans une mauvaise semaine ; séances « à programmer » en cascade sans raison dite. |
+
+[`tests/unitaires/solveur/test_moteur.py`](../tests/unitaires/solveur/test_moteur.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Options invalides refusees | options du solveur hors bornes : temps limite NaN, infini, démesuré (1e9 s), nul, négatif, en texte ou booléen ; nombre de fils négatif, mille fils, fils ou graine non entiers. | « Aucun emploi du temps trouvé en nan s », calcul sans fin que l'échéance d'abandon ne sait pas calculer (OverflowError), mémoire du serveur épuisée par les fils. |
+| Options aux bornes acceptees | options aux bornes mêmes (24 h, 64 fils, 0 fil, 0,5 s) et graines négative ou 2^40. | des bornes trop serrées refuseraient des réglages légitimes ; une graine hors [0, 2^31[ est ramenée dans les bornes de CP-SAT par le moteur, pas refusée. |
+| Toutes les seances verrouillees | chaque séance porte un verrou avec sa salle : le modèle n'a ni variable ni choix. | plantage sur un modèle vide (objectif sans terme, statistiques) ou solution non rendue, en mode faisable comme en mode optimisé. |
+| Arret pendant la premiere recherche rend la main vite | instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la première recherche, avant toute solution (la première solution demande ici plus d'une minute). | le moteur ignore l'arrêt tant qu'aucune solution n'existe, ou met des secondes à rendre la main : bouton « Arrêter » sans effet avant la première solution. |
+| Parametres extremes restent valides | pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et 2^40, mode optimisé. | coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage jour × pas des débuts faux quand le pas dépasse 100 000. |
+
+[`tests/unitaires/solveur/test_preverification.py`](../tests/unitaires/solveur/test_preverification.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Une seance sans horaire ne produit pas de fausse charge | grille du lundi, une salle, l'enseignante indisponible tout le lundi, un besoin. | trois impossibilités au lieu d'une, dont deux charges parasites « ... pour 0 min disponibles : c'est impossible » qui envoient corriger la charge du groupe ou de l'enseignant. |
+| Verrou incoherent ou contredisant son besoin est nomme | séance verrouillée au jour 7, verrou sur une salle absente, verrou de 2 h sur un besoin passé à 1 h 30 (version importée ou besoin modifié après coup), avec et sans la grille. | refus sans nommer la cause, charges parasites en prime, ou verrou appliqué en silence avec la mauvaise durée quand la grille (HORAIRES) est ignorée. |
+| Indisponibilite incoherente refuse le calcul | indisponibilité récurrente d'enseignant à début ≥ fin (13 h - 9 h) ou au jour 7 (import ou saisie ancienne). | indisponibilité ignorée en silence (jamais de recoupement) ou plantage ; le calcul doit être refusé en la nommant, en pré-vérification comme au calcul. |
+| Grille vide refusee en clair | aucun créneau enregistré et un besoin à placer, la grille active puis ignorée. | refus incompréhensible ou plantage (minimum d'une liste vide) ; la grille ignorée, une séance posée un jour sans créneau, que le vérificateur refuse (« défaut du moteur »). |
+
+[`tests/unitaires/solveur/test_regles.py`](../tests/unitaires/solveur/test_regles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Niveau d une regle inconnue est signale | options avec un niveau pour la règle n° 999, absente de l'instantané (supprimée, désactivée ou d'une autre année), à côté d'une règle connue. | l'utilisateur croit avoir réglé une règle ; ni le résultat ni la copie des règles du calcul n'en garderaient trace. |
+
+[`tests/unitaires/solveur/test_services.py`](../tests/unitaires/solveur/test_services.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Version a verifier identifiant hors bornes est introuvable | `version_a_verifier(session, version_id=2**70)`. | OverflowError de SQLite au lieu d'ErreurIntrouvable : page 500 au lieu de 404. |
+| Regle dont la cible est hors bornes est invalide | brouillon de règle dont la cible est l'identifiant numérique 10^20. | OverflowError de SQLite au lieu d'une validation « portee.cible » invalide : page 500 sur l'écran des règles. |
+| Cloture renseigne la duree et nomme la version sans dates | calculs « en cours » abandonnés il y a sept minutes (processus tué), l'un juste après l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`. | « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une version active sans séances datées dont personne ne sait qu'il faut relancer l'instanciation. |
+| Calcul en cours ne s auto bloque pas sur un calcul abandonne | une requête d'écriture tient le verrou d'écriture (transaction immédiate et une écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête consulte `calcul_en_cours()` (import, remise à zéro, paramètres). | la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de la reporter et de répondre d'après ce qu'on a lu. |
+
+#### `synthese` (28 cas)
+
+[`tests/unitaires/synthese/test_cas_limites.py`](../tests/unitaires/synthese/test_cas_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Annee de debut hors bornes refusee lisiblement | année scolaire de début absurde (0, 9999) ou hors de 2000-2100. | `ValueError` « year 10000 is out of range » au lieu d'un refus lisible. |
+| Annee passee ou lointaine donne un jeu valide | jeu demandé pour une année passée ou lointaine (autres fériés, autres lundis). | calendrier ou témoin faux hors de l'année courante. |
+| Graine hors bornes refusee | graine négative, trop grande ou non entière. | `random.Random(-5)` redonne silencieusement le jeu de la graine 5. |
+| Graines extremes admises et deterministes | plus petite et plus grande graine admises. | jeu différent d'une génération à l'autre pour une même graine extrême. |
+| Borne de graine identique au formulaire web | même graine saisie à l'écran et en ligne de commande. | une graine acceptée par la commande refusée par l'interface, ou l'inverse. |
+| Service refuse une graine invalide avant la remise a zero | le service de rechargement (écran, futur assistant) reçoit une graine refusée avec la remise à zéro. | toutes les données perdues pour une faute de saisie. |
+| Configuration sans salle refusee a la construction | configuration sur mesure sans site, ou avec un site sans aucune salle. | `IndexError` en pleine génération au lieu d'un refus qui liste le problème. |
+| Salles site negatives refusees | capacité d'amphithéâtre nulle ou négative, nombre de salles négatif. | `IntegrityError` SQLite brute, ou salles ignorées sans explication. |
+| Configuration qui ne tient pas dans les salles | une seule salle de cours pour toute une promotion (pas d'amphithéâtre). | plantage, besoins perdus en silence ou témoin faux au lieu d'écarts expliqués. |
+| Configuration minimale un etudiant par classe | une classe et une classe d'apprentis d'un seul étudiant (demi-groupe vide, parcours minuscules). | division par zéro, groupe vide mal compté, témoin faux. |
+| Calendrier et grille degeneres sans plantage | semestre d'un jour, grille d'un créneau, seul jour travaillé le samedi ou un dimanche sans créneau, pause de deux heures. | division par zéro dans les taux, semaine d'intégration mal fermée, besoins perdus en silence, témoin faux. |
+| Besoin impossible d avance ecarte et explique | la conférence métiers n'a aucune date ouverte (semestre d'un jour). | besoin omis sans laisser de trace dans le rapport. |
+| Semestre tres court avec stage ne plante pas | semestre 2 de deux semaines pour une promotion qui finit l'année en stage. | `IndexError` (le stage prend les quatre dernières semaines) au lieu d'un jeu. |
+| Grille vide refusee lisiblement | tous les créneaux de la grille supprimés avant de charger un jeu. | jeu vide incompréhensible ou erreur technique. |
+| Semestre manquant refuse lisiblement | le semestre 2 a été supprimé et la taille demandée en a besoin. | `KeyError` au lieu d'un refus qui nomme le semestre manquant. |
+| Empreinte figee du jeu petit graine 0 | même taille et même graine sur une autre machine (CI en 3.11 et 3.13, serveur). | les jeux divergent sans que personne ne le voie. |
+| Jeu independant des noms proposes par faker | autre version de Faker (autre liste de noms), donc autres collisions de noms. | les tirages du générateur suivent les noms et tout le jeu change avec Faker. |
+| Noms epuises homonymes admis sans boucle infinie | plus d'enseignants que de noms distincts chez Faker (800 couples civilité-nom). | boucle infinie, la génération ne se termine jamais. |
+| Graine difficile du moyen sans besoin ecarte | graine 13 du jeu moyen, où un premier placement glouton laisse deux TP sans place. | jeu incomplet selon la graine, ou relance du témoin non déterministe. |
+| Temoin et regles valides sur trois graines du petit | autres graines que 0 (enseignants, vacataires et règles d'exemple tirés autrement). | règle d'exemple invalide ou témoin faux pour une graine que personne n'essaie. |
+| Temoin et regles valides sur dix graines | dix graines par taille (10 à 19). | besoin écarté, témoin faux ou règle d'exemple invalide pour une graine donnée (le jeu de démonstration se recharge souvent). |
+| Generation bornee en temps | chargement d'un jeu depuis l'écran (la requête attend la fin de la génération). | génération qui s'emballe et bloque l'interface (moins d'une seconde d'habitude). |
+
+[`tests/unitaires/synthese/test_commande.py`](../tests/unitaires/synthese/test_commande.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Base non initialisee refusee | chargement d'un jeu sans remise à zéro dans une base jamais initialisée. | erreur SQL « no such table » au lieu de l'indication « init-db ». |
+| Refus pendant un calcul | chargement ou remise à zéro demandés pendant un calcul d'emploi du temps. | le calcul lit une base qui change ou disparaît sous lui. |
+
+[`tests/unitaires/synthese/test_generation.py`](../tests/unitaires/synthese/test_generation.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Configuration invalide refusee avec le detail | configuration sur mesure incohérente (classes d'apprentis en 1re année). | jeu absurde ou erreur tardive sans la liste des problèmes. |
+| Base deja garnie refusee | génération directe dans une base qui contient déjà des référentiels. | doublons ou mélange de deux établissements. |
+
+[`tests/unitaires/synthese/test_performance.py`](../tests/unitaires/synthese/test_performance.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Jeu grand en moins d une minute | *docstring « Cas : … Risque : … » absente ou incomplète* | *docstring « Cas : … Risque : … » absente ou incomplète* |
+
+[`tests/unitaires/synthese/test_regles.py`](../tests/unitaires/synthese/test_regles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Dejeuner global en mode libre | pause déjeuner réglée en mode libre pour tout l'établissement avant le chargement. | témoin qui prive une personne de sa pause (jeu invalide dès sa création). |
+
+#### `verification` (25 cas)
+
+[`tests/unitaires/verification/test_datee.py`](../tests/unitaires/verification/test_datee.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Occurrence hors du semestre signalee | séances datées avant le premier ou après le dernier jour du semestre (semestre raccourci, import qui déborde). | aucune anomalie (rapport « valide »), et les règles personnalisées, bornées aux semaines du semestre, muettes sur ces dates. |
+| Occurrence dupliquee signalee comme doublon | la même séance datée deux fois à la même date, heure et salle (réimport, instanciation reprise). | trois conflits « X et X » (salle, enseignant, groupe) pour un seul défaut, dont la cause, le doublon, n'est jamais nommée. |
+| Date sous forme de datetime refusee | une séance datée reçue avec un `datetime` (date et heure) au lieu d'une date. | `TypeError` au tri des jours (erreur 500), ou conflit manqué entre ce `datetime` et une séance du même jour, jamais égaux. |
+| Maxima hebdomadaires a cheval sur deux annees civiles | un enseignant au maximum hebdomadaire a cours le 29 décembre 2026 et le 2 janvier 2027, même semaine réelle. | un regroupement par année civile couperait la semaine du Nouvel An et masquerait le dépassement. |
+
+[`tests/unitaires/verification/test_dejeuner_libre.py`](../tests/unitaires/verification/test_dejeuner_libre.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Cycle de groupes ne rend pas le verificateur muet | deux groupes parents l'un de l'autre (import, retouche de la base), un cours de B à midi en déjeuner libre. | plus aucun groupe feuille, donc plus aucune personne : déjeuner, pause, maxima et règles personnalisées ne vérifient plus rien, sans un mot. |
+
+[`tests/unitaires/verification/test_horaires.py`](../tests/unitaires/verification/test_horaires.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Jour sans creneau signale une seule fois | une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée). | la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et panneau À traiter redondant. |
+
+[`tests/unitaires/verification/test_indicateurs.py`](../tests/unitaires/verification/test_indicateurs.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Grille vide ou d un seul creneau | grille horaire vide, ou réduite à un seul créneau (lundi 8 h 30-10 h 30). | division par zéro ou `min()`/`max()` sur une liste vide (utilisation des salles, créneaux extrêmes), limite de demi-journée absente. |
+
+[`tests/unitaires/verification/test_niveaux.py`](../tests/unitaires/verification/test_niveaux.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Prefixe garde la majuscule d un nom propre | l'enseignant « Le Gall » dépasse un maximum à un niveau important, ou enfreint une règle personnalisée. | « Entorse à une règle importante : le Gall dépasse… » : nom propre déformé dans l'interface, la commande et le JSON. |
+
+[`tests/unitaires/verification/test_paires.py`](../tests/unitaires/verification/test_paires.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Identifiant duplique | la même séance placée deux fois au même créneau de la semaine type. | les deux copies en conflit « avec elles-mêmes » (salle, enseignant, groupe) : trois erreurs de plus pour un seul défaut, le doublon. |
+| Aucune contrainte a verifier journalisee | le vérificateur pur reçoit une liste de contraintes vide, ou des niveaux vides. | une liste vide renvoyée sans un mot, prise pour « emploi du temps valide » (les services, eux, la refusent : voir test_service). |
+
+[`tests/unitaires/verification/test_performance.py`](../tests/unitaires/verification/test_performance.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un semestre entier de 13000 occurrences en moins de 10 secondes | tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran À traiter le vérifie. | une régression de coût (règles reconstruites par séance et par date, emplois par personne) rendrait À traiter lent de plusieurs secondes sans qu'aucun test ne le voie. |
+
+[`tests/unitaires/verification/test_salles.py`](../tests/unitaires/verification/test_salles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Salle inconnue verifiee comme salle a definir | un placement désigne une salle absente de l'instantané (supprimée depuis le calcul, base importée). | `ErreurDonneesInvalides` « salle inconnue » : toute la vérification de la version devient impossible. |
+| Salles a definir regroupees par seance dans la couche datee | une séance a plusieurs séances datées sans salle, et une dans une salle disparue. | un avertissement « salle à définir » par date (une quinzaine par séance) noie le panneau des anomalies. |
+
+[`tests/unitaires/verification/test_service.py`](../tests/unitaires/verification/test_service.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Version sans seance datee signalee explicitement | une version sans aucune séance datée (instanciation absente ou échouée) est vérifiée sur le calendrier. | rapport vide dit « valide » ; un écran afficherait « Aucune anomalie » pour un calendrier qui n'existe pas. |
+| Seances datees apres la fin d un semestre raccourci | le semestre est raccourci de deux semaines après l'instanciation de la version. | les séances datées d'après la nouvelle fin passent sans anomalie, et les règles personnalisées, bornées aux semaines du semestre, se taisent sur elles. |
+| Salle supprimee apres le calcul degrade en salle a definir | la salle N204 est supprimée après l'enregistrement et l'instanciation de la version. | un avertissement « salle à définir » par séance datée (une quinzaine pour une seule cause), ou une vérification impossible. |
+| Salle orpheline nommee sans rendre la verification impossible | la salle N204 est effacée sans que ses séances soient mises à vide (base importée, retouche SQL). | `ErreurDonneesInvalides` « salle inconnue » : plus aucune vérification de la version (À traiter en erreur, commande en code 2). |
+| Periode aux bornes extremes du calendrier | séances datées vérifiées du 1er janvier de l'an 1 au 31 décembre 9999 (`date.min`, `date.max`). | `OverflowError` en étendant la période à la fin de sa semaine (erreur 500, ou code 2 avec une trace pour `--au 9999-12-31`). |
+| Liste de contraintes vide refusee | un appelant transmet une liste de contraintes vide (aucune case cochée) ou des niveaux vides. | rapport « valide » sans rien avoir vérifié : une modification manuelle acceptée sans contrôle. |
+| Identifiant hors bornes de la base introuvable | un identifiant de version ou de semestre hors des bornes de la base (2**70, saisi dans une adresse ou la commande). | `OverflowError` de SQLite (erreur 500, trace dans la commande) au lieu de « n'existe pas ». |
+
+[`tests/unitaires/verification/test_service_niveaux.py`](../tests/unitaires/verification/test_service_niveaux.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Contrainte desactivee inconnue nommee dans l erreur | un ancien calcul a enregistré une contrainte désactivée au code inconnu (code disparu, retouche). | « Contrainte inconnue : 'PAS_UN_CODE'. » sans version ni calcul : une erreur de vérification inexplicable dans À traiter. |
+
+[`tests/unitaires/verification/test_service_regles.py`](../tests/unitaires/verification/test_service_regles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Regle supprimee ou desactivee apres le calcul ignoree sans erreur | une règle copiée par le calcul de la version est désactivée ou supprimée ensuite. | `KeyError` ou règle fantôme passée au vérificateur : la vérification de toutes les anciennes versions casserait. |
+| Regles du calcul introuvables nommees dans le journal | la copie des règles d'un calcul cite une règle qui n'est plus active (n° 999). | la règle disparaît de la vérification sans laisser de trace : impossible de comprendre pourquoi une entorse d'hier n'est plus signalée. |
+
+[`tests/unitaires/verification/test_volume_verrou_maxima.py`](../tests/unitaires/verification/test_volume_verrou_maxima.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Identifiant de seance illisible refuse proprement | un placement ou une séance datée porte un identifiant de séance aux chiffres non ASCII (« ²-1 », « ٣-1 »). | `str.isdigit` les accepte mais `int` lève `ValueError` : erreur 500 ou trace au lieu d'une anomalie ou d'une erreur métier. |
+| Decomposer un identifiant aux chiffres non decimaux leve une erreur metier | `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import). | `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui décomposent les identifiants (anomalies de l'emploi du temps, instanciation). |
+
+#### `web_donnees` (1 cas)
+
+[`tests/unitaires/web_donnees/test_saisies_extremes.py`](../tests/unitaires/web_donnees/test_saisies_extremes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Service borne les entiers | un appel programmatique (API, assistant) passe un entier Python de 2**70. | le service, sans formulaire pour le borner, le transmet à la base. |
+
+#### `web_edt` (1 cas)
+
+[`tests/unitaires/web_edt/test_cas_limites.py`](../tests/unitaires/web_edt/test_cas_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Bornes des identifiants | identifiant nul, négatif, au-delà de 2^63, booléen, texte, absent ou décimal reçu par les services de ces écrans (`exiger_identifiant`, `obtenir`), à côté de la borne 2^63 - 1, acceptée. | un identifiant qu'aucune ligne SQLite ne peut porter atteint la base (OverflowError, erreur 500) au lieu d'un « introuvable », ou `True` passe pour l'identifiant 1. |
+
+### Tests d'intégration (139 cas)
+
+#### `echange` (5 cas)
+
+[`tests/integration/echange/test_commandes.py`](../tests/integration/echange/test_commandes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Dossier melange signale l agenda en mode donnees | « python -m edt importer dossier/ » avec salles.csv et agenda.ics, mode données. | l'agenda ignoré en silence, l'utilisateur croyant son emploi du temps importé avec les salles ; le code de sortie doit signaler le problème. |
+| Version hors limites en ligne de commande donne un message | « exporter-edt --version 100000000000000000000 » (ou -7, ou 0). | OverflowError dans la recherche de la version : « Erreur inattendue » et trace au lieu de « n'existe pas ». |
+
+[`tests/integration/echange/test_web.py`](../tests/integration/echange/test_web.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Export d une version negative nulle ou enorme dit introuvable | GET /export/emploi-du-temps.csv (ou .ics) avec version_id=-7, 0 ou vingt chiffres. | OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300 chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des écrans Données (cas transmis par le lot web EDT). |
+| Ressource hostile dans l adresse donne une erreur lisible | un filtre groupe, enseignant ou salle énorme ou négatif, ou un identifiant non numérique. | OverflowError dans la recherche du filtre : « erreur inattendue » 500 au lieu de « n'existe pas » (404), ou de « nombre attendu » (422) pour « ² ». |
+| Semestre enorme ou negatif a l import donne une erreur lisible | un import d'emploi du temps envoyé avec semestre_id=99999999999999999999 ou -7. | OverflowError dans la recherche du semestre : « erreur inattendue » au lieu de dire que la valeur est hors limites ou que le semestre n'existe pas. |
+
+#### `exploitation` (23 cas)
+
+[`tests/integration/exploitation/test_commandes_exploitation.py`](../tests/integration/exploitation/test_commandes_exploitation.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Init db relance a chaque deploiement n ajoute rien | init-db est relancé à chaque déploiement sur une base déjà initialisée. | doublons de données par défaut, ou échec qui annule tous les déploiements. |
+| Init db reset du deploiement ne pose aucune question | « deployer.sh --reset-base » lance init-db --reset sur le serveur, sans terminal. | une question de confirmation bloque ou fait échouer la remise à zéro. |
+| La base annoncee au deploiement est celle du service | EDT_DB_URL est saisie avec des blancs en fin de ligne dans /etc/edt/edt.env. | le déploiement sauvegarde ou cherche une autre base que celle du service (base jugée absente, remise à zéro sans sauvegarde). |
+| Doctor tolere le port tenu par le service | la finalisation du déploiement (ou etat.sh) lance doctor pendant que le service tient le port 8000. | un contrôle en échec à chaque déploiement réussi, qui masquerait les vrais échecs. |
+| Serve et le service lancent la meme application | le point d'entrée change dans « serve » ou dans edt.service, pas dans l'autre. | le poste de développement et le serveur ne servent plus la même application. |
+| Serve refuse un port ou une adresse invalide | « serve » reçoit un port hors de 1-65535 ou une adresse vide. | trace « erreur inattendue » (OverflowError), ou valeur remplacée en silence par celle de la configuration (port 0 → 8000). |
+| La base reste saine apres un arret brutal en pleine ecriture | systemd tue le service (fin de TimeoutStopSec, mémoire épuisée) pendant qu'il écrit une grosse transaction, déjà en partie dans le journal WAL. | base abîmée ou à moitié écrite au redémarrage ; init-db, verifier-schema ou doctor qui refusent ensuite de travailler. |
+| Le redemarrage clot le calcul tue avec le service | le service est tué (mémoire épuisée, arrêt forcé) pendant un calcul, puis systemd le redémarre. | le calcul reste « en cours » pour toujours et bloque tout nouveau calcul ; /sante ne revient pas à 200. |
+| Sauvegarder ecrit une copie verifiee et garde les plus recentes | la sauvegarde quotidienne tourne chaque nuit depuis des semaines. | copie incohérente ou invérifiée, ou disque rempli faute de rotation. |
+| Sauvegarder garde toutes les sauvegardes manuelles | un développeur sauvegarde à la main avant une opération risquée. | sa sauvegarde est emportée par la rotation des sauvegardes quotidiennes. |
+| Sauvegarder une base illisible echoue sans laisser de fichier | la base de production est abîmée (fichier écrasé, disque défaillant). | une « sauvegarde » de la base abîmée remplace les bonnes dans la rotation. |
+| Sauvegarder refuse quand le disque est plein | le disque du serveur est presque plein au moment de la sauvegarde. | copie interrompue, fichier partiel, et disque rempli au point de bloquer le service. |
+| Sauvegarder sans base le dit | la sauvegarde quotidienne tourne alors que la base a été déplacée ou supprimée. | réussite silencieuse sans rien sauvegarder, ou base vide créée à sa place. |
+| Sauvegarder refuse un prefixe reserve ou invalide | on choisit le préfixe « edt », celui des sauvegardes du déploiement, ou un nom avec des espaces ou des majuscules. | la rotation du déploiement efface des sauvegardes qu'elle n'a pas faites. |
+| Sauvegarder retire un fichier partiel abandonne | une sauvegarde précédente a été interrompue (serveur éteint, disque plein). | fichiers « .partiel » accumulés, pris à tort pour des sauvegardes. |
+| Verifier sauvegarde accepte une sauvegarde conforme sans la modifier | exercice de restauration : on contrôle la dernière sauvegarde avant d'en avoir besoin. | on découvre le jour de la panne qu'elle est abîmée, ou le contrôle la modifie. |
+| Verifier sauvegarde signale un schema different | la sauvegarde vient d'une version dont le modèle avait une autre colonne. | restaurée sous cette version, elle donnerait une application en 503 ou en 500. |
+| Verifier sauvegarde refuse un fichier abime vide ou absent | on contrôle un fichier abîmé, une base qui n'est pas celle de l'application, ou un chemin mal tapé. | un fichier inutilisable est pris pour une sauvegarde restaurable. |
+
+[`tests/integration/exploitation/test_scripts_deploiement.py`](../tests/integration/exploitation/test_scripts_deploiement.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Chaque script passe le controle de syntaxe de bash | un script de deploy/ modifié par une PR contient une erreur de syntaxe. | le déploiement ou l'installation s'arrête sur le serveur, au pire en pleine bascule. |
+| Processus hors service liste une commande de l utilisateur | un processus de l'utilisateur de l'application tourne hors du service. | la recherche ne le voit pas (lecture de /proc, format de ps) et la bascule remplace la base qu'il est en train d'écrire. |
+| Processus hors service ignore les processus du service | seuls les processus du service lui-même tiennent la base. | la recherche les compte comme étrangers et chaque déploiement est refusé. |
+| La sauvegarde du deploiement reussit puis retire sa copie en cas d echec | la base à sauvegarder pendant la bascule est illisible (ou le disque se remplit). | une copie partielle reste sous un nom de sauvegarde et le script continue. |
+| Etat compte les arrets pour memoire epuisee | un calcul dépasse MemoryMax ; le noyau tue le service, que systemd redémarre aussitôt (/sante répond de nouveau 200). | la panne passe inaperçue et se répète à chaque gros calcul, parce que etat.sh cherche une ligne que systemd n'a pas écrite cette fois-là (résultat 'signal'). |
+
+#### `socle` (24 cas)
+
+[`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Une base verrouillee lecture seule ou corrompue donne un message clair et le code 1 | `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite. | trace brute et code 2, et le script de déploiement enchaînait sur « --reset-base » (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et le remède, code 1. |
+| Init db reset exige une confirmation dans un terminal et aucun calcul en cours | `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne dans un autre processus, puis en production hors calcul. | base de production effacée par mégarde sans question ni sauvegarde, calcul en cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie « edt-<date>-avant-reset.db » dans le troisième. |
+| Init db reset non interactif ne pose pas de question | `init-db --reset` lancé par un script (déploiement), sans terminal, en développement. | une question posée à un script le bloquerait ou le ferait échouer ; en développement, pas de copie de sauvegarde qui encombre le dossier. |
+| Doctor signale une base en lecture seule | `edt.db` a été copié avec les droits d'un autre utilisateur (lecture seule). | doctor disait « Tout est prêt » alors qu'aucune écriture n'était possible ; il doit échouer en nommant la lecture seule. |
+| Commandes de calcul avec un identifiant inexistant | `generer`, `pre-verifier` ou `instancier` reçoivent un identifiant inexistant, nul ou négatif. | trace Python (code 2) ou ligne de calcul créée pour un semestre inexistant ; il faut le code 1, « n'existe pas », et aucun calcul enregistré. |
+| Doctor signale le dossier des journaux de calcul inutilisable | `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le dossier racine des journaux va bien. | doctor disait « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aurait de journal (cas transmis par le lot solveur). |
+
+[`tests/integration/socle/test_config.py`](../tests/integration/socle/test_config.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Doctor signale une adresse d ecoute introuvable | EDT_HOST désigne un nom qui ne se résout pas. | `serve` mourrait sur `gaierror` avec une trace, et doctor concluait à tort « le serveur tourne peut-être déjà » (code 0) au lieu d'un échec qui nomme EDT_HOST. |
+
+[`tests/integration/socle/test_instantane.py`](../tests/integration/socle/test_instantane.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un identifiant hors des entiers sqlite est introuvable | un identifiant de semestre ou de version au-delà de 2**63, négatif ou nul arrive par une adresse web ou une option de commande. | `OverflowError` brute du pilote (500 côté web, code 2 en ligne de commande) alors que -1 donnait proprement « n'existe pas » ; tous doivent être introuvables. |
+| Une commande avec un identifiant hors bornes repond n existe pas | `pre-verifier --semestre 99999999999999999999` ou `verifier --version 2**63` (identifiant au-delà des entiers de SQLite). | `OverflowError` brute du pilote, « Erreur inattendue » avec trace, au lieu de « n'existe pas » avec le code de sortie que la commande rend déjà pour -1 : 1 (erreur métier) pour `pre-verifier`, 2 (« vérification impossible ») pour `verifier`. |
+
+[`tests/integration/socle/test_journal.py`](../tests/integration/socle/test_journal.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Fichier journal non ouvrable leve une erreur de configuration et doctor le dit | `edt.log` ne peut pas être ouvert (un dossier porte son nom, ou il appartient à un autre utilisateur). | `PermissionError` brute à chaque commande (code 2, « la trace est dans le journal » qui n'existe pas), message en double, boucle de redémarrage du service ; doctor, censé diagnostiquer, ne démarrait pas. |
+
+[`tests/integration/socle/test_moteur.py`](../tests/integration/socle/test_moteur.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Une url sqlite sans fichier est refusee | EDT_DB_URL désigne une base SQLite en mémoire (chemin oublié dans edt.env). | chaque fil d'exécution (serveur, calcul, commande) verrait sa propre base vide ; init-db dirait « 59 lignes » et le calcul échouerait « no such table ». |
+| Une url sans pilote ou de schema inconnu est une erreur de configuration | EDT_DB_URL vise un autre moteur (pilote absent) ou porte une faute de frappe. | exception brute de SQLAlchemy (code 2, trace), service qui ne démarre pas, au lieu d'un message de configuration ; le mot de passe de l'URL ne doit pas s'afficher. |
+
+[`tests/integration/socle/test_parametres.py`](../tests/integration/socle/test_parametres.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| L ecran des parametres reste ouvrable avec une valeur corrompue | l'utilisateur ouvre /parametres pour corriger une valeur corrompue en base. | l'écran répond 422 et ne peut pas servir à réparer ; il doit s'ouvrir (200) et signaler la valeur enregistrée invalide à réenregistrer. |
+
+[`tests/integration/socle/test_web.py`](../tests/integration/socle/test_web.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Cycle de vie du serveur clot les calculs interrompus et journalise | démarrage puis arrêt du serveur sur une base prête, avec un calcul resté « en cours » depuis un processus disparu. | le cycle de vie n'était testé nulle part : journalisation du démarrage, clôture des calculs abandonnés et message d'arrêt pouvaient casser sans signal. |
+| Cycle de vie sans base initialisee avertit sans echouer | le serveur démarre avant `init-db` (base vide). | démarrage en échec ou silence ; il doit démarrer et dire quoi lancer. |
+| Le serveur demarre et repond base indisponible malgre une base corrompue | `edt.db` a été tronqué ou remplacé (« file is not a database ») avant le démarrage du serveur. | « Application startup failed », cinq redémarrages puis 502 pour tout le monde et `/sante` jamais servi ; une fois servi, 500 « erreur inattendue » car `sqlite3.DatabaseError` n'est pas une `OperationalError`. |
+| Une route sur une base corrompue repond 503 avec le remede | une page qui écrit dans la base alors que le fichier n'est plus une base SQLite. | 500 « erreur inattendue » au lieu du 503 « base indisponible » qui nomme le remède. |
+| Le serveur demarre malgre une base verrouillee et reporte la cloture des calculs | un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné attend d'être clos. | la clôture (une écriture) faisait échouer le démarrage ; elle doit être reportée (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ». |
+| Une panne du pilote de base est un 503 qui dit quoi faire | une route reçoit du pilote SQLite une erreur de verrou, de table absente ou de fichier illisible. | page 500 sans remède ; chaque cause doit donner un 503 avec sa marche à suivre. |
+| Une base en lecture seule ou un disque plein sont nommes | la base est en lecture seule (fichier copié en root) ou le disque est plein. | 503 générique « réessayer » : le travail saisi est perdu et rien ne nomme les droits ni l'espace disque. |
+| Sante signale une base en lecture seule | `edt.db` est en lecture seule (droits), le déploiement a réussi. | `/sante` vert et supervision rassurée alors qu'aucune écriture n'est possible. |
+| Head repond comme get sans corps | la supervision (sonde, `curl -I`) envoie HEAD / et HEAD /sante. | 405 « Action non permise » partout : la supervision conclut à une panne permanente. |
+| Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
+| Remise a zero par un autre processus donne base occupee | un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant que le serveur sert une requête. | « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé par l'autre processus doit faire répondre « occupée, réessayer ». |
+
+#### `solveur` (16 cas)
+
+[`tests/integration/solveur/test_services.py`](../tests/integration/solveur/test_services.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Options hors bornes refusees par la commande | `generer --temps-limite nan`, `--temps-limite inf` ou `--fils 1000` (Typer accepte nan et inf comme flottants). | « Aucun emploi du temps trouvé en nan s » après quelques millisecondes, un calcul sans fin dont l'échéance d'abandon déborde, ou mille fils qui épuisent la mémoire du serveur. |
+| Temps limite enregistre illisible ne bloque pas le suivi | calcul « en cours » d'un autre processus vivant dont le temps limite enregistré vaut l'infini ou un texte (ligne ancienne ou corrompue). | `timedelta(seconds=inf)` lève OverflowError et `float("abc")` ValueError dans le contrôle des calculs abandonnés : `calcul_en_cours()` plante, et toutes les pages avec lui. |
+| Identifiant hors bornes est introuvable | identifiant 2^70 (hors bornes des entiers SQLite) donné au suivi, à l'arrêt, au lancement, aux pré-vérifications, à l'instanciation ou au replacement. | `session.get` lève OverflowError au lieu de répondre « introuvable » : page 500 « erreur inattendue » avec trace, alors que -1 est correctement refusé. |
+| Donnees modifiees pendant le calcul sont dites | un besoin du semestre est supprimé pendant que le moteur calcule (les écrans Données ne consultent pas le calcul en cours). | IntegrityError à l'enregistrement de la version, état « erreur inattendue » avec trace, minutes de calcul perdues sans que la cause soit dite. |
+| Semestre sans besoin ne cree pas de version vide | Générer sur un semestre sans aucun besoin, qui a une version de référence active. | « Aucune séance à placer » pris pour un succès, version vide enregistrée et activée, l'ancienne désactivée : l'emploi du temps affiché se vide sans confirmation. |
+| Journal de calcul impossible donne la vraie cause | `<EDT_LOG_DIR>/generations` est un fichier (ou un dossier non inscriptible). | tout calcul échouerait « Le détail est dans le journal du calcul » avec un journal inexistant ; plus aucun emploi du temps productible tant que personne ne lit edt.log. |
+| Doctor signale le dossier des journaux de calcul inutilisable | `doctor` alors que `<EDT_LOG_DIR>/generations` est un fichier (corrigé par le socle à la demande de ce lot ; le socle a son propre test, celui-ci garde le point de vue du calcul). | « Journaux accessibles » et « Tout est prêt » alors qu'aucun calcul n'aura de journal. |
+| Un calcul illisible est clos sans bloquer l application | lignes de calcul aux JSON mal typés : « en cours » avec statistiques en texte et temps limite « abc » ; « réussi » avec avertissements en texte, niveaux « pause », niveaux de règles et règles illisibles, contraintes désactivées en texte. | AttributeError ou ValueError dans le suivi : accueil et écran Calculs en 500, lancement impossible jusqu'à une réparation SQL ; avertissements affichés lettre à lettre. |
+| Version enregistree sans instanciation dit de relancer l instanciation | l'instanciation échoue (exception) ou est interrompue (KeyboardInterrupt) juste après l'enregistrement de la version. | version active sans aucune séance datée et personne de prévenu (« erreur inattendue » ou succès muet) : l'utilisateur regarde un calendrier vide. |
+| Lancer un calcul pendant un chargement est refuse | Générer pendant qu'un chargement de jeu fictif ou une remise à zéro tient le verrou de la base (tables supprimées puis recréées). | calcul sur des tables en recréation (« no such table », erreur inattendue) ou version qui référence des besoins disparus ; l'inverse est refusé et l'asymétrie surprend. |
+| Lancer un calcul pendant un import est refuse | import de données en cours (fichier en cours de lecture), Générer depuis un autre onglet. | calcul sur des données en train de changer, version qui référence des besoins remplacés ; l'inverse (import pendant un calcul) est refusé, l'asymétrie surprend. Le test exerce le vrai marqueur `edt.services.echange.import_en_cours` (seule la lecture du fichier est remplacée, pour tenir l'import ouvert). |
+| Deux lancements simultanes dans deux processus | la commande `generer` et le bouton Générer lancent un calcul au même instant depuis deux processus (le verrou de `generation` est local à un processus). | deux calculs parallèles sur les deux cœurs du serveur, deux versions activées l'une après l'autre : la règle « un seul calcul à la fois » ne tiendrait qu'au sein d'un processus. |
+| Solution sans salle ou a salle inconnue du moteur est refusee | un moteur de remplacement rend des placements sans salle, ou avec une salle inconnue de l'instantané (le placement manquant est couvert par `test_solution_incomplete_refusee`). | version partielle ou incohérente enregistrée (contraire au tout-ou-rien), ou « erreur inattendue » à l'enregistrement. |
+| Verrous contradictoires toleres de bout en bout | deux séances verrouillées sur le même créneau et la même salle dans la version active ; nouveau calcul sans l'option, puis avec « tolérer les violations héritées ». | refus sans le conseil de tolérer, ou solution refusée par le vérificateur (« défaut du moteur ») alors que l'utilisateur a demandé de tolérer ces verrous. |
+| Echec de l ecriture finale est retente | la base est verrouillée au moment où le fil du calcul écrit son état final (longue écriture d'un import ou d'une remise à zéro au-delà du délai d'attente). | état final perdu, calcul « en cours » puis clos « interrompu par l'arrêt de l'application » alors que l'application tourne ; message et statistiques perdus. |
+| Un saut d horloge ne clot pas un calcul vivant | l'heure locale avance d'une heure (passage à l'heure d'été, correction NTP) pendant qu'un calcul d'un autre processus tourne depuis trente secondes. | échéance « temps limite + grâce » atteinte une heure trop tôt, calcul vivant clos « interrompu » à tort ; temps écoulé affiché majoré d'une heure. |
+
+#### `synthese` (5 cas)
+
+[`tests/integration/synthese/test_cas_limites.py`](../tests/integration/synthese/test_cas_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Commande refuse sans toucher a la base | `python -m edt jeu --reset --oui` avec une graine ou une année refusée. | la base est vidée par la remise à zéro, puis la génération échoue. |
+
+[`tests/integration/synthese/test_commande.py`](../tests/integration/synthese/test_commande.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Remise a zero demande confirmation | `jeu --reset` sans `--oui`, et l'utilisateur répond non à la confirmation. | toutes les données supprimées sans accord explicite. |
+| Remise a zero sur une base neuve | `jeu --reset` alors que le fichier de base n'existe pas encore. | « no such table » en cherchant un calcul en cours dans une base sans tables. |
+| Second chargement refuse avec un message clair | second chargement d'un jeu dans une base qui en contient déjà un. | doublons de codes (erreur d'unicité brute) ou mélange de deux jeux. |
+| Taille inconnue | taille de jeu mal orthographiée (« geant »). | `KeyError` brute au lieu de la liste des tailles disponibles. |
+
+#### `web_donnees` (36 cas)
+
+[`tests/integration/web_donnees/test_cas_limites.py`](../tests/integration/web_donnees/test_cas_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Suppression d un besoin ou d une salle pendant le calcul est refusee | pendant un calcul, on supprime un besoin ou une salle du semestre calculé (page ou ligne). | la suppression passe, le calcul enregistre des séances qui pointent vers elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont perdues. |
+| Suppression du semestre refusee pendant son calcul | on supprime le semestre (ou l'année) pendant son calcul. | le calcul est supprimé en cascade sous son fil : le suivi répond 404 chaque seconde, le verrou « un seul calcul à la fois » tombe et un second calcul peut démarrer en parallèle. |
+| Regles personnalisees supprimables pendant un calcul | pendant un calcul, on supprime les règles personnalisées actives. | si le calcul relisait ses règles à la fin, il échouerait ; il les copie à son lancement, et ce test garde la décision de ne pas bloquer leur suppression (contrairement aux autres données). |
+| Duree d une annee bornee | une année scolaire saisie jusqu'au 31/12/9999, ou « 2227 » pour « 2027 ». | acceptée, elle fait déborder le calcul des semaines (erreur 500 sur Générer) ou produit des centaines de milliers de séances datées. |
+| Duree d un semestre bornee | un semestre de plus d'un an dans une année longue (deux ans, permise). | un calcul sur ce semestre instancie des milliers de semaines et gèle le serveur. |
+| Calculs d un semestre sain sans erreur | la page Générer d'un semestre ordinaire, après les bornes posées sur les dates. | une borne trop stricte ferait refuser ou planter un semestre normal. |
+| Adresse de retour avec saut de ligne est ecartee | le champ caché `_retour` d'un formulaire est modifié en « /salles », un retour à la ligne et « X-Injecte: 1 ». | la valeur part telle quelle dans l'en-tête HX-Redirect (en-tête injecté, ou réponse perdue), ou dans une redirection vers une adresse mutilée. |
+| Hx current url illisible est ignore | une requête HTMX arrive avec l'en-tête HX-Current-URL « http://[::1 » (navigateur ou extension fautifs). | urlsplit lève ValueError, erreur 500 et trace dans le journal pour une simple ligne de tableau. |
+| Hx current url illisible dans le panneau d une seance | le panneau d'une séance (grille de l'emploi du temps) demandé avec un HX-Current-URL illisible. | erreur 500 au clic sur une séance. |
+| Fragments sans htmx redirigent vers la page | l'adresse d'un fragment (ligne, confirmation dans la ligne, aperçu de règle) est ouverte directement : lien copié, historique, navigateur sans JavaScript. | un morceau de tableau nu, sans menu ni styles, dont les boutons perdent le contexte de la liste. |
+| Fragments des autres ecrans sans htmx | un fragment des écrans Générer, Emploi du temps ou À traiter ouvert directement. | HTML nu sans mise en page (le compteur d'onglet, le suivi d'un calcul...). |
+| Champs libres echappes sur les pages de donnees | un code de salle « <b>x</b> », un bâtiment « "><img onerror=...> », un libellé de groupe et un commentaire de règle « <script> », affichés dans les listes, fiches, confirmations, lignes HTMX et messages. | un seul \|safe oublié et du script s'exécute chez le responsable de scolarité. |
+| Champs libres echappes sur les pages de l emploi du temps | les mêmes textes piégés, plus un motif d'annulation « <script> », dans la grille, les panneaux de séance, l'export et À traiter. | script exécuté au simple affichage de l'emploi du temps. |
+
+[`tests/integration/web_donnees/test_parametres.py`](../tests/integration/web_donnees/test_parametres.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Parametres refuses pendant un calcul | pendant un calcul, on enregistre les paramètres ou on les remet à leur valeur par défaut. | le calcul, qui relit les paramètres pour contrôler et dater sa solution, produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter), alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul. |
+| Valeur corrompue signalee puis reparee depuis l ecran | une valeur de paramètre corrompue en base (« quinze » pour la pause entre deux séances), puis l'utilisateur ouvre /parametres et enregistre. | l'écran, seul moyen de la corriger, ne s'ouvre plus (422), ne dit pas quelle valeur est en cause, ou refuse l'enregistrement qui la répare. |
+
+[`tests/integration/web_donnees/test_performance.py`](../tests/integration/web_donnees/test_performance.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Pages du jeu grand sous deux secondes | les pages les plus lourdes (besoins de tous les semestres, arbre des groupes, formulaires de règles avec toutes les salles, Générer à froid) sur l'établissement complet. | une page de plusieurs secondes gèle le serveur pour tout le monde, un tableau non paginé pèse des mégaoctets ; sans seuil, la régression passe inaperçue. |
+| Export des donnees du jeu grand sous dix secondes | l'export Excel de toutes les données de l'établissement complet. | un export qui dépasse dix secondes bloque le serveur (une requête à la fois). |
+
+[`tests/integration/web_donnees/test_regles.py`](../tests/integration/web_donnees/test_regles.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Identifiants enormes des regles sont introuvables | une adresse des règles retouchée avec une année ou un numéro de règle de vingt chiffres. | OverflowError de SQLite, erreur 500 là où les autres écrans répondent « introuvable ». |
+| Regles sans annee scolaire affiche un bandeau | toutes les années scolaires ont été supprimées, puis on ouvre « Règles personnalisées ». | une page d'erreur 404 pour une entrée du menu, sans dire quoi faire. |
+
+[`tests/integration/web_donnees/test_saisies_extremes.py`](../tests/integration/web_donnees/test_saisies_extremes.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Capacite trop grande | une capacité de vingt chiffres. | OverflowError de SQLite (erreur 500) ou capacité absurde enregistrée. |
+| Effectif trop grand | un effectif de groupe de vingt chiffres. | erreur 500 ou effectif absurde qui fausse le contrôle des capacités. |
+| Identifiant trop grand dans un choix | une liste de choix (campus) renvoyée avec un identifiant de vingt chiffres. | OverflowError à la recherche de l'élément choisi. |
+| Chiffres exotiques refuses | une capacité « ² », « ٣ » (chiffre arabe), « 1e3 » ou « 2**70 ». | Python les lit comme des chiffres (`isdigit`) et une valeur inattendue est enregistrée. |
+| Annee de debut exotique | « Ajouter l'année » avec une année de début « ² ». | int() lève ValueError, erreur 500 sur le calendrier. |
+| Graine exotique | la graine du jeu fictif saisie « ² ». | int() lève ValueError, erreur 500. |
+| Adresses aberrantes | une adresse retouchée à la main (page « ² », identifiant ou filtre de vingt chiffres). | erreur 500 au lieu de « introuvable » ou « valeur invalide ». |
+| Jours feries d une annee inexistante | « Ajouter les fériés » envoyé pour une année de vingt chiffres. | erreur 500 au lieu de « introuvable ». |
+| Liste vide sans filtre pose | une liste vide alors que seul le filtre par défaut (l'année en cours) s'applique. | le message « rien ne correspond à vos filtres » fait chercher un filtre inexistant au lieu de proposer d'ajouter un élément. |
+| Liste vide avec filtre pose | une recherche qui ne trouve rien. | liste vide sans moyen visible de revenir à la liste complète. |
+| Nombres de cinq mille chiffres refuses | un nombre de 5 000 chiffres dans une adresse (page, année, identifiant) ou un formulaire (capacité, graine, règles confirmées, cible, trajet). | Python refuse de convertir plus de 4 300 chiffres, ValueError non rattrapée, erreur 500. |
+| Seance de cinq mille chiffres dans l emploi du temps | l'adresse de l'emploi du temps avec « seance=h » suivi de 5 000 chiffres (lien abîmé). | erreur 500 au lieu d'ignorer la séance mise en évidence. |
+| Niveau de regle de cinq mille chiffres au lancement | le formulaire « Lancer le calcul » avec un champ niveau_regle_<5 000 chiffres>. | erreur 500 au lancement au lieu d'un refus clair. |
+| Note de besoin bornee cote serveur | la note d'un besoin envoyée avec 5 001 caractères ou un mégaoctet (le navigateur borne, pas un envoi fabriqué). | tout est enregistré, les pages et la base s'alourdissent. |
+| Commentaire de regle borne cote serveur | le commentaire d'une règle envoyé avec 200 000 caractères (maxlength du navigateur contourné). | enregistré tel quel et recopié dans l'infobulle de chaque ligne de la liste des règles (des centaines de kilo-octets par page). |
+| Motif d annulation borne cote serveur | le motif d'annulation d'une séance datée envoyé avec 200 000 caractères. | enregistré dans la note de la séance et réaffiché dans son panneau (page de 200 Ko). |
+
+[`tests/integration/web_donnees/test_suppression.py`](../tests/integration/web_donnees/test_suppression.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; correct aujourd'hui, ce test fige le comportement. |
+
+#### `web_edt` (30 cas)
+
+[`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Option tous les semestres affiche tous les semestres | option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse gardée en favori sur Générer, l'historique et la grille. | la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » : impossible de revenir à tous les semestres. |
+
+[`tests/integration/web_edt/test_accueil.py`](../tests/integration/web_edt/test_accueil.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Base qui refuse l ecriture signalee sur l accueil et sante | la base refuse l'écriture (fichier copié en root, disque plein) alors qu'elle se lit. | accueil muet et `/sante` vert : la supervision est rassurée et chaque saisie de la journée échoue ensuite. |
+| Base occupee par une ecriture n est pas une panne | un autre processus tient le verrou d'écriture (calcul, import, commande) pendant que la supervision interroge `/sante` et qu'on ouvre l'accueil. | `/sante` rouge à chaque écriture longue, ou une sonde bloquée le temps du délai d'attente sur verrou (dix secondes) ; l'écriture d'essai doit être sautée, sans attente. |
+
+[`tests/integration/web_edt/test_calculs.py`](../tests/integration/web_edt/test_calculs.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Suivi sans rechargement second lancement refuse puis arret | *docstring « Cas : … Risque : … » absente ou incomplète* | *docstring « Cas : … Risque : … » absente ou incomplète* |
+| Arret d un calcul termine dit qu il est fini | « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé. | « Arrêt demandé » affiché : on croit avoir interrompu un calcul fini dont la version est déjà active. |
+
+[`tests/integration/web_edt/test_cas_limites.py`](../tests/integration/web_edt/test_cas_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Identifiants enormes ou negatifs donnent introuvable | lien mal copié ou périmé dont l'identifiant a vingt chiffres, est négatif ou n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, À traiter. | OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal, au lieu d'un « introuvable » (404). |
+| Cible enorme dans l adresse montre la premiere classe | groupe, enseignant ou salle de vingt chiffres dans l'adresse de la grille. | erreur 500 au lieu de la première classe, affichée en disant que la cible demandée n'existe pas. |
+| Seance enorme dans l adresse ouvre la page sans panneau | séance à ouvrir (`seance=h…` ou `o…`) de vingt ou 5 000 chiffres, nulle, en chiffres exotiques (« ² ») ou de préfixe inconnu dans l'adresse de la grille (lien abîmé, favori ancien). | erreur 500 (`int()` refuse « ² » et plus de 4 300 chiffres) au lieu de la page sans panneau, avec un message qui ne recopie pas les 5 000 chiffres. |
+| Cookie de cible illisible ou enorme est ignore | cookie de dernière cible forgé ou laissé par une autre instance du même hôte (identifiant énorme ou négatif, valeur illisible, nature inconnue). | l'onglet Emploi du temps répond 500 à chaque ouverture tant que le cookie n'est pas effacé. |
+| Fragments ouverts sans htmx menent a la page | fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau d'une séance, compteur d'« À traiter ») ouvert sans en-tête HX-Request : adresse saisie, nouvel onglet, lien. | un morceau de page nu, sans menu ni style, au lieu de la page complète. |
+| Panneau d une seance supprimee entre temps | panneau, enregistrement ou lien d'une séance supprimée entre-temps (autre onglet, version régénérée). | erreur 500, ou page entière dans le panneau, au lieu d'un « n'existe pas (ou plus) ». |
+| Deplacement vers un creneau ou un jour inexistant | séance déplacée vers un début hors grille, un jour hors semaine, un jour ou une salle illisibles (« ² », 5 000 chiffres : formulaire forgé ou périmé). | séance enregistrée à une place impossible, ou erreur 500, au lieu d'un refus lisible qui la laisse en place. |
+| Seance annulee ni reannulee ni deplacee | séance datée annulée deux fois (deux onglets ouverts), puis déplacée. | motif répété dans le commentaire, ou séance annulée qui revient en étant déplacée. |
+| Deplacer une seance datee hors du semestre | séance datée déplacée au 4 janvier 1999 ou au 4 janvier 2100 (date saisie à la main). | séance placée hors du semestre, donc absente de la grille et des vérifications. |
+| Date tres ancienne ou lointaine sans erreur | grille datée demandée au 1er janvier de l'an 1 ou au 31 décembre 9999 (adresse modifiée à la main). | la semaine autour sort du calendrier de Python (OverflowError, erreur 500) au lieu de la semaine en cours du semestre, affichée en le disant. |
+| Filtres inconnus refuses lisiblement | paramètre d'affichage inconnu ou contradictoire dans l'adresse de la grille (couche, affichage, étendu, date, jour, deux cibles, nature de cible). | erreur 500, ou affichage faux sans le dire, au lieu d'une page 422 qui nomme le paramètre. |
+| Hx current url illisible dans les panneaux | panneau d'une séance ou d'une séance datée demandé avec un en-tête HX-Current-URL que `urlsplit` refuse (« http://[::1 » : navigateur ou extension qui l'abîme). | erreur 500 au clic sur chaque séance de la grille ; le panneau doit s'ouvrir avec son adresse de retour par défaut, l'en-tête ignoré et journalisé. |
+| Relance pendant un calcul mene au calcul en cours | « Relancer » (plus long, autre solution, simple) depuis le suivi d'un ancien calcul alors qu'un calcul du semestre tourne déjà. | deux calculs en parallèle sur le même semestre, ou une erreur, au lieu d'être mené au calcul en cours. |
+| Arret quand un autre ecrivain valide entre lecture et ecriture | « Arrêter le calcul » pendant qu'un autre écrivain (le fil du calcul qui enregistre son état final, réveillé par l'arrêt) valide entre la lecture du calcul et l'écriture de la demande d'arrêt. | `demander_arret` lit dans une transaction différée puis écrit sur un instantané périmé : SQLite répond aussitôt « database is locked » sans attendre, la page renvoie 503 et la demande d'arrêt est perdue (vu en CI sous Linux, où le fil réveillé valide plus vite). |
+| Saisies de cinq mille chiffres au lancement | formulaire « Lancer le calcul » fabriqué : règle personnalisée `niveau_regle_<5 000 chiffres>` ou `niveau_regle_²`, durée de pause de 5 000 chiffres ; même règle dans l'adresse des vérifications préalables. | `int()` lève ValueError, erreur 500 au lancement au lieu d'un refus clair ; ou un calcul lancé sur une saisie illisible. |
+| Motif d annulation borne | motif d'annulation d'une séance datée envoyé avec un caractère de plus que la limite (le navigateur borne le champ, pas un envoi fabriqué), puis exactement à la limite. | 200 Ko enregistrés dans la remarque de la séance et réaffichés dans son panneau ; ou une séance annulée malgré le refus. |
+| Head sur les ecrans de l emploi du temps | HEAD (sonde de supervision, `curl -I`, vérificateur de liens) sur les pages Générer, versions, grille, suivi d'un calcul et « À traiter », et sur une action POST. | 405 « Action non permise » sur toute page (FastAPI ne déclare que GET) ; ou une réponse HEAD qui porte la page entière. |
+| Une ecriture attend son tour pendant un autre ecrivain | une séance datée est annulée pendant qu'un import, dans un autre onglet, tient le verrou d'écriture puis valide ses changements environ 0,3 s plus tard. | la requête lit d'abord puis écrit ; SQLite la refuse aussitôt (« database is locked », page « base occupée ») au lieu de la faire attendre la fin de l'import. |
+| Une lecture est servie pendant un autre ecrivain | la grille, la page Générer et « À traiter » sont ouvertes (GET, HEAD) pendant qu'un import tient le verrou d'écriture. | une lecture qui prendrait le verrou d'emblée attendrait la fin de l'import (dix secondes au plus) puis répondrait « base occupée » : chaque onglet gelé pendant l'import. |
+| Verrou tenu au dela du delai donne la page base occupee | l'autre écrivain garde le verrou au-delà du délai d'attente de la base (import très long, commande bloquée sur le serveur). | trace ou erreur 500 « inattendue » au lieu de la page « base occupée » (503) qui dit de réessayer ; ou une séance annulée à moitié. |
+| Version sans seance s affiche et s exporte | version sans aucune séance (import resté vide, référence non remplie) affichée en semaine type, datée et par jour, listée dans l'historique, exportée en CSV et en iCal. | erreur 500 (minimum ou maximum d'une liste vide), blocs inventés, ou fichier d'export illisible par le tableur ou l'agenda. |
+| Version active vide sur a traiter et l accueil | la version active du semestre n'a aucune séance (import resté vide). | erreur 500 sur « À traiter » ou l'accueil, ou version vide présentée comme un emploi du temps sans défaut. |
+| Semestre sans grille reste utilisable | la grille de créneaux est vidée après la génération (grille en cours de refonte). | erreur 500 sur Générer ou sur la grille, ou séance proposée à une place qui n'existe plus. |
+| Export d une version enorme dit introuvable | export CSV ou iCal d'une version de vingt chiffres (lien mal copié). | OverflowError de SQLite non rattrapée : erreur 500 au lieu d'un « introuvable » (404). Corrigé par le lot échange ; `client_sans_trace` montre un retour du 500 comme un statut. |
+
+[`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Formulaire seance sans debut possible reste lisible | dans le panneau d'une séance, choix d'un jour où elle ne tient sur aucun créneau avant la fermeture, ou d'un jour non proposé (le dimanche). | liste de débuts vide lue au rang 0 (IndexError), donc fragment 500 à la place du formulaire. |
+
+<!-- catalogue : fin de la partie générée -->
+
+## Vérifications manuelles
+
+Certains cas ne se reproduisent pas dans un test automatique, parce qu'ils
+dépendent d'un vrai navigateur, d'un vrai tableur ou du serveur de
+production. Ils se vérifient à la main avant une démonstration ou après un
+changement de la partie concernée.
+
+**Rendu de l'emploi du temps.** Ouvrir la page « Emploi du temps » du jeu
+`moyen` sur un téléphone (ou avec l'émulation mobile du navigateur), puis en
+aperçu avant impression, sur la semaine la plus chargée. Attendu : la grille
+reste lisible, aucune séance n'est tronquée ni masquée.
+
+**Coupure réseau pendant le suivi d'un calcul.** Lancer un calcul, couper le
+réseau du navigateur (outils de développement, mode hors ligne) pendant
+quelques secondes, puis le rétablir. Attendu : le calcul continue sur le
+serveur, n'est pas relancé, et son état se lit de nouveau sur la page
+« Générer » (le suivi interroge le serveur chaque seconde).
+
+**Classeurs produits par un vrai tableur.** Importer : un classeur protégé
+par un mot de passe dans Excel ; un classeur aux cellules fusionnées et aux
+formats de date réels ; le même fichier depuis deux onglets au même moment.
+Attendu : un refus qui nomme la cause pour le classeur protégé et les
+cellules fusionnées, des dates refusées avec explication dans les colonnes de
+codes, et deux imports traités l'un après l'autre sans erreur « base
+occupée ». Les tests automatiques couvrent ces cas sur des classeurs
+fabriqués par `openpyxl`, pas sur des fichiers d'Excel.
+
+**Journaux sur un vrai disque.** Rotation de `edt.log` par deux processus :
+le test automatique est sauté sous Windows, qui interdit de renommer un
+fichier ouvert ; le lancer sous Linux (`python -m pytest
+tests/unitaires/socle/test_journal.py`). Dossier des journaux inutilisable :
+sur un serveur d'essai, rendre le dossier `generations/` de `EDT_LOG_DIR`
+non inscriptible (ou remplir son disque), puis lancer un calcul. Attendu : le
+calcul a lieu et signale que son journal dédié est indisponible, en renvoyant
+au journal général `edt.log` et à `EDT_LOG_DIR`.
+
+**Rechargements répétés d'un jeu fictif.** Recharger dix fois de suite le
+jeu `moyen` avec remise à zéro (`python -m edt jeu --taille moyen --reset
+--oui`) en observant la mémoire du processus. Attendu : la mémoire se
+stabilise après le premier chargement.
+
+**Exploitation du serveur.** Les procédures qui touchent au serveur
+(déploiement pendant une commande d'administration, échec de la sauvegarde,
+fuseau horaire, envoi interrompu, arrêt brutal pendant une écriture,
+épuisement de la mémoire, envoi trop volumineux, sauvegarde quotidienne et
+restauration, fichiers appartenant à root) sont décrites dans
+[docs/deploiement.md](deploiement.md), section « Vérifications
+d'exploitation ». Certaines arrêtent le service : elles se jouent hors des
+heures d'usage.
