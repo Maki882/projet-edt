@@ -672,7 +672,8 @@ def test_verrous_contradictoires_calcul_refuse_avec_la_liste():
     assert resultat.statut is StatutSolveur.INFAISABLE
     assert resultat.statistiques["refuse"] is True
     assert "Maths" in resultat.message and "Physique" in resultat.message
-    assert "tolérer" in resultat.message
+    # Le conseil vient avec le conflit, une seule fois.
+    assert resultat.message.count("tolérer les violations héritées") == 1
 
 
 def test_verrous_contradictoires_toleres():

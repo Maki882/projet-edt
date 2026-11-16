@@ -291,16 +291,12 @@ def resoudre(
         raisons = " ".join(a.message for a in erreurs[:NB_RAISONS_DANS_LE_MESSAGE])
         autres = len(erreurs) - NB_RAISONS_DANS_LE_MESSAGE
         suite = f" (et {autres} autre(s) raison(s), voir la liste complète)" if autres > 0 else ""
-        conseil = ""
-        if preparation.conflits_verrous and not options.tolerer_violations_heritees:
-            conseil = (
-                " Pour garder des séances verrouillées qui se contredisent, cocher « tolérer "
-                "les violations héritées »."
-            )
+        # Le conseil « tolérer les violations héritées » est dans le message de chaque
+        # conflit de verrous (`diagnostiquer`) : il n'est pas répété ici.
         return conclure(
             StatutSolveur.INFAISABLE,
             f"Le calcul n'a pas été lancé : {len(erreurs)} impossibilité(s) certaine(s) "
-            f"relevée(s) avant la recherche. {raisons}{suite}{conseil}",
+            f"relevée(s) avant la recherche. {raisons}{suite}",
         )
     if nb_seances == 0:
         return conclure(StatutSolveur.SOLUTION, "Aucune séance à placer pour ce semestre.")
