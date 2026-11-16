@@ -18,7 +18,7 @@ jeux fictifs générés ([`donnees-fictives.md`](donnees-fictives.md)).
 - La démonstration est l'application complète : un établissement entier
   (toutes les promotions, plusieurs campus), sans mode de démonstration ni
   placement de secours.
-- Déployée sur un serveur (2 cœurs, 3,7 Go de mémoire, Python 3.14 sur le VPS),
+- Déployée sur un serveur (2 cœurs, 3,7 Go de mémoire, Python 3.14),
   accessible par le web, **sans écran de connexion**. L'usage est celui d'une
   seule personne à la fois, mais rien dans le code ne suppose un seul
   utilisateur : tout passe par la base, sauf quelques états en mémoire perdus
