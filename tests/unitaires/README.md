@@ -56,9 +56,9 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 038 fonctions de test** dans 9 composants, dont 268 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 074 fonctions de test** dans 10 composants, dont 281 marquées `cas_limite` et 20 marquées `perf`.
 
-### `assistant/` : Assistant (115 fonctions)
+### `assistant/` : Assistant en langage courant (115 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -71,6 +71,15 @@ Ce dossier compte **1 038 fonctions de test** dans 9 composants, dont 268 marqu�
 | [`assistant/test_occupation.py`](assistant/test_occupation.py) | Occupation d'un créneau : plage d'un moment, salles libres, séances d'une ressource | 16 |
 | [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas stricts, outils de lecture, propositions sans écriture | 26 |
 | [`assistant/test_validations.py`](assistant/test_validations.py) | Validations sans écriture utilisées par les propositions de l'assistant | 9 |
+
+### `banc_tests/` : Tests unitaires du banc de tests : catalogue, cibles, résultats, garde-fous, menu (36 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`banc_tests/test_catalogue.py`](banc_tests/test_catalogue.py) | Catalogue des tests lu sans les exécuter, racine du dépôt et cibles tirées du catalogue | 9 |
+| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | Garde-fous du lancement des tests, vérifiés sans lancer de sous-processus : réglages, refus, verrou, environnement | 11 |
+| [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | Onglets des tests dans le menu, et tableau d'une famille : état affiché de chaque test et comptes | 8 |
+| [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | Regroupement des comptes rendus de pytest par fonction de test, et historique des résultats sur disque | 8 |
 
 ### `echange/` : Import et export (145 fonctions)
 
@@ -193,6 +202,15 @@ Ce dossier compte **1 038 fonctions de test** dans 9 composants, dont 268 marqu�
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 6 |
 
 <!-- tests-unitaires : fin de la partie générée -->
+
+### `banc_tests/` : Lancement des tests depuis l'application (36 fonctions, 46 cas)
+
+| Fichier | Ce qu'il vérifie | Fonctions | Cas |
+|---|---|---:|---:|
+| [`banc_tests/test_catalogue.py`](banc_tests/test_catalogue.py) | catalogue des tests lu sans les exécuter, racine du dépôt et cibles tirées du catalogue | 9 | 17 |
+| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | garde-fous du lancement sans sous-processus : réglages, refus, verrou, environnement | 11 | 13 |
+| [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | onglets des tests dans le menu, état affiché de chaque test et comptes | 8 | 8 |
+| [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | regroupement des cas paramétrés, historique des résultats écrit puis relu, fichier illisible | 8 | 8 |
 
 ## 4. Un exemple expliqué pas à pas
 

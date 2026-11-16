@@ -123,6 +123,7 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | Composant | Unitaires | Intégration | Total |
 |---|---:|---:|---:|
 | `assistant` | 115 | 29 | 144 |
+| `banc_tests` | 36 | 19 | 55 |
 | `echange` | 145 | 33 | 178 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
@@ -132,8 +133,8 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 123 | 135 |
 | `web_edt` | 33 | 128 | 161 |
-| **Total** | **1 038** | **489** | **1 527** |
-| dont cas limites (`cas_limite`) | 268 | 183 | 451 |
+| **Total** | **1 074** | **508** | **1 582** |
+| dont cas limites (`cas_limite`) | 281 | 191 | 472 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
@@ -187,6 +188,12 @@ avec les autres : `-m "integration and cas_limite"`, `-m "unitaire and not perf"
 L'intégration continue (`.github/workflows/ci.yml`) enchaîne trois étapes :
 contrôle du rangement, tests unitaires, tests d'intégration ; les tests de
 charge en sont exclus.
+
+Les tests se lancent aussi depuis l'application, onglets « Tests unitaires »
+et « Tests d'intégration » (un test, un fichier, un composant ou toute la
+famille, avec le résultat et la date de chaque test), ou par la commande
+`python -m edt tests [--famille unitaires|integration] [--composant <nom>]`,
+qui enregistre les mêmes résultats (voir `docs/interface.md`, section 15).
 
 ## 5. Où ranger un nouveau test
 

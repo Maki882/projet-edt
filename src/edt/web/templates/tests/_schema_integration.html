@@ -1,0 +1,50 @@
+{#- Schéma des tests d'intégration (SVG dans la page, couleurs de tests.css). -#}
+<figure class="banc-schema-figure">
+  <svg class="banc-svg" viewBox="0 0 360 486" role="img" aria-labelledby="schema-i-titre schema-i-desc" xmlns="http://www.w3.org/2000/svg">
+    <title id="schema-i-titre">Organisation des tests d'intégration</title>
+    <desc id="schema-i-desc">Un test d'intégration entre par une requête web (client de test) ou par une commande, traverse les routes web ou les commandes, les services, la logique (générateur, vérificateur, import et export) jusqu'à une base SQLite temporaire. Un calcul complet par lancer_calcul entre directement par les services. Six parcours de bout en bout rejouent l'usage réel : a. calcul depuis le site, consulté et exporté ; b. ligne de commande ; c. aller-retour des données ; d. règle personnalisée ; e. retouche à la main ; f. établissement fictif.</desc>
+    <defs>
+      <marker id="schema-i-fleche" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,0 L10,5 L0,10 z" class="banc-svg-pointe"/>
+      </marker>
+    </defs>
+    <rect x="10" y="10" width="165" height="46" rx="6" class="banc-svg-forte"/>
+    <text x="92" y="30" class="banc-svg-texte-clair" text-anchor="middle" font-weight="700">Requête web</text>
+    <text x="92" y="47" class="banc-svg-texte-clair banc-svg-petit" text-anchor="middle">client de test</text>
+    <rect x="185" y="10" width="165" height="46" rx="6" class="banc-svg-forte"/>
+    <text x="267" y="30" class="banc-svg-texte-clair" text-anchor="middle" font-weight="700">Ligne de commande</text>
+    <text x="267" y="47" class="banc-svg-texte-clair banc-svg-petit" text-anchor="middle">python -m edt …</text>
+
+    <line x1="92" y1="56" x2="92" y2="82" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+    <line x1="267" y1="56" x2="267" y2="82" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+
+    <rect x="10" y="84" width="340" height="36" rx="6" class="banc-svg-boite"/>
+    <text x="180" y="107" class="banc-svg-texte" text-anchor="middle">Routes web et commandes</text>
+
+    <line x1="110" y1="120" x2="110" y2="144" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+
+    <rect x="10" y="146" width="200" height="36" rx="6" class="banc-svg-boite"/>
+    <text x="110" y="169" class="banc-svg-texte" text-anchor="middle">Services</text>
+    <rect x="230" y="130" width="120" height="52" rx="6" class="banc-svg-forte"/>
+    <text x="290" y="151" class="banc-svg-texte-clair banc-svg-petit" text-anchor="middle" font-weight="700">Calcul complet</text>
+    <text x="290" y="169" class="banc-svg-texte-clair banc-svg-petit" text-anchor="middle">lancer_calcul</text>
+    <line x1="230" y1="164" x2="212" y2="164" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+
+    <line x1="110" y1="182" x2="110" y2="206" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+
+    <rect x="10" y="208" width="340" height="46" rx="6" class="banc-svg-boite"/>
+    <text x="180" y="228" class="banc-svg-texte" text-anchor="middle">Logique : générateur, vérificateur,</text>
+    <text x="180" y="245" class="banc-svg-texte" text-anchor="middle">import et export</text>
+
+    <line x1="180" y1="254" x2="180" y2="278" class="banc-svg-trait" marker-end="url(#schema-i-fleche)"/>
+
+    <rect x="10" y="280" width="340" height="36" rx="6" class="banc-svg-boite banc-svg-tirets"/>
+    <text x="180" y="303" class="banc-svg-texte" text-anchor="middle">Base SQLite temporaire, effacée à la fin</text>
+
+    <rect x="10" y="334" width="340" height="142" rx="6" class="banc-svg-cadre"/>
+    <text x="180" y="356" class="banc-svg-texte" text-anchor="middle" font-weight="700">Six parcours de bout en bout (parcours)</text>
+    {%- for ligne in ("a. calcul lancé depuis le site, exporté", "b. tout par la ligne de commande", "c. données exportées puis réimportées", "d. règle personnalisée imposée", "e. retouche à la main d'une séance", "f. établissement fictif calculé") %}
+    <text x="24" y="{{ 380 + loop.index0 * 17 }}" class="banc-svg-texte banc-svg-petit">{{ ligne }}</text>
+    {%- endfor %}
+  </svg>
+</figure>

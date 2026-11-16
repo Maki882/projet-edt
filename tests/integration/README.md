@@ -286,15 +286,23 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **489 fonctions de test** dans 10 composants, dont 183 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **508 fonctions de test** dans 11 composants, dont 191 marquées `cas_limite` et 4 marquées `perf`.
 
-### `assistant/` : Assistant (29 fonctions)
+### `assistant/` : Assistant en langage courant par le site et la ligne de commande (29 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`assistant/test_commande.py`](assistant/test_commande.py) | Commande `python -m edt assistant` : état, essai et question, avec le faux client | 8 |
 | [`assistant/test_panneau.py`](assistant/test_panneau.py) | Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 |
 | [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 16 |
+
+### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (19 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 3 |
+| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 9 |
+| [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 |
 
 ### `echange/` : Import et export par le site et la ligne de commande (33 fonctions)
 
@@ -368,7 +376,7 @@ Ce dossier compte **489 fonctions de test** dans 10 composants, dont 183 marqué
 | [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 |
 | [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 |
 | [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 8 |
-| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce | 6 |
+| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau de l'assistant, aucune annonce | 6 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |
 | [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 28 |
@@ -392,6 +400,14 @@ Ce dossier compte **489 fonctions de test** dans 10 composants, dont 183 marqué
 | [`web_edt/test_revue.py`](web_edt/test_revue.py) | Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 |
 
 <!-- tests-integration : fin de la partie générée -->
+
+### `banc_tests/` : Lancement des tests depuis l'application (19 fonctions, 19 cas)
+
+| Fichier | Ce qu'il vérifie | Fonctions | Cas |
+|---|---|---:|---:|
+| [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 3 | 3 |
+| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 9 | 9 |
+| [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | exécution réelle des tests d'un dépôt factice dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 |
 
 ## 7. Stratégie de test du projet
 

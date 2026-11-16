@@ -1,0 +1,409 @@
+/*
+ * Écrans « Tests unitaires » et « Tests d'intégration » (chargé par templates/tests/page.html).
+ * La couleur de la famille vient des variables --tests-* de app.css : turquoise pour les
+ * tests unitaires, violet pour les tests d'intégration ; --banc la désigne dans la page.
+ */
+
+.banc-unitaires {
+  --banc: var(--tests-unitaires);
+  --banc-fonce: var(--tests-unitaires-fonce);
+  --banc-pale: var(--tests-unitaires-pale);
+}
+
+.banc-integration {
+  --banc: var(--tests-integration);
+  --banc-fonce: var(--tests-integration-fonce);
+  --banc-pale: var(--tests-integration-pale);
+}
+
+/* Filet de couleur sous le titre de la page. */
+main:has(.banc-unitaires) .entete-page h1 {
+  border-bottom: 4px solid var(--tests-unitaires);
+  padding-bottom: 0.15rem;
+}
+
+main:has(.banc-integration) .entete-page h1 {
+  border-bottom: 4px solid var(--tests-integration);
+  padding-bottom: 0.15rem;
+}
+
+/* ----- Schéma ----- */
+
+.banc-schema > summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--banc-fonce);
+}
+
+.banc-schema[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.banc-schema-corps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+  gap: var(--espace) calc(var(--espace) * 2);
+  align-items: start;
+}
+
+.banc-schema-texte p {
+  margin-top: 0;
+  max-width: 42rem;
+}
+
+.banc-schema-figure {
+  margin: 0;
+}
+
+.banc-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--police);
+}
+
+.banc-svg-boite {
+  fill: var(--surface);
+  stroke: var(--banc);
+  stroke-width: 1.5;
+}
+
+.banc-svg-forte {
+  fill: var(--banc);
+}
+
+.banc-svg-cadre {
+  fill: var(--banc-pale);
+  stroke: var(--banc);
+  stroke-width: 1.5;
+}
+
+.banc-svg-pastille {
+  fill: var(--banc-pale);
+  stroke: var(--banc);
+}
+
+.banc-svg-interdit {
+  fill: var(--fond);
+  stroke: var(--bordure-forte);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.banc-svg-tirets {
+  stroke-dasharray: 5 4;
+}
+
+.banc-svg-trait {
+  stroke: var(--banc-fonce);
+  stroke-width: 1.8;
+}
+
+.banc-svg-pointe {
+  fill: var(--banc-fonce);
+}
+
+.banc-svg-texte {
+  fill: var(--texte);
+  font-size: 14px;
+}
+
+.banc-svg-texte-clair {
+  fill: #ffffff;
+  font-size: 14px;
+}
+
+.banc-svg-petit {
+  font-size: 12.5px;
+}
+
+.banc-svg-reussi {
+  fill: var(--succes);
+}
+
+.banc-svg-echec {
+  fill: var(--erreur);
+}
+
+/* ----- Bandeau de la famille et suivi ----- */
+
+.banc-bandeau {
+  border-top: 5px solid var(--banc);
+}
+
+.banc-bandeau-tete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+}
+
+.banc-bandeau-tete h2 {
+  margin: 0;
+  color: var(--banc-fonce);
+}
+
+.banc-resume-famille p {
+  margin: 0.5rem 0 0;
+}
+
+.banc-bouton {
+  border-color: var(--banc);
+  color: var(--banc-fonce);
+  white-space: normal;
+}
+
+.banc-bouton:hover:not(:disabled) {
+  background: var(--banc-pale);
+  color: var(--banc-fonce);
+}
+
+.banc-bouton-principal {
+  padding: 0.4rem 0.9rem;
+  font-size: 1rem;
+  background: var(--banc);
+  color: #ffffff;
+}
+
+.banc-bouton-principal:hover:not(:disabled) {
+  background: var(--banc-fonce);
+  color: #ffffff;
+}
+
+.banc-suivi {
+  border-left: 5px solid var(--banc);
+}
+
+.banc-suivi h2 {
+  margin-top: 0;
+  font-size: 1.15rem;
+}
+
+.banc-barre {
+  width: 100%;
+  height: 0.9rem;
+  accent-color: var(--banc);
+}
+
+.banc-compte {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.6rem;
+}
+
+.banc-compte-reussi {
+  color: var(--succes);
+}
+
+.banc-compte-echec {
+  color: var(--erreur);
+  font-weight: 700;
+}
+
+.banc-compte-ignore {
+  color: var(--attention);
+}
+
+.banc-compte-en-cours {
+  color: var(--info);
+}
+
+.banc-compte-jamais,
+.banc-date {
+  color: var(--texte-discret);
+}
+
+.banc-date {
+  font-size: 0.85rem;
+}
+
+/* ----- Composants, fichiers, tests ----- */
+
+.banc-composant {
+  border-left: 4px solid var(--banc);
+  padding-top: 0.6rem;
+  padding-bottom: 0.6rem;
+}
+
+.banc-composant > summary {
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1rem;
+  list-style: none;
+}
+
+.banc-composant > summary::-webkit-details-marker {
+  display: none;
+}
+
+.banc-composant-titre::before {
+  content: "▸ ";
+  color: var(--banc);
+}
+
+.banc-composant[open] .banc-composant-titre::before {
+  content: "▾ ";
+}
+
+
+.banc-composant-titre {
+  flex: 1 1 20rem;
+}
+
+.banc-composant-resume {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.banc-composant-action {
+  margin: 0.75rem 0 0;
+}
+
+.banc-fichier {
+  margin-top: 1rem;
+}
+
+.banc-fichier-entete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 0.9rem;
+  padding: 0.4rem 0.6rem;
+  background: var(--banc-pale);
+  border-radius: var(--rayon) var(--rayon) 0 0;
+  font-size: 0.9rem;
+}
+
+.banc-fichier-entete h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.banc-fichier-entete h3 code {
+  background: none;
+  padding: 0;
+}
+
+.banc-fichier-entete .banc-bouton {
+  margin-left: auto;
+}
+
+.banc-tests {
+  border: 1px solid var(--bordure);
+  border-top: none;
+  border-radius: 0 0 var(--rayon) var(--rayon);
+}
+
+.banc-test {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 9.5rem 4.5rem 11rem 5rem;
+  gap: 0.25rem 0.75rem;
+  align-items: start;
+  padding: 0.45rem 0.6rem;
+  border-top: 1px solid var(--bordure);
+  font-size: 0.92rem;
+}
+
+.banc-test:first-child {
+  border-top: none;
+}
+
+.banc-test-echec {
+  background: var(--erreur-pale);
+}
+
+.banc-test-en_cours {
+  background: var(--info-pale);
+}
+
+.banc-test-nom strong {
+  font-weight: 600;
+}
+
+.banc-test-resume,
+.banc-test-raison,
+.banc-cas {
+  display: block;
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+}
+
+.banc-test-raison {
+  color: var(--attention);
+}
+
+.banc-test-duree,
+.banc-test-date {
+  color: var(--texte-discret);
+  font-size: 0.85rem;
+}
+
+.banc-test-action {
+  text-align: right;
+}
+
+.banc-libelle-mobile {
+  display: none;
+}
+
+.banc-detail {
+  grid-column: 1 / -1;
+  flex: 1 1 100%;
+}
+
+.banc-detail > summary {
+  cursor: pointer;
+  color: var(--erreur);
+  font-size: 0.85rem;
+}
+
+.banc-detail pre {
+  max-height: 22rem;
+  overflow: auto;
+  margin: 0.4rem 0 0;
+  padding: 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  font-family: var(--police-code);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ----- Petits écrans ----- */
+
+@media (max-width: 56rem) {
+  .banc-schema-corps {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .banc-schema-figure {
+    max-width: 26rem;
+  }
+
+  .banc-test {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .banc-test-nom,
+  .banc-test-date {
+    flex: 1 1 100%;
+  }
+
+  .banc-test-action {
+    margin-left: auto;
+  }
+
+  .banc-libelle-mobile {
+    display: inline;
+  }
+}
+
