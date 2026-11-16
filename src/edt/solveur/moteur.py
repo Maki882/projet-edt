@@ -286,12 +286,15 @@ def resoudre(
             f"semestre (n° {', '.join(map(str, inconnues))} : supprimée(s), inactive(s) ou "
             "d'une autre année) : ignoré."
         )
-        journal.warning(avertissement)
+        # Rendu dans `avertissements` : l'appelant le journalise en avertissement (le service
+        # de génération, avec le numéro du calcul). Ici, une ligne d'information suffit.
+        journal.info(avertissement)
         avertissements.append(avertissement)
     anomalies = diagnostiquer(preparation)
     erreurs = [anomalie for anomalie in anomalies if anomalie.bloquante]
     for anomalie in anomalies:
-        niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
+        # Les situations tendues sont rendues dans `avertissements` (voir plus haut).
+        niveau = logging.ERROR if anomalie.bloquante else logging.INFO
         journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
     avertissements.extend(anomalie.message for anomalie in erreurs)
     avertissements.extend(anomalie.message for anomalie in anomalies if not anomalie.bloquante)
