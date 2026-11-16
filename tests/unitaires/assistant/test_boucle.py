@@ -4,16 +4,24 @@ from __future__ import annotations
 
 import datetime as dt
 import itertools
+import json
 import logging
+import time
 
+import anthropic
 import pytest
 from anthropic.types.beta import BetaMessage
 from tests.outils.assistant.faux_client import (
     FauxClient,
+    client_sdk_simule,
+    corps_erreur,
+    delai_depasse,
+    erreur_api,
     message,
     outil,
     reflexion,
     repli,
+    reponse_http,
     reponse_outil,
     reponse_texte,
     texte,
@@ -94,7 +102,7 @@ def test_reponse_directe_et_arguments_envoyes(base):
         and "Page affichée par l'utilisateur : /salles" in systeme["content"]
     )
     assert resultat.messages[-1]["role"] == "assistant"
-    assert faux.options == [{"timeout": 40.0, "max_retries": 1}]
+    assert faux.options == [{"timeout": 40.0, "max_retries": 0}]
 
 
 def test_outil_puis_reponse_et_historique_en_ajout_seul(base):
@@ -206,7 +214,7 @@ def test_echeance_de_l_echange_jamais_depassee(base):
     assert resultat.reussi
     # Il restait 20 s : délai d'appel ramené à 20 s, sans reprise (elle ne tiendrait pas).
     assert faux.options == [
-        {"timeout": 40.0, "max_retries": 1},
+        {"timeout": 40.0, "max_retries": 0},
         {"timeout": 20.0, "max_retries": 0},
     ]
 
@@ -248,6 +256,116 @@ def test_estimation_prudente_pour_un_texte_non_ascii():
     assert estimes >= 1000 + 3000
     francais = boucle.estimer_jetons([{"role": "user", "content": "a" * 3000}], 1000, 0)
     assert francais <= 1000 + 1100
+
+
+@pytest.fixture
+def sommeil_enregistre(monkeypatch):
+    """Les attentes demandées par le SDK (`time.sleep`) sont enregistrées au lieu d'attendre."""
+    attentes: list[float] = []
+    monkeypatch.setattr(time, "sleep", attentes.append)
+    return attentes
+
+
+@pytest.mark.cas_limite
+def test_une_attente_demandee_trop_longue_n_est_jamais_suivie(base, sommeil_enregistre):
+    """Cas : le service répond 429 avec « retry-after: 3600 » (vrai SDK, service simulé).
+
+    Risque : le SDK dort une heure avant de reprendre : l'échange reste « en cours » bien
+    au-delà de son échéance, la conversation est bloquée, et deux échanges ainsi bloqués
+    ferment l'assistant à tout le site.
+    """
+    client, requetes = client_sdk_simule(
+        [reponse_http(429, corps_erreur("rate_limit_error"), {"retry-after": "3600"})] * 3
+    )
+    attentes: list[float] = []
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=client,
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=Budget(),
+        horloge=lambda: 0.0,
+        attendre=attentes.append,
+    )
+    assert resultat.issue is Issue.DEBIT
+    assert len(requetes) == 1
+    assert sommeil_enregistre == [] and attentes == []
+
+
+@pytest.mark.cas_limite
+def test_une_surcharge_est_reprise_une_fois_dans_l_echeance(base, sommeil_enregistre):
+    """Cas : le service répond 529 (surcharge) puis répond normalement (vrai SDK simulé).
+
+    Risque : sans reprise, une surcharge passagère devient une erreur ; avec la reprise du
+    SDK, une attente non bornée par l'échéance.
+    """
+    succes = json.loads(reponse_texte("Bonjour.").model_dump_json())
+    client, requetes = client_sdk_simule(
+        [reponse_http(529, corps_erreur("overloaded_error")), reponse_http(200, succes)]
+    )
+    attentes: list[float] = []
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=client,
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=Budget(),
+        horloge=lambda: 0.0,
+        attendre=attentes.append,
+    )
+    assert resultat.reussi and resultat.texte == "Bonjour."
+    assert len(requetes) == 2 and attentes == [1.0] and sommeil_enregistre == []
+
+
+def test_attente_avant_reprise():
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.RateLimitError, 429, entetes={"retry-after": "5"})
+        )
+        == 5.0
+    )
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.RateLimitError, 429, entetes={"retry-after-ms": "1500"})
+        )
+        == 1.5
+    )
+    assert (
+        boucle.attente_avant_reprise(
+            erreur_api(anthropic.OverloadedError, 529, entetes={"retry-after": "60"})
+        )
+        is None
+    )
+    assert boucle.attente_avant_reprise(erreur_api(anthropic.BadRequestError, 400)) is None
+    assert boucle.attente_avant_reprise(delai_depasse()) == 1.0
+
+
+@pytest.mark.cas_limite
+def test_un_appel_hors_delai_est_compte_au_cout_maximal(base):
+    """Cas : un appel dépasse son délai (la génération était lancée), sa reprise aussi.
+
+    Risque : appels comptés comme gratuits alors qu'ils ont pu être facturés : la dépense
+    réelle du jour dépasse le budget sans qu'aucune limite ne joue.
+    """
+    budget = Budget()
+    resultat = derouler(
+        historique=[],
+        texte="Bonjour",
+        message_systeme=message_du_tour(AUJOURDHUI, None, ()),
+        client=FauxClient([delai_depasse(), delai_depasse()]),
+        config=_config(),
+        contexte_outils=_contexte(),
+        budget=budget,
+        horloge=lambda: 0.0,
+        attendre=lambda secondes: None,
+    )
+    assert resultat.issue is Issue.DELAI
+    consommation = budget.consommation()
+    assert consommation.appels == 2 and consommation.cout > 0
 
 
 def test_historique_d_une_conversation_prefixe_exact(base):

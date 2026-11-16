@@ -675,7 +675,7 @@ def essayer() -> ResultatEssai:
             **boucle.parametres_requete(messages, config, jetons_sortie=JETONS_ESSAI)
         )
     except Exception as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
-        _etat.budget.annuler(reservation)
+        boucle.compter_tentative_echouee(_etat.budget, reservation, erreur)
         issue = boucle.issue_de(erreur, float(config.delai_appel_s))
         message = boucle.MESSAGES.get(issue, boucle.MESSAGES[Issue.INTERNE])
         return ResultatEssai(False, issue, message, time.monotonic() - debut)

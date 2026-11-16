@@ -209,8 +209,12 @@ n'est pas utilisée (`docs/modele-donnees.md`).
    durée :
    - avant chaque appel : échéance de l'échange (90 s), taille estimée du contexte, budget
      **réservé** pour le pire cas de cet appel (taille estimée sans jamais la sous-estimer : 3
-     caractères ASCII par jeton, un jeton par caractère non ASCII) ; délai de l'appel ramené à ce qui reste, une
-     reprise par le SDK seulement si elle tient avant l'échéance ;
+     caractères ASCII par jeton, un jeton par caractère non ASCII) ; délai de l'appel ramené à ce qui reste ;
+   - le SDK ne reprend jamais un appel de lui-même (il suivrait l'attente demandée par le
+     service sans plafond) : la boucle reprend au plus une fois par échange un appel en
+     débit limité, en surcharge, hors délai ou en panne réseau, après l'attente demandée par le
+     service (20 s au plus), et seulement si l'attente et un nouvel appel tiennent avant
+     l'échéance ; sinon l'erreur est rendue aussitôt ;
    - paramètres fixes : modèle, `max_tokens`, consignes en `system` avec point de cache,
      douze outils stricts, `output_config.effort`, cache automatique de la fin de
      conversation, en-tête `server-side-fallback-2026-07-01` et `fallbacks: "default"` ; ni
@@ -260,7 +264,7 @@ revient comme « erreur interne de l'outil » avec la référence de l'échange.
 | clé refusée (401, 403), facturation (402), modèle introuvable (404) | « momentanément indisponible » ; assistant en pause 10 min (60 min pour 402) | ERROR, statut, identifiant de requête |
 | requête refusée (400) | « Erreur interne de l'assistant », référence | ERROR, message du service |
 | 413, réflexion liée à une autre conversation | « Conversation trop longue : commencez-en une nouvelle » ; conversation close | WARNING ou ERROR |
-| débit (429), surcharge (5xx, 529), délai, réseau | message dédié, bouton « Renvoyer ma demande » | WARNING |
+| débit (429), surcharge (5xx, 529), délai, réseau | repris une fois si l'échéance le permet ; sinon message dédié, bouton « Renvoyer ma demande » | INFO (reprise), WARNING |
 | refus du modèle, réponse tronquée, trop d'appels | message dédié ; aucun outil tronqué exécuté | WARNING |
 | limite atteinte (adresse, site, budget, conversation, contexte, simultanés) | bulle « attention » qui dit quand elle se lève | INFO ; WARNING la première fois du jour pour le site |
 | base occupée à la confirmation | « Base occupée : rien n'a été enregistré, réessayez » ; la carte reste à confirmer | WARNING |
@@ -275,7 +279,8 @@ l'ordre de 8 000 jetons (estimation, à confirmer par la commande d'essai). Ordr
 grandeur estimés sur Opus 5.5, cache chaud : une question avec un outil coûte environ
 0,02 à 0,03 $, une proposition avec trois outils environ 0,05 $ ; le pire appel admis
 (contexte de 40 000 jetons, repli compris) environ 0,63 $. La réservation appel par appel
-garantit que la dépense d'une journée ne dépasse pas le budget du jour.
+garantit que la dépense d'une journée ne dépasse pas le budget du jour ; un appel hors délai,
+qui a pu être facturé, est compté au coût maximal réservé.
 
 ## 7. Tests et limites connues
 

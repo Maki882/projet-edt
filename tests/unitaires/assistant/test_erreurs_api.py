@@ -135,6 +135,7 @@ def _derouler(faux):
         contexte_outils=ContexteOutil("as-test", AUJOURDHUI, lambda: next(compteur)),
         budget=Budget(),
         horloge=lambda: 0.0,
+        attendre=lambda secondes: None,
     )
 
 
@@ -143,7 +144,7 @@ def test_matrice_des_erreurs(base, caplog, monkeypatch, fabrique, issue, extrait
     instant = {"t": 1000.0}
     monkeypatch.setattr(temps, "maintenant", lambda: instant["t"])
     with caplog.at_level(logging.DEBUG, logger="edt.services.assistant"):
-        resultat = _derouler(FauxClient([fabrique()]))
+        resultat = _derouler(FauxClient([fabrique(), fabrique()]))
     assert resultat.issue is issue
     assert extrait in resultat.message and resultat.messages == []
     niveaux = [r.levelno for r in caplog.records if r.name == "edt.services.assistant.boucle"]

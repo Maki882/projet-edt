@@ -2,10 +2,20 @@
 
 Boucle écrite à la main (et non le « tool runner » du SDK) pour garder la
 main sur ce qui borne la dépense et la durée : le budget est réservé avant
-chaque appel, l'échéance de l'échange est vérifiée entre deux appels (une
-reprise du SDK n'est accordée que si elle tient avant), l'étape en cours est
-affichée, et l'échange n'est validé que s'il se termine normalement
-(`end_turn`).
+chaque appel, l'étape en cours est affichée, et l'échange n'est validé que
+s'il se termine normalement (`end_turn`).
+
+L'échéance de l'échange borne tout, attentes comprises : le SDK ne reprend
+jamais un appel de lui-même (`max_retries=0` : il suivrait l'en-tête
+`retry-after` du service sans plafond). La boucle fait au plus une reprise
+par échange, après un débit limité (429), une surcharge (5xx, 529), un délai
+dépassé ou une panne réseau, et seulement si l'attente demandée par le
+service (`attente_avant_reprise`, 20 s au plus) et un nouvel appel tiennent
+avant l'échéance ; sinon l'erreur est rendue aussitôt.
+
+Un appel dont le délai est dépassé a pu être facturé (la génération était
+lancée) : il est compté au coût maximal réservé (`compter_tentative_echouee`) ;
+une autre erreur, rendue avant toute génération, ne coûte rien.
 
 Règles de l'API suivies :
 
@@ -134,6 +144,13 @@ PAUSES_S = {Issue.CLE_REFUSEE: 600, Issue.FACTURATION: 3600, Issue.MODELE_INTROU
 CLOT_LA_CONVERSATION = frozenset({Issue.TROP_LONGUE, Issue.CONTEXTE})
 """Issues après lesquelles la conversation ne peut plus continuer."""
 
+REPRISES_PAR_ECHANGE = 1
+ATTENTE_REPRISE_MAX_S = 20.0
+"""Au-delà de cette attente demandée par le service, pas de reprise : l'erreur est rendue."""
+ATTENTE_REPRISE_DEFAUT_S = 1.0
+DELAI_MIN_REPRISE_S = 10.0
+"""Une reprise n'a lieu que s'il reste au moins ce délai pour l'appel repris."""
+
 
 # --------------------------------------------------------------------------- #
 # Pause après une panne de configuration côté service
@@ -230,6 +247,47 @@ def estimer_jetons(messages: Sequence[Any], connus: int, depuis: int) -> int:
     return base + sum(jetons_estimes(_serialise(message)) for message in messages[depuis:])
 
 
+def attente_avant_reprise(erreur: Exception) -> float | None:
+    """Secondes à attendre avant de reprendre l'appel, ou `None` s'il ne faut pas le reprendre.
+
+    Débit limité ou surcharge : l'attente demandée par le service (`retry-after-ms`,
+    `retry-after`), 1 s sans en-tête, pas de reprise au-delà de 20 s ; délai dépassé ou
+    panne réseau : 1 s ; toute autre erreur : pas de reprise.
+    """
+    import anthropic
+
+    if isinstance(erreur, anthropic.APIConnectionError):
+        return ATTENTE_REPRISE_DEFAUT_S
+    if not isinstance(erreur, anthropic.RateLimitError | anthropic.InternalServerError):
+        return None
+    entetes = erreur.response.headers
+    attente = ATTENTE_REPRISE_DEFAUT_S
+    for nom, facteur in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
+        valeur = entetes.get(nom)
+        if valeur is None:
+            continue
+        try:
+            attente = float(valeur) * facteur
+        except ValueError:
+            continue  # date HTTP ou valeur illisible : attente par défaut
+        break
+    return attente if 0 <= attente <= ATTENTE_REPRISE_MAX_S else None
+
+
+def compter_tentative_echouee(budget: Budget, reservation: int, erreur: Exception) -> None:
+    """Solde la réservation d'un appel en échec : au coût maximal si son délai est dépassé."""
+    import anthropic
+
+    if isinstance(erreur, anthropic.APITimeoutError):
+        journal.warning(
+            "Délai dépassé : l'appel a pu être facturé, compté au coût maximal réservé (%d µ$)",
+            reservation,
+        )
+        budget.solder(reservation, Compteurs(appels=1, cout=reservation))
+    else:
+        budget.annuler(reservation)
+
+
 # --------------------------------------------------------------------------- #
 # Déroulement
 # --------------------------------------------------------------------------- #
@@ -268,6 +326,7 @@ def derouler(
     taille_connue: int = 0,
     signaler: Callable[[str], None] = lambda etape_: None,
     horloge: Callable[[], float] = time.monotonic,
+    attendre: Callable[[float], None] = time.sleep,
     jetons_sortie: int | None = None,
 ) -> ResultatBoucle:
     """Déroule un échange (voir l'en-tête) ; ne lève que sur une erreur de programmation.
@@ -282,11 +341,8 @@ def derouler(
     resultat = ResultatBoucle(Issue.INTERNE)
     echeance = horloge() + config.delai_s
     connus = taille_connue
+    reprises = 0
     for numero in range(1, config.appels_max + 1):
-        restant = echeance - horloge()
-        if restant < MARGE_ECHEANCE_S:
-            journal.warning("Échéance de %d s atteinte avant l'appel %d", config.delai_s, numero)
-            return _echec(resultat, Issue.DELAI)
         estimes = estimer_jetons(messages, connus, depuis)
         if estimes > config.contexte_max:
             journal.info(
@@ -295,25 +351,48 @@ def derouler(
                 config.contexte_max,
             )
             return _echec(resultat, Issue.CONTEXTE)
-        try:
-            reservation = budget.reserver(cout_maximal_appel(estimes, config), config)
-        except LimiteAtteinte as limite:
-            resultat.message = limite.message
-            return _echec(resultat, Issue.LIMITE, message=limite.message)
-        delai = min(float(config.delai_appel_s), restant)
-        reprises = 1 if restant >= 2 * delai + MARGE_ECHEANCE_S else 0
-        signaler("Je lis votre demande…" if numero == 1 else "Je rédige la réponse…")
-        debut = time.monotonic()
-        try:
-            reponse = client.with_options(timeout=delai, max_retries=reprises).beta.messages.create(
-                **parametres_requete(messages, config, jetons_sortie=jetons_sortie)
-            )
-        except Exception as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
-            budget.annuler(reservation)
-            issue = issue_de(erreur, delai)
-            if issue in PAUSES_S:
-                _mettre_en_pause(issue)
-            return _echec(resultat, issue)
+        reponse = None
+        while reponse is None:
+            restant = echeance - horloge()
+            if restant < MARGE_ECHEANCE_S:
+                journal.warning(
+                    "Échéance de %d s atteinte avant l'appel %d", config.delai_s, numero
+                )
+                return _echec(resultat, Issue.DELAI)
+            try:
+                reservation = budget.reserver(cout_maximal_appel(estimes, config), config)
+            except LimiteAtteinte as limite:
+                return _echec(resultat, Issue.LIMITE, message=limite.message)
+            delai = min(float(config.delai_appel_s), restant)
+            signaler("Je lis votre demande…" if numero == 1 else "Je rédige la réponse…")
+            debut = time.monotonic()
+            try:
+                reponse = client.with_options(timeout=delai, max_retries=0).beta.messages.create(
+                    **parametres_requete(messages, config, jetons_sortie=jetons_sortie)
+                )
+            except (
+                Exception
+            ) as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
+                compter_tentative_echouee(budget, reservation, erreur)
+                attente = attente_avant_reprise(erreur)
+                if (
+                    attente is not None
+                    and reprises < REPRISES_PAR_ECHANGE
+                    and horloge() + attente + DELAI_MIN_REPRISE_S + MARGE_ECHEANCE_S <= echeance
+                ):
+                    reprises += 1
+                    journal.info(
+                        "Appel %d : %s, nouvel essai dans %.1f s",
+                        numero,
+                        type(erreur).__name__,
+                        attente,
+                    )
+                    attendre(attente)
+                    continue
+                issue = issue_de(erreur, delai)
+                if issue in PAUSES_S:
+                    _mettre_en_pause(issue)
+                return _echec(resultat, issue)
         resultat.appels = numero
         consommation = cout_reel(reponse.usage, reponse.model)
         budget.solder(reservation, consommation)
