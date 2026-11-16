@@ -42,3 +42,5 @@ def verrou_ecriture_bref(environnement: Path):
     yield _tenir
     for fil in fils:
         fil.join(5)
+        # Un fil bloqué garderait le verrou SQLite et ferait échouer les tests suivants.
+        assert not fil.is_alive(), f"fil {fil.name} toujours actif après 5 s"

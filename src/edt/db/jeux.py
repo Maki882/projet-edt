@@ -17,8 +17,9 @@ Chargé par `python -m edt jeu-minimal` et par les tests (fixture
 - le semestre 1 de l'année 2026-2027, deux périodes de vacances et une
   semaine d'examens propre à la promotion.
 
-Les jeux réalistes de trois tailles (petit, moyen, grand) relèvent du lot
-« données fictives » ; celui-ci reste volontairement minuscule et stable.
+Les jeux réalistes de trois tailles (petit, moyen, grand) sont produits par
+`edt.synthese` (`python -m edt jeu`) ; celui-ci reste volontairement
+minuscule et stable.
 """
 
 from __future__ import annotations
@@ -73,6 +74,13 @@ journal = logging.getLogger(__name__)
 ANNEE_DEBUT = 2026
 H = 60
 
+CODES_ATTENDUS: dict[str, tuple[str, ...]] = {
+    "types de salle": ("AMPHI", "COURS", "INFO", "TP"),
+    "équipements": ("VIDEOPROJ", "VISIO", "ORDINATEURS", "ELECTRONIQUE"),
+    "types de séance": ("CM", "TD", "TP", "LANGUE", "PROJET", "DST", "EXAMEN"),
+}
+"""Codes des listes par défaut (`edt.db.initialisation`) que le jeu minimal emploie."""
+
 
 @dataclass(frozen=True)
 class JeuMinimal:
@@ -104,15 +112,20 @@ def creer_jeu_minimal(session: Session) -> JeuMinimal:
         raise ErreurRegleMetier(
             "La base n'a pas ses données par défaut : lancer d'abord « python -m edt init-db »."
         )
+    presents = {
+        "types de salle": types_salle,
+        "équipements": equipements,
+        "types de séance": types_seance,
+    }
     manquants = [
-        code
-        for code in ("AMPHI", "COURS", "INFO", "TP", "CM", "TD", "TP", "DST", "EXAMEN", "LANGUE")
-        if code not in types_salle and code not in types_seance
+        f"{nom} {', '.join(absents)}"
+        for nom, codes in CODES_ATTENDUS.items()
+        if (absents := [code for code in codes if code not in presents[nom]])
     ]
     if manquants:
         raise ErreurRegleMetier(
-            "Le jeu minimal attend les types de salle et de séance par défaut ; absents : "
-            + ", ".join(dict.fromkeys(manquants))
+            "Le jeu minimal attend les listes par défaut ; absents : "
+            + " ; ".join(manquants)
             + " (« python -m edt init-db --reset » les recrée)."
         )
     deja_la = [
