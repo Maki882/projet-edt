@@ -1,4 +1,4 @@
-"""Bornes contre les fichiers hostiles, vérifiées par l'interface web et sur une version générée.
+"""Fichiers hostiles envoyés au site, pages bornées.
 
 Partie intégration de `tests/unitaires/echange/test_bornes.py` : archive bombe et
 fichier trop long envoyés au site, page bornée, boucle d'événements qui répond

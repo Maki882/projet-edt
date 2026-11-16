@@ -35,7 +35,7 @@ EMPLOI_DU_TEMPS = {
     ("TD Mathématiques - A1-G2", 1): (LUNDI, "16h00", "N204"),
     # Semaines 1 à 7 et semaine 19 : même créneau, même salle, sans conflit.
     ("CM Physique - A1", 1): (MARDI, "8h30", "N016"),
-    ("Partiel d'algorithmique - A1", 1): (MARDI, "8h30", "N016"),
+    ("Algorithmique (Partiel d'algorithmique) - A1", 1): (MARDI, "8h30", "N016"),
     ("CM Physique - A1", 2): (MARDI, "10h45", "N016"),
     ("TP Algorithmique - A1-G2a", 1): (MARDI, "13h45", "N310"),
     ("TP Algorithmique - A1-G2b", 1): (MARDI, "16h00", "N310"),
@@ -46,7 +46,7 @@ EMPLOI_DU_TEMPS = {
     ("LANGUE Anglais - A1-ANG-B2", 1): (MERCREDI, "13h45", "N105"),
     ("PROJET Projet d'intégration - A1-G1, A1-G2", 1): (MERCREDI, "16h00", "N016"),
     ("CM Électronique - A1", 1): (JEUDI, "8h30", "N016"),
-    ("Devoir surveillé de mathématiques - A1", 1): (JEUDI, "13h45", "N016"),
+    ("Mathématiques (Devoir surveillé de mathématiques) - A1", 1): (JEUDI, "13h45", "N016"),
     ("TP Électronique - A1-G1", 1): (VENDREDI, "8h30", "L115"),
     ("TP Électronique - A1-G2", 1): (VENDREDI, "10h45", "L115"),
 }

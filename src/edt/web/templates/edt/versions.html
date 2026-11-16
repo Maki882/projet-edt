@@ -2,11 +2,11 @@
 {% import "macros.html" as ui %}
 {% import "edt/_ui.html" as edt with context %}
 
-{% block titre %}Historique des calculs et des versions{% endblock %}
+{% block titre %}Historique et versions{% endblock %}
 
 {% block actions %}
 {%- if historique %}
-<a class="bouton bouton-principal" href="/calculs?semestre_id={{ historique.semestre.id }}">Lancer un calcul</a>
+<a class="bouton bouton-principal" href="/calculs?semestre_id={{ historique.semestre.id }}">Générer un emploi du temps</a>
 {%- endif %}
 {% endblock %}
 
@@ -18,7 +18,7 @@
 
 <section class="carte">
   <h2>Versions de l'emploi du temps</h2>
-  <p class="aide">La version active est celle que l'on consulte par défaut et que le prochain calcul prend comme point de départ (séances verrouillées comprises).</p>
+  <p class="aide">La version active est celle que les écrans montrent par défaut. Le prochain calcul part d'elle et garde ses séances verrouillées, mais pas les retouches à la main des séances datées (déplacements, annulations).</p>
   {%- if historique.versions %}
   <div class="tableau-defilant">
     <table class="tableau">

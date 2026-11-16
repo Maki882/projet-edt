@@ -13,11 +13,14 @@ Point d'entrée stable pour tout le projet :
 
 Organisation du paquet :
 
-- `contrat` : type `Anomalie` et signatures (contrat partagé, figé) ;
+- `contrat` : type `Anomalie` et signatures des fonctions de vérification ;
 - `semaine_type`, `datee` : les deux points d'entrée (validation, volume,
   verrous, assemblage des règles, tri) ;
 - `contexte` : vue uniforme des séances placées (`Element`) et outils communs ;
-- `regles_seance`, `regles_paires`, `regles_enseignants` : les règles ;
+- `regles_seance`, `regles_paires`, `regles_enseignants`, `regles_dejeuner` :
+  les règles standard ;
+- `regles_personnalisees`, `regles_emploi` : les règles personnalisées (un
+  vérificateur par type) ;
 - `niveaux` : niveaux des contraintes (nécessaire, important, facultatif)
   appliqués aux anomalies ;
 - `messages` : mise en forme des textes ;

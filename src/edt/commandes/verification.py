@@ -1,4 +1,4 @@
-"""Commande du lot « vérificateur » : `python -m edt verifier`.
+"""Commande de vérification : `python -m edt verifier`.
 
 Vérifie un emploi du temps enregistré : la semaine type d'une version (par
 défaut), ou ses séances datées avec `--datees`. La version est désignée par

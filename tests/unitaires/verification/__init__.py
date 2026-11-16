@@ -1,1 +1,4 @@
-"""Tests unitaires du vérificateur (`edt.verification`) et de son service, appelés en Python."""
+"""Vérificateur indépendant.
+
+Règles du vérificateur (`edt.verification`), indicateurs et services de vérification, appelés en Python.
+"""

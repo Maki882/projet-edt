@@ -9,7 +9,7 @@
 {%- set limite_liste = 20 %}
 <div id="suivi-calcul" class="edt-suivi" aria-live="polite"
   {%- if r.en_cours %} hx-get="/calculs/{{ r.suivi.id }}/etat" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
-  <h2>{{ r.titre }} {{ ui.etiquette("Calcul n° " ~ r.suivi.id, niveaux[r.issue]) }}</h2>
+  <h2>{{ r.titre }}</h2>
   {%- if remarque %}
   {{ ui.message(remarque, "info") }}
   {%- endif %}
@@ -46,11 +46,11 @@
   <p class="edt-entorses"><strong>Entorses aux règles personnalisées :</strong> {{ r.entorses_regles|join(" ; ") }}</p>
   {%- endif %}
   {%- if r.entorses or r.entorses_regles %}
-  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; « À traiter » liste les anomalies correspondantes.</p>
+  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; la page « Points à traiter » liste les anomalies correspondantes.</p>
   {%- endif %}
 
   {%- if r.issue == "refuse" %}
-  {{ ui.message(fmt.pluriel(r.impossibilites|length, "impossibilité certaine", "impossibilités certaines") ~ " :", "erreur", r.impossibilites) }}
+  {{ ui.message(fmt.pluriel(r.impossibilites|length, "point bloquant", "points bloquants") ~ " :", "erreur", r.impossibilites) }}
   {%- endif %}
 
   {%- if r.precision %}
@@ -69,10 +69,10 @@
     {%- endif %}
   </ul>
   {%- if r.qualite %}
-  <p><strong>Qualité :</strong> {{ r.qualite }}</p>
+  <p>{{ r.qualite }}</p>
   {%- endif %}
   {%- if r.datees and r.datees.erreur %}
-  {{ ui.message("La semaine type est enregistrée, mais ses séances datées n'ont pas pu être produites : les recalculer depuis l'emploi du temps (semaine datée).", "attention") }}
+  {{ ui.message("La semaine type a été enregistrée, mais pas ses séances datées : les produire depuis l'écran « Emploi du temps » (bouton « Produire les séances datées »).", "attention") }}
   {%- endif %}
   {%- if r.datees and r.datees.a_programmer %}
   <details class="edt-groupe-contrainte" open>
@@ -82,7 +82,7 @@
       <li><span><strong>{{ s.besoin }}</strong>, prévue le {{ s.date|date_fr }} ({{ s.horaire }}) : {{ s.raison }}</span></li>
       {%- endfor %}
     </ul>
-    {%- if r.datees.a_programmer|length > limite_liste %}<p class="discret">... et {{ r.datees.a_programmer|length - limite_liste }} autre(s).</p>{% endif %}
+    {%- if r.datees.a_programmer|length > limite_liste %}<p class="discret">... et {{ fmt.pluriel(r.datees.a_programmer|length - limite_liste, "autre") }}.</p>{% endif %}
   </details>
   {%- endif %}
   <div class="edt-boutons">
@@ -90,9 +90,9 @@
     <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
     {%- endif %}
     {%- if r.nb_a_programmer %}
-    <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">Programmer les {{ fmt.pluriel(r.nb_a_programmer, "séance") }} restantes</a>
+    <a class="bouton" href="/a-traiter?semestre_id={{ r.semestre.id }}">{% if r.nb_a_programmer == 1 %}Programmer la séance restante{% else %}Programmer les {{ r.nb_a_programmer }} séances restantes{% endif %}</a>
     {%- endif %}
-    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer" data-confirmation="Lancer un nouveau calcul ? Il cherchera un emploi du temps différent, qui deviendra la version active ; l'actuel restera dans « Historique et versions ». Les retouches à la main des séances datées ne seront pas reprises.">
       <input type="hidden" name="autre_solution" value="1">
       <button type="submit" class="bouton" title="Nouvelle recherche, sans partir de l'emploi du temps actuel">Proposer une autre solution</button>
     </form>
@@ -119,13 +119,20 @@
     <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Changer les réglages</a>
   </div>
   {%- elif r.issue == "erreur" %}
-  <p class="edt-references">
-    À communiquer pour obtenir de l'aide : <strong>calcul n° {{ r.suivi.id }}</strong>
-    {%- if r.journal_nom %}, fichier journal <code>{{ r.journal_nom }}</code>{% endif %}.
-  </p>
   <div class="edt-boutons">
-    <a class="bouton bouton-principal" href="/calculs?semestre_id={{ r.semestre.id }}">Revenir à l'écran « Générer »</a>
+    {%- if r.suivi.version_id %}
+    <a class="bouton bouton-principal" href="/emploi-du-temps?version_id={{ r.suivi.version_id }}">Voir l'emploi du temps</a>
+    {%- endif %}
+    <form method="post" action="/calculs/{{ r.suivi.id }}/relancer">
+      <button type="submit" class="bouton{% if not r.suivi.version_id %} bouton-principal{% endif %}">Relancer le même calcul</button>
+    </form>
+    <a class="bouton" href="/calculs?semestre_id={{ r.semestre.id }}">Retour à Générer</a>
   </div>
+  <details class="edt-references">
+    <summary>Références pour obtenir de l'aide</summary>
+    <p>À communiquer : <strong>calcul n° {{ r.suivi.id }}</strong>
+      {%- if r.journal_nom %}, fichier journal <code>{{ r.journal_nom }}</code>{% endif %}.</p>
+  </details>
   {%- endif %}
 
   {%- if r.avertissements and not r.en_cours %}
@@ -136,7 +143,7 @@
       <li>{{ ui.etiquette("Avertissement", "attention") }} <span>{{ texte }}</span></li>
       {%- endfor %}
     </ul>
-    {%- if r.avertissements|length > limite_liste %}<p class="discret">... et {{ r.avertissements|length - limite_liste }} autre(s).</p>{% endif %}
+    {%- if r.avertissements|length > limite_liste %}<p class="discret">... et {{ fmt.pluriel(r.avertissements|length - limite_liste, "autre") }}.</p>{% endif %}
   </details>
   {%- endif %}
 </div>

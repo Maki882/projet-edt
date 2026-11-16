@@ -87,7 +87,8 @@ def choisir_contraintes(
     """Niveaux à appliquer (ou `None`) et codes à vérifier.
 
     Avec `niveaux`, les codes vérifiés sont ses clés et `contraintes_actives`
-    est ignoré ; sans, c'est le comportement d'origine (`resoudre_codes`).
+    est ignoré ; sans, les codes sont ceux de `contraintes_actives`, vérifiés en
+    dur (`resoudre_codes`).
     Aucun code (liste vide, niveaux vides) ne vérifie rien : permis ici (le
     contrôle d'une solution peut n'avoir rien de nécessaire à vérifier), mais
     journalisé en avertissement ; les services de vérification le refusent.

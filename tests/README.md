@@ -7,17 +7,17 @@ règle unique, contrôlée automatiquement.
 
 Pour aller plus loin : [`tests/unitaires/README.md`](unitaires/README.md)
 (chaque fichier de tests unitaires et ce qu'il vérifie) et
-[`tests/integration/README.md`](integration/README.md) (chaîne traversée, six
+[`tests/integration/README.md`](integration/README.md) (chaîne traversée,
 parcours de bout en bout, chaque fichier de tests d'intégration).
 
 ```mermaid
 flowchart TD
-    A["1 720 tests collectés"] --> U["tests/unitaires : 1 187 cas, 867 fonctions"]
-    A --> I["tests/integration : 518 cas, 419 fonctions"]
-    A --> C["tests/test_rangement.py : 15 cas de contrôle"]
-    U --> UC["8 composants : socle, solveur, verification, echange, synthese, exploitation, web_donnees, web_edt"]
-    I --> IP["parcours : 6 scénarios de bout en bout"]
-    I --> IC["8 composants : 512 cas"]
+    A["tests/"] --> U["tests/unitaires : un module exercé seul"]
+    A --> I["tests/integration : plusieurs couches assemblées"]
+    A --> C["tests/test_rangement.py : contrôle du rangement et des documents"]
+    U --> UC["un dossier par composant : socle, solveur, verification, echange..."]
+    I --> IP["parcours : scénarios de bout en bout"]
+    I --> IC["un dossier par composant"]
 ```
 
 ## 1. Unitaire ou intégration : la règle
@@ -67,20 +67,20 @@ le premier appelle des fonctions du module web, le second passe par HTTP.
 tests/
 ├── conftest.py            fixtures communes (base temporaire, jeu minimal, client web)
 │                          et pose des marqueurs « unitaire » / « integration »
-├── test_rangement.py      contrôle automatique du rangement (voir section 6)
+├── test_rangement.py      contrôle automatique du rangement (voir section 7)
 ├── README.md              ce document
 ├── unitaires/             un module exercé seul, par ses fonctions Python
 │   ├── README.md          ce que vérifie chaque fichier, exemple commenté
 │   ├── socle/   solveur/   verification/   web_donnees/
 │   └── web_edt/ echange/   synthese/       exploitation/
 ├── integration/           plusieurs couches assemblées (HTTP, commande, processus, calcul complet)
-│   ├── README.md          chaîne traversée, six parcours, fichiers par composant
-│   ├── parcours/          six scénarios de bout en bout
+│   ├── README.md          chaîne traversée, parcours, fichiers par composant
+│   ├── parcours/          scénarios de bout en bout
 │   ├── socle/   solveur/   verification/   web_donnees/
 │   └── web_edt/ echange/   synthese/       exploitation/
 └── outils/                aides et fixtures partagées (aucun test)
     ├── classement.py      classeur unitaire / intégration
-    ├── parcours/          aides des six parcours
+    ├── parcours/          aides des parcours
     └── socle/ solveur/ verification/ web_donnees/ web_edt/ echange/ synthese/ exploitation/
 ```
 
@@ -89,38 +89,76 @@ ce côté). Les dossiers contiennent un `__init__.py`.
 
 ## 3. Composants et nombres de tests
 
-Nombres mesurés sur le dépôt. « Fonctions » compte les fonctions `test_*` ;
-« cas » compte les tests collectés par pytest (une fonction paramétrée donne
-plusieurs cas).
+Chaque famille est découpée en composants :
 
-| Composant | Ce qu'il vérifie | Unitaires (fonctions / cas) | Intégration (fonctions / cas) |
-|---|---|---|---|
-| `socle` | domaine (règles, paramètres, dépliage, calendrier), base et schéma, configuration, journaux, services transverses, ligne de commande, cycle de vie du serveur | 190 / 323 | 64 / 80 |
-| `solveur` | préparation du problème, modèle CP-SAT, salles, moteur, séances datées, pré-vérification, service de génération | 188 / 207 | 47 / 51 |
-| `verification` | vérificateur indépendant : règles du catalogue et règles personnalisées, semaine type et séances datées, indicateurs, services de vérification | 231 / 271 | 6 / 10 |
-| `web_donnees` | écrans de l'espace « Données » : formulaires génériques, besoins, règles, paramètres, jeux, suppression, concurrence | 11 / 11 | 116 / 142 |
-| `web_edt` | page Générer et emploi du temps : calculs, suivi, grille, retouches, À traiter, accueil | 19 / 19 | 119 / 145 |
-| `echange` | import et export : gabarit, lecture XLSX et CSV, rapport d'import, exports CSV et iCal, feuille des règles | 139 / 206 | 32 / 38 |
-| `synthese` | générateur de données fictives : jeux petit, moyen et grand, emploi du temps témoin, règles d'exemple | 59 / 93 | 6 / 8 |
-| `exploitation` | scripts de déploiement, unité systemd, configuration nginx, commandes d'administration (sauvegarde, diagnostic) | 30 / 57 | 23 / 38 |
-| `parcours` | six scénarios de bout en bout : web, ligne de commande, aller-retour des données, règle personnalisée, retouche, jeu fictif | — | 6 / 6 |
-| **Total** | | **867 / 1 187** | **419 / 518** |
+- `socle` : domaine (règles, paramètres, dépliage, calendrier), base et schéma,
+  configuration, journaux, services transverses, ligne de commande, cycle de
+  vie du serveur ;
+- `solveur` : préparation du problème, modèle CP-SAT, salles, moteur, séances
+  datées, pré-vérification, service de génération ;
+- `verification` : vérificateur indépendant (règles du catalogue et règles
+  personnalisées, semaine type et séances datées), indicateurs, services de
+  vérification ;
+- `web_donnees` : écrans de l'espace « Données » (formulaires génériques,
+  besoins, règles, paramètres, jeux, suppression, concurrence) ;
+- `web_edt` : page Générer et emploi du temps (calculs, suivi, grille,
+  retouches, À traiter, accueil) ;
+- `echange` : import et export (gabarit, lecture XLSX et CSV, rapport
+  d'import, exports CSV et iCal, feuille des règles) ;
+- `synthese` : générateur de données fictives (jeux petit, moyen et grand,
+  emploi du temps témoin, règles d'exemple) ;
+- `exploitation` : scripts de déploiement, unité systemd, configuration nginx,
+  commandes d'administration (sauvegarde, diagnostic) ;
+- `parcours` (intégration seulement) : scénarios de bout en bout (web, ligne
+  de commande, aller-retour des données, règle personnalisée, retouche, jeu
+  fictif).
 
-S'y ajoute le contrôle du rangement (`tests/test_rangement.py`, 8 fonctions,
-15 cas). Total collecté : 1 720 cas, dont 27 tests de charge (`perf`) : 24
-unitaires et 3 d'intégration.
+Nombre de fonctions de test (`test_*`) par composant et par famille, compté
+dans le code ; une fonction paramétrée compte une fois. Le détail par fichier
+est dans [`tests/unitaires/README.md`](unitaires/README.md) et
+[`tests/integration/README.md`](integration/README.md).
 
-Recalculer les nombres de fonctions par côté et par composant :
+<!-- tests-vue-d-ensemble : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
+
+| Composant | Unitaires | Intégration | Total |
+|---|---:|---:|---:|
+| `echange` | 139 | 32 | 171 |
+| `exploitation` | 40 | 32 | 72 |
+| `parcours` | — | 6 | 6 |
+| `socle` | 202 | 74 | 276 |
+| `solveur` | 194 | 52 | 246 |
+| `synthese` | 59 | 6 | 65 |
+| `verification` | 235 | 6 | 241 |
+| `web_donnees` | 12 | 119 | 131 |
+| `web_edt` | 33 | 128 | 161 |
+| **Total** | **914** | **455** | **1 369** |
+| dont cas limites (`cas_limite`) | 221 | 168 | 389 |
+| dont tests de charge (`perf`) | 19 | 3 | 22 |
+
+S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
+
+<!-- tests-vue-d-ensemble : fin de la partie générée -->
+
+Ce tableau et ceux des deux autres documents sont produits à partir du code
+des tests ; `tests/test_rangement.py` échoue s'ils ne sont plus à jour. Après
+l'ajout, le retrait ou le renommage d'un test ou d'un fichier de tests, depuis
+la racine du dépôt :
 
 ```sh
-python -m tests.outils.classement
+python -m tests.outils.classement --ecrire   # réécrit les parties générées des trois documents
+python -m tests.outils.classement            # totaux par côté et par composant, tests mal rangés
 ```
 
-Recalculer les nombres de cas collectés :
+La description d'un fichier dans ces tableaux est la première phrase de la
+docstring de son module ; le titre d'un composant est la première phrase de la
+docstring de son `__init__.py` (à défaut, le nom du dossier). Un fichier de
+tests sans docstring de module fait échouer le contrôle.
+
+Le nombre de cas collectés par pytest (une fonction paramétrée en donne
+plusieurs) s'obtient par :
 
 ```sh
-python -m pytest --collect-only -q tests/unitaires
-python -m pytest --collect-only -q tests/integration
+python -m pytest --collect-only -q
 ```
 
 ## 4. Lancer les tests
@@ -134,7 +172,7 @@ python -m pytest tests/unitaires              # les tests unitaires
 python -m pytest tests/integration            # les tests d'intégration
 python -m pytest -m unitaire                  # idem par marqueur
 python -m pytest -m integration               # idem par marqueur
-python -m pytest tests/integration/parcours   # les six parcours de bout en bout
+python -m pytest tests/integration/parcours   # les parcours de bout en bout
 python -m pytest tests/unitaires/solveur      # un composant, un côté
 python -m pytest -m cas_limite                # les cas limites (docs/banque-de-tests.md)
 python -m pytest -m perf                      # les tests de charge (longs)
@@ -223,9 +261,10 @@ Fixtures communes à tous les tests (`tests/conftest.py`) :
 - aucun module de tests n'importe un autre module de tests ;
 - le classeur reconnaît bien chaque forme de preuve (usage direct, par une
   fixture, par une aide du module, par une aide importée) et le cas unitaire ;
-- chaque fichier `test_*.py` est cité dans le `README.md` de son dossier
-  (`tests/unitaires/README.md` ou `tests/integration/README.md`) : ces
-  documents ne peuvent pas oublier un fichier.
+- les nombres et les tableaux de fichiers de ce document, de
+  `tests/unitaires/README.md` et de `tests/integration/README.md` sont à jour
+  (section 3), et chaque fichier de tests a une docstring de module : ces
+  documents ne peuvent ni oublier un fichier ni afficher un nombre périmé.
 
 Le classeur (`tests/outils/classement.py`) lit le code sans l'exécuter. Pour
 chaque test, il suit les fixtures (module, `conftest.py` du dossier et des

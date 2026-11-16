@@ -90,9 +90,11 @@ def test_tableau_des_regles_personnalisees_sur_generer(jeu_minimal, client):
     # Les règles de base proposées sont rappelées, sans effet ; liens vers l'écran des règles.
     assert (
         "2 règles proposées ne sont pas encore activées : elles n&#39;ont aucun effet sur le "
-        "calcul tant qu&#39;elles ne sont pas confirmées." in bloc
+        "calcul tant qu&#39;elles ne le sont pas." in bloc
     )
-    assert 'href="/regles"' in bloc and 'href="/regles/nouveau"' in bloc
+    # « Ajouter une règle » ramène à Générer une fois la règle créée.
+    assert 'href="/regles"' in bloc and 'href="/regles/nouveau?' in bloc
+    assert "retour=%2Fcalculs%3Fsemestre_id%3D" in bloc
     assert "pas encore transmis" not in page and "ne lit pas encore" not in page
     # REGLE n'est pas dans le tableau des niveaux du catalogue.
     assert 'name="niveau_REGLE"' not in page
@@ -285,7 +287,7 @@ def test_une_relance_applique_les_regles_creees_depuis_et_le_dit(jeu_minimal, cl
 
 
 # --------------------------------------------------------------------------- #
-# Anomalies d'une règle : À traiter et panneau d'une séance
+# Anomalies d'une règle : Points à traiter et panneau d'une séance
 # --------------------------------------------------------------------------- #
 
 

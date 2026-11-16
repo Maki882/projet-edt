@@ -4,8 +4,8 @@ Il mélange ce qui se rencontre dans un vrai semestre : deux campus, une
 promotion et ses demi-groupes, un CM, des TD, un TP le samedi, deux modules
 courts qui se partagent le même créneau sur des semaines disjointes, un DST
 imposé, des indisponibilités, des maxima horaires, un enseignant fictif et un
-changement de campus séparé par le déjeuner. On vérifie la semaine type, puis
-les occurrences obtenues en l'instanciant sur toutes les semaines.
+changement de campus séparé par le déjeuner. Le test vérifie la semaine type,
+puis les occurrences obtenues en l'instanciant sur toutes les semaines.
 """
 
 from __future__ import annotations

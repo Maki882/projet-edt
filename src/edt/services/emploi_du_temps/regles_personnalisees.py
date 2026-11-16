@@ -1,8 +1,8 @@
 """Règles personnalisées vues des écrans de l'emploi du temps : Générer, suivi, grille, anomalies.
 
-Le contrat est livré (`edt.domaine.regles`, `edt.services.regles`,
-`Instantane.regles`, `emplois`, `reglages`, `jours_travailles`). Ce module en
-tire ce que les écrans affichent :
+Ce module s'appuie sur `edt.domaine.regles`, `edt.services.regles` et
+`Instantane.regles`, `emplois`, `reglages`, `jours_travailles`, et en tire ce
+que les écrans affichent :
 
 - **page Générer** : le tableau « Règles personnalisées » (règles actives de
   l'année qui concernent le semestre), trois niveaux par règle et une case
@@ -14,7 +14,7 @@ tire ce que les écrans affichent :
   (`dejeuner_de_la_cible`) et, pour une retouche, les jours permis d'une
   séance (`jours_permis`), lus dans `Instantane.reglages`.
 
-Ce qu'il lit des autres lots : `OptionsSolveur.niveaux_regles` (id de
+Ce qu'il lit ailleurs : `OptionsSolveur.niveaux_regles` (id de
 règle → niveau ; une règle active absente est ignorée), `SuiviCalcul.regles`
 (copie des règles du semestre au lancement, niveau `None` pour une règle
 ignorée), `SuiviCalcul.niveaux_regles`, `statistiques["entorses_regles"]`
@@ -257,22 +257,6 @@ class BlocRegles:
         return {regle.id: None if regle.ignoree else regle.niveau for regle in self.regles}
 
     @property
-    def rappel_proposees(self) -> str | None:
-        """Le rappel des règles proposées, sans effet tant qu'elles ne sont pas confirmées."""
-        n = self.nb_proposees
-        if not n:
-            return None
-        if n == 1:
-            return (
-                "1 règle proposée n'est pas encore activée : elle n'a aucun effet sur le calcul "
-                "tant qu'elle n'est pas confirmée."
-            )
-        return (
-            f"{n} règles proposées ne sont pas encore activées : elles n'ont aucun effet sur le "
-            "calcul tant qu'elles ne sont pas confirmées."
-        )
-
-    @property
     def replie(self) -> bool:
         """Vrai au-delà de `SEUIL_REPLI` règles : regroupées par type, repliées."""
         return len(self.regles) > SEUIL_REPLI
@@ -310,17 +294,6 @@ def _concerne_le_semestre(detail: service_regles.RegleDetail, semestre) -> bool:
     if regle.date_debut is not None and regle.date_debut > semestre.date_fin:
         return False
     return regle.date_fin is None or regle.date_fin >= semestre.date_debut
-
-
-def regles_actives_du_semestre(
-    session: Session, semestre, annee_id: int
-) -> list[service_regles.RegleDetail]:
-    """Règles actives de l'année dont la période recoupe le semestre, par code."""
-    return [
-        detail
-        for detail in service_regles.lister(session, annee_id, etat=EtatRegle.ACTIVE)
-        if _concerne_le_semestre(detail, semestre)
-    ]
 
 
 def bloc_regles(
@@ -665,7 +638,7 @@ def niveaux_pour_la_relance(
     copie = regles_enregistrees(suivi.regles, suivi.id)
     connues = {regle.id for regle in copie}
     actives = service_regles.lister(session, annee_id, etat=EtatRegle.ACTIVE)
-    # Sans copie (calcul d'avant les règles), rien ne permet de dire ce qui est nouveau.
+    # Sans copie des règles enregistrée avec le calcul, rien ne permet de dire ce qui est nouveau.
     nouvelles = tuple(
         detail.code
         for detail in actives

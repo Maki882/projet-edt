@@ -14,7 +14,10 @@ délèguent au vérificateur pur (`edt.verification`) ; elles n'écrivent rien.
   ou la version active d'un semestre, ou celle du semestre par défaut).
 
 L'instantané d'une version est chargé avec cette version comme version de
-base : les verrous sont ceux de la version vérifiée. Le résultat est un
+base : les verrous sont ceux de la version vérifiée. Il est gardé dans la
+session tant qu'elle n'écrit rien (`_instantane_de`) : vérifier la semaine
+type puis les séances datées d'une version, comme le fait l'accueil, ne le
+charge qu'une fois. Le résultat est un
 `RapportVerification` figé, sérialisable en JSON par `vers_dict()`.
 
 Niveaux des contraintes : sans `niveaux` ni `contraintes_actives`, chaque
@@ -52,8 +55,8 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import event, select
+from sqlalchemy.orm import ORMExecuteState, Session
 
 from edt.db.modeles import Semestre, VersionEdt
 from edt.db.moteur import identifiant_valide
@@ -214,7 +217,7 @@ def verifier_version(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     placements = charger_placements(session, version.id)
     anomalies = verifier(instantane, placements, codes, niveaux=retenus, niveaux_regles=regles)
     indicateurs = calculer_indicateurs(instantane, placements, anomalies)
@@ -264,7 +267,7 @@ def verifier_occurrences_version(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     toutes = charger_occurrences(session, version.id)
 
     def dans(date: dt.date, debut: dt.date | None, fin: dt.date | None) -> bool:
@@ -322,7 +325,7 @@ def verifier_modification(
     modification n'introduit aucune erreur : une entorse nouvelle à une règle
     importante ou facultative est renvoyée comme avertissement ou information,
     sans rendre le rapport invalide. Une séance verrouillée dans la version
-    donne une anomalie `VERROU` si on la déplace.
+    donne une anomalie `VERROU` si elle est déplacée.
 
     Niveaux appliqués : voir l'en-tête du module (par défaut, ceux du calcul
     de la version ; `contraintes_actives` seul les restreint à ces codes).
@@ -335,15 +338,14 @@ def verifier_modification(
     version = _version(session, version_id)
     retenus, codes = _choisir(session, version, contraintes_actives, niveaux)
     regles = _choisir_regles(session, version, niveaux_regles)
-    instantane = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    instantane = _instantane_de(session, version)
     if seance_id not in {seance.id for seance in instantane.seances}:
         raise ErreurIntrouvable(
             f"La séance « {seance_id} » n'existe pas dans le semestre « {instantane.libelle} »."
         )
     if type(salle_id) is int and salle_id not in {salle.id for salle in instantane.salles}:
         raise ErreurIntrouvable(
-            f"La salle n° {salle_id} n'existe pas dans le semestre « {instantane.libelle} » : "
-            "choisir une salle de la liste."
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
         )
     propose = Placement(seance_id, jour, debut, fin, salle_id)
     enregistres = charger_placements(session, version.id)
@@ -416,7 +418,9 @@ def version_a_verifier(
     semestre `semestre_id`, ou à défaut du semestre proposé par défaut
     (`semestre_par_defaut`). Lève `ErreurIntrouvable` si la version ou le
     semestre n'existe pas ou si le semestre n'a pas de version active,
-    `ErreurRegleMetier` si la version n'appartient pas au semestre donné.
+    `ErreurRegleMetier` si la version n'appartient pas au semestre donné ou si
+    plusieurs versions du semestre sont actives (base créée sans l'index qui
+    l'interdit) : vérifier l'une d'elles au hasard tromperait.
     """
     if version_id is not None:
         version = _version(session, version_id)
@@ -431,20 +435,64 @@ def version_a_verifier(
         semestre = session.get(Semestre, semestre_id) if identifiant_valide(semestre_id) else None
         if semestre is None:
             raise ErreurIntrouvable(f"Le semestre {semestre_id} n'existe pas.")
-    version_active = session.scalar(
-        select(VersionEdt).where(VersionEdt.semestre_id == semestre.id, VersionEdt.active.is_(True))
-    )
-    if version_active is None:
+    actives = session.scalars(
+        select(VersionEdt)
+        .where(VersionEdt.semestre_id == semestre.id, VersionEdt.active.is_(True))
+        .order_by(VersionEdt.id)
+    ).all()
+    if not actives:
         raise ErreurIntrouvable(
             f"Le semestre « {semestre.libelle} » n'a pas de version active : générer ou importer "
             "un emploi du temps, ou désigner une version précise."
         )
-    return version_active.id
+    if len(actives) > 1:
+        # L'index unique partiel l'interdit ; une base créée sans lui peut en avoir deux.
+        raise ErreurRegleMetier(
+            f"Plusieurs versions d'emploi du temps sont actives pour « {semestre.libelle} » "
+            f"(versions {', '.join(str(v.id) for v in actives)}) : en garder une seule, ou "
+            "désigner la version à vérifier (--version)."
+        )
+    return actives[0].id
 
 
 # --------------------------------------------------------------------------- #
 # Outils
 # --------------------------------------------------------------------------- #
+
+
+_CLE_INSTANTANES = "edt.services.verification.instantanes"
+"""Clé de `Session.info` où sont gardés les instantanés chargés par cette session."""
+
+
+def _instantane_de(session: Session, version: VersionEdt) -> Instantane:
+    """Instantané du semestre de `version` (sa version de base), chargé une fois par session.
+
+    Il est oublié dès que la session écrit (flush, instruction autre qu'une
+    lecture), valide ou annule (`_oublier_instantanes`) ; une session qui a
+    des modifications en attente le recharge toujours.
+    """
+    if session.new or session.dirty or session.deleted:
+        return charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    gardes = session.info.setdefault(_CLE_INSTANTANES, {})
+    cle = (version.semestre_id, version.id)
+    if cle not in gardes:
+        gardes[cle] = charger_instantane(session, version.semestre_id, version_base_id=version.id)
+    else:
+        journal.debug("Instantané de la version %d repris de la session", version.id)
+    return gardes[cle]
+
+
+@event.listens_for(Session, "after_flush")
+@event.listens_for(Session, "after_commit")
+@event.listens_for(Session, "after_rollback")
+def _oublier_instantanes(session: Session, *_: object) -> None:
+    session.info.pop(_CLE_INSTANTANES, None)
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _oublier_apres_ecriture(etat: ORMExecuteState) -> None:
+    if not etat.is_select:
+        etat.session.info.pop(_CLE_INSTANTANES, None)
 
 
 def _version(session: Session, version_id: int) -> VersionEdt:

@@ -1,1 +1,4 @@
-"""Tests unitaires du solveur : modèle, moteur, couche datée, règles, services sans calcul complet."""
+"""Solveur CP-SAT et préparation du calcul.
+
+Modèle, moteur, couche datée, règles et services, sans calcul complet.
+"""

@@ -1,4 +1,4 @@
-"""VOLUME, VERROU, MAX_ENSEIGNANT et choix des contraintes vérifiées (semaine type)."""
+"""Volume, verrous, maxima horaires, choix des contraintes vérifiées."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from tests.outils.verification.fabrique import (
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import Gravite
-from edt.domaine.instantane import Occurrence, Placement, decomposer_id_seance
+from edt.domaine.instantane import Occurrence, Placement
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier, verifier_occurrences
 
@@ -47,7 +47,7 @@ def test_seance_non_placee():
 
 
 def test_placement_d_une_seance_qui_n_est_plus_demandee_nomme_le_besoin():
-    # Constat n° 17 de la revue : après le raccourcissement d'un semestre, la version garde
+    # Après le raccourcissement d'un semestre, la version garde
     # la séance « 1-3 » que le besoin ne produit plus. Le message nomme le besoin et dit quoi
     # faire, sans exposer l'identifiant technique (qui reste dans le champ `seances`).
     f, n204, s1, s2 = deux_seances()
@@ -285,7 +285,7 @@ def test_libelle_du_socle_qui_cite_deja_ses_groupes():
 
 
 def test_seance_verrouillee_deplacee_n_est_plus_imposee():
-    # Même règle que la couche datée (constat n° 15) : hors de la place de son verrou, une
+    # Même règle que la couche datée : hors de la place de son verrou, une
     # séance verrouillée n'a plus droit aux écarts admis.
     f, n204, _, seance = seance_verrouillee()
     anomalies = verifier(f.construire(), [placer(seance, SAMEDI, "8h30", n204)], ["JOURS"])
@@ -325,14 +325,3 @@ def test_identifiant_de_seance_illisible_refuse_proprement(identifiant):
     with pytest.raises(ErreurDonneesInvalides, match="séances datées") as erreur:
         verifier_occurrences(instantane, [illisible])
     assert f"« {identifiant} »" in erreur.value.details[0]
-
-
-@pytest.mark.cas_limite
-def test_decomposer_un_identifiant_aux_chiffres_non_decimaux_leve_une_erreur_metier():
-    """Cas : `decomposer_id_seance` reçoit « ²-1 » (identifiant cité par une anomalie, une saisie, un import).
-
-    Risque : `ValueError` au lieu d'`ErreurDonneesInvalides` dans les services qui
-    décomposent les identifiants (anomalies de l'emploi du temps, instanciation).
-    """
-    with pytest.raises(ErreurDonneesInvalides):
-        decomposer_id_seance("²-1")

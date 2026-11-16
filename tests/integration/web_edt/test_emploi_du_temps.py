@@ -1,4 +1,4 @@
-"""Onglet « Emploi du temps » : affichages, groupes liés, corrections vérifiées, séances datées."""
+"""Grille, groupes liés, déplacements et annulations vérifiés."""
 
 from __future__ import annotations
 
@@ -100,7 +100,7 @@ def test_trois_affichages_pour_un_groupe_un_enseignant_une_salle(
     assert attendu in page
     assert 'class="edt-bloc edt-couleur-' in page  # au moins une séance dans la grille
     assert "Traceback" not in page
-    assert "pas encore disponible" not in page
+    assert "installation incomplète" not in page
     assert f"/export/emploi-du-temps.csv?version_id={version}" in page
 
 
@@ -165,13 +165,14 @@ def test_version_sans_seances_datees_puis_produites(version_generee, client):
     adresse = f"/emploi-du-temps?version_id={version}&couche=date"
     assert "pas encore été produites" in client.get(adresse).text
 
-    # Instanciation simulée absente : on le dit, rien n'est produit.
+    # Instanciation simulée absente : la page le dit, rien n'est produit.
     with pytest.MonkeyPatch.context() as temporaire:
         temporaire.setitem(sys.modules, "edt.services.instanciation", None)
         absente = client.post(
             f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
         )
-    assert "pas encore disponible" in absente.text
+    assert "La production des séances datées" in absente.text
+    assert "est indisponible" in absente.text and "installation incomplète" in absente.text
 
     produite = client.post(
         f"/emploi-du-temps/versions/{version}/seances-datees", data={"retour": adresse}
@@ -235,7 +236,7 @@ def test_les_retouches_survivent_au_recalcul_sans_doublon(
                 if lundi <= (o.date_initiale or o.date) <= lundi + dt.timedelta(days=6)
             ]
             assert len(meme_semaine) == 1  # la retouche, et pas de séance recalculée en double
-    assert "retouche(s) à la main" in bilan.message
+    assert "retouches à la main" in bilan.message
 
 
 DEBUTS_DE_LA_GRILLE = (8 * 60 + 30, 10 * 60 + 45, 13 * 60 + 45, 16 * 60)
@@ -263,7 +264,7 @@ def test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx(version_generee, 
     fragment = client.get(f"/emploi-du-temps/seances/{seance.id}/panneau", headers=HX).text
     assert "<html" not in fragment
     assert "Exigences" in fragment and "56 places au moins" in fragment
-    assert "pas encore disponibles" not in fragment  # le vrai vérificateur a tourné
+    assert "installation incomplète" not in fragment  # le vrai vérificateur a tourné
 
 
 def test_modification_acceptee_puis_verrou(version_generee, client, faux_verificateur):
@@ -291,6 +292,9 @@ def test_modification_acceptee_puis_verrou(version_generee, client, faux_verific
     message = client.get("/emploi-du-temps").text
     assert f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" in message
     assert "À noter" in message
+    # Une simple information ne fait pas passer le message à l'orange : vert.
+    assert 'class="message message-succes"' in message
+    assert 'class="message message-attention"' not in message
 
     client.post(f"/emploi-du-temps/seances/{identifiant}/verrou", data={"verrou": "true"})
     with session_base() as session:
@@ -327,6 +331,7 @@ def test_modification_refusee_par_une_erreur_du_verificateur(
 
     assert reponse.status_code == 200
     assert "n&#39;a pas été enregistrée" in reponse.text
+    assert "Choisir un autre jour, une autre heure ou une autre salle." in reponse.text  # remède
     assert "La salle N016 est déjà occupée" in reponse.text
     with session_base() as session:
         seance = session.get(m.SeanceHebdo, avant[0])
@@ -341,7 +346,7 @@ def test_sans_verificateur_aucune_seance_n_est_deplacee(version_generee, sans_ve
             session, seance.id, jour=jour, debut=debut, salle_id=seance.salle_id
         )
         assert not resultat.enregistree
-        assert "pas encore disponibles" in resultat.message
+        assert "vérifications automatiques sont indisponibles" in resultat.message
         assert session.get(m.SeanceHebdo, seance.id).jour == seance.jour
 
 
@@ -355,7 +360,7 @@ def test_salles_compatibles_libres_d_abord(version_generee):
         }
         assert codes <= {"L012"}  # N310 : accessibilité inconnue, refusée par défaut
 
-        # On occupe N105 le vendredi à 8 h 30, puis on cherche une salle pour le TD de la classe 2.
+        # N105 occupée le vendredi à 8 h 30, puis recherche d'une salle pour le TD de la classe 2.
         td_g1 = seance_du_besoin(session, version, "Mathématiques", "TD", "A1-G1")
         n105 = session.scalar(select(m.Salle).where(m.Salle.code == "N105"))
         td_g1.jour, td_g1.debut_min, td_g1.fin_min, td_g1.salle_id = 4, 510, 630, n105.id
@@ -439,7 +444,7 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
 def test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut(version_generee, client):
     reponse = client.get(f"/emploi-du-temps?version_id={version_generee.version_id}&groupe_id=9999")
     assert reponse.status_code == 200
-    assert "Affichage de la première classe à la place" in reponse.text
+    assert "Affichage d&#39;une autre classe à la place" in reponse.text
 
 
 def test_le_vrai_verificateur_refuse_un_conflit_de_groupe(version_generee, client):
@@ -541,7 +546,7 @@ def test_bandeau_et_bascule_vers_la_vue_etendue(version_generee, client):
     restreinte = client.get(adresse).text
     assert "<strong>Affiché :</strong> les séances de A1-G1 et de A1" in restreinte
     assert "<strong>Non affiché :</strong>" in restreinte and "A1-G1a, A1-G1b" in restreinte
-    assert "Afficher aussi les classes, demi-groupes et groupes de langues" in restreinte
+    assert "Afficher aussi ces séances" in restreinte
     assert "etendu=1" in restreinte
 
     etendue = client.get(adresse + "&etendu=1").text
@@ -566,7 +571,7 @@ def test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee(
 
     client.get(f"/emploi-du-temps?enseignant_id={martin}")
     retour = client.get("/emploi-du-temps").text
-    assert "Claire Martin" in retour and "dernier emploi du temps consulté" in retour
+    assert "Claire Martin" in retour and "choix repris de votre dernière visite" in retour
 
     # Une cible retenue qui n'existe plus ici : la page s'ouvre sur la classe, sans erreur.
     # Le témoin posé par le serveur est d'abord retiré : il ne doit en rester qu'un, quel que

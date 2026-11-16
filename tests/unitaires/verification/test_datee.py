@@ -1,4 +1,4 @@
-"""Couche datée : `verifier_occurrences`."""
+"""Vérification des séances datées (`verifier_occurrences`)."""
 
 from __future__ import annotations
 
@@ -279,7 +279,7 @@ def test_liste_vide():
 
 
 def test_verrou_ne_couvre_pas_une_occurrence_deplacee_a_la_main():
-    # Constat n° 15 de la revue : le verrou fixe la place de la semaine type, pas une nouvelle
+    # Le verrou fixe la place de la semaine type, pas une nouvelle
     # date choisie à la main. Déplacée un samedi interdit, l'occurrence est une ERREUR JOURS,
     # sans le faux « créneau imposé ».
     f = Fabrique()
@@ -408,6 +408,8 @@ def test_maxima_hebdomadaires_a_cheval_sur_deux_annees_civiles():
     le dépassement.
     """
     f, n204, n205, _, maths, physique = base(max_semaine=3 * 60)
+    # Les deux dates sont après la fin du semestre de la fabrique (18 décembre) : seule
+    # MAX_ENSEIGNANT est vérifiée, sinon JOUR_FERME les signalerait aussi.
     occurrences = [
         occurrence(maths, dt.date(2026, 12, 29), "8h30", n204, identifiant=1),
         occurrence(physique, dt.date(2027, 1, 2), "8h30", n205, identifiant=2),

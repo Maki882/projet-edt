@@ -99,14 +99,15 @@ def verifier_occurrences(
     pas (défaut : toutes les règles actives de l'instantané, à leur niveau).
     Les règles ne sont vérifiées que si `REGLE` l'est ; leurs anomalies
     suivent toujours le niveau de leur règle.
-    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu ou si
-    une occurrence est mal formée.
+    Lève `ErreurDonneesInvalides` si un code de contrainte est inconnu, si
+    une occurrence est mal formée ou si l'arbre des groupes boucle
+    (`valider_groupes`).
     """
     chrono = time.perf_counter()
     niveaux_appliques, codes = choisir_contraintes(contraintes_actives, niveaux)
     instantane, regles_retenues = choisir_regles(instantane, codes, niveaux_regles)
     occurrences = tuple(occurrences)
-    valider_occurrences(instantane, occurrences)
+    valider_occurrences(occurrences)
     ctx = Contexte(instantane, codes, datee=True, niveaux_regles=regles_retenues)
     besoins = {besoin.id: besoin for besoin in instantane.besoins}
     seances = {seance.id: seance for seance in instantane.seances}
@@ -157,7 +158,7 @@ def verifier_occurrences(
     return anomalies
 
 
-def valider_occurrences(instantane: Instantane, occurrences: Sequence[Occurrence]) -> None:
+def valider_occurrences(occurrences: Sequence[Occurrence]) -> None:
     """Lève `ErreurDonneesInvalides` (avec tous les défauts) si une occurrence est mal formée.
 
     La date doit être exactement un `datetime.date` : un `datetime` (date et

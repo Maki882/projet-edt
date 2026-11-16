@@ -29,22 +29,41 @@ est unitaire.
 Limite connue : une fixture obtenue par `request.getfixturevalue(nom)` avec un
 nom calculé à l'exécution n'est pas suivie.
 
+Le module produit aussi les nombres de tests et les tableaux de fichiers des
+documents `tests/README.md`, `tests/unitaires/README.md` et
+`tests/integration/README.md` (constante `BLOCS`). Chaque partie générée est
+encadrée par deux marqueurs HTML (`debut_de_bloc`, `fin_de_bloc`) ;
+`tests/test_rangement.py` vérifie qu'elle est identique à ce que produit le
+module. Les nombres comptent des fonctions de test (une fonction paramétrée
+compte une fois). Pour chaque fichier, la description est la première phrase
+de la docstring du module ; pour chaque composant, le titre est la première
+phrase de la docstring de son `__init__.py`, sinon le nom du dossier.
+
 Usage, depuis la racine du dépôt :
 
-    python -m tests.outils.classement
+    python -m tests.outils.classement            # totaux, puis tests mal rangés
+    python -m tests.outils.classement --ecrire   # met à jour les trois documents
 
-Le programme affiche le nombre de tests par côté et par composant, puis la
-liste des tests mal rangés ; il sort avec le code 1 s'il y en a.
+Sans option, le programme affiche le nombre de tests par côté et par
+composant, puis la liste des tests mal rangés ; il sort avec le code 1 s'il y
+en a. Avec `--ecrire`, il réécrit les parties générées des documents et sort
+avec le code 1 si un marqueur manque ou si un fichier de tests n'a pas de
+docstring de module.
 """
 
 from __future__ import annotations
 
+import argparse
 import ast
+import logging
+import re
 import sys
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 UNITAIRE = "unitaire"
 """Côté des tests unitaires."""
@@ -201,6 +220,63 @@ def _est_automatique(fonction: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
     return False
 
 
+def _marqueurs(expressions: list[ast.expr]) -> set[str]:
+    """Noms des marqueurs `pytest.mark.<nom>` (ou `mark.<nom>`), appelés ou non, d'une liste."""
+    noms: set[str] = set()
+    for expression in expressions:
+        if isinstance(expression, ast.Call):
+            expression = expression.func
+        if isinstance(expression, ast.Attribute) and (
+            (isinstance(expression.value, ast.Attribute) and expression.value.attr == "mark")
+            or (isinstance(expression.value, ast.Name) and expression.value.id == "mark")
+        ):
+            noms.add(expression.attr)
+    return noms
+
+
+def _marqueurs_pytestmark(corps: list[ast.stmt]) -> set[str]:
+    """Marqueurs de `pytestmark` (module ou classe), seul ou en liste."""
+    noms: set[str] = set()
+    for instruction in corps:
+        if isinstance(instruction, ast.Assign):
+            cibles, valeur = instruction.targets, instruction.value
+        elif isinstance(instruction, ast.AnnAssign) and instruction.value is not None:
+            cibles, valeur = [instruction.target], instruction.value
+        else:
+            continue
+        if any(isinstance(c, ast.Name) and c.id == "pytestmark" for c in cibles):
+            noms |= _marqueurs(
+                valeur.elts if isinstance(valeur, ast.List | ast.Tuple) else [valeur]
+            )
+    return noms
+
+
+def fonctions_de_test(
+    arbre: ast.Module,
+) -> list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, frozenset[str]]]:
+    """Fonctions `test_*` d'un module, à tout niveau, avec les marqueurs qu'elles portent.
+
+    Les marqueurs comprennent ceux de la fonction, de ses classes englobantes
+    et du `pytestmark` du module ou des classes. Un marqueur posé à
+    l'exécution (`pytest.param(..., marks=...)`, hook de collecte) n'est pas vu.
+    """
+    trouvees: list[tuple[ast.FunctionDef | ast.AsyncFunctionDef, frozenset[str]]] = []
+
+    def parcourir(noeud: ast.AST, herites: frozenset[str]) -> None:
+        for enfant in ast.iter_child_nodes(noeud):
+            marques = herites
+            if isinstance(enfant, ast.ClassDef):
+                marques |= _marqueurs(enfant.decorator_list) | _marqueurs_pytestmark(enfant.body)
+            elif isinstance(enfant, ast.FunctionDef | ast.AsyncFunctionDef):
+                marques |= _marqueurs(enfant.decorator_list)
+                if enfant.name.startswith("test_"):
+                    trouvees.append((enfant, marques))
+            parcourir(enfant, marques)
+
+    parcourir(arbre, frozenset(_marqueurs_pytestmark(arbre.body)))
+    return trouvees
+
+
 def _noms_utilises(noeud: ast.AST) -> set[str]:
     """Noms et attributs cités dans le code du nœud (`a.b(c)` donne `a`, `b`, `c`)."""
     noms: set[str] = set()
@@ -322,17 +398,14 @@ class Classeur:
         for fichier, module in self.modules.items():
             if not fichier.name.startswith("test_"):
                 continue
-            for noeud in ast.walk(module.arbre):
-                if isinstance(
-                    noeud, ast.FunctionDef | ast.AsyncFunctionDef
-                ) and noeud.name.startswith("test_"):
-                    noms = self.noms_atteints(module, noeud, noeud.name)
-                    raisons = tuple(nature for nature, preuves in PREUVES.items() if noms & preuves)
-                    preuves = tuple(sorted(noms & frozenset().union(*PREUVES.values())))
-                    identifiant = f"{fichier.relative_to(self.racine).as_posix()}::{noeud.name}"
-                    classement[identifiant] = Verdict(
-                        INTEGRATION if raisons else UNITAIRE, raisons, preuves
-                    )
+            for noeud, _ in fonctions_de_test(module.arbre):
+                noms = self.noms_atteints(module, noeud, noeud.name)
+                raisons = tuple(nature for nature, preuves in PREUVES.items() if noms & preuves)
+                preuves = tuple(sorted(noms & frozenset().union(*PREUVES.values())))
+                identifiant = f"{fichier.relative_to(self.racine).as_posix()}::{noeud.name}"
+                classement[identifiant] = Verdict(
+                    INTEGRATION if raisons else UNITAIRE, raisons, preuves
+                )
         return classement
 
 
@@ -383,9 +456,351 @@ def expliquer(identifiant: str, verdict: Verdict) -> str:
     return f"{identifiant} : {preuve} ; à déplacer dans {destination(identifiant, verdict)}"
 
 
-def main(argv: list[str]) -> int:
-    """Affiche les totaux par côté et par composant, puis les tests mal rangés (code 1 s'il y en a)."""
-    racine = Path(argv[0]).resolve() if argv else Path(__file__).resolve().parents[2]
+# --------------------------------------------------------------------------- #
+# Nombres et tableaux des documents de tests
+# --------------------------------------------------------------------------- #
+
+COMMANDE = "python -m tests.outils.classement --ecrire"
+"""Commande qui régénère les parties générées des documents de tests."""
+
+TITRES_DES_FAMILLES: dict[str, str] = {UNITAIRE: "Unitaires", INTEGRATION: "Intégration"}
+"""Titre de colonne de chaque côté dans la vue d'ensemble (dans cet ordre)."""
+
+CONTROLE = Path("tests") / "test_rangement.py"
+"""Contrôle du rangement, compté à part : il n'appartient à aucune famille."""
+
+SANS_DOCSTRING = "**docstring de module absente** (sa première phrase décrit le fichier)"
+"""Texte affiché à la place de la description d'un fichier de tests sans docstring."""
+
+_FIN_DE_PHRASE = re.compile(r"\.(?=\s|$)")
+
+
+@dataclass(frozen=True)
+class FichierDeTests:
+    """Un fichier `test_*.py` d'une famille, avec ses nombres de fonctions de test."""
+
+    cote: str
+    """`UNITAIRE` ou `INTEGRATION`."""
+    composant: str
+    """Premier sous-dossier de la famille (`socle`, `solveur`…), `(racine)` sinon."""
+    chemin: str
+    """Chemin relatif au dossier de la famille, séparateurs `/` (`socle/test_base.py`)."""
+    description: str | None
+    """Première phrase de la docstring du module, sans le point final ; `None` sans docstring."""
+    fonctions: int
+    """Nombre de fonctions `test_*` du fichier."""
+    cas_limite: int
+    """Fonctions marquées `cas_limite`."""
+    perf: int
+    """Fonctions marquées `perf`."""
+
+
+@dataclass(frozen=True)
+class Inventaire:
+    """Ce que les documents de tests affichent : fichiers, titres des composants, contrôle."""
+
+    fichiers: tuple[FichierDeTests, ...]
+    """Fichiers des deux familles, triés par côté, composant puis chemin."""
+    titres: dict[tuple[str, str], str]
+    """Titre lisible de chaque couple (côté, composant) présent."""
+    controle: int
+    """Nombre de fonctions de test de `tests/test_rangement.py`."""
+
+
+def premiere_phrase(docstring: str | None) -> str | None:
+    """Première phrase du premier paragraphe, sur une ligne, sans le point final.
+
+    La phrase s'arrête au premier point suivi d'une espace ou de la fin du
+    paragraphe (`test_x.py` ou `1.5` ne la coupent pas). `None` si la
+    docstring est absente ou vide.
+    """
+    if not docstring or not docstring.strip():
+        return None
+    paragraphe = " ".join(re.split(r"\n\s*\n", docstring.strip(), maxsplit=1)[0].split())
+    return _FIN_DE_PHRASE.split(paragraphe, maxsplit=1)[0].strip() or None
+
+
+def titre_par_defaut(composant: str) -> str:
+    """Titre d'un composant dont le `__init__.py` n'a pas de docstring : `banc_tests` donne « Banc tests »."""
+    mots = composant.replace("_", " ").strip() or composant
+    return mots[0].upper() + mots[1:]
+
+
+def _arbre(fichier: Path) -> ast.Module:
+    """Arbre syntaxique d'un fichier Python ; une erreur de syntaxe nomme le fichier."""
+    try:
+        return ast.parse(fichier.read_text(encoding="utf-8"), filename=str(fichier))
+    except SyntaxError as erreur:
+        raise SyntaxError(f"{fichier} : fichier illisible ({erreur.msg})") from erreur
+
+
+def inventorier(racine: Path) -> Inventaire:
+    """Lit les fichiers de tests des deux familles (sans les exécuter) et compte leurs fonctions."""
+    fichiers: list[FichierDeTests] = []
+    titres: dict[tuple[str, str], str] = {}
+    for cote, dossier_famille in DOSSIERS.items():
+        dossier = racine / "tests" / dossier_famille
+        if not dossier.is_dir():
+            logger.warning("Dossier de tests absent : %s", dossier)
+            continue
+        for fichier in sorted(dossier.rglob("test_*.py")):
+            relatif = fichier.relative_to(dossier)
+            composant = relatif.parts[0] if len(relatif.parts) > 1 else "(racine)"
+            arbre = _arbre(fichier)
+            tests = fonctions_de_test(arbre)
+            fichiers.append(
+                FichierDeTests(
+                    cote=cote,
+                    composant=composant,
+                    chemin=relatif.as_posix(),
+                    description=premiere_phrase(ast.get_docstring(arbre)),
+                    fonctions=len(tests),
+                    cas_limite=sum("cas_limite" in marques for _, marques in tests),
+                    perf=sum("perf" in marques for _, marques in tests),
+                )
+            )
+            if (cote, composant) not in titres:
+                init = dossier / composant / "__init__.py"
+                titre = premiere_phrase(ast.get_docstring(_arbre(init))) if init.is_file() else None
+                titres[cote, composant] = titre or titre_par_defaut(composant)
+    fichiers.sort(key=lambda f: (list(DOSSIERS).index(f.cote), f.composant, f.chemin))
+    controle = racine / CONTROLE
+    nombre_controle = len(fonctions_de_test(_arbre(controle))) if controle.is_file() else 0
+    logger.debug("%d fichiers de tests inventoriés sous %s", len(fichiers), racine / "tests")
+    return Inventaire(tuple(fichiers), titres, nombre_controle)
+
+
+def sans_docstring(inventaire: Inventaire) -> list[str]:
+    """Fichiers de tests sans docstring de module (chemins relatifs à la racine)."""
+    return [
+        f"tests/{DOSSIERS[f.cote]}/{f.chemin}" for f in inventaire.fichiers if f.description is None
+    ]
+
+
+def _nombre(n: int) -> str:
+    """Nombre groupé par milliers avec une espace (`1 286`)."""
+    return f"{n:,}".replace(",", " ")
+
+
+def _fonctions(n: int) -> str:
+    """« 1 fonction », « 12 fonctions »."""
+    return f"{_nombre(n)} fonction" + ("s" if n > 1 else "")
+
+
+def _cellule(texte: str | None) -> str:
+    """Texte prêt pour une cellule de tableau Markdown."""
+    return SANS_DOCSTRING if texte is None else texte.replace("|", "\\|")
+
+
+def produire_vue_d_ensemble(inventaire: Inventaire) -> str:
+    """Tableau des fonctions de test par composant et par famille, pour `tests/README.md`."""
+    cotes = list(TITRES_DES_FAMILLES)
+    par_composant: Counter[tuple[str, str]] = Counter()
+    totaux: Counter[tuple[str, str]] = Counter()
+    for f in inventaire.fichiers:
+        par_composant[f.composant, f.cote] += f.fonctions
+        totaux[f.cote, "fonctions"] += f.fonctions
+        totaux[f.cote, "cas_limite"] += f.cas_limite
+        totaux[f.cote, "perf"] += f.perf
+
+    lignes = ["| Composant | " + " | ".join(TITRES_DES_FAMILLES.values()) + " | Total |"]
+    lignes.append("|---|" + "---:|" * (len(cotes) + 1))
+    for composant in sorted({f.composant for f in inventaire.fichiers}):
+        valeurs = [par_composant[composant, c] for c in cotes]
+        cellules = " | ".join(_nombre(v) if v else "—" for v in valeurs)
+        lignes.append(f"| `{composant}` | {cellules} | {_nombre(sum(valeurs))} |")
+    for libelle, cle in (
+        ("**Total**", "fonctions"),
+        ("dont cas limites (`cas_limite`)", "cas_limite"),
+        ("dont tests de charge (`perf`)", "perf"),
+    ):
+        valeurs = [totaux[c, cle] for c in cotes]
+        cellules = [_nombre(v) for v in [*valeurs, sum(valeurs)]]
+        if cle == "fonctions":
+            cellules = [f"**{c}**" for c in cellules]
+        lignes.append(f"| {libelle} | " + " | ".join(cellules) + " |")
+    lignes += [
+        "",
+        f"S'y ajoute le contrôle du rangement, `{CONTROLE.as_posix()}` : "
+        f"{_fonctions(inventaire.controle)}.",
+    ]
+    return "\n".join(lignes) + "\n"
+
+
+def produire_famille(inventaire: Inventaire, cote: str) -> str:
+    """Nombres et tableau des fichiers de chaque composant d'une famille, pour son `README.md`."""
+    fichiers = [f for f in inventaire.fichiers if f.cote == cote]
+    composants = sorted({f.composant for f in fichiers})
+    total = sum(f.fonctions for f in fichiers)
+    lignes = [
+        f"Ce dossier compte **{_fonctions(total)} de test** dans "
+        f"{_nombre(len(composants))} composant{'s' if len(composants) > 1 else ''}, dont "
+        f"{_nombre(sum(f.cas_limite for f in fichiers))} marquées `cas_limite` et "
+        f"{_nombre(sum(f.perf for f in fichiers))} marquées `perf`."
+    ]
+    for composant in composants:
+        du_composant = [f for f in fichiers if f.composant == composant]
+        nombre = sum(f.fonctions for f in du_composant)
+        lignes += [
+            "",
+            f"### `{composant}/` : {inventaire.titres[cote, composant]} ({_fonctions(nombre)})",
+            "",
+            "| Fichier | Ce qu'il vérifie | Fonctions |",
+            "|---|---|---:|",
+        ]
+        lignes += [
+            f"| [`{f.chemin}`]({f.chemin}) | {_cellule(f.description)} | {_nombre(f.fonctions)} |"
+            for f in du_composant
+        ]
+    return "\n".join(lignes) + "\n"
+
+
+def _produire_unitaires(inventaire: Inventaire) -> str:
+    """Partie générée de `tests/unitaires/README.md`."""
+    return produire_famille(inventaire, UNITAIRE)
+
+
+def _produire_integration(inventaire: Inventaire) -> str:
+    """Partie générée de `tests/integration/README.md`."""
+    return produire_famille(inventaire, INTEGRATION)
+
+
+BLOCS: dict[str, tuple[Path, Callable[[Inventaire], str]]] = {
+    "tests-vue-d-ensemble": (Path("tests") / "README.md", produire_vue_d_ensemble),
+    "tests-unitaires": (Path("tests") / DOSSIERS[UNITAIRE] / "README.md", _produire_unitaires),
+    "tests-integration": (
+        Path("tests") / DOSSIERS[INTEGRATION] / "README.md",
+        _produire_integration,
+    ),
+}
+"""Parties générées : nom du bloc → (document relatif à la racine, producteur du contenu)."""
+
+
+def debut_de_bloc(nom: str) -> str:
+    """Marqueur d'ouverture de la partie générée `nom`."""
+    return (
+        f"<!-- {nom} : début de la partie générée par `{COMMANDE}`, ne pas modifier à la main -->"
+    )
+
+
+def fin_de_bloc(nom: str) -> str:
+    """Marqueur de fermeture de la partie générée `nom`."""
+    return f"<!-- {nom} : fin de la partie générée -->"
+
+
+def _bornes(document: str, nom: str) -> tuple[int, int] | None:
+    """Positions des deux marqueurs du bloc `nom`, ou `None` s'ils manquent ou sont inversés."""
+    debut, fin = document.find(debut_de_bloc(nom)), document.find(fin_de_bloc(nom))
+    if debut < 0 or fin < debut:
+        return None
+    return debut + len(debut_de_bloc(nom)), fin
+
+
+def partie_generee(document: str, nom: str) -> str | None:
+    """Texte compris entre les marqueurs du bloc `nom` (sans eux), ou `None` s'ils manquent."""
+    bornes = _bornes(document, nom)
+    if bornes is None:
+        return None
+    return document[bornes[0] : bornes[1]].strip("\n") + "\n"
+
+
+def remplacer(document: str, nom: str, contenu: str) -> str:
+    """Le document avec la partie générée `nom` remplacée par `contenu`.
+
+    Tout ce qui se trouve entre les deux marqueurs est remplacé, y compris des
+    restes de conflit de fusion. Lève `ValueError` si les marqueurs manquent
+    ou sont dans le désordre.
+    """
+    bornes = _bornes(document, nom)
+    if bornes is None:
+        raise ValueError(
+            f"marqueurs du bloc « {nom} » introuvables : ajouter les lignes "
+            f"« {debut_de_bloc(nom)} » et « {fin_de_bloc(nom)} » à l'endroit voulu"
+        )
+    return f"{document[: bornes[0]]}\n\n{contenu}\n{document[bornes[1] :]}"
+
+
+def blocs_perimes(racine: Path, inventaire: Inventaire | None = None) -> list[str]:
+    """Explication de chaque bloc dont le document diffère de ce que produit le module."""
+    inventaire = inventaire or inventorier(racine)
+    perimes: list[str] = []
+    for nom, (document, produire) in BLOCS.items():
+        chemin = racine / document
+        texte = chemin.read_text(encoding="utf-8") if chemin.is_file() else ""
+        actuelle = partie_generee(texte, nom)
+        if actuelle is None:
+            perimes.append(f"{document.as_posix()} : marqueurs du bloc « {nom} » absents")
+            continue
+        attendue = produire(inventaire)
+        if actuelle == attendue:
+            continue
+        lignes_actuelles, lignes_attendues = set(actuelle.splitlines()), attendue.splitlines()
+        ecarts = [
+            f"(attendu) {ligne}" for ligne in lignes_attendues if ligne not in lignes_actuelles
+        ]
+        ecarts += [f"(en trop) {ligne}" for ligne in sorted(lignes_actuelles - {*lignes_attendues})]
+        perimes.append(
+            f"{document.as_posix()} : bloc « {nom} » périmé ; premiers écarts :\n"
+            + "\n".join(f"    {ligne[:160]}" for ligne in ecarts[:8])
+        )
+    return perimes
+
+
+def ecrire(racine: Path) -> int:
+    """Réécrit les parties générées ; code 1 si un marqueur ou une docstring de module manque."""
+    inventaire = inventorier(racine)
+    code = 0
+    for nom, (document, produire) in BLOCS.items():
+        chemin = racine / document
+        ancien = chemin.read_text(encoding="utf-8")
+        try:
+            nouveau = remplacer(ancien, nom, produire(inventaire))
+        except ValueError as erreur:
+            print(f"Erreur : {document.as_posix()} : {erreur}", file=sys.stderr)
+            code = 1
+            continue
+        if nouveau == ancien:
+            print(f"{document.as_posix()} : bloc « {nom} » déjà à jour.")
+            continue
+        chemin.write_text(nouveau, encoding="utf-8", newline="\n")
+        logger.info("Bloc %s réécrit dans %s", nom, chemin)
+        print(f"{document.as_posix()} : bloc « {nom} » mis à jour.")
+    manquantes = sans_docstring(inventaire)
+    if manquantes:
+        print(
+            "Erreur : fichier(s) de tests sans docstring de module (écrire en tête du fichier "
+            "une docstring dont la première phrase dit ce qu'il vérifie, puis relancer "
+            f"{COMMANDE}) :\n" + "\n".join(f"  - {f}" for f in manquantes),
+            file=sys.stderr,
+        )
+        code = 1
+    return code
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Sans option : totaux et tests mal rangés (code 1 s'il y en a) ; `--ecrire` : documents."""
+    analyseur = argparse.ArgumentParser(
+        prog="python -m tests.outils.classement",
+        description="Classement des tests en unitaires et intégration, et nombres des documents.",
+    )
+    analyseur.add_argument(
+        "racine",
+        nargs="?",
+        type=Path,
+        default=Path(__file__).resolve().parents[2],
+        help="racine du dépôt (par défaut : ce dépôt)",
+    )
+    analyseur.add_argument(
+        "--ecrire",
+        action="store_true",
+        help="mettre à jour les nombres et tableaux de tests/README.md, "
+        "tests/unitaires/README.md et tests/integration/README.md",
+    )
+    options = analyseur.parse_args(argv)
+    racine = options.racine.resolve()
+    if options.ecrire:
+        return ecrire(racine)
+
     classement = classer(racine)
     ranges = {i: v for i, v in classement.items() if cote_du_dossier(i) is not None}
 
@@ -411,6 +826,7 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    sys.exit(main(sys.argv[1:]))
+    for flux in (sys.stdout, sys.stderr):
+        if hasattr(flux, "reconfigure"):
+            flux.reconfigure(encoding="utf-8")
+    sys.exit(main())

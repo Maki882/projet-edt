@@ -1,8 +1,8 @@
 """Semestres et versions d'emploi du temps : choix, historique, activation, suppression.
 
-Une seule version est active par semestre (index unique en base) ; c'est
-elle que l'on consulte par défaut et elle que le calcul suivant prend comme
-base (verrous et indices). La version active ne se supprime pas : il faut
+Une seule version est active par semestre (index unique en base) : c'est
+celle que les écrans montrent par défaut et celle dont le calcul suivant part
+(verrous et indices). La version active ne se supprime pas : il faut
 d'abord en activer une autre.
 """
 
@@ -64,8 +64,8 @@ class LigneCalcul:
     """Un calcul de l'historique.
 
     `niveaux_modifies` : règles dont le niveau s'écartait du défaut, en
-    phrases ; `contraintes_desactivees` : règles ignorées (calculs d'avant
-    les niveaux de règles) ; `regles_modifiees` : règles personnalisées prises
+    phrases ; `contraintes_desactivees` : règles ignorées (calcul enregistré
+    sans niveaux de règles) ; `regles_modifiees` : règles personnalisées prises
     à un autre niveau que le leur (« R002 : facultatif »).
     """
 
@@ -130,7 +130,7 @@ def choisir_semestre(
 def exiger_semestre(session: Session, semestre_id: int) -> ResumeSemestre:
     """Le semestre `semestre_id` ; lève `ErreurIntrouvable` s'il n'existe pas."""
     semestre = choisir_semestre(session, semestre_id)
-    if semestre is None:  # impossible : choisir_semestre lève déjà pour un identifiant inconnu
+    if semestre is None:  # identifiant vide et aucun semestre en base (un inconnu lève plus haut)
         raise ErreurIntrouvable(f"Le semestre n° {semestre_id} n'existe pas.")
     return semestre
 
@@ -229,7 +229,7 @@ def historique(session: Session, semestre_id: int) -> Historique:
 
 
 def _niveaux_modifies(calcul: m.Calcul, dejeuner_actif: bool) -> tuple[str, ...]:
-    """Règles dont le niveau s'écartait du défaut pour ce calcul (rien pour un calcul ancien).
+    """Règles dont le niveau s'écartait du défaut pour ce calcul (rien pour un calcul sans niveaux).
 
     `DEJEUNER` n'est pas citée sans pause déjeuner (`presentation.libelles_niveaux`).
     """

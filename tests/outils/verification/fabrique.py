@@ -14,8 +14,13 @@ Usage :
 Par défaut : semestre de 15 semaines à partir du lundi 7 septembre 2026,
 grille de l'ISEP (quatre créneaux du lundi au vendredi, deux le samedi
 matin), deux campus (1 = Notre-Dame-des-Champs, 2 = Issy), trois types de
-salle et trois équipements nommés, paramètres par défaut. Les conflits de groupes suivent l'arbre (un groupe est en conflit
-avec ses ascendants) ; `conflit(a, b)` en déclare d'autres.
+salle et trois équipements nommés, paramètres par défaut. Les conflits de
+groupes suivent l'arbre (un groupe est en conflit avec ses ascendants) ;
+`conflit(a, b)` en déclare d'autres.
+
+Les séances y sont écrites à la main (`cours`), placées par `placer` ou
+datées par `occurrence`. Pour un instantané issu du dépliage réel des
+besoins, celui que reçoit le moteur, voir `tests/outils/solveur/fabrique.py`.
 """
 
 from __future__ import annotations
@@ -93,7 +98,7 @@ def h(texte: str | int) -> int:
 
 
 def grille_isep() -> tuple[Creneau, ...]:
-    """Grille par défaut de `docs/decisions.md` (section 4)."""
+    """Grille par défaut de l'établissement : quatre créneaux du lundi au vendredi, deux le samedi matin."""
     creneaux = []
     for jour in range(5):
         creneaux += [

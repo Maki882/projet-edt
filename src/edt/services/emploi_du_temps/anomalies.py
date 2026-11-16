@@ -1,4 +1,4 @@
-"""Ce qui reste à traiter dans les emplois du temps actifs (onglet « À traiter »).
+"""Ce qui reste à traiter dans les emplois du temps actifs (page « Points à traiter »).
 
 Pour la version active de chaque semestre :
 
@@ -45,9 +45,9 @@ LIMITE_LIGNES = 100
 """Nombre maximal de lignes affichées par contrainte (le total reste indiqué)."""
 
 TITRES_GRAVITE = {
-    Gravite.ERREUR: "Erreurs : règles non respectées",
-    Gravite.AVERTISSEMENT: "Avertissements : situations à vérifier",
-    Gravite.INFORMATION: "Informations : écarts admis",
+    Gravite.ERREUR: "Règles non respectées",
+    Gravite.AVERTISSEMENT: "Situations à vérifier",
+    Gravite.INFORMATION: "Pour information",
 }
 
 RAISON_PAR_DEFAUT = (
@@ -155,6 +155,21 @@ class ATraiter:
         return _nb_a_traiter(self.hebdo) + datees + len(a_programmer)
 
     @property
+    def datees_comme_hebdo(self) -> bool:
+        """Vrai si les séances datées n'ont que des anomalies déjà vues dans la semaine type.
+
+        Chaque couple (gravité, règle) des séances datées figure dans la semaine
+        type : les séances datées en découlent, corriger la semaine type (ou
+        générer à nouveau) les corrige aussi.
+        """
+        if not self.gravites_datees:
+            return False
+        hebdo = {(g.gravite, c.code) for g in self.gravites_hebdo for c in g.contraintes}
+        return all(
+            (g.gravite, c.code) in hebdo for g in self.gravites_datees for c in g.contraintes
+        )
+
+    @property
     def nb_ecarts_decoches(self) -> int:
         """Écarts (toutes gravités) aux contraintes décochées lors du calcul."""
         return sum(groupe.total for groupe in self.decochees)
@@ -256,8 +271,7 @@ def _grouper(
                             code,
                             gravite,
                             liens.lien(a),
-                            # Livré par le lot vérificateur : absent des anomalies plus anciennes.
-                            presentation.etiquette_niveau(getattr(a, "niveau", None)),
+                            presentation.etiquette_niveau(a.niveau),
                             presentation.regle_citee(a, annee_id),
                         )
                         for a in liste[:LIMITE_LIGNES]

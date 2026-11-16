@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import minutes_vers_texte
+from edt.verification.contrat import Anomalie
 
 NB_COULEURS = 12
 """Nombre de teintes de la palette des matières (classes CSS `edt-couleur-0` à `-11`)."""
@@ -42,7 +43,7 @@ MOIS = (
 def indice_couleur(cle: str) -> int:
     """Indice de palette stable pour une matière (même code, même couleur, partout et toujours).
 
-    On utilise CRC32 et non `hash()`, dont la valeur change d'un processus à l'autre.
+    CRC32 et non `hash()`, dont la valeur change d'un processus à l'autre.
     """
     return zlib.crc32(cle.encode("utf-8")) % NB_COULEURS
 
@@ -109,13 +110,6 @@ def date_longue(jour: dt.date | None) -> str:
     if jour is None:
         return ""
     return f"{JOURS[jour.weekday()]} {jour.day} {MOIS[jour.month - 1]} {jour.year}"
-
-
-def date_courte(jour: dt.date | None) -> str:
-    """« 05/10 »."""
-    if jour is None:
-        return ""
-    return jour.strftime("%d/%m")
 
 
 def plage_horaire(debut: int, fin: int) -> str:
@@ -228,10 +222,10 @@ def libelles_entorses(
 
 
 ADRESSE_REGLES = "/regles"
-"""Écran Données › Règles personnalisées (lot web données)."""
+"""Écran Données › Règles personnalisées."""
 
 ADRESSE_AJOUT_REGLE = "/regles/nouveau"
-"""Ajout guidé d'une règle (lot web données ; adresse à confirmer avec lui)."""
+"""Ajout guidé d'une règle (écran Données › Règles personnalisées)."""
 
 
 def adresse_regle(code: str, annee_id: int | None = None) -> str:
@@ -255,19 +249,18 @@ class RegleCitee:
     lien: str | None
 
 
-def regle_citee(anomalie: object, annee_id: int | None = None) -> RegleCitee | None:
+def regle_citee(anomalie: Anomalie, annee_id: int | None = None) -> RegleCitee | None:
     """La règle citée par une anomalie `REGLE`, d'après `regle_id`, `regle_code`, `regle_phrase`.
 
-    Ces champs sont livrés par le lot vérificateur et lus par `getattr` : une
-    anomalie qui ne les porte pas n'en cite aucune (`None`). Sans code, la
-    règle est désignée par son numéro, sans lien. `annee_id` : année du
-    semestre affiché, pour que le lien ouvre la liste de cette année.
+    Une anomalie dont ces champs sont vides n'en cite aucune (`None`). Sans
+    code, la règle est désignée par son numéro, sans lien. `annee_id` : année
+    du semestre affiché, pour que le lien ouvre la liste de cette année.
     """
-    regle_id = getattr(anomalie, "regle_id", None)
-    code = getattr(anomalie, "regle_code", None)
+    regle_id = anomalie.regle_id
+    code = anomalie.regle_code
     if regle_id is None and not code:
         return None
-    phrase = str(getattr(anomalie, "regle_phrase", None) or "")
+    phrase = anomalie.regle_phrase or ""
     if not code:
         return RegleCitee(f"règle n° {regle_id}", phrase, None)
     return RegleCitee(str(code), phrase, adresse_regle(str(code), annee_id))

@@ -1,1 +1,4 @@
-"""Tests d'intégration du lot « import et export » : web, ligne de commande, calcul complet."""
+"""Import et export par le site et la ligne de commande.
+
+Écrans web, commandes et export d'une version calculée.
+"""

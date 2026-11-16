@@ -4,10 +4,11 @@ Partagées par les tests unitaires (`tests/unitaires/web_edt`), les tests
 d'intégration (`tests/integration/web_edt`) et leurs fixtures
 (`tests/outils/web_edt/fixtures.py`, `tests/integration/web_edt/conftest.py`).
 
-Les fonctions des lots pas encore livrés (vérificateur, pré-vérifications,
-instanciation) sont **simulées** en installant de faux modules aux noms
-convenus : le raccord (`edt.services.emploi_du_temps.raccords`) les trouve
-exactement comme il trouvera les vrais (`FauxVerificateur`).
+Le vérificateur, les pré-vérifications et l'instanciation peuvent être
+**simulés** (`FauxVerificateur`) en installant de faux modules aux noms
+attendus : le raccord (`edt.services.emploi_du_temps.raccords`) les trouve
+exactement comme les vrais. Un test règle ainsi leurs réponses, ou simule
+leur absence.
 
 Banque des cas limites (`@pytest.mark.cas_limite`, `test_cas_limites.py`) :
 
@@ -107,8 +108,8 @@ class FauxVerificateur:
     niveaux_regles_pre_verifies: dict | None = None
 
     def __setattr__(self, nom, valeur) -> None:
-        # Changer ce que renvoie le faux vérificateur ne touche pas la base : on vide la
-        # mémoire des écrans pour que le prochain affichage le voie.
+        # Changer ce que renvoie le faux vérificateur ne touche pas la base : la mémoire des
+        # écrans est vidée pour que le prochain affichage le voie.
         super().__setattr__(nom, valeur)
         memoire.oublier()
 
@@ -296,7 +297,11 @@ def creer_version_vide(
 
 @contextlib.contextmanager
 def calcul_qui_tourne(semestre_id: int, monkeypatch) -> Iterator[int]:
-    """Un calcul en cours (moteur lent qui attend l'arrêt) ; arrêté et attendu à la sortie."""
+    """Un calcul en cours (moteur lent qui attend l'arrêt) ; arrêté et attendu à la sortie.
+
+    Un calcul encore en cours après `DELAI` secondes fait échouer le test : il survivrait
+    sinon à sa base temporaire.
+    """
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -311,7 +316,8 @@ def calcul_qui_tourne(semestre_id: int, monkeypatch) -> Iterator[int]:
         yield calcul_id
     finally:
         generation.demander_arret(calcul_id)
-        generation.attendre_calcul(calcul_id, DELAI)
+        suivi = generation.attendre_calcul(calcul_id, DELAI)
+        assert suivi.etat.est_termine, f"le calcul {calcul_id} ne s'est pas arrêté en {DELAI} s"
 
 
 @contextlib.contextmanager

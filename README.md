@@ -110,10 +110,11 @@ rangement est contrôlée automatiquement ; elle est décrite dans
 python -m pytest -m "not perf"              # toute la suite, sans les tests de charge
 python -m pytest tests/unitaires            # les tests unitaires
 python -m pytest tests/integration          # les tests d'intégration
-python -m pytest tests/integration/parcours # les six parcours de bout en bout
+python -m pytest tests/integration/parcours # les parcours de bout en bout
 python -m pytest -m cas_limite              # la banque des cas limites
 python -m pytest -m perf                    # les tests de charge (longs)
 python -m tests.outils.classement           # nombre de tests par famille et par composant
+python -m tests.outils.classement --ecrire  # met à jour les nombres de tests des documents
 python -m ruff check .                      # lint
 python -m ruff format --check .             # format
 ```

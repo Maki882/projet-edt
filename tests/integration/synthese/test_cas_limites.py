@@ -1,4 +1,4 @@
-"""Banque des cas limites du générateur de jeux fictifs : la commande `python -m edt jeu`.
+"""Une graine ou une année refusée ne vide jamais la base.
 
 Une graine ou une année refusée par la commande ne doit jamais vider la base par la
 remise à zéro. Les autres cas limites du générateur sont dans

@@ -1,1 +1,4 @@
-"""Tests d'intégration du générateur de données fictives : commande `python -m edt jeu`."""
+"""Commande des jeux fictifs.
+
+Commande `python -m edt jeu`.
+"""

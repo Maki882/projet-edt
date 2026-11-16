@@ -369,7 +369,12 @@ def _besoin(
     if not types_acceptes and b.type_seance.type_salle_defaut_id is not None:
         types_acceptes = frozenset({b.type_seance.type_salle_defaut_id})
 
-    base = b.libelle or f"{b.type_seance.code} {b.matiere.libelle}"
+    # La précision saisie (« Partiel ») complète la matière, qu'elle ne remplace pas.
+    base = (
+        f"{b.matiere.libelle} ({b.libelle})"
+        if b.libelle
+        else f"{b.type_seance.code} {b.matiere.libelle}"
+    )
     codes = ", ".join(sorted(g.code for g in b.groupes))
     return Besoin(
         id=b.id,

@@ -109,7 +109,7 @@ def test_commande_generer_niveau(jeu_minimal, lanceur):
     assert "Règles : " in resultat.output
     assert "Pause entre deux séances : facultatif" in resultat.output
     assert "ignorée" in resultat.output
-    assert "Maxima horaires des enseignants : nécessaire" in resultat.output
+    assert "Heures maximales des enseignants : nécessaire" in resultat.output
     with session_base() as session:
         (calcul,) = session.scalars(select(m.Calcul)).all()
         assert calcul.parametres["niveaux"]["PAUSE"] == "facultatif"

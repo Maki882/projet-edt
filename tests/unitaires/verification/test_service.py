@@ -1,4 +1,4 @@
-"""Intégration : service de vérification sur le jeu minimal du socle (base SQLite temporaire).
+"""Service de vérification sur le jeu minimal (base SQLite temporaire).
 
 La version vérifiée est l'emploi du temps saisi à la main de `versions.py`
 (fixture `version_id` de `conftest.py`) : sa semaine type est valide ; ses
@@ -15,9 +15,9 @@ from sqlalchemy import func, select
 from tests.outils.verification.versions import LUNDI, VENDREDI
 
 from edt.db import modeles as m
-from edt.db.moteur import session_base
+from edt.db.moteur import obtenir_moteur, session_base
 from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.enumerations import Gravite
+from edt.domaine.enumerations import Gravite, OrigineVersion
 from edt.domaine.heures import texte_vers_minutes
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.instantane import charger_instantane
@@ -77,6 +77,32 @@ def test_contraintes_choisies(version_id, session):
         verifier_version(session, version_id, ["PAS_UN_CODE"])
 
 
+def test_instantane_charge_une_fois_par_session_tant_qu_elle_n_ecrit_rien(
+    version_id, session, monkeypatch
+):
+    # L'accueil vérifie la semaine type puis les séances datées de la même version.
+    from edt.services import verification
+
+    chargements = []
+    original = verification.charger_instantane
+
+    def espion(*args, **kwargs):
+        chargements.append(args[1:])
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(verification, "charger_instantane", espion)
+    verifier_version(session, version_id)
+    verifier_occurrences_version(session, version_id)
+    assert len(chargements) == 1
+
+    # Une écriture de la session (ici un verrou posé) fait recharger l'instantané.
+    ligne = session.scalar(select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == version_id))
+    ligne.verrou = True
+    session.flush()
+    assert verifier_version(session, version_id).par_code == {}
+    assert len(chargements) == 2
+
+
 def test_modification_envisagee_sans_rien_enregistrer(version_id, jeu_minimal, session):
     instantane = charger_instantane(session, jeu_minimal.semestre_id)
     td_g2 = next(b for b in instantane.besoins if b.libelle == "TD Mathématiques - A1-G2")
@@ -110,8 +136,42 @@ def test_modification_envisagee_sans_rien_enregistrer(version_id, jeu_minimal, s
         verifier_modification(session, version_id, seance, 9, h("8h30"), h("10h30"), n204)
 
 
+@pytest.mark.cas_limite
+def test_modification_d_une_seance_non_placee(version_sans_seances_datees, jeu_minimal, session):
+    """Cas : la séance à placer n'est pas dans la semaine type (geste normal de « À traiter »).
+
+    Risque : le placement proposé n'était pas ajouté, ou l'anomalie « n'est pas placée »
+    d'avant passait pour introduite : une séance non placée restait impossible à placer.
+    """
+    version_id = version_sans_seances_datees
+    instantane = charger_instantane(session, jeu_minimal.semestre_id)
+    td_g2 = next(b for b in instantane.besoins if b.libelle == "TD Mathématiques - A1-G2")
+    n204 = next(s.id for s in instantane.salles if s.code == "N204")
+    seance, h = f"{td_g2.id}-1", texte_vers_minutes
+    ligne = session.scalar(
+        select(m.SeanceHebdo).where(
+            m.SeanceHebdo.version_id == version_id, m.SeanceHebdo.besoin_id == td_g2.id
+        )
+    )
+    session.delete(ligne)
+    session.commit()
+
+    audit = verifier_version(session, version_id)
+    (non_placee,) = audit.anomalies
+    assert str(non_placee.code) == "VOLUME" and "n'est pas placée" in non_placee.message
+
+    libre = verifier_modification(
+        session, version_id, seance, VENDREDI, h("13h45"), h("15h45"), n204
+    )
+    assert libre.valide and libre.anomalies == ()
+    conflit = verifier_modification(
+        session, version_id, seance, LUNDI, h("10h45"), h("12h45"), n204
+    )
+    assert conflit.par_code == {"ENSEIGNANT_UNIQUE": 1, "GROUPE_UNIQUE": 1}
+
+
 def test_modification_ignore_les_violations_deja_presentes(version_id, jeu_minimal, session):
-    # Constat n° 16 de la revue : une violation antérieure et indépendante du déplacement
+    # Une violation antérieure et indépendante du déplacement
     # (ici le maximum hebdomadaire de M. Bernard, dépassé dans la version enregistrée) ne
     # doit pas figer ses séances.
     bernard = session.scalar(select(m.Enseignant).where(m.Enseignant.identifiant == "ENS002"))
@@ -191,6 +251,46 @@ def test_version_a_verifier(version_id, jeu_minimal, session):
         version_a_verifier(session, semestre_id=autre.id)
 
 
+def test_version_a_verifier_sans_option_prend_le_semestre_par_defaut(
+    version_id, jeu_minimal, session, monkeypatch
+):
+    # Chemin de « python -m edt verifier » sans option : le semestre par défaut, figé ici pour
+    # ne pas dépendre de la date du jour.
+    monkeypatch.setattr(
+        "edt.services.verification.semestre_par_defaut",
+        lambda session, aujourdhui=None: session.get(m.Semestre, jeu_minimal.semestre_id),
+    )
+    assert version_a_verifier(session) == version_id
+
+
+@pytest.mark.cas_limite
+def test_deux_versions_actives_refusees_au_lieu_d_en_verifier_une_au_hasard(
+    version_id, jeu_minimal, session
+):
+    """Cas : base créée sans l'index unique partiel ; deux versions du semestre sont actives.
+
+    Risque : `python -m edt verifier --semestre N` vérifiait la première ligne venue, sans
+    rien dire, et le rapport portait sur une autre version que celle affichée.
+    """
+    with obtenir_moteur().begin() as connexion:
+        connexion.exec_driver_sql("DROP INDEX uq_version_edt_active_par_semestre")
+    session.add(
+        m.VersionEdt(
+            semestre_id=jeu_minimal.semestre_id,
+            numero=2,
+            libelle="Seconde version active",
+            origine=OrigineVersion.REFERENCE,
+            active=True,
+        )
+    )
+    session.commit()
+
+    with pytest.raises(ErreurRegleMetier, match="Plusieurs versions") as erreur:
+        version_a_verifier(session, semestre_id=jeu_minimal.semestre_id)
+    assert str(version_id) in erreur.value.message
+    assert version_a_verifier(session, version_id=version_id) == version_id
+
+
 def test_rapport_serialisable(version_id, session):
     import json
 
@@ -225,7 +325,9 @@ def test_version_sans_seance_datee_signalee_explicitement(
         "séances datées (instanciation sur le calendrier) pour vérifier le calendrier réel."
     )
     assert rapport.par_code == {"VOLUME": 1}
-    # Sans VOLUME à vérifier, le signal reste dans le journal, pas dans le rapport.
+    # Sans VOLUME à vérifier, le signal reste dans le journal, pas dans le rapport (seul cet
+    # appel compte : le premier a pu journaliser une phrase voisine).
+    caplog.clear()
     with caplog.at_level("WARNING", logger="edt.services.verification"):
         restreint = verifier_occurrences_version(
             session, version_sans_seances_datees, contraintes_actives=["SALLE_UNIQUE"]
@@ -308,8 +410,12 @@ def test_salle_orpheline_nommee_sans_rendre_la_verification_impossible(
     assert f"une salle qui n'existe plus (n° {salle_n204_orpheline})" in orpheline.message
     # Une modification vers une salle inconnue est refusée : elle ne vaut pas « salle à définir ».
     (seance,) = anomalie.seances
-    with pytest.raises(ErreurIntrouvable, match=f"salle n° {salle_n204_orpheline}"):
+    with pytest.raises(ErreurIntrouvable) as erreur:
         verifier_modification(session, version_id, seance, VENDREDI, 825, 945, salle_n204_orpheline)
+    # Les salles sont celles de tout l'établissement : le message ne parle pas du semestre.
+    assert erreur.value.message == (
+        f"La salle n° {salle_n204_orpheline} n'existe pas (ou plus) : choisir une salle de la liste."
+    )
 
 
 @pytest.mark.cas_limite
@@ -328,8 +434,21 @@ def test_periode_aux_bornes_extremes_du_calendrier(version_id, session):
     assert rapport.par_code == {"DISPO_SALLE": 2, "JOUR_FERME": 4}
 
 
+SANS_CONTRAINTE = {
+    "semaine-type-liste-vide": lambda s, v, seance: verifier_version(s, v, contraintes_actives=[]),
+    "semaine-type-niveaux-vides": lambda s, v, seance: verifier_version(s, v, niveaux={}),
+    "seances-datees-liste-vide": lambda s, v, seance: verifier_occurrences_version(
+        s, v, contraintes_actives=[]
+    ),
+    "modification-liste-vide": lambda s, v, seance: verifier_modification(
+        s, v, seance, VENDREDI, 825, 945, None, contraintes_actives=[]
+    ),
+}
+
+
 @pytest.mark.cas_limite
-def test_liste_de_contraintes_vide_refusee(version_id, session):
+@pytest.mark.parametrize("appel", SANS_CONTRAINTE.values(), ids=SANS_CONTRAINTE.keys())
+def test_liste_de_contraintes_vide_refusee(version_id, session, appel):
     """Cas : un appelant transmet une liste de contraintes vide (aucune case cochée) ou des niveaux vides.
 
     Risque : rapport « valide » sans rien avoir vérifié : une modification manuelle acceptée
@@ -338,42 +457,28 @@ def test_liste_de_contraintes_vide_refusee(version_id, session):
     ligne = session.scalar(
         select(m.SeanceHebdo).where(m.SeanceHebdo.version_id == version_id).limit(1)
     )
-    appels = (
-        lambda: verifier_version(session, version_id, contraintes_actives=[]),
-        lambda: verifier_version(session, version_id, niveaux={}),
-        lambda: verifier_occurrences_version(session, version_id, contraintes_actives=[]),
-        lambda: verifier_modification(
-            session,
-            version_id,
-            f"{ligne.besoin_id}-{ligne.rang}",
-            VENDREDI,
-            825,
-            945,
-            None,
-            contraintes_actives=[],
-        ),
-    )
-    for appel in appels:
-        with pytest.raises(ErreurDonneesInvalides, match="Aucune contrainte à vérifier"):
-            appel()
+    with pytest.raises(ErreurDonneesInvalides, match="Aucune contrainte à vérifier"):
+        appel(session, version_id, f"{ligne.besoin_id}-{ligne.rang}")
+
+
+HORS_BORNES = 2**70
+HORS_DES_BORNES = {
+    "version-a-verifier-version": lambda s: version_a_verifier(s, version_id=HORS_BORNES),
+    "version-a-verifier-semestre": lambda s: version_a_verifier(s, semestre_id=HORS_BORNES),
+    "semaine-type": lambda s: verifier_version(s, HORS_BORNES),
+    "seances-datees": lambda s: verifier_occurrences_version(s, HORS_BORNES),
+    "modification": lambda s: verifier_modification(s, HORS_BORNES, "1-1", LUNDI, 510, 630, None),
+    "version-nulle": lambda s: version_a_verifier(s, version_id=0),  # nul ou négatif : de même
+}
 
 
 @pytest.mark.cas_limite
-def test_identifiant_hors_bornes_de_la_base_introuvable(jeu_minimal, session):
+@pytest.mark.parametrize("appel", HORS_DES_BORNES.values(), ids=HORS_DES_BORNES.keys())
+def test_identifiant_hors_bornes_de_la_base_introuvable(jeu_minimal, session, appel):
     """Cas : un identifiant de version ou de semestre hors des bornes de la base (2**70, saisi dans une adresse ou la commande).
 
     Risque : `OverflowError` de SQLite (erreur 500, trace dans la commande) au lieu de
     « n'existe pas ».
     """
-    hors_bornes = 2**70
-    appels = (
-        lambda: version_a_verifier(session, version_id=hors_bornes),
-        lambda: version_a_verifier(session, semestre_id=hors_bornes),
-        lambda: verifier_version(session, hors_bornes),
-        lambda: verifier_occurrences_version(session, hors_bornes),
-        lambda: verifier_modification(session, hors_bornes, "1-1", LUNDI, 510, 630, None),
-        lambda: version_a_verifier(session, version_id=0),  # nul ou négatif : de même
-    )
-    for appel in appels:
-        with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
-            appel()
+    with pytest.raises(ErreurIntrouvable, match="n'existe pas"):
+        appel(session)

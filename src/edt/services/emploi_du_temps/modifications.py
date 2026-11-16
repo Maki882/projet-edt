@@ -5,8 +5,8 @@ Règles :
 - **toute modification de placement est vérifiée avant d'être enregistrée** :
   une anomalie de gravité « erreur » la refuse (rien n'est écrit) ; les
   avertissements et informations sont rendus avec le résultat. Si le
-  vérificateur n'est pas encore disponible, la modification est refusée
-  avec un message clair (une séance n'est jamais déplacée sans contrôle) ;
+  vérificateur ne peut pas être appelé, la modification est refusée avec un
+  message clair (une séance n'est jamais déplacée sans contrôle) ;
 - la semaine type se vérifie par `raccords.verifier_modification` (rien
   n'est écrit pendant la vérification) ; une occurrence datée est déplacée
   dans la transaction, vérifiée par `raccords.verifier_occurrences_version`
@@ -44,6 +44,13 @@ règle ignorée lors du calcul ne la bloque pas ; seule une règle nécessaire
 la refuse. Le vérificateur ne renvoie que les anomalies que le déplacement
 introduit ou aggrave : une violation déjà présente ne fige pas la séance.
 
+Le formulaire de déplacement d'une séance de la semaine type annonce, pour
+chaque heure de début, si le déplacement serait accepté (« possible ») ou
+refusé, sans salle (le groupe, l'enseignant et les règles) : la liste des
+salles libres, rechargée à chaque changement d'heure, couvre la salle. Cette
+annonce tient dans `BUDGET_ANNOTATION_S` secondes ; au-delà, les heures
+suivantes restent sans mention.
+
 Les salles proposées sont les salles **compatibles** avec le besoin
 (capacité, types acceptés, équipements, accessibilité, salle ou campus
 imposés : mêmes règles que l'instantané), libres d'abord, les occupées
@@ -54,6 +61,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import time
 from dataclasses import dataclass
 
 from sqlalchemy import func, select
@@ -69,7 +77,7 @@ from edt.domaine.enumerations import (
 )
 from edt.domaine.heures import minutes_vers_texte, se_chevauchent
 from edt.domaine.instantane import id_seance
-from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
+from edt.erreurs import ErreurDonneesInvalides, ErreurEDT, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.conflits_groupes import conflits_groupes
 from edt.services.emploi_du_temps import raccords, regles_personnalisees
 from edt.services.emploi_du_temps.identifiants import apercu, exiger_identifiant, obtenir
@@ -86,7 +94,10 @@ MESSAGE_SEANCES_IMPORTEES = (
 )
 
 MOTIF_MAX = 2000
-"""Longueur maximale du motif d'annulation d'une séance datée (le champ du panneau la reprend)."""
+"""Longueur maximale du motif d'annulation d'une séance datée (`FormulaireOccurrence.motif_max`)."""
+
+BUDGET_ANNOTATION_S = 1.5
+"""Temps au-delà duquel les heures de début suivantes ne sont plus vérifiées une à une."""
 
 REFUS_SANS_VERIFICATION = (
     "La modification n'a pas été enregistrée : une séance n'est déplacée qu'après vérification, "
@@ -124,6 +135,9 @@ class FormulaireSeance:
     `remarque` : pourquoi le jour demandé n'a pas été retenu (jour non
     proposé pour cette séance, ou aucun début de créneau ce jour-là où elle
     tienne avant la fermeture) ; le jour actuel est alors gardé.
+    `debuts` : (valeur, texte) ; le texte dit « (possible) », « (refusé) » ou
+    « (actuelle) » (voir l'en-tête du module). `remarque_debuts` : pourquoi
+    les heures n'ont pas pu être vérifiées.
     """
 
     bloc: Bloc
@@ -137,6 +151,7 @@ class FormulaireSeance:
     salle_id: int | None
     exigences: str
     remarque: str | None = None
+    remarque_debuts: str | None = None
 
 
 @dataclass(frozen=True)
@@ -156,6 +171,11 @@ class FormulaireOccurrence:
     exigences: str
     fermeture: str | None
     modifiable: bool
+
+    @property
+    def motif_max(self) -> int:
+        """Longueur maximale du motif d'annulation (`MOTIF_MAX`), reprise par le champ du panneau."""
+        return MOTIF_MAX
 
 
 @dataclass(frozen=True)
@@ -186,24 +206,27 @@ class BilanRecalcul:
     @property
     def message(self) -> str:
         """Phrase pour l'utilisateur."""
+        replacees = "replacée" if self.nb_replacees < 2 else "replacées"
         texte = (
             f"Séances datées recalculées : {self.nb_occurrences} au total, dont "
-            f"{self.nb_replacees} replacée(s) après un jour fermé ou une indisponibilité et "
+            f"{self.nb_replacees} {replacees} après un jour fermé ou une indisponibilité et "
             f"{self.nb_a_programmer} à programmer."
         )
-        if self.nb_retouches:
+        if self.nb_retouches == 1:
+            texte += " Votre retouche à la main (déplacement ou annulation) est conservée."
+        elif self.nb_retouches:
             texte += (
-                f" Vos {self.nb_retouches} retouche(s) à la main (déplacements, annulations) "
+                f" Vos {self.nb_retouches} retouches à la main (déplacements, annulations) "
                 "sont conservées."
             )
         if self.nb_a_programmer:
-            texte += " Les séances à programmer sont listées dans l'onglet « À traiter »."
+            texte += " Les séances à programmer sont listées dans la page « Points à traiter »."
         return texte
 
 
 @dataclass(frozen=True)
 class AnomaliesSeance:
-    """Anomalies actuelles d'une séance, ou la raison pour laquelle on ne les connaît pas."""
+    """Anomalies actuelles d'une séance, ou la raison pour laquelle elles sont inconnues."""
 
     controle: raccords.Controle
     anomalies: tuple[Anomalie, ...]
@@ -279,6 +302,7 @@ def formulaire_seance(
     if debut is None or debut not in dict(debuts):
         debut = seance.debut_min if jour == seance.jour else debuts[0][0]
     fin = debut + duree
+    debuts, remarque_debuts = _annoter_debuts(session, seance, jour, duree, debuts)
     exigences = _Exigences.du_besoin(session, besoin)
     salles = _salles_hebdo(session, seance, exigences, jour, debut, fin)
     if salle_id is None or salle_id not in {s.id for s in salles}:
@@ -295,7 +319,53 @@ def formulaire_seance(
         salle_id=salle_id,
         exigences=exigences.texte(session),
         remarque=remarque,
+        remarque_debuts=remarque_debuts,
     )
+
+
+def _annoter_debuts(
+    session: Session,
+    seance: m.SeanceHebdo,
+    jour: int,
+    duree: int,
+    debuts: tuple[tuple[int, str], ...],
+) -> tuple[tuple[tuple[int, str], ...], str | None]:
+    """Chaque heure de début suivie de « (possible) », « (refusé) » ou « (actuelle) ».
+
+    La vérification se fait sans salle, par le même raccord que l'enregistrement
+    (`raccords.verifier_modification`) ; les valeurs ne changent pas. Au-delà
+    de `BUDGET_ANNOTATION_S`, les heures suivantes restent sans mention. Si la
+    vérification est impossible, aucune mention, et la raison est rendue.
+    """
+    chrono = time.monotonic()
+    identifiant = id_seance(seance.besoin_id, seance.rang)
+    annotes: list[tuple[int, str]] = []
+    for position, (debut, texte) in enumerate(debuts):
+        if jour == seance.jour and debut == seance.debut_min:
+            annotes.append((debut, f"{texte} (actuelle)"))
+            continue
+        if time.monotonic() - chrono > BUDGET_ANNOTATION_S:
+            journal.info(
+                "Formulaire de la séance %d : %d heure(s) non vérifiée(s) (budget de %.1f s)",
+                seance.id,
+                len(debuts) - position,
+                BUDGET_ANNOTATION_S,
+            )
+            annotes.extend(debuts[position:])
+            break
+        try:
+            verification = raccords.verifier_modification(
+                session, seance.version_id, identifiant, jour, debut, debut + duree, None
+            )
+        except ErreurEDT as erreur:
+            journal.info(
+                "Formulaire de la séance %d : heures non vérifiées (%s)", seance.id, erreur
+            )
+            return debuts, (
+                "Les heures possibles n'ont pas pu être vérifiées : " + _minuscule(erreur.message)
+            )
+        annotes.append((debut, f"{texte} ({'possible' if verification.valide else 'refusé'})"))
+    return tuple(annotes), None
 
 
 def modifier_placement(
@@ -316,9 +386,14 @@ def modifier_placement(
     besoin = seance.besoin
     duree = seance.fin_min - seance.debut_min
     if not 0 <= jour <= 6:
-        raise ErreurDonneesInvalides(f"Jour invalide : {jour} (attendu : 0 pour lundi à 6).")
+        raise ErreurDonneesInvalides(
+            f"Jour invalide ({jour}, attendu : 0 pour lundi à 6) : choisir un jour de la liste."
+        )
     if jour not in dict(_jours_possibles(session, seance, salle_id)):
-        raise ErreurDonneesInvalides(f"Cette séance ne peut pas être proposée le {JOURS[jour]}.")
+        raise ErreurDonneesInvalides(
+            f"Cette séance ne peut pas être proposée le {JOURS[jour]} (jour non travaillé, ou "
+            "exclu par une règle) : choisir un jour de la liste."
+        )
     debuts = dict(
         _debuts_possibles(
             session, besoin, jour, duree, seance.debut_min if jour == seance.jour else None
@@ -327,10 +402,13 @@ def modifier_placement(
     if debut not in debuts:
         raise ErreurDonneesInvalides(
             f"L'heure de début {minutes_vers_texte(debut) if 0 <= debut <= 1440 else debut} "
-            f"n'est pas un début de créneau de la grille le {JOURS[jour]}."
+            f"n'est pas un début de créneau de la grille le {JOURS[jour]} : choisir une heure "
+            "de la liste."
         )
     if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
-        raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
+        raise ErreurIntrouvable(
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
+        )
     fin = debut + duree
 
     deplacement = (jour, debut, salle_id) != (seance.jour, seance.debut_min, seance.salle_id)
@@ -374,7 +452,10 @@ def modifier_placement(
         )
         return ResultatModification(
             enregistree=False,
-            message="La modification n'a pas été enregistrée : elle ne respecte pas les règles suivantes.",
+            message=(
+                "La modification n'a pas été enregistrée : elle ne respecte pas les règles "
+                "suivantes. Choisir un autre jour, une autre heure ou une autre salle."
+            ),
             niveau="erreur",
             anomalies=_triees(retenues),
         )
@@ -391,7 +472,7 @@ def modifier_placement(
         (jour, debut, salle_id),
         seance.version_id,
     )
-    remarques = _recalculer_seances_datees(session, seance.version_id)
+    remarques, a_signaler = _recalculer_seances_datees(session, seance.version_id)
     salle = obtenir(session, m.Salle, salle_id) if salle_id is not None else None
     message = f"Séance déplacée au {JOURS[jour]} à {minutes_vers_texte(debut)}" + (
         f", salle {salle.code}." if salle else ", sans salle."
@@ -401,7 +482,9 @@ def modifier_placement(
     return ResultatModification(
         enregistree=True,
         message=message,
-        niveau="attention" if remarques or retenues else "succes",
+        # Vert sauf avertissement, ou séances datées non recalculées ou à programmer : une
+        # information (écart admis) ne mérite pas l'orange.
+        niveau="attention" if a_signaler or _avertit(retenues) else "succes",
         anomalies=_triees(retenues),
         remarques=tuple(remarques),
     )
@@ -489,7 +572,8 @@ def deplacer_occurrence(
     if not semestre.date_debut <= date <= semestre.date_fin:
         raise ErreurDonneesInvalides(
             f"La date du {date:%d/%m/%Y} est en dehors du semestre "
-            f"({semestre.date_debut:%d/%m/%Y} au {semestre.date_fin:%d/%m/%Y})."
+            f"({semestre.date_debut:%d/%m/%Y} au {semestre.date_fin:%d/%m/%Y}) : choisir une "
+            "date dans cette période."
         )
     duree = occurrence.fin_min - occurrence.debut_min
     garde = occurrence.debut_min if date.weekday() == occurrence.date.weekday() else None
@@ -498,10 +582,12 @@ def deplacer_occurrence(
     ):
         raise ErreurDonneesInvalides(
             f"L'heure de début choisie n'est pas un début de créneau de la grille le "
-            f"{JOURS[date.weekday()]}."
+            f"{JOURS[date.weekday()]} : choisir une heure de la liste."
         )
     if salle_id is not None and obtenir(session, m.Salle, salle_id) is None:
-        raise ErreurIntrouvable(f"La salle n° {salle_id} n'existe pas.")
+        raise ErreurIntrouvable(
+            f"La salle n° {salle_id} n'existe pas (ou plus) : choisir une salle de la liste."
+        )
     if (date, debut, salle_id) == (occurrence.date, occurrence.debut_min, occurrence.salle_id) and (
         occurrence.statut != StatutOccurrence.A_PROGRAMMER
     ):
@@ -572,7 +658,10 @@ def deplacer_occurrence(
         journal.info("Déplacement de l'occurrence %d refusé par le vérificateur", occurrence.id)
         return ResultatModification(
             enregistree=False,
-            message="Le déplacement n'a pas été enregistré : il ne respecte pas les règles suivantes.",
+            message=(
+                "Le déplacement n'a pas été enregistré : il ne respecte pas les règles "
+                "suivantes. Choisir une autre date, une autre heure ou une autre salle."
+            ),
             niveau="erreur",
             anomalies=_triees(concernees),
         )
@@ -585,17 +674,20 @@ def deplacer_occurrence(
             f"{minutes_vers_texte(debut)}"
             + (f", salle {salle.code}." if salle else ", sans salle.")
         ),
-        niveau="attention" if concernees else "succes",
+        niveau="attention" if _avertit(concernees) else "succes",
         anomalies=_triees(concernees),
     )
 
 
-def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None = None) -> str:
+def annuler_occurrence(
+    session: Session, occurrence_id: int, motif: str | None = None
+) -> ResultatModification:
     """Annule une séance datée (elle n'a pas lieu et ne compte plus dans le volume).
 
     Le motif est recopié dans la remarque de la séance : au-delà de `MOTIF_MAX`
     caractères (envoi fabriqué, le champ du navigateur s'arrête avant), refus
-    sans rien changer.
+    sans rien changer. Une séance déjà annulée (double clic, deux onglets)
+    reste telle quelle : le résultat le dit, sans erreur.
     """
     motif = (motif or "").strip()
     if len(motif) > MOTIF_MAX:
@@ -608,7 +700,12 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
     if occurrence is None:
         raise ErreurIntrouvable(f"La séance datée n° {occurrence_id} n'existe pas (ou plus).")
     if occurrence.statut == StatutOccurrence.ANNULEE:
-        raise ErreurRegleMetier("Cette séance est déjà annulée.")
+        journal.info("Occurrence %d déjà annulée : rien n'a changé", occurrence.id)
+        return ResultatModification(
+            enregistree=False,
+            message=f"La séance du {occurrence.date:%d/%m/%Y} était déjà annulée.",
+            niveau="info",
+        )
     occurrence.statut = StatutOccurrence.ANNULEE
     occurrence.origine = OrigineOccurrence.MANUELLE  # retouche : conservée au recalcul
     if motif:
@@ -618,7 +715,9 @@ def annuler_occurrence(session: Session, occurrence_id: int, motif: str | None =
         )
     session.flush()
     journal.info("Occurrence %d annulée (%s)", occurrence.id, apercu(motif, 200) or "sans motif")
-    return f"Séance du {occurrence.date:%d/%m/%Y} annulée."
+    return ResultatModification(
+        enregistree=True, message=f"Séance du {occurrence.date:%d/%m/%Y} annulée.", niveau="succes"
+    )
 
 
 def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcul:
@@ -629,7 +728,7 @@ def recalculer_seances_datees(session: Session, version_id: int) -> BilanRecalcu
     programmer ») ; les retouches à la main restent telles quelles (voir
     l'en-tête du module). Lève `ErreurRegleMetier` pour une version dont les
     séances datées ont été importées (avant toute écriture), et
-    `raccords.ErreurRaccordIndisponible` si l'instanciation n'est pas livrée.
+    `raccords.ErreurRaccordIndisponible` si l'instanciation est introuvable.
     """
     if obtenir(session, m.VersionEdt, version_id) is None:
         raise ErreurIntrouvable(f"La version d'emploi du temps n° {version_id} n'existe pas.")
@@ -833,7 +932,7 @@ def _debuts_possibles(
 ) -> tuple[tuple[int, str], ...]:
     """Débuts de créneau de la grille ce jour-là où la séance tient avant la fermeture.
 
-    S'y ajoutent l'heure actuelle (`actuel`, quand on garde le même jour) et
+    S'y ajoutent l'heure actuelle (`actuel`, quand le jour ne change pas) et
     le début imposé du besoin : une séance imposée hors grille (un DST à 8 h)
     reste modifiable sans perdre son heure.
     """
@@ -982,25 +1081,34 @@ def _minuscule(phrase: str) -> str:
     return phrase[:1].lower() + phrase[1:] if phrase else phrase
 
 
-def _recalculer_seances_datees(session: Session, version_id: int) -> list[str]:
-    """Recalcule les séances datées d'une version qui en a déjà ; renvoie les remarques."""
+def _avertit(anomalies: tuple[Anomalie, ...]) -> bool:
+    """Vrai si une anomalie est un avertissement (les erreurs ont déjà refusé la retouche)."""
+    return any(a.gravite is Gravite.AVERTISSEMENT for a in anomalies)
+
+
+def _recalculer_seances_datees(session: Session, version_id: int) -> tuple[list[str], bool]:
+    """Recalcule les séances datées d'une version qui en a déjà.
+
+    Renvoie les remarques, et vrai s'il faut les signaler : recalcul refusé, ou
+    séances qui restent à programmer.
+    """
     if (
         session.scalar(
             select(m.Occurrence.id).where(m.Occurrence.version_id == version_id).limit(1)
         )
         is None
     ):
-        return []
+        return [], False
     try:
         bilan = recalculer_seances_datees(session, version_id)
     except (raccords.ErreurRaccordIndisponible, ErreurRegleMetier) as erreur:
         # Une version importée, ou l'instanciation qui refuse : la semaine type est
-        # enregistrée, ses séances datées restent telles quelles, et on le dit.
+        # enregistrée, ses séances datées restent telles quelles, et la remarque le dit.
         return [
             "Les séances datées de cette version n'ont pas été recalculées : "
             + _minuscule(erreur.message)
-        ]
-    return [bilan.message]
+        ], True
+    return [bilan.message], bilan.nb_a_programmer > 0
 
 
 def seances_datees_importees(session: Session, version_id: int) -> bool:

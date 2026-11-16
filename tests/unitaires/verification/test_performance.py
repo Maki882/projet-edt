@@ -162,9 +162,9 @@ def test_un_semestre_entier_de_13000_occurrences_en_moins_de_10_secondes():
     ]
     assert len(occurrences) == 12_900
 
-    # Temps processeur, insensible aux autres programmes. Mesuré : 1,1 s seul, jusqu'à 5,2 s en
-    # fin de suite complète (tas fragmenté par les tests précédents : même coût par séance,
-    # mémoire moins favorable). Le seuil vise une régression d'un ordre de grandeur.
+    # Temps processeur, insensible aux autres programmes. Il croît en fin de suite complète
+    # (tas fragmenté par les tests précédents : même coût par séance, mémoire moins
+    # favorable). Le seuil vise une régression d'un ordre de grandeur.
     chrono = time.process_time()
     anomalies = verifier_occurrences(instantane, occurrences)
     duree = time.process_time() - chrono

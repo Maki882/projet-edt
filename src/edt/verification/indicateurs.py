@@ -23,7 +23,7 @@ Fonction pure, sans base. Les définitions exactes sont dans
 
 L'emploi du temps d'un groupe, pour les trous et les changements de campus,
 est celui de ses étudiants : les séances du groupe et de ses ascendants
-(classe, promotion). On le calcule pour les groupes **feuilles** de l'arbre
+(classe, promotion). Il est calculé pour les groupes **feuilles** de l'arbre
 (sans sous-groupe), ce qui évite de compter deux fois une même journée.
 """
 
@@ -124,10 +124,12 @@ def calculer_indicateurs(
     changements de campus des groupes n'auraient plus de sens).
     """
     placements = tuple(placements)
-    valider_groupes(instantane)
-    valider_placements(instantane, placements)
+    valider_placements(placements)
     if anomalies is None:
+        # `verifier` valide l'arbre des groupes (`Contexte`) : inutile de le refaire ici.
         anomalies = verifier(instantane, placements, niveaux=niveaux, niveaux_regles=niveaux_regles)
+    else:
+        valider_groupes(instantane)
     elements, inconnus = construire_elements(instantane, placements)
     if inconnus:
         journal.debug("Indicateurs : %d placement(s) de séance inconnue ignoré(s).", len(inconnus))

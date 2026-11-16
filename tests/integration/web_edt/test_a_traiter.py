@@ -1,4 +1,4 @@
-"""Onglet « À traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer."""
+"""Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def test_sans_emploi_du_temps_actif(jeu_minimal, client):
 def test_sans_verificateur_l_absence_est_dite(version_generee, client, sans_verificateur):
     page = client.get("/a-traiter").text
 
-    assert "Les vérifications automatiques ne sont pas encore disponibles" in page
+    assert "Les vérifications automatiques sont indisponibles" in page
     assert "Aucune anomalie" not in page
     assert client.get("/a-traiter/compteur", headers=HX).text.strip() == ""
 
@@ -87,8 +87,10 @@ def test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer(
 
     page = client.get("/a-traiter").text
 
-    assert page.index("Erreurs : règles non respectées") < page.index("Avertissements")
-    assert page.index("Avertissements") < page.index("Informations")
+    assert page.index("Règles non respectées") < page.index("Situations à vérifier")
+    assert page.index("Situations à vérifier") < page.index("Pour information")
+    assert f'href="/calculs?semestre_id={seances_datees.semestre_id}">Générer à nouveau' in page
+    assert "Mêmes règles en cause que dans la semaine type" not in page  # jour fermé : propre
     assert "Une séance par salle (1)" in page and "Jours fermés (1)" in page
     assert "La salle N016 est prise deux fois." in page
     assert f"seance=h{seance_hebdo_id}" in page and f"groupe_id={promotion}" in page
@@ -108,9 +110,9 @@ def test_avec_le_vrai_verificateur(version_generee, client):
 
     page = client.get("/a-traiter").text
 
-    assert "pas encore disponibles" not in page
+    assert "installation incomplète" not in page
     if verification.nb_erreurs:
-        assert f"Erreurs : règles non respectées ({verification.nb_erreurs})" in page
+        assert f"Règles non respectées ({verification.nb_erreurs})" in page
     else:
         assert "Aucune anomalie dans la semaine type" in page
 
@@ -151,7 +153,7 @@ def test_compteur_memorise_puis_recalcule_quand_une_seance_change(
 
 @pytest.mark.cas_limite
 def test_option_tous_les_semestres_affiche_tous_les_semestres(
-    version_generee, client, faux_verificateur
+    version_generee, client, faux_verificateur, aujourdhui_fige
 ):
     """Cas : option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse
     gardée en favori sur Générer, l'historique et la grille.
@@ -174,7 +176,12 @@ def test_option_tous_les_semestres_affiche_tous_les_semestres(
     seul = client.get(f"/a-traiter?semestre_id={version_generee.semestre_id}").text
     assert f"<h2>{libelles[autre]}" not in seul
 
-    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut.
+    # Même forme d'adresse sur Générer, l'historique et la grille : le semestre par défaut
+    # (celui qui contient le 5 octobre 2026), sélectionné dans la liste.
+    choisi = (
+        f'<option value="{version_generee.semestre_id}" selected>'
+        f"{libelles[version_generee.semestre_id]}</option>"
+    )
     for adresse in (
         "/calculs?semestre_id=",
         "/versions?semestre_id=",
@@ -183,3 +190,4 @@ def test_option_tous_les_semestres_affiche_tous_les_semestres(
         reponse = client.get(adresse)
         assert reponse.status_code == 200, adresse
         assert "Saisie invalide" not in reponse.text, adresse
+        assert choisi in reponse.text, adresse

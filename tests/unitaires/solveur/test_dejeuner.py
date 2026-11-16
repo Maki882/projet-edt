@@ -1,4 +1,4 @@
-"""Pause déjeuner à trois modes : fixe (plage réservée), libre bornée (fenêtre), aucun.
+"""Pause déjeuner dans le solveur : mode libre borné et mode « aucun ».
 
 Le mode fixe est éprouvé par `test_contraintes` ; ici, le mode « aucun » et
 surtout le mode libre : pour chaque groupe et chaque enseignant, chaque jour

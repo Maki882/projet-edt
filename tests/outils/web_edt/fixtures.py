@@ -5,8 +5,8 @@ de `tests/integration/web_edt` :
 
 - `sans_prechauffage` (appliquée d'office) : pas de fil de préchauffage ;
 - `faux_verificateur` : faux `edt.services.verification`, réglable ;
-- `sans_verificateur` : comme si le vérificateur n'était pas livré (sans
-  ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
+- `sans_verificateur` : comme si le module de vérification était absent
+  (sans ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
 - `aujourdhui_fige` : le « semestre par défaut » calculé au 5 octobre 2026.
 """
 
@@ -42,7 +42,7 @@ def faux_verificateur(monkeypatch) -> FauxVerificateur:
 
 @pytest.fixture
 def sans_verificateur(monkeypatch) -> None:
-    """Fait comme si le vérificateur n'était pas livré (le raccord doit le dire, pas planter)."""
+    """Fait comme si le module de vérification était absent (le raccord doit le dire, pas planter)."""
     memoire.oublier()
     monkeypatch.setitem(sys.modules, "edt.services.verification", None)
 

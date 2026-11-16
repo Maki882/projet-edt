@@ -1,4 +1,4 @@
-"""Règles de salle : ACCESSIBILITE, CAPACITE, TYPE_SALLE, EQUIPEMENT, et salle à définir (VOLUME)."""
+"""Règles de salle : accessibilité, capacité, type, équipement."""
 
 from __future__ import annotations
 
@@ -153,7 +153,9 @@ def test_salle_inconnue_verifiee_comme_salle_a_definir(caplog):
         "qui n'existe plus (n° 99) : salle à définir."
     )
     assert anomalies[0].salles == ()
-    # Sans VOLUME, aucune anomalie, mais le journal le dit : jamais en silence.
+    # Sans VOLUME, aucune anomalie, mais le journal le dit : jamais en silence. Le premier
+    # appel a déjà journalisé la même phrase : seul le second compte.
+    caplog.clear()
     with caplog.at_level("WARNING", logger="edt.verification"):
         assert verifier(f.construire(), [placement], ["CAPACITE"]) == []
     assert "salle qui n'existe plus dans l'instantané (n° 99 : 1)" in caplog.text

@@ -1,1 +1,4 @@
-"""Parcours de bout en bout : six scénarios courts qui traversent toute l'application."""
+"""Scénarios de bout en bout.
+
+Chaque parcours traverse toute l'application, comme un utilisateur.
+"""

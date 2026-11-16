@@ -1,4 +1,4 @@
-"""Banque des cas limites : saisie aberrante passée directement au service des référentiels.
+"""Un entier démesuré passé au service est refusé avec un message.
 
 Un entier Python démesuré, sans formulaire pour le borner, est refusé avec un
 message sous le champ au lieu d'atteindre la base.

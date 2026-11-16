@@ -1,1 +1,4 @@
-"""Tests d'intégration du solveur : calcul complet par le service de génération, commandes, processus."""
+"""Calculs complets et commandes du solveur.
+
+Calcul complet par le service de génération, commandes, processus.
+"""
