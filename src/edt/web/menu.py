@@ -19,27 +19,32 @@ sont regroupées sous des titres parlants (`GroupeMenu`), affichés dans la
 sous-navigation : pour l'onglet Données, « Établissement » (section
 Référentiels), « Besoins et disponibilités » (Planification), « Règles et
 calendrier » (Configuration), « Import et export » (Données) ; dans l'onglet
-Générer, la section À traiter rejoint le groupe « Générer ». Une entrée peut
+Générer, la section À traiter (page « Points à traiter ») rejoint le groupe
+« Générer ». Une entrée peut
 choisir son groupe avec le champ `groupe` (par exemple « Jeux de données »).
 
 Un onglet peut recevoir une classe de couleur (`CLASSES_ONGLETS`), posée sur
 son élément de la barre : les deux onglets de tests ont chacun la leur.
 
-Sections et plages d'ordre convenues (pour que les écrans des différents
-lots se rangent sans se concerter) :
+Sections et plages d'ordre (chaque module de routes range ses entrées dans
+la plage de sa section) :
 
-| Section           | Ordre     | Contenu                                         |
-|-------------------|-----------|-------------------------------------------------|
-| (aucune)          | 0 - 99    | accueil                                         |
-| Référentiels      | 100 - 199 | campus, salles, enseignants, groupes, matières  |
-| Planification     | 200 - 299 | besoins, indisponibilités                       |
-| Emploi du temps   | 300 - 399 | vues, versions                                  |
-| Données           | 400 - 499 | import, export, jeux de données                 |
-| Configuration     | 500 - 599 | calendrier, grille, paramètres                  |
-| Générer           | 600 - 699 | lancement et suivi des calculs                  |
-| À traiter         | 700 - 799 | anomalies, séances à programmer                 |
-| Tests unitaires   | 800 - 849 | lancement et résultats des tests unitaires      |
-| Tests d'intégration | 850 - 899 | lancement et résultats des tests d'intégration |
+| Section             | Ordre     | Contenu                                              |
+|---------------------|-----------|------------------------------------------------------|
+| (aucune)            | 0 - 99    | accueil                                              |
+| Référentiels        | 100 - 199 | campus, salles, listes de référence, enseignants,    |
+|                     |           | groupes, étudiants, matières                         |
+| Planification       | 200 - 249 | besoins, indisponibilités                            |
+| Générer             | 250 - 299 | lancement et suivi des calculs, historique et        |
+|                     |           | versions                                             |
+| Emploi du temps     | 300 - 349 | vues de l'emploi du temps                            |
+| À traiter           | 350 - 399 | page « Points à traiter » (anomalies, séances à      |
+|                     |           | programmer)                                          |
+| Données             | 400 - 499 | import, export, établissement fictif                 |
+| Configuration       | 500 - 599 | calendrier, règles personnalisées, grille horaire,   |
+|                     |           | paramètres                                           |
+| Tests unitaires     | 800 - 849 | lancement et résultats des tests unitaires           |
+| Tests d'intégration | 850 - 899 | lancement et résultats des tests d'intégration       |
 
 Une entrée dont la section n'est rangée dans aucun onglet est placée dans
 l'onglet Données (sous un groupe portant le nom de sa section) et le fait est
