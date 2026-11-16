@@ -1,7 +1,7 @@
 """Banque des cas limites : saisie aberrante passée directement au service des référentiels.
 
 Un entier Python démesuré, sans formulaire pour le borner, est refusé avec un
-message sous le champ au lieu d'atteindre la base (revue n° 18).
+message sous le champ au lieu d'atteindre la base.
 """
 
 from __future__ import annotations

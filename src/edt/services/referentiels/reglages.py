@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from edt.domaine.enumerations import JOURS
-from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
+from edt.domaine.heures import minutes_vers_hhmm, minutes_vers_texte, texte_vers_minutes
 from edt.domaine.parametres import (
     DEJEUNER_FIXE,
     DEJEUNER_LIBRE,
@@ -33,8 +33,14 @@ from edt.domaine.parametres import (
     defauts_dejeuner,
     definitions,
 )
-from edt.erreurs import ErreurDonneesInvalides
-from edt.services.parametres import anomalies_parametres, ecrire_parametres, lire_parametres
+from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides
+from edt.services import generation
+from edt.services.parametres import (
+    anomalies_parametres,
+    ecrire_parametres,
+    lire_parametres,
+    reinitialiser_parametres,
+)
 from edt.services.referentiels.operations import ErreurSaisie
 
 journal = logging.getLogger(__name__)
@@ -92,7 +98,7 @@ class ParametreAffiche:
         return self.unite == UNITE_HEURE
 
     def en_texte(self, valeur: ValeurParametre) -> str:
-        """Valeur telle qu'on la saisit (« 08:30 » pour une heure)."""
+        """Valeur telle qu'elle se saisit (« 08:30 » pour une heure)."""
         if self.est_heure and isinstance(valeur, int) and not isinstance(valeur, bool):
             return minutes_vers_hhmm(valeur)
         if self.est_jours and isinstance(valeur, tuple | list):
@@ -100,13 +106,15 @@ class ParametreAffiche:
         return str(valeur)
 
     def texte_lisible(self, valeur: ValeurParametre) -> str:
-        """Valeur telle qu'on la lit : « oui », le libellé d'un choix, « 08:30 »."""
+        """Valeur telle qu'elle se lit : « oui », le libellé d'un choix, « 8 h 30 »."""
         if self.type == "bool":
             return "oui" if valeur else "non"
         if self.est_choix:
             return dict(self.choix).get(str(valeur), str(valeur))
         if self.est_jours and isinstance(valeur, tuple | list):
             return ", ".join(JOURS[jour] for jour in valeur)
+        if self.est_heure and isinstance(valeur, int) and not isinstance(valeur, bool):
+            return minutes_vers_texte(valeur)
         return self.en_texte(valeur)
 
 
@@ -160,14 +168,34 @@ def convertir_saisie(cle: str, texte: str, unite: str) -> ValeurParametre:
     return convertir_texte(cle, texte)
 
 
+def _refuser_pendant_un_calcul() -> None:
+    """Lève `ErreurCalculEnCours` si un calcul tourne : les paramètres ne changent pas alors.
+
+    Un calcul lit les paramètres à son lancement et les relit pour contrôler
+    puis dater sa solution : les changer entre-temps donnerait une version
+    vérifiée avec d'autres réglages que ceux du calcul (la pause déjeuner
+    réglée depuis « Générer » est refusée de même).
+    """
+    suivi = generation.calcul_en_cours()
+    if suivi is None:
+        return
+    journal.info("Paramètres non modifiés : calcul n° %d en cours", suivi.id)
+    raise ErreurCalculEnCours(
+        f"Un calcul d'emploi du temps est en cours (calcul n° {suivi.id}) : les paramètres ne "
+        "changent pas pendant un calcul. Attendre qu'il se termine, ou l'arrêter, puis "
+        "enregistrer de nouveau. Rien n'a été enregistré."
+    )
+
+
 def enregistrer_parametres_saisis(session: Session, saisies: Mapping[str, str]) -> Parametres:
     """Enregistre les paramètres saisis (textes) ; les absents gardent leur valeur.
 
-    Lève `ErreurSaisie` (une erreur par paramètre fautif : type, bornes,
-    choix inconnu, réglages du déjeuner incohérents) avant toute écriture,
-    puis `ErreurDonneesInvalides` si l'ensemble reste incohérent (ouverture
-    après la fermeture...).
+    Lève `ErreurCalculEnCours` pendant un calcul, `ErreurSaisie` (une erreur
+    par paramètre fautif : type, bornes, choix inconnu, réglages du déjeuner
+    incohérents) avant toute écriture, puis `ErreurDonneesInvalides` si
+    l'ensemble reste incohérent (ouverture après la fermeture...).
     """
+    _refuser_pendant_un_calcul()
     connues = {d.cle: d for d in definitions()}
     inconnues = sorted(set(saisies) - set(connues))
     if inconnues:
@@ -188,6 +216,14 @@ def enregistrer_parametres_saisis(session: Session, saisies: Mapping[str, str]) 
         raise ErreurSaisie(erreurs, {cle: connues[cle].libelle for cle in erreurs})
     resultat = ecrire_parametres(session, valeurs)
     journal.info("Paramètres enregistrés depuis l'écran de configuration (%d)", len(valeurs))
+    return resultat
+
+
+def remettre_parametres_par_defaut(session: Session) -> Parametres:
+    """Remet tous les paramètres à leur valeur par défaut ; `ErreurCalculEnCours` pendant un calcul."""
+    _refuser_pendant_un_calcul()
+    resultat = reinitialiser_parametres(session)
+    journal.info("Paramètres remis à leur valeur par défaut depuis l'écran de configuration")
     return resultat
 
 

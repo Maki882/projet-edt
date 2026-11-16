@@ -4,8 +4,8 @@ Une entité (salle, enseignant, besoin...) est décrite **une seule fois** par u
 objet `Entite`. Les fonctions génériques de `edt.services.referentiels.operations`
 s'en servent pour lister (tri, recherche, filtres, pagination), lire, créer,
 modifier et supprimer ; l'interface web s'en sert pour construire ses listes
-et ses formulaires ; un assistant en langage naturel pourra s'en servir pour
-savoir quels champs existent (`operations.decrire`).
+et ses formulaires ; `operations.decrire` dit quels champs existent, pour une
+API ou l'assistant.
 
 Exemple (abrégé) :
 

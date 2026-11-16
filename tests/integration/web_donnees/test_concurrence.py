@@ -1,4 +1,4 @@
-"""Un seul chargement de jeu fictif ou une seule remise à zéro à la fois (revue n° 14).
+"""Un seul chargement de jeu fictif ou une seule remise à zéro à la fois.
 
 Le premier chargement est ralenti (génération remplacée par une attente) ;
 pendant qu'il tient le verrou, toute autre demande est refusée tout de suite,
@@ -15,7 +15,7 @@ import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
-from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan
+from tests.outils.web_donnees.concurrence import DELAI_S, _en_arriere_plan, attendre_fil
 
 from edt.services import jeux
 from edt.web import app as module_app
@@ -39,9 +39,9 @@ def test_deux_chargements_simultanes_depuis_la_page(client, generation_lente):
     assert zero.status_code == 409 and "déjà en cours" in zero.text
 
     liberer.set()
-    fil.join(DELAI_S)
-    assert premier["valeur"].status_code == 200
-    assert "Établissement fictif « petit » chargé" in premier["valeur"].text
+    reponse = attendre_fil(fil, premier)
+    assert reponse.status_code == 200
+    assert "Établissement fictif « petit » chargé" in reponse.text
 
 
 NOM_MODULE_ESSAI = "edt.web.routes.essai_base_occupee"

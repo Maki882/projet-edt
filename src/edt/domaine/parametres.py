@@ -116,17 +116,17 @@ class Parametres:
     )
     temps_limite_long_s: int = _champ(
         900,
-        "Temps limite d'une relance longue",
-        "Durée maximale utilisée par le bouton de relance longue.",
+        "Durée de la recherche longue",
+        "Durée proposée par le choix « Rechercher jusqu'à … » de l'écran Générer et par le "
+        "bouton « Relancer en cherchant jusqu'à … ».",
         minimum=1,
         maximum=1800,
         unite="s",
     )
     nb_workers: int = _champ(
         0,
-        "Fils de calcul du solveur",
-        "Nombre de fils utilisés par le calcul ; 0 = deux au plus. Le calcul n'en utilise "
-        "jamais plus que la machine n'a de cœurs.",
+        "Processeurs utilisés par le calcul",
+        "0 = automatique (deux au plus). Le calcul n'en utilise jamais plus que la machine n'en a.",
         minimum=0,
         maximum=8,
     )
@@ -157,7 +157,8 @@ class Parametres:
     pause_min: int = _champ(
         15,
         "Pause entre deux séances",
-        "Durée minimale entre deux séances consécutives d'une même ressource.",
+        "Durée minimale entre deux séances qui se suivent, pour un même groupe ou un même "
+        "enseignant.",
         minimum=0,
         maximum=120,
         unite="min",
@@ -201,7 +202,7 @@ class Parametres:
     trajet_defaut_min: int = _champ(
         60,
         "Trajet par défaut entre deux campus",
-        "Temps de trajet appliqué quand la matrice des trajets ne dit rien pour deux campus.",
+        "Temps de trajet appliqué quand le tableau des trajets (Campus et trajets) ne dit rien pour deux campus.",
         minimum=0,
         maximum=600,
         unite="min",
@@ -209,15 +210,16 @@ class Parametres:
     accessibilite_inconnue_acceptee: bool = _champ(
         False,
         "Accepter les salles d'accessibilité inconnue",
-        "Si non (défaut), une salle dont l'accessibilité est inconnue est traitée comme "
-        "non accessible.",
+        "Case décochée : une salle dont l'accessibilité est inconnue est traitée comme non "
+        "accessible.",
     )
     objectif_actif: bool = _champ(
         True,
-        "Optimiser la qualité de l'emploi du temps",
-        "Si oui, une fois un emploi du temps valide trouvé, le calcul emploie le temps qui "
-        "reste à réduire les trous, les changements de campus, le samedi et les créneaux "
-        "extrêmes. Si non, il s'arrête à la première solution valide.",
+        "Emploi du temps plus confortable",
+        "Choix proposé par défaut sur l'écran Générer. Si oui, une fois un emploi du temps "
+        "valide trouvé, le calcul emploie le temps qui reste à réduire les trous, les "
+        "changements de campus, le samedi et les créneaux extrêmes. Si non, il s'arrête à la "
+        "première solution valide.",
     )
     poids_trous: int = _champ(
         10,

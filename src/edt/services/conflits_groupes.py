@@ -8,7 +8,7 @@ Deux groupes distincts sont en conflit dans trois cas :
 1. **Inclusion hiérarchique** : l'un est un ascendant de l'autre dans l'arbre
    (promotion > classe > demi-groupe). Deux frères ne sont pas en conflit.
 2. **Chevauchement déclaré** : la paire est déclarée chevauchante. Faute de
-   liste d'étudiants, on ne sait pas lesquels sont communs : la déclaration
+   liste d'étudiants, rien ne dit lesquels sont communs : la déclaration
    vaut donc pour toute la **lignée** des deux groupes (chacun, ses
    ascendants et ses descendants).
 3. **Étudiant commun** : un étudiant est inscrit dans les deux. Un étudiant

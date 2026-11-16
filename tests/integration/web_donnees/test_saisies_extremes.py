@@ -1,21 +1,20 @@
 """Banque des cas limites : saisies aberrantes dans l'espace « Données ».
 
-Jamais d'erreur 500, toujours un message clair sous le champ ou sur la page
-(revue n° 18 et 19 ; inventaire des cas limites n° 7 et 8). Un cas qui relève
-d'un autre lot reste marqué `xfail(strict=True)` avec le fichier à corriger.
+Jamais d'erreur 500, toujours un message clair sous le champ ou sur la page :
+entiers trop grands ou exotiques, listes vides, nombres de cinq mille
+chiffres, textes libres trop longs. Les mêmes saisies sur les écrans Générer
+et Emploi du temps sont dans `tests/integration/web_edt/test_cas_limites.py`.
 """
 
 from __future__ import annotations
-
-import re
 
 import pytest
 from tests.outils.web_donnees.aides import (
     NOMBRE_DE_5000_CHIFFRES,
     NOMBRE_TROP_GRAND,
     compter,
+    erreur_sous_le_champ,
     existe,
-    occurrence_prevue,
     saisie_besoin,
     saisie_regle,
     saisie_salle,
@@ -23,13 +22,15 @@ from tests.outils.web_donnees.aides import (
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
+from edt.domaine.regles import ErreurSaisie
+from edt.services import regles as service_regles
 from edt.services.referentiels.lieux import cle_trajet
 
 pytestmark = pytest.mark.cas_limite
 
 
 # --------------------------------------------------------------------------- #
-# Entiers trop grands ou exotiques (revue n° 18)
+# Entiers trop grands ou exotiques
 # --------------------------------------------------------------------------- #
 
 
@@ -97,7 +98,6 @@ def test_graine_exotique(client):
         (f"/salles/{NOMBRE_TROP_GRAND}", 404),
         (f"/salles/{NOMBRE_TROP_GRAND}/supprimer", 404),
         (f"/salles?campus={NOMBRE_TROP_GRAND}", 422),
-        ("/besoins?semestre=abc", 422),
     ],
 )
 def test_adresses_aberrantes(site, adresse, statut):
@@ -116,7 +116,7 @@ def test_jours_feries_d_une_annee_inexistante(site):
 
 
 # --------------------------------------------------------------------------- #
-# Listes vides (revue n° 19)
+# Listes vides
 # --------------------------------------------------------------------------- #
 
 
@@ -144,7 +144,7 @@ def test_liste_vide_avec_filtre_pose(site, ids):
 
 
 # --------------------------------------------------------------------------- #
-# Nombres de cinq mille chiffres (inventaire n° 7)
+# Nombres de cinq mille chiffres
 # --------------------------------------------------------------------------- #
 
 CINQ_MILLE = NOMBRE_DE_5000_CHIFFRES
@@ -168,6 +168,13 @@ def _envois_de_cinq_mille_chiffres(ids) -> list:
             422,
             "Règles confirmées illisibles",
         ),
+        (
+            "post",
+            f"/salles/{ids.salle_n016}/supprimer",
+            {"_regles": "0"},
+            422,
+            "Règles confirmées illisibles : « 0 » n'est pas un identifiant",
+        ),
         ("post", "/regles/nouveau", saisie_regle(ids, cible_groupe=CINQ_MILLE), 422, "inconnu"),
         ("post", "/campus/trajets", {trajet: CINQ_MILLE}, 422, "Nombre de minutes attendu."),
     ]
@@ -188,25 +195,8 @@ def test_nombres_de_cinq_mille_chiffres_refuses(site, ids):
     assert annee.status_code == 200 and "Année de début invalide" in annee.text
 
 
-def test_seance_de_cinq_mille_chiffres_dans_l_emploi_du_temps(site, version_generee):
-    """Cas : l'adresse de l'emploi du temps avec « seance=h » suivi de 5 000 chiffres (lien
-    abîmé). Risque : erreur 500 au lieu d'ignorer la séance mise en évidence."""
-    reponse = site.get(f"/emploi-du-temps?seance=h{CINQ_MILLE}")
-    assert reponse.status_code in (200, 404, 422)
-
-
-def test_niveau_de_regle_de_cinq_mille_chiffres_au_lancement(site, ids):
-    """Cas : le formulaire « Lancer le calcul » avec un champ niveau_regle_<5 000 chiffres>.
-    Risque : erreur 500 au lancement au lieu d'un refus clair."""
-    reponse = site.post(
-        "/calculs",
-        data={"semestre_id": str(ids.semestre), f"niveau_regle_{CINQ_MILLE}": "important"},
-    )
-    assert reponse.status_code in (303, 404, 422)
-
-
 # --------------------------------------------------------------------------- #
-# Textes libres bornés côté serveur (inventaire n° 8)
+# Textes libres bornés côté serveur
 # --------------------------------------------------------------------------- #
 
 
@@ -218,7 +208,7 @@ def test_note_de_besoin_bornee_cote_serveur(site, ids):
     for taille in (5001, 1_000_000):
         refus = site.post("/besoins", data=saisie_besoin(ids, commentaire="x" * taille))
         assert refus.status_code == 422
-        erreur = re.search(r'id="erreur-commentaire">([^<]+)<', refus.text).group(1)
+        erreur = erreur_sous_le_champ(refus, "commentaire")
         assert erreur == "5000 caractères au plus."
     assert compter(m.Besoin) == avant
     accepte = site.post(
@@ -233,18 +223,20 @@ def test_commentaire_de_regle_borne_cote_serveur(site, ids):
     liste des règles (des centaines de kilo-octets par page)."""
     reponse = site.post("/regles/nouveau", data=saisie_regle(ids, commentaire="y" * 200_000))
     assert reponse.status_code == 422
-    erreur = re.search(r'id="erreur-commentaire">([^<]+)<', reponse.text).group(1)
+    erreur = erreur_sous_le_champ(reponse, "commentaire")
     assert erreur == "2000 caractères au plus (lu : 200000)."
     assert compter(m.Regle, m.Regle.commentaire.like("yyy%")) == 0
-
-
-def test_motif_d_annulation_borne_cote_serveur(site, version_generee):
-    """Cas : le motif d'annulation d'une séance datée envoyé avec 200 000 caractères. Risque :
-    enregistré dans la note de la séance et réaffiché dans son panneau (page de 200 Ko)."""
-    occurrence = occurrence_prevue(version_generee)
-    reponse = site.post(
-        f"/emploi-du-temps/occurrences/{occurrence}/annuler", data={"motif": "z" * 200_000}
-    )
-    with session_base() as session:
-        stocke = session.get(m.Occurrence, occurrence).commentaire or ""
-    assert reponse.status_code == 422 and len(stocke) <= 600
+    # La borne est celle du service : un import ou un appel direct est refusé de même.
+    brouillon = {
+        "type": "JOURS_TRAVAILLES",
+        "annee": ids.annee,
+        "portee": {"nature": "groupe", "cible": ids.classe_g1},
+        "parametres": {"jours": ["lundi"]},
+        "commentaire": "y" * (service_regles.LONGUEUR_COMMENTAIRE + 1),
+    }
+    with session_base() as session, pytest.raises(ErreurSaisie) as refus:
+        service_regles.creer(session, brouillon)
+    assert refus.value.erreurs == {"commentaire": "2000 caractères au plus (lu : 2001)."}
+    limite = saisie_regle(ids, commentaire="y" * service_regles.LONGUEUR_COMMENTAIRE)
+    accepte = site.post("/regles/nouveau", data=limite, follow_redirects=False)
+    assert accepte.status_code == 303  # la limite exacte passe

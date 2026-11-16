@@ -33,8 +33,8 @@ enregistrer.
 
 Retour : les liens « Modifier » et « Supprimer » d'une liste portent son
 adresse (`retour`, avec recherche, filtres, tri et page) ; après un
-enregistrement ou une suppression, on revient sur cette liste (à la page
-précédente si la page a disparu). « Annuler » ramène là d'où l'on venait :
+enregistrement ou une suppression, l'écran revient sur cette liste (à la page
+précédente si la page a disparu). « Annuler » ramène à la page de départ :
 la liste, ou la fiche si la suppression a été demandée depuis la fiche
 (`depuis=fiche`).
 """
@@ -52,7 +52,8 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 from starlette.datastructures import FormData, QueryParams
 
-from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
+from edt.db.moteur import identifiant_valide
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.referentiels import operations
 from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
 from edt.services.referentiels.description import Entite, TypeChamp
@@ -197,12 +198,18 @@ def _etat_demande(request: Request, ecran: Ecran) -> EtatListe:
     return _etat_depuis(_parametres_de_liste(request, ecran), ecran)
 
 
-def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
-    """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
+def numero_de_page(parametres: QueryParams) -> int:
+    """Numéro de page lu dans une adresse (1 par défaut) ; `ErreurDonneesInvalides` s'il est illisible."""
     brute = parametres.get("page", "1").strip() or "1"
     numero = entier_naturel(brute)
     if numero is None or not 1 <= numero <= ENTIER_MAX:
         raise ErreurDonneesInvalides(f"Numéro de page invalide : « {brute[:30]} ».")
+    return numero
+
+
+def _etat_depuis(parametres: QueryParams, ecran: Ecran) -> EtatListe:
+    """État d'une liste lu dans les paramètres d'une adresse ; page invalide refusée."""
+    numero = numero_de_page(parametres)
     noms = {filtre.nom for filtre in ecran.entite.filtres}
     return EtatListe(
         prefixe=ecran.prefixe,
@@ -281,7 +288,7 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
         or any(valeur and valeur != defauts[nom] for nom, valeur in page.filtres.items())
     )
     filtres_par_defaut = [
-        f"{filtre.libelle} : {dict(choix).get(valeur, valeur)}"
+        _filtre_rappele(filtre.libelle, str(dict(choix).get(valeur, valeur)))
         for filtre, choix, valeur in filtres
         if valeur and valeur == defauts[filtre.nom]
     ]
@@ -302,6 +309,11 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
     if ecran.contexte_liste is not None:
         contexte.update(ecran.contexte_liste(session, page))
     return contexte
+
+
+def _filtre_rappele(libelle: str, valeur: str) -> str:
+    """« Année : 2026-2027 », ou la valeur seule si elle commence par le libellé (« Semestre 1 »)."""
+    return valeur if valeur.casefold().startswith(libelle.casefold()) else f"{libelle} : {valeur}"
 
 
 def _message(ecran: Ecran, nom_affiche: str, participe: str) -> str:
@@ -368,13 +380,17 @@ def regles_confirmees(formulaire: FormData) -> list[int] | None:
         if not morceau:
             continue
         ident = entier_naturel(morceau)
-        if ident is None or ident > ENTIER_MAX:
+        if not identifiant_valide(ident):
             raise ErreurDonneesInvalides(
                 f"Règles confirmées illisibles : « {morceau[:30]} » n'est pas un identifiant. "
                 "Rien n'a été supprimé."
             )
         identifiants.append(ident)
     return identifiants
+
+
+DEJA_SUPPRIME = "Cet élément n'existe plus : il a déjà été supprimé."
+"""Message d'une suppression rejouée (double clic, second onglet) : rien à faire, pas d'erreur."""
 
 
 def _texte_regles(nombre: int) -> str:
@@ -598,6 +614,11 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         confirmees = regles_confirmees(formulaire)
         try:
             nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
+        except ErreurIntrouvable:
+            journal.info("Suppression rejouée (%s n° %d) : déjà supprimé", entite.code, ident)
+            return rediriger(
+                request, _retour_apres_suppression(session, ecran, retour), DEJA_SUPPRIME, "info"
+            )
         except ErreurRegleMetier as refus:
             parametres = {"retour": retour}
             if formulaire.get("_depuis") == "fiche":
@@ -630,6 +651,9 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
             nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
             texte = _message(ecran, nom, "supprimé") + _texte_regles(len(confirmees or ()))
             message = Message(texte, "succes")
+        except ErreurIntrouvable:
+            journal.info("Suppression rejouée (%s n° %d) : déjà supprimé", entite.code, ident)
+            message = Message(DEJA_SUPPRIME, "info")
         except ErreurRegleMetier as refus:
             message = Message(refus.message, "erreur")
         if not est_htmx(request):

@@ -707,26 +707,26 @@ Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Suppression d un besoin ou d une salle pendant le calcul est refusee | pendant un calcul, on supprime un besoin ou une salle du semestre calculé (page ou ligne). | la suppression passe, le calcul enregistre des séances qui pointent vers elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont perdues. |
-| Suppression du semestre refusee pendant son calcul | on supprime le semestre (ou l'année) pendant son calcul. | le calcul est supprimé en cascade sous son fil : le suivi répond 404 chaque seconde, le verrou « un seul calcul à la fois » tombe et un second calcul peut démarrer en parallèle. |
-| Regles personnalisees supprimables pendant un calcul | pendant un calcul, on supprime les règles personnalisées actives. | si le calcul relisait ses règles à la fin, il échouerait ; il les copie à son lancement, et ce test garde la décision de ne pas bloquer leur suppression (contrairement aux autres données). |
+| Suppression d un besoin ou d une salle pendant le calcul est refusee | pendant un calcul, suppression d'un besoin ou d'une salle du semestre calculé (page ou ligne), ou d'un élément qu'il ne lit pas (un équipement) : toute suppression est refusée pendant un calcul. | la suppression passe, le calcul enregistre des séances qui pointent vers elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont perdues. |
+| Suppression du semestre refusee pendant son calcul | suppression du semestre (ou de l'année) pendant son calcul. | le calcul est supprimé en cascade sous son fil : le suivi répond 404 chaque seconde, le verrou « un seul calcul à la fois » tombe et un second calcul peut démarrer en parallèle. |
+| Regles personnalisees supprimables pendant un calcul | pendant un calcul, suppression des règles personnalisées actives. | si le calcul relisait ses règles à la fin, il échouerait ; il les copie à son lancement, et ce test garde la décision de ne pas bloquer leur suppression (contrairement aux autres données). |
 | Duree d une annee bornee | une année scolaire saisie jusqu'au 31/12/9999, ou « 2227 » pour « 2027 ». | acceptée, elle fait déborder le calcul des semaines (erreur 500 sur Générer) ou produit des centaines de milliers de séances datées. |
 | Duree d un semestre bornee | un semestre de plus d'un an dans une année longue (deux ans, permise). | un calcul sur ce semestre instancie des milliers de semaines et gèle le serveur. |
 | Calculs d un semestre sain sans erreur | la page Générer d'un semestre ordinaire, après les bornes posées sur les dates. | une borne trop stricte ferait refuser ou planter un semestre normal. |
 | Adresse de retour avec saut de ligne est ecartee | le champ caché `_retour` d'un formulaire est modifié en « /salles », un retour à la ligne et « X-Injecte: 1 ». | la valeur part telle quelle dans l'en-tête HX-Redirect (en-tête injecté, ou réponse perdue), ou dans une redirection vers une adresse mutilée. |
+| Adresse de retour hors site est ecartee | le champ caché `_retour` (ou le paramètre `retour`) d'un formulaire est remplacé par « //exemple.org/ », « https://exemple.org/ », une barre oblique inverse, ou la page d'un autre écran. | après l'enregistrement, le navigateur part vers un autre site (en-tête Location ou HX-Redirect) qui imite l'application. |
 | Hx current url illisible est ignore | une requête HTMX arrive avec l'en-tête HX-Current-URL « http://[::1 » (navigateur ou extension fautifs). | urlsplit lève ValueError, erreur 500 et trace dans le journal pour une simple ligne de tableau. |
-| Hx current url illisible dans le panneau d une seance | le panneau d'une séance (grille de l'emploi du temps) demandé avec un HX-Current-URL illisible. | erreur 500 au clic sur une séance. |
 | Fragments sans htmx redirigent vers la page | l'adresse d'un fragment (ligne, confirmation dans la ligne, aperçu de règle) est ouverte directement : lien copié, historique, navigateur sans JavaScript. | un morceau de tableau nu, sans menu ni styles, dont les boutons perdent le contexte de la liste. |
-| Fragments des autres ecrans sans htmx | un fragment des écrans Générer, Emploi du temps ou À traiter ouvert directement. | HTML nu sans mise en page (le compteur d'onglet, le suivi d'un calcul...). |
 | Champs libres echappes sur les pages de donnees | un code de salle « <b>x</b> », un bâtiment « "><img onerror=...> », un libellé de groupe et un commentaire de règle « <script> », affichés dans les listes, fiches, confirmations, lignes HTMX et messages. | un seul \|safe oublié et du script s'exécute chez le responsable de scolarité. |
-| Champs libres echappes sur les pages de l emploi du temps | les mêmes textes piégés, plus un motif d'annulation « <script> », dans la grille, les panneaux de séance, l'export et À traiter. | script exécuté au simple affichage de l'emploi du temps. |
+| Champs libres echappes sur les pages de l emploi du temps | les mêmes textes piégés, plus un motif d'annulation « <script> », dans la grille, les panneaux de séance et l'export. | script exécuté au simple affichage de l'emploi du temps. |
 
 [`tests/integration/web_donnees/test_parametres.py`](../tests/integration/web_donnees/test_parametres.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Parametres refuses pendant un calcul | pendant un calcul, on enregistre les paramètres ou on les remet à leur valeur par défaut. | le calcul, qui relit les paramètres pour contrôler et dater sa solution, produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter), alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul. |
+| Parametres refuses pendant un calcul | pendant un calcul, les paramètres sont enregistrés ou remis à leur valeur par défaut. | le calcul, qui relit les paramètres pour contrôler et dater sa solution, produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter), alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul. |
 | Valeur corrompue signalee puis reparee depuis l ecran | une valeur de paramètre corrompue en base (« quinze » pour la pause entre deux séances), puis l'utilisateur ouvre /parametres et enregistre. | l'écran, seul moyen de la corriger, ne s'ouvre plus (422), ne dit pas quelle valeur est en cause, ou refuse l'enregistrement qui la répare. |
+| Ancien parametre de dejeuner illisible reste reparable | la base ne tient pas `dejeuner_mode` mais l'ancien paramètre `dejeuner_horaires_determines`, avec une valeur qui n'est ni oui ni non. | la lecture lève avant toute tolérance et l'écran des paramètres, seul moyen de réparer, ne s'ouvre plus (comme Générer, qui lit les paramètres). |
 
 [`tests/integration/web_donnees/test_performance.py`](../tests/integration/web_donnees/test_performance.py)
 
@@ -740,7 +740,10 @@ Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Identifiants enormes des regles sont introuvables | une adresse des règles retouchée avec une année ou un numéro de règle de vingt chiffres. | OverflowError de SQLite, erreur 500 là où les autres écrans répondent « introuvable ». |
-| Regles sans annee scolaire affiche un bandeau | toutes les années scolaires ont été supprimées, puis on ouvre « Règles personnalisées ». | une page d'erreur 404 pour une entrée du menu, sans dire quoi faire. |
+| Regles sans annee scolaire affiche un bandeau | toutes les années scolaires ont été supprimées, puis l'utilisateur ouvre « Règles personnalisées ». | une page d'erreur 404 pour une entrée du menu, sans dire quoi faire. |
+| Regle supprimee entre temps dit introuvable | une règle supprimée dans un autre onglet, puis sa fiche ou son changement d'état demandés depuis une page restée ouverte. | un message différent selon le numéro (« n'existe pas » ou « introuvable »), qui ne dit pas que la règle a pu être supprimée. |
+| Code de regle en minuscules dans la base | la base tient une règle dont le code est en minuscules (« r009 », écrit sans passer par le service, qui met les codes en majuscules). | la règle devient introuvable par son code (changer son état répond « n'existe pas »), et le code attribué à la règle suivante la double (« R009 » à côté de « r009 »). |
+| Double clic sur la suppression d une regle | « Supprimer » d'une règle cliqué deux fois (page de confirmation ou ligne de la liste) : le navigateur affiche la réponse du second envoi. | une page « Élément introuvable » (404) juste après une suppression réussie, en pleine démonstration. |
 
 [`tests/integration/web_donnees/test_saisies_extremes.py`](../tests/integration/web_donnees/test_saisies_extremes.py)
 
@@ -757,17 +760,14 @@ Le catalogue compte 348 cas : 200 cas en tests unitaires et 148 cas en tests d'i
 | Liste vide sans filtre pose | une liste vide alors que seul le filtre par défaut (l'année en cours) s'applique. | le message « rien ne correspond à vos filtres » fait chercher un filtre inexistant au lieu de proposer d'ajouter un élément. |
 | Liste vide avec filtre pose | une recherche qui ne trouve rien. | liste vide sans moyen visible de revenir à la liste complète. |
 | Nombres de cinq mille chiffres refuses | un nombre de 5 000 chiffres dans une adresse (page, année, identifiant) ou un formulaire (capacité, graine, règles confirmées, cible, trajet). | Python refuse de convertir plus de 4 300 chiffres, ValueError non rattrapée, erreur 500. |
-| Seance de cinq mille chiffres dans l emploi du temps | l'adresse de l'emploi du temps avec « seance=h » suivi de 5 000 chiffres (lien abîmé). | erreur 500 au lieu d'ignorer la séance mise en évidence. |
-| Niveau de regle de cinq mille chiffres au lancement | le formulaire « Lancer le calcul » avec un champ niveau_regle_<5 000 chiffres>. | erreur 500 au lancement au lieu d'un refus clair. |
 | Note de besoin bornee cote serveur | la note d'un besoin envoyée avec 5 001 caractères ou un mégaoctet (le navigateur borne, pas un envoi fabriqué). | tout est enregistré, les pages et la base s'alourdissent. |
 | Commentaire de regle borne cote serveur | le commentaire d'une règle envoyé avec 200 000 caractères (maxlength du navigateur contourné). | enregistré tel quel et recopié dans l'infobulle de chaque ligne de la liste des règles (des centaines de kilo-octets par page). |
-| Motif d annulation borne cote serveur | le motif d'annulation d'une séance datée envoyé avec 200 000 caractères. | enregistré dans la note de la séance et réaffiché dans son panneau (page de 200 Ko). |
 
 [`tests/integration/web_donnees/test_suppression.py`](../tests/integration/web_donnees/test_suppression.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; correct aujourd'hui, ce test fige le comportement. |
+| Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
 #### `web_edt` (30 cas)
 

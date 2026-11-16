@@ -93,7 +93,7 @@ def _options(session: Session, champ: Champ, valeur: Any) -> tuple[tuple[str, st
     if champ.type is TypeChamp.REFERENCES:
         retenus = set(valeur or [])
         return tuple(sorted(choix, key=lambda option: option[0] not in retenus))
-    vide = "Choisir..." if champ.obligatoire else "(aucun)"
+    vide = "Choisir..." if champ.obligatoire else "Aucun choix"
     if champ.obligatoire and valeur not in ("", None):
         return tuple(choix)
     return (("", vide), *choix)

@@ -89,7 +89,7 @@ def test_portees_refusees_avec_explication():
     with pytest.raises(ErreurSaisie) as capture:
         valider_portee(TypeRegle.SALLES, NaturePortee.BESOIN)
     assert "salle ou son campus imposé" in capture.value.erreurs["portee.nature"]
-    with pytest.raises(ErreurSaisie, match="n'admet pas la portée"):
+    with pytest.raises(ErreurSaisie, match="ne peut pas concerner"):
         valider_portee(TypeRegle.MATIERES_PAR_JOUR, NaturePortee.ENSEIGNANT)
     valider_portee(TypeRegle.CRENEAUX_INTERDITS, NaturePortee.BESOIN)  # admise
 

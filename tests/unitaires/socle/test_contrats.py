@@ -110,7 +110,7 @@ def test_parametres_par_defaut_puis_modification(session):
     assert parametres == Parametres()
     assert (parametres.temps_limite_s, parametres.pause_min) == (300, 15)
     assert (parametres.temps_limite_long_s, parametres.objectif_actif) == (900, True)
-    assert "bouton de relance longue" in definition("temps_limite_long_s").description
+    assert "Relancer en cherchant jusqu'à" in definition("temps_limite_long_s").description
     assert (parametres.dejeuner_debut_min, parametres.dejeuner_fin_min) == (765, 825)
     assert parametres.accessibilite_inconnue_acceptee is False
 

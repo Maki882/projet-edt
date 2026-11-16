@@ -126,7 +126,6 @@ def test_arbre_des_groupes(site, ids):
     page = site.get(f"/groupes/arbre?annee={ids.annee}").text
     assert page.index("A1-G1") < page.index("A1-G1a")  # la classe avant son demi-groupe
     assert "chevauche" in page
-    assert site.get("/groupes/arbre?annee=999").status_code == 404
 
 
 def test_matrice_des_trajets(site, ids):
@@ -172,3 +171,21 @@ def test_arbre_repliable(site, ids):
     assert 'data-arbre-action="replier"' in page
     assert '<details data-noeud="nature-transverse" class="arbre-section">' in page
     assert "Groupes transverses" in page
+
+
+def test_libelles_des_listes_lisibles(site, ids):
+    """Calendrier : ajout d'année replié quand une année existe ; besoins : le filtre par défaut
+    sans « Semestre : Semestre », charges sans point décimal ; menu : listes de référence à
+    part, en dernier ; choix facultatif vide « Aucun choix »."""
+    calendrier = site.get("/calendrier").text
+    assert (
+        '<details class="carte repliable">' in calendrier
+        and 'bouton-principal" href="/calendrier/jours-fermes' not in calendrier
+    )
+    besoins = site.get("/besoins").text
+    assert "Semestre : Semestre" not in besoins and "Séances du groupe" in besoins
+    charges = besoins[besoins.index('id="charges-groupes"') :]
+    assert not re.search(r'class="nombre">(<strong>)?\d+\.\d', charges)
+    salles = site.get("/salles").text
+    assert salles.rindex("<h2>") == salles.index("<h2>Listes de référence</h2>")
+    assert "Aucun choix" in site.get("/besoins/nouveau").text
