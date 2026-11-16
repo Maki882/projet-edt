@@ -62,8 +62,12 @@ def _exiger_famille(famille: str) -> str:
     return famille
 
 
-def _contexte(famille: str) -> dict:
-    return {"t": tableau_famille(famille), "duree": texte_duree, "etats": res}
+def _contexte(famille: str, execution_suivie: str | None = None) -> dict:
+    return {
+        "t": tableau_famille(famille, execution_suivie=execution_suivie),
+        "duree": texte_duree,
+        "etats": res,
+    }
 
 
 @routeur.get("", name="tests")
@@ -115,7 +119,7 @@ def lancer(request: Request, famille: str, cible: Annotated[str, Form()] = "") -
     catalogue = lire_catalogue()
     try:
         choisie = resoudre_cible(catalogue, cible, famille)
-        ex.lancer(choisie, catalogue.racine)
+        ex.lancer(choisie, catalogue.racine, depuis_le_site=True)
     except ErreurIntrouvable as erreur:
         journal.info("Lancement de tests refusé : %s", erreur)
         return rediriger(request, adresse, str(erreur), "erreur")
@@ -144,7 +148,7 @@ def suivi(request: Request, famille: str, execution: str = "", depuis: int = 0) 
     _exiger_famille(famille)
     if not est_htmx(request):
         return RedirectResponse(f"/tests/{famille}", status_code=303)
-    contexte = _contexte(famille)
+    contexte = _contexte(famille, execution_suivie=execution)
     tableau = contexte["t"]
     if ex.execution(execution) is None or tableau.suivi is None or tableau.suivi.id != execution:
         return Response(status_code=200, headers={"HX-Refresh": "true"})
