@@ -227,18 +227,27 @@ def _charger(
     graine: int,
     annee_debut: int | None,
     enregistrer_reference: bool,
+    *,
+    base_recreee: bool = False,
 ) -> RapportJeu:
+    """Charge le jeu dans la transaction de `session` (sous `_seul_a_la_fois`).
+
+    `base_recreee` : la même opération vient de recréer la base à partir du
+    modèle (remise à zéro) ; le schéma n'est pas recontrôlé, et le calcul en
+    cours l'a été juste avant la remise à zéro.
+    """
     # Verrou d'écriture pris d'emblée : un second chargement (autre processus) attend son tour
     # puis trouve la base garnie, au lieu de lire puis d'échouer « database is locked ».
     transaction_immediate(session)
-    moteur = session.get_bind()
-    exiger_schema_a_jour(moteur)  # schéma périmé : le remède est « --reset », pas « init-db »
-    if tables_manquantes(moteur):
-        raise ErreurRegleMetier(
-            "La base n'est pas initialisée : lancer d'abord « python -m edt init-db », "
-            "ou demander la remise à zéro."
-        )
-    _refuser_pendant_un_calcul("charger un jeu fictif")  # tables présentes : contrôle direct
+    if not base_recreee:
+        moteur = session.get_bind()
+        exiger_schema_a_jour(moteur)  # schéma périmé : le remède est « --reset », pas « init-db »
+        if tables_manquantes(moteur):
+            raise ErreurRegleMetier(
+                "La base n'est pas initialisée : lancer d'abord « python -m edt init-db », "
+                "ou demander la remise à zéro."
+            )
+        _refuser_pendant_un_calcul("charger un jeu fictif")  # tables présentes : contrôle direct
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     journal.info("Chargement du jeu fictif « %s » (graine %d) demandé", configuration.nom, graine)
     return generer_jeu(
@@ -260,13 +269,22 @@ def remettre_a_zero(
     et pendant un chargement ou une autre remise à zéro.
     """
     with _seul_a_la_fois("remettre la base à zéro", url):
-        return _remettre_a_zero(aujourdhui, url)
+        return _remettre_a_zero(aujourdhui, url, "remettre la base à zéro")
 
 
-def _remettre_a_zero(aujourdhui: dt.date | None, url: str | None) -> RapportInitialisation:
-    _exiger_aucun_calcul("remettre la base à zéro", url)
+def _remettre_a_zero(
+    aujourdhui: dt.date | None, url: str | None, action: str
+) -> RapportInitialisation:
+    """Remise à zéro refusée pendant un calcul ; `action` nomme la demande dans le refus.
+
+    Les connexions du moteur sont ensuite renouvelées : aucune ne garde un état
+    de la base d'avant la suppression des tables.
+    """
+    _exiger_aucun_calcul(action, url)
     journal.warning("Remise à zéro de la base demandée : toutes les données seront supprimées")
-    return initialiser_base(reset=True, aujourdhui=aujourdhui, url=url)
+    rapport = initialiser_base(reset=True, aujourdhui=aujourdhui, url=url)
+    obtenir_moteur(url).dispose()
+    return rapport
 
 
 def recharger_jeu_fictif(
@@ -284,9 +302,11 @@ def recharger_jeu_fictif(
     Sans `reinitialiser`, la base doit déjà être initialisée et vide de
     référentiels. Une taille inconnue, une graine ou une année de début hors
     bornes sont refusées avant toute action destructrice. Le jeu est validé en
-    base si la génération réussit, rien n'est écrit sinon. Refusé pendant un calcul, et pendant un autre
-    chargement ou une remise à zéro (`ErreurChargementEnCours`) : la remise à
-    zéro et le chargement se font sous le même verrou, sans interruption.
+    base si la génération réussit, rien n'est écrit sinon. Refusé pendant un
+    calcul, et pendant un autre chargement ou une remise à zéro
+    (`ErreurChargementEnCours`) : la remise à zéro et le chargement se font
+    sous le même verrou, sans interruption. Après la remise à zéro, le schéma
+    tout juste recréé à partir du modèle n'est pas recontrôlé.
     """
     configuration = taille if isinstance(taille, ConfigurationJeu) else configuration_nommee(taille)
     # Une graine ou une année de début hors bornes sont refusées ici, AVANT la remise à
@@ -294,10 +314,17 @@ def recharger_jeu_fictif(
     valider_demande(graine, annee_debut)
     with _seul_a_la_fois("charger un jeu fictif", url):
         if reinitialiser:
-            _remettre_a_zero(aujourdhui, url)
+            _remettre_a_zero(aujourdhui, url, "charger un jeu fictif")
         try:
             with session_base(url) as session:
-                return _charger(session, configuration, graine, annee_debut, enregistrer_reference)
+                return _charger(
+                    session,
+                    configuration,
+                    graine,
+                    annee_debut,
+                    enregistrer_reference,
+                    base_recreee=reinitialiser,
+                )
         except Exception as erreur:
             if not reinitialiser:
                 raise  # rien n'a été écrit : le refus ou la panne remonte tel quel

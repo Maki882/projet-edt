@@ -23,6 +23,7 @@ import dataclasses
 import datetime as dt
 import itertools
 import os
+from types import SimpleNamespace
 
 import pytest
 from faker import Faker
@@ -34,7 +35,7 @@ from tests.outils.synthese.empreinte import empreinte_semantique
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import NatureGroupe, NatureJourFerme
-from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
+from edt.erreurs import ErreurCalculEnCours, ErreurDonneesInvalides, ErreurRegleMetier
 from edt.services import jeux
 from edt.services.parametres import ecrire_parametre
 from edt.services.regles import lister
@@ -139,6 +140,49 @@ def test_refus_apres_la_remise_a_zero_dit_que_la_base_est_videe(jeu_minimal, mon
     assert "refus simulé" in message
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(m.Besoin)) == 0
+
+
+def test_schema_recree_par_la_remise_a_zero_n_est_pas_recontrole(jeu_minimal, monkeypatch):
+    """Cas : charger un jeu avec remise à zéro, quand le contrôle du schéma signale à tort un
+    écart juste après la recréation des tables (constaté sur le serveur réel après « Proposer
+    une autre solution »).
+
+    Risque : la base est vidée, puis le chargement refusé « schéma périmé... Rien n'a été
+    modifié » : base vide, message faux, et chaque nouvel essai échoue de même.
+    """
+    recreee = []
+    reelle = jeux.initialiser_base
+
+    def initialisation_suivie(*args, **options):
+        rapport = reelle(*args, **options)
+        recreee.append(True)
+        return rapport
+
+    def ecarts_apres_recreation(_moteur):
+        return ["table annee_scolaire : unicité (libelle) absente de la base"] if recreee else []
+
+    monkeypatch.setattr(jeux, "initialiser_base", initialisation_suivie)
+    monkeypatch.setattr("edt.db.initialisation.ecarts_schema", ecarts_apres_recreation)
+
+    rapport = jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+
+    assert recreee and rapport.nb_besoins > 0
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == rapport.nb_besoins
+
+
+def test_chargement_refuse_pendant_un_calcul_nomme_le_chargement(jeu_minimal, monkeypatch):
+    """Cas : « Charger » un jeu (avec remise à zéro) pendant un calcul.
+
+    Risque : le refus dit « Impossible de remettre la base à zéro » alors que l'utilisateur a
+    demandé un chargement ; ou la base est vidée avant le refus.
+    """
+    monkeypatch.setattr(jeux, "calcul_en_cours", lambda: SimpleNamespace(id=4, semestre_id=1))
+    with pytest.raises(ErreurCalculEnCours) as capture:
+        jeux.recharger_jeu_fictif("petit", reinitialiser=True)
+    assert capture.value.message.startswith("Impossible de charger un jeu")
+    with session_base() as session:
+        assert session.scalar(select(func.count()).select_from(m.Besoin)) == 16
 
 
 def test_marqueur_d_un_processus_arrete_n_immobilise_pas_le_serveur(base, monkeypatch):
