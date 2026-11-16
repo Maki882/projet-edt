@@ -104,6 +104,26 @@ gabarits.env.filters.update(
 gabarits.env.globals.update(version_application=__version__, JOURS=JOURS)
 
 
+def precompiler_gabarits() -> int:
+    """Compile tous les gabarits d'avance (au démarrage du serveur) ; renvoie leur nombre.
+
+    Jinja compile un gabarit à son premier affichage (0,1 à 0,3 s par écran) :
+    compilés au démarrage, ils ne retardent pas la première visite de chaque
+    page. Un gabarit invalide est journalisé et n'empêche pas de compiler les
+    autres ; il lèvera de nouveau, lisiblement, à son affichage.
+    """
+    noms = gabarits.env.list_templates(extensions=("html",))
+    compiles = 0
+    for nom in noms:
+        try:
+            gabarits.env.get_template(nom)
+        except Exception:
+            journal.exception("Gabarit %s : compilation d'avance impossible", nom)
+        else:
+            compiles += 1
+    return compiles
+
+
 class _IdentifiantBorne(IntegerConvertor):
     """`{n:int}` des adresses, borné à `CHIFFRES_ADRESSE_MAX` chiffres.
 
