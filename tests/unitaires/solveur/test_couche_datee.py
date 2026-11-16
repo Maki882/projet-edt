@@ -286,4 +286,4 @@ def test_semestre_commencant_en_milieu_de_semaine_et_semestre_d_un_jour():
     assert {o.date for o in toutes} == {g.date_debut} and len({o.debut for o in toutes}) == 4
     verifier_dates(instantane, toutes)
     (programmer,) = resultat.a_programmer
-    assert programmer.raison
+    assert programmer.raison.startswith("aucune place libre"), programmer.raison

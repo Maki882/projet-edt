@@ -1,4 +1,4 @@
-"""Règles personnalisées sur l'emploi du temps des personnes et les relations entre séances (temps B).
+"""Règles personnalisées sur l'emploi du temps des personnes et les relations entre séances.
 
 Poseurs déclarés (`@enregistrer("solveur", TypeRegle.X)`, vue `PAR_MODELE`)
 pour `MAX_PAR_JOUR`, `JOURNEES_LIBRES`, `SANS_TROU`, `CAMPUS_PAR_JOUR`,

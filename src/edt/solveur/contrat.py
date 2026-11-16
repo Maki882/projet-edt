@@ -47,9 +47,14 @@ from edt.erreurs import ErreurDonneesInvalides
 
 TEMPS_LIMITE_MAX_S = 24 * 3600.0
 """Temps limite le plus long accepté (un jour) : au-delà, comme pour l'infini, un calcul
-sans fin et des échéances d'abandon impossibles à calculer."""
+sans fin et des échéances d'abandon impossibles à calculer.
+
+Les bornes de ce module gardent le moteur d'une valeur absurde ; elles sont volontairement
+plus larges que celles des paramètres globaux (`edt.domaine.parametres`), qui encadrent les
+réglages de l'écran : un calcul lancé en ligne de commande peut demander plus de temps."""
 NB_WORKERS_MAX = 64
-"""Fils de calcul acceptés au plus (le moteur n'en utilise jamais plus que de cœurs)."""
+"""Fils de calcul acceptés au plus. Le moteur n'en utilise jamais plus que la machine n'a de
+cœurs (`edt.solveur.moteur`) : un nombre trop grand ne coûte ni mémoire ni temps."""
 
 
 class StatutSolveur(StrEnum):
@@ -75,8 +80,8 @@ class OptionsSolveur:
       ignorée (`normaliser_niveaux` complète un choix partiel). C'est la seule
       vérité : `contraintes_desactivees` en est déduit ;
     - `contraintes_desactivees` : codes ignorés, c'est-à-dire absents de
-      `niveaux`. Donné seul (sans `niveaux`), il sert à construire `niveaux`
-      comme autrefois : niveaux par défaut sans ces codes ; donné avec
+      `niveaux`. Donné seul (sans `niveaux`), il sert à construire `niveaux` :
+      niveaux par défaut sans ces codes ; donné avec
       `niveaux`, il en retire ces codes ;
     - `optimiser` : minimiser l'objectif de qualité au lieu de s'arrêter à la
       première solution valide ;
@@ -91,7 +96,7 @@ class OptionsSolveur:
       violent déjà entre elles une contrainte, au lieu de refuser le calcul ;
     - `arret_sur_stagnation` : avec `optimiser`, laisser l'amélioration
       s'arrêter d'elle-même quand elle ne progresse plus, sans attendre le
-      temps limite. Ce critère lit l'horloge : le désactiver quand on veut un
+      temps limite. Ce critère lit l'horloge : le désactiver pour obtenir un
       résultat strictement reproductible d'une exécution à l'autre ;
     - `niveaux_regles` : niveau retenu pour chaque règle personnalisée
       (identifiant de règle → niveau) ; une règle active absente du
@@ -180,7 +185,7 @@ class OptionsSolveur:
         `parametres["niveaux"]` fait foi, les codes qui en manquent prenant
         leur niveau par défaut ; les contraintes ignorées sont celles de
         `contraintes_desactivees` (la colonne du calcul), retirées. Un calcul
-        enregistré avant les niveaux n'a que ses contraintes désactivées :
+        enregistré sans clé `niveaux` n'a que ses contraintes désactivées :
         niveaux par défaut sans ces codes. Même lecture que
         `edt.services.niveaux.niveaux_du_calcul`. Lève `ErreurDonneesInvalides`
         si les niveaux ne sont pas un dictionnaire, ou sur un code ou un

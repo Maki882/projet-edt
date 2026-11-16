@@ -1,8 +1,8 @@
-"""Niveaux de règles, temps 1 : la plomberie, des options du calcul jusqu'au suivi et à la commande.
+"""Niveaux de règles : des options du calcul jusqu'au suivi et à la commande.
 
-Le moteur pose encore toutes les contraintes présentes en dur ; seule la
-circulation des niveaux est vérifiée ici (options, enregistrement, suivi,
-pré-vérifications, ligne de commande).
+La première partie vérifie la circulation des niveaux (options,
+enregistrement, suivi, pré-vérifications, ligne de commande) ; la seconde,
+les contraintes souples.
 """
 
 from __future__ import annotations
@@ -110,8 +110,8 @@ def test_une_contrainte_qui_definit_le_probleme_reste_necessaire():
         OptionsSolveur(niveaux={"INCONNUE": "important"})
 
 
-def test_le_moteur_pose_en_dur_les_contraintes_presentes_quel_que_soit_leur_niveau():
-    """Temps 1 : une contrainte importante ou facultative est encore respectée à la lettre."""
+def test_une_contrainte_souple_sans_conflit_est_respectee():
+    """Sans conflit, une contrainte importante ou facultative est respectée à la lettre."""
     f = Fabrique()
     f.salle()
     classe, martin = f.groupe("A1"), f.enseignant()
@@ -186,7 +186,7 @@ def test_lire_niveaux_complete_les_codes_absents_et_exige_un_dictionnaire():
 
 
 # --------------------------------------------------------------------------- #
-# Temps 2 : contraintes souples (une entorse coûte, une contrainte nécessaire interdit)
+# Contraintes souples (une entorse coûte, une contrainte nécessaire interdit)
 # --------------------------------------------------------------------------- #
 
 SANS_PAUSE = (

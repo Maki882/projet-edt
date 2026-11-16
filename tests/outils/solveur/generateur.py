@@ -1,6 +1,6 @@
 """Générateur d'instantanés aléatoires mais satisfiables par construction.
 
-Principe : on fabrique d'abord, en secret, un emploi du temps valide (chaque
+Principe : un emploi du temps valide est d'abord fabriqué, en secret (chaque
 séance est posée sur un créneau où son groupe, son enseignant et une salle
 compatible sont libres, sans changement de campus dans la demi-journée) ;
 les besoins sont ensuite déduits de ce qui a pu être posé. L'instantané
