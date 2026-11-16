@@ -263,8 +263,9 @@ semaine sur 30 semaines compte 24 000 lignes.
 ### La feuille `regles` (règles personnalisées)
 
 Les règles personnalisées (`docs/regles-personnalisees.md`) s'échangent dans
-la dernière feuille, traitée après toutes les autres (ses cibles existent
-alors). Une ligne = une règle d'une année scolaire.
+la feuille `regles`, la dernière des données de l'établissement, traitée
+après les autres (ses cibles existent alors) ; la feuille `seances` qui la
+suit porte un emploi du temps existant. Une ligne = une règle d'une année scolaire.
 
 - **Identifiant** : (`annee`, `code`). Un code vide à l'import est attribué
   (R001, R002...) : une telle ligne crée toujours une nouvelle règle, il faut
