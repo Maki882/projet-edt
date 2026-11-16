@@ -273,3 +273,21 @@ def test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible(
     assert negatif.status_code == 404
     assert "Le semestre -7 n'existe pas" in html.unescape(negatif.text)
     assert compter(m.VersionEdt) == 0
+
+
+@pytest.mark.cas_limite
+def test_application_sans_htmx_d_un_fichier_refuse_ne_dit_pas_0_ligne_non_importee(base, client):
+    """Cas : un document qui n'est pas un fichier de données (PDF) envoyé à « Appliquer » sans
+    JavaScript (page complète) : le fichier entier est refusé.
+
+    Risque : le bandeau du haut annonce « Import appliqué : 0 ligne(s) ou séance(s) non
+    importée(s) », qui laisse croire que tout est entré.
+    """
+    envoi = {
+        "files": [("fichiers", ("faux.pdf", b"%PDF-1.4 bidon", "application/pdf"))],
+        "data": {"mode": "donnees"},
+    }
+    reponse = client.post("/import/appliquer", **envoi)
+    assert reponse.status_code == 200
+    texte = html.unescape(reponse.text)
+    assert "0 ligne(s)" not in texte and "Rien n'a été importé" in texte

@@ -124,11 +124,18 @@ def _appliquer(request: Request, session, envois, options) -> tuple[HTMLResponse
     resultat = _contexte_resultat(rapport, {})
     if est_htmx(request):
         return rendre(request, "echange/_resultat.html", resultat), rapport.a_des_ecritures
-    if rapport.a_des_rejets:
+    # Même cas que le résultat affiché en HTMX (`echange/_resultat.html`).
+    if not rapport.a_des_ecritures:
+        message = Message("Rien n'a été importé : voir le rapport.", "attention")
+    elif rapport.nb_rejets:
         message = Message(
             f"Import appliqué : {rapport.nb_rejets} ligne(s) ou séance(s) non importée(s), "
             "voir le rapport.",
             "attention",
+        )
+    elif rapport.a_des_rejets:
+        message = Message(
+            f"Import appliqué, avec {rapport.nb_erreurs} erreur(s) : voir le rapport.", "attention"
         )
     else:
         message = Message("Import appliqué : toutes les lignes sont entrées.", "succes")
