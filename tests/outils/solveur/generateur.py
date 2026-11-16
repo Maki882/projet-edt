@@ -30,7 +30,7 @@ import datetime as dt
 import random
 from collections import defaultdict
 
-from tests.solveur.fabrique import C3, CRENEAUX_JOUR, JEUDI, RENTREE, SAMEDI, Fabrique, H
+from tests.outils.solveur.fabrique import C3, CRENEAUX_JOUR, JEUDI, RENTREE, SAMEDI, Fabrique, H
 
 from edt.domaine.enumerations import (
     Accessibilite,

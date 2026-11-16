@@ -21,19 +21,22 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import OperationalError
+from tests.outils.solveur.en_base import OPTIONS
+from tests.outils.solveur.en_base import calcul_fictif as _calcul_fictif
+from tests.outils.solveur.en_base import etat as _etat
+from tests.outils.solveur.en_base import journalise as _journalise
+from tests.outils.solveur.en_base import rendre_impossible as _rendre_impossible
 
 import edt
 from edt import cli, solveur
 from edt.db import modeles as m
-from edt.db.moteur import session_base, transaction_immediate
+from edt.db.moteur import session_base
 from edt.domaine.calendrier import lundi_de
 from edt.domaine.contraintes import niveaux_depuis_desactivees
 from edt.domaine.enumerations import (
     EtatCalcul,
-    Gravite,
-    ModeVolume,
     OrigineOccurrence,
     OrigineVersion,
     StatutOccurrence,
@@ -48,7 +51,6 @@ from edt.erreurs import (
 )
 from edt.journal import configurer_journalisation
 from edt.services import echange, generation, jeux
-from edt.services import regles as service_regles
 from edt.services.echange import OptionsImport
 from edt.services.instanciation import instancier_version, replacer_occurrences
 from edt.services.instantane import charger_instantane
@@ -56,14 +58,12 @@ from edt.services.parametres import reinitialiser_parametres
 from edt.services.verification import (
     verifier_occurrences_version,
     verifier_version,
-    version_a_verifier,
 )
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
 from edt.web.app import creer_app
 
 DELAI = 60
-OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1)
 
 
 def generer(semestre_id: int, options: OptionsSolveur = OPTIONS, **kwargs):
@@ -387,29 +387,6 @@ def test_replacement_impossible_passe_a_programmer(jeu_minimal):
 # --------------------------------------------------------------------------- #
 
 
-def _rendre_impossible(semestre_id: int) -> None:
-    """Demande 60 séances par semaine à un groupe : aucune semaine ne peut les contenir."""
-    with session_base() as session:
-        besoin = session.scalar(
-            select(m.Besoin).where(m.Besoin.mode_volume == ModeVolume.PAR_SEMAINE)
-        )
-        besoin.nombre = 60
-
-
-def test_pre_verifier_semestre(jeu_minimal):
-    with session_base() as session:
-        assert not [
-            a
-            for a in generation.pre_verifier_semestre(session, jeu_minimal.semestre_id)
-            if a.gravite is Gravite.ERREUR
-        ]
-    _rendre_impossible(jeu_minimal.semestre_id)
-    with session_base() as session:
-        anomalies = generation.pre_verifier_semestre(session, jeu_minimal.semestre_id)
-    erreurs = [a for a in anomalies if a.gravite is Gravite.ERREUR]
-    assert erreurs and any("c'est impossible" in a.message for a in erreurs)
-
-
 def test_calcul_refuse_par_les_pre_verifications(jeu_minimal):
     _rendre_impossible(jeu_minimal.semestre_id)
     appels = []
@@ -485,21 +462,6 @@ def test_arret_avec_une_solution_la_version_est_enregistree(jeu_minimal):
     assert occurrences(suivi.version_id)  # les séances datées sont produites aussi
 
 
-def test_graines_differentes_solutions_differentes_sur_le_jeu_minimal(jeu_minimal):
-    """« Proposer une autre solution » : une autre graine suffit, même avec un seul fil."""
-    with session_base() as session:
-        instantane = charger_instantane(session, jeu_minimal.semestre_id)
-    solutions = [
-        generation.solveur.resoudre(
-            instantane, dataclasses.replace(OPTIONS, graine=graine, utiliser_indices=False)
-        ).placements
-        for graine in (1, 2, 3, 4, 5, 6, 1)
-    ]
-    assert all(solutions)
-    assert len(set(solutions[:6])) >= 5
-    assert solutions[0] == solutions[6]  # même graine, même solution
-
-
 def test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee(jeu_minimal):
     """« Séances verrouillées » décochée : une séance déplacée n'est plus marquée verrouillée."""
     premiere = generer(jeu_minimal.semestre_id)
@@ -561,29 +523,6 @@ def test_avertissements_joints_au_suivi(jeu_minimal):
 # --------------------------------------------------------------------------- #
 
 
-def _calcul_fictif(semestre_id: int, **champs) -> int:
-    """Inscrit en base une ligne de calcul telle quelle (suivi ancien, abandonné ou corrompu).
-
-    Par défaut : « en cours », lancé à l'instant avec les options des tests,
-    sans statistiques ; `champs` remplace n'importe quelle colonne.
-    """
-    valeurs = {
-        "semestre_id": semestre_id,
-        "etat": EtatCalcul.EN_COURS,
-        "demarre_le": dt.datetime.now(),
-        "parametres": OPTIONS.vers_dict(),
-        "contraintes_desactivees": [],
-        "statistiques": {},
-        "message": "",
-        **champs,
-    }
-    with session_base() as session:
-        calcul = m.Calcul(**valeurs)
-        session.add(calcul)
-        session.flush()
-        return calcul.id
-
-
 def _calcul_en_cours_d_un_autre_processus(semestre_id: int, pid: int, **champs) -> int:
     """Inscrit en base un calcul « en cours » que le processus `pid` est censé exécuter."""
     demarre_le = champs.pop("demarre_le", dt.datetime.now())
@@ -592,11 +531,6 @@ def _calcul_en_cours_d_un_autre_processus(semestre_id: int, pid: int, **champs) 
         generation.CLE_DEMARRAGE: demarre_le.timestamp(),
     }
     return _calcul_fictif(semestre_id, demarre_le=demarre_le, statistiques=statistiques, **champs)
-
-
-def _etat(calcul_id: int) -> EtatCalcul:
-    with session_base() as session:
-        return EtatCalcul(session.get(m.Calcul, calcul_id).etat)
 
 
 def test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus(jeu_minimal):
@@ -809,11 +743,6 @@ def _nb_lignes(table) -> int:
         return session.scalar(select(func.count()).select_from(table))
 
 
-def _journalise(caplog, texte: str, niveau: int = logging.WARNING) -> list[logging.LogRecord]:
-    """Enregistrements du journal de ce niveau dont le message contient `texte`."""
-    return [r for r in caplog.records if r.levelno == niveau and texte in r.getMessage()]
-
-
 def _sortie_complete(resultat) -> str:
     """Sortie standard et sortie d'erreur d'une commande, quelle que soit la version de Click."""
     texte = resultat.output
@@ -891,33 +820,6 @@ def test_identifiant_hors_bornes_est_introuvable(jeu_minimal):
             with pytest.raises(ErreurIntrouvable):
                 appel()
     assert _nb_lignes(m.Calcul) == 0
-
-
-@pytest.mark.cas_limite
-def test_version_a_verifier_identifiant_hors_bornes_est_introuvable(jeu_minimal):
-    """Cas : `version_a_verifier(session, version_id=2**70)`.
-
-    Risque : OverflowError de SQLite au lieu d'ErreurIntrouvable : page 500 au lieu de 404.
-    """
-    with session_base() as session, pytest.raises(ErreurIntrouvable):
-        version_a_verifier(session, version_id=2**70)
-
-
-@pytest.mark.cas_limite
-def test_regle_dont_la_cible_est_hors_bornes_est_invalide(jeu_minimal):
-    """Cas : brouillon de règle dont la cible est l'identifiant numérique 10^20.
-
-    Risque : OverflowError de SQLite au lieu d'une validation « portee.cible » invalide : page
-    500 sur l'écran des règles.
-    """
-    brouillon = {
-        "type": "JOURS_TRAVAILLES",
-        "portee": {"nature": "groupe", "cible": 10**20},
-        "parametres": {"jours": ["lundi"]},
-    }
-    with session_base() as session:
-        validation = service_regles.valider(session, brouillon)
-    assert not validation.valide and "portee.cible" in validation.erreurs
 
 
 @pytest.mark.cas_limite
@@ -1080,72 +982,6 @@ def test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation(
     resultat = lanceur.invoke(cli.app, ["instancier", "--version", str(suivi.version_id)])
     assert resultat.exit_code == 0, resultat.output
     assert occurrences(suivi.version_id)
-
-
-@pytest.mark.cas_limite
-def test_cloture_renseigne_la_duree_et_nomme_la_version_sans_dates(jeu_minimal):
-    """Cas : calculs « en cours » abandonnés il y a sept minutes (processus tué), l'un juste après
-    l'enregistrement de sa version, clos par `cloturer_calculs_interrompus`.
-
-    Risque : « erreur en 0 s » dans l'historique pour un calcul qui a tourné des minutes, et une
-    version active sans séances datées dont personne ne sait qu'il faut relancer l'instanciation.
-    """
-    il_y_a_7_min = dt.datetime.now() - dt.timedelta(minutes=7)
-    sans_version = _calcul_fictif(jeu_minimal.semestre_id, demarre_le=il_y_a_7_min)
-    avec_version = _calcul_fictif(
-        jeu_minimal.semestre_id,
-        demarre_le=il_y_a_7_min,
-        statistiques={generation.CLE_DEMARRAGE: il_y_a_7_min.timestamp()},
-    )
-    with session_base() as session:
-        session.add(
-            m.VersionEdt(
-                semestre_id=jeu_minimal.semestre_id,
-                numero=1,
-                libelle="Version 1",
-                origine=OrigineVersion.GENEREE,
-                active=True,
-                calcul_id=avec_version,
-            )
-        )
-    assert generation.cloturer_calculs_interrompus() == 2
-    for calcul_id in (sans_version, avec_version):
-        suivi = generation.etat_calcul(calcul_id)
-        assert suivi.etat is EtatCalcul.ERREUR
-        assert 415 <= suivi.temps_ecoule_s <= 425, suivi.temps_ecoule_s
-    with session_base() as session:
-        assert all(c.duree_s is not None for c in session.scalars(select(m.Calcul)))
-    suivi = generation.etat_calcul(avec_version)
-    assert suivi.version_id is not None and "relancer l'instanciation" in suivi.message
-    assert "relancer l'instanciation" not in generation.etat_calcul(sans_version).message
-
-
-@pytest.mark.cas_limite
-def test_calcul_en_cours_ne_s_auto_bloque_pas_sur_un_calcul_abandonne(jeu_minimal, caplog):
-    """Cas : une requête d'écriture tient le verrou d'écriture (transaction immédiate et une
-    écriture) dans le fil courant, un calcul « en cours » abandonné traîne en base, et la requête
-    consulte `calcul_en_cours()` (import, remise à zéro, paramètres).
-
-    Risque : la clôture du calcul abandonné attend, dans le même fil, le verrou que la requête
-    tient elle-même : dix secondes puis « base occupée » (auto-blocage), alors qu'il suffit de
-    la reporter et de répondre d'après ce qu'on a lu.
-    """
-    abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
-    with session_base() as requete:
-        transaction_immediate(requete)
-        requete.execute(
-            update(m.Semestre)
-            .where(m.Semestre.id == jeu_minimal.semestre_id)
-            .values(libelle=m.Semestre.libelle)
-        )
-        debut = time.perf_counter()
-        assert generation.calcul_en_cours() is None
-        assert time.perf_counter() - debut < 1, "la clôture a attendu le verrou"
-        assert _journalise(caplog, "reportée", logging.INFO)
-        assert _etat(abandonne) is EtatCalcul.EN_COURS  # clôture reportée, rien d'écrit
-    # Verrou relâché : l'appel suivant clôt le calcul.
-    assert generation.calcul_en_cours() is None
-    assert _etat(abandonne) is EtatCalcul.ERREUR
 
 
 @pytest.mark.cas_limite

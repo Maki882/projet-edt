@@ -14,7 +14,8 @@ from __future__ import annotations
 import datetime as dt
 from collections import defaultdict
 
-from tests.solveur.fabrique import (
+from tests.outils.solveur.aides import SEMAINE, instancier_et_replacer, niveaux_avec, place
+from tests.outils.solveur.fabrique import (
     LUNDI,
     MARDI,
     NIVEAUX_DURS,
@@ -25,8 +26,6 @@ from tests.solveur.fabrique import (
     options,
     verifier_solution,
 )
-from tests.solveur.test_couche_datee import SEMAINE, instancier_et_replacer, place
-from tests.solveur.test_niveaux import niveaux_avec
 
 from edt.domaine.contraintes import Niveau
 from edt.domaine.enumerations import DemiJournee
