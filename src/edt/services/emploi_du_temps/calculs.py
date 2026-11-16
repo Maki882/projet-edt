@@ -1242,6 +1242,12 @@ def _phrases(
     if issue == Issue.EN_COURS:
         # Le temps écoulé est dit une seule fois, sous la phrase (gabarit du suivi).
         phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}."
+        if suivi.premiere_solution_s is not None and not suivi.arret_demande:
+            phrase += (
+                " Un emploi du temps est déjà trouvé (après "
+                f"{presentation.duree_secondes(suivi.premiere_solution_s)}) ; le calcul cherche à "
+                "l'améliorer. Vous pouvez l'arrêter : le meilleur sera gardé."
+            )
         if suivi.arret_demande:
             phrase += " L'arrêt est demandé : le calcul s'interrompt dès que possible."
         return "Calcul en cours", phrase, None

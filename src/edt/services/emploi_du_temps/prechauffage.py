@@ -1,7 +1,7 @@
 """Préchauffage des écrans après un calcul : vérifier en arrière-plan avant que l'utilisateur ne demande.
 
 Après un calcul, la base a changé : la mémoire des écrans (`memoire`) est
-périmée et le premier affichage de l'accueil, de « À traiter » ou de
+périmée et le premier affichage de l'accueil, de « Points à traiter » ou de
 « Générer » recalculerait les vérifications (environ deux secondes sur
 l'établissement complet). Dès que l'écran du calcul constate sa fin, il lance
 `lancer` : un fil d'arrière-plan refait ces calculs une fois, pendant que

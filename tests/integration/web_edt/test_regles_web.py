@@ -287,7 +287,7 @@ def test_une_relance_applique_les_regles_creees_depuis_et_le_dit(jeu_minimal, cl
 
 
 # --------------------------------------------------------------------------- #
-# Anomalies d'une règle : À traiter et panneau d'une séance
+# Anomalies d'une règle : Points à traiter et panneau d'une séance
 # --------------------------------------------------------------------------- #
 
 

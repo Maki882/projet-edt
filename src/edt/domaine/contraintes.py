@@ -25,8 +25,8 @@ peut changer.
 Les niveaux retenus pour un calcul forment un `Niveaux` (`dict[CodeContrainte,
 Niveau]`). Convention : **une clé absente est une contrainte ignorée**, ni
 posée par le solveur ni vérifiée par le vérificateur ; c'est ainsi que
-`niveaux_depuis_desactivees` traduit les calculs anciens, qui ne connaissaient
-que des contraintes désactivées. `normaliser_niveaux` produit toujours un
+`niveaux_depuis_desactivees` traduit un calcul enregistré sans niveaux, qui
+ne porte que des contraintes désactivées. `normaliser_niveaux` produit toujours un
 dictionnaire complet. Côté vérificateur, la gravité d'une anomalie découle du
 niveau : nécessaire donne une erreur, important un avertissement, facultatif
 une information. Côté solveur, une entorse à une contrainte souple coûte
@@ -115,7 +115,7 @@ samedi, 1 par créneau extrême. Une contrainte importante vaut donc une
 centaine de trous-semaines (sept trous sur un semestre de quinze semaines),
 plus que tout gain de confort réaliste d'une seule entorse ; une facultative
 deux trous-semaines, qu'un vrai gain de confort peut emporter. Valeurs
-calibrées par le lot solveur sur les jeux moyen et grand (2026-10-06).
+calibrées sur les établissements fictifs moyen et grand.
 """
 
 Niveaux = dict[CodeContrainte, Niveau]

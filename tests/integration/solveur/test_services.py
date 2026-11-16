@@ -1452,3 +1452,11 @@ def test_instanciation_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture(
     assert (
         len(occurrences(suivi.version_id)) == suivi.statistiques["instanciation"]["nb_occurrences"]
     )
+
+
+def test_le_vrai_moteur_signale_sa_premiere_solution(jeu_minimal, caplog):
+    """Le moteur réel reçoit le rappel de première solution : l'instant est noté au journal."""
+    suivi = generer(jeu_minimal.semestre_id)
+    assert suivi.reussi, suivi.message
+    assert _journalise(caplog, "premier emploi du temps complet après", logging.INFO)
+    assert suivi.premiere_solution_s is None  # calcul fini : plus rien à annoncer

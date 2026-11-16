@@ -46,7 +46,7 @@
   <p class="edt-entorses"><strong>Entorses aux règles personnalisées :</strong> {{ r.entorses_regles|join(" ; ") }}</p>
   {%- endif %}
   {%- if r.entorses or r.entorses_regles %}
-  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; « À traiter » liste les anomalies correspondantes.</p>
+  <p class="discret">Comptées par le calcul (une par séance, par paire ou par heure selon la règle) ; la page « Points à traiter » liste les anomalies correspondantes.</p>
   {%- endif %}
 
   {%- if r.issue == "refuse" %}

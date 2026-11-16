@@ -133,6 +133,6 @@ def test_prechauffage_sur_toute_base(request, environnement, monkeypatch, caplog
 
 
 def test_descriptions_des_regles_sans_nom_technique():
-    """Le tableau « Règles » et « À traiter » affichent ces descriptions telles quelles."""
+    """Le tableau « Règles » et la page « Points à traiter » affichent ces descriptions telles quelles."""
     for code, entree in CATALOGUE.items():
         assert "`" not in entree.description and "edt." not in entree.description, code

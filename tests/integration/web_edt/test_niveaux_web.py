@@ -1,4 +1,4 @@
-"""Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « À traiter ».
+"""Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter ».
 
 Chaque règle modifiable se règle à trois niveaux (nécessaire, important,
 facultatif) ; les six règles qui définissent le problème restent toujours

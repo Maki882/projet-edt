@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import ctypes
 import datetime as dt
+import inspect
 import logging
 import math
 import os
@@ -194,6 +195,9 @@ class SuiviCalcul:
     - `fichier_journal` : chemin du journal dédié du calcul ;
     - `avertissements` : situations tendues relevées par les pré-vérifications
       et remarques du moteur, à montrer à l'utilisateur ;
+    - `premiere_solution_s` : calcul en cours qui a déjà un emploi du temps
+      complet (gardé si l'utilisateur l'arrête), trouvé après ce nombre de
+      secondes ; `None` sinon. Tenu en mémoire par le processus qui calcule ;
     - `statistiques` : mesures du moteur, plus `impossibilites` (raisons d'un
       refus), `indicateurs` (qualité de la solution) et `instanciation`
       (bilan des séances datées) quand ils existent.
@@ -215,6 +219,7 @@ class SuiviCalcul:
     niveaux: Niveaux = field(default_factory=dict)
     niveaux_regles: dict[int, Niveau] | None = None
     regles: tuple[dict, ...] = ()
+    premiere_solution_s: float | None = None
 
     @property
     def en_cours(self) -> bool:
@@ -231,6 +236,7 @@ class SuiviCalcul:
 class _CalculActif:
     fil: threading.Thread
     arret: threading.Event
+    premiere_solution_s: float | None = None
 
 
 _verrou = threading.Lock()
@@ -903,7 +909,7 @@ def _calculer(
         }
         return EtatCalcul.INFAISABLE, message, statistiques
 
-    resultat = moteur(instantane, options, arret)
+    resultat = _appeler_moteur(moteur, calcul_id, instantane, options, arret)
     statistiques = dict(resultat.statistiques)
     etat = _ETAT_PAR_STATUT[resultat.statut]
     message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
@@ -929,6 +935,37 @@ def _calculer(
         )
     message += " " + _instancier(version_id, statistiques, config)
     return etat, message, statistiques
+
+
+def _appeler_moteur(
+    moteur: Moteur,
+    calcul_id: int,
+    instantane: Instantane,
+    options: OptionsSolveur,
+    arret: threading.Event,
+) -> ResultatSolveur:
+    """Appelle le moteur ; s'il le permet, il signale sa première solution complète au suivi.
+
+    L'instant est gardé avec le fil du calcul (`_CalculActif`), sans écriture en base : le
+    suivi interrogé chaque seconde peut dire qu'un emploi du temps est déjà trouvé. Un moteur
+    qui ne connaît pas `sur_premiere_solution` est appelé sans.
+    """
+
+    def noter(ecoule_s: float) -> None:
+        actif = _actifs.get(calcul_id)
+        if actif is not None:
+            actif.premiere_solution_s = ecoule_s
+        journal.info(
+            "Calcul %d : premier emploi du temps complet après %.1f s", calcul_id, ecoule_s
+        )
+
+    try:
+        accepte = "sur_premiere_solution" in inspect.signature(moteur).parameters
+    except (TypeError, ValueError):  # signature illisible (objet natif) : appel simple
+        accepte = False
+    if accepte:
+        return moteur(instantane, options, arret, sur_premiere_solution=noter)
+    return moteur(instantane, options, arret)
 
 
 def _controler(instantane: Instantane, resultat: ResultatSolveur, options: OptionsSolveur) -> dict:
@@ -1204,11 +1241,18 @@ def _suivi(session: Session, calcul: Calcul) -> SuiviCalcul:
         statistiques=dict(statistiques),
         fichier_journal=calcul.fichier_journal,
         arret_demande=calcul.arret_demande,
+        premiere_solution_s=_premiere_solution(calcul.id) if etat is EtatCalcul.EN_COURS else None,
         avertissements=_textes(statistiques.get("avertissements")),
         niveaux=_niveaux_du_calcul(calcul, parametres, desactivees),
         niveaux_regles=_niveaux_regles_du_calcul(calcul, parametres),
         regles=tuple(r for r in regles if isinstance(r, dict)) if isinstance(regles, list) else (),
     )
+
+
+def _premiere_solution(calcul_id: int) -> float | None:
+    """Instant de la première solution d'un calcul de ce processus, s'il en a une."""
+    actif = _actifs.get(calcul_id)
+    return actif.premiere_solution_s if actif is not None else None
 
 
 def _niveaux_regles_du_calcul(calcul: Calcul, parametres: dict) -> dict[int, Niveau] | None:

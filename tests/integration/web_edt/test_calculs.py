@@ -608,3 +608,30 @@ def test_generer_sans_aucun_besoin_dit_quoi_faire(base, client):
     assert page.count("""disabled title="Aucun besoin d'enseignement à placer\"""") == 2
     assert "Rien à calculer pour l&#39;instant" in page
     assert "Le calcul ne peut pas être lancé" not in page  # pas de bandeau d'erreur
+
+
+@pytest.mark.cas_limite
+def test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve(jeu_minimal, client, monkeypatch):
+    """Cas : calcul long (grand établissement) qui a trouvé un emploi du temps complet et cherche
+    à l'améliorer pendant des minutes.
+    Risque : l'utilisateur ne voit qu'un temps qui passe, ignore qu'arrêter garderait déjà un
+    emploi du temps, et attend la fin pendant la démonstration.
+    """
+    signale, liberer = threading.Event(), threading.Event()
+
+    def moteur_qui_trouve_puis_attend(instantane, options, arret=None, sur_premiere_solution=None):
+        sur_premiere_solution(48.0)
+        signale.set()
+        liberer.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_qui_trouve_puis_attend)
+    calcul_id = _lancer(client, jeu_minimal.semestre_id)
+    try:
+        assert signale.wait(DELAI)
+        fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
+        assert "Un emploi du temps est déjà trouvé (après 48 s)" in fragment
+        assert "le meilleur sera gardé" in fragment
+    finally:
+        liberer.set()
+    assert generation.attendre_calcul(calcul_id, DELAI).etat is EtatCalcul.ARRETE
