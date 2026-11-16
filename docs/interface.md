@@ -600,8 +600,9 @@ test en cours), ses fichiers et ses tests.
 - **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
   exécution dans un sous-processus pytest, greffon, résultats, tableau d'une
   famille) ; la commande `python -m edt tests` passe par le même service.
-  Résultats : `<EDT_LOG_DIR>/tests/resultats.json`, hors de la base, que le
-  chargement d'un établissement fictif remet à zéro.
+  Résultats : `<EDT_LOG_DIR>/tests/resultats.json`, hors de la base : ils
+  survivent au chargement d'un établissement fictif, qui remet la base à
+  zéro.
 - **Couleurs** : variables `--tests-unitaires` et `--tests-integration` de
   `app.css` (onglets), reprises par `static/css/tests.css` (filet du titre,
   bandeau, boutons, schéma).
