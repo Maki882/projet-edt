@@ -80,7 +80,7 @@ def test_semaines_actives_des_seances(instantane):
     # 21 semaines moins Toussaint (8), Noël (16, 17) et les partiels de la promotion (19).
     assert cm.semaines == frozenset(range(1, 22)) - {8, 16, 17, 19}
 
-    examen = instantane.seance(f"{_besoin(instantane, 'Partiel').id}-1")
+    examen = instantane.seance(f"{_besoin(instantane, 'Algorithmique (Partiel').id}-1")
     assert examen.semaines == frozenset({19})  # l'examen ponctuel a lieu pendant les partiels
     assert examen.jour_impose == 1 and examen.debut_impose == 510
 
