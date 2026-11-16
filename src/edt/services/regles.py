@@ -319,6 +319,27 @@ def valider(session: Session, brouillon: Mapping[str, Any]) -> Validation:
     return Validation(True, regle, texte, annee.libelle, {})
 
 
+def regle_identique(session: Session, brouillon: Mapping[str, Any]) -> RegleDetail | None:
+    """La règle active de l'année qui dit déjà exactement ce que dit `brouillon`, ou `None`.
+
+    Même contenu : type, cible, paramètres et période (`_signature`) ; une règle proposée
+    ou inactive de même contenu ne compte pas. Sert à refuser un
+    second envoi du même formulaire, qui créerait une règle en double. Lève `ErreurSaisie`
+    si le brouillon est invalide.
+    """
+    regle, annee = _construire(session, brouillon, existante=None)
+    signature = _signature(regle)
+    lignes = session.scalars(
+        select(m.Regle)
+        .where(m.Regle.annee_scolaire_id == annee.id, m.Regle.etat == EtatRegle.ACTIVE)
+        .order_by(m.Regle.id.desc())
+    )
+    for ligne in lignes:
+        if _signature(_depuis_orm(ligne)) == signature:
+            return _detail(session, ligne, lire_parametres(session))
+    return None
+
+
 def creer(
     session: Session,
     brouillon: Mapping[str, Any],
