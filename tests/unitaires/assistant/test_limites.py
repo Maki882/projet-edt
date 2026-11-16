@@ -3,17 +3,16 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import logging
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import delete, select
 
-from edt.db import modeles as m
-from edt.db.moteur import session_base
 from edt.services.assistant import temps
 from edt.services.assistant.configuration import MICRO, charger_configuration_assistant
 from edt.services.assistant.limites import (
+    FICHIER_CONSOMMATION,
     Budget,
     CompteurAdresses,
     Compteurs,
@@ -21,6 +20,7 @@ from edt.services.assistant.limites import (
     LimiteAtteinte,
     cout_maximal_appel,
     cout_reel,
+    dossier_consommation,
 )
 
 JOUR = dt.date(2026, 10, 5)
@@ -49,10 +49,15 @@ def _usage(entree=0, lus=0, ecrits=0, sortie=0, iterations=None):
     )
 
 
-def _ligne(jour_):
-    with session_base() as session:
-        ligne = session.get(m.AssistantConsommation, jour_)
-        return None if ligne is None else (ligne.echanges, ligne.appels, ligne.cout_microdollars)
+def _fichier(jour_):
+    """(échanges, appels, coût) du fichier de consommation, s'il est du jour `jour_`."""
+    chemin = dossier_consommation() / FICHIER_CONSOMMATION
+    if not chemin.exists():
+        return None
+    donnees = json.loads(chemin.read_text(encoding="utf-8"))
+    if donnees["jour"] != jour_.isoformat():
+        return None
+    return donnees["echanges"], donnees["appels"], donnees["cout"]
 
 
 # --------------------------------------------------------------------------- #
@@ -130,7 +135,7 @@ def test_echanges_du_jour_comptes_et_limites(base, jour, caplog):
     with pytest.raises(LimiteAtteinte):
         budget.ouvrir_echange(config)
     assert caplog.text.count("limite du jour atteinte") == 1  # une seule fois par jour
-    assert _ligne(JOUR) == (2, 0, 0)
+    assert _fichier(JOUR) == (2, 0, 0)
 
 
 @pytest.mark.cas_limite
@@ -152,33 +157,59 @@ def test_consommation_du_jour_survit_a_un_redemarrage_et_change_avec_le_jour(bas
 
 
 @pytest.mark.cas_limite
-def test_consommation_gardee_en_memoire_si_la_base_est_videe(base, jour):
-    """Cas : un visiteur charge un établissement fictif, qui recrée toutes les tables.
+def test_consommation_survit_a_une_remise_a_zero_puis_a_un_redemarrage(base, jour):
+    """Cas : 1,90 $ dépensés ; un visiteur charge un établissement fictif (remise à zéro de la
+    base) ; le service redémarre le même jour.
 
-    Risque : le budget du jour remis à zéro par n'importe quel visiteur.
+    Risque : le budget et le compteur du jour repartent de zéro : un second budget complet.
     """
+    from edt.db.initialisation import initialiser_base
+
+    config = _config()
     budget = Budget()
-    budget.solder(0, Compteurs(appels=1, cout=50_000))
-    with session_base() as session:
-        session.execute(delete(m.AssistantConsommation))
-    assert budget.consommation().cout == 50_000
+    budget.ouvrir_echange(config)
+    budget.solder(0, Compteurs(appels=1, cout=1_900_000))
+    initialiser_base(reset=True, aujourdhui=JOUR)
+    redemarre = Budget()
+    assert redemarre.consommation().cout == 1_900_000
+    assert redemarre.consommation().echanges == 1
+    with pytest.raises(LimiteAtteinte):
+        redemarre.reserver(200_000, config)
 
 
 @pytest.mark.cas_limite
-def test_base_occupee_la_consommation_est_reportee(
-    base, jour, delai_verrou_court, verrou_ecriture, caplog
-):
-    """Cas : une écriture de consommation tombe pendant qu'un autre processus tient la base.
+def test_fichier_de_consommation_illisible(base, jour, caplog):
+    """Cas : le fichier de consommation est abîmé (disque, copie à la main).
+
+    Risque : une exception à chaque message, ou un compte faux sans que personne le sache.
+    """
+    budget = Budget()
+    budget.solder(0, Compteurs(appels=1, cout=50_000))
+    (dossier_consommation() / FICHIER_CONSOMMATION).write_text("{abîmé", encoding="utf-8")
+    with caplog.at_level(logging.WARNING):
+        assert budget.consommation().cout == 50_000  # la mémoire compte encore
+    assert "illisible" in caplog.text
+    budget.solder(0, Compteurs(appels=1, cout=1_000))
+    assert _fichier(JOUR) == (0, 1, 1_000)  # réécrit au premier appel suivant
+
+
+@pytest.mark.cas_limite
+def test_consommation_impossible_a_ecrire_est_reportee(base, jour, caplog):
+    """Cas : le fichier de consommation ne peut pas être écrit (dossier en lecture seule,
+    disque plein ; simulé par un dossier à la place du fichier).
 
     Risque : appel déjà payé mais non compté, ou échange qui échoue pour une simple écriture.
     """
     budget = Budget()
-    with verrou_ecriture(), caplog.at_level(logging.ERROR):
+    chemin = dossier_consommation() / FICHIER_CONSOMMATION
+    chemin.mkdir(parents=True)
+    with caplog.at_level(logging.ERROR):
         budget.solder(0, Compteurs(appels=1, cout=7_000))
     assert "gardée en mémoire" in caplog.text
     assert budget.consommation().cout == 7_000  # la mémoire compte
+    chemin.rmdir()
     budget.solder(0, Compteurs(appels=1, cout=3_000))
-    assert _ligne(JOUR) == (0, 2, 10_000)  # le report est ajouté à l'écriture suivante
+    assert _fichier(JOUR) == (0, 2, 10_000)  # le report est ajouté à l'écriture suivante
 
 
 # --------------------------------------------------------------------------- #
@@ -201,18 +232,17 @@ def test_limite_par_adresse_et_par_jour(jour):
     compteur.compter("adresse-a", config)
 
 
-def test_la_table_de_consommation_n_a_aucun_texte_ni_adresse(base):
-    colonnes = set(m.AssistantConsommation.__table__.columns.keys())
-    assert colonnes == {
+def test_le_fichier_de_consommation_n_a_que_des_compteurs(base, jour):
+    Budget().solder(0, Compteurs(appels=1, entree=10, sortie=5, cout=90))
+    donnees = json.loads((dossier_consommation() / FICHIER_CONSOMMATION).read_text("utf-8"))
+    assert set(donnees) == {
         "jour",
         "echanges",
         "appels",
-        "jetons_entree",
-        "jetons_cache_lus",
-        "jetons_cache_ecrits",
-        "jetons_sortie",
-        "cout_microdollars",
-        "modifie_le",
+        "entree",
+        "cache_lus",
+        "cache_ecrits",
+        "sortie",
+        "cout",
     }
-    with session_base() as session:
-        assert session.scalars(select(m.AssistantConsommation)).all() == []
+    assert donnees["jour"] == JOUR.isoformat()

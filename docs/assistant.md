@@ -186,10 +186,13 @@ sur un créneau en semaine type ou à une date, séances d'une ressource sur un 
 **État en mémoire.** L'architecture n'admet pas d'état global en mémoire, sauf le suivi des
 calculs en cours ; l'assistant est la seconde exception : registre des conversations,
 compteurs par adresse, sel des empreintes d'adresse, pause après un refus de clé. Tout est
-perdu au redémarrage, ce que le panneau dit. La consommation du jour est aussi en base
-(table `assistant_consommation`, `docs/modele-donnees.md`), pour survivre à un redémarrage ;
-le chargement d'un établissement fictif recrée toutes les tables : le compte en mémoire
-garde alors la consommation, le plus grand des deux faisant foi.
+perdu au redémarrage, ce que le panneau dit. La consommation du jour (échanges, appels,
+jetons, coût estimé) est aussi gardée dans un petit fichier,
+`<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit à un redémarrage
+comme au chargement d'un établissement fictif, qui recrée toutes les tables. Le fichier est
+réécrit d'un bloc après chaque échange commencé et chaque appel ; le plus grand du compte
+du fichier et du compte en mémoire fait foi. La table `assistant_consommation` du modèle
+n'est pas utilisée (`docs/modele-donnees.md`).
 
 ## 4. Un échange
 
