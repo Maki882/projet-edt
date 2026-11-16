@@ -10,10 +10,16 @@ revalident tout : une donnée changée entre-temps (doublon, cible supprimée)
 donne une `ErreurEDT` et rien n'est écrit.
 
 Les services revalident la forme, pas l'identité : après un rechargement de
-la base (établissement fictif chargé par un visiteur), un identifiant
-numérique ou un code de règle peut désigner un autre élément que celui de la
-carte. Avant d'écrire, `_ecrire` vérifie donc que la cible est toujours celle
-que la carte a montrée (`ChangementDepuisLaProposition` sinon) :
+la base (établissement fictif chargé par un visiteur, remise à zéro), un
+identifiant numérique ou un code de règle peut désigner un autre élément que
+celui de la carte. Avant d'écrire, `_ecrire` vérifie donc
+(`ChangementDepuisLaProposition` sinon) :
+
+- que la base n'a pas été rechargée depuis la proposition : chaque
+  proposition garde la génération de la base (`generation_base`, le numéro
+  de schéma de SQLite, qui change quand les tables sont supprimées et
+  recréées, jamais pour une simple écriture) ;
+- que la cible est toujours celle que la carte a montrée :
 
 - indisponibilité : l'élément de cet identifiant a toujours l'identité lue à
   la proposition (`identite` : identifiant et nom d'un enseignant, code et
@@ -39,6 +45,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
@@ -132,11 +139,20 @@ class Proposition:
 class ChangementDepuisLaProposition(ErreurRegleMetier):
     """La cible de la proposition n'est plus celle que la carte a montrée : rien n'est écrit."""
 
-    def __init__(self, cible: str) -> None:
-        super().__init__(
-            f"les données ont changé depuis la proposition ({cible} n'est plus l'élément visé "
-            "par la carte) : redemandez la proposition"
+    def __init__(self, cible: str | None) -> None:
+        cause = (
+            "la base a été rechargée (établissement fictif chargé ou remise à zéro)"
+            if cible is None
+            else f"{cible} n'est plus l'élément visé par la carte"
         )
+        super().__init__(
+            f"les données ont changé depuis la proposition ({cause}) : redemandez la proposition"
+        )
+
+
+def generation_base(session: Session) -> int:
+    """Génération de la base : change quand les tables sont recréées (voir l'en-tête)."""
+    return int(session.execute(text("PRAGMA schema_version")).scalar_one())
 
 
 def identite(objet: m.Enseignant | m.Salle | m.Groupe) -> dict[str, Any]:
@@ -187,6 +203,8 @@ def enregistrer(proposition: Proposition) -> tuple[str, Lien | None]:
 
 def _ecrire(session: Session, proposition: Proposition) -> tuple[str, Lien | None]:
     donnees = proposition.donnees
+    if donnees["generation"] != generation_base(session):
+        raise ChangementDepuisLaProposition(None)
     annee_id = donnees.get("annee_id")
     nature = proposition.nature
     if nature is NatureProposition.REGLE:

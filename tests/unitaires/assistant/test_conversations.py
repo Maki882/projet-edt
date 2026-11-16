@@ -516,6 +516,41 @@ def test_confirmer_refuse_un_enseignant_qui_n_est_plus_celui_de_la_carte(
 
 
 @pytest.mark.cas_limite
+def test_confirmer_refuse_apres_un_rechargement_de_la_base(jeu_minimal, faux_client, jour_fige):
+    """Cas : un visiteur remet la base à zéro et recharge les mêmes données entre la
+    proposition et le clic : le même identifiant désigne à nouveau « M. Bernard (ENS002) ».
+
+    Risque : une identité qui coïncide après un rechargement ne prouve pas que la carte et la
+    base parlent du même élément ; la carte ne doit pas écrire dans une base rechargée.
+    """
+    from edt.db.initialisation import initialiser_base
+    from edt.db.jeux import creer_jeu_minimal
+
+    conversation, proposition = _proposer(
+        faux_client,
+        "proposer_indisponibilite",
+        {
+            "nature": "enseignant",
+            "code": "ENS002",
+            "forme": "recurrente",
+            "jour": "mercredi",
+            "date_debut": None,
+            "date_fin": None,
+            "moment": "matin",
+            "debut": None,
+            "fin": None,
+            "motif": None,
+        },
+    )
+    initialiser_base(reset=True, aujourdhui=jour_fige)
+    with session_base() as session:
+        creer_jeu_minimal(session)
+    avant = _nombre(m.Indisponibilite)
+    message_refus = _refusee_sans_ecriture(conversation, proposition, m.Indisponibilite, avant)
+    assert "la base a été rechargée" in message_refus
+
+
+@pytest.mark.cas_limite
 def test_confirmer_refuse_une_salle_remplacee(version_minimale, faux_client, jour_fige):
     """Cas : la salle de la carte a été supprimée puis une autre salle a pris son identifiant
     (rechargement), ou elle a changé de code.

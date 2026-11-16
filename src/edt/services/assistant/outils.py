@@ -51,6 +51,7 @@ from edt.services.assistant.propositions import (
     Lien,
     NatureProposition,
     Proposition,
+    generation_base,
     identite,
 )
 from edt.services.calendrier import semestre_par_defaut
@@ -1397,7 +1398,11 @@ def _proposer_regle(session: Session, entree: Mapping[str, Any], contexte: Conte
             titre="Nouvelle règle",
             phrase=validation.phrase,
             details=_details_regle(regle),
-            donnees={"annee_id": annee_id, "brouillon": _brouillon_canonique(regle, libelle)},
+            donnees={
+                "generation": generation_base(session),
+                "annee_id": annee_id,
+                "brouillon": _brouillon_canonique(regle, libelle),
+            },
             lien_ecran=_lien_regles(annee_id),
         )
     )
@@ -1434,6 +1439,7 @@ def _proposer_modification_regle(
             phrase_avant=avant.phrase,
             details=_details_regle(validation.regle),
             donnees={
+                "generation": generation_base(session),
                 "annee_id": annee_id,
                 "code": avant.code,
                 "changements": changements,
@@ -1472,6 +1478,7 @@ def _proposer_etat_regle(
             phrase=detail.phrase,
             details=(f"État actuel : {detail.etat.libelle.lower()}", suite),
             donnees={
+                "generation": generation_base(session),
                 "annee_id": annee_id,
                 "code": detail.code,
                 "regle_id": detail.id,
@@ -1581,7 +1588,11 @@ def _proposer_indisponibilite(
             titre="Indisponibilité",
             phrase=phrase,
             details=tuple(details),
-            donnees={"valeurs": valeurs, "identite": identite(ressource)},
+            donnees={
+                "generation": generation_base(session),
+                "valeurs": valeurs,
+                "identite": identite(ressource),
+            },
             lien_ecran=Lien("Ouvrir les indisponibilités", "/indisponibilites"),
         )
     )
