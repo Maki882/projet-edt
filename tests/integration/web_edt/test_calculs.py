@@ -6,6 +6,7 @@ import threading
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.web_edt.aides import DELAI, HX
 
 from edt import solveur
 from edt.db import modeles as m
@@ -17,8 +18,6 @@ from edt.services.emploi_du_temps import calculs, presentation
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
-
-from .conftest import DELAI, HX
 
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 

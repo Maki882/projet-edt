@@ -31,18 +31,6 @@ def test_module_absent_donne_une_erreur_explicite_journalisee(session, sans_veri
     assert "edt.services.verification" in caplog.text
 
 
-def test_pre_verifications_et_instanciation_reelles(version_generee, session):
-    anomalies = raccords.pre_verifier_semestre(session, version_generee.semestre_id)
-    assert isinstance(anomalies, tuple)
-    assert all(isinstance(anomalie, Anomalie) for anomalie in anomalies)
-
-    rapport = raccords.instancier_version(session, version_generee.version_id)
-    assert rapport.nb_occurrences > 0
-    assert rapport.nb_occurrences == (
-        rapport.nb_planifiees + rapport.nb_replacees + rapport.nb_a_programmer
-    )
-
-
 def test_fonction_absente_ou_non_livree(session, monkeypatch):
     # Fonction simulée absente : le raccord le dit au lieu de planter ou de rendre une liste vide.
     from edt.services import generation

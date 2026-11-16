@@ -1,33 +1,24 @@
-"""Fixtures des tests des écrans « Générer », « Emploi du temps », « À traiter » et de l'accueil.
+"""Aides des tests des écrans « Générer », « Emploi du temps », « À traiter » et de l'accueil.
+
+Partagées par les tests unitaires (`tests/unitaires/web_edt`), les tests
+d'intégration (`tests/integration/web_edt`) et leurs fixtures
+(`tests/outils/web_edt/fixtures.py`, `tests/integration/web_edt/conftest.py`).
 
 Les fonctions des lots pas encore livrés (vérificateur, pré-vérifications,
 instanciation) sont **simulées** en installant de faux modules aux noms
 convenus : le raccord (`edt.services.emploi_du_temps.raccords`) les trouve
-exactement comme il trouvera les vrais.
-
-- `version_generee` : jeu minimal + un calcul réussi du vrai moteur (ses
-  séances datées sont produites par l'orchestration) ;
-- `faux_verificateur` : faux `edt.services.verification`, réglable ;
-- `sans_verificateur` : comme si le vérificateur n'était pas livré (sans
-  ces deux fixtures, c'est le vrai vérificateur qui tourne) ;
-- `aujourdhui_fige` : le « semestre par défaut » calculé au 5 octobre 2026.
+exactement comme il trouvera les vrais (`FauxVerificateur`).
 
 Banque des cas limites (`@pytest.mark.cas_limite`, `test_cas_limites.py`) :
 
 - `ENORME` : un identifiant au-delà de 2^63, qu'aucune ligne SQLite ne peut
   porter ; `CINQ_MILLE_CHIFFRES` : un nombre que `int()` refuse de lire ;
   `HX` : l'en-tête d'une requête HTMX ;
-- `reperes` : séance, occurrence, calcul, version et semestre réels de
-  `version_generee`, lus dans la base (jamais écrits en dur) ;
-- `client_sans_trace` : client qui renvoie une erreur 500 comme une réponse
-  (pour un test `xfail` qui la constate) au lieu de lever l'exception ;
 - `creer_version_vide`, `premiere_occurrence`, `calcul_qui_tourne` : une
   version sans séance, une séance datée de la version, un calcul en cours
   (moteur lent, arrêté à la sortie) ;
-- `autre_ecrivain`, `delai_verrou_court` : une autre connexion (import,
-  chargement de jeu) qui tient le verrou d'écriture de la base ; l'attente
-  sur verrou réduite, pour constater sans attendre dix secondes ce qui se
-  passe au-delà du délai.
+- `autre_ecrivain` : une autre connexion (import, chargement de jeu) qui tient
+  le verrou d'écriture de la base.
 
 Aucun test ne suppose l'emploi du temps particulier d'un moteur : les jours
 et les dates utilisés sont lus dans la version produite (`jour_avec_seance`,
@@ -39,25 +30,21 @@ from __future__ import annotations
 import contextlib
 import datetime as dt
 import sqlite3
-import sys
 import threading
 import types
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
-import pytest
 from sqlalchemy import func, select
 
 from edt import solveur
 from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db import moteur as module_moteur
-from edt.db.moteur import chemin_base, liberer_moteurs, session_base
+from edt.db.moteur import chemin_base, session_base
 from edt.domaine.contraintes import CATALOGUE
 from edt.domaine.enumerations import OrigineVersion, StatutOccurrence
 from edt.services import generation
-from edt.services.emploi_du_temps import memoire, modifications, prechauffage, raccords
-from edt.services.emploi_du_temps import versions as service_versions
+from edt.services.emploi_du_temps import memoire, modifications, raccords
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
 
@@ -85,26 +72,6 @@ class VersionGeneree:
     annee_scolaire_id: int
     calcul_id: int
     version_id: int
-
-
-@pytest.fixture(autouse=True)
-def sans_prechauffage(monkeypatch) -> None:
-    """Pas de fil de préchauffage dans les tests : il survivrait à la base temporaire."""
-    monkeypatch.setattr(prechauffage, "ACTIF", False)
-
-
-@pytest.fixture
-def version_generee(jeu_minimal) -> VersionGeneree:
-    """Jeu minimal et une version active produite par le moteur (séances datées comprises)."""
-    calcul_id = generation.lancer_calcul(jeu_minimal.semestre_id)
-    suivi = generation.attendre_calcul(calcul_id, DELAI)
-    assert suivi.reussi, suivi.message
-    return VersionGeneree(
-        semestre_id=jeu_minimal.semestre_id,
-        annee_scolaire_id=jeu_minimal.annee_scolaire_id,
-        calcul_id=calcul_id,
-        version_id=suivi.version_id,
-    )
 
 
 @dataclass
@@ -198,38 +165,6 @@ class FauxVerificateur:
         return [a for a in self.pre_verifications if str(a.code) not in contraintes_desactivees]
 
 
-@pytest.fixture
-def faux_verificateur(monkeypatch) -> FauxVerificateur:
-    """Installe un faux vérificateur et de fausses pré-vérifications, vides par défaut."""
-    memoire.oublier()
-    faux = FauxVerificateur()
-    monkeypatch.setitem(sys.modules, "edt.services.verification", faux.module())
-    monkeypatch.setattr(
-        generation, "pre_verifier_semestre", faux.pre_verifier_semestre, raising=False
-    )
-    return faux
-
-
-@pytest.fixture
-def sans_verificateur(monkeypatch) -> None:
-    """Fait comme si le vérificateur n'était pas livré (le raccord doit le dire, pas planter)."""
-    memoire.oublier()
-    monkeypatch.setitem(sys.modules, "edt.services.verification", None)
-
-
-@pytest.fixture
-def seances_datees(version_generee) -> VersionGeneree:
-    """La version générée ; ses séances datées existent dès la fin du calcul."""
-    with session_base() as session:
-        nombre = session.scalar(
-            select(func.count())
-            .select_from(m.Occurrence)
-            .where(m.Occurrence.version_id == version_generee.version_id)
-        )
-    assert nombre, "le calcul aurait dû produire les séances datées"
-    return version_generee
-
-
 def date_avec_seances(session, version_id: int, minimum: int = 1) -> dt.date:
     """Première date où la version a au moins `minimum` séances datées qui ont lieu."""
     date = session.scalar(
@@ -258,18 +193,6 @@ def jour_avec_seance(session, version_id: int, filtre) -> int:
     )
     assert jour is not None, "aucune séance pour cette cible"
     return jour
-
-
-@pytest.fixture
-def aujourdhui_fige(monkeypatch, aujourdhui):
-    """Le semestre par défaut est choisi comme si l'on était le 5 octobre 2026."""
-    original = service_versions.semestre_par_defaut
-    monkeypatch.setattr(
-        service_versions,
-        "semestre_par_defaut",
-        lambda session, jour=None: original(session, jour or aujourdhui),
-    )
-    return aujourdhui
 
 
 def seance_du_besoin(session, version_id: int, matiere: str, type_code: str, groupe: str):
@@ -323,35 +246,6 @@ class Reperes:
     calcul: int
     version: int
     semestre: int
-
-
-@pytest.fixture
-def reperes(version_generee) -> Reperes:
-    """Séance (CM de mathématiques de A1), première occurrence, calcul, version et semestre."""
-    with session_base() as session:
-        seance = seance_du_besoin(session, version_generee.version_id, "Mathématiques", "CM", "A1")
-        occurrence = premiere_occurrence(session, version_generee.version_id)
-        resultat = Reperes(
-            seance=seance.id,
-            occurrence=occurrence.id,
-            calcul=version_generee.calcul_id,
-            version=version_generee.version_id,
-            semestre=version_generee.semestre_id,
-        )
-    return resultat
-
-
-@pytest.fixture
-def client_sans_trace(base):
-    """Client qui rend une erreur 500 comme une réponse au lieu de lever l'exception.
-
-    Sert aux tests `xfail` qui constatent une erreur 500 d'un autre lot.
-    """
-    from fastapi.testclient import TestClient
-
-    from edt.web.app import creer_app
-
-    return TestClient(creer_app(), raise_server_exceptions=False)
 
 
 def premiere_occurrence(session, version_id: int) -> m.Occurrence:
@@ -457,16 +351,3 @@ def autre_ecrivain(
         if not rendu.is_set():
             rendre()
         brute.close()
-
-
-@pytest.fixture
-def delai_verrou_court(monkeypatch) -> Iterator[int]:
-    """Attente sur verrou réduite à `DELAI_VERROU_COURT_MS` pour les connexions ouvertes ensuite.
-
-    Le moteur relit `DELAI_VERROU_MS` à chaque nouvelle connexion : les moteurs existants
-    sont libérés pour que la suivante l'applique (comme la fixture du socle, sans l'importer).
-    """
-    monkeypatch.setattr(module_moteur, "DELAI_VERROU_MS", DELAI_VERROU_COURT_MS)
-    liberer_moteurs()
-    yield DELAI_VERROU_COURT_MS
-    liberer_moteurs()

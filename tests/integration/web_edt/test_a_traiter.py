@@ -4,20 +4,19 @@ from __future__ import annotations
 
 import pytest
 from sqlalchemy import func, select
-
-from edt.db import modeles as m
-from edt.db.moteur import session_base
-from edt.domaine.enumerations import Gravite, StatutOccurrence
-from edt.domaine.instantane import id_seance
-from edt.verification.contrat import Anomalie
-
-from .conftest import (
+from tests.outils.web_edt.aides import (
     HX,
     creer_version_vide,
     date_avec_seances,
     identifiant_groupe,
     seance_du_besoin,
 )
+
+from edt.db import modeles as m
+from edt.db.moteur import session_base
+from edt.domaine.enumerations import Gravite, StatutOccurrence
+from edt.domaine.instantane import id_seance
+from edt.verification.contrat import Anomalie
 
 
 def test_sans_emploi_du_temps_actif(jeu_minimal, client):

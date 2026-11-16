@@ -7,6 +7,14 @@ import sys
 
 import pytest
 from sqlalchemy import delete, func, select
+from tests.outils.web_edt.aides import (
+    HX,
+    autre_place,
+    date_avec_seances,
+    identifiant_groupe,
+    jour_avec_seance,
+    seance_du_besoin,
+)
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -16,15 +24,6 @@ from edt.domaine.instantane import id_seance
 from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCible
 from edt.verification.contrat import Anomalie
-
-from .conftest import (
-    HX,
-    autre_place,
-    date_avec_seances,
-    identifiant_groupe,
-    jour_avec_seance,
-    seance_du_besoin,
-)
 
 
 def _cible(session, nature: str) -> tuple[str, object]:
