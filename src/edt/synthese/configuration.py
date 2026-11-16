@@ -28,7 +28,7 @@ SITES_CONNUS = ("NDC", "ISSY", "STAN")
 """Codes des sites que le catalogue sait décrire (voir `edt.synthese.catalogue.SITES`)."""
 
 GRAINE_MAX = 2**31 - 1
-"""Plus grande graine admise (la même borne que le formulaire web). Une graine
+"""Plus grande graine admise, à l'écran comme en ligne de commande. Une graine
 négative est refusée : `random.Random(-n)` donnerait exactement le jeu de la graine `n`."""
 
 ANNEE_DEBUT_MIN, ANNEE_DEBUT_MAX = 2000, 2100

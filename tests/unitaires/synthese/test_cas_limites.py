@@ -110,14 +110,6 @@ def test_graines_extremes_admises_et_deterministes(tmp_path, graine):
     assert premier.nb_besoins > 0 and premier.besoins_ecartes == ()
 
 
-def test_borne_de_graine_identique_au_formulaire_web():
-    """Cas : même graine saisie à l'écran et en ligne de commande.
-    Risque : une graine acceptée par la commande refusée par l'interface, ou l'inverse."""
-    from edt.web.routes.donnees_jeux import GRAINE_MAX as GRAINE_MAX_WEB
-
-    assert GRAINE_MAX == GRAINE_MAX_WEB
-
-
 def test_service_refuse_une_graine_invalide_avant_la_remise_a_zero(base):
     """Cas : le service de rechargement (écran, assistant) reçoit une graine refusée
     avec la remise à zéro. Risque : toutes les données perdues pour une faute de saisie."""

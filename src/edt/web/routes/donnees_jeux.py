@@ -23,13 +23,13 @@ from edt.services.jeux import (
     tailles_disponibles,
 )
 from edt.services.referentiels.conversion import entier_naturel
+from edt.synthese.configuration import GRAINE_MAX
 from edt.web.donnees.ecrans import Formulaire
 from edt.web.gabarits import Message, rediriger, rendre
 from edt.web.menu import GROUPE_JEUX, SECTION_DONNEES, EntreeMenu
 
 journal = logging.getLogger(__name__)
 
-GRAINE_MAX = 2**31 - 1
 TAILLE_PAR_DEFAUT = "moyen"
 ENTITES_SAISIES = (
     "Campus",
@@ -100,7 +100,7 @@ def charger(request: Request, formulaire: Formulaire) -> Response:
         erreurs["taille"] = "Choisir une taille."
     graine = entier_naturel(saisies["graine"])
     if graine is None or graine > GRAINE_MAX:
-        erreurs["graine"] = "Nombre entier positif attendu (0 par défaut)."
+        erreurs["graine"] = f"Nombre entier positif attendu : de 0 à {GRAINE_MAX} (0 par défaut)."
     etat = diagnostiquer_base()
     effacer = donnees_presentes(etat)
     if effacer and "confirmation" not in formulaire:

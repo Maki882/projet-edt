@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import func, select
 
 from edt.db.modeles import Besoin, Campus
 from edt.db.moteur import session_base
+from edt.synthese.configuration import GRAINE_MAX
 
 
 def _compter(modele) -> int:
@@ -31,6 +33,20 @@ def test_chargement_du_jeu_petit(client):
     assert "Jeu fictif « petit » (graine 0)" in reponse.text  # résumé du rapport
     assert 'href="/besoins"' in reponse.text
     assert _compter(Campus) == 2 and _compter(Besoin) > 0
+
+
+@pytest.mark.cas_limite
+def test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran(client):
+    """Cas : la graine saisie à l'écran vaut un de plus que la plus grande graine admise par
+    le générateur (et par la commande `python -m edt jeu`).
+
+    Risque : l'écran accepte la graine, la génération la refuse ensuite ; ou l'écran refuse
+    une graine que la commande accepte. Le message donne la borne exacte.
+    """
+    reponse = client.post("/jeux/charger", data={"taille": "petit", "graine": str(GRAINE_MAX + 1)})
+    assert reponse.status_code == 422
+    assert f"de 0 à {GRAINE_MAX}" in reponse.text
+    assert _compter(Campus) == 0
 
 
 def test_rechargement_exige_une_confirmation_d_effacement(jeu_minimal, client):
