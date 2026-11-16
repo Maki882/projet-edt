@@ -286,7 +286,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **462 fonctions de test** dans 9 composants, dont 181 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `echange/` : Import et export par le site et la ligne de commande (33 fonctions)
 
@@ -315,11 +315,11 @@ Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquée
 | [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
 | [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
-### `socle/` : Commandes et application web du socle (74 fonctions)
+### `socle/` : Commandes et application web du socle (75 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 18 |
+| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 19 |
 | [`socle/test_config.py`](socle/test_config.py) | Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 |
 | [`socle/test_generation.py`](socle/test_generation.py) | Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 |
@@ -350,7 +350,7 @@ Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquée
 |---|---|---:|
 | [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (122 fonctions)
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (124 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -359,12 +359,12 @@ Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquée
 | [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | Un seul chargement de jeu fictif ou une seule remise à zéro à la fois | 3 |
 | [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 |
 | [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 |
-| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 8 |
+| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 9 |
 | [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce | 5 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |
 | [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 28 |
-| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Saisies aberrantes : jamais d'erreur 500, toujours un message | 13 |
+| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 |
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
