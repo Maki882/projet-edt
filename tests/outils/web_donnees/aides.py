@@ -31,7 +31,7 @@ HX = {"HX-Request": "true"}
 """En-têtes d'une requête HTMX."""
 
 NOMBRE_TROP_GRAND = "99999999999999999999"
-"""Vingt chiffres : au-delà de ce que SQLite sait enregistrer (OverflowError si on le lui passe)."""
+"""Vingt chiffres : au-delà de ce que SQLite sait enregistrer (OverflowError s'il lui est passé)."""
 
 NOMBRE_DE_5000_CHIFFRES = "1" * 5000
 """Au-delà de 4 300 chiffres, `int()` lève ValueError (limite de Python)."""

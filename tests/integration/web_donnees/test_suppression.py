@@ -71,7 +71,7 @@ def test_retour_a_la_page_precedente_si_la_page_disparait(site, ids):
                     "accessibilite": "oui",
                 },
             )
-    # La page 2 existe encore après la première suppression : on y revient.
+    # La page 2 existe encore après la première suppression : le retour s'y fait.
     reponse = site.post(
         f"/salles/{identifiant(Salle, Salle.code, 'Z45')}/supprimer",
         data={"_retour": "/salles?page=2"},
@@ -183,7 +183,7 @@ def test_refus_par_campus_et_par_groupe(site, ids):
 
 def test_parcours_reel_sur_le_jeu_moyen(client):
     recharger_jeu_fictif("moyen", 0, enregistrer_reference=True)
-    salles_au_depart = compter(Salle)  # le jeu évolue : on compte ce qui est supprimé, pas un total
+    salles_au_depart = compter(Salle)  # le jeu évolue : compter ce qui est supprimé, pas un total
     with session_base() as session:
         stan = session.scalar(select(Campus.id).where(Campus.code == "STAN"))
         placee = session.scalar(

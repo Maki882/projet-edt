@@ -291,7 +291,7 @@ def controles_formulaire(definition: DefinitionType, formulaire: FormData) -> di
     """Erreurs propres au formulaire, que le service ne peut pas voir (champ laissé vide).
 
     « Entre deux dates » pour un type non datable, dates laissées vides : le service
-    n'y verrait que l'année entière ; on refuse avec son message (`erreurs_periode`,
+    n'y verrait que l'année entière ; le refus reprend son message (`erreurs_periode`,
     à qui toute date suffit pour le produire).
     """
     erreurs: dict[str, str] = {}

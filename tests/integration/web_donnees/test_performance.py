@@ -62,7 +62,7 @@ with session_base() as session:
 client = TestClient(creer_app())
 # Hors mesure : gabarits et modules chargés une fois pour toute la vie du serveur (le moteur
 # des pré-vérifications, via Générer sur l'autre semestre ; ses résultats sont propres à
-# chaque semestre, celui qu'on mesure reste à froid).
+# chaque semestre, celui qui est mesuré reste à froid).
 client.get("/")
 client.get(f"/calculs?semestre_id={autre}")
 mesures = {}

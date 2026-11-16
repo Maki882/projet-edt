@@ -602,7 +602,7 @@ def confirmer_suppression(request: Request, session: SessionRequete, ident: int)
 def supprimer(
     request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
 ) -> Response:
-    """Supprime la règle et revient là d'où l'on venait."""
+    """Supprime la règle et revient à la page de départ."""
     detail = service_regles.lire_par_id(session, ident)
     retour = adresse_sure(
         formulaire.get("_retour"), f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"

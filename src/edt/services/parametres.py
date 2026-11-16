@@ -52,7 +52,7 @@ def lire_parametres(session: Session, *, tolerant: bool = False) -> Parametres:
     enregistré hors des bornes actuelles (bornes resserrées depuis son
     enregistrement) est ramené à la borne la plus proche, avec un
     avertissement au journal : la valeur en base n'est pas modifiée. Le mode
-    de déjeuner d'une ancienne base se déduit de `dejeuner_horaires_determines`
+    de déjeuner d'une base qui porte encore `dejeuner_horaires_determines` s'en déduit
     (voir `_mode_dejeuner_herite`), et des réglages de déjeuner incohérents
     sont lus comme « pas de pause » (voir `_dejeuner_lisible`). Toute autre
     valeur enregistrée invalide lève `ErreurDonneesInvalides` ; en mode

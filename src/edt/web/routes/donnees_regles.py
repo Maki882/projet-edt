@@ -55,9 +55,10 @@ PARENT_CALENDRIER = ("Retour au calendrier", "/calendrier")
 def suite_creation_annee(session: Session, annee: Mapping[str, Any]) -> SuiteCreation | None:
     """Une année créée par le formulaire a reçu ses règles proposées : le dire, y mener.
 
-    La création les propose (crochet `apres_creation` du service) ; on compte ici
-    les règles proposées de l'année, qui vient de naître : ce sont exactement
-    celles-là. On arrive sur leur liste, où les confirmer ou les écarter.
+    La création les propose (crochet `apres_creation` du service) ; les règles
+    proposées de l'année, qui vient de naître, sont exactement celles-là : leur
+    nombre est dit, et la page suivante est leur liste, où les activer ou les
+    écarter.
     """
     nombre = len(lister_regles(session, annee["id"], etat=EtatRegle.PROPOSEE))
     if nombre == 0:

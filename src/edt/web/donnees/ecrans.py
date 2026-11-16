@@ -33,8 +33,8 @@ enregistrer.
 
 Retour : les liens « Modifier » et « Supprimer » d'une liste portent son
 adresse (`retour`, avec recherche, filtres, tri et page) ; après un
-enregistrement ou une suppression, on revient sur cette liste (à la page
-précédente si la page a disparu). « Annuler » ramène là d'où l'on venait :
+enregistrement ou une suppression, l'écran revient sur cette liste (à la page
+précédente si la page a disparu). « Annuler » ramène à la page de départ :
 la liste, ou la fiche si la suppression a été demandée depuis la fiche
 (`depuis=fiche`).
 """

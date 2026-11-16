@@ -651,7 +651,7 @@ def test_identifiants_enormes_des_regles_sont_introuvables(site, ids):
 
 @pytest.mark.cas_limite
 def test_regles_sans_annee_scolaire_affiche_un_bandeau(client):
-    """Cas : toutes les années scolaires ont été supprimées, puis on ouvre « Règles
+    """Cas : toutes les années scolaires ont été supprimées, puis l'utilisateur ouvre « Règles
     personnalisées ». Risque : une page d'erreur 404 pour une entrée du menu, sans dire quoi
     faire."""
     with session_base() as session:

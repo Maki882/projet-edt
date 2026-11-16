@@ -98,7 +98,7 @@ class ParametreAffiche:
         return self.unite == UNITE_HEURE
 
     def en_texte(self, valeur: ValeurParametre) -> str:
-        """Valeur telle qu'on la saisit (« 08:30 » pour une heure)."""
+        """Valeur telle qu'elle se saisit (« 08:30 » pour une heure)."""
         if self.est_heure and isinstance(valeur, int) and not isinstance(valeur, bool):
             return minutes_vers_hhmm(valeur)
         if self.est_jours and isinstance(valeur, tuple | list):
@@ -106,7 +106,7 @@ class ParametreAffiche:
         return str(valeur)
 
     def texte_lisible(self, valeur: ValeurParametre) -> str:
-        """Valeur telle qu'on la lit : « oui », le libellé d'un choix, « 08:30 »."""
+        """Valeur telle qu'elle se lit : « oui », le libellé d'un choix, « 08:30 »."""
         if self.type == "bool":
             return "oui" if valeur else "non"
         if self.est_choix:

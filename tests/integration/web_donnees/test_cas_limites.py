@@ -56,8 +56,8 @@ EN_COURS = "calcul d'emploi du temps est en cours"
 def test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee(
     site, ids, calcul_retenu, caplog
 ):
-    """Cas : pendant un calcul, on supprime un besoin ou une salle du semestre calculé (page ou
-    ligne), ou un élément qu'il ne lit pas (un équipement) : toute suppression est refusée
+    """Cas : pendant un calcul, suppression d'un besoin ou d'une salle du semestre calculé (page ou
+    ligne), ou d'un élément qu'il ne lit pas (un équipement) : toute suppression est refusée
     pendant un calcul. Risque : la suppression passe, le calcul enregistre des séances qui
     pointent vers elle, échoue sur une contrainte d'intégrité et ses minutes de travail sont
     perdues."""
@@ -103,7 +103,7 @@ def test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee(
 
 
 def test_suppression_du_semestre_refusee_pendant_son_calcul(site, ids, calcul_retenu):
-    """Cas : on supprime le semestre (ou l'année) pendant son calcul. Risque : le calcul est
+    """Cas : suppression du semestre (ou de l'année) pendant son calcul. Risque : le calcul est
     supprimé en cascade sous son fil : le suivi répond 404 chaque seconde, le verrou « un seul
     calcul à la fois » tombe et un second calcul peut démarrer en parallèle."""
     semestre = calcul_retenu.semestre_id
@@ -134,7 +134,7 @@ def test_suppression_du_semestre_refusee_pendant_son_calcul(site, ids, calcul_re
 
 
 def test_regles_personnalisees_supprimables_pendant_un_calcul(site, calcul_retenu):
-    """Cas : pendant un calcul, on supprime les règles personnalisées actives. Risque : si le
+    """Cas : pendant un calcul, suppression des règles personnalisées actives. Risque : si le
     calcul relisait ses règles à la fin, il échouerait ; il les copie à son lancement, et ce test
     garde la décision de ne pas bloquer leur suppression (contrairement aux autres données)."""
     with session_base() as session:
