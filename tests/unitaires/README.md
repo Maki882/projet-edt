@@ -56,7 +56,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 084 fonctions de test** dans 10 composants, dont 290 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 085 fonctions de test** dans 10 composants, dont 291 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (115 fonctions)
 
@@ -72,12 +72,12 @@ Ce dossier compte **1 084 fonctions de test** dans 10 composants, dont 290 marqu
 | [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas stricts, outils de lecture, propositions sans écriture | 26 |
 | [`assistant/test_validations.py`](assistant/test_validations.py) | Validations sans écriture utilisées par les propositions de l'assistant | 9 |
 
-### `banc_tests/` : Tests unitaires du banc de tests : catalogue, cibles, résultats, garde-fous, menu (42 fonctions)
+### `banc_tests/` : Tests unitaires du banc de tests : catalogue, cibles, résultats, garde-fous, menu (43 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`banc_tests/test_catalogue.py`](banc_tests/test_catalogue.py) | Catalogue des tests lu sans les exécuter, racine du dépôt et cibles tirées du catalogue | 9 |
-| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | Garde-fous du lancement des tests, vérifiés sans lancer de sous-processus : réglages, refus, verrou, environnement | 16 |
+| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | Garde-fous du lancement des tests, vérifiés sans lancer de sous-processus : réglages, refus, verrou, environnement | 17 |
 | [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | Onglets des tests dans le menu, et tableau d'une famille : état affiché de chaque test et comptes | 9 |
 | [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | Regroupement des comptes rendus de pytest par fonction de test, et historique des résultats sur disque | 8 |
 

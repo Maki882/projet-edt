@@ -70,12 +70,12 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 486 cas : 290 cas en tests unitaires et 196 cas en tests d'intégration.
+Le catalogue compte 487 cas : 291 cas en tests unitaires et 196 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `assistant` | 26 | 5 |
-| `banc_tests` | 18 | 10 |
+| `banc_tests` | 19 | 10 |
 | `echange` | 58 | 12 |
 | `exploitation` | 40 | 32 |
 | `socle` | 61 | 33 |
@@ -84,9 +84,9 @@ Le catalogue compte 486 cas : 290 cas en tests unitaires et 196 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 41 |
 | `web_edt` | 7 | 39 |
-| **Total** | **290** | **196** |
+| **Total** | **291** | **196** |
 
-### Tests unitaires (290 cas)
+### Tests unitaires (291 cas)
 
 #### `assistant` (26 cas)
 
@@ -146,7 +146,7 @@ Le catalogue compte 486 cas : 290 cas en tests unitaires et 196 cas en tests d'i
 | Modification qui change l annee ou le code refusee | le modèle propose de changer l'année ou le code d'une règle, ou envoie autre chose qu'un objet. | une règle déplacée d'année en silence, ou une erreur Python au lieu d'un refus. |
 | Activation qui ferait doublon refusee par la validation | l'assistant propose d'activer une pause déjeuner inactive pour la classe qui en a déjà une active sur le même semestre. | deux réglages contradictoires actifs ; le calcul ne saurait lequel appliquer. |
 
-#### `banc_tests` (18 cas)
+#### `banc_tests` (19 cas)
 
 [`tests/unitaires/banc_tests/test_catalogue.py`](../tests/unitaires/banc_tests/test_catalogue.py)
 
@@ -170,6 +170,7 @@ Le catalogue compte 486 cas : 290 cas en tests unitaires et 196 cas en tests d'i
 | Verrou jamais vu vide par un lecteur | une page s'affiche pendant qu'un lancement écrit son fichier de verrou. | le lecteur voit un fichier vide, retire le verrou d'une exécution vivante (une seconde exécution peut partir) ou, sous Windows, répond par une erreur 500. |
 | Delai minimal entre deux lancements depuis le site | un visiteur (ou un script) relance les tests dès la fin de l'exécution précédente. | serveur de deux cœurs occupé en continu par les tests. |
 | De charge refuse depuis le site | un visiteur lance un à un les tests de charge (jusqu'à quinze minutes chacun). | serveur saturé pendant la démonstration ; ces tests se lancent par la commande. |
+| Verrou abandonne tenu ouvert par un autre lecteur | sous Windows, deux pages lisent en même temps un verrou abandonné ; la seconde ne peut pas le retirer tant que la première le tient ouvert. | erreur 500 sur la page des tests. |
 
 [`tests/unitaires/banc_tests/test_menu_et_tableau.py`](../tests/unitaires/banc_tests/test_menu_et_tableau.py)
 

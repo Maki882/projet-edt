@@ -257,7 +257,9 @@ def test_verrou_jamais_vu_vide_par_un_lecteur(depot, monkeypatch):
     fdopen = os.fdopen
 
     def ecriture_observee(*args, **kwargs):
-        try:  # un lecteur passe pendant l'écriture
+        # Un lecteur passe pendant l'écriture : il ne doit trouver qu'un verrou complet, ou aucun.
+        vus.append(ex._lire_verrou(dossier / ex.FICHIER_VERROU))
+        try:
             vus.append(ex.execution_ailleurs(dossier))
         except Exception as erreur:
             vus.append(erreur)
@@ -331,3 +333,23 @@ def test_tests_en_cours_pour_un_autre_service(depot, monkeypatch):
     assert ex.tests_en_cours() is False
     assert verrou.exists()  # simple lecture : rien n'est retiré ni écrit
     assert res.lire_historique().derniere is None
+
+
+@pytest.mark.cas_limite
+def test_verrou_abandonne_tenu_ouvert_par_un_autre_lecteur(depot, monkeypatch):
+    """Cas : sous Windows, deux pages lisent en même temps un verrou abandonné ; la seconde ne
+    peut pas le retirer tant que la première le tient ouvert.
+
+    Risque : erreur 500 sur la page des tests."""
+    dossier = res.dossier_resultats()
+    dossier.mkdir(parents=True)
+    verrou = dossier / ex.FICHIER_VERROU
+    verrou.write_text(json.dumps({"pid": PID_INEXISTANT, "execution": "x"}), encoding="utf-8")
+
+    def tenu_ouvert(self, missing_ok=False):
+        raise PermissionError(32, "fichier utilisé par un autre processus")
+
+    monkeypatch.setattr(Path, "unlink", tenu_ouvert)
+
+    assert ex.execution_ailleurs() is None
+    assert verrou.exists()  # le prochain lecteur le retirera
