@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'intégration.
+Le catalogue compte 529 cas : 318 cas en tests unitaires et 211 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -79,12 +79,12 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
 | `socle` | 64 | 35 |
-| `solveur` | 22 | 20 |
+| `solveur` | 22 | 21 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
-| `web_donnees` | 2 | 42 |
-| `web_edt` | 8 | 43 |
-| **Total** | **318** | **208** |
+| `web_donnees` | 2 | 43 |
+| `web_edt` | 8 | 44 |
+| **Total** | **318** | **211** |
 
 ### Tests unitaires (318 cas)
 
@@ -751,7 +751,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (208 cas)
+### Tests d'intégration (211 cas)
 
 #### `assistant` (7 cas)
 
@@ -928,7 +928,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Le serveur demarre malgre une base verrouillee et reporte la cloture des calculs | un autre processus tient le verrou d'écriture au démarrage, et un calcul abandonné attend d'être clos. | la clôture (une écriture) fait échouer le démarrage ; elle doit être reportée (avertissement), les lectures servies (mode WAL) et une écriture répondre « occupée ». |
 | Une panne du pilote de base est un 503 qui dit quoi faire | une route reçoit du pilote SQLite une erreur de verrou, de table absente ou de fichier illisible. | page 500 sans remède ; chaque cause doit donner un 503 avec sa marche à suivre. |
 | Une base en lecture seule ou un disque plein sont nommes | la base est en lecture seule (fichier copié en root) ou le disque est plein. | 503 générique « réessayer » : le travail saisi est perdu et rien ne nomme les droits ni l'espace disque. |
-| Base non initialisee une trace puis une ligne | la base n'est pas initialisée et plusieurs pages répondent 503 à la suite. | une trace complète par page, qui noie le journal (huit traces en une demi-seconde). |
+| Base non initialisee une ligne d avertissement sans trace | la base n'est pas initialisée et plusieurs pages répondent 503 à la suite, dès la première. | une erreur avec trace complète pour un état connu que la page explique, qui fait croire à une panne (et, répétée, noie le journal). |
 | Une erreur de programmation du pilote est une page 500 | le pilote de base signale une erreur de programmation (paramètres faux, curseur fermé) : un défaut du code, pas une panne de la base. | page 503 « réessayer dans quelques instants », conseil inopérant, au lieu de la page 500 qui donne la référence à communiquer. |
 | Un envoi trop volumineux donne une page qui dit quoi faire | l'application refuse un envoi trop volumineux (413). | page générique « Requête refusée » qui ne dit ni la cause ni le remède. |
 | Sante signale une base en lecture seule | `edt.db` est en lecture seule (droits), le déploiement a réussi. | `/sante` vert et supervision rassurée alors qu'aucune écriture n'est possible. |
@@ -936,7 +936,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
 | Remise a zero par un autre processus donne base occupee | un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant que le serveur sert une requête. | « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé par l'autre processus doit faire répondre « occupée, réessayer ». |
 
-#### `solveur` (20 cas)
+#### `solveur` (21 cas)
 
 [`tests/integration/solveur/test_services.py`](../tests/integration/solveur/test_services.py)
 
@@ -962,6 +962,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Ecriture finale toujours en echec | l'écriture de l'état final échoue à chaque tentative (base occupée au-delà des trois tentatives), ou échoue sur une erreur déterministe (erreur de programmation). | exception échappée du fil du calcul, calcul « en cours » pour toujours, ou erreur déterministe rejouée trois fois (deux secondes de pauses) avant d'être dite. |
 | Un saut d horloge ne clot pas un calcul vivant | l'heure locale avance d'une heure (heure d'été, changement de fuseau) pendant qu'un calcul d'un autre processus tourne depuis trente secondes. | échéance « temps limite + grâce » atteinte une heure trop tôt, calcul vivant clos « interrompu » à tort ; temps écoulé affiché majoré d'une heure. Limite : un saut de l'horloge système elle-même (correction NTP) déplace aussi `time.time()` et n'est pas couvert (`time.monotonic` l'éviterait, mais ne se compare pas d'un processus à l'autre). |
 | Instanciation quand un autre ecrivain valide entre lecture et ecriture | pendant que les séances datées d'une version sont produites (fin d'un calcul, commande `instancier`, bouton « Recalculer les séances datées »), une autre connexion valide une écriture entre la lecture de la version et le remplacement de ses séances datées. | `instancier_version` lit dans une transaction différée puis écrit sur un instantané périmé : SQLite répond aussitôt « database is locked » sans attendre, la commande échoue, le calcul réussi reste sans séances datées, ou la page répond « base occupée ». |
+| Un avertissement du moteur est journalise une seule fois | le moteur relève un avertissement (ici, un niveau demandé pour une règle personnalisée inconnue du semestre) pendant un calcul lancé par le service. | le même avertissement écrit deux fois au journal (par le moteur, puis par le service qui le relaie avec le numéro du calcul) : le journal double les vrais signaux. |
 
 #### `synthese` (5 cas)
 
@@ -980,7 +981,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Second chargement refuse avec un message clair | second chargement d'un jeu dans une base qui en contient déjà un. | doublons de codes (erreur d'unicité brute) ou mélange de deux jeux. |
 | Taille inconnue | taille de jeu mal orthographiée (« geant »). | `KeyError` brute au lieu de la liste des tailles disponibles. |
 
-#### `web_donnees` (42 cas)
+#### `web_donnees` (43 cas)
 
 [`tests/integration/web_donnees/test_cas_limites.py`](../tests/integration/web_donnees/test_cas_limites.py)
 
@@ -1028,6 +1029,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Niveaux definis comme sur l ecran generer | le formulaire d'une règle personnalisée et l'écran Générer expliquent les niveaux. | deux définitions différentes (« jamais enfreinte, respectée au mieux » d'un côté, « enfreinte seulement faute de mieux, avec un avertissement » de l'autre) : l'utilisateur ne sait plus ce qu'« important » veut dire. |
+| Double envoi d une regle ne cree pas de doublon | le formulaire d'une nouvelle règle est envoyé deux fois de suite à l'identique (double clic sans JavaScript, ou deux onglets). | deux règles identiques (R005 et R006 disent la même chose), que l'utilisateur doit repérer puis supprimer à la main. |
 | Identifiants enormes des regles sont introuvables | une adresse des règles retouchée avec une année ou un numéro de règle de vingt chiffres. | OverflowError de SQLite, erreur 500 là où les autres écrans répondent « introuvable ». |
 | Regles sans annee scolaire affiche un bandeau | toutes les années scolaires ont été supprimées, puis l'utilisateur ouvre « Règles personnalisées ». | une page d'erreur 404 pour une entrée du menu, sans dire quoi faire. |
 | Regle supprimee entre temps dit introuvable | une règle supprimée dans un autre onglet, puis sa fiche ou son changement d'état demandés depuis une page restée ouverte. | un message différent selon le numéro (« n'existe pas » ou « introuvable »), qui ne dit pas que la règle a pu être supprimée. |
@@ -1059,7 +1061,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (43 cas)
+#### `web_edt` (44 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1092,6 +1094,7 @@ Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'i
 | Suivi dit qu un emploi du temps est deja trouve | calcul long (grand établissement) qui a trouvé un emploi du temps complet et cherche à l'améliorer pendant des minutes. | l'utilisateur ne voit qu'un temps qui passe, ignore qu'arrêter garderait déjà un emploi du temps, et attend la fin pendant la démonstration. |
 | Calcul demande pendant les tests revient sur generer avec le motif | une exécution des tests tourne quand l'écran Générer est ouvert, puis « Lancer le calcul », « Relancer le même calcul » ou « Proposer une autre solution » est envoyé. | page d'erreur « Opération refusée » avec une référence d'incident, comme pour une panne, et aucun signe avant le clic que le calcul serait refusé. |
 | Resultat dit les memes durees que le suivi | un calcul trouve un premier emploi du temps après 1 s, l'améliore, et s'arrête au bout de 16 s ; un autre s'arrête « pas trouvé » au bout de 75 s pour un temps limite de 300 s. | le suivi a dit « déjà trouvé (après 1 s) » et le résultat dit « trouvé en 16 s » ; ou le résultat dit « pas trouvé en 300 s » quand le calcul a duré 75 s : deux durées contradictoires sous les yeux du public. |
+| Double envoi de relancer dit calcul relance | « Relancer le même calcul » ou « Proposer une autre solution » envoyé deux fois de suite (double clic sans JavaScript). | le second envoi répond par le bandeau orange « Un calcul est déjà en cours », qui fait croire à un problème alors que le calcul demandé tourne. |
 
 [`tests/integration/web_edt/test_cas_limites.py`](../tests/integration/web_edt/test_cas_limites.py)
 

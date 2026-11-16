@@ -287,7 +287,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **526 fonctions de test** dans 11 composants, dont 208 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **529 fonctions de test** dans 11 composants, dont 211 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -346,13 +346,13 @@ Ce dossier compte **526 fonctions de test** dans 11 composants, dont 208 marqué
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension | 27 |
 
-### `solveur/` : Calculs complets et commandes du solveur (53 fonctions)
+### `solveur/` : Calculs complets et commandes du solveur (54 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 |
-| [`solveur/test_services.py`](solveur/test_services.py) | Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 44 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 |
 
 ### `synthese/` : Commande des jeux fictifs (6 fonctions)
 
@@ -367,7 +367,7 @@ Ce dossier compte **526 fonctions de test** dans 11 composants, dont 208 marqué
 |---|---|---:|
 | [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (126 fonctions)
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (127 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -380,18 +380,18 @@ Ce dossier compte **526 fonctions de test** dans 11 composants, dont 208 marqué
 | [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau de l'assistant, aucune annonce | 6 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |
-| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 29 |
+| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 30 |
 | [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 |
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (132 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (133 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`web_edt/test_a_traiter.py`](web_edt/test_a_traiter.py) | Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 |
 | [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 |
-| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 25 |
+| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 |
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 |
 | [`web_edt/test_dejeuner.py`](web_edt/test_dejeuner.py) | Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 |
 | [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | Grille, groupes liés, déplacements et annulations vérifiés | 20 |
