@@ -565,7 +565,7 @@ def test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit(
     la page du calcul dit de les produire avec le bouton « Produire les séances datées ».
 
     Risque : le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas
-    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique.
+    (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qui lui est indiqué.
     """
 
     def instanciation_en_panne(session, version_id, *args, **kwargs):

@@ -49,7 +49,7 @@
     <div class="message message-attention">
       <p><strong>La base contient déjà des données : le chargement les efface toutes</strong> (le détail est dans « Remettre la base à zéro », ci-dessous), puis recrée les données par défaut avant de charger l'établissement fictif.</p>
     </div>
-    {{ ui.champ("confirmation", "Je confirme l'effacement de toutes les données actuelles", type="checkbox", erreur=erreurs.confirmation) }}
+    {{ ui.champ("confirmation", "Confirmer l'effacement de toutes les données actuelles", type="checkbox", erreur=erreurs.confirmation) }}
     {%- endif %}
     <p class="discret">Le chargement de l'établissement grand prend une dizaine de secondes : ne pas quitter la page.</p>
     <div class="formulaire-actions">
@@ -72,7 +72,7 @@
   <p class="discret">La base ne contient que ses données par défaut.</p>
   {%- endif %}
   <form method="post" action="/jeux/remise-a-zero">
-    {{ ui.champ("confirmation_zero", "Je confirme : effacer définitivement toutes les données", type="checkbox", erreur=erreurs.confirmation_zero) }}
+    {{ ui.champ("confirmation_zero", "Confirmer : effacer définitivement toutes les données", type="checkbox", erreur=erreurs.confirmation_zero) }}
     <div class="formulaire-actions">
       <button type="submit" class="bouton bouton-danger-plein">Remettre la base à zéro</button>
     </div>

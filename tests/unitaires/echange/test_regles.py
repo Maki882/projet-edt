@@ -222,7 +222,7 @@ def test_simulation_n_ecrit_aucune_regle(jeu_minimal, importer):
 
 
 def test_mise_a_jour_par_annee_et_code(jeu_minimal, importer):
-    # R002 : pause libre de la classe A1-G1 ; on passe en pause fixe, niveau facultatif.
+    # R002 : pause libre de la classe A1-G1 ; passage en pause fixe, niveau facultatif.
     texte = ENTETE + "2026-2027;r002;PAUSE_DEJEUNER;groupe;A1-G1;mode = fixe;facultatif;;;;;\n"
 
     rapport = importer(_csv(texte))

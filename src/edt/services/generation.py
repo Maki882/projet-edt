@@ -292,7 +292,7 @@ def lancer_calcul(
 
     - `options` : réglages du calcul (défaut : tirés des paramètres globaux) ;
     - `moteur` : moteur à utiliser (défaut : `edt.solveur.resoudre`) ;
-    - `version_base_id` : version dont on reprend verrous et indices (défaut :
+    - `version_base_id` : version dont sont repris verrous et indices (défaut :
       la version active du semestre) ;
     - `activer` : rendre active la version produite en cas de succès.
 

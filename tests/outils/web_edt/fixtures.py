@@ -49,7 +49,7 @@ def sans_verificateur(monkeypatch) -> None:
 
 @pytest.fixture
 def aujourdhui_fige(monkeypatch, aujourdhui):
-    """Le semestre par défaut est choisi comme si l'on était le 5 octobre 2026."""
+    """Le semestre par défaut est choisi comme au 5 octobre 2026."""
     original = service_versions.semestre_par_defaut
     monkeypatch.setattr(
         service_versions,

@@ -229,14 +229,14 @@ def test_salle_unique_deux_seances_ne_partagent_pas_la_salle():
     assert not chevauchent(places["1-1"], places["2-1"])
 ```
 
-1. **Ce qu'on prépare.** La fabrique (`tests/outils/solveur/fabrique.py`)
+1. **Préparation.** La fabrique (`tests/outils/solveur/fabrique.py`)
    décrit un établissement minimal : une matinée de créneaux, une seule
    salle, deux groupes qui ont chacun une séance avec leur propre enseignant.
    `f.instantane()` produit l'instantané, la donnée d'entrée du solveur. Aucune
    base n'est créée.
-2. **Ce qu'on appelle.** `resoudre(instantane, OPTIONS)` : le solveur CP-SAT,
+2. **Appel.** `resoudre(instantane, OPTIONS)` : le solveur CP-SAT,
    appelé directement.
-3. **Ce qu'on vérifie.** `verifier_solution` est l'oracle : il exige une
+3. **Vérification.** `verifier_solution` est l'oracle : il exige une
    solution complète et la fait contrôler par le vérificateur officiel. La
    dernière ligne vérifie la règle elle-même : les deux séances, qui
    partagent la seule salle, ne se chevauchent pas.

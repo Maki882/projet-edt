@@ -28,7 +28,7 @@ def test_jeu_petit_calcule_et_verifie(base):
     with session_base() as session:
         rapport = jeux.charger_jeu_fictif(session, "petit", graine=0)
     with session_base() as session:
-        # On veut un emploi du temps valide, pas le meilleur : pas d'optimisation (plus court).
+        # Un emploi du temps valide suffit, pas le meilleur : pas d'optimisation (plus court).
         ecrire_parametre(session, "objectif_actif", False)
     assert rapport.semestres and compter(m.Besoin) == rapport.nb_besoins
 

@@ -8,7 +8,7 @@ Adresses :
   calcul tourne déjà, la page le montre au lieu de proposer d'en lancer un
   second ;
 - `GET /calculs/verifications` : fragment des vérifications préalables,
-  recalculé quand on change le niveau d'une règle (champs `niveau_<CODE>`) ;
+  recalculé quand le niveau d'une règle change (champs `niveau_<CODE>`) ;
 - `POST /calculs` : lit les niveaux (`niveau_<CODE>`) et les choix sur les
   règles personnalisées (`niveau_regle_<id>`, `ignorer_regle_<id>`), enregistre la pause
   déjeuner choisie (mode, heures, durée minimale) si elle diffère des paramètres, lance un calcul puis mène

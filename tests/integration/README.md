@@ -191,11 +191,11 @@ la solution. Le déplacement est couvert par
 
 Chargement du jeu « petit » (une promotion de 1re année, deux classes, deux
 sites, salles spécialisées, vacataires, une absence d'enseignant, partiels ;
-23 besoins) par le service de l'écran « Jeux de démonstration », calcul de
+23 besoins) par le service de l'écran « Établissement fictif », calcul de
 chacun de ses semestres, vérification de la semaine type et des séances
 datées (283 séances datées) sans anomalie bloquante. L'optimisation est
-coupée (paramètre `objectif_actif`) : on veut un emploi du temps valide, pas
-le meilleur.
+coupée (paramètre `objectif_actif`) : un emploi du temps valide est attendu,
+pas le meilleur.
 
 ### 4.7 Sortie réelle de pytest
 
@@ -257,16 +257,16 @@ assert not [a for a in rapport.anomalies if a.regle_id == regle.id]
 assert jours_a1_g1 and LUNDI not in jours_a1_g1
 ```
 
-1. **Ce qu'on prépare.** La fixture `jeu_minimal` charge un petit
+1. **Préparation.** La fixture `jeu_minimal` charge un petit
    établissement dans la base temporaire du test. Le service des règles crée
    la règle « A1-G1 ne travaille que du mardi au vendredi », au niveau
    nécessaire, comme le ferait l'écran « Règles ».
-2. **Ce qu'on appelle.** `calculer` (`tests/outils/parcours/aides.py`) lance
+2. **Appel.** `calculer` (`tests/outils/parcours/aides.py`) lance
    un vrai calcul par `lancer_calcul` et l'attend par `attendre_calcul` :
    chargement de l'instantané, solveur, contrôle, enregistrement de la
    version. C'est ce calcul complet qui fait de ce test un test
    d'intégration.
-3. **Ce qu'on vérifie.** Le vérificateur juge la version valide, a bien
+3. **Vérification.** Le vérificateur juge la version valide, a bien
    contrôlé la règle et ne lui trouve aucune entorse ; la base, relue
    directement, ne contient aucune séance de A1-G1 un lundi.
 4. **Pourquoi le test échouerait si le défaut revenait.** Si la règle
