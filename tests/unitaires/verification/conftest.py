@@ -14,6 +14,9 @@ Elles complètent celles de `tests/conftest.py` (`session`, `jeu_minimal`) :
   l'identifiant d'une salle qui n'existe plus.
 
 Les deux dernières renvoient l'ancien identifiant de N204.
+
+`version_sans_occurrences`, partagée avec les tests d'intégration, est définie dans
+`tests/outils/verification/fixtures.py` et importée ici pour que pytest l'enregistre.
 """
 
 from __future__ import annotations
@@ -21,10 +24,10 @@ from __future__ import annotations
 import sqlite3
 
 import pytest
+from tests.outils.verification.fixtures import version_sans_occurrences  # noqa: F401
+from tests.outils.verification.versions import enregistrer_version, salle_par_code
 
 from edt.db.moteur import obtenir_moteur
-
-from .versions import enregistrer_version, salle_par_code
 
 
 @pytest.fixture

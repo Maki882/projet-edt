@@ -3,14 +3,7 @@
 from __future__ import annotations
 
 import pytest
-
-from edt.domaine.contraintes import CodeContrainte
-from edt.domaine.enumerations import Gravite
-from edt.domaine.instantane import Occurrence, Placement, decomposer_id_seance
-from edt.erreurs import ErreurDonneesInvalides
-from edt.verification import verifier, verifier_occurrences
-
-from .fabrique import (
+from tests.outils.verification.fabrique import (
     JEUDI,
     LUNDI,
     MARDI,
@@ -22,6 +15,12 @@ from .fabrique import (
     h,
     placer,
 )
+
+from edt.domaine.contraintes import CodeContrainte
+from edt.domaine.enumerations import Gravite
+from edt.domaine.instantane import Occurrence, Placement, decomposer_id_seance
+from edt.erreurs import ErreurDonneesInvalides
+from edt.verification import verifier, verifier_occurrences
 
 # --------------------------------------------------------------------------- #
 # Volume

@@ -9,12 +9,21 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import (
+    ISSY,
+    JEUDI,
+    LUNDI,
+    MARDI,
+    MERCREDI,
+    VENDREDI,
+    Fabrique,
+    occurrence,
+    placer,
+)
 
 from edt.domaine.contraintes import CodeContrainte, Niveau
 from edt.domaine.enumerations import Gravite
 from edt.verification import verifier, verifier_occurrences
-
-from .fabrique import ISSY, JEUDI, LUNDI, MARDI, MERCREDI, VENDREDI, Fabrique, occurrence, placer
 
 REGLE = CodeContrainte.REGLE
 MARDI_6_OCT = dt.date(2026, 10, 6)

@@ -12,6 +12,7 @@ import datetime as dt
 
 import pytest
 from sqlalchemy import func, select
+from tests.outils.verification.versions import LUNDI, VENDREDI
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -28,8 +29,6 @@ from edt.services.verification import (
     version_a_verifier,
 )
 from edt.verification import Anomalie
-
-from .versions import LUNDI, VENDREDI
 
 
 def test_semaine_type_construite_a_la_main_valide(version_id, session):

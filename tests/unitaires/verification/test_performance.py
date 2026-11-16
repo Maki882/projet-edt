@@ -13,11 +13,19 @@ import time
 from dataclasses import replace
 
 import pytest
+from tests.outils.verification.fabrique import (
+    ISSY,
+    NOTRE_DAME,
+    SAMEDI,
+    Fabrique,
+    codes,
+    h,
+    occurrence,
+    placer,
+)
 
 from edt.domaine.enumerations import CibleIndisponibilite
 from edt.verification import calculer_indicateurs, verifier, verifier_occurrences
-
-from .fabrique import ISSY, NOTRE_DAME, SAMEDI, Fabrique, codes, h, occurrence, placer
 
 DEBUTS = (h("8h30"), h("10h45"), h("13h45"), h("16h00"))
 CRENEAUX_CM = (0, 5, 10, 15)

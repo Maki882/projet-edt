@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 
 import pytest
+from tests.outils.verification.fabrique import ISSY, LUNDI, SAMEDI, Fabrique, placer
 
 from edt.domaine.contraintes import CodeContrainte
 from edt.domaine.enumerations import DemiJournee
 from edt.domaine.instantane import Creneau
 from edt.verification import calculer_indicateurs, verifier
-
-from .fabrique import ISSY, LUNDI, SAMEDI, Fabrique, placer
 
 
 def semaine_type(**parametres):

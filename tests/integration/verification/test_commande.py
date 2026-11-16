@@ -1,27 +1,23 @@
-"""Commande `python -m edt verifier` sur le jeu minimal (base SQLite temporaire)."""
+"""Commande `python -m edt verifier` sur le jeu minimal (base SQLite temporaire), lancée par `CliRunner`.
+
+`version_sans_occurrences` vient de `tests/outils/verification/fixtures.py` (par `conftest.py`).
+"""
 
 from __future__ import annotations
 
 import json
 
 import pytest
+from tests.outils.verification.versions import enregistrer_version
 from typer.testing import CliRunner
 
 from edt import cli
 from edt.db.moteur import session_base
 
-from .versions import enregistrer_version
-
 
 @pytest.fixture
 def lanceur() -> CliRunner:
     return CliRunner()
-
-
-@pytest.fixture
-def version_sans_occurrences(jeu_minimal) -> int:
-    with session_base() as session:
-        return enregistrer_version(session, jeu_minimal.semestre_id)
 
 
 @pytest.fixture
@@ -103,8 +99,3 @@ def test_semestre_sans_version_active(lanceur, jeu_minimal):
     resultat = lanceur.invoke(cli.app, ["verifier", "--semestre", str(jeu_minimal.semestre_id)])
     assert resultat.exit_code == 2
     assert "n'a pas de version active" in resultat.output
-
-
-def test_point_d_entree(version_sans_occurrences, jeu_minimal):
-    assert cli.main(["verifier", "--semestre", str(jeu_minimal.semestre_id)]) == 0
-    assert cli.main(["verifier", "--version", "999"]) == 2

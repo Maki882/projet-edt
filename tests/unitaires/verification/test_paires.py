@@ -10,12 +10,20 @@ invalides, identifiant dupliqué, emploi du temps vide.
 from __future__ import annotations
 
 import pytest
+from tests.outils.verification.fabrique import (
+    ISSY,
+    LUNDI,
+    MARDI,
+    NOTRE_DAME,
+    Fabrique,
+    codes,
+    h,
+    placer,
+)
 
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurDonneesInvalides
 from edt.verification import verifier
-
-from .fabrique import ISSY, LUNDI, MARDI, NOTRE_DAME, Fabrique, codes, h, placer
 
 CHEVAUCHEMENTS = ["SALLE_UNIQUE", "ENSEIGNANT_UNIQUE", "GROUPE_UNIQUE"]
 

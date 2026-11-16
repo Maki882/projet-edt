@@ -5,11 +5,20 @@ from __future__ import annotations
 import datetime as dt
 
 import pytest
+from tests.outils.verification.fabrique import (
+    DIMANCHE,
+    JEUDI,
+    LUNDI,
+    MARDI,
+    SAMEDI,
+    Fabrique,
+    codes,
+    h,
+    placer,
+)
 
 from edt.domaine.enumerations import Gravite, ModeVolume
 from edt.verification import verifier
-
-from .fabrique import DIMANCHE, JEUDI, LUNDI, MARDI, SAMEDI, Fabrique, codes, h, placer
 
 
 def une_seance(duree=120, type_seance="TD", **options):

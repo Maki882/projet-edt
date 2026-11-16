@@ -12,7 +12,8 @@ sans replacement), il donne en revanche des anomalies datées attendues : le
 mercredi 11 novembre est férié et la salle L115 est en travaux du 2 au
 6 novembre.
 
-Les fixtures qui s'en servent sont dans `conftest.py`.
+Les fixtures qui s'en servent sont dans `tests/unitaires/verification/conftest.py`,
+`tests/outils/verification/fixtures.py` et `tests/integration/verification/test_commande.py`.
 """
 
 from __future__ import annotations
