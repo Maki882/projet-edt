@@ -235,7 +235,7 @@ def sauvegarder_base(url: str | None = None) -> Path | None:
         copier_base(chemin, partiel)
         partiel.replace(copie)
     except (ErreurDonneesInvalides, OSError) as erreur:
-        partiel.unlink(missing_ok=True)
+        _retirer_copie_partielle(partiel)
         raise ErreurRegleMetier(
             f"La sauvegarde de la base « {chemin} » vers « {copie} » a échoué ({erreur}) : "
             "remise à zéro annulée, rien n'a été modifié. Libérer de l'espace disque ou "
@@ -243,6 +243,20 @@ def sauvegarder_base(url: str | None = None) -> Path | None:
         ) from erreur
     journal.info("Base %s sauvegardée dans %s avant remise à zéro", chemin, copie)
     return copie
+
+
+def _retirer_copie_partielle(partiel: Path) -> None:
+    """Retire la copie inachevée d'une sauvegarde, sans masquer l'erreur qui a fait échouer.
+
+    Quand le dossier « sauvegardes » est inutilisable (un fichier porte ce nom, droits
+    retirés), il n'y a pas de copie à retirer et la suppression échoue à son tour : sous
+    Linux, « Not a directory », que `missing_ok` ne couvre pas. Cet échec est journalisé
+    et l'appelant lève son erreur métier.
+    """
+    try:
+        partiel.unlink(missing_ok=True)
+    except OSError as erreur:
+        journal.warning("Copie partielle %s non retirée : %s", partiel, erreur)
 
 
 def supprimer_schema(moteur: Engine) -> None:

@@ -70,21 +70,21 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'intégration.
+Le catalogue compte 371 cas : 214 cas en tests unitaires et 157 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `echange` | 39 | 5 |
 | `exploitation` | 40 | 32 |
-| `socle` | 58 | 32 |
+| `socle` | 59 | 32 |
 | `solveur` | 19 | 16 |
 | `synthese` | 28 | 5 |
 | `verification` | 25 | 0 |
 | `web_donnees` | 2 | 36 |
 | `web_edt` | 2 | 31 |
-| **Total** | **213** | **157** |
+| **Total** | **214** | **157** |
 
-### Tests unitaires (213 cas)
+### Tests unitaires (214 cas)
 
 #### `echange` (39 cas)
 
@@ -219,7 +219,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (58 cas)
+#### `socle` (59 cas)
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
@@ -276,6 +276,7 @@ Le catalogue compte 370 cas : 213 cas en tests unitaires et 157 cas en tests d'i
 | Une remise a zero attend un verrou d ecriture tenu brievement | `init-db --reset` ou la remise à zéro de l'écran pendant qu'une autre connexion écrit brièvement. | suppression du schéma (lecture du catalogue puis DROP) en échec « database is locked », base à moitié vidée ; ouverte en IMMEDIATE, elle attend puis aboutit. |
 | Deux chargements simultanes un seul reussit l autre est refuse clairement | deux chargements du même jeu lancés en même temps (deux fils : deux clics, deux onglets). | les deux passent le contrôle « base vide » puis l'un échoue « database is locked » brut ou les données sont doublées ; un seul doit réussir, l'autre être refusé par un message clair (opération en cours, ou base déjà garnie). |
 | Deux chargements de deux processus sont serialises sous le verrou | deux chargements depuis deux processus (le verrou du processus ne joue pas) : deux transactions distinctes, lancées ensemble, sur la même base. | les deux lisent « base vide », le second échoue « database is locked » brut à sa première écriture ; en IMMEDIATE le second attend la fin du premier puis est refusé « la base contient déjà des données ». |
+| Sauvegarde impossible reste un refus meme si le menage echoue | la sauvegarde avant remise à zéro échoue parce que « sauvegardes » est un fichier, et le retrait de la copie partielle échoue à son tour (sous Linux : « Not a directory »). | l'erreur du ménage remplace l'erreur métier, et la commande sort en « erreur inattendue » au lieu de dire que la remise à zéro est annulée et pourquoi. |
 
 [`tests/unitaires/socle/test_journal.py`](../tests/unitaires/socle/test_journal.py)
 
