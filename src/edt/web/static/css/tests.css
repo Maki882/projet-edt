@@ -239,14 +239,15 @@ main:has(.banc-integration) .entete-page h1 {
   display: none;
 }
 
-.banc-composant > summary::before {
-  content: "▸";
+.banc-composant-titre::before {
+  content: "▸ ";
   color: var(--banc);
 }
 
-.banc-composant[open] > summary::before {
-  content: "▾";
+.banc-composant[open] .banc-composant-titre::before {
+  content: "▾ ";
 }
+
 
 .banc-composant-titre {
   flex: 1 1 20rem;

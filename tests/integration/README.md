@@ -388,7 +388,6 @@ Voir la section 4 : [`parcours/test_parcours_web.py`](parcours/test_parcours_web
 | [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 9 | 9 |
 | [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | exécution réelle des tests d'un dépôt factice dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 |
 
-
 ## 7. Stratégie de test du projet
 
 | Niveau | Où | Comment le lancer | Rôle |

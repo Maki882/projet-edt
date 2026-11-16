@@ -181,7 +181,6 @@ python -m pytest --collect-only -q tests/unitaires   # cas, fichier par fichier
 | [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | onglets des tests dans le menu, état affiché de chaque test et comptes | 8 | 8 |
 | [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | regroupement des cas paramétrés, historique des résultats écrit puis relu, fichier illisible | 8 | 8 |
 
-
 ## 4. Un exemple expliqué pas à pas
 
 Fichier [`solveur/test_contraintes.py`](solveur/test_contraintes.py) : chaque
