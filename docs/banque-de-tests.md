@@ -70,11 +70,11 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'intégration.
+Le catalogue compte 490 cas : 297 cas en tests unitaires et 193 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
-| `assistant` | 26 | 5 |
+| `assistant` | 42 | 7 |
 | `banc_tests` | 13 | 8 |
 | `echange` | 57 | 12 |
 | `exploitation` | 40 | 32 |
@@ -84,11 +84,11 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 39 |
 | `web_edt` | 6 | 39 |
-| **Total** | **281** | **191** |
+| **Total** | **297** | **193** |
 
-### Tests unitaires (281 cas)
+### Tests unitaires (297 cas)
 
-#### `assistant` (26 cas)
+#### `assistant` (42 cas)
 
 [`tests/unitaires/assistant/test_boucle.py`](../tests/unitaires/assistant/test_boucle.py)
 
@@ -99,6 +99,10 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Echeance de l echange jamais depassee | chaque appel prend presque tout le délai. | un échange qui dure plusieurs minutes, au-delà du délai du serveur web ; ici l'échange s'arrête avant l'appel qui dépasserait l'échéance. |
 | Contexte trop long arrete avant l appel | la conversation dépasse la taille de contexte permise. | un appel très coûteux ; ici aucun appel, et la conversation est close. |
 | Budget epuise aucun appel | budget du jour à 0 $. | dépense au-delà du plafond fixé par l'administrateur. |
+| Estimation prudente pour un texte non ascii | un texte fait de caractères non latins (« 数 »), qui comptent environ un jeton chacun, bien plus que les 3 caractères par jeton du français. | réservation du budget et contrôle de la taille du contexte sous-estimés : un appel bien plus cher que prévu, et un budget du jour qui n'est plus borné. |
+| Une attente demandee trop longue n est jamais suivie | le service répond 429 avec « retry-after: 3600 » (vrai SDK, service simulé). | le SDK dort une heure avant de reprendre : l'échange reste « en cours » bien au-delà de son échéance, la conversation est bloquée, et deux échanges ainsi bloqués ferment l'assistant à tout le site. |
+| Une surcharge est reprise une fois dans l echeance | le service répond 529 (surcharge) puis répond normalement (vrai SDK simulé). | sans reprise, une surcharge passagère devient une erreur ; avec la reprise du SDK, une attente non bornée par l'échéance. |
+| Un appel hors delai est compte au cout maximal | un appel dépasse son délai (la génération était lancée), sa reprise aussi. | appels comptés comme gratuits alors qu'ils ont pu être facturés : la dépense réelle du jour dépasse le budget sans qu'aucune limite ne joue. |
 
 [`tests/unitaires/assistant/test_conversations.py`](../tests/unitaires/assistant/test_conversations.py)
 
@@ -111,17 +115,27 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Cle refusee met l assistant en pause | le service refuse la clé (401). | chaque visiteur relance un appel voué à l'échec ; la clé apparaît dans le journal. |
 | Identifiant introuvable par le sdk | la variable de clé est posée mais le SDK ne construit pas le client. | une trace dans le fil de l'échange et une attente sans fin dans le panneau. |
 | Erreur inattendue dans le fil rendue en bulle | une exception non prévue dans le fil de l'échange. | un fil mort, un panneau qui attend indéfiniment, la clé dans la trace. |
+| Un message refuse ne cree pas de conversation | une adresse au-delà de sa limite envoie des messages sans cookie, à la chaîne. | chaque refus crée une conversation vide ; le registre se remplit et évince les conversations des autres visiteurs, propositions en attente comprises, sans aucun appel. |
+| Une proposition en attente n est jamais evincee | la mémoire est pleine ; la conversation de la démonstratrice a une proposition en attente ; un autre visiteur commence une conversation. | au clic, « Cette proposition n'existe plus » : la conversation a été évincée. |
+| Conversations bornees par adresse | une même adresse ouvre conversation sur conversation (cookies effacés). | une seule adresse occupe toute la mémoire et évince les autres visiteurs. |
 | Conversations expirees et place limitee | une conversation inactive depuis plus de 30 minutes ; la mémoire est pleine. | la mémoire du serveur grossit sans fin avec les visiteurs. |
 | Confirmation devenue impossible | entre la proposition et le clic, quelqu'un enregistre une règle qui fait doublon. | deux réglages contradictoires actifs, ou une erreur brute. |
 | Base occupee a la confirmation | un autre processus tient la base au moment du clic sur Confirmer. | proposition perdue ou enregistrée à moitié ; ici rien n'est écrit, la carte reste à confirmer. |
+| Confirmer refuse un enseignant qui n est plus celui de la carte | la carte vise M. Bernard (ENS002) ; avant le clic, un visiteur recharge un établissement fictif et l'identifiant numérique de M. Bernard désigne une autre personne, qui garde le même identifiant métier. | « Confirmée » sur la carte de M. Bernard, et l'indisponibilité écrite pour un autre. |
+| Confirmer refuse apres un rechargement de la base | un visiteur remet la base à zéro et recharge les mêmes données entre la proposition et le clic : le même identifiant désigne à nouveau « M. Bernard (ENS002) ». | une identité qui coïncide après un rechargement ne prouve pas que la carte et la base parlent du même élément ; la carte ne doit pas écrire dans une base rechargée. |
+| Confirmer refuse une salle remplacee | la salle de la carte a été supprimée puis une autre salle a pris son identifiant (rechargement), ou elle a changé de code. | l'indisponibilité posée sur une autre salle que celle de la carte. |
+| Confirmer refuse une regle qui a change | la carte propose de désactiver R001 ; avant le clic, la règle R001 a été remplacée (rechargement d'un établissement fictif) par une règle de même code et d'un autre contenu. | la carte confirme « Désactiver R001 » et désactive une autre règle. |
+| Confirmer refuse une modification sur une regle modifiee entre temps | la carte propose « Modifier R002 » (avant, après) ; avant le clic, quelqu'un modifie R002 à l'écran. | les changements fusionnés sur l'état courant donnent une règle que la carte n'a jamais montrée. |
+| Confirmer refuse une nouvelle regle dont la phrase a change | la carte propose une règle pour « la classe A1-G2 » ; avant le clic, le groupe A1-G2 a changé de nature (rechargement). | une règle enregistrée dont la phrase n'est pas celle que l'utilisateur a lue. |
 
 [`tests/unitaires/assistant/test_limites.py`](../tests/unitaires/assistant/test_limites.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Consommation du jour survit a un redemarrage et change avec le jour | le service redémarre (déploiement) après avoir dépensé une partie du budget ; puis minuit passe. | le budget remis à zéro à chaque redémarrage, ou jamais remis à zéro. |
-| Consommation gardee en memoire si la base est videe | un visiteur charge un établissement fictif, qui recrée toutes les tables. | le budget du jour remis à zéro par n'importe quel visiteur. |
-| Base occupee la consommation est reportee | une écriture de consommation tombe pendant qu'un autre processus tient la base. | appel déjà payé mais non compté, ou échange qui échoue pour une simple écriture. |
+| Consommation survit a une remise a zero puis a un redemarrage | 1,90 $ dépensés ; un visiteur charge un établissement fictif (remise à zéro de la base) ; le service redémarre le même jour. | le budget et le compteur du jour repartent de zéro : un second budget complet. |
+| Fichier de consommation illisible | le fichier de consommation est abîmé (disque, copie à la main). | une exception à chaque message, ou un compte faux sans que personne le sache. |
+| Consommation impossible a ecrire est reportee | le fichier de consommation ne peut pas être écrit (dossier en lecture seule, disque plein ; simulé par un dossier à la place du fichier). | appel déjà payé mais non compté, ou échange qui échoue pour une simple écriture. |
 
 [`tests/unitaires/assistant/test_occupation.py`](../tests/unitaires/assistant/test_occupation.py)
 
@@ -130,6 +144,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Plage d un moment sans creneau refusee clairement | « le samedi après-midi », alors que la grille n'a que le samedi matin ; un moment inconnu. | une plage vide ou inventée, et une réponse « toutes les salles sont libres ». |
 | Salles homonymes citees chacune avec son campus | deux salles « N105 », une par campus. | une seule citée, ou l'occupation de l'une attribuée à l'autre. |
 | Creneau invalide ou jour et date ensemble refuses | début après la fin ; ni jour ni date ; un jour et une date à la fois ; une date hors du semestre. | réponse vide prise pour « aucune salle libre », ou résultat d'un autre semestre. |
+| Seance datee deplacee dans une salle libre signalee | la semaine type laisse N105 libre le jeudi après-midi, mais une séance datée a été déplacée dans N105 un jeudi après-midi (replacement après un jour férié). | N105 annoncée « libre toutes les semaines » sans aucune exception datée ; la salle est proposée ce jeudi-là alors qu'elle est prise. |
 
 [`tests/unitaires/assistant/test_outils.py`](../tests/unitaires/assistant/test_outils.py)
 
@@ -138,6 +153,7 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 | Exception inattendue d un outil devient erreur interne avec reference | un outil lève une exception non prévue (bogue). | l'échange entier échoue et l'utilisateur ne sait pas quoi faire ; ou la trace part au modèle. Ici : erreur interne avec la référence, trace dans le journal seulement. |
 | Base occupee pendant un outil | un chargement d'établissement fictif tient la base pendant que l'outil lit. | erreur interne ou échange perdu ; ici le modèle reçoit « base occupée, réessayer ». |
 | Quatrieme proposition d un echange refusee | le modèle enchaîne quatre propositions dans une réponse. | un panneau rempli de cartes que l'utilisateur confirme sans les lire. |
+| Emploi du temps d une classe compte ses demi groupes et ses langues | « la classe A1-G1 a-t-elle cours le mercredi ? » ; ce jour-là, seuls ses demi-groupes (TP) et le groupe de langue qui partage ses étudiants ont cours. | l'outil ne lit que la vue restreinte et répond « 0 séance » : l'assistant annonce la classe libre. |
 
 [`tests/unitaires/assistant/test_validations.py`](../tests/unitaires/assistant/test_validations.py)
 
@@ -709,19 +725,21 @@ Le catalogue compte 472 cas : 281 cas en tests unitaires et 191 cas en tests d'i
 |---|---|---|
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 
-### Tests d'intégration (191 cas)
+### Tests d'intégration (193 cas)
 
-#### `assistant` (5 cas)
+#### `assistant` (7 cas)
 
 [`tests/integration/assistant/test_web.py`](../tests/integration/assistant/test_web.py)
 
 | Test | Cas | Risque |
 |---|---|---|
+| Page affichee bornee au chemin d une page | le champ caché « page » est fabriqué : 85 000 caractères, une adresse avec paramètres, un chemin avec balise, une adresse d'un autre site. | un texte arbitraire qui contourne la limite de 800 caractères, part en entier au modèle (coût sous-estimé par la réservation) et dans le journal. |
 | Base occupee au clic sur confirmer | un autre processus tient la base quand l'utilisateur clique sur Confirmer. | une page « base occupée » dans la zone de messages, invisible au téléphone ; ici la carte le dit et reste à confirmer. |
 | Limite de la conversation sans appel | second message alors que la conversation n'en permet qu'un. | appel facturé malgré la limite ; refus rendu en 4xx, invisible dans le panneau. |
 | Budget du jour a zero | budget du jour fixé à 0 $ par l'administrateur. | un appel facturé au-delà du plafond. |
 | Envoi depuis un autre site refuse | une page d'un autre site fait envoyer des messages par le navigateur du visiteur. | le budget de l'assistant dépensé à l'insu du visiteur. |
 | Aucune reponse ne contient la cle | la clé est dans l'environnement du serveur. | la clé recopiée dans une page, un fragment ou un en-tête. |
+| Le cookie de conversation est renouvele a chaque activite | une démonstration de plus de 30 minutes sur une même conversation. | le cookie posé au premier message expire alors que la conversation vit encore sur le serveur : la réponse en cours est « perdue », Confirmer répond « Cette proposition n'existe plus », et le message suivant ouvre une autre conversation. |
 
 #### `banc_tests` (8 cas)
 
