@@ -21,6 +21,7 @@ from edt.services.emploi_du_temps import calculs, prechauffage, presentation
 from edt.services.parametres import lire_parametres
 from edt.solveur.contrat import ResultatSolveur, StatutSolveur
 from edt.verification.contrat import Anomalie
+from edt.web.routes import calculs as routes_calculs
 
 MODIFIABLES = [code for code, entree in CATALOGUE.items() if entree.modifiable]
 
@@ -405,10 +406,13 @@ def test_double_clic_sur_supprimer_une_version(version_generee, client):
 @pytest.mark.cas_limite
 def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
     """Cas : double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul
-    lancé par le premier démarre.
+    lancé par le premier démarre ; puis un autre onglet envoie d'autres réglages.
     Risque : bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le
-    calcul demandé tourne ; deux calculs lancés.
+    calcul demandé tourne ; deux calculs lancés ; ou « Calcul lancé. » pour des réglages qui
+    n'ont pas été appliqués.
     """
+    # Délai du double envoi très large : le test ne dépend pas de la charge de la machine.
+    monkeypatch.setattr(routes_calculs, "DELAI_DOUBLE_ENVOI_S", 3600.0)
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -426,6 +430,11 @@ def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
         assert second.headers["location"] == f"/calculs/{premier}"
         page = client.get(second.headers["location"]).text
         assert "Calcul lancé." in page and "déjà en cours" not in page
+        autres_reglages = _formulaire(jeu_minimal.semestre_id, duree="long", optimiser="1")
+        autre = client.post("/calculs", data=autres_reglages, follow_redirects=False)
+        assert autre.headers["location"] == f"/calculs/{premier}"
+        page = client.get(autre.headers["location"]).text
+        assert "Calcul lancé." not in page and "déjà en cours" in page
         assert _nb_calculs() == 1
     finally:
         generation.demander_arret(premier)

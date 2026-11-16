@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime as dt
+import json
 import logging
 import random
 import re
@@ -53,7 +54,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from edt.db import modeles as m
-from edt.db.moteur import transaction_immediate
+from edt.db.moteur import session_base, transaction_immediate
 from edt.domaine.contraintes import (
     CATALOGUE,
     CodeContrainte,
@@ -275,6 +276,18 @@ class ChoixDejeuner:
     debut: str
     fin: str
     duree: str
+
+
+class ErreurMemeCalculEnCours(ErreurCalculEnCours):
+    """Le calcul en cours est celui qui est demandé : même semestre, mêmes réglages.
+
+    Cas d'un double envoi du formulaire. `suivi` est ce calcul ; l'écran dit qu'il est lancé,
+    au lieu d'avertir qu'un autre calcul tourne.
+    """
+
+    def __init__(self, message: str, suivi: generation.SuiviCalcul) -> None:
+        super().__init__(message)
+        self.suivi = suivi
 
 
 class ErreurSaisieDejeuner(ErreurDonneesInvalides):
@@ -948,7 +961,8 @@ def demarrer_calcul(
 
     Lève `ErreurSaisieDejeuner` si la pause déjeuner est mal saisie,
     `ErreurPreVerification` si une vérification préalable relève une
-    erreur, `ErreurCalculEnCours` si un calcul tourne déjà.
+    erreur, `ErreurCalculEnCours` si un calcul tourne déjà (`ErreurMemeCalculEnCours`
+    s'il a ce semestre et ces réglages).
     """
     exiger_semestre(session, semestre_id)
     if dejeuner is not None:
@@ -973,7 +987,33 @@ def demarrer_calcul(
         utiliser_indices=not autre_solution,
         niveaux_regles=niveaux_regles,
     )
-    return generation.lancer_calcul(semestre_id, options)
+    try:
+        return generation.lancer_calcul(semestre_id, options)
+    except ErreurCalculEnCours as erreur:
+        suivi = generation.calcul_en_cours()
+        if (
+            suivi is not None
+            and suivi.semestre_id == semestre_id
+            and _memes_reglages(suivi, options)
+        ):
+            raise ErreurMemeCalculEnCours(erreur.message, suivi) from erreur
+        raise
+
+
+def _memes_reglages(suivi: generation.SuiviCalcul, options: OptionsSolveur) -> bool:
+    """Vrai si le calcul `suivi` a été lancé avec ces options (graine tirée au sort exceptée).
+
+    Les paramètres enregistrés sont relus dans une session neuve : celle de la requête a pu
+    commencer sa lecture avant l'enregistrement du calcul.
+    """
+    with session_base() as session:
+        enregistres = session.scalar(select(m.Calcul.parametres).where(m.Calcul.id == suivi.id))
+    if not isinstance(enregistres, dict):
+        return False
+    demandes = json.loads(json.dumps(options.vers_dict()))
+    return all(
+        enregistres.get(cle) == valeur for cle, valeur in demandes.items() if cle != "graine"
+    )
 
 
 SEANCES_DATEES_A_PRODUIRE = (

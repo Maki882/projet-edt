@@ -50,9 +50,9 @@ from edt.web.menu import EntreeMenu
 SECTION_GENERER = "Générer"
 
 DELAI_DOUBLE_ENVOI_S = 5.0
-"""Un second « Lancer le calcul » arrivé si tôt après le premier est un double clic : la page
-dit « Calcul lancé. » comme pour le premier envoi, au lieu d'avertir qu'un calcul est déjà en
-cours."""
+"""Un second « Lancer le calcul » arrivé si tôt après le premier, avec le même semestre et les
+mêmes réglages, est un double clic : la page dit « Calcul lancé. » comme pour le premier envoi,
+au lieu d'avertir qu'un calcul est déjà en cours."""
 
 journal = logging.getLogger(__name__)
 routeur = APIRouter()
@@ -269,14 +269,19 @@ def lancer(
             ),
             niveaux_regles=niveaux_regles,
         )
-    except ErreurCalculEnCours:
-        suivi = generation.calcul_en_cours()
-        if (
-            suivi is not None
-            and suivi.semestre_id == semestre_id
-            and suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S
-        ):
+    except calculs.ErreurMemeCalculEnCours as erreur:
+        suivi = erreur.suivi
+        if suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S:
             return rediriger(request, f"/calculs/{suivi.id}", "Calcul lancé.")
+        return rediriger(
+            request,
+            f"/calculs/{suivi.id}",
+            "Un calcul est déjà en cours : voici son avancement.",
+            "attention",
+        )
+    except ErreurCalculEnCours:
+        # Autre semestre ou autres réglages : les réglages envoyés n'ont pas été appliqués.
+        suivi = generation.calcul_en_cours()
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
