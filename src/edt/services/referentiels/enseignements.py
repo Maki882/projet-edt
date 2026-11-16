@@ -194,7 +194,9 @@ TYPE_SEANCE = Entite(
     colonnes=(
         Colonne("code", "Code", lambda t: t.code, tri=TypeSeance.code),
         Colonne("libelle", "Libellé", lambda t: t.libelle, tri=TypeSeance.libelle),
-        Colonne("samedi", "Samedi", lambda t: t.samedi_autorise, tri=TypeSeance.samedi_autorise),
+        Colonne(
+            "samedi", "Samedi autorisé", lambda t: t.samedi_autorise, tri=TypeSeance.samedi_autorise
+        ),
         Colonne(
             "type_salle",
             "Salle par défaut",

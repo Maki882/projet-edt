@@ -19,22 +19,22 @@
       <thead>
         <tr>
           <th scope="col">Groupe</th>
-          <th scope="col" class="nombre">Propres</th>
-          <th scope="col" class="nombre">Héritées</th>
+          <th scope="col" class="nombre">Séances du groupe</th>
+          <th scope="col" class="nombre">Séances communes (classe, promotion)</th>
           <th scope="col" class="nombre">Total / semaine</th>
           <th scope="col" class="nombre">Heures / semaine</th>
-          <th scope="col" class="nombre">Ponctuelles</th>
+          <th scope="col" class="nombre">Séances ponctuelles</th>
         </tr>
       </thead>
       <tbody>
         {%- for charge in charges %}
         <tr>
           <td><strong>{{ charge.code }}</strong> <span class="discret">{{ charge.libelle }}</span></td>
-          <td class="nombre">{{ charge.propres }}</td>
-          <td class="nombre">{{ charge.heritees }}</td>
-          <td class="nombre"><strong>{{ charge.total }}</strong></td>
+          <td class="nombre">{{ "%g"|format(charge.propres|round(1))|replace(".", ",") }}</td>
+          <td class="nombre">{{ "%g"|format(charge.heritees|round(1))|replace(".", ",") }}</td>
+          <td class="nombre"><strong>{{ "%g"|format(charge.total|round(1))|replace(".", ",") }}</strong></td>
           <td class="nombre">{{ (charge.minutes|int)|duree }}</td>
-          <td class="nombre">{{ charge.ponctuelles }}</td>
+          <td class="nombre">{{ "%g"|format(charge.ponctuelles|round(1))|replace(".", ",") }}</td>
         </tr>
         {%- endfor %}
       </tbody>

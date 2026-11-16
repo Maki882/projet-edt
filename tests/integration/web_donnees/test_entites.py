@@ -171,3 +171,21 @@ def test_arbre_repliable(site, ids):
     assert 'data-arbre-action="replier"' in page
     assert '<details data-noeud="nature-transverse" class="arbre-section">' in page
     assert "Groupes transverses" in page
+
+
+def test_libelles_des_listes_lisibles(site, ids):
+    """Calendrier : ajout d'année replié quand une année existe ; besoins : le filtre par défaut
+    sans « Semestre : Semestre », charges sans point décimal ; menu : listes de référence à
+    part, en dernier ; choix facultatif vide « Aucun choix »."""
+    calendrier = site.get("/calendrier").text
+    assert (
+        '<details class="carte repliable">' in calendrier
+        and 'bouton-principal" href="/calendrier/jours-fermes' not in calendrier
+    )
+    besoins = site.get("/besoins").text
+    assert "Semestre : Semestre" not in besoins and "Séances du groupe" in besoins
+    charges = besoins[besoins.index('id="charges-groupes"') :]
+    assert not re.search(r'class="nombre">(<strong>)?\d+\.\d', charges)
+    salles = site.get("/salles").text
+    assert salles.rindex("<h2>") == salles.index("<h2>Listes de référence</h2>")
+    assert "Aucun choix" in site.get("/besoins/nouveau").text
