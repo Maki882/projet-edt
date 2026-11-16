@@ -24,26 +24,37 @@
 </section>
 {%- endif %}
 
-{%- if tableau and tableau.semestre %}
+{#- Carte du semestre : seulement quand il y a un calcul, une version, ou un calcul à lancer.
+    Chaque adresse n'apparaît qu'une fois : un lien qui doublerait la prochaine étape est omis. -#}
+{%- set code_etape = etape.code if etape else none %}
+{%- if tableau and tableau.semestre and (tableau.version or tableau.calcul_en_cours or code_etape not in ("charger", "saisir")) %}
 <section class="carte">
   <h2>Emploi du temps du {{ tableau.semestre.libelle[:1]|lower }}{{ tableau.semestre.libelle[1:] }}</h2>
   {%- if tableau.calcul_en_cours %}
   <p>{{ ui.etiquette("Calcul en cours", "info") }} Un calcul tourne depuis {{ fmt.duree_secondes(tableau.calcul_en_cours.temps_ecoule_s) }}.
-    <a href="/calculs/{{ tableau.calcul_en_cours.id }}">Suivre le calcul</a></p>
+    {%- if code_etape != "suivre" %}
+    <a href="/calculs/{{ tableau.calcul_en_cours.id }}">Suivre le calcul</a>
+    {%- endif %}</p>
   {%- endif %}
   {%- if tableau.version %}
   <p>
     {{ ui.etiquette("Version active", "succes") }} {{ tableau.version.libelle }}.
+    {%- if code_etape != "consulter" %}
     <a href="/emploi-du-temps?version_id={{ tableau.version.id }}">Consulter</a>
+    {%- endif %}
   </p>
   <p>
     {%- if tableau.nb_a_traiter is none %}
     {{ ui.etiquette(fmt.pluriel(tableau.nb_a_programmer, "séance") ~ " à programmer", "attention" if tableau.nb_a_programmer else "info") }}
-    <span class="discret">(anomalies non comptées : vérifications pas encore disponibles)</span>
+    <span class="discret">(vérifications automatiques indisponibles : points non comptés)</span>
+    {%- if code_etape != "traiter" %}
     <a href="/a-traiter?semestre_id={{ tableau.semestre.id }}">Voir ce qui reste à traiter</a>
+    {%- endif %}
     {%- elif tableau.nb_a_traiter %}
     {{ ui.etiquette(fmt.pluriel(tableau.nb_a_traiter, "point") ~ " à traiter", "erreur") }}
+    {%- if code_etape != "traiter" %}
     <a href="/a-traiter?semestre_id={{ tableau.semestre.id }}">Voir ce qui reste à traiter</a>
+    {%- endif %}
     {%- else %}
     {{ ui.etiquette("Aucun point à traiter", "succes") }}
     {%- endif %}
@@ -61,7 +72,9 @@
   <p>
     {{ ui.etiquette(echec.etiquette, echec.ton) }}
     Lancé le {{ echec.suivi.demarre_le|dateheure_fr }}.
+    {%- if code_etape != "relire" %}
     <a href="/calculs/{{ echec.suivi.id }}">Voir le détail</a>
+    {%- endif %}
   </p>
   {%- if echec.suivi.message %}
   <p class="pre-ligne">{{ echec.suivi.message }}</p>
@@ -78,11 +91,13 @@
     {{ ui.message("La base de données refuse les écritures : aucune modification ne peut être enregistrée.", "erreur", [etat.ecriture_impossible or "", "À faire par l'administrateur du serveur : rendre le fichier de la base et son dossier inscriptibles par l'utilisateur du service (ou libérer de l'espace disque), puis lancer « python -m edt doctor »."]) }}
   {%- elif etat.ecarts_schema %}
     {{ ui.message("Le schéma de la base ne correspond plus à l'application.", "erreur", etat.ecarts_schema|list + ["Marche à suivre, par l'administrateur du serveur : « python -m edt init-db --reset » recrée la base et efface les données, puis recharger un jeu de données."]) }}
-  {%- elif not etat.initialisee %}
-    {{ ui.message("La base de données n'est pas encore initialisée.", "attention", ["À faire par l'administrateur du serveur : lancer « python -m edt init-db », puis recharger cette page."]) }}
   {%- else %}
-  <div class="message message-info" role="status">
-    <p>La base ne contient encore aucune donnée. Pour découvrir l'application : <a href="/jeux">charger un établissement fictif</a>.</p>
+  <div class="message message-attention" role="status">
+    <p>La base de données n'est pas encore initialisée.</p>
+    <ul>
+      <li>Pour découvrir l'application : <a href="/jeux">charger un établissement fictif</a> (la base est préparée au passage).</li>
+      <li>Sinon, à faire par l'administrateur du serveur : lancer « python -m edt init-db », puis recharger cette page.</li>
+    </ul>
   </div>
   {%- endif %}
 </section>

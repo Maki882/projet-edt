@@ -13,11 +13,10 @@ active), et la **prochaine étape** conseillée en une phrase :
 4. traiter les anomalies et les séances à programmer ;
 5. consulter l'emploi du temps.
 
-Aucune statistique : les quatre indicateurs de l'équipe restent sur le
-résultat d'un calcul, les nombres de salles, groupes, enseignants et besoins
-ne servent ici qu'à choisir l'étape. Tant que les vérifications ne sont pas
-disponibles, `nb_a_traiter` vaut `None` (l'accueil le dit au lieu
-d'afficher zéro).
+Aucune statistique : les indicateurs de qualité restent sur le résultat
+d'un calcul, les nombres de salles, groupes, enseignants et besoins ne
+servent ici qu'à choisir l'étape. Si une vérification n'a pas pu être faite,
+`nb_a_traiter` vaut `None` (l'accueil le dit au lieu d'afficher zéro).
 """
 
 from __future__ import annotations
@@ -112,8 +111,8 @@ class TableauDeBord:
     """Ce que la page d'accueil affiche (voir l'en-tête du module).
 
     - `nb_a_traiter` : `ATraiter.total` de la version active (la même
-      définition que la page « À traiter »), `None` si les vérifications ne
-      sont pas disponibles ;
+      définition que la page « À traiter »), `None` si une vérification n'a
+      pas pu être faite ;
     - `nb_a_programmer` : séances datées à programmer, affichées seulement
       quand `nb_a_traiter` est inconnu ;
     - `calcul_sans_solution` : le dernier calcul du semestre s'il s'est
@@ -258,7 +257,7 @@ def _prochaine_etape(
     if nb_a_traiter is None:
         phrase = (
             f"L'emploi du temps du {nom} est généré : le consulter par groupe, enseignant ou "
-            "salle (les vérifications automatiques ne sont pas encore disponibles)."
+            "salle (vérifications automatiques indisponibles)."
         )
     return ProchaineEtape(
         Etape.CONSULTER,

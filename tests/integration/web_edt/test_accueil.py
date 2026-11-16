@@ -38,9 +38,10 @@ def test_base_vide_propose_un_etablissement_fictif(client):
         in page
     )
     assert 'href="/import"' in page and 'href="/salles"' in page
-    # Base vide : le bloc de la base apparaît, avec l'invitation à charger un jeu.
-    assert "État de la base de données" in page
-    assert "La base ne contient encore aucune donnée" in page
+    # Base vide : la prochaine étape suffit, ni bloc sur la base ni carte du semestre.
+    assert "État de la base de données" not in page
+    assert "La base ne contient encore aucune donnée" not in page
+    assert "<h2>Emploi du temps du" not in page
 
 
 def test_donnees_sans_emploi_du_temps_conseille_de_generer(jeu_minimal, client, aujourdhui_fige):
@@ -60,8 +61,9 @@ def test_version_active_sans_verificateur(
 
     assert "Consulter l&#39;emploi du temps" in page or "Consulter l'emploi du temps" in page
     assert f"/emploi-du-temps?version_id={version_generee.version_id}" in page
-    assert "les vérifications automatiques ne sont pas encore disponibles" in page
-    assert "anomalies non comptées : vérifications pas encore disponibles" in page
+    assert "(vérifications automatiques indisponibles)." in page
+    assert "(vérifications automatiques indisponibles : points non comptés)" in page
+    assert "pas encore disponible" not in page
     assert "conflit" not in page  # pas de « 0 conflit » inventé
 
 
@@ -91,7 +93,8 @@ def test_points_a_traiter_sans_indicateurs(
     page = client.get("/").text
 
     assert "1 point à traiter" in page
-    assert f'href="/a-traiter?semestre_id={version_generee.semestre_id}"' in page
+    # Une seule fois : le bouton de la prochaine étape, pas de second lien dans la carte.
+    assert page.count(f'href="/a-traiter?semestre_id={version_generee.semestre_id}"') == 1
     _sans_statistique(page)
 
 
@@ -109,8 +112,11 @@ def test_tout_va_bien_version_a_consulter_et_rien_d_autre(version_generee, clien
         reste = tableau_de_bord(session, aujourdhui_fige).nb_a_traiter
     assert "Version active" in page and libelle in page
     adresse = f"/emploi-du-temps?version_id={version_generee.version_id}"
-    assert f'<a href="{adresse}">Consulter</a>' in page
     assert reste is not None  # le vrai vérificateur a compté
+    # Chaque adresse n'apparaît qu'une fois : pas de lien qui double la prochaine étape.
+    assert page.count(f'href="{adresse}"') == 1
+    if not reste:
+        assert f'<a class="bouton bouton-principal" href="{adresse}">' in page
     attendu = "Aucun point à traiter" if not reste else f"{pluriel(reste, 'point')} à traiter"
     assert attendu in page
     # Le calcul réussi ne s'affiche pas : la version active le dit déjà.
