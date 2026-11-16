@@ -286,7 +286,15 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **489 fonctions de test** dans 10 composants, dont 183 marquées `cas_limite` et 4 marquées `perf`.
+
+### `assistant/` : Assistant (29 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`assistant/test_commande.py`](assistant/test_commande.py) | Commande `python -m edt assistant` : état, essai et question, avec le faux client | 8 |
+| [`assistant/test_panneau.py`](assistant/test_panneau.py) | Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 |
+| [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 16 |
 
 ### `echange/` : Import et export par le site et la ligne de commande (33 fonctions)
 
@@ -350,7 +358,7 @@ Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquée
 |---|---|---:|
 | [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (122 fonctions)
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (123 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -360,7 +368,7 @@ Ce dossier compte **459 fonctions de test** dans 9 composants, dont 178 marquée
 | [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 |
 | [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 |
 | [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 8 |
-| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce | 5 |
+| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, aucune annonce | 6 |
 | [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 |
 | [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 |
 | [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 28 |

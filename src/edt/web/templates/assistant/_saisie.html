@@ -1,0 +1,21 @@
+{#- Formulaires du panneau. Deux formulaires distincts : HTMX valide un formulaire avant
+    l'envoi et n'enverrait pas « Nouvelle conversation » tant que la zone de saisie
+    (requise) est vide. #}
+<form class="assistant-saisie" method="post" action="/assistant/messages"
+      hx-post="/assistant/messages" hx-target="#assistant-fil" hx-swap="beforeend"
+      hx-disabled-elt="find textarea, find button">
+  <label for="assistant-question">Votre demande</label>
+  <textarea id="assistant-question" name="message" rows="3" maxlength="{{ longueur_max }}" required
+            aria-describedby="assistant-aide"{% if vue.close %} disabled data-toujours-desactive{% endif %}></textarea>
+  <p id="assistant-aide" class="discret">Ctrl + Entrée pour envoyer. Vos messages sont transmis au
+    service Claude d'Anthropic : n'y écrivez aucune donnée personnelle.</p>
+  <input type="hidden" name="page" value="{{ page or '' }}">
+  <div class="assistant-saisie-boutons">
+    {% include "assistant/_compteur.html" %}
+    <button type="submit" class="bouton bouton-principal"{% if vue.close %} disabled data-toujours-desactive{% endif %}>Envoyer</button>
+  </div>
+</form>
+<form class="assistant-nouvelle" method="post" action="/assistant/conversation/nouvelle"
+      hx-post="/assistant/conversation/nouvelle" hx-target="#assistant-conversation">
+  <button type="submit" class="bouton bouton-petit">Nouvelle conversation</button>
+</form>

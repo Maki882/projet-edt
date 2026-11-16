@@ -1140,3 +1140,45 @@ MODELES: tuple[type[Base], ...] = (
     Parametre,
 )
 """Tous les modèles à table propre (les tables d'association sont dans `Base.metadata`)."""
+
+
+class AssistantConsommation(Base):
+    """Consommation de l'assistant conversationnel pour un jour, sur tout le site.
+
+    Une ligne par jour : échanges commencés, appels au modèle, jetons par
+    catégorie et coût estimé en micro-dollars (d'après l'usage rendu par le
+    service et `edt.services.assistant.configuration.PRIX_PAR_MODELE`). Sert
+    aux limites du jour (`EDT_ASSISTANT_MESSAGES_PAR_JOUR`,
+    `EDT_ASSISTANT_BUDGET_JOUR`), qui survivent ainsi à un redémarrage. Aucun
+    texte de conversation ni adresse n'y est enregistré.
+    """
+
+    __tablename__ = "assistant_consommation"
+    __table_args__ = (
+        CheckConstraint(
+            "echanges >= 0 AND appels >= 0 AND jetons_entree >= 0 AND jetons_cache_lus >= 0"
+            " AND jetons_cache_ecrits >= 0 AND jetons_sortie >= 0 AND cout_microdollars >= 0",
+            name="consommation_positive",
+        ),
+    )
+
+    jour: Mapped[dt.date] = mapped_column(Date, primary_key=True, comment="Jour (heure du serveur)")
+    echanges: Mapped[int] = mapped_column(Integer, default=0, comment="Échanges commencés")
+    appels: Mapped[int] = mapped_column(Integer, default=0, comment="Appels au modèle")
+    jetons_entree: Mapped[int] = mapped_column(
+        Integer, default=0, comment="Jetons d'entrée hors cache"
+    )
+    jetons_cache_lus: Mapped[int] = mapped_column(Integer, default=0, comment="Jetons lus en cache")
+    jetons_cache_ecrits: Mapped[int] = mapped_column(
+        Integer, default=0, comment="Jetons écrits en cache"
+    )
+    jetons_sortie: Mapped[int] = mapped_column(Integer, default=0, comment="Jetons de sortie")
+    cout_microdollars: Mapped[int] = mapped_column(
+        Integer, default=0, comment="Coût estimé, en millionièmes de dollar"
+    )
+    modifie_le: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.now, onupdate=dt.datetime.now, comment="Dernière mise à jour"
+    )
+
+
+MODELES += (AssistantConsommation,)

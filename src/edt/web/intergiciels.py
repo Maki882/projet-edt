@@ -35,8 +35,9 @@ from edt.web.erreurs import reponse_erreur
 journal = logging.getLogger("edt.web.requetes")
 
 EN_TETE_ID = "X-Request-ID"
-PREFIXES_SILENCIEUX = ("/static/",)
-"""Chemins journalisés au niveau DEBUG seulement (fichiers statiques)."""
+PREFIXES_SILENCIEUX = ("/static/", "/assistant/echanges/")
+"""Débuts de chemin journalisés au niveau DEBUG seulement : fichiers statiques, et suivi
+d'un échange avec l'assistant, interrogé chaque seconde."""
 MOTIFS_SILENCIEUX = (re.compile(r"/calculs/[0-9]+/etat"),)
 """Chemins entiers journalisés au niveau DEBUG : suivi d'un calcul, interrogé chaque seconde."""
 

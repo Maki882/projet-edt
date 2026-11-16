@@ -38,6 +38,16 @@ def test_aucune_page_n_annonce_une_fonction_a_venir(site):
         assert "Données fictives" not in page  # pas de bandeau sur les données
 
 
+def test_panneau_assistant_present_sur_toutes_les_pages(site):
+    for adresse in ("/", "/salles", "/parametres", "/jeux", "/n-existe-pas"):
+        page = site.get(adresse).text
+        assert 'id="bouton-assistant"' in page and 'aria-controls="assistant"' in page
+        assert '<aside class="assistant" id="assistant"' in page
+        # Sans clé dans l'environnement des tests : panneau « non configuré », sans saisie.
+        assert "L&#39;assistant n&#39;est pas configuré sur ce serveur." in page
+        assert 'id="assistant-question"' not in page
+
+
 def test_cinq_onglets_de_l_application_et_import_export_dans_donnees(site):
     page = site.get("/besoins").text
 

@@ -533,6 +533,22 @@ def _enregistrer(
     session.expire(cible)
 
 
+def valider_creation(
+    session: Session, code: str | Entite, valeurs: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Contrôle un élément neuf sans rien écrire ; renvoie ses valeurs converties.
+
+    Mêmes contrôles que `creer` (valeurs par défaut des champs absents,
+    conversion, règles de l'entité, unicités) : lève `ErreurSaisie` au moindre
+    refus, `ErreurDonneesInvalides` pour un champ inconnu.
+    """
+    description = entite(code)
+    _verifier_cles(description, valeurs)
+    saisies = {**valeurs_par_defaut(description), **valeurs}
+    with session.no_autoflush:
+        return _valider(session, description, saisies, None)
+
+
 def creer(session: Session, code: str | Entite, valeurs: Mapping[str, Any]) -> dict[str, Any]:
     """Crée un élément ; les champs absents prennent leur valeur par défaut.
 

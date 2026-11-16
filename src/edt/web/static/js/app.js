@@ -282,8 +282,11 @@
       }
     });
 
-    // État conservé pendant la navigation : rouvert sans animation ni vol du focus.
-    if (memorise() === "ouvert" || window.location.hash === "#assistant") {
+    // État conservé pendant la navigation, sur un grand écran seulement : au téléphone, le
+    // panneau couvre toute la page et ne se rouvre pas de lui-même d'une page à l'autre.
+    // Rouvert sans animation ni vol du focus.
+    var grandEcran = window.matchMedia("(min-width: 56.01rem)").matches;
+    if ((memorise() === "ouvert" && grandEcran) || window.location.hash === "#assistant") {
       document.body.classList.add("sans-transition");
       ouvrir(false);
       window.requestAnimationFrame(function () {

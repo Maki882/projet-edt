@@ -368,28 +368,34 @@ def modifier(
     _exiger_objet(changements, "changements")
     ligne = _ligne(session, annee_scolaire_id, code)
     detail = _detail(session, ligne, lire_parametres(session))
-    brouillon = _brouillon_depuis_detail(detail)
-    figes = {
-        cle: f"« {cle} » ne se modifie pas : supprimer la règle et la recréer (ou la reprendre "
-        "dans l'autre année)."
-        for cle in ("annee", "code", "id")
-        if cle in changements and changements[cle] != brouillon.get(cle)
-    }
-    if figes:
-        raise ErreurSaisie(figes)
-    for cle, valeur in changements.items():
-        if cle == "parametres" and isinstance(valeur, Mapping):
-            brouillon["parametres"] = {**brouillon["parametres"], **valeur}
-        elif cle == "portee" and isinstance(valeur, Mapping):
-            brouillon["portee"] = {**brouillon["portee"], **valeur}
-        else:
-            brouillon[cle] = valeur
+    brouillon = _brouillon_modifie(detail, changements)
     regle, _ = _construire(session, brouillon, existante=ligne)
     _vers_orm(ligne, regle)
     session.flush()
     nouveau = _detail(session, ligne, lire_parametres(session))
     journal.info("Règle %s modifiée : %s", code, nouveau.phrase)
     return nouveau
+
+
+def valider_modification(
+    session: Session, annee_scolaire_id: int, code: str, changements: Mapping[str, Any]
+) -> Validation:
+    """Valide une modification partielle sans rien écrire : règle canonique, phrase, ou erreurs.
+
+    Même fusion que `modifier` (`_brouillon_modifie`) et même contrôle,
+    doublons compris ; `{"etat": "active"}` valide ainsi une activation. Lève
+    `ErreurIntrouvable` si la règle n'existe pas dans l'année.
+    """
+    ligne = _ligne(session, annee_scolaire_id, code)
+    detail = _detail(session, ligne, lire_parametres(session))
+    try:
+        _exiger_objet(changements, "changements")
+        brouillon = _brouillon_modifie(detail, changements)
+        regle, annee = _construire(session, brouillon, existante=ligne)
+    except ErreurSaisie as erreur:
+        return Validation(False, None, None, None, erreur.erreurs)
+    texte = phrase(regle.type, regle.portee, regle.parametres, lire_parametres(session))
+    return Validation(True, regle, texte, annee.libelle, {})
 
 
 def supprimer(session: Session, annee_scolaire_id: int, code: str) -> None:
@@ -1076,6 +1082,32 @@ def _brouillon_depuis_detail(detail: RegleDetail) -> dict[str, Any]:
         "cible": detail.regle.portee.cible_id,
     }
     brouillon["annee"] = detail.annee_libelle
+    return brouillon
+
+
+def _brouillon_modifie(detail: RegleDetail, changements: Mapping[str, Any]) -> dict[str, Any]:
+    """Brouillon complet d'une règle après des changements partiels (`modifier`, `valider_modification`).
+
+    `parametres` et `portee` se fusionnent clé par clé ; toute autre clé
+    remplace la valeur. L'année, le code et l'identifiant ne se modifient pas
+    (`ErreurSaisie`).
+    """
+    brouillon = _brouillon_depuis_detail(detail)
+    figes = {
+        cle: f"« {cle} » ne se modifie pas : supprimer la règle et la recréer (ou la reprendre "
+        "dans l'autre année)."
+        for cle in ("annee", "code", "id")
+        if cle in changements and changements[cle] != brouillon.get(cle)
+    }
+    if figes:
+        raise ErreurSaisie(figes)
+    for cle, valeur in changements.items():
+        if cle == "parametres" and isinstance(valeur, Mapping):
+            brouillon["parametres"] = {**brouillon["parametres"], **valeur}
+        elif cle == "portee" and isinstance(valeur, Mapping):
+            brouillon["portee"] = {**brouillon["portee"], **valeur}
+        else:
+            brouillon[cle] = valeur
     return brouillon
 
 

@@ -70,10 +70,11 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 420 cas : 242 cas en tests unitaires et 178 cas en tests d'intégration.
+Le catalogue compte 451 cas : 268 cas en tests unitaires et 183 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
+| `assistant` | 26 | 5 |
 | `echange` | 57 | 12 |
 | `exploitation` | 40 | 32 |
 | `socle` | 59 | 32 |
@@ -82,9 +83,67 @@ Le catalogue compte 420 cas : 242 cas en tests unitaires et 178 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 39 |
 | `web_edt` | 6 | 39 |
-| **Total** | **242** | **178** |
+| **Total** | **268** | **183** |
 
-### Tests unitaires (242 cas)
+### Tests unitaires (268 cas)
+
+#### `assistant` (26 cas)
+
+[`tests/unitaires/assistant/test_boucle.py`](../tests/unitaires/assistant/test_boucle.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Reponse tronquee avec appel d outil jamais execute | la réponse s'arrête à la limite de jetons au milieu d'un appel d'outil. | exécuter un outil aux arguments coupés (une proposition incomplète présentée). |
+| Trop d appels arrete l echange | le modèle appelle des outils sans jamais conclure. | une boucle sans fin qui consomme le budget du jour. |
+| Echeance de l echange jamais depassee | chaque appel prend presque tout le délai. | un échange qui dure plusieurs minutes, au-delà du délai du serveur web ; ici l'échange s'arrête avant l'appel qui dépasserait l'échéance. |
+| Contexte trop long arrete avant l appel | la conversation dépasse la taille de contexte permise. | un appel très coûteux ; ici aucun appel, et la conversation est close. |
+| Budget epuise aucun appel | budget du jour à 0 $. | dépense au-delà du plafond fixé par l'administrateur. |
+
+[`tests/unitaires/assistant/test_conversations.py`](../tests/unitaires/assistant/test_conversations.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Longueur et contenu du message | 800 caractères pile, 801, un message fait d'espaces, un caractère de contrôle. | un message géant qui coûte cher, ou un caractère qui casse l'affichage. |
+| Limite de messages par conversation | la conversation a atteint son nombre de messages. | une conversation sans fin dont chaque appel coûte plus cher (contexte croissant). |
+| Un seul echange a la fois et echanges simultanes | deux envois rapides dans la même conversation ; deux visiteurs en même temps avec une seule place. | deux réponses entremêlées dans un historique, ou un serveur submergé. |
+| Limite par adresse et limite du site | une adresse envoie trop de messages ; le site atteint son nombre du jour. | un seul visiteur épuise le budget de la journée. |
+| Cle refusee met l assistant en pause | le service refuse la clé (401). | chaque visiteur relance un appel voué à l'échec ; la clé apparaît dans le journal. |
+| Identifiant introuvable par le sdk | la variable de clé est posée mais le SDK ne construit pas le client. | une trace dans le fil de l'échange et une attente sans fin dans le panneau. |
+| Erreur inattendue dans le fil rendue en bulle | une exception non prévue dans le fil de l'échange. | un fil mort, un panneau qui attend indéfiniment, la clé dans la trace. |
+| Conversations expirees et place limitee | une conversation inactive depuis plus de 30 minutes ; la mémoire est pleine. | la mémoire du serveur grossit sans fin avec les visiteurs. |
+| Confirmation devenue impossible | entre la proposition et le clic, quelqu'un enregistre une règle qui fait doublon. | deux réglages contradictoires actifs, ou une erreur brute. |
+| Base occupee a la confirmation | un autre processus tient la base au moment du clic sur Confirmer. | proposition perdue ou enregistrée à moitié ; ici rien n'est écrit, la carte reste à confirmer. |
+
+[`tests/unitaires/assistant/test_limites.py`](../tests/unitaires/assistant/test_limites.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Consommation du jour survit a un redemarrage et change avec le jour | le service redémarre (déploiement) après avoir dépensé une partie du budget ; puis minuit passe. | le budget remis à zéro à chaque redémarrage, ou jamais remis à zéro. |
+| Consommation gardee en memoire si la base est videe | un visiteur charge un établissement fictif, qui recrée toutes les tables. | le budget du jour remis à zéro par n'importe quel visiteur. |
+| Base occupee la consommation est reportee | une écriture de consommation tombe pendant qu'un autre processus tient la base. | appel déjà payé mais non compté, ou échange qui échoue pour une simple écriture. |
+
+[`tests/unitaires/assistant/test_occupation.py`](../tests/unitaires/assistant/test_occupation.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Plage d un moment sans creneau refusee clairement | « le samedi après-midi », alors que la grille n'a que le samedi matin ; un moment inconnu. | une plage vide ou inventée, et une réponse « toutes les salles sont libres ». |
+| Salles homonymes citees chacune avec son campus | deux salles « N105 », une par campus. | une seule citée, ou l'occupation de l'une attribuée à l'autre. |
+| Creneau invalide ou jour et date ensemble refuses | début après la fin ; ni jour ni date ; un jour et une date à la fois ; une date hors du semestre. | réponse vide prise pour « aucune salle libre », ou résultat d'un autre semestre. |
+
+[`tests/unitaires/assistant/test_outils.py`](../tests/unitaires/assistant/test_outils.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Exception inattendue d un outil devient erreur interne avec reference | un outil lève une exception non prévue (bogue). | l'échange entier échoue et l'utilisateur ne sait pas quoi faire ; ou la trace part au modèle. Ici : erreur interne avec la référence, trace dans le journal seulement. |
+| Base occupee pendant un outil | un chargement d'établissement fictif tient la base pendant que l'outil lit. | erreur interne ou échange perdu ; ici le modèle reçoit « base occupée, réessayer ». |
+| Quatrieme proposition d un echange refusee | le modèle enchaîne quatre propositions dans une réponse. | un panneau rempli de cartes que l'utilisateur confirme sans les lire. |
+
+[`tests/unitaires/assistant/test_validations.py`](../tests/unitaires/assistant/test_validations.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Modification qui change l annee ou le code refusee | le modèle propose de changer l'année ou le code d'une règle, ou envoie autre chose qu'un objet. | une règle déplacée d'année en silence, ou une erreur Python au lieu d'un refus. |
+| Activation qui ferait doublon refusee par la validation | l'assistant propose d'activer une pause déjeuner inactive pour la classe qui en a déjà une active sur le même semestre. | deux réglages contradictoires actifs ; le calcul ne saurait lequel appliquer. |
 
 #### `echange` (57 cas)
 
@@ -360,7 +419,7 @@ Le catalogue compte 420 cas : 242 cas en tests unitaires et 178 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Redirection htmx vers une adresse non ascii | une action envoyée par HTMX revient à une adresse dont la recherche contient « é » ou « 日 » (champ caché `retour`). | l'en-tête `HX-Redirect` n'accepte que le latin-1 : page 500 et écriture valide annulée au lieu de la redirection. |
-| Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
+| Suivi d un calcul journalise en debug | la page de suivi interroge `/calculs/N/etat` chaque seconde pendant un calcul, et le panneau de l'assistant `/assistant/echanges/<jeton>` pendant un échange. | une ligne INFO par seconde, un tiers du journal, qui noie les vrais événements. |
 | Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script. |
 
 #### `solveur` (20 cas)
@@ -614,7 +673,19 @@ Le catalogue compte 420 cas : 242 cas en tests unitaires et 178 cas en tests d'i
 |---|---|---|
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 
-### Tests d'intégration (178 cas)
+### Tests d'intégration (183 cas)
+
+#### `assistant` (5 cas)
+
+[`tests/integration/assistant/test_web.py`](../tests/integration/assistant/test_web.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Base occupee au clic sur confirmer | un autre processus tient la base quand l'utilisateur clique sur Confirmer. | une page « base occupée » dans la zone de messages, invisible au téléphone ; ici la carte le dit et reste à confirmer. |
+| Limite de la conversation sans appel | second message alors que la conversation n'en permet qu'un. | appel facturé malgré la limite ; refus rendu en 4xx, invisible dans le panneau. |
+| Budget du jour a zero | budget du jour fixé à 0 $ par l'administrateur. | un appel facturé au-delà du plafond. |
+| Envoi depuis un autre site refuse | une page d'un autre site fait envoyer des messages par le navigateur du visiteur. | le budget de l'assistant dépensé à l'insu du visiteur. |
+| Aucune reponse ne contient la cle | la clé est dans l'environnement du serveur. | la clé recopiée dans une page, un fragment ou un en-tête. |
 
 #### `echange` (12 cas)
 

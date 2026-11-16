@@ -1,0 +1,27 @@
+{#- Une bulle du fil (`tour`) : texte échappé, mis en forme en paragraphes et tirets seulement. #}
+<div class="assistant-bulle assistant-bulle-{{ tour.role.value }}"{% if tour.role.value in ("erreur", "attention") %} role="status"{% endif %}>
+  {%- if tour.role.value == "utilisateur" %}
+  <p class="assistant-texte-utilisateur"><span class="assistant-qui">Vous : </span>{{ tour.texte }}</p>
+  {%- else %}
+  <span class="assistant-qui">Assistant : </span>
+  {%- for bloc in tour.texte | blocs_assistant %}
+  {%- if bloc.liste %}
+  <ul>{% for element in bloc.elements %}<li>{{ element }}</li>{% endfor %}</ul>
+  {%- else %}
+  <p>{{ bloc.texte }}</p>
+  {%- endif %}
+  {%- endfor %}
+  {%- endif %}
+  {%- if tour.reference %}
+  <p class="assistant-reference">Référence à communiquer à l'administrateur : {{ tour.reference }}</p>
+  {%- endif %}
+  {%- if tour.renvoyer %}
+  <p><button type="button" class="bouton bouton-petit" data-renvoyer="{{ tour.renvoyer }}">Renvoyer ma demande</button></p>
+  {%- endif %}
+  {%- if tour.liens %}
+  <p class="assistant-liens">{% for lien in tour.liens if lien.adresse.startswith("/") %}<a href="{{ lien.adresse }}">{{ lien.libelle }}</a>{% endfor %}</p>
+  {%- endif %}
+  {%- for proposition in tour.propositions %}
+  {% include "assistant/_proposition.html" %}
+  {%- endfor %}
+</div>
