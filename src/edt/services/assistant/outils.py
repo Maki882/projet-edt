@@ -1088,12 +1088,15 @@ def _salles_libres(session: Session, entree: Mapping[str, Any], contexte: Contex
                 f"- {_salle_vue(o.salle)} : {_plage(o.debut, o.fin)} {o.libelle}{semaines}"
             )
     if r.exceptions:
-        lignes.append("Exceptions datées (indisponibilités des salles libres) :")
+        lignes.append(
+            "Exceptions datées (indisponibilités et séances datées qui prennent ces salles "
+            "certains jours) :"
+        )
         for e in r.exceptions:
             dates = ", ".join(f"{d:%d/%m/%Y}" for d in e.dates)
-            motif = f" ({e.motif})" if e.motif else ""
             lignes.append(
-                f"- {e.salle.code} ({e.salle.campus}) : indisponible le {dates}, {_plage(e.debut, e.fin)}{motif}"
+                f"- {e.salle.code} ({e.salle.campus}) : {e.libelle} le {dates}, "
+                f"{_plage(e.debut, e.fin)}"
             )
     return "\n".join(lignes)
 

@@ -246,7 +246,7 @@ def test_salles_libres_le_jeudi_apres_midi(version_minimale):
     assert "jeudi 13 h 45 - 18 h 00, au moins 30 places." in texte
     assert "- ISSY : L115 (30 places, TP)" in texte and "N105 (40 places, COURS)" in texte
     assert "Libres certaines semaines seulement :" in texte and "N016" in texte
-    assert "L115 (ISSY) : indisponible le 05/11/2026" in texte
+    assert "L115 (ISSY) : indisponible (Travaux) le 05/11/2026" in texte
 
 
 def test_salles_libres_refuse_un_jour_qui_ne_correspond_pas_a_la_date(version_minimale):
