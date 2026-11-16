@@ -394,10 +394,10 @@ avec `tests/unitaires`, `tests/integration`, `-m cas_limite`, `-m perf`) :
 
 | Niveau | Nombre de tests | Ce qu'il couvre | Ce qu'il ne couvre pas |
 |---|---|---|---|
-| Unitaire (`tests/unitaires/`) | 1 180 (dont 24 `perf`) | chaque fonction, règle ou service pris isolément | l'enchaînement des couches |
+| Unitaire (`tests/unitaires/`) | 1 187 (dont 24 `perf`) | chaque fonction, règle ou service pris isolément | l'enchaînement des couches |
 | Intégration (`tests/integration/`) | 518 (dont 3 `perf`), dont les 6 parcours | écrans par HTTP, commandes, autres processus, calculs complets ; accord solveur et vérificateur ; aller-retour des données | l'apparence et le JavaScript |
 | Contrôle du rangement (`tests/test_rangement.py`) | 15 | classement de chaque test, fichiers égarés, imports entre modules de tests, citation de chaque fichier dans ces documents | le contenu des tests |
-| **Total** | **1 713** | | |
+| **Total** | **1 720** | | |
 | dont cas limites (`cas_limite`) | 549 (347 unitaires, 202 d'intégration ; 10 aussi `perf`) | saisies extrêmes, concurrence, pannes de fichiers ou de base, identifiants hors bornes | le parcours normal d'un utilisateur |
 | dont charge (`perf`) | 27 | jeux moyen et grand, durées et mémoire | exclus de la CI courante |
 

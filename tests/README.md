@@ -12,7 +12,7 @@ parcours de bout en bout, chaque fichier de tests d'intégration).
 
 ```mermaid
 flowchart TD
-    A["1 713 tests collectés"] --> U["tests/unitaires : 1 180 cas, 860 fonctions"]
+    A["1 720 tests collectés"] --> U["tests/unitaires : 1 187 cas, 867 fonctions"]
     A --> I["tests/integration : 518 cas, 419 fonctions"]
     A --> C["tests/test_rangement.py : 15 cas de contrôle"]
     U --> UC["8 composants : socle, solveur, verification, echange, synthese, exploitation, web_donnees, web_edt"]
@@ -95,7 +95,7 @@ plusieurs cas).
 
 | Composant | Ce qu'il vérifie | Unitaires (fonctions / cas) | Intégration (fonctions / cas) |
 |---|---|---|---|
-| `socle` | domaine (règles, paramètres, dépliage, calendrier), base et schéma, configuration, journaux, services transverses, ligne de commande, cycle de vie du serveur | 183 / 316 | 64 / 80 |
+| `socle` | domaine (règles, paramètres, dépliage, calendrier), base et schéma, configuration, journaux, services transverses, ligne de commande, cycle de vie du serveur | 190 / 323 | 64 / 80 |
 | `solveur` | préparation du problème, modèle CP-SAT, salles, moteur, séances datées, pré-vérification, service de génération | 188 / 207 | 47 / 51 |
 | `verification` | vérificateur indépendant : règles du catalogue et règles personnalisées, semaine type et séances datées, indicateurs, services de vérification | 231 / 271 | 6 / 10 |
 | `web_donnees` | écrans de l'espace « Données » : formulaires génériques, besoins, règles, paramètres, jeux, suppression, concurrence | 11 / 11 | 116 / 142 |
@@ -104,10 +104,10 @@ plusieurs cas).
 | `synthese` | générateur de données fictives : jeux petit, moyen et grand, emploi du temps témoin, règles d'exemple | 59 / 93 | 6 / 8 |
 | `exploitation` | scripts de déploiement, unité systemd, configuration nginx, commandes d'administration (sauvegarde, diagnostic) | 30 / 57 | 23 / 38 |
 | `parcours` | six scénarios de bout en bout : web, ligne de commande, aller-retour des données, règle personnalisée, retouche, jeu fictif | — | 6 / 6 |
-| **Total** | | **860 / 1 180** | **419 / 518** |
+| **Total** | | **867 / 1 187** | **419 / 518** |
 
 S'y ajoute le contrôle du rangement (`tests/test_rangement.py`, 8 fonctions,
-15 cas). Total collecté : 1 713 cas, dont 27 tests de charge (`perf`) : 24
+15 cas). Total collecté : 1 720 cas, dont 27 tests de charge (`perf`) : 24
 unitaires et 3 d'intégration.
 
 Recalculer les nombres de fonctions par côté et par composant :
