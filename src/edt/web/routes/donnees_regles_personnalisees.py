@@ -1,7 +1,7 @@
 """Écran « Données > Règles et calendrier > Règles personnalisées » (`/regles`).
 
 Liste des règles d'une année scolaire (filtres, recherche, pagination,
-règles proposées à confirmer), ajout guidé (type, puis portée, paramètres,
+règles proposées à activer), ajout guidé (type, puis portée, paramètres,
 niveau, période, avec un aperçu de la phrase), modification, changement
 d'état, suppression (confirmation dans la ligne, page de confirmation sans
 JavaScript) et proposition des règles de base. Toute lecture et toute
@@ -71,6 +71,7 @@ from edt.web.menu import SECTION_CONFIGURATION, EntreeMenu
 journal = logging.getLogger(__name__)
 
 PREFIXE = "/regles"
+REGLE_DEJA_SUPPRIMEE = "Cette règle n'existe plus : elle a déjà été supprimée."
 TAILLE_PAGE = 50
 FILTRES = ("etat", "type", "niveau", "origine", "portee", "groupe")
 
@@ -154,7 +155,7 @@ LIBELLES_FILTRES = {
     "type": "Type",
     "niveau": "Niveau",
     "origine": "Origine",
-    "portee": "Portée",
+    "portee": "Concerne",
     "groupe": "Groupe (règles héritées comprises)",
 }
 
@@ -289,9 +290,9 @@ def confirmer_tout(request: Request, session: SessionRequete, formulaire: Formul
             service_regles.activer(session, annee.id, detail.code)
             activees += 1
         except ErreurSaisie as refus:
-            journal.info("Règle %s non confirmée : %s", detail.code, refus.erreurs)
+            journal.info("Règle %s non activée : %s", detail.code, refus.erreurs)
             refusees.append(f"{detail.code} : {' '.join(refus.erreurs.values())}")
-    message = f"{_texte_regles(activees, 'confirmée')} en {annee.libelle}."
+    message = f"{_texte_regles(activees, 'activée')} en {annee.libelle}."
     if refusees:
         message += " Restent proposées : " + " ; ".join(refusees)
     return rediriger(request, retour, message, "attention" if refusees else "succes")
@@ -313,7 +314,7 @@ def proposer(request: Request, session: SessionRequete, formulaire: Formulaire) 
         )
     message = ", ".join(morceaux) + "."
     if proposition.creees:
-        message += " Elles sont sans effet tant qu'elles ne sont pas confirmées."
+        message += " Elles sont sans effet tant qu'elles ne sont pas activées."
     return rediriger(
         request,
         f"{PREFIXE}?annee={annee.id}&etat={EtatRegle.PROPOSEE.value}",
@@ -427,7 +428,12 @@ def creer(request: Request, session: SessionRequete, formulaire: Formulaire) -> 
             generales=reparties.generales,
             retour=retour,
         )
-    return rediriger(request, retour, f"Règle {detail.code} créée : {detail.phrase}")
+    phrase = detail.phrase if detail.phrase.endswith(".") else f"{detail.phrase}."
+    return rediriger(
+        request,
+        retour,
+        f"Règle {detail.code} créée : {phrase} Elle s'appliquera aux prochains calculs.",
+    )
 
 
 @routeur.get("/{ident:int}/modifier", name="regle_modifier")
@@ -511,8 +517,8 @@ def apercu(request: Request, session: SessionRequete, formulaire: Formulaire) ->
     locales = controles_formulaire(definition, formulaire)
     libelles = {
         **{f"parametres.{c.nom}": c.libelle for c in definition.champs},
-        "portee": "Portée",
-        "portee.nature": "Portée",
+        "portee": "À qui s'applique la règle",
+        "portee.nature": "À qui s'applique la règle",
         "portee.cible": "Cible",
         "niveau": "Niveau",
         "periode": "Période",
@@ -574,14 +580,24 @@ def ligne_suppression(request: Request, session: SessionRequete, ident: int) -> 
 
 @routeur.post("/{ident:int}/ligne/supprimer", name="regle_ligne_supprimer")
 def ligne_supprimer(request: Request, session: SessionRequete, ident: int) -> Response:
-    """Supprime depuis la ligne et renvoie la zone de liste à jour (HTMX)."""
-    detail = service_regles.lire_par_id(session, ident)
-    service_regles.supprimer(session, detail.regle.annee_scolaire_id or 0, detail.code)
-    message = Message(f"Règle {detail.code} supprimée : {detail.phrase}", "succes")
-    if not est_htmx(request):
-        return rediriger(
-            request, f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}", message.texte
-        )
+    """Supprime depuis la ligne et renvoie la zone de liste à jour (HTMX).
+
+    Rejouée (double clic, second onglet), la suppression dit que la règle n'existe plus.
+    """
+    try:
+        detail = service_regles.lire_par_id(session, ident)
+    except ErreurIntrouvable:
+        journal.info("Suppression rejouée de la règle n° %d : déjà supprimée", ident)
+        message = Message(REGLE_DEJA_SUPPRIMEE, "info")
+        if not est_htmx(request):
+            return rediriger(request, PREFIXE, message.texte, message.niveau)
+    else:
+        service_regles.supprimer(session, detail.regle.annee_scolaire_id or 0, detail.code)
+        message = Message(f"Règle {detail.code} supprimée : {detail.phrase}", "succes")
+        if not est_htmx(request):
+            return rediriger(
+                request, f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}", message.texte
+            )
     contexte = contexte_liste(request, session)
     return rendre(
         request, "donnees/_regles_zone_apres_suppression.html", contexte, messages=[message]
@@ -602,8 +618,13 @@ def confirmer_suppression(request: Request, session: SessionRequete, ident: int)
 def supprimer(
     request: Request, session: SessionRequete, formulaire: Formulaire, ident: int
 ) -> Response:
-    """Supprime la règle et revient à la page de départ."""
-    detail = service_regles.lire_par_id(session, ident)
+    """Supprime la règle et revient à la page de départ (déjà supprimée : le dit, sans erreur)."""
+    try:
+        detail = service_regles.lire_par_id(session, ident)
+    except ErreurIntrouvable:
+        journal.info("Suppression rejouée de la règle n° %d : déjà supprimée", ident)
+        retour = adresse_sure(formulaire.get("_retour"), PREFIXE)
+        return rediriger(request, retour, REGLE_DEJA_SUPPRIMEE, "info")
     retour = adresse_sure(
         formulaire.get("_retour"), f"{PREFIXE}?annee={detail.regle.annee_scolaire_id}"
     )

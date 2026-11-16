@@ -53,7 +53,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import FormData, QueryParams
 
 from edt.db.moteur import identifiant_valide
-from edt.erreurs import ErreurDonneesInvalides, ErreurRegleMetier
+from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable, ErreurRegleMetier
 from edt.services.referentiels import operations
 from edt.services.referentiels.conversion import ENTIER_MAX, entier_naturel
 from edt.services.referentiels.description import Entite, TypeChamp
@@ -288,7 +288,7 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
         or any(valeur and valeur != defauts[nom] for nom, valeur in page.filtres.items())
     )
     filtres_par_defaut = [
-        f"{filtre.libelle} : {dict(choix).get(valeur, valeur)}"
+        _filtre_rappele(filtre.libelle, str(dict(choix).get(valeur, valeur)))
         for filtre, choix, valeur in filtres
         if valeur and valeur == defauts[filtre.nom]
     ]
@@ -309,6 +309,11 @@ def contexte_liste(request: Request, session: Session, ecran: Ecran) -> dict[str
     if ecran.contexte_liste is not None:
         contexte.update(ecran.contexte_liste(session, page))
     return contexte
+
+
+def _filtre_rappele(libelle: str, valeur: str) -> str:
+    """« Année : 2026-2027 », ou la valeur seule si elle commence par le libellé (« Semestre 1 »)."""
+    return valeur if valeur.casefold().startswith(libelle.casefold()) else f"{libelle} : {valeur}"
 
 
 def _message(ecran: Ecran, nom_affiche: str, participe: str) -> str:
@@ -382,6 +387,10 @@ def regles_confirmees(formulaire: FormData) -> list[int] | None:
             )
         identifiants.append(ident)
     return identifiants
+
+
+DEJA_SUPPRIME = "Cet élément n'existe plus : il a déjà été supprimé."
+"""Message d'une suppression rejouée (double clic, second onglet) : rien à faire, pas d'erreur."""
 
 
 def _texte_regles(nombre: int) -> str:
@@ -605,6 +614,11 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
         confirmees = regles_confirmees(formulaire)
         try:
             nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
+        except ErreurIntrouvable:
+            journal.info("Suppression rejouée (%s n° %d) : déjà supprimé", entite.code, ident)
+            return rediriger(
+                request, _retour_apres_suppression(session, ecran, retour), DEJA_SUPPRIME, "info"
+            )
         except ErreurRegleMetier as refus:
             parametres = {"retour": retour}
             if formulaire.get("_depuis") == "fiche":
@@ -637,6 +651,9 @@ def routeur_ecran(ecran: Ecran) -> APIRouter:
             nom = operations.supprimer(session, entite, ident, regles_confirmees=confirmees)
             texte = _message(ecran, nom, "supprimé") + _texte_regles(len(confirmees or ()))
             message = Message(texte, "succes")
+        except ErreurIntrouvable:
+            journal.info("Suppression rejouée (%s n° %d) : déjà supprimé", entite.code, ident)
+            message = Message(DEJA_SUPPRIME, "info")
         except ErreurRegleMetier as refus:
             message = Message(refus.message, "erreur")
         if not est_htmx(request):

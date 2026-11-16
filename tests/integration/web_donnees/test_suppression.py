@@ -7,7 +7,13 @@ from urllib.parse import quote, urlencode
 
 import pytest
 from sqlalchemy import select
-from tests.outils.web_donnees.aides import compter, depuis, identifiant, occurrence_prevue
+from tests.outils.web_donnees.aides import (
+    compter,
+    depuis,
+    identifiant,
+    occurrence_prevue,
+    texte_visible,
+)
 
 from edt.db.modeles import Besoin, Campus, Occurrence, Salle, SeanceHebdo, TypeSalle
 from edt.db.moteur import session_base
@@ -236,23 +242,29 @@ def test_rejeu_d_une_suppression_et_d_une_annulation(site, ids, version_generee)
     """Cas : la même suppression envoyée deux fois (deux onglets, double clic, bouton
     « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. Risque : une
     erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement."""
-    # Page de confirmation ouverte deux fois : la seconde dit que la salle n'existe plus.
+    # Page de confirmation ouverte deux fois : la seconde revient à la liste et dit que la
+    # salle n'existe plus, sans page d'erreur.
     l012, l115 = identifiant(Salle, Salle.code, "L012"), identifiant(Salle, Salle.code, "L115")
     premiere = site.post(
         f"/salles/{l012}/supprimer", data={"_retour": "/salles"}, follow_redirects=False
     )
     assert premiere.status_code == 303 and premiere.headers["location"] == "/salles"
-    seconde = site.post(f"/salles/{l012}/supprimer", data={"_retour": "/salles"})
-    assert seconde.status_code == 404 and "introuvable" in seconde.text
-    assert "a peut-être été supprimée" in seconde.text
+    seconde = site.post(
+        f"/salles/{l012}/supprimer", data={"_retour": "/salles"}, follow_redirects=False
+    )
+    assert seconde.status_code == 303 and seconde.headers["location"] == "/salles"
+    liste = site.get(seconde.headers["location"])
+    assert "Cet élément n'existe plus : il a déjà été supprimé." in texte_visible(liste)
+    assert "message-info" in liste.text
 
-    # Même chose depuis la ligne (HX) : la zone repart sans la ligne, puis le refus est dit.
+    # Même chose depuis la ligne (HX) : la zone repart sans la ligne, puis le rejeu le dit.
     zone = site.post(f"/salles/{l115}/ligne/supprimer", headers=depuis("/salles"))
     assert zone.status_code == 200 and f'id="ligne-salle-{l115}"' not in zone.text
     assert f'id="ligne-salle-{ids.salle_n016}"' in zone.text  # les autres lignes restent
     rejeu = site.post(f"/salles/{l115}/ligne/supprimer", headers=depuis("/salles"))
-    assert rejeu.status_code == 404 and "<html" not in rejeu.text  # fragment pour #messages
-    assert "introuvable" in rejeu.text
+    assert rejeu.status_code == 200 and "<html" not in rejeu.text  # zone de liste
+    assert "Cet élément n'existe plus" in texte_visible(rejeu)
+    assert f'id="ligne-salle-{ids.salle_n016}"' in rejeu.text
     assert (
         identifiant(Salle, Salle.code, "L012") is None
         and identifiant(Salle, Salle.code, "L115") is None
