@@ -6,10 +6,9 @@ une interface (requête HTTP par le client de test, ligne de commande par
 `CliRunner`, autre processus) ou enchaîne tout le calcul par le service de
 génération (`lancer_calcul`, `attendre_calcul`).
 
-Ce dossier compte **419 fonctions de test, soit 518 cas collectés**, dont 202
-cas limites et 3 tests de charge :
+Ce dossier contient (nombres de tests et détail par fichier en section 6) :
 
-- **`parcours/`** : six scénarios de bout en bout, comme un utilisateur se
+- **`parcours/`** : des scénarios de bout en bout, comme un utilisateur se
   servirait de l'application. C'est le point d'entrée pour un lecteur pressé
   (section 4) ;
 - **un dossier par composant** (`socle/`, `solveur/`, `verification/`,
@@ -112,7 +111,7 @@ sequenceDiagram
     C-->>T: une ligne et un événement par séance en base
 ```
 
-## 4. Les six parcours : point d'entrée
+## 4. Les parcours : point d'entrée
 
 Chaque parcours porte un docstring en trois parties : **Scénario**,
 **Étapes**, **Ce que cela prouve**. Données : le jeu minimal (2 campus,
@@ -129,7 +128,7 @@ semaine) ou le jeu fictif « petit ».
 | [`parcours/test_jeu_fictif_realiste.py`](parcours/test_jeu_fictif_realiste.py) | f. jeu fictif « petit » calculé et vérifié | générateur de données, solveur, vérificateur, base | un établissement plus riche est calculé sans anomalie bloquante | 0,4 s |
 
 Durées de l'appel du test, mesurées le 16 novembre 2026 (Windows 11,
-Python 3.11.9) par la commande de la section 4.7. Les six parcours tournent
+Python 3.11.9) par la commande de la section 4.7. Les parcours tournent
 en moins de 4 s au total, hors premier chargement des bibliothèques (quelques
 secondes de plus). Aucun ne dépasse 30 s : aucun n'est marqué `perf`, tous
 tournent dans la CI.
@@ -278,107 +277,113 @@ assert jours_a1_g1 and LUNDI not in jours_a1_g1
 
 ## 6. Ce que vérifie chaque fichier, par composant
 
-Nombres mesurés sur le dépôt. « Fonctions » compte les fonctions `test_*` du
-fichier, « Cas » les tests collectés par pytest. Recalculer :
+Nombres de fonctions de test (`test_*`), comptés dans le code : une fonction
+paramétrée compte une fois. La description d'un fichier est la première
+phrase de la docstring de son module. Cette section est produite par
+`python -m tests.outils.classement --ecrire` (voir [`tests/README.md`](../README.md), section 3) ; le nombre
+de cas collectés par pytest s'obtient par
+`python -m pytest --collect-only -q tests/integration`.
 
-```sh
-python -m tests.outils.classement                      # fonctions par composant
-python -m pytest --collect-only -q tests/integration   # cas, fichier par fichier
-```
+<!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-### `parcours/` : scénarios de bout en bout (6 fonctions, 6 cas)
+Ce dossier compte **419 fonctions de test** dans 9 composants, dont 139 marquées `cas_limite` et 3 marquées `perf`.
 
-Voir la section 4 : [`parcours/test_parcours_web.py`](parcours/test_parcours_web.py),
-[`parcours/test_parcours_ligne_de_commande.py`](parcours/test_parcours_ligne_de_commande.py),
-[`parcours/test_aller_retour_donnees.py`](parcours/test_aller_retour_donnees.py),
-[`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py),
-[`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py),
-[`parcours/test_jeu_fictif_realiste.py`](parcours/test_jeu_fictif_realiste.py)
-(une fonction et un cas chacun).
+### `echange/` : Import et export par le site et la ligne de commande (32 fonctions)
 
-### `socle/` : Commandes et application web du socle (64 fonctions, 80 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`echange/test_bornes.py`](echange/test_bornes.py) | Fichiers hostiles envoyés au site, pages bornées | 6 |
+| [`echange/test_commandes.py`](echange/test_commandes.py) | Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 |
+| [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 |
+| [`echange/test_web.py`](echange/test_web.py) | Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 13 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`socle/test_cli.py`](socle/test_cli.py) | commandes du socle et mécanisme d'extension, par `CliRunner` | 15 | 20 |
-| [`socle/test_config.py`](socle/test_config.py) | `doctor` signale une adresse d'écoute introuvable | 1 | 1 |
-| [`socle/test_generation.py`](socle/test_generation.py) | orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 | 12 |
-| [`socle/test_instantane.py`](socle/test_instantane.py) | identifiants hors des entiers SQLite côté commandes | 2 | 7 |
-| [`socle/test_journal.py`](socle/test_journal.py) | fichier journal non ouvrable signalé par `doctor` | 1 | 1 |
-| [`socle/test_moteur.py`](socle/test_moteur.py) | URL de base refusées par la ligne de commande | 2 | 5 |
-| [`socle/test_parametres.py`](socle/test_parametres.py) | l'écran des paramètres reste ouvrable avec une valeur corrompue | 1 | 1 |
-| [`socle/test_schema.py`](socle/test_schema.py) | schéma périmé vu par `init-db`, `verifier-schema`, `doctor` et `/sante` | 9 | 9 |
-| [`socle/test_web.py`](socle/test_web.py) | accueil, santé, erreurs lisibles, cycle de vie du serveur, par HTTP | 21 | 24 |
+### `exploitation/` : Contrats du déploiement (23 fonctions)
 
-### `solveur/` : Calculs complets et commandes du solveur (47 fonctions, 51 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`exploitation/test_commandes_exploitation.py`](exploitation/test_commandes_exploitation.py) | Commandes et service : `init-db` relançable, codes de sortie, sauvegardes | 18 |
+| [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement exécutés hors du serveur : bash -n, fonctions extraites, awk, Python | 5 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | niveaux de règles de bout en bout : calcul, suivi, ligne de commande | 6 | 10 |
-| [`solveur/test_regles.py`](solveur/test_regles.py) | règles personnalisées de bout en bout : calcul, suivi, ligne de commande | 3 | 3 |
-| [`solveur/test_services.py`](solveur/test_services.py) | génération complète, instanciation et replacement sur le jeu minimal | 38 | 38 |
+### `parcours/` : Scénarios de bout en bout (6 fonctions)
 
-### `verification/` : Commande du vérificateur (6 fonctions, 10 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`parcours/test_aller_retour_donnees.py`](parcours/test_aller_retour_donnees.py) | Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 |
+| [`parcours/test_jeu_fictif_realiste.py`](parcours/test_jeu_fictif_realiste.py) | Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 |
+| [`parcours/test_parcours_ligne_de_commande.py`](parcours/test_parcours_ligne_de_commande.py) | Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 |
+| [`parcours/test_parcours_web.py`](parcours/test_parcours_web.py) | Scénario a : parcours complet d'un utilisateur dans l'application web | 1 |
+| [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
+| [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`verification/test_commande.py`](verification/test_commande.py) | commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 | 10 |
+### `socle/` : Commandes et application web du socle (64 fonctions)
 
-### `web_donnees/` : Écrans de l'espace « Données », par HTTP (116 fonctions, 142 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes du socle et mécanisme d'extension | 15 |
+| [`socle/test_config.py`](socle/test_config.py) | Configuration vue par la commande doctor : une adresse d'écoute introuvable est signalée | 1 |
+| [`socle/test_generation.py`](socle/test_generation.py) | Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 |
+| [`socle/test_instantane.py`](socle/test_instantane.py) | Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 |
+| [`socle/test_journal.py`](socle/test_journal.py) | Journalisation vue par la ligne de commande : fichier journal non ouvrable, signalé par doctor | 1 |
+| [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base vu par la ligne de commande : URL de base refusées avec une erreur de configuration | 2 |
+| [`socle/test_parametres.py`](socle/test_parametres.py) | Paramètres globaux vus par l'application web : l'écran reste ouvrable avec une valeur corrompue | 1 |
+| [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 |
+| [`socle/test_web.py`](socle/test_web.py) | Accueil, santé, erreurs lisibles, cycle de vie du serveur, par HTTP | 21 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`web_donnees/test_besoins.py`](web_donnees/test_besoins.py) | écran des besoins : modes de volume, filtres, duplication | 9 | 9 |
-| [`web_donnees/test_cas_limites.py`](web_donnees/test_cas_limites.py) | calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 13 | 19 |
-| [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | un seul chargement de jeu ou une seule remise à zéro à la fois | 3 | 3 |
-| [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | pour chaque entité : la liste répond, le formulaire s'ouvre, une création passe | 6 | 19 |
-| [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 | 9 |
-| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | page des jeux : établissement fictif, refus pendant un calcul, remise à zéro | 5 | 5 |
-| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | onglets, sous-navigation, panneau Assistant | 5 | 5 |
-| [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | écran des paramètres : bornes contrôlées, valeurs par défaut | 9 | 9 |
-| [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | temps et taille des pages sur l'établissement complet (`perf`) | 2 | 2 |
-| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | règles personnalisées : liste, ajout guidé, modification, suppression | 24 | 24 |
-| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | saisies aberrantes : jamais d'erreur 500, toujours un message | 16 | 23 |
-| [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | aucune page n'affiche de trace technique | 2 | 2 |
-| [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | suppression : confirmation, refus avec liens, conséquences expliquées | 13 | 13 |
+### `solveur/` : Calculs complets et commandes du solveur (47 fonctions)
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (119 fonctions, 145 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 |
+| [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 |
+| [`solveur/test_services.py`](solveur/test_services.py) | Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 38 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`web_edt/test_a_traiter.py`](web_edt/test_a_traiter.py) | onglet « À traiter » : anomalies, liens vers les séances | 6 | 6 |
-| [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | accueil : prochaine étape, version active, points à traiter | 10 | 11 |
-| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | onglet « Générer » : lancement, suivi, messages de fin, versions | 13 | 14 |
-| [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 24 | 37 |
-| [`web_edt/test_dejeuner.py`](web_edt/test_dejeuner.py) | pause déjeuner à trois modes saisie au lancement | 8 | 8 |
-| [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | grille, groupes liés, déplacements et annulations vérifiés | 20 | 31 |
-| [`web_edt/test_niveaux_web.py`](web_edt/test_niveaux_web.py) | niveaux de règles sur « Générer », le suivi et l'historique | 11 | 11 |
-| [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | pré-vérifications et instanciation d'une version issue d'un calcul complet | 1 | 1 |
-| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | règles personnalisées sur les écrans : Générer, suivi, grille, anomalies | 13 | 13 |
-| [`web_edt/test_revue.py`](web_edt/test_revue.py) | constats de la revue d'ensemble et mémoire des écrans | 13 | 13 |
+### `synthese/` : Commande des jeux fictifs (6 fonctions)
 
-### `echange/` : Import et export par le site et la ligne de commande (32 fonctions, 38 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | Une graine ou une année refusée ne vide jamais la base | 1 |
+| [`synthese/test_commande.py`](synthese/test_commande.py) | Commande `python -m edt jeu` (service `edt.services.jeux` par la ligne de commande) | 5 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`echange/test_bornes.py`](echange/test_bornes.py) | fichiers hostiles envoyés au site, pages bornées | 6 | 6 |
-| [`echange/test_commandes.py`](echange/test_commandes.py) | commandes `gabarit`, `importer`, `exporter-donnees`, `exporter-edt` | 8 | 10 |
-| [`echange/test_export_edt.py`](echange/test_export_edt.py) | export CSV et iCal d'une version calculée, relu par `icalendar` | 5 | 7 |
-| [`echange/test_web.py`](echange/test_web.py) | écrans d'import et d'export : dépôt, simulation, application, téléchargements | 13 | 15 |
+### `verification/` : Commande du vérificateur (6 fonctions)
 
-### `synthese/` : Commande des jeux fictifs (6 fonctions, 8 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`verification/test_commande.py`](verification/test_commande.py) | Commande `verifier` lancée par `CliRunner` : codes de sortie, options | 6 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`synthese/test_cas_limites.py`](synthese/test_cas_limites.py) | une graine ou une année refusée ne vide jamais la base | 1 | 3 |
-| [`synthese/test_commande.py`](synthese/test_commande.py) | commande `python -m edt jeu` | 5 | 5 |
+### `web_donnees/` : Écrans de l'espace « Données », par HTTP (116 fonctions)
 
-### `exploitation/` : Contrats du déploiement (23 fonctions, 38 cas)
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`web_donnees/test_besoins.py`](web_donnees/test_besoins.py) | Écran des besoins : trois modes de volume, filtres, duplication, charge hebdomadaire | 9 |
+| [`web_donnees/test_cas_limites.py`](web_donnees/test_cas_limites.py) | Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 13 |
+| [`web_donnees/test_concurrence.py`](web_donnees/test_concurrence.py) | Un seul chargement de jeu ou une seule remise à zéro à la fois | 3 |
+| [`web_donnees/test_entites.py`](web_donnees/test_entites.py) | Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 6 |
+| [`web_donnees/test_generique.py`](web_donnees/test_generique.py) | Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 |
+| [`web_donnees/test_jeux.py`](web_donnees/test_jeux.py) | Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 5 |
+| [`web_donnees/test_mise_en_page.py`](web_donnees/test_mise_en_page.py) | Mise en page commune : cinq onglets, sous-navigation, onglet vide masqué, panneau Assistant | 5 |
+| [`web_donnees/test_parametres.py`](web_donnees/test_parametres.py) | Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 9 |
+| [`web_donnees/test_performance.py`](web_donnees/test_performance.py) | Temps et taille des pages sur l'établissement complet (`perf`) | 2 |
+| [`web_donnees/test_regles.py`](web_donnees/test_regles.py) | Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 24 |
+| [`web_donnees/test_saisies_extremes.py`](web_donnees/test_saisies_extremes.py) | Saisies aberrantes : jamais d'erreur 500, toujours un message | 16 |
+| [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
+| [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`exploitation/test_commandes_exploitation.py`](exploitation/test_commandes_exploitation.py) | commandes et service : `init-db` relançable, codes de sortie, sauvegardes | 18 | 22 |
-| [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | scripts de déploiement exécutés hors du serveur (bash, awk, Python) | 5 | 16 |
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (119 fonctions)
+
+| Fichier | Ce qu'il vérifie | Fonctions |
+|---|---|---:|
+| [`web_edt/test_a_traiter.py`](web_edt/test_a_traiter.py) | Onglet « À traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 |
+| [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 10 |
+| [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 13 |
+| [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 24 |
+| [`web_edt/test_dejeuner.py`](web_edt/test_dejeuner.py) | Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 |
+| [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | Grille, groupes liés, déplacements et annulations vérifiés | 20 |
+| [`web_edt/test_niveaux_web.py`](web_edt/test_niveaux_web.py) | Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « À traiter » | 11 |
+| [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Pré-vérifications et instanciation d'une version issue d'un calcul complet | 1 |
+| [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Règles personnalisées sur les écrans de l'emploi du temps : Générer, suivi, grille, anomalies | 13 |
+| [`web_edt/test_revue.py`](web_edt/test_revue.py) | Constats de la revue d'ensemble et mémoire des écrans | 13 |
+
+<!-- tests-integration : fin de la partie générée -->
 
 ## 7. Stratégie de test du projet
 
@@ -389,21 +394,18 @@ Voir la section 4 : [`parcours/test_parcours_web.py`](parcours/test_parcours_web
 | Cas limites | dans les deux familles, marqueur `cas_limite` | `python -m pytest -m cas_limite` | pannes plausibles et saisies piégées ([banque de tests](../../docs/banque-de-tests.md)) |
 | Charge | dans les deux familles, marqueur `perf` | `python -m pytest -m perf` | gros jeux (moyen, grand), durées et mémoire ; exclus de la CI courante |
 
-Nombres collectés le 16 novembre 2026 (`python -m pytest --collect-only -q`,
-avec `tests/unitaires`, `tests/integration`, `-m cas_limite`, `-m perf`) :
+| Niveau | Ce qu'il couvre | Ce qu'il ne couvre pas |
+|---|---|---|
+| Unitaire (`tests/unitaires/`) | chaque fonction, règle ou service pris isolément | l'enchaînement des couches |
+| Intégration (`tests/integration/`), parcours compris | écrans par HTTP, commandes, autres processus, calculs complets ; accord solveur et vérificateur ; aller-retour des données | l'apparence et le JavaScript |
+| Contrôle du rangement (`tests/test_rangement.py`) | classement de chaque test, fichiers égarés, imports entre modules de tests, nombres et tableaux générés de ces documents | le contenu des tests |
+| Cas limites (`cas_limite`) | saisies extrêmes, concurrence, pannes de fichiers ou de base, identifiants hors bornes | le parcours normal d'un utilisateur |
+| Charge (`perf`) | jeux moyen et grand, durées et mémoire | exclus de la CI courante |
 
-| Niveau | Nombre de tests | Ce qu'il couvre | Ce qu'il ne couvre pas |
-|---|---|---|---|
-| Unitaire (`tests/unitaires/`) | 1 187 (dont 24 `perf`) | chaque fonction, règle ou service pris isolément | l'enchaînement des couches |
-| Intégration (`tests/integration/`) | 518 (dont 3 `perf`), dont les 6 parcours | écrans par HTTP, commandes, autres processus, calculs complets ; accord solveur et vérificateur ; aller-retour des données | l'apparence et le JavaScript |
-| Contrôle du rangement (`tests/test_rangement.py`) | 15 | classement de chaque test, fichiers égarés, imports entre modules de tests, citation de chaque fichier dans ces documents | le contenu des tests |
-| **Total** | **1 720** | | |
-| dont cas limites (`cas_limite`) | 549 (347 unitaires, 202 d'intégration ; 10 aussi `perf`) | saisies extrêmes, concurrence, pannes de fichiers ou de base, identifiants hors bornes | le parcours normal d'un utilisateur |
-| dont charge (`perf`) | 27 | jeux moyen et grand, durées et mémoire | exclus de la CI courante |
-
-La CI (`.github/workflows/ci.yml`) enchaîne trois étapes : contrôle du
-rangement, tests unitaires, tests d'intégration, hors tests de charge :
-1 686 tests (15 de contrôle, 1 156 unitaires, 515 d'intégration).
+Les nombres de tests de chaque niveau sont dans la vue d'ensemble de
+[`tests/README.md`](../README.md) (section 3). La CI
+(`.github/workflows/ci.yml`) enchaîne trois étapes : contrôle du rangement,
+tests unitaires, tests d'intégration, hors tests de charge.
 
 Règles communes à tous les tests (voir [banque de tests](../../docs/banque-de-tests.md),
 « Conventions ») : noms en français, base SQLite dans un dossier temporaire
@@ -433,7 +435,7 @@ jamais de solution particulière du solveur attendue en dur.
 ## 9. Lancer et ajouter
 
 ```sh
-python -m pytest tests/integration/parcours -v    # les six parcours seulement
+python -m pytest tests/integration/parcours -v    # les parcours seulement
 python -m pytest tests/integration                # tous les tests d'intégration
 python -m pytest -m integration                   # idem, par marqueur
 python -m pytest tests/integration -m "not perf"  # sans les tests de charge (comme la CI)
@@ -455,5 +457,7 @@ Créer `test_<nom>.py` dans `tests/integration/parcours/`, importer `pytest` et
 trois parties, et n'asserter que des propriétés. Un test d'intégration propre
 à un composant va dans le dossier de ce composant.
 
-Chaque fichier `test_*.py` de ce dossier doit être cité dans ce document :
-`tests/test_rangement.py` le vérifie.
+Un nouveau fichier `test_*.py` commence par une docstring de module dont la
+première phrase dit ce qu'il vérifie ; `python -m tests.outils.classement --ecrire` l'ajoute
+ensuite aux tableaux de la section 6. `tests/test_rangement.py` échoue tant que
+ces tableaux ne sont pas à jour.

@@ -10,8 +10,10 @@ Ce fichier est à la racine de `tests/` : il ne porte ni le marqueur
 3. aucun module de tests n'importe un autre module de tests : les aides
    partagées vivent dans `tests/outils/` ;
 4. le classeur lui-même reconnaît les deux côtés sur de petits exemples ;
-5. chaque fichier `test_*.py` est cité dans le `README.md` de son dossier
-   (`tests/unitaires/README.md`, `tests/integration/README.md`).
+5. les nombres et tableaux de fichiers générés de `tests/README.md`,
+   `tests/unitaires/README.md` et `tests/integration/README.md` sont à jour
+   (sinon : `python -m tests.outils.classement --ecrire`), et chaque fichier de
+   tests a une docstring de module, dont la première phrase le décrit.
 
 Lancer : `python -m pytest tests/test_rangement.py`.
 """
@@ -19,19 +21,31 @@ Lancer : `python -m pytest tests/test_rangement.py`.
 from __future__ import annotations
 
 import ast
-import re
 import textwrap
 from pathlib import Path
 
 import pytest
 from tests.outils.classement import (
+    BLOCS,
+    COMMANDE,
     DOSSIERS,
     INTEGRATION,
+    SANS_DOCSTRING,
     UNITAIRE,
     Verdict,
+    blocs_perimes,
     classer,
+    debut_de_bloc,
     expliquer,
+    fin_de_bloc,
+    inventorier,
+    main,
     mal_ranges,
+    partie_generee,
+    produire_famille,
+    produire_vue_d_ensemble,
+    remplacer,
+    sans_docstring,
 )
 
 RACINE = Path(__file__).resolve().parents[1]
@@ -321,40 +335,165 @@ def test_le_classeur_signale_les_tests_mal_ranges_dans_les_deux_sens(depot: Path
     assert "tests/unitaires/demo/" in message_calcul
 
 
-# --- 5. Chaque fichier de tests est cité dans le README de son dossier ------
+# --- 5. Les nombres et tableaux des documents de tests sont à jour ----------
 
 
-def fichiers_non_cites(dossier: Path) -> list[str]:
-    """Fichiers `test_*.py` de `dossier` absents de `dossier/README.md`.
+def test_les_parties_generees_des_documents_de_tests_sont_a_jour():
+    """Les nombres et tableaux de `tests/README.md` et des deux `README.md` de famille sont à jour."""
+    perimes = blocs_perimes(RACINE)
+    if perimes:
+        pytest.fail(
+            "nombres ou tableaux de tests périmés ; lancer, depuis la racine du dépôt : "
+            f"{COMMANDE}\n" + "\n".join(f"  - {p}" for p in perimes),
+            pytrace=False,
+        )
 
-    Un fichier est cité par son chemin relatif au dossier, par exemple
-    `solveur/test_moteur.py`, non précédé d'une lettre, d'un `/` ou d'un `.`.
-    """
-    lisezmoi = dossier / "README.md"
-    texte = lisezmoi.read_text(encoding="utf-8") if lisezmoi.is_file() else ""
-    relatifs = sorted(f.relative_to(dossier).as_posix() for f in dossier.rglob("test_*.py"))
-    return [r for r in relatifs if not re.search(rf"(?<![\w/.]){re.escape(r)}", texte)]
 
-
-@pytest.mark.parametrize("dossier", list(DOSSIERS.values()))
-def test_chaque_fichier_de_tests_est_cite_dans_le_readme_de_son_dossier(dossier: str):
-    """Les documents `tests/unitaires/README.md` et `tests/integration/README.md` restent complets."""
-    manquants = fichiers_non_cites(TESTS / dossier)
-    assert not manquants, (
-        f"fichier(s) de tests absents de tests/{dossier}/README.md (ajouter une ligne au "
-        "tableau de son composant : chemin relatif au dossier, ce que vérifie le fichier, "
-        "nombre de tests) :\n" + "\n".join(f"  - {f}" for f in manquants)
+def test_chaque_fichier_de_tests_a_une_docstring_de_module():
+    """La première phrase de la docstring d'un module de tests est sa description dans les documents."""
+    inventaire = inventorier(RACINE)
+    assert len(inventaire.fichiers) > 50, "peu de fichiers de tests trouvés : analyse cassée ?"
+    manquantes = sans_docstring(inventaire)
+    assert not manquantes, (
+        "fichier(s) de tests sans docstring de module (écrire en tête une docstring dont la "
+        f"première phrase dit ce que vérifie le fichier, puis lancer {COMMANDE}) :\n"
+        + "\n".join(f"  - {f}" for f in manquantes)
     )
 
 
-def test_le_controle_des_readme_signale_un_fichier_non_cite(tmp_path: Path):
-    """Un fichier cité passe ; un fichier absent, ou cité sous un autre chemin, est signalé."""
-    for chemin in ("solveur/test_moteur.py", "solveur/test_regles.py", "socle/test_regles.py"):
-        _ecrire(tmp_path, chemin, "def test_vide():\n    pass\n")
-    (tmp_path / "README.md").write_text(
-        "| [`solveur/test_moteur.py`](solveur/test_moteur.py) | moteur |\n"
-        "| `autre/socle/test_regles.py` | cité sous un autre chemin |\n",
+@pytest.fixture
+def depot_documente(tmp_path: Path) -> Path:
+    """Dépôt miniature : deux familles, un composant titré, les trois documents avec leurs marqueurs."""
+    racine = tmp_path / "depot"
+    _ecrire(racine, "tests/test_rangement.py", "def test_controle():\n    pass\n")
+    _ecrire(
+        racine,
+        "tests/unitaires/alpha/test_un.py",
+        '''
+        """Première phrase, avec `test_x.py` et 1.5 dedans. Seconde phrase ignorée.
+
+        Paragraphe suivant ignoré.
+        """
+        import pytest
+
+        pytestmark = pytest.mark.cas_limite
+
+        def test_a():
+            pass
+
+        @pytest.mark.parametrize("x", [1, 2])
+        @pytest.mark.perf
+        def test_b(x):
+            pass
+        ''',
+    )
+    (racine / "tests/unitaires/alpha/__init__.py").write_text(
+        '"""Composant alpha.\n\nDétail."""\n', encoding="utf-8"
+    )
+    _ecrire(
+        racine,
+        "tests/integration/beta_gamma/test_deux.py",
+        '''
+        """Barre | dans la description."""
+
+        def test_c():
+            pass
+        ''',
+    )
+    for nom, (document, _) in BLOCS.items():
+        fichier = racine / document
+        fichier.write_text(
+            f"# Titre\n\nIntro.\n\n{debut_de_bloc(nom)}\nancien 999 fonctions\n{fin_de_bloc(nom)}\n"
+            "\nSuite.\n",
+            encoding="utf-8",
+        )
+    return racine
+
+
+def test_le_generateur_compte_les_fonctions_et_lit_titres_et_descriptions(depot_documente):
+    """Fonctions comptées une fois, marqueurs vus, première phrase, titre par défaut d'un composant."""
+    inventaire = inventorier(depot_documente)
+
+    assert [(f.chemin, f.fonctions, f.cas_limite, f.perf) for f in inventaire.fichiers] == [
+        ("alpha/test_un.py", 2, 2, 1),
+        ("beta_gamma/test_deux.py", 1, 0, 0),
+    ]
+    assert inventaire.fichiers[0].description == ("Première phrase, avec `test_x.py` et 1.5 dedans")
+    assert inventaire.titres == {
+        (UNITAIRE, "alpha"): "Composant alpha",
+        (INTEGRATION, "beta_gamma"): "Beta gamma",
+    }
+    assert inventaire.controle == 1
+
+    vue = produire_vue_d_ensemble(inventaire)
+    assert "| `alpha` | 2 | — | 2 |" in vue
+    assert "| `beta_gamma` | — | 1 | 1 |" in vue
+    assert "| **Total** | **2** | **1** | **3** |" in vue
+    assert "| dont cas limites (`cas_limite`) | 2 | 0 | 2 |" in vue
+    assert "`tests/test_rangement.py` : 1 fonction." in vue
+
+    integration = produire_famille(inventaire, INTEGRATION)
+    assert "### `beta_gamma/` : Beta gamma (1 fonction)" in integration
+    assert (
+        "| [`beta_gamma/test_deux.py`](beta_gamma/test_deux.py) | Barre \\| dans la description | 1 |"
+    ) in integration
+
+
+def test_ecrire_regenere_les_documents_et_le_controle_voit_chaque_ecart(depot_documente, capsys):
+    """Bloc périmé signalé ; écriture limitée aux marqueurs ; nouveau fichier ; docstring absente."""
+    assert len(blocs_perimes(depot_documente)) == len(BLOCS)
+
+    assert main([str(depot_documente), "--ecrire"]) == 0
+    assert "mis à jour" in capsys.readouterr().out
+    assert blocs_perimes(depot_documente) == []
+    texte = (depot_documente / "tests/unitaires/README.md").read_text(encoding="utf-8")
+    assert texte.startswith(f"# Titre\n\nIntro.\n\n{debut_de_bloc('tests-unitaires')}\n\n")
+    assert texte.endswith(f"\n{fin_de_bloc('tests-unitaires')}\n\nSuite.\n")
+    assert "ancien" not in texte
+
+    assert main([str(depot_documente), "--ecrire"]) == 0
+    assert capsys.readouterr().out.count("déjà à jour") == len(BLOCS)
+
+    # un nombre modifié à la main dans un bloc généré
+    lisezmoi = depot_documente / "tests/unitaires/README.md"
+    lisezmoi.write_text(texte.replace("| 2 |", "| 3 |"), encoding="utf-8")
+    assert [p.split(" : ")[0] for p in blocs_perimes(depot_documente)] == [
+        "tests/unitaires/README.md"
+    ]
+
+    # un nouveau composant, avec un fichier sans docstring de module
+    _ecrire(depot_documente, "tests/unitaires/banc_tests/test_neuf.py", "def test_d():\n    pass\n")
+    assert main([str(depot_documente), "--ecrire"]) == 1
+    sortie = capsys.readouterr()
+    assert "tests/unitaires/banc_tests/test_neuf.py" in sortie.err
+    texte = lisezmoi.read_text(encoding="utf-8")
+    assert "### `banc_tests/` : Banc tests (1 fonction)" in texte
+    assert SANS_DOCSTRING in texte
+    assert sans_docstring(inventorier(depot_documente)) == [
+        "tests/unitaires/banc_tests/test_neuf.py"
+    ]
+
+    # des marqueurs absents
+    lisezmoi.write_text("# Sans marqueurs\n", encoding="utf-8")
+    assert "marqueurs du bloc « tests-unitaires » absents" in blocs_perimes(depot_documente)[0]
+    assert main([str(depot_documente), "--ecrire"]) == 1
+    assert "introuvables" in capsys.readouterr().err
+    with pytest.raises(ValueError, match="introuvables"):
+        remplacer("rien", "tests-unitaires", "contenu")
+
+
+def test_ecrire_remplace_un_bloc_reste_en_conflit_de_fusion(depot_documente):
+    """Des lignes de conflit de fusion entre les marqueurs disparaissent à la régénération."""
+    lisezmoi = depot_documente / "tests/integration/README.md"
+    nom = "tests-integration"
+    lisezmoi.write_text(
+        f"Avant.\n{debut_de_bloc(nom)}\n<<<<<<< HEAD\n| 1 |\n=======\n| 2 |\n>>>>>>> branche\n"
+        f"{fin_de_bloc(nom)}\nAprès.\n",
         encoding="utf-8",
     )
 
-    assert fichiers_non_cites(tmp_path) == ["socle/test_regles.py", "solveur/test_regles.py"]
+    assert main([str(depot_documente), "--ecrire"]) == 0
+    texte = lisezmoi.read_text(encoding="utf-8")
+    assert "<<<<<<<" not in texte and ">>>>>>>" not in texte
+    assert texte.startswith("Avant.\n") and texte.endswith("Après.\n")
+    assert partie_generee(texte, nom) == produire_famille(inventorier(depot_documente), INTEGRATION)
