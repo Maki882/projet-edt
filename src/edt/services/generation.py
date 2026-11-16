@@ -99,6 +99,7 @@ from edt.solveur.contrat import (
     ResultatSolveur,
     StatutSolveur,
 )
+from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
 from edt.solveur.preverification import pre_verifier
 from edt.verification import Anomalie, calculer_indicateurs, verifier
 
@@ -880,15 +881,17 @@ def _calculer(
     )
     impossibilites = [anomalie.message for anomalie in anomalies if anomalie.bloquante]
     alertes = [anomalie.message for anomalie in anomalies if not anomalie.bloquante]
-    for anomalie in anomalies:
-        niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
-        journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
     if impossibilites:
+        # Calcul refusé : le moteur ne tourne pas, ce journal est le seul à citer les anomalies.
+        # Sinon le moteur les refait et les journalise lui-même (une seule ligne par anomalie).
+        for anomalie in anomalies:
+            niveau = logging.ERROR if anomalie.bloquante else logging.WARNING
+            journal.log(niveau, "Pré-vérification [%s] : %s", anomalie.code.value, anomalie.message)
         reste = len(impossibilites) - NB_RAISONS_DANS_LE_MESSAGE
         suite = f" (et {reste} autre(s) raison(s))" if reste > 0 else ""
         message = (
-            f"Le calcul n'a pas été lancé : {len(impossibilites)} impossibilité(s) certaine(s) "
-            "relevée(s) par les pré-vérifications. "
+            f"Le calcul n'a pas été lancé : {len(impossibilites)} point(s) bloquant(s) relevé(s) "
+            "par les vérifications préalables. "
             + " ".join(impossibilites[:NB_RAISONS_DANS_LE_MESSAGE])
             + suite
         )
@@ -905,7 +908,9 @@ def _calculer(
     etat = _ETAT_PAR_STATUT[resultat.statut]
     message = resultat.message or _MESSAGES_PAR_DEFAUT[etat]
     for avertissement in resultat.avertissements:
-        journal.warning("Avertissement du moteur : %s", avertissement)
+        # Un arrêt demandé par l'utilisateur, solution gardée, est une action normale.
+        niveau = logging.INFO if avertissement == MESSAGE_SOLUTION_CONSERVEE else logging.WARNING
+        journal.log(niveau, "Avertissement du moteur : %s", avertissement)
     statistiques["avertissements"] = list(dict.fromkeys([*alertes, *resultat.avertissements]))
     if not resultat.reussi:
         return etat, message, statistiques

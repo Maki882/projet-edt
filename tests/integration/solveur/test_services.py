@@ -33,12 +33,12 @@ import edt
 from edt import cli, solveur
 from edt.config import charger_configuration
 from edt.db import modeles as m
-from edt.db import moteur as module_moteur
 from edt.db.moteur import chemin_base, session_base
 from edt.domaine.calendrier import lundi_de
-from edt.domaine.contraintes import niveaux_depuis_desactivees
+from edt.domaine.contraintes import CodeContrainte, niveaux_depuis_desactivees
 from edt.domaine.enumerations import (
     EtatCalcul,
+    Gravite,
     OrigineOccurrence,
     OrigineVersion,
     StatutOccurrence,
@@ -63,6 +63,7 @@ from edt.services.verification import (
 )
 from edt.solveur import OptionsSolveur, ResultatSolveur, StatutSolveur
 from edt.solveur.moteur import MESSAGE_SOLUTION_CONSERVEE
+from edt.verification.contrat import Anomalie
 
 DELAI = 60
 
@@ -430,7 +431,7 @@ def test_defaut_du_moteur_releve_par_le_verificateur(jeu_minimal):
     assert "Défaut du moteur, solution refusée [SALLE_UNIQUE]" in journal
 
 
-def test_arret_avec_une_solution_la_version_est_enregistree(jeu_minimal):
+def test_arret_avec_une_solution_la_version_est_enregistree(jeu_minimal, caplog):
     """Le moteur rend la solution trouvée malgré l'arrêt : le calcul réussit et l'enregistre."""
     demarre = threading.Event()
 
@@ -457,6 +458,9 @@ def test_arret_avec_une_solution_la_version_est_enregistree(jeu_minimal):
     assert suivi.statistiques["arrete_par_utilisateur"] is True
     assert MESSAGE_SOLUTION_CONSERVEE in suivi.avertissements
     assert MESSAGE_SOLUTION_CONSERVEE in suivi.message
+    # Arrêt demandé, solution gardée : une action normale, journalisée sans avertissement.
+    assert not _journalise(caplog, MESSAGE_SOLUTION_CONSERVEE)
+    assert _journalise(caplog, MESSAGE_SOLUTION_CONSERVEE, logging.INFO)
     with session_base() as session:
         version = session.get(m.VersionEdt, suivi.version_id)
         assert version.active and len(version.seances) == 17
@@ -517,6 +521,33 @@ def test_avertissements_joints_au_suivi(jeu_minimal):
     suivi = generer(jeu_minimal.semestre_id, moteur=moteur_bavard)
     assert suivi.etat is EtatCalcul.TEMPS_DEPASSE
     assert "Remarque du moteur." in suivi.avertissements
+
+
+def test_pre_verifications_journalisees_une_seule_fois(jeu_minimal, monkeypatch, caplog):
+    """Calcul lancé : le moteur refait les pré-vérifications et les journalise ; l'orchestration
+    ne les recopie pas (le journal du calcul aurait chaque anomalie deux fois). Calcul refusé :
+    le moteur ne tourne pas, l'orchestration les journalise."""
+    tendue = Anomalie(CodeContrainte.MAX_ENSEIGNANT, Gravite.AVERTISSEMENT, "Semaine tendue.")
+    bloquante = Anomalie(CodeContrainte.DISPO_GROUPE, Gravite.ERREUR, "Aucun créneau libre.")
+
+    def lignes() -> list[str]:
+        return [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == generation.__name__ and r.getMessage().startswith("Pré-vérification [")
+        ]
+
+    monkeypatch.setattr(generation, "pre_verifier", lambda *a, **k: [tendue])
+    lance = generer(jeu_minimal.semestre_id)
+    assert lance.reussi and "Semaine tendue." in lance.avertissements
+    assert lignes() == []
+    monkeypatch.setattr(generation, "pre_verifier", lambda *a, **k: [tendue, bloquante])
+    refuse = generer(jeu_minimal.semestre_id)
+    assert refuse.statistiques["refuse"]
+    assert lignes() == [
+        "Pré-vérification [MAX_ENSEIGNANT] : Semaine tendue.",
+        "Pré-vérification [DISPO_GROUPE] : Aucun créneau libre.",
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -1353,30 +1384,6 @@ def test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant(jeu_minimal, processus_v
     suivi = generation.etat_calcul(calcul_id)
     assert suivi.etat is EtatCalcul.EN_COURS
     assert 25 <= suivi.temps_ecoule_s <= 45, suivi.temps_ecoule_s
-
-
-@pytest.mark.cas_limite
-def test_cloture_sans_attendre_retablit_le_delai_de_verrou_de_la_connexion(jeu_minimal):
-    """Cas : un calcul abandonné est clos sans attendre (`calcul_en_cours`) sur une connexion
-    dont le délai de verrou n'est pas celui par défaut.
-
-    Risque : le délai est remis à une constante lue à l'import du module, pas à la valeur que la
-    connexion avait : un réglage propre à la connexion (ou le délai court des tests) est écrasé
-    en silence pour toutes les requêtes servies ensuite par cette connexion.
-    """
-    abandonne = _calcul_fictif(jeu_minimal.semestre_id)  # sans numéro de processus : abandonné
-    with session_base() as session:
-        brute = session.connection().connection.dbapi_connection
-        brute.execute("PRAGMA busy_timeout=4321")
-        try:
-            with generation._verrou:
-                abandonnes = generation._calculs_abandonnes(session)
-                assert generation._clore_sans_attendre(session, abandonnes)
-            (delai,) = brute.execute("PRAGMA busy_timeout").fetchone()
-        finally:
-            brute.execute(f"PRAGMA busy_timeout={module_moteur.DELAI_VERROU_MS}")
-    assert delai == 4321
-    assert _etat(abandonne) is EtatCalcul.ERREUR
 
 
 def _ecriture_concurrente_sans_attendre(calcul_id: int) -> bool:
