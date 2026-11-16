@@ -939,6 +939,28 @@ def appliquer_dejeuner(session: Session, choix: ChoixDejeuner) -> dict[str, Vale
 # --------------------------------------------------------------------------- #
 
 
+def avertissement_tests_en_cours() -> str | None:
+    """Ce que l'écran Générer dit avant le clic quand une exécution des tests tourne, ou `None`.
+
+    Un calcul lancé pendant les tests est refusé (`generation.lancer_calcul`) : l'écran le dit
+    d'avance, avec la durée déjà écoulée quand l'exécution est celle de ce processus.
+    """
+    # Import local : le service des tests importe le service de génération.
+    from edt.services.banc_tests import execution
+
+    if not execution.tests_en_cours():
+        return None
+    texte = (
+        "Une exécution des tests est en cours : un calcul lancé maintenant serait refusé, pour "
+        "ne pas partager les processeurs du serveur."
+    )
+    courante = execution.execution_courante()
+    if courante is not None and courante.en_cours:
+        ecoule = presentation.duree_secondes(courante.suivi().ecoule_s)
+        texte += f" Elle tourne depuis {ecoule} ({courante.cible.libelle})."
+    return texte + " Réessayer à la fin des tests, visible dans leur onglet."
+
+
 def demarrer_calcul(
     session: Session,
     semestre_id: int,

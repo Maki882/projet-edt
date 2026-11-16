@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import re
 import threading
 
@@ -721,3 +722,36 @@ def test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve(jeu_minimal, client, mo
     finally:
         liberer.set()
     assert generation.attendre_calcul(calcul_id, DELAI).etat is EtatCalcul.ARRETE
+
+
+@pytest.mark.cas_limite
+def test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif(
+    version_generee, client, monkeypatch, caplog
+):
+    """Cas : une exécution des tests tourne quand l'écran Générer est ouvert, puis « Lancer le
+    calcul », « Relancer le même calcul » ou « Proposer une autre solution » est envoyé.
+
+    Risque : page d'erreur « Opération refusée » avec une référence d'incident, comme pour une
+    panne, et aucun signe avant le clic que le calcul serait refusé.
+    """
+    from edt.services.banc_tests import execution
+
+    monkeypatch.setattr(execution, "tests_en_cours", lambda dossier=None: True)
+    semestre = version_generee.semestre_id
+    generer = html.unescape(client.get(f"/calculs?semestre_id={semestre}").text)
+    assert "Une exécution des tests est en cours" in generer  # prévenu avant le clic
+
+    envois = [
+        ("/calculs", _formulaire(semestre)),
+        (f"/calculs/{version_generee.calcul_id}/relancer", {}),
+        (f"/calculs/{version_generee.calcul_id}/relancer", {"autre_solution": "1"}),
+    ]
+    for adresse, donnees in envois:
+        caplog.clear()
+        reponse = client.post(adresse, data=donnees, follow_redirects=False)
+        assert reponse.status_code == 303, (adresse, reponse.text)
+        assert reponse.headers["location"] == f"/calculs?semestre_id={semestre}"
+        page = html.unescape(client.get(reponse.headers["location"]).text)
+        assert "une exécution des tests est en cours" in page and "Référence" not in page
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING], adresse
+    assert _nb_calculs() == 1  # seul le calcul de la fixture

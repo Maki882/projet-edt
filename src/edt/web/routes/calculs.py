@@ -103,6 +103,9 @@ def _page_calculs(
     if semestre is not None:
         suivi = generation.calcul_en_cours()
         en_cours = calculs.resultat_calcul(session, suivi.id, indicateurs=False) if suivi else None
+        tests = calculs.avertissement_tests_en_cours() if suivi is None else None
+        if tests is not None:
+            messages = [*messages, Message(tests, "attention")]
         dernier = generation.dernier_calcul(semestre.id)
         if niveaux is None:
             niveaux = calculs.niveaux_proposes(dernier)
@@ -279,6 +282,11 @@ def lancer(
             "Un calcul est déjà en cours : voici son avancement.",
             "attention",
         )
+    except generation.ErreurLancementRefuse as erreur:
+        # Tests, import ou chargement en cours : retour sur Générer, avec la cause et le remède.
+        return rediriger(
+            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
+        )
     except ErreurCalculEnCours:
         # Autre semestre ou autres réglages : les réglages envoyés n'ont pas été appliqués.
         suivi = generation.calcul_en_cours()
@@ -383,6 +391,11 @@ def relancer(
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
+        )
+    except generation.ErreurLancementRefuse as erreur:
+        semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
+        return rediriger(
+            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
         )
     except calculs.ErreurPreVerification as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
