@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1525" height="840" viewBox="0 0 1525 840" font-family="Segoe UI, DejaVu Sans, Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="1525" height="840" fill="#ffffff"/>
+<polyline points="560.0,58.0 560.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="560.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">07/09</text>
+<polyline points="623.0,58.0 623.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="623.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">14/09</text>
+<polyline points="686.0,58.0 686.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="686.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">21/09</text>
+<polyline points="749.0,58.0 749.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="749.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">28/09</text>
+<polyline points="812.0,58.0 812.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="812.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">05/10</text>
+<polyline points="875.0,58.0 875.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="875.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">12/10</text>
+<polyline points="938.0,58.0 938.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="938.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">19/10</text>
+<polyline points="1001.0,58.0 1001.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="1001.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">26/10</text>
+<polyline points="1064.0,58.0 1064.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="1064.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">02/11</text>
+<polyline points="1127.0,58.0 1127.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="1127.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">09/11</text>
+<polyline points="1190.0,58.0 1190.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="1190.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">16/11</text>
+<polyline points="1253.0,58.0 1253.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="1253.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">23/11</text>
+<polyline points="1316.0,58.0 1316.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="1316.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">30/11</text>
+<polyline points="1379.0,58.0 1379.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="1379.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">07/12</text>
+<polyline points="1442.0,58.0 1442.0,778.0" fill="none" stroke="#9aa9bd" stroke-width="1.3"/>
+<text x="1442.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24" font-weight="700">14/12</text>
+<polyline points="1505.0,58.0 1505.0,778.0" fill="none" stroke="#d5dde8" stroke-width="0.7"/>
+<text x="1505.0" y="50.0" font-size="11.5" text-anchor="middle" fill="#1b1f24">21/12</text>
+<text x="20.0" y="50.0" font-size="13" text-anchor="start" fill="#1b1f24" font-weight="700">Partie</text>
+<text x="330.0" y="50.0" font-size="13" text-anchor="start" fill="#1b1f24" font-weight="700">Qui (d&#x27;après l&#x27;historique)</text>
+<text x="560.0" y="30.0" font-size="11.5" text-anchor="start" fill="#1b1f24" font-style="italic">Lundis ; en gras : séances du cours</text>
+<text x="20.0" y="86.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Prévu : calendrier du cours</text>
+<text x="30.0" y="115.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Présentation, choix du projet</text>
+<rect x="623.0" y="103" width="10" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="141.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Spécifications fonctionnelles et UML</text>
+<rect x="686.0" y="129" width="10" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="167.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Spécifications techniques, organisation</text>
+<rect x="749.0" y="155" width="10" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="193.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Développements avec GitHub</text>
+<rect x="812.0" y="181" width="387.0" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="219.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Tests unitaires</text>
+<rect x="875.0" y="207" width="324.0" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="245.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Tests d&#x27;intégration</text>
+<rect x="1064.0" y="233" width="135.0" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="271.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Finalisation des développements</text>
+<rect x="1190.0" y="259" width="72.0" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="30.0" y="297.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Documentation utilisateur, soutenance</text>
+<rect x="1253.0" y="285" width="198.0" height="16" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<polyline points="20.0,314.0 1505.0,314.0" fill="none" stroke="#9aa9bd" stroke-width="0.8"/>
+<text x="20.0" y="336.0" font-size="14" text-anchor="start" fill="#1b1f24" font-weight="700">Réalisé : jours de commits dans le dépôt</text>
+<text x="30.0" y="365.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Cadrage : questionnaire, décisions</text>
+<text x="330.0" y="365.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel, Kerime</text>
+<rect x="748.0" y="353" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="811.0" y="353" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="391.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Base de données et socle</text>
+<text x="330.0" y="391.0" font-size="12" text-anchor="start" fill="#1b1f24">dzzmimou48-cmd, Axel</text>
+<rect x="748.0" y="379" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="811.0" y="379" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="820.0" y="379" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="379" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="379" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="417.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Vérificateur</text>
+<text x="330.0" y="417.0" font-size="12" text-anchor="start" fill="#1b1f24">Hugo, Axel</text>
+<rect x="748.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="811.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="820.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="405" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="443.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Établissements fictifs</text>
+<text x="330.0" y="443.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1189.0" y="431" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="469.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Interface web</text>
+<text x="330.0" y="469.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="457" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="820.0" y="457" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="457" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="457" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="495.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Import et export</text>
+<text x="330.0" y="495.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="483" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="521.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Générateur (calcul)</text>
+<text x="330.0" y="521.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="820.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="509" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="547.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Niveaux, déjeuner, règles personnalisées</text>
+<text x="330.0" y="547.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="820.0" y="535" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="535" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="535" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="573.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Déploiement, intégration continue</text>
+<text x="330.0" y="573.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="561" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="561" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1189.0" y="561" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="599.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Tests unitaires</text>
+<text x="330.0" y="599.0" font-size="12" text-anchor="start" fill="#1b1f24">dzzmimou48-cmd, Hugo, Axel</text>
+<rect x="748.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="811.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="820.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="883.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1063.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1189.0" y="587" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="625.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Tests d&#x27;intégration</text>
+<text x="330.0" y="625.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="811.0" y="613" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1126.0" y="613" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1189.0" y="613" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="651.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Assistant (optionnel)</text>
+<text x="330.0" y="651.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="1189.0" y="639" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="1207.0" y="651.0" font-size="12" text-anchor="start" fill="#1b1f24" font-style="italic">en cours</text>
+<text x="30.0" y="677.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Livrets 1 et 2</text>
+<text x="330.0" y="677.0" font-size="12" text-anchor="start" fill="#1b1f24">Axel</text>
+<rect x="748.0" y="665" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<rect x="1189.0" y="665" width="12.0" height="16" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="30.0" y="703.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Guide utilisateur (livret 3)</text>
+<text x="330.0" y="703.0" font-size="12" text-anchor="start" fill="#1b1f24">non commencé</text>
+<rect x="1253.0" y="691" width="189.0" height="16" rx="2" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.0" stroke-dasharray="4,3"/>
+<text x="1259.0" y="703.0" font-size="12" text-anchor="start" fill="#1b1f24" font-style="italic">prévu : séance du 23/11</text>
+<text x="30.0" y="729.0" font-size="12.5" text-anchor="start" fill="#1b1f24">Soutenance</text>
+<text x="330.0" y="729.0" font-size="12" text-anchor="start" fill="#1b1f24">équipe</text>
+<rect x="1441.0" y="717" width="12.0" height="16" rx="2" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.2" stroke-dasharray="4,3"/>
+<text x="1459.0" y="729.0" font-size="12" text-anchor="start" fill="#1b1f24" font-style="italic">14/12</text>
+<polyline points="1194.5,58.0 1194.5,778.0" fill="none" stroke="#b42318" stroke-width="1.6" stroke-dasharray="5,4"/>
+<rect x="1197.5" y="65.0" width="164.4" height="16.0" fill="#ffffff"/>
+<text x="1200.5" y="76.0" font-size="12" text-anchor="start" fill="#b42318" font-weight="700">16/11 : date du livret</text>
+<rect x="20" y="788" width="30" height="14" rx="2" fill="#cfe0f5" stroke="#2f4b6e" stroke-width="1.0"/>
+<text x="58.0" y="800.0" font-size="12" text-anchor="start" fill="#1b1f24">prévu par le cours</text>
+<rect x="210" y="788" width="12" height="14" rx="2" fill="#1f3f66" stroke="#1f3f66" stroke-width="1.0"/>
+<text x="230.0" y="800.0" font-size="12" text-anchor="start" fill="#1b1f24">un jour avec au moins un commit sur la partie</text>
+<rect x="540" y="788" width="30" height="14" rx="2" fill="#ffffff" stroke="#2f4b6e" stroke-width="1.0" stroke-dasharray="4,3"/>
+<text x="578.0" y="800.0" font-size="12" text-anchor="start" fill="#1b1f24">à venir</text>
+<text x="20.0" y="820.0" font-size="12" text-anchor="start" fill="#1b1f24" font-style="italic">Le travail fait entre deux jours de commits n&#x27;apparaît pas : seul ce que l&#x27;historique prouve est représenté.</text>
+</svg>
