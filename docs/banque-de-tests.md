@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'intégration.
+Le catalogue compte 526 cas : 318 cas en tests unitaires et 208 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -79,14 +79,14 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
 | `socle` | 64 | 35 |
-| `solveur` | 21 | 20 |
+| `solveur` | 22 | 20 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
-| `web_donnees` | 2 | 41 |
-| `web_edt` | 8 | 41 |
-| **Total** | **317** | **205** |
+| `web_donnees` | 2 | 42 |
+| `web_edt` | 8 | 43 |
+| **Total** | **318** | **208** |
 
-### Tests unitaires (317 cas)
+### Tests unitaires (318 cas)
 
 #### `assistant` (45 cas)
 
@@ -496,7 +496,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Requete annulee par l arret du serveur n est pas journalisee en 500 | le serveur s'arrête pendant qu'une page se prépare (préparation des premières pages au démarrage, ou visiteur en cours) : la requête est annulée (`CancelledError`). | le journal note « GET / -> 500 », une erreur qui n'a pas eu lieu, sans trace ni cause ; l'exploitant cherche une panne qui n'existe pas. |
 | Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script et les appels qui leur donnent leur effet. |
 
-#### `solveur` (21 cas)
+#### `solveur` (22 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
@@ -522,6 +522,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Toutes les seances verrouillees | chaque séance porte un verrou avec sa salle : le modèle n'a ni variable ni choix. | plantage sur un modèle vide (objectif sans terme, statistiques) ou solution non rendue, en mode faisable comme en mode optimisé. |
 | Arret pendant la premiere recherche est suivi d effet | instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la première recherche, avant toute solution (la première solution demande ici plus d'une minute). | le moteur ignore l'arrêt tant qu'aucune solution n'existe : bouton « Arrêter » sans effet avant la première solution. Borne large sur le délai, machine chargée ou non ; la réactivité fine est mesurée à part (`test_arret_pendant_la_premiere_recherche_repond_en_moins_de_deux_secondes`, `perf`). |
 | Parametres extremes restent valides | pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et 2^40, mode optimisé. | coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage jour × pas des débuts faux quand le pas dépasse 100 000. |
+| Salles interrompues le message donne la duree reelle | des horaires sont trouvés, puis l'attribution des salles s'interrompt sur son propre temps maximal sans rien prouver (machine très chargée), bien avant le temps limite de 300 s. | le calcul s'arrête « pas trouvé » après une minute, mais son message affirme « Aucun emploi du temps n'a été trouvé en 300 s » : deux durées différentes à l'écran. |
 
 [`tests/unitaires/solveur/test_preverification.py`](../tests/unitaires/solveur/test_preverification.py)
 
@@ -629,7 +630,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Jour sans creneau signale une seule fois | une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée), `HORAIRES` vérifiée ou ignorée. | la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et panneau À traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le moteur la compte (JOURS). |
+| Jour sans creneau signale une seule fois | une séance placée un jour sans créneau dans la grille (dimanche, ou grille d'un jour vidée), `HORAIRES` vérifiée ou ignorée. | la même cause signalée deux fois (HORAIRES et JOURS) : compteurs gonflés et panneau Points à traiter redondant ; ou, `HORAIRES` ignorée, signalée nulle part alors que le moteur la compte (JOURS). |
 
 [`tests/unitaires/verification/test_indicateurs.py`](../tests/unitaires/verification/test_indicateurs.py)
 
@@ -654,7 +655,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Un semestre entier de 13000 occurrences en moins de 10 secondes | tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran À traiter le vérifie. | une régression de coût (règles reconstruites par séance et par date, emplois par personne) rendrait À traiter lent de plusieurs secondes sans qu'aucun test ne le voie. |
+| Un semestre entier de 13000 occurrences en moins de 10 secondes | tout un semestre de séances datées (12 900) avec dix règles personnalisées, comme l'écran Points à traiter le vérifie. | une régression de coût (règles reconstruites par séance et par date, emplois par personne) rendrait Points à traiter lent de plusieurs secondes sans qu'aucun test ne le voie. |
 
 [`tests/unitaires/verification/test_salles.py`](../tests/unitaires/verification/test_salles.py)
 
@@ -667,12 +668,12 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Modification d une seance non placee | la séance à placer n'est pas dans la semaine type (geste normal de « À traiter »). | le placement proposé n'était pas ajouté, ou l'anomalie « n'est pas placée » d'avant passait pour introduite : une séance non placée restait impossible à placer. |
+| Modification d une seance non placee | la séance à placer n'est pas dans la semaine type (geste normal de « Points à traiter »). | le placement proposé n'était pas ajouté, ou l'anomalie « n'est pas placée » d'avant passait pour introduite : une séance non placée restait impossible à placer. |
 | Deux versions actives refusees au lieu d en verifier une au hasard | base créée sans l'index unique partiel ; deux versions du semestre sont actives. | `python -m edt verifier --semestre N` vérifiait la première ligne venue, sans rien dire, et le rapport portait sur une autre version que celle affichée. |
 | Version sans seance datee signalee explicitement | une version sans aucune séance datée (instanciation absente ou échouée) est vérifiée sur le calendrier. | rapport vide dit « valide » ; un écran afficherait « Aucune anomalie » pour un calendrier qui n'existe pas. |
 | Seances datees apres la fin d un semestre raccourci | le semestre est raccourci de deux semaines après l'instanciation de la version. | les séances datées d'après la nouvelle fin passent sans anomalie, et les règles personnalisées, bornées aux semaines du semestre, se taisent sur elles. |
 | Salle supprimee apres le calcul degrade en salle a definir | la salle N204 est supprimée après l'enregistrement et l'instanciation de la version. | un avertissement « salle à définir » par séance datée (une quinzaine pour une seule cause), ou une vérification impossible. |
-| Salle orpheline nommee sans rendre la verification impossible | la salle N204 est effacée sans que ses séances soient mises à vide (base importée, retouche SQL). | `ErreurDonneesInvalides` « salle inconnue » : plus aucune vérification de la version (À traiter en erreur, commande en code 2). |
+| Salle orpheline nommee sans rendre la verification impossible | la salle N204 est effacée sans que ses séances soient mises à vide (base importée, retouche SQL). | `ErreurDonneesInvalides` « salle inconnue » : plus aucune vérification de la version (Points à traiter en erreur, commande en code 2). |
 | Periode aux bornes extremes du calendrier | séances datées vérifiées du 1er janvier de l'an 1 au 31 décembre 9999 (`date.min`, `date.max`). | `OverflowError` en étendant la période à la fin de sa semaine (erreur 500, ou code 2 avec une trace pour `--au 9999-12-31`). |
 | Liste de contraintes vide refusee | un appelant transmet une liste de contraintes vide (aucune case cochée) ou des niveaux vides. | rapport « valide » sans rien avoir vérifié : une modification manuelle acceptée sans contrôle. |
 | Identifiant hors bornes de la base introuvable | un identifiant de version ou de semestre hors des bornes de la base (2**70, saisi dans une adresse ou la commande). | `OverflowError` de SQLite (erreur 500, trace dans la commande) au lieu de « n'existe pas ». |
@@ -681,7 +682,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Contrainte desactivee inconnue nommee dans l erreur | un ancien calcul a enregistré une contrainte désactivée au code inconnu (code disparu, retouche). | « Contrainte inconnue : 'PAS_UN_CODE'. » sans version ni calcul : une erreur de vérification inexplicable dans À traiter. |
+| Contrainte desactivee inconnue nommee dans l erreur | un ancien calcul a enregistré une contrainte désactivée au code inconnu (code disparu, retouche). | « Contrainte inconnue : 'PAS_UN_CODE'. » sans version ni calcul : une erreur de vérification inexplicable dans Points à traiter. |
 
 [`tests/unitaires/verification/test_service_regles.py`](../tests/unitaires/verification/test_service_regles.py)
 
@@ -750,7 +751,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (205 cas)
+### Tests d'intégration (208 cas)
 
 #### `assistant` (7 cas)
 
@@ -979,7 +980,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Second chargement refuse avec un message clair | second chargement d'un jeu dans une base qui en contient déjà un. | doublons de codes (erreur d'unicité brute) ou mélange de deux jeux. |
 | Taille inconnue | taille de jeu mal orthographiée (« geant »). | `KeyError` brute au lieu de la liste des tailles disponibles. |
 
-#### `web_donnees` (41 cas)
+#### `web_donnees` (42 cas)
 
 [`tests/integration/web_donnees/test_cas_limites.py`](../tests/integration/web_donnees/test_cas_limites.py)
 
@@ -1011,7 +1012,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
-| Parametres refuses pendant un calcul | pendant un calcul, les paramètres sont enregistrés ou remis à leur valeur par défaut. | le calcul, qui relit les paramètres pour contrôler et dater sa solution, produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans À traiter), alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul. |
+| Parametres refuses pendant un calcul | pendant un calcul, les paramètres sont enregistrés ou remis à leur valeur par défaut. | le calcul, qui relit les paramètres pour contrôler et dater sa solution, produit une version vérifiée avec d'autres réglages (anomalies inexpliquées dans Points à traiter), alors que Générer refuse déjà de changer la pause déjeuner pendant un calcul. |
 | Valeur corrompue signalee puis reparee depuis l ecran | une valeur de paramètre corrompue en base (« quinze » pour la pause entre deux séances), puis l'utilisateur ouvre /parametres et enregistre. | l'écran, seul moyen de la corriger, ne s'ouvre plus (422), ne dit pas quelle valeur est en cause, ou refuse l'enregistrement qui la répare. |
 | Ancien parametre de dejeuner illisible reste reparable | la base ne tient pas `dejeuner_mode` mais l'ancien paramètre `dejeuner_horaires_determines`, avec une valeur qui n'est ni oui ni non. | la lecture lève avant toute tolérance et l'écran des paramètres, seul moyen de réparer, ne s'ouvre plus (comme Générer, qui lit les paramètres). |
 
@@ -1026,6 +1027,7 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
+| Niveaux definis comme sur l ecran generer | le formulaire d'une règle personnalisée et l'écran Générer expliquent les niveaux. | deux définitions différentes (« jamais enfreinte, respectée au mieux » d'un côté, « enfreinte seulement faute de mieux, avec un avertissement » de l'autre) : l'utilisateur ne sait plus ce qu'« important » veut dire. |
 | Identifiants enormes des regles sont introuvables | une adresse des règles retouchée avec une année ou un numéro de règle de vingt chiffres. | OverflowError de SQLite, erreur 500 là où les autres écrans répondent « introuvable ». |
 | Regles sans annee scolaire affiche un bandeau | toutes les années scolaires ont été supprimées, puis l'utilisateur ouvre « Règles personnalisées ». | une page d'erreur 404 pour une entrée du menu, sans dire quoi faire. |
 | Regle supprimee entre temps dit introuvable | une règle supprimée dans un autre onglet, puis sa fiche ou son changement d'état demandés depuis une page restée ouverte. | un message différent selon le numéro (« n'existe pas » ou « introuvable »), qui ne dit pas que la règle a pu être supprimée. |
@@ -1057,13 +1059,13 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (41 cas)
+#### `web_edt` (43 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Option tous les semestres affiche tous les semestres | option « Tous les semestres » d'« À traiter » (`semestre_id=` vide), même adresse gardée en favori sur Générer, l'historique et la grille. | la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » : impossible de revenir à tous les semestres. |
+| Option tous les semestres affiche tous les semestres | option « Tous les semestres » de « Points à traiter » (`semestre_id=` vide), même adresse gardée en favori sur Générer, l'historique et la grille. | la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » : impossible de revenir à tous les semestres. |
 
 [`tests/integration/web_edt/test_accueil.py`](../tests/integration/web_edt/test_accueil.py)
 
@@ -1082,23 +1084,25 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Double clic sur lancer le calcul | double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul lancé par le premier démarre ; puis un autre onglet envoie d'autres réglages. | bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le calcul demandé tourne ; deux calculs lancés ; ou « Calcul lancé. » pour des réglages qui n'ont pas été appliqués. |
 | Suivi apres la recherche ne propose plus l arret | le moteur a trouvé son emploi du temps et rendu la main ; le calcul contrôle, enregistre puis produit les séances datées, ce qui prend quelques secondes sur un grand établissement. | le suivi dit encore « le calcul cherche à l'améliorer. Vous pouvez l'arrêter », alors que plus rien n'est cherché et qu'un arrêt n'aurait aucun effet. |
 | Arret d un calcul termine dit qu il est fini | « Arrêter » cliqué dans un second onglet resté sur le suivi d'un calcul déjà terminé. | « Arrêt demandé » affiché : l'utilisateur croit avoir interrompu un calcul fini dont la version est déjà active. |
-| Calcul reussi sans seances datees mene au bouton qui les produit | le calcul enregistre sa semaine type, puis la production des séances datées échoue ; la page du calcul dit de les produire avec le bouton « Produire les séances datées ». | le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qu'on lui indique. |
+| Calcul reussi sans seances datees mene au bouton qui les produit | le calcul enregistre sa semaine type, puis la production des séances datées échoue ; la page du calcul dit de les produire avec le bouton « Produire les séances datées ». | le lien « Voir l'emploi du temps » ouvre la semaine type, où ce bouton n'existe pas (il n'apparaît que dans la vue datée) : l'utilisateur ne trouve pas ce qui lui est indiqué. |
 | Calcul interrompu par un redemarrage | le serveur redémarre pendant un calcul : au démarrage, le calcul resté « en cours » est clos ; il avait pu, ou non, enregistrer sa version avant ses séances datées. | page du calcul qui parle d'un « problème dans les données » ou affirme qu'aucun emploi du temps n'a été enregistré alors qu'une version active sans séances datées existe ; aucun moyen de relancer depuis la page. |
 | Prechauffage qui ne peut pas demarrer ne casse pas la page | le fil de préchauffage des écrans ne peut pas démarrer (plus de fil disponible) quand la page d'un calcul réussi s'affiche. | RuntimeError remontée dans la requête (page du calcul en erreur 500), et préchauffage tenu pour « en cours » à jamais : plus aucun préchauffage jusqu'au redémarrage. |
 | Retouches de la version active annoncees avant le calcul | une séance datée de la version active est annulée à la main, puis l'utilisateur revient sur Générer. | le nouveau calcul crée une version sans cette retouche et la séance annulée réapparaît, sans que personne ait été prévenu. |
 | Generer sans aucun besoin dit quoi faire | page Générer d'un semestre qui n'a encore aucun besoin (base neuve, remise à zéro). | bandeau d'erreur rouge sans issue, ou calcul lancé pour enregistrer une version vide. |
 | Suivi dit qu un emploi du temps est deja trouve | calcul long (grand établissement) qui a trouvé un emploi du temps complet et cherche à l'améliorer pendant des minutes. | l'utilisateur ne voit qu'un temps qui passe, ignore qu'arrêter garderait déjà un emploi du temps, et attend la fin pendant la démonstration. |
+| Calcul demande pendant les tests revient sur generer avec le motif | une exécution des tests tourne quand l'écran Générer est ouvert, puis « Lancer le calcul », « Relancer le même calcul » ou « Proposer une autre solution » est envoyé. | page d'erreur « Opération refusée » avec une référence d'incident, comme pour une panne, et aucun signe avant le clic que le calcul serait refusé. |
+| Resultat dit les memes durees que le suivi | un calcul trouve un premier emploi du temps après 1 s, l'améliore, et s'arrête au bout de 16 s ; un autre s'arrête « pas trouvé » au bout de 75 s pour un temps limite de 300 s. | le suivi a dit « déjà trouvé (après 1 s) » et le résultat dit « trouvé en 16 s » ; ou le résultat dit « pas trouvé en 300 s » quand le calcul a duré 75 s : deux durées contradictoires sous les yeux du public. |
 
 [`tests/integration/web_edt/test_cas_limites.py`](../tests/integration/web_edt/test_cas_limites.py)
 
 | Test | Cas | Risque |
 |---|---|---|
-| Identifiants enormes ou negatifs donnent introuvable | lien mal copié ou périmé dont l'identifiant a vingt chiffres ou n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, À traiter (et négatif sur les paramètres d'adresse : dans un chemin, « -1 » ne correspond à aucune route). | OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal, au lieu d'un « introuvable » (404) qui nomme l'élément manquant. |
+| Identifiants enormes ou negatifs donnent introuvable | lien mal copié ou périmé dont l'identifiant a vingt chiffres ou n'existe pas, sur chaque adresse des onglets Générer, versions, Emploi du temps, Points à traiter (et négatif sur les paramètres d'adresse : dans un chemin, « -1 » ne correspond à aucune route). | OverflowError de SQLite non rattrapée, donc erreur 500 et ligne ERROR au journal, au lieu d'un « introuvable » (404) qui nomme l'élément manquant. |
 | Identifiant qui n est pas un entier donne saisie invalide | identifiant de version écrit en lettres, en décimal ou en booléen dans l'adresse de la grille (lien abîmé, adresse retapée). | erreur 500, ou `true` lu comme la version n° 1. |
 | Cible enorme dans l adresse montre la premiere classe | groupe, enseignant ou salle de vingt chiffres dans l'adresse de la grille. | erreur 500 au lieu de la classe par défaut, affichée en disant que la cible demandée n'existe pas. |
 | Seance enorme dans l adresse ouvre la page sans panneau | séance à ouvrir (`seance=h…` ou `o…`) de vingt ou 5 000 chiffres, nulle, en chiffres exotiques (« ² ») ou de préfixe inconnu dans l'adresse de la grille (lien abîmé, favori ancien). | erreur 500 (`int()` refuse « ² » et plus de 4 300 chiffres) au lieu de la page sans panneau, avec un message qui ne recopie pas les 5 000 chiffres. |
 | Cookie de cible illisible ou enorme est ignore | cookie de dernière cible forgé ou laissé par une autre instance du même hôte (identifiant énorme ou négatif, valeur illisible, nature inconnue). | l'onglet Emploi du temps répond 500 à chaque ouverture tant que le cookie n'est pas effacé. |
-| Fragments ouverts sans htmx menent a la page | fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau d'une séance, compteur d'« À traiter ») ouvert sans en-tête HX-Request : adresse saisie, nouvel onglet, lien. | un morceau de page nu, sans menu ni style, au lieu de la page complète. |
+| Fragments ouverts sans htmx menent a la page | fragment HTMX (suivi d'un calcul, vérifications préalables, formulaire ou panneau d'une séance, compteur de « Points à traiter ») ouvert sans en-tête HX-Request : adresse saisie, nouvel onglet, lien. | un morceau de page nu, sans menu ni style, au lieu de la page complète. |
 | Panneau d une seance supprimee entre temps | panneau, enregistrement ou lien d'une séance supprimée entre-temps (autre onglet, version régénérée). | erreur 500, ou page entière dans le panneau, au lieu d'un « n'existe pas (ou plus) ». |
 | Deplacement vers un creneau ou un jour inexistant | séance déplacée vers un début hors grille, un jour hors semaine, un jour ou une salle illisibles (« ² », 5 000 chiffres : formulaire forgé ou périmé). | séance enregistrée à une place impossible, ou erreur 500, au lieu d'un refus lisible qui la laisse en place. |
 | Seance annulee ni reannulee ni deplacee | séance datée annulée deux fois (deux onglets ouverts), puis déplacée. | motif répété dans le commentaire, ou séance annulée qui revient en étant déplacée. |
@@ -1111,12 +1115,12 @@ Le catalogue compte 522 cas : 317 cas en tests unitaires et 205 cas en tests d'i
 | Arret quand un autre ecrivain valide entre lecture et ecriture | « Arrêter le calcul » pendant qu'un autre écrivain (le fil du calcul qui enregistre son état final, réveillé par l'arrêt) valide entre la lecture du calcul et l'écriture de la demande d'arrêt. | `demander_arret` lit dans une transaction différée puis écrit sur un instantané périmé : SQLite répond aussitôt « database is locked » sans attendre, la page renvoie 503 et la demande d'arrêt est perdue (vu en CI sous Linux, où le fil réveillé valide plus vite). |
 | Saisies de cinq mille chiffres au lancement | formulaire « Lancer le calcul » fabriqué : règle personnalisée `niveau_regle_<5 000 chiffres>` ou `niveau_regle_²`, durée de pause de 5 000 chiffres ; même règle dans l'adresse des vérifications préalables. | `int()` lève ValueError, erreur 500 au lancement au lieu d'un refus clair ; ou un calcul lancé sur une saisie illisible. |
 | Motif d annulation borne | motif d'annulation d'une séance datée envoyé avec un caractère de plus que la limite (le navigateur borne le champ, pas un envoi fabriqué), puis exactement à la limite. | 200 Ko enregistrés dans la remarque de la séance et réaffichés dans son panneau ; ou une séance annulée malgré le refus. |
-| Head sur les ecrans de l emploi du temps | HEAD (sonde de supervision, `curl -I`, vérificateur de liens) sur les pages Générer, versions, grille, suivi d'un calcul et « À traiter », et sur une action POST. | 405 « Action non permise » sur toute page (FastAPI ne déclare que GET) ; ou une réponse HEAD qui porte la page entière. |
+| Head sur les ecrans de l emploi du temps | HEAD (sonde de supervision, `curl -I`, vérificateur de liens) sur les pages Générer, versions, grille, suivi d'un calcul et « Points à traiter », et sur une action POST. | 405 « Action non permise » sur toute page (FastAPI ne déclare que GET) ; ou une réponse HEAD qui porte la page entière. |
 | Une ecriture attend son tour pendant un autre ecrivain | une séance datée est annulée pendant qu'un import, dans un autre onglet, tient le verrou d'écriture puis valide ses changements environ 0,3 s plus tard. | la requête lit d'abord puis écrit ; SQLite la refuse aussitôt (« database is locked », page « base occupée ») au lieu de la faire attendre la fin de l'import. |
-| Une lecture est servie pendant un autre ecrivain | la grille, la page Générer et « À traiter » sont ouvertes (GET, HEAD) pendant qu'un import tient le verrou d'écriture. | une lecture qui prendrait le verrou d'emblée attendrait la fin de l'import (dix secondes au plus) puis répondrait « base occupée » : chaque onglet gelé pendant l'import. |
+| Une lecture est servie pendant un autre ecrivain | la grille, la page Générer et « Points à traiter » sont ouvertes (GET, HEAD) pendant qu'un import tient le verrou d'écriture. | une lecture qui prendrait le verrou d'emblée attendrait la fin de l'import (dix secondes au plus) puis répondrait « base occupée » : chaque onglet gelé pendant l'import. |
 | Verrou tenu au dela du delai donne la page base occupee | l'autre écrivain garde le verrou au-delà du délai d'attente de la base (import très long, commande bloquée sur le serveur). | trace ou erreur 500 « inattendue » au lieu de la page « base occupée » (503) qui dit de réessayer ; ou une séance annulée à moitié. |
 | Version sans seance s affiche et s exporte | version sans aucune séance (import resté vide, référence non remplie) affichée en semaine type, datée et par jour, listée dans l'historique, exportée en CSV et en iCal. | erreur 500 (minimum ou maximum d'une liste vide), blocs inventés, ou fichier d'export illisible par le tableur ou l'agenda. |
-| Version active vide sur a traiter et l accueil | la version active du semestre n'a aucune séance (import resté vide). | erreur 500 sur « À traiter » ou l'accueil, ou version vide présentée comme un emploi du temps sans défaut. |
+| Version active vide sur a traiter et l accueil | la version active du semestre n'a aucune séance (import resté vide). | erreur 500 sur « Points à traiter » ou l'accueil, ou version vide présentée comme un emploi du temps sans défaut. |
 | Semestre sans grille reste utilisable | la grille de créneaux est vidée après la génération (grille en cours de refonte). | erreur 500 sur Générer ou sur la grille, ou séance proposée à une place qui n'existe plus. |
 
 [`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
@@ -1163,11 +1167,13 @@ non inscriptible (ou remplir son disque), puis lancer un calcul. Attendu : le
 calcul a lieu et signale que son journal dédié est indisponible, en renvoyant
 au journal général `edt.log` et à `EDT_LOG_DIR`.
 
-**Rechargements répétés d'un établissement fictif.** Recharger dix fois de
-suite l'établissement `moyen` avec remise à zéro
-(`python -m edt jeu --taille moyen --reset --oui`) en observant la mémoire
-du processus. Attendu : la mémoire se
-stabilise après le premier chargement.
+**Rechargements répétés d'un établissement fictif.** Le serveur lancé,
+recharger dix fois de suite l'établissement `moyen` avec remise à zéro depuis
+l'écran « Établissement fictif » (onglet Données, groupe « Import et
+export »), en observant la mémoire du processus du serveur. Attendu : la
+mémoire se stabilise après le premier chargement. Chaque commande
+`python -m edt jeu` est un processus neuf : elle ne permet pas cette
+observation.
 
 **Exploitation du serveur.** Les procédures qui touchent au serveur
 (déploiement pendant une commande d'administration, échec de la sauvegarde,

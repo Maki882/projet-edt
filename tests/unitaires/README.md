@@ -36,6 +36,8 @@ jeu : un échec désigne donc directement le module fautif.
 ```mermaid
 flowchart TD
     U["tests/unitaires"]
+    U --> AS["assistant : consignes, outils, limites, conversations (faux client)"]
+    U --> BT["banc_tests : catalogue, garde-fous, résultats, menu"]
     U --> S["socle : domaine, base, configuration, journaux"]
     U --> SO["solveur : contraintes CP-SAT, moteur, séances datées"]
     U --> V["verification : règles du vérificateur, indicateurs"]
@@ -56,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 114 fonctions de test** dans 10 composants, dont 318 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (136 fonctions)
 
@@ -127,7 +129,7 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 6 |
 
-### `solveur/` : Solveur CP-SAT et préparation du calcul (195 fonctions)
+### `solveur/` : Solveur CP-SAT et préparation du calcul (196 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -135,7 +137,7 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | [`solveur/test_contraintes.py`](solveur/test_contraintes.py) | Une contrainte, un test : chaque contrainte est déterminante sur un petit problème | 48 |
 | [`solveur/test_couche_datee.py`](solveur/test_couche_datee.py) | Couche datée : instanciation de la semaine type, puis replacement des séances empêchées | 16 |
 | [`solveur/test_dejeuner.py`](solveur/test_dejeuner.py) | Pause déjeuner dans le solveur : mode libre borné et mode « aucun » | 11 |
-| [`solveur/test_moteur.py`](solveur/test_moteur.py) | Le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 30 |
+| [`solveur/test_moteur.py`](solveur/test_moteur.py) | Le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 31 |
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles : des options du calcul jusqu'au suivi et à la commande | 23 |
 | [`solveur/test_preverification.py`](solveur/test_preverification.py) | Pré-vérifications : impossibilités certaines et situations tendues, dites en clair | 19 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |
@@ -192,7 +194,7 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : la prochaine étape calculée par le tableau de bord, sur une base temporaire | 3 |
-| [`web_edt/test_anomalies.py`](web_edt/test_anomalies.py) | Liste « À traiter » : séances datées qui ne font que répéter la semaine type | 1 |
+| [`web_edt/test_anomalies.py`](web_edt/test_anomalies.py) | Liste « Points à traiter » : séances datées qui ne font que répéter la semaine type | 1 |
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Cas limites des services des écrans de l'emploi du temps : bornes des identifiants | 1 |
 | [`web_edt/test_cible_par_defaut.py`](web_edt/test_cible_par_defaut.py) | Emploi du temps ouvert par défaut : une classe dont la grille est remplie | 1 |
 | [`web_edt/test_disposition.py`](web_edt/test_disposition.py) | Disposition des blocs dans la grille (fonction pure) et mises en forme françaises | 9 |
@@ -202,15 +204,6 @@ Ce dossier compte **1 113 fonctions de test** dans 10 composants, dont 317 marqu
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Page Générer : anomalie sans règle citée, résumés des sections, préchauffage des écrans | 7 |
 
 <!-- tests-unitaires : fin de la partie générée -->
-
-### `banc_tests/` : Lancement des tests depuis l'application (36 fonctions, 46 cas)
-
-| Fichier | Ce qu'il vérifie | Fonctions | Cas |
-|---|---|---:|---:|
-| [`banc_tests/test_catalogue.py`](banc_tests/test_catalogue.py) | catalogue des tests lu sans les exécuter, racine du dépôt et cibles tirées du catalogue | 9 | 17 |
-| [`banc_tests/test_garde_fous.py`](banc_tests/test_garde_fous.py) | garde-fous du lancement sans sous-processus : réglages, refus, verrou, environnement | 11 | 13 |
-| [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | onglets des tests dans le menu, état affiché de chaque test et comptes | 8 | 8 |
-| [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | regroupement des cas paramétrés, historique des résultats écrit puis relu, fichier illisible | 8 | 8 |
 
 ## 4. Un exemple expliqué pas à pas
 

@@ -71,17 +71,19 @@ tests/
 ├── README.md              ce document
 ├── unitaires/             un module exercé seul, par ses fonctions Python
 │   ├── README.md          ce que vérifie chaque fichier, exemple commenté
-│   ├── socle/   solveur/   verification/   web_donnees/
-│   └── web_edt/ echange/   synthese/       exploitation/
+│   ├── assistant/   banc_tests/  echange/  exploitation/  socle/   solveur/
+│   └── synthese/    verification/  web_donnees/  web_edt/
 ├── integration/           plusieurs couches assemblées (HTTP, commande, processus, calcul complet)
 │   ├── README.md          chaîne traversée, parcours, fichiers par composant
 │   ├── parcours/          scénarios de bout en bout
-│   ├── socle/   solveur/   verification/   web_donnees/
-│   └── web_edt/ echange/   synthese/       exploitation/
+│   ├── assistant/   banc_tests/  echange/  exploitation/  socle/   solveur/
+│   └── synthese/    verification/  web_donnees/  web_edt/
 └── outils/                aides et fixtures partagées (aucun test)
     ├── classement.py      classeur unitaire / intégration
+    ├── catalogue.py       catalogue des cas limites (docs/banque-de-tests.md)
     ├── parcours/          aides des parcours
-    └── socle/ solveur/ verification/ web_donnees/ web_edt/ echange/ synthese/ exploitation/
+    └── assistant/ banc_tests/ echange/ exploitation/ socle/ solveur/ synthese/
+        verification/ web_donnees/ web_edt/
 ```
 
 Chaque dossier de composant peut avoir son `conftest.py` (fixtures propres à
@@ -91,6 +93,10 @@ ce côté). Les dossiers contiennent un `__init__.py`.
 
 Chaque famille est découpée en composants :
 
+- `assistant` : assistant en langage courant (consignes, outils, boucle
+  d'échange, limites, propositions, panneau et commande), avec un faux client ;
+- `banc_tests` : tests lancés depuis l'application (catalogue, garde-fous,
+  résultats, écrans, commande `tests`, vrai sous-processus pytest) ;
 - `socle` : domaine (règles, paramètres, dépliage, calendrier), base et schéma,
   configuration, journaux, services transverses, ligne de commande, cycle de
   vie du serveur ;
@@ -128,13 +134,13 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
 | `socle` | 207 | 77 | 284 |
-| `solveur` | 195 | 53 | 248 |
+| `solveur` | 196 | 53 | 249 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
-| `web_donnees` | 12 | 125 | 137 |
-| `web_edt` | 35 | 130 | 165 |
-| **Total** | **1 113** | **523** | **1 636** |
-| dont cas limites (`cas_limite`) | 317 | 205 | 522 |
+| `web_donnees` | 12 | 126 | 138 |
+| `web_edt` | 35 | 132 | 167 |
+| **Total** | **1 114** | **526** | **1 640** |
+| dont cas limites (`cas_limite`) | 318 | 208 | 526 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
@@ -185,9 +191,9 @@ Les marqueurs `unitaire` et `integration` sont posés d'après le dossier par
 `tests/conftest.py` ; un test n'a pas à les porter lui-même. Ils se combinent
 avec les autres : `-m "integration and cas_limite"`, `-m "unitaire and not perf"`.
 
-L'intégration continue (`.github/workflows/ci.yml`) enchaîne trois étapes :
-contrôle du rangement, tests unitaires, tests d'intégration ; les tests de
-charge en sont exclus.
+L'intégration continue (`.github/workflows/ci.yml`) enchaîne, sous Python 3.11,
+3.13 et 3.14 : `ruff check`, `ruff format --check`, contrôle du rangement,
+tests unitaires, tests d'intégration ; les tests de charge en sont exclus.
 
 Les tests se lancent aussi depuis l'application, onglets « Tests unitaires »
 et « Tests d'intégration » (un test, un fichier, un composant ou toute la
