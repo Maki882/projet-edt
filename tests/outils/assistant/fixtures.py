@@ -1,0 +1,58 @@
+"""Fixtures de l'assistant partagées par ses tests unitaires et d'intégration.
+
+Chaque côté les importe par leur nom dans son `conftest.py` :
+
+- `sans_cle` (automatique dans les dossiers `assistant`) : aucune variable
+  d'identifiant, aucun profil du poste (`ANTHROPIC_CONFIG_DIR` vers un dossier
+  vide), aucune adresse de service personnalisée, aucune variable
+  `EDT_ASSISTANT_*` héritée, registre et compteurs de l'assistant neufs ;
+- `cle_factice` : pose une valeur d'identifiant factice (`CLE_FACTICE`), pour
+  les tests « configuré » ; elle ne sert jamais à appeler le service.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from pathlib import Path
+
+import pytest
+
+from edt.services.assistant.configuration import oublier_annonce
+
+CLE_FACTICE = "sk-ant-test-NE-JAMAIS-AFFICHER"
+"""Valeur d'identifiant factice : aucun texte produit par l'application ne doit la contenir."""
+
+VARIABLES_EFFACEES = (
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_PROFILE",
+    "ANTHROPIC_LOG",
+    "ANTHROPIC_CUSTOM_HEADERS",
+    "ANTHROPIC_IDENTITY_TOKEN",
+    "ANTHROPIC_IDENTITY_TOKEN_FILE",
+)
+
+
+@pytest.fixture
+def sans_cle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """Environnement sans identifiant ni réglage de l'assistant ; état de l'assistant neuf."""
+    import os
+
+    for nom in VARIABLES_EFFACEES:
+        monkeypatch.delenv(nom, raising=False)
+    for nom in [n for n in os.environ if n.startswith("EDT_ASSISTANT_")]:
+        monkeypatch.delenv(nom, raising=False)
+    dossier = tmp_path / "config-anthropic"
+    dossier.mkdir()
+    monkeypatch.setenv("ANTHROPIC_CONFIG_DIR", str(dossier))
+    oublier_annonce()
+    yield
+    oublier_annonce()
+
+
+@pytest.fixture
+def cle_factice(monkeypatch: pytest.MonkeyPatch) -> str:
+    """Identifiant factice dans l'environnement : l'assistant se dit configuré."""
+    monkeypatch.setenv("ANTHROPIC_API_KEY", CLE_FACTICE)
+    return CLE_FACTICE

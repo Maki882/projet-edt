@@ -1,0 +1,32 @@
+{#- Panneau Assistant : inclus par base.html sur toutes les pages (voir docs/assistant.md).
+    `etat_assistant()` (fonction globale posée par edt.web.routes.assistant) ne lit que
+    l'environnement : le panneau s'affiche aussi sur une page « base indisponible ».
+    La conversation est chargée par HTMX à la première ouverture (événement
+    edt:assistant-ouvert, déclenché par assistant.js). Sans JavaScript, le lien
+    #assistant ouvre le panneau, qui renvoie vers la page /assistant. #}
+{%- import "macros.html" as ui %}
+{%- set assistant = etat_assistant() if etat_assistant is defined else none %}
+<link rel="stylesheet" href="/static/css/assistant.css?v={{ version_application }}">
+<a class="bouton-assistant" id="bouton-assistant" href="#assistant" role="button"
+   aria-controls="assistant" aria-expanded="false"><span aria-hidden="true">?</span> Assistant</a>
+<aside class="assistant" id="assistant" aria-labelledby="assistant-titre" tabindex="-1"
+       data-disponible="{{ 'oui' if assistant and assistant.disponible else 'non' }}">
+  <div class="assistant-entete">
+    <h2 id="assistant-titre">Assistant</h2>
+    <a class="assistant-fermer" href="#" role="button" aria-label="Fermer l'assistant" data-fermer-assistant>&times;</a>
+  </div>
+  {%- if assistant and assistant.disponible and page_assistant is defined and page_assistant %}
+  <p class="discret">La conversation est affichée dans cette page.</p>
+  {%- elif assistant and assistant.disponible %}
+  <div id="assistant-conversation" class="assistant-conversation"
+       hx-get="/assistant/panneau" hx-trigger="edt:assistant-ouvert once" hx-swap="innerHTML">
+    <p class="discret">Chargement de la conversation…</p>
+    <noscript><p><a href="/assistant">Ouvrir l'assistant dans une page</a></p></noscript>
+  </div>
+  {%- else %}
+  <p class="assistant-annonce">{{ ui.etiquette("Indisponible", "neutre") }}
+    {{ assistant.raison_texte if assistant else "L'assistant n'est pas configuré sur ce serveur." }}</p>
+  <p class="discret">Le reste de l'application fonctionne normalement.</p>
+  {%- endif %}
+</aside>
+<script src="/static/js/assistant.js?v={{ version_application }}" defer></script>

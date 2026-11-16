@@ -32,8 +32,9 @@ def test_panneau_assistant_present_sur_toutes_les_pages(site):
         page = site.get(adresse).text
         assert 'id="bouton-assistant"' in page and 'aria-controls="assistant"' in page
         assert '<aside class="assistant" id="assistant"' in page
-        assert "Bientôt" in page and "langage courant" in page
-        assert re.search(r'<textarea id="assistant-question"[^>]*disabled', page)
+        # Sans clé dans l'environnement des tests : panneau « non configuré », sans saisie.
+        assert "L&#39;assistant n&#39;est pas configuré sur ce serveur." in page
+        assert 'id="assistant-question"' not in page
     assert "Données fictives" not in page  # plus de bandeau sur les données
 
 

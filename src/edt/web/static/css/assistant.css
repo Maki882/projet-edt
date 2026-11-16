@@ -1,0 +1,296 @@
+/*
+ * Panneau Assistant : conversation, bulles, propositions à confirmer.
+ * Complète la section 10 de app.css (bouton, ouverture et fermeture du panneau).
+ * Aucune couleur en dur : les variables viennent de app.css.
+ */
+
+/* Le panneau devient une colonne : le fil défile, le formulaire reste en bas. */
+.assistant {
+  display: flex;
+  flex-direction: column;
+}
+
+.assistant-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.assistant-fil {
+  flex: 1 1 auto;
+  min-height: 6rem;
+  max-height: calc(100dvh - 17rem);
+  overflow-y: auto;
+  padding: 0.25rem 0.1rem 0.5rem;
+  margin-bottom: 0.5rem;
+  scroll-behavior: smooth;
+}
+
+.page-assistant .assistant-fil {
+  max-height: none;
+}
+
+.assistant-annonce-info {
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--info);
+  background: var(--info-pale);
+  border-radius: var(--rayon);
+  font-size: 0.9rem;
+}
+
+.assistant-accueil p {
+  margin: 0 0 0.5rem;
+}
+
+.assistant-exemples {
+  list-style: none;
+  padding-left: 0;
+}
+
+.assistant-exemple {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon);
+  background: var(--fond);
+  color: var(--marque);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.assistant-exemple:hover {
+  background: var(--marque-pale);
+}
+
+/* Bulles */
+
+.assistant-bulle {
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--rayon);
+  border: 1px solid var(--bordure);
+  overflow-wrap: anywhere;
+}
+
+.assistant-bulle p,
+.assistant-bulle ul {
+  margin: 0 0 0.4rem;
+}
+
+.assistant-bulle > :last-child {
+  margin-bottom: 0;
+}
+
+.assistant-bulle ul {
+  padding-left: 1.1rem;
+}
+
+.assistant-bulle-utilisateur {
+  margin-left: 2rem;
+  background: var(--marque-pale);
+  border-color: var(--marque-pale);
+  white-space: pre-line;
+}
+
+.assistant-bulle-assistant {
+  margin-right: 1rem;
+  background: var(--surface);
+}
+
+.assistant-bulle-attente {
+  margin-right: 1rem;
+  color: var(--texte-discret);
+  background: var(--fond);
+  font-style: italic;
+}
+
+.assistant-bulle-attente::after {
+  content: "";
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-left: 0.4rem;
+  border: 2px solid var(--bordure-forte);
+  border-top-color: var(--marque);
+  border-radius: 50%;
+  vertical-align: -0.1rem;
+  animation: assistant-rotation 0.9s linear infinite;
+}
+
+@keyframes assistant-rotation {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.assistant-bulle-erreur {
+  margin-right: 1rem;
+  background: var(--erreur-pale);
+  border-color: var(--erreur);
+}
+
+.assistant-bulle-attention {
+  margin-right: 1rem;
+  background: var(--attention-pale);
+  border-color: var(--attention);
+}
+
+.assistant-qui {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.assistant-liens {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.8rem;
+  font-size: 0.9rem;
+}
+
+.assistant-reference {
+  font-size: 0.8rem;
+  color: var(--texte-discret);
+}
+
+/* Propositions à confirmer */
+
+.assistant-proposition {
+  margin: 0.5rem 0 0.2rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--bordure-forte);
+  border-left: 4px solid var(--marque);
+  border-radius: var(--rayon);
+  background: var(--surface);
+}
+
+.assistant-proposition h3 {
+  margin: 0 0 0.3rem;
+  font-size: 0.95rem;
+}
+
+.assistant-proposition p {
+  margin: 0 0 0.35rem;
+}
+
+.assistant-proposition-avant {
+  color: var(--texte-discret);
+  text-decoration: line-through;
+}
+
+.assistant-proposition-details {
+  margin: 0 0 0.4rem;
+  padding-left: 1.1rem;
+  font-size: 0.9rem;
+  color: var(--texte-discret);
+}
+
+.assistant-proposition-confirmee {
+  border-left-color: var(--succes);
+}
+
+.assistant-proposition-refusee,
+.assistant-proposition-abandonnee {
+  border-left-color: var(--bordure-forte);
+}
+
+.assistant-proposition-echouee {
+  border-left-color: var(--erreur);
+}
+
+.assistant-proposition-boutons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.3rem 0;
+}
+
+.assistant-proposition-boutons form {
+  margin: 0;
+}
+
+.assistant-proposition-boutons .bouton,
+.assistant-bulle .bouton,
+.assistant-saisie .bouton,
+.assistant-nouvelle .bouton {
+  min-height: 2.75rem;
+}
+
+.assistant-compte-rendu {
+  margin: 0.3rem 0 0;
+  font-weight: 600;
+}
+
+/* Saisie */
+
+.assistant-saisie {
+  flex: 0 0 auto;
+}
+
+.assistant-saisie textarea {
+  resize: vertical;
+}
+
+.assistant-saisie .discret {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+}
+
+.assistant-saisie-boutons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.assistant-compteur {
+  font-size: 0.85rem;
+  color: var(--texte-discret);
+}
+
+.assistant-nouvelle {
+  margin: 0.5rem 0 0;
+}
+
+@media (max-width: 480px) {
+  .assistant-saisie textarea {
+    min-height: 3.2rem;
+  }
+
+  .assistant-bulle-utilisateur {
+    margin-left: 1rem;
+  }
+
+  .assistant-bulle-assistant,
+  .assistant-bulle-attente,
+  .assistant-bulle-erreur,
+  .assistant-bulle-attention {
+    margin-right: 0;
+  }
+
+  .assistant-fil {
+    max-height: calc(100dvh - 15rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant-fil {
+    scroll-behavior: auto;
+  }
+
+  .assistant-bulle-attente::after {
+    animation: none;
+  }
+}
