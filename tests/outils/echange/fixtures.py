@@ -1,4 +1,4 @@
-"""Fixtures partagées par les tests unitaires et d'intégration du lot « import et export ».
+"""Fixtures partagées par les tests unitaires et d'intégration de l'import et de l'export.
 
 Elles sont définies ici une seule fois, puis importées par leur nom dans le
 `conftest.py` de chaque côté qui s'en sert. Les fixtures de `tests/conftest.py`

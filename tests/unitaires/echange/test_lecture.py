@@ -314,7 +314,7 @@ def test_fichier_sans_cellule_remplie_est_signale_comme_vide(fichier, attendu, b
     """Cas : un fichier sans aucune cellule de données (BOM seul, « ;;; », Lisez-moi seul...).
 
     Risque : rapport sans bilan ni signalement, affiché « Aucune ligne rejetée » :
-    l'utilisateur croyait son fichier pris en compte.
+    l'utilisateur croirait son fichier pris en compte.
     """
     lu, signalements = lire_fichier(fichier)
 
@@ -344,8 +344,8 @@ def test_fichier_d_en_tetes_seuls_dit_rien_a_traiter(base, importer):
 def test_classeur_protege_par_mot_de_passe_signale_clairement():
     """Cas : un classeur .xlsx enregistré avec un mot de passe (conteneur OLE2 chiffré).
 
-    Risque : annoncé « format Excel 97-2003 (.xls) », il laissait l'utilisateur,
-    qui envoie déjà un .xlsx, sans comprendre qu'il fallait retirer le mot de passe.
+    Risque : annoncé « format Excel 97-2003 (.xls) », il laisserait l'utilisateur,
+    qui envoie déjà un .xlsx, sans comprendre qu'il faut retirer le mot de passe.
     """
     lu, signalements = lire_fichier(FichierEnvoye("donnees.xlsx", OLE2 + b"\x00" * 600))
 
@@ -389,7 +389,7 @@ def test_cellule_date_dans_une_colonne_code_est_refusee_avec_explication(
     """Cas : un code « 1-2 » (ou « 8:30 ») que le tableur a converti en date ou en heure.
 
     Risque : « 2026-01-02 00:00:00 » enregistré comme code, sans avertissement ;
-    les références à ce groupe échouaient ensuite sans explication.
+    les références à ce groupe échoueraient ensuite sans explication.
     """
     fichier = classeur({nom_feuille: [entetes, cellules]})
 
@@ -405,7 +405,7 @@ def test_cellule_date_dans_une_colonne_code_est_refusee_avec_explication(
 def test_valeur_trop_longue_pour_sa_colonne_rejetee():
     """Cas : une feuille salles avec un code de 5 000 caractères, un bâtiment de 10 000.
 
-    Risque : SQLite n'impose pas la longueur VARCHAR : la ligne entrait et déformait
+    Risque : SQLite n'impose pas la longueur VARCHAR : la ligne entrerait et déformerait
     listes, menus et noms de fichiers d'export.
     """
     fichier = csv_envoye(

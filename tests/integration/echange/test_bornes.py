@@ -70,7 +70,7 @@ def test_page_bornee_et_rapport_complet_telechargeable(jeu_minimal, client):
 
 
 def test_fichier_de_19_mo_refuse_vite_par_le_web(base, client):
-    """Le scénario de la revue : annees.csv de 19,5 Mo, 1 200 000 lignes invalides."""
+    """Fichier annees.csv de 19,5 Mo, 1 200 000 lignes invalides."""
     contenu = b"libelle;date_debut;date_fin\n" + b"x;pas une date;y\n" * 1_200_000
     assert len(contenu) < service.TAILLE_MAX_OCTETS
     debut = time.perf_counter()

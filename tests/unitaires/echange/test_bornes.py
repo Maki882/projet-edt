@@ -1,6 +1,6 @@
-"""Bornes contre les fichiers hostiles (site public) et corrections de la revue d'ensemble.
+"""Bornes contre les fichiers hostiles (site public) et contre les appels directs du service.
 
-Chaque constat bloquant est reproduit (archive bombe, fichier trop long,
+Chaque fichier hostile est reproduit (archive bombe, fichier trop long,
 page qui gèle le serveur) et le refus propre est vérifié.
 """
 
@@ -40,7 +40,7 @@ from edt.services import echange as service
 from edt.services.echange import ModeImport, OptionsImport
 
 # --------------------------------------------------------------------------- #
-# Constat 2 : archive bombe
+# Archive bombe
 # --------------------------------------------------------------------------- #
 
 
@@ -100,7 +100,7 @@ def test_le_gabarit_reste_sous_les_bornes_d_un_classeur(base):
 
 
 # --------------------------------------------------------------------------- #
-# Constat 3 : fichier trop long, page géante, boucle d'événements gelée
+# Fichier trop long, page géante, boucle d'événements gelée
 # --------------------------------------------------------------------------- #
 
 
@@ -177,7 +177,7 @@ def test_signalements_bornes_et_comptes():
 
 
 # --------------------------------------------------------------------------- #
-# Constats 4 et 5
+# Formules neutralisées dans les CSV, borne d'événements de l'import iCal
 # --------------------------------------------------------------------------- #
 
 
@@ -228,7 +228,7 @@ def test_import_d_emploi_du_temps_limite_aussi_l_ical(jeu_minimal, importer, mon
 # --------------------------------------------------------------------------- #
 
 ENORME = 10**20
-"""Au-delà des entiers de SQLite (2**63 - 1) : faisait planter le flush."""
+"""Au-delà des entiers de SQLite (2**63 - 1) : ferait planter le flush."""
 
 
 @pytest.mark.cas_limite
@@ -268,8 +268,8 @@ def test_entier_hors_bornes_sqlite_rejette_la_ligne_sans_planter(
 ):
     """Cas : une capacité, un effectif ou un nombre de séances de 10**20 parmi des lignes valides.
 
-    Risque : OverflowError au flush de SQLite, non capturée : tout l'import échouait
-    (erreur 500 ou code 2) et aucune ligne du fichier n'entrait.
+    Risque : OverflowError au flush de SQLite, non capturée : tout l'import échouerait
+    (erreur 500 ou code 2) et aucune ligne du fichier n'entrerait.
     """
     avant = compter(modele)
 
@@ -306,9 +306,9 @@ def test_debordement_d_entier_de_sqlite_rejette_sa_ligne_seule(jeu_minimal, impo
 def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
     """Cas : une autre connexion veut écrire pendant qu'un import a ouvert sa transaction.
 
-    Risque : en transaction différée (BEGIN émis par le moteur), l'import lisait
-    sans verrou puis échouait aussitôt « database is locked » si une autre écriture
-    avait validé entre-temps (SQLite n'attend pas dans ce cas). simulation_possible
+    Risque : en transaction différée (BEGIN émis par le moteur), l'import lirait
+    sans verrou puis échouerait aussitôt « database is locked » si une autre écriture
+    validait entre-temps (SQLite n'attend pas dans ce cas). simulation_possible
     ouvre la transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE).
     """
     with session_base() as session, simulation_possible(session, simuler=True):
@@ -324,8 +324,8 @@ def test_import_reserve_la_base_des_son_ouverture(jeu_minimal, environnement):
 def test_deux_imports_simultanes_sont_serialises_sans_erreur(jeu_minimal):
     """Cas : deux imports appliqués au même moment (deux onglets du navigateur).
 
-    Risque : en transaction différée, le second échouait « base occupée » au lieu
-    d'attendre la fin du premier, ou l'un écrasait l'autre. Chaque import ouvre sa
+    Risque : en transaction différée, le second échouerait « base occupée » au lieu
+    d'attendre la fin du premier, ou l'un écraserait l'autre. Chaque import ouvre sa
     transaction par edt.db.moteur.transaction_immediate (BEGIN IMMEDIATE) : le
     second attend son tour, dans la limite du délai de verrou du socle.
     """
@@ -414,8 +414,8 @@ def test_lecture_ical_faite_avant_de_reserver_la_base(
 ):
     """Cas : un import d'emploi du temps iCal dont les récurrences prennent du temps à calculer.
 
-    Risque : lu dans la transaction (BEGIN IMMEDIATE), l'agenda réservait la base
-    pendant tout son calcul : une saisie simultanée attendait, puis échouait
+    Risque : lu dans la transaction (BEGIN IMMEDIATE), l'agenda réserverait la base
+    pendant tout son calcul : une saisie simultanée attendrait, puis échouerait
     « base occupée ».
     """
     ordre = []
@@ -454,7 +454,7 @@ def test_lecture_ical_faite_avant_de_reserver_la_base(
 def test_budget_de_calcul_ical_partage_par_l_envoi(jeu_minimal, importer, monkeypatch):
     """Cas : un envoi de quatre fichiers iCal, chacun aux récurrences coûteuses.
 
-    Risque : avec un délai par fichier, un envoi de N fichiers hostiles occupait le
+    Risque : avec un délai par fichier, un envoi de N fichiers hostiles occuperait le
     serveur N fois DELAI_RECURRENCES ; le délai vaut pour tout l'envoi.
     """
     secondes = itertools.count()  # horloge factice : chaque règle coûte deux « secondes »
@@ -481,9 +481,9 @@ def test_budget_de_calcul_ical_partage_par_l_envoi(jeu_minimal, importer, monkey
 def test_service_appele_avec_un_identifiant_hors_base_repond_introuvable(
     jeu_minimal, fichier_exemple
 ):
-    """Cas : un appelant du service (commande, futur assistant) passe un identifiant de 10**20.
+    """Cas : un appelant du service (commande, script, assistant) passe un identifiant de 10**20.
 
-    Risque : session.get levait OverflowError, « erreur inattendue » au lieu de
+    Risque : session.get lèverait OverflowError, « erreur inattendue » au lieu de
     « n'existe pas » : les bornes des adresses et des options ne protègent pas un
     appel direct du service.
     """

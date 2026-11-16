@@ -1,6 +1,6 @@
 """Données fictives : générateur d'un établissement d'ingénieurs complet, réaliste et faisable.
 
-L'école n'a fourni aucune donnée : ce paquet fabrique un établissement fictif
+Ce paquet fabrique un établissement fictif complet
 (sites, salles, groupes, étudiants, enseignants, matières, calendrier,
 besoins, indisponibilités) qui alimente les tests, le solveur et la
 démonstration. Tout est fictif : aucun nom réel, aucune donnée de santé.

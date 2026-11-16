@@ -17,7 +17,7 @@ export se réimporte comme emploi du temps existant.
 iCal : fuseau Europe/Paris déclaré (VTIMEZONE), identifiants d'événement
 stables (`seance-<besoin>-<rang>@edt` pour la semaine type,
 `occurrence-<id>@edt` pour une séance datée), lieu, description lisible et
-propriétés `X-EDT-*` relues par notre import. En couche `hebdo`, chaque
+propriétés `X-EDT-*` relues par l'import de l'application. En couche `hebdo`, chaque
 séance est un événement récurrent hebdomadaire ; les semaines inactives et
 les jours fermés en sont exclus (EXDATE).
 """

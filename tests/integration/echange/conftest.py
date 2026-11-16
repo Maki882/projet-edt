@@ -1,4 +1,4 @@
-"""Fixtures des tests d'intégration du lot « import et export ».
+"""Fixtures des tests d'intégration de l'import et de l'export.
 
 Les fixtures partagées (`fichier_exemple`, `importer`, `version_reference`)
 viennent de `tests/outils/echange/fixtures.py` ; s'y ajoute, propre à ce côté :
@@ -18,6 +18,6 @@ DELAI = 30
 
 @pytest.fixture
 def version_generee(jeu_minimal) -> int:
-    """Identifiant d'une version générée (moteur provisoire) sur le jeu minimal."""
+    """Identifiant de la version produite par un calcul complet sur le jeu minimal."""
     suivi = generation.attendre_calcul(generation.lancer_calcul(jeu_minimal.semestre_id), DELAI)
     return generation.exiger_reussite(suivi).version_id

@@ -1,1 +1,1 @@
-"""Tests unitaires du lot « import et export » : modules exercés par leurs fonctions Python."""
+"""Tests unitaires de l'import et de l'export : modules exercés par leurs fonctions Python."""

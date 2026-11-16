@@ -19,7 +19,7 @@ C'est un **adaptateur isolé** : il produit le même tableau intermédiaire
   reconstitution (`SeanceLue.recurrente`).
 - Champs : les propriétés `X-EDT-MATIERE`, `X-EDT-TYPE`, `X-EDT-GROUPES`,
   `X-EDT-ENSEIGNANTS`, `X-EDT-SALLE`, `X-EDT-STATUT` et `X-EDT-LIBELLE`
-  (écrites par notre export) priment ; à défaut, le type vient de
+  (écrites par l'export de l'application) priment ; à défaut, le type vient de
   `CATEGORIES`, la salle de `LOCATION`, le libellé de `SUMMARY`. Ce qui manque (matière, groupes)
   fait mettre la séance de côté par la reconstitution, avec un message.
 - Un événement sur la journée entière, sans heure de fin ou sur plusieurs
@@ -494,7 +494,7 @@ def _verifier_regle(regle: Any, debut: dt.datetime) -> None:
     seule limite l'an 9999 : une règle sans occurrence possible (« le 31
     février », le mois 13) l'occupe plusieurs secondes, une répétition à
     l'heure ou à la minute jusqu'à vingt, et un intervalle nul ne s'arrête
-    jamais (constaté). Aucune de ces formes ne décrit un cours : elles sont
+    jamais. Aucune de ces formes ne décrit un cours : elles sont
     refusées avant tout calcul. Les combinaisons mensuelles ou annuelles
     impossibles restantes coûtent moins d'une seconde, sous `DELAI_RECURRENCES`.
     """

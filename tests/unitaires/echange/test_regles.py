@@ -38,7 +38,7 @@ TROIS_REGLES = ENTETE + (
 
 def _csv(texte: str, nom: str = "regles.csv") -> FichierEnvoye:
     """Un CSV en mémoire. Une cellule de paramètres qui contient des « ; » est entre guillemets,
-    comme l'écrivent un tableur et notre export."""
+    comme l'écrivent un tableur et l'export de l'application."""
     return FichierEnvoye(nom, texte.encode("utf-8"))
 
 

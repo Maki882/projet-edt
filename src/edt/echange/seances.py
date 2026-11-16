@@ -1,13 +1,13 @@
 """Tableau intermédiaire des séances d'un emploi du temps existant, et lecteur du tableau plat.
 
-Tout lecteur d'emploi du temps (le tableau plat CSV/XLSX de notre format,
-le fichier iCal, un futur adaptateur pour un autre logiciel) produit la même
+Tout lecteur d'emploi du temps (le tableau plat CSV/XLSX du format d'échange,
+le fichier iCal, tout adaptateur pour un autre logiciel) produit la même
 chose : une liste de `SeanceLue`. La reconstitution des besoins et de la
 semaine type (`edt.echange.reconstitution`) ne lit rien d'autre.
 
 Une `SeanceLue` garde les références **telles qu'écrites** (codes de
 matière, de groupes, identifiants d'enseignants, code de salle) : leur
-résolution, avec les règles décidées par l'équipe (enseignant inconnu,
+résolution, avec ses règles (enseignant inconnu,
 salle à définir, groupe inconnu...), appartient à la reconstitution.
 
 Écrire un adaptateur pour un autre logiciel : une fonction pure

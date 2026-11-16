@@ -1,1 +1,1 @@
-"""Tests d'intégration du lot « import et export » : web, ligne de commande, calcul complet."""
+"""Tests d'intégration de l'import et de l'export : web, ligne de commande, calcul complet."""

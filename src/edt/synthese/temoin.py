@@ -7,7 +7,9 @@ des places forme un emploi du temps **témoin** valide ; il n'est pas écrit
 en base (le solveur doit trouver sa propre solution), il est renvoyé dans
 le rapport.
 
-Règles respectées (sémantique exacte du projet, voir `docs/decisions.md`) :
+Règles respectées (sémantique exacte du projet : `docs/verification.md`,
+« Définitions communes », et `docs/architecture.md`, « Sémantique des
+contraintes ») :
 
 - deux séances *coexistent* si elles ont lieu le même jour et que leurs
   semaines actives se croisent (masques de bits) ; elles se *chevauchent* si
@@ -381,10 +383,6 @@ class Temoin:
         self._dejeuner_enseignants = grille.parametres.fenetre_dejeuner
 
     # -- API ------------------------------------------------------------------
-
-    def charge_enseignant(self, cle: int) -> int:
-        """Minutes hebdomadaires déjà confiées à l'enseignant (toutes semaines confondues)."""
-        return self._charge_enseignant.get(cle, 0)
 
     def placer(self, demande: Demande) -> Resultat:
         """Place toutes les séances de la demande, ou aucune (avec la raison)."""

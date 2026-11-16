@@ -183,7 +183,7 @@ def test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable(format_, 
 
     Risque : OverflowError de SQLite au-delà de 2**63 (ValueError au-delà de 4 300
     chiffres) : page « erreur inattendue » 500 au lieu du 404 « n'existe pas » des
-    écrans Données (cas transmis par le lot web EDT).
+    écrans Données.
     """
     for version in VERSIONS_INEXISTANTES:
         reponse = client.get(f"/export/emploi-du-temps.{format_}", params={"version_id": version})

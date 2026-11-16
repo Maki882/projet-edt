@@ -281,7 +281,7 @@ def prevoir_regles(r: Reperes) -> list[ReglePrevue]:
 
 
 def regles_de_base() -> list[ReglePrevue]:
-    """Les règles de base du catalogue, proposées (sans effet tant qu'on ne les confirme pas)."""
+    """Les règles de base du catalogue, proposées (sans effet tant qu'elles ne sont pas confirmées)."""
     return [
         ReglePrevue(
             base.type,
