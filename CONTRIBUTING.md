@@ -32,7 +32,7 @@ La protection de branche n'est pas disponible sur ce dépôt : GitHub
 n'empêche pas techniquement de pousser sur `main`. La règle est donc une
 règle d'équipe, que chacun applique :
 
-- **On ne pousse jamais directement sur `main`.** Tout passe par une pull
+- **Aucun envoi direct sur `main`.** Tout passe par une pull
   request.
 - **Une branche par tâche**, créée depuis `main` à jour, nommée
   `type/description-courte` : `feat/import-csv`, `fix/pause-dejeuner`,

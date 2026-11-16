@@ -1,6 +1,6 @@
 # Carte de la documentation
 
-Cette page dit quel document lire selon ce que l'on cherche. Elle s'adresse à
+Cette page dit quel document lire selon la question posée. Elle s'adresse à
 tout lecteur du dépôt : utilisateur de l'application, enseignant, développeur
 ou exploitant du serveur.
 

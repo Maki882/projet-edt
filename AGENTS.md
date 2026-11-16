@@ -30,7 +30,7 @@ Deux principes non négociables :
 - **Secrets** : ne jamais lire ni écrire un secret (clé, mot de passe,
   jeton, fichier `.env`, `deploy/serveur.env`), ni le recopier dans un
   message, un journal ou un rapport.
-- **Suppressions** : ne supprimer que ce que l'on a créé soi-même, par son
+- **Suppressions** : ne supprimer que ce qui a été créé dans la tâche, par son
   chemin exact ; jamais de suppression par motif ni de nettoyage large.
 - **Relire avant de refaire** : lire le code et la documentation existants
   avant d'écrire ; réutiliser plutôt que dupliquer.
