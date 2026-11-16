@@ -122,6 +122,8 @@ def test_pause_libre_mal_saisie_refusee_sous_le_champ(jeu_minimal, client):
         assert f'<p class="erreur-champ" id="erreur-{champ}">' in reponse.text
         assert message in reponse.text
         assert 'name="dejeuner" value="libre" checked' in reponse.text  # saisie conservée
+        # La section repliée « Pause déjeuner » est dépliée sur la faute, les autres non.
+        assert reponse.text.count('<details class="repliable" open>') == 1
         assert f'name="dejeuner_duree" value="{duree}"' in reponse.text
         assert "Traceback" not in reponse.text
     assert _nb_calculs() == 0

@@ -9,6 +9,7 @@ from sqlalchemy import delete, func, select, update
 from tests.outils.web_edt.aides import DELAI, HX
 
 from edt import solveur
+from edt.config import charger_configuration
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte
@@ -57,8 +58,12 @@ def _nb_calculs() -> int:
 def test_page_generer_recapitule_et_propose_les_regles(jeu_minimal, client):
     page = client.get(f"/calculs?semestre_id={jeu_minimal.semestre_id}").text
 
-    assert '<span class="compteur-nombre">16</span><span class="compteur-libelle">besoins' in page
-    assert '<span class="compteur-nombre">17</span><span class="compteur-libelle">séances' in page
+    assert "16 besoins d&#39;enseignement, soit 17 séances par semaine type" in page
+    # Quatre sections repliées derrière leur résumé, aucune ouverte par défaut.
+    formulaire = page.split('id="formulaire-calcul"', 1)[1]
+    assert formulaire.count('<details class="repliable"') == 4
+    assert '<details class="repliable" open' not in formulaire
+    assert "13 règles réglables, toutes à leur niveau par défaut ; 6 toujours nécessaires" in page
     catalogue = page.count('name="niveau_') - page.count('name="niveau_regle_')
     assert catalogue == 3 * len(MODIFIABLES)  # trois niveaux par règle du catalogue
     assert 'name="contraintes"' not in page  # pas de case pour ignorer une règle
@@ -226,7 +231,7 @@ def test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine(
     assert refuse.etat is EtatCalcul.INFAISABLE and refuse.statistiques["refuse"]
 
     page = client.get(f"/calculs/{refuse.id}").text
-    assert "Calcul non lancé : impossibilités relevées avant la recherche" in page
+    assert "Calcul non lancé : points bloquants relevés avant la recherche" in page
     assert "La classe A1-G1 n&#39;a aucun créneau libre." in page
     assert "Impossible avec ces contraintes" not in page
 
@@ -363,6 +368,57 @@ def test_historique_activation_et_suppression_des_versions(version_generee, clie
     assert restantes == [(premiere, True)]
 
 
+@pytest.mark.cas_limite
+def test_double_clic_sur_supprimer_une_version(version_generee, client):
+    """Cas : double clic sur « Supprimer » d'une version : deux envois identiques, le navigateur
+    affiche la réponse du second.
+    Risque : page « Élément introuvable » (404) alors que la suppression demandée a bien eu lieu.
+    """
+    second = generation.attendre_calcul(
+        generation.lancer_calcul(version_generee.semestre_id), DELAI
+    )
+    client.post(f"/versions/{version_generee.version_id}/activer")
+    reponses = [
+        client.post(f"/versions/{second.version_id}/supprimer", follow_redirects=False)
+        for _ in range(2)
+    ]
+    assert [r.status_code for r in reponses] == [303, 303]
+    assert reponses[1].headers["location"] == "/versions"
+    page = client.get("/versions")
+    assert page.status_code == 200 and "déjà été supprimée" in page.text
+
+
+@pytest.mark.cas_limite
+def test_double_clic_sur_lancer_le_calcul(jeu_minimal, client, monkeypatch):
+    """Cas : double clic sur « Lancer le calcul » : le second envoi arrive pendant que le calcul
+    lancé par le premier démarre.
+    Risque : bandeau « Un calcul est déjà en cours » qui fait croire à un problème alors que le
+    calcul demandé tourne ; deux calculs lancés.
+    """
+    demarre = threading.Event()
+
+    def moteur_lent(instantane, options, arret=None):
+        demarre.set()
+        arret.wait(DELAI)
+        return ResultatSolveur(StatutSolveur.ARRETE)
+
+    monkeypatch.setattr(solveur, "resoudre", moteur_lent)
+    premier = _lancer(client, jeu_minimal.semestre_id)
+    try:
+        second = client.post(
+            "/calculs", data=_formulaire(jeu_minimal.semestre_id), follow_redirects=False
+        )
+        assert second.status_code == 303
+        assert second.headers["location"] == f"/calculs/{premier}"
+        page = client.get(second.headers["location"]).text
+        assert "Calcul lancé." in page and "déjà en cours" not in page
+        assert _nb_calculs() == 1
+    finally:
+        generation.demander_arret(premier)
+    assert demarre.wait(DELAI)
+    assert generation.attendre_calcul(premier, DELAI).etat is EtatCalcul.ARRETE
+
+
 def test_arret_avec_solution_conservee(jeu_minimal, client, monkeypatch):
     """Arrêt demandé alors qu'une solution existe : réussite, et l'écran dit que c'est un arrêt."""
     import dataclasses
@@ -403,7 +459,7 @@ def test_bilan_de_qualite_du_moteur_sans_doublon(jeu_minimal, client):
     assert suivi.reussi and "Bilan sur l'ensemble du semestre" in suivi.message
 
     page = client.get(f"/calculs/{calcul_id}").text
-    assert "<strong>Qualité :</strong> Bilan sur l&#39;ensemble du semestre" in page
+    assert "<p>Bilan sur l&#39;ensemble du semestre" in page
     assert "Emploi du temps trouvé :" not in page  # déjà dit par les compteurs
     assert calculs.qualite_du_moteur(
         "Emploi du temps trouvé : 3 séance(s) placée(s). Bilan sur l'ensemble du semestre : "
@@ -466,6 +522,11 @@ def test_calcul_interrompu_par_un_redemarrage(version_generee, client, version_e
     assert "Le calcul n&#39;a pas pu aboutir" in page
     assert "interrompu par un arrêt de l&#39;application" in page and "problème" not in page
     assert "Relancer le même calcul" in page
+    # Le suivi interrogé chaque seconde reçoit la même fin : formulaire de relance, références
+    # techniques repliées.
+    fragment = client.get(f"/calculs/{calcul_id}/etat", headers=HX).text
+    assert f'action="/calculs/{calcul_id}/relancer"' in fragment
+    assert "<summary>Références pour obtenir de l'aide</summary>" in fragment
     if version_enregistree:
         assert "Aucun emploi du temps n&#39;a été enregistré" not in page
         assert "Produire les séances datées" in page and "Voir l'emploi du temps" in page
@@ -501,3 +562,49 @@ def test_prechauffage_qui_ne_peut_pas_demarrer_ne_casse_pas_la_page(
     assert page.status_code == 200 and "Emploi du temps généré" in page.text
     assert any("Préchauffage des écrans non lancé" in r.getMessage() for r in caplog.records)
     assert not prechauffage._en_cours  # la demande suivante pourra relancer le préchauffage
+
+
+def test_prechauffage_apres_un_calcul_sur_une_version_active(version_generee, monkeypatch):
+    """Deux demandes rapprochées de préchauffage après un calcul réussi : sans erreur ni trace."""
+    monkeypatch.setattr(prechauffage, "ACTIF", True)
+    assert prechauffage.lancer(charger_configuration().db_url)
+    prechauffage.lancer(charger_configuration().db_url)  # ignorée si le premier fil tourne
+    for fil in threading.enumerate():
+        if fil.name == "prechauffage-ecrans":
+            fil.join(DELAI)
+    assert not prechauffage._en_cours
+
+
+@pytest.mark.cas_limite
+def test_retouches_de_la_version_active_annoncees_avant_le_calcul(reperes, client):
+    """Cas : une séance datée de la version active est annulée à la main, puis l'utilisateur
+    revient sur Générer.
+    Risque : le nouveau calcul crée une version sans cette retouche et la séance annulée
+    réapparaît, sans que personne ait été prévenu.
+    """
+    page = client.get(f"/calculs?semestre_id={reperes.semestre}").text
+    assert "retouche à la main" not in page
+    annulation = client.post(
+        f"/emploi-du-temps/occurrences/{reperes.occurrence}/annuler", data={"motif": "Grève"}
+    )
+    assert annulation.status_code in (200, 303)
+    page = client.get(f"/calculs?semestre_id={reperes.semestre}").text
+    assert "La version active compte 1 retouche à la main" in page
+    assert "seules les séances verrouillées gardent leur place" in page
+
+
+@pytest.mark.cas_limite
+def test_generer_sans_aucun_besoin_dit_quoi_faire(base, client):
+    """Cas : page Générer d'un semestre qui n'a encore aucun besoin (base neuve, remise à zéro).
+    Risque : bandeau d'erreur rouge sans issue, ou calcul lancé pour enregistrer une version
+    vide.
+    """
+    with session_base() as session:
+        semestre = session.scalar(select(m.Semestre.id).order_by(m.Semestre.id))
+    page = client.get(f"/calculs?semestre_id={semestre}").text
+    assert "Aucun besoin d'enseignement à placer pour ce semestre." in page
+    for lien in ('href="/besoins"', 'href="/import"', 'href="/jeux"'):
+        assert lien in page, lien
+    assert page.count("""disabled title="Aucun besoin d'enseignement à placer\"""") == 2
+    assert "Rien à calculer pour l&#39;instant" in page
+    assert "Le calcul ne peut pas être lancé" not in page  # pas de bandeau d'erreur

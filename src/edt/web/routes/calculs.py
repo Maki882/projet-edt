@@ -25,14 +25,16 @@ que lire les formulaires et choisir la page.
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 
 from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
-from edt.erreurs import ErreurCalculEnCours
+from edt.erreurs import ErreurCalculEnCours, ErreurIntrouvable
 from edt.services import generation
 from edt.services.emploi_du_temps import (
     calculs,
@@ -48,9 +50,15 @@ from edt.web.menu import EntreeMenu
 
 SECTION_GENERER = "Générer"
 
+DELAI_DOUBLE_ENVOI_S = 5.0
+"""Un second « Lancer le calcul » arrivé si tôt après le premier est un double clic : la page
+dit « Calcul lancé. » comme pour le premier envoi, au lieu d'avertir qu'un calcul est déjà en
+cours."""
+
+journal = logging.getLogger(__name__)
 routeur = APIRouter()
 MENU = [
-    EntreeMenu("Lancer un calcul", "/calculs", section=SECTION_GENERER, ordre=250),
+    EntreeMenu("Générer un emploi du temps", "/calculs", section=SECTION_GENERER, ordre=250),
     EntreeMenu("Historique et versions", "/versions", section=SECTION_GENERER, ordre=260),
 ]
 
@@ -84,9 +92,12 @@ def _page_calculs(
     pre: calculs.PreVerification | None = None,
     dejeuner: calculs.ChoixDejeuner | None = None,
     erreurs_dejeuner: dict[str, str] | None = None,
+    ouvert: frozenset[str] = frozenset(),
     statut: int = 200,
     messages=(),
 ):
+    """La page « Générer ». `ouvert` : sections du formulaire à déplier (celle d'une saisie
+    refusée) ; la pause déjeuner se déplie d'elle-même quand elle a des erreurs."""
     semestres = versions.lister_semestres(session)
     semestre = versions.choisir_semestre(session, semestre_id)
     contexte: dict = {"fmt": presentation, "semestres": semestres, "semestre": semestre}
@@ -102,23 +113,32 @@ def _page_calculs(
             session, semestre.id, choix=choix_regles, dernier=dernier
         )
         niveaux_regles = regles_personnalisees.niveaux_pour_le_calcul(bloc.choix, bloc)
+        regles = calculs.regles_proposees(niveaux)
+        choix = choix or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False}
+        dejeuner = dejeuner or calculs.choix_dejeuner(session)
+        erreurs_dejeuner = erreurs_dejeuner or {}
+        annee_regles = versions.annee_du_semestre(session, semestre.id)
+        # « Ajouter une règle » ramène à cette page une fois la règle créée.
+        retour = {"annee": annee_regles, "retour": f"/calculs?semestre_id={semestre.id}"}
         contexte.update(
             recap=recap,
             pre=pre
             or calculs.pre_verifier(
                 session, semestre.id, niveaux, recap, niveaux_regles=niveaux_regles
             ),
-            regles=calculs.regles_proposees(niveaux),
+            regles=regles,
             niveaux_proposes=calculs.NIVEAUX_PROPOSES,
             bloc_regles=bloc,
-            annee_regles=versions.annee_du_semestre(session, semestre.id),
+            annee_regles=annee_regles,
             adresse_regles=regles_personnalisees.ADRESSE_REGLES,
-            adresse_ajout_regle=regles_personnalisees.ADRESSE_AJOUT_REGLE,
+            adresse_ajout_regle=f"{regles_personnalisees.ADRESSE_AJOUT_REGLE}?{urlencode(retour)}",
             options=options,
-            choix=choix
-            or {"duree": "court", "optimiser": options.optimiser, "autre_solution": False},
-            dejeuner=dejeuner or calculs.choix_dejeuner(session),
-            erreurs_dejeuner=erreurs_dejeuner or {},
+            choix=choix,
+            resumes=calculs.resumer_reglages(regles, bloc, dejeuner, options, choix),
+            ouvert=ouvert | ({"dejeuner"} if erreurs_dejeuner else set()),
+            nb_retouches=calculs.nb_retouches_version_active(session, semestre.id),
+            dejeuner=dejeuner,
+            erreurs_dejeuner=erreurs_dejeuner,
             dejeuner_fixe=calculs.DEJEUNER_FIXE,
             dejeuner_libre=calculs.DEJEUNER_LIBRE,
             dejeuner_aucun=calculs.DEJEUNER_AUCUN,
@@ -211,6 +231,7 @@ def lancer(
             choix=choix,
             dejeuner=saisie,
             erreurs_dejeuner=erreurs_dejeuner,
+            ouvert=frozenset({"regles_personnalisees"}),
             statut=422,
             messages=[Message(erreur.message, "erreur")],
         )
@@ -230,6 +251,7 @@ def lancer(
             choix=choix,
             dejeuner=saisie,
             erreurs_dejeuner=erreurs_dejeuner,
+            ouvert=frozenset({"regles"}),
             statut=422,
             messages=[Message(erreur.message, "erreur")],
         )
@@ -250,6 +272,12 @@ def lancer(
         )
     except ErreurCalculEnCours:
         suivi = generation.calcul_en_cours()
+        if (
+            suivi is not None
+            and suivi.semestre_id == semestre_id
+            and suivi.temps_ecoule_s < DELAI_DOUBLE_ENVOI_S
+        ):
+            return rediriger(request, f"/calculs/{suivi.id}", "Calcul lancé.")
         cible = f"/calculs/{suivi.id}" if suivi else "/calculs"
         return rediriger(
             request, cible, "Un calcul est déjà en cours : voici son avancement.", "attention"
@@ -391,7 +419,17 @@ def activer(request: Request, session: SessionRequete, version_id: int, taches: 
 
 @routeur.post("/versions/{version_id:int}/supprimer", name="supprimer_version")
 def supprimer(request: Request, session: SessionRequete, version_id: int):
-    """Supprime une version qui n'est pas active (après confirmation dans la page)."""
-    semestre_id = versions.lire_version(session, version_id).semestre_id
+    """Supprime une version qui n'est pas active (après confirmation dans la page).
+
+    Une version qui n'existe pas ou plus (double clic, second onglet) mène à l'historique avec un
+    message d'information, jamais à une page d'erreur : le résultat voulu est atteint.
+    """
+    try:
+        semestre_id = versions.lire_version(session, version_id).semestre_id
+    except ErreurIntrouvable:
+        journal.info("Suppression de la version %s : elle n'existe pas ou plus", version_id)
+        return rediriger(
+            request, "/versions", "Cette version n'existe plus : elle a déjà été supprimée.", "info"
+        )
     libelle = versions.supprimer_version(session, version_id)
     return rediriger(request, f"/versions?semestre_id={semestre_id}", f"« {libelle} » supprimée.")

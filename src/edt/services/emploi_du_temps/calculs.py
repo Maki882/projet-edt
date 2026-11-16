@@ -62,8 +62,8 @@ from edt.domaine.contraintes import (
     niveaux_par_defaut,
     normaliser_niveaux,
 )
-from edt.domaine.enumerations import EtatCalcul, Gravite, StatutOccurrence
-from edt.domaine.heures import minutes_vers_hhmm, texte_vers_minutes
+from edt.domaine.enumerations import EtatCalcul, Gravite, OrigineOccurrence, StatutOccurrence
+from edt.domaine.heures import minutes_vers_hhmm, minutes_vers_texte, texte_vers_minutes
 from edt.domaine.parametres import (
     DEJEUNER_AUCUN,
     DEJEUNER_FIXE,
@@ -225,6 +225,15 @@ class PreVerification:
     def bloquante(self) -> bool:
         """Vrai si le calcul ne doit pas être lancé."""
         return bool(self.problemes or self.erreurs)
+
+    @property
+    def rien_a_placer(self) -> bool:
+        """Vrai si le seul point bloquant est un semestre sans séance à placer (rien n'est faux)."""
+        messages = [*self.problemes, *(anomalie.message for anomalie in self.erreurs)]
+        return bool(messages) and all(
+            message in (MESSAGE_AUCUN_BESOIN, generation.MESSAGE_SANS_SEANCE)
+            for message in messages
+        )
 
     @property
     def vide(self) -> bool:
@@ -635,6 +644,130 @@ def pre_verifier(
         erreurs=tuple(a for a in anomalies if a.gravite is Gravite.ERREUR),
         avertissements=tuple(a for a in anomalies if a.gravite is Gravite.AVERTISSEMENT),
         informations=tuple(a for a in anomalies if a.gravite is Gravite.INFORMATION),
+    )
+
+
+@dataclass(frozen=True)
+class ResumesReglages:
+    """Résumé d'une ligne de chaque section repliable du formulaire « Générer ».
+
+    Affiché sur la section repliée : l'utilisateur voit les réglages sans
+    ouvrir la section. Ne contient jamais « (par défaut) », marque réservée
+    aux boutons du tableau des règles.
+    """
+
+    regles: str
+    regles_personnalisees: str
+    dejeuner: str
+    duree_options: str
+
+
+def resumer_reglages(
+    regles: Iterable[RegleProposee],
+    bloc: regles_personnalisees.BlocRegles,
+    dejeuner: ChoixDejeuner,
+    options: OptionsFormulaire,
+    choix: Mapping[str, object],
+) -> ResumesReglages:
+    """Les quatre résumés du formulaire, d'après ce qu'il affiche (préremplissage ou saisie)."""
+    return ResumesReglages(
+        regles=_resume_regles(tuple(regles)),
+        regles_personnalisees=_resume_regles_personnalisees(bloc),
+        dejeuner=_resume_dejeuner(dejeuner),
+        duree_options=_resume_duree_options(options, choix),
+    )
+
+
+def _resume_regles(regles: tuple[RegleProposee, ...]) -> str:
+    modifiables = [regle for regle in regles if regle.modifiable]
+    ecarts = [regle for regle in modifiables if regle.niveau is not regle.niveau_defaut]
+    reglables = presentation.pluriel(len(modifiables), "règle réglable", "règles réglables")
+    fixes = presentation.pluriel(
+        len(regles) - len(modifiables), "toujours nécessaire", "toujours nécessaires"
+    )
+    if not ecarts:
+        return f"{reglables}, toutes à leur niveau par défaut ; {fixes}"
+    details = " ; ".join(f"{regle.libelle} : {regle.niveau.libelle.lower()}" for regle in ecarts)
+    return f"{reglables}, dont {len(ecarts)} à un autre niveau que par défaut ({details}) ; {fixes}"
+
+
+def _resume_regles_personnalisees(bloc: regles_personnalisees.BlocRegles) -> str:
+    if bloc.erreur:
+        return "Règles personnalisées illisibles (voir ci-dessous)"
+    if not bloc.regles:
+        return "Aucune règle personnalisée active"
+    actives = presentation.pluriel(len(bloc.regles), "règle active", "règles actives")
+    ignorees = sum(1 for regle in bloc.regles if regle.ignoree)
+    autres = sum(
+        1 for regle in bloc.regles if not regle.ignoree and regle.niveau is not regle.niveau_regle
+    )
+    if not ignorees and not autres:
+        if len(bloc.regles) == 1:
+            return f"{actives}, à son niveau habituel"
+        return f"{actives}, toutes à leur niveau habituel"
+    parties = []
+    if ignorees:
+        parties.append(presentation.pluriel(ignorees, "ignorée", "ignorées") + " pour ce calcul")
+    if autres:
+        parties.append(
+            presentation.pluriel(
+                autres, "à un autre niveau que le sien", "à un autre niveau que le leur"
+            )
+        )
+    return f"{actives} : " + ", ".join(parties)
+
+
+def _heure_lisible(texte: str) -> str:
+    """« 12:45 » devient « 12 h 45 » ; une saisie illisible (réaffichée après refus) reste telle."""
+    try:
+        return minutes_vers_texte(texte_vers_minutes(texte))
+    except ErreurDonneesInvalides:
+        return texte
+
+
+def _resume_dejeuner(dejeuner: ChoixDejeuner) -> str:
+    libelle = LIBELLES_DEJEUNER.get(dejeuner.mode, dejeuner.mode)
+    debut, fin = _heure_lisible(dejeuner.debut), _heure_lisible(dejeuner.fin)
+    if dejeuner.mode == DEJEUNER_FIXE:
+        return f"{libelle}, de {debut} à {fin}"
+    if dejeuner.mode == DEJEUNER_LIBRE:
+        return f"{libelle} : au moins {dejeuner.duree} min entre {debut} et {fin}"
+    return libelle
+
+
+def _resume_duree_options(options: OptionsFormulaire, choix: Mapping[str, object]) -> str:
+    longue = choix.get("duree") == "long"
+    resume = (
+        f"Recherche jusqu'à {options.temps_long_texte if longue else options.temps_court_texte}"
+    )
+    resume += (
+        " ; emploi du temps plus confortable"
+        if choix.get("optimiser")
+        else " ; sans recherche de confort"
+    )
+    if choix.get("autre_solution"):
+        resume += " ; autre solution que la précédente"
+    return resume
+
+
+def nb_retouches_version_active(session: Session, semestre_id: int) -> int:
+    """Séances datées retouchées à la main (déplacées ou annulées) dans la version active.
+
+    Un nouveau calcul crée une autre version sans ces retouches : l'écran le
+    dit avant le lancement.
+    """
+    return (
+        session.scalar(
+            select(func.count())
+            .select_from(m.Occurrence)
+            .join(m.VersionEdt, m.VersionEdt.id == m.Occurrence.version_id)
+            .where(
+                m.VersionEdt.semestre_id == semestre_id,
+                m.VersionEdt.active.is_(True),
+                m.Occurrence.origine == OrigineOccurrence.MANUELLE,
+            )
+        )
+        or 0
     )
 
 
@@ -1107,8 +1240,8 @@ def _phrases(
 ) -> tuple[str, str, str | None]:
     message = (suivi.message or "").strip()
     if issue == Issue.EN_COURS:
-        phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}. Temps écoulé : {temps}"
-        phrase += f" (au plus {limite})." if limite else "."
+        # Le temps écoulé est dit une seule fois, sous la phrase (gabarit du suivi).
+        phrase = f"Recherche d'un emploi du temps pour le {semestre.libelle.lower()}."
         if suivi.arret_demande:
             phrase += " L'arrêt est demandé : le calcul s'interrompt dès que possible."
         return "Calcul en cours", phrase, None
@@ -1130,7 +1263,7 @@ def _phrases(
         return titre, phrase, None
     if issue == Issue.REFUSE:
         return (
-            "Calcul non lancé : impossibilités relevées avant la recherche",
+            "Calcul non lancé : points bloquants relevés avant la recherche",
             "Les vérifications préalables ont relevé des situations qu'aucun emploi du temps ne "
             "peut satisfaire : la recherche n'a pas été lancée et aucun emploi du temps n'a été "
             "enregistré. Corriger les points ci-dessous, puis relancer.",
