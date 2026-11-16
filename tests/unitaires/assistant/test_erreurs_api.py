@@ -124,13 +124,13 @@ def _pause_levee():
     boucle.lever_la_pause()
 
 
-def _derouler(client):
+def _derouler(faux):
     compteur = itertools.count(1)
     return derouler(
         historique=[],
         texte="Bonjour",
         message_systeme=message_du_tour(AUJOURDHUI, None, ()),
-        client=client,
+        client=faux,
         config=charger_configuration_assistant({"ANTHROPIC_API_KEY": "x"}, version=lambda: "2.8.0"),
         contexte_outils=ContexteOutil("as-test", AUJOURDHUI, lambda: next(compteur)),
         budget=Budget(),

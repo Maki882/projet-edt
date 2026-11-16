@@ -40,13 +40,13 @@ def _contexte() -> ContexteOutil:
     return ContexteOutil("as-test", AUJOURDHUI, lambda: next(compteur))
 
 
-def _derouler(client, *, historique=(), config=None, horloge=None, contexte=None, **options):
+def _derouler(faux, *, historique=(), config=None, horloge=None, contexte=None, **options):
     etapes: list[str] = []
     resultat = derouler(
         historique=list(historique),
         texte="Bonjour",
         message_systeme=message_du_tour(AUJOURDHUI, "/salles", ()),
-        client=client,
+        client=faux,
         config=config or _config(),
         contexte_outils=contexte or _contexte(),
         budget=Budget(),
@@ -70,11 +70,11 @@ def _pause_levee():
 
 
 def test_reponse_directe_et_arguments_envoyes(base):
-    client = FauxClient([reponse_texte("Bonjour, que puis-je faire ?")])
-    resultat, _ = _derouler(client)
+    faux = FauxClient([reponse_texte("Bonjour, que puis-je faire ?")])
+    resultat, _ = _derouler(faux)
     assert resultat.reussi and resultat.texte == "Bonjour, que puis-je faire ?"
     assert resultat.appels == 1 and resultat.modeles == ["claude-opus-5-5"]
-    (arguments,) = client.appels
+    (arguments,) = faux.appels
     assert arguments["model"] == "claude-opus-5-5"
     assert arguments["output_config"] == {"effort": "low"}
     assert arguments["betas"] == ["server-side-fallback-2026-07-01"]
@@ -94,15 +94,15 @@ def test_reponse_directe_et_arguments_envoyes(base):
         and "Page affichée par l'utilisateur : /salles" in systeme["content"]
     )
     assert resultat.messages[-1]["role"] == "assistant"
-    assert client.options == [{"timeout": 40.0, "max_retries": 1}]
+    assert faux.options == [{"timeout": 40.0, "max_retries": 1}]
 
 
 def test_outil_puis_reponse_et_historique_en_ajout_seul(base):
     premiere = reponse_outil("lire_contexte", {})
-    client = FauxClient([premiere, reponse_texte("Nous sommes en 2026-2027.")])
-    resultat, etapes = _derouler(client)
+    faux = FauxClient([premiere, reponse_texte("Nous sommes en 2026-2027.")])
+    resultat, etapes = _derouler(faux)
     assert resultat.reussi and resultat.outils == ["lire_contexte"] and resultat.appels == 2
-    premier, second = (a["messages"] for a in client.appels)
+    premier, second = (a["messages"] for a in faux.appels)
     assert second[: len(premier)] == premier  # ajout seul : aucun message réécrit
     assistant, resultats = second[len(premier) :]
     assert assistant == {"role": "assistant", "content": list(premiere.content)}
@@ -124,10 +124,10 @@ def test_plusieurs_outils_dans_une_reponse_un_seul_message_de_resultats(base):
         ],
         "tool_use",
     )
-    client = FauxClient([appels, reponse_texte("Voilà.")])
-    resultat, _ = _derouler(client)
+    faux = FauxClient([appels, reponse_texte("Voilà.")])
+    resultat, _ = _derouler(faux)
     assert resultat.reussi
-    resultats = client.appels[1]["messages"][-1]
+    resultats = faux.appels[1]["messages"][-1]
     assert resultats["role"] == "user"
     assert [b["tool_use_id"] for b in resultats["content"]] == ["toolu_a", "toolu_b"]
     assert (
@@ -138,10 +138,10 @@ def test_plusieurs_outils_dans_une_reponse_un_seul_message_de_resultats(base):
 
 def test_tour_mis_en_pause_par_le_service_puis_repris(base):
     pause = message([texte("Je continue…")], "pause_turn")
-    client = FauxClient([pause, reponse_texte("Terminé.")])
-    resultat, _ = _derouler(client)
+    faux = FauxClient([pause, reponse_texte("Terminé.")])
+    resultat, _ = _derouler(faux)
     assert resultat.reussi and resultat.appels == 2
-    assert client.appels[1]["messages"][-1] == {"role": "assistant", "content": list(pause.content)}
+    assert faux.appels[1]["messages"][-1] == {"role": "assistant", "content": list(pause.content)}
 
 
 def test_refus_du_modele_rien_n_est_valide(base, caplog):
@@ -183,9 +183,9 @@ def test_trop_d_appels_arrete_l_echange(base):
 
     Risque : une boucle sans fin qui consomme le budget du jour.
     """
-    client = FauxClient([reponse_outil("lire_contexte", {}) for _ in range(3)])
-    resultat, _ = _derouler(client, config=_config(EDT_ASSISTANT_APPELS_MAX="3"))
-    assert resultat.issue is Issue.TROP_D_APPELS and len(client.appels) == 3
+    faux = FauxClient([reponse_outil("lire_contexte", {}) for _ in range(3)])
+    resultat, _ = _derouler(faux, config=_config(EDT_ASSISTANT_APPELS_MAX="3"))
+    assert resultat.issue is Issue.TROP_D_APPELS and len(faux.appels) == 3
     assert resultat.message == "Je n'ai pas pu terminer en 3 étapes : reformulez plus précisément."
 
 
@@ -197,15 +197,15 @@ def test_echeance_de_l_echange_jamais_depassee(base):
     l'échange s'arrête avant l'appel qui dépasserait l'échéance.
     """
     instants = iter([0.0, 0.0, 88.0])
-    client = FauxClient([reponse_outil("lire_contexte", {}), reponse_texte("…")])
-    resultat, _ = _derouler(client, horloge=lambda: next(instants))
-    assert resultat.issue is Issue.DELAI and len(client.appels) == 1
+    faux = FauxClient([reponse_outil("lire_contexte", {}), reponse_texte("…")])
+    resultat, _ = _derouler(faux, horloge=lambda: next(instants))
+    assert resultat.issue is Issue.DELAI and len(faux.appels) == 1
     instants = iter([0.0, 0.0, 70.0])
-    client = FauxClient([reponse_outil("lire_contexte", {}), reponse_texte("Fin.")])
-    resultat, _ = _derouler(client, horloge=lambda: next(instants))
+    faux = FauxClient([reponse_outil("lire_contexte", {}), reponse_texte("Fin.")])
+    resultat, _ = _derouler(faux, horloge=lambda: next(instants))
     assert resultat.reussi
     # Il restait 20 s : délai d'appel ramené à 20 s, sans reprise (elle ne tiendrait pas).
-    assert client.options == [
+    assert faux.options == [
         {"timeout": 40.0, "max_retries": 1},
         {"timeout": 20.0, "max_retries": 0},
     ]
@@ -217,9 +217,9 @@ def test_contexte_trop_long_arrete_avant_l_appel(base):
 
     Risque : un appel très coûteux ; ici aucun appel, et la conversation est close.
     """
-    client = FauxClient([])
-    resultat, _ = _derouler(client, config=_config(EDT_ASSISTANT_CONTEXTE_MAX="5000"))
-    assert resultat.issue is Issue.CONTEXTE and client.appels == []
+    faux = FauxClient([])
+    resultat, _ = _derouler(faux, config=_config(EDT_ASSISTANT_CONTEXTE_MAX="5000"))
+    assert resultat.issue is Issue.CONTEXTE and faux.appels == []
     assert Issue.CONTEXTE in boucle.CLOT_LA_CONVERSATION
 
 
@@ -229,20 +229,18 @@ def test_budget_epuise_aucun_appel(base):
 
     Risque : dépense au-delà du plafond fixé par l'administrateur.
     """
-    client = FauxClient([])
-    resultat, _ = _derouler(client, config=_config(EDT_ASSISTANT_BUDGET_JOUR="0"))
-    assert resultat.issue is Issue.LIMITE and client.appels == []
+    faux = FauxClient([])
+    resultat, _ = _derouler(faux, config=_config(EDT_ASSISTANT_BUDGET_JOUR="0"))
+    assert resultat.issue is Issue.LIMITE and faux.appels == []
     assert "limite du jour" in resultat.message
 
 
 def test_historique_d_une_conversation_prefixe_exact(base):
-    client = FauxClient([reponse_texte("Première réponse."), reponse_texte("Seconde réponse.")])
-    premier, _ = _derouler(client)
-    second, _ = _derouler(
-        client, historique=premier.messages, taille_connue=premier.taille_contexte
-    )
+    faux = FauxClient([reponse_texte("Première réponse."), reponse_texte("Seconde réponse.")])
+    premier, _ = _derouler(faux)
+    second, _ = _derouler(faux, historique=premier.messages, taille_connue=premier.taille_contexte)
     assert second.reussi
-    envoyes = client.appels[1]["messages"]
+    envoyes = faux.appels[1]["messages"]
     assert envoyes[: len(premier.messages)] == premier.messages
     assert premier.taille_contexte == 150  # 100 jetons d'entrée et 50 de sortie
 
