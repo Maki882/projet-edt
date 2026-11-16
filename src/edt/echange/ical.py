@@ -136,6 +136,10 @@ def vers_paris(valeur: dt.datetime) -> dt.datetime:
     return valeur.astimezone(PARIS).replace(tzinfo=None)
 
 
+DATES_INCALCULABLES = "ses dates ne se calculent pas"
+"""Motif du refus d'un événement dont datetime ou dateutil ne calcule pas les dates."""
+
+
 def lire_ical(
     nom: str,
     texte: str,
@@ -237,6 +241,13 @@ def lire_ical(
             "de calcul (règles trop nombreuses, ou sans occurrence possible). Découper "
             "l'envoi ou simplifier ses règles."
         )
+    incalculables = sum(DATES_INCALCULABLES in s.message for s in signalements)
+    if incalculables:
+        journal.warning(
+            "Fichier iCal %s : %d événement(s) aux dates incalculables, non importés",
+            nom,
+            incalculables,
+        )
     journal.info(
         "Fichier iCal %s : %d événement(s), %d séance(s)", nom, len(evenements), len(seances)
     )
@@ -265,12 +276,15 @@ def _lire_ou_signaler(
     except (ValueError, OverflowError, IndexError) as erreur:
         # datetime ou dateutil : date au-delà de l'an 9999 (durée immense, fuseau), ou règle
         # que dateutil ne sait pas développer. L'événement est écarté, la lecture continue ;
-        # une ligne par événement au journal (la trace en DEBUG, pour ne pas le noyer).
-        journal.warning(
-            "Fichier iCal %s, événement ligne %s : dates incalculables (%r)", nom, ligne, erreur
+        # le détail va en DEBUG, `lire_ical` en fait le compte en une ligne.
+        journal.debug(
+            "Fichier iCal %s, événement ligne %s : dates incalculables (%r)",
+            nom,
+            ligne,
+            erreur,
+            exc_info=True,
         )
-        journal.debug("Trace de l'événement ligne %s", ligne, exc_info=True)
-        message = f"Événement illisible : ses dates ne se calculent pas ({erreur}) ; non importé."
+        message = f"Événement illisible : {DATES_INCALCULABLES} ({erreur}) ; non importé."
     signalements.append(Signalement(Gravite.ERREUR, message, nom, "événements", ligne))
     return []
 

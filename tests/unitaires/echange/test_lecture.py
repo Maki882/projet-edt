@@ -253,15 +253,37 @@ def test_classeur_valeurs_excel_typees():
     assert v.lire_entier(cellules[3]) == 40
 
 
-def test_archive_zip_de_csv():
+@pytest.mark.parametrize(
+    "lisez_moi", ["LISEZ-MOI.txt", "export/LISEZ-MOI.txt", r"export\LISEZ-MOI.txt"]
+)
+def test_archive_zip_de_csv(lisez_moi):
     tampon = io.BytesIO()
+    membre = zipfile.ZipInfo("LISEZ-MOI.txt")
+    membre.filename = lisez_moi  # écrit tel quel : ZipInfo changerait « \ » en « / » sous Windows
     with zipfile.ZipFile(tampon, "w") as archive:
         archive.writestr("campus.csv", TEXTE)
-        archive.writestr("LISEZ-MOI.txt", "explications")
+        archive.writestr(membre, "explications")
     tableaux, signalements = _lire("donnees.zip", tampon.getvalue())
     assert [t.nom for t in tableaux] == ["campus.csv"]
     assert tableaux[0].fichier == "donnees.zip/campus.csv"
     assert signalements == []
+
+
+@pytest.mark.cas_limite
+def test_agenda_ical_dans_une_archive_ignore_avec_le_bon_conseil():
+    """Cas : une archive ZIP contient des CSV et un agenda .ics.
+
+    Risque : l'agenda lu comme un tableau (« Tableau non reconnu ») ou ignoré sans un mot ;
+    l'utilisateur ne sait pas qu'il faut l'envoyer à part.
+    """
+    tampon = io.BytesIO()
+    with zipfile.ZipFile(tampon, "w") as archive:
+        archive.writestr("campus.csv", TEXTE)
+        archive.writestr("agenda.ics", "BEGIN:VCALENDAR\nVERSION:2.0\nEND:VCALENDAR\n")
+    tableaux, signalements = _lire("donnees.zip", tampon.getvalue())
+    assert [t.nom for t in tableaux] == ["campus.csv"]
+    erreur = seul(signalements, Gravite.ERREUR)
+    assert erreur.fichier == "donnees.zip/agenda.ics" and "s'envoie à part" in erreur.message
 
 
 def test_ancien_format_excel_refuse_clairement():

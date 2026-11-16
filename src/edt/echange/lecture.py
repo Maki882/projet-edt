@@ -395,7 +395,7 @@ def lire_zip(
     tableaux: list[Tableau] = []
     with zipfile.ZipFile(io.BytesIO(fichier.contenu)) as archive:  # lisible : vérifiée avant
         for membre in archive.infolist():
-            if membre.is_dir() or est_lisez_moi(membre.filename.rsplit("/", 1)[-1]):
+            if membre.is_dir() or est_lisez_moi(nom_sur(membre.filename).rsplit("/", 1)[-1]):
                 continue
             nom_complet = f"{fichier.nom}/{nom_sur(membre.filename)}"
             try:
@@ -419,10 +419,16 @@ def lire_zip(
                     if tableau is not None:
                         tableaux.append(tableau)
             else:
+                conseil = (
+                    "un agenda iCal s'envoie à part, pour importer un emploi du temps existant"
+                    if nature == "ics"
+                    else "une archive ne contient que des fichiers CSV ou XLSX"
+                )
                 signalements.append(
                     _erreur(
                         nom_complet,
-                        f"Fichier de type {nature} non pris en charge dans une archive.",
+                        f"Fichier de type {nature} non pris en charge dans une archive : "
+                        f"{conseil}. Fichier ignoré.",
                     )
                 )
     return tableaux

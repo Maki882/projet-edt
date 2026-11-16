@@ -324,6 +324,20 @@ def test_evenement_aux_dates_incalculables_ecarte_sans_arreter_la_lecture(propri
 
 
 @pytest.mark.cas_limite
+def test_evenements_aux_dates_incalculables_comptes_en_une_ligne_de_journal(caplog):
+    """Cas : un fichier hostile de nombreux événements aux dates incalculables.
+
+    Risque : une ligne d'avertissement par événement, jusqu'à 50 000 lignes de journal pour
+    un seul envoi ; le rapport, lui, garde une erreur par événement.
+    """
+    incalculables = ["DTSTART:20261005T083000\nDURATION:P99999999W"] * 3
+    with caplog.at_level("WARNING", logger="edt.echange.ical"):
+        _, signalements = _lire(*incalculables, SIMPLE)
+    assert len(erreurs(signalements)) == 3
+    assert len(caplog.records) == 1 and "3 événement(s)" in caplog.records[0].getMessage()
+
+
+@pytest.mark.cas_limite
 def test_fichier_aux_recurrences_trop_couteuses_refuse_en_entier(monkeypatch):
     """Cas : des règles qui, ensemble, épuisent le temps de calcul d'un fichier (DELAI_RECURRENCES).
 

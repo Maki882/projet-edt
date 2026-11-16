@@ -330,13 +330,31 @@ def en_ical(session: Session, export: Export) -> bytes:
     calendrier.add("x-wr-timezone", NOM_FUSEAU)
     calendrier.add_component(fuseau_paris())
     horodatage = export.version.cree_le.replace(tzinfo=PARIS).astimezone(dt.UTC)
-    instantane = None
+    instantane, connues = None, frozenset()
     if export.couche is Couche.HEBDO and export.elements:
         instantane = charger_instantane(session, export.version.semestre_id)
+        connues = frozenset(s.numero for s in instantane.semaines)
+    hors_semestre: set[int] = set()
+    seances_touchees = 0
     for element in export.elements:
-        evenement = _evenement(export, element, horodatage, instantane)
+        if element.date is None:
+            hors = set(element.semaines) - connues
+            hors_semestre |= hors
+            seances_touchees += bool(hors)
+        evenement = _evenement(export, element, horodatage, instantane, connues)
         if evenement is not None:
             calendrier.add_component(evenement)
+    if hors_semestre:
+        # Les dates du semestre ont changé depuis la version : ces semaines n'ont plus de
+        # date. L'export garde les autres et le journal le dit, une fois par export.
+        journal.warning(
+            "Export iCal de la version %d : %d séance(s) ont des semaines hors du semestre "
+            "actuel (%s), ignorées : %s",
+            export.version.id,
+            seances_touchees,
+            instantane.libelle,
+            ", ".join(map(str, sorted(hors_semestre))),
+        )
     return calendrier.to_ical()
 
 
@@ -346,27 +364,15 @@ def _paris(jour: dt.date, minutes: int) -> dt.datetime:
     )
 
 
-def _evenement(export: Export, e: Element, horodatage: dt.datetime, instantane) -> Event | None:
+def _evenement(
+    export: Export, e: Element, horodatage: dt.datetime, instantane, connues: frozenset[int]
+) -> Event | None:
     b = e.besoin
     evenement = Event()
     if e.date is not None:
         evenement.add("uid", f"occurrence-{e.occurrence_id}@{DOMAINE_UID}")
         premiere = e.date
     else:
-        connues = {s.numero for s in instantane.semaines}
-        hors = sorted(set(e.semaines) - connues)
-        if hors:
-            # Les dates du semestre ont changé depuis la version : ces semaines n'ont plus de
-            # date. L'export garde les autres et le journal le dit.
-            journal.warning(
-                "Export iCal de la version %d : séance %d-%s, semaine(s) %s hors du semestre "
-                "actuel (%s), ignorée(s)",
-                export.version.id,
-                b.id,
-                e.rang,
-                ", ".join(map(str, hors)),
-                instantane.libelle,
-            )
         semaines = [instantane.semaine(n) for n in e.semaines if n in connues]
         if not semaines:
             return None
