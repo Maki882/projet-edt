@@ -30,6 +30,7 @@ from typing import Annotated
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Form, Request
+from starlette.responses import Response
 
 from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
@@ -94,6 +95,7 @@ def _page_calculs(
     ouvert: frozenset[str] = frozenset(),
     statut: int = 200,
     messages=(),
+    refuse_pendant_les_tests: bool = False,
 ):
     """La page « Générer ». `ouvert` : sections du formulaire à déplier (celle d'une saisie
     refusée) ; la pause déjeuner se déplie d'elle-même quand elle a des erreurs."""
@@ -104,6 +106,13 @@ def _page_calculs(
         suivi = generation.calcul_en_cours()
         en_cours = calculs.resultat_calcul(session, suivi.id, indicateurs=False) if suivi else None
         tests = calculs.avertissement_tests_en_cours() if suivi is None else None
+        if refuse_pendant_les_tests and suivi is None:
+            tests = (
+                f"Le calcul n'a pas été lancé. {tests}"
+                if tests is not None
+                else "Le calcul n'a pas été lancé : une exécution des tests était en cours. Elle "
+                "est terminée : le calcul peut être lancé."
+            )
         if tests is not None:
             messages = [*messages, Message(tests, "attention")]
         dernier = generation.dernier_calcul(semestre.id)
@@ -158,9 +167,32 @@ def _page_calculs(
 
 
 @routeur.get("/calculs", name="calculs")
-def page_calculs(request: Request, session: SessionRequete, semestre_id: EntierFacultatif = None):
-    """Écran de lancement d'un calcul (`semestre_id` vide : le semestre du jour)."""
-    return _page_calculs(request, session, semestre_id)
+def page_calculs(
+    request: Request,
+    session: SessionRequete,
+    semestre_id: EntierFacultatif = None,
+    refus: str | None = None,
+):
+    """Écran de lancement d'un calcul (`semestre_id` vide : le semestre du jour).
+
+    `refus=tests` : retour d'un calcul refusé pendant une exécution des tests (voir
+    `_retour_apres_refus`).
+    """
+    return _page_calculs(request, session, semestre_id, refuse_pendant_les_tests=refus == "tests")
+
+
+def _retour_apres_refus(
+    request: Request, semestre_id: int, erreur: generation.ErreurLancementRefuse
+) -> Response:
+    """Retour sur Générer après un calcul refusé, avec un seul bandeau.
+
+    Pendant les tests, la page affiche déjà son avertissement : il est précédé de « Le calcul
+    n'a pas été lancé. » au lieu d'un second bandeau qui dirait la même chose. Les autres
+    refus (import, chargement) gardent leur message.
+    """
+    if erreur.pendant_les_tests:
+        return rediriger(request, f"/calculs?semestre_id={semestre_id}&refus=tests")
+    return rediriger(request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention")
 
 
 @routeur.get("/calculs/verifications", name="calculs_verifications")
@@ -284,9 +316,7 @@ def lancer(
         )
     except generation.ErreurLancementRefuse as erreur:
         # Tests, import ou chargement en cours : retour sur Générer, avec la cause et le remède.
-        return rediriger(
-            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
-        )
+        return _retour_apres_refus(request, semestre_id, erreur)
     except ErreurCalculEnCours:
         # Autre semestre ou autres réglages : les réglages envoyés n'ont pas été appliqués.
         suivi = generation.calcul_en_cours()
@@ -404,9 +434,7 @@ def relancer(
         )
     except generation.ErreurLancementRefuse as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
-        return rediriger(
-            request, f"/calculs?semestre_id={semestre_id}", erreur.message, "attention"
-        )
+        return _retour_apres_refus(request, semestre_id, erreur)
     except calculs.ErreurPreVerification as erreur:
         semestre_id = calculs.resultat_calcul(session, calcul_id, indicateurs=False).semestre.id
         return rediriger(request, f"/calculs?semestre_id={semestre_id}", erreur.message, "erreur")

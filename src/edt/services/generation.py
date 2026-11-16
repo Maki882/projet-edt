@@ -263,7 +263,15 @@ def libelle_resultat(etat: EtatCalcul, statistiques: object) -> str:
 
 class ErreurLancementRefuse(ErreurRegleMetier):
     """Calcul refusé parce qu'une autre opération occupe la base ou le serveur (chargement d'un
-    établissement fictif, remise à zéro, import, exécution des tests) : réessayer après elle."""
+    établissement fictif, remise à zéro, import, exécution des tests) : réessayer après elle.
+
+    `pendant_les_tests` : le refus vient d'une exécution des tests (l'écran Générer le dit
+    déjà dans son avertissement permanent).
+    """
+
+    def __init__(self, message: str, *, pendant_les_tests: bool = False) -> None:
+        super().__init__(message)
+        self.pendant_les_tests = pendant_les_tests
 
 
 _verrou = threading.Lock()
@@ -402,7 +410,8 @@ def _refuser_pendant_les_tests(semestre_id: int) -> None:
     raise ErreurLancementRefuse(
         "Impossible de lancer un calcul : une exécution des tests est en cours et occupe les "
         "processeurs du serveur ; le calcul serait ralenti et son résultat moins bon. Attendre "
-        "sa fin, ou l'arrêter depuis l'onglet des tests, puis relancer le calcul."
+        "sa fin, ou l'arrêter depuis l'onglet des tests, puis relancer le calcul.",
+        pendant_les_tests=True,
     )
 
 

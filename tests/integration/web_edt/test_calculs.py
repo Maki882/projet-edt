@@ -750,11 +750,18 @@ def test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif(
         caplog.clear()
         reponse = client.post(adresse, data=donnees, follow_redirects=False)
         assert reponse.status_code == 303, (adresse, reponse.text)
-        assert reponse.headers["location"] == f"/calculs?semestre_id={semestre}"
+        assert reponse.headers["location"].startswith(f"/calculs?semestre_id={semestre}")
         page = html.unescape(client.get(reponse.headers["location"]).text)
-        assert "une exécution des tests est en cours" in page and "Référence" not in page
+        # Un seul bandeau, qui dit que le clic a été refusé et pourquoi.
+        assert page.count("exécution des tests est en cours") == 1, adresse
+        assert "Le calcul n'a pas été lancé. Une exécution des tests est en cours" in page
+        assert "Référence" not in page
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING], adresse
     assert _nb_calculs() == 1  # seul le calcul de la fixture
+    # Tests finis entre le refus et l'affichage : le refus reste dit, une seule fois.
+    monkeypatch.setattr(execution, "tests_en_cours", lambda dossier=None: False)
+    page = html.unescape(client.get(f"/calculs?semestre_id={semestre}&refus=tests").text)
+    assert page.count("Le calcul n'a pas été lancé") == 1 and "Elle est terminée" in page
 
 
 @pytest.mark.cas_limite
