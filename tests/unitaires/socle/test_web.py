@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sys
 import types
 
@@ -139,12 +140,26 @@ def test_script_commun_contre_le_double_envoi_et_le_bandeau_reseau_qui_reste():
     Risque : second envoi qui affiche « Élément introuvable » ou « Opération refusée » ;
     bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le
     comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce
-    test garde les points d'accroche du script.
+    test garde les points d'accroche du script et les appels qui leur donnent leur effet.
     """
     script = (DOSSIER_STATIQUE / "js" / "app.js").read_text(encoding="utf-8")
     # Double envoi : tout formulaire POST, réactivé au retour sur la page.
     assert '!== "post"' in script and 'setAttribute("data-envoi-en-cours"' in script
-    assert 'addEventListener("pageshow"' in script
+    # Pas de bouton mort : la réactivation rend le bouton cliquable, et elle est appelée au
+    # retour sur la page (pageshow) comme à l'expiration de la minuterie.
+    reactiver = re.search(r"function reactiver\(boutons\) \{(.*?)\n  \}\n", script, re.S)
+    assert reactiver is not None, "fonction reactiver introuvable"
+    assert "bouton.disabled = false;" in reactiver.group(1)
+    assert 'removeAttribute("data-envoi-en-cours")' in reactiver.group(1)
+    assert re.search(
+        r'addEventListener\("pageshow", function \(\) \{\s*'
+        r'reactiver\(document\.querySelectorAll\("\[data-envoi-en-cours\]"\)\);',
+        script,
+    ), "pageshow sans réactivation"
+    assert re.search(
+        r"setTimeout\(function \(\) \{\s*reactiver\(boutons\);\s*\}, DELAI_REACTIVATION_MS\)",
+        script,
+    ), "minuterie sans réactivation"
     # Panne de réseau : bandeau marqué, retiré à la première requête réussie.
     assert 'setAttribute("data-erreur-reseau"' in script
     assert 'addEventListener("htmx:afterRequest"' in script
