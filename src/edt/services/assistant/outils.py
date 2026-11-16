@@ -6,8 +6,8 @@ sur chaque objet, toutes les propriétés requises, une valeur non précisée
 s'écrit null par `anyOf` avec `null`, aucun mot-clé de borne comme `minimum`
 ou `maxLength` : les bornes sont contrôlées par les services), mais aucun
 outil n'est déclaré `strict`. Le service limite le mode strict, sur
-l'ensemble des schémas stricts d'une requête, à 16 paramètres à union (nous
-en avons 74), 24 paramètres facultatifs et 20 outils, plus une limite
+l'ensemble des schémas stricts d'une requête, à 16 paramètres à union
+(l'application en déclare 74), 24 paramètres facultatifs et 20 outils, plus une limite
 interne de taille de la grammaire compilée : au-delà, toute requête est
 refusée (400). Le schéma guide donc le modèle, et c'est l'exécution qui
 valide chaque argument (type, valeur, existence) : un argument absent compte

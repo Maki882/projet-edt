@@ -10,10 +10,17 @@ Le site est public et sans connexion : la dépense doit rester bornée.
   `<EDT_LOG_DIR>/assistant/consommation.json`, hors de la base : elle survit
   ainsi à la remise à zéro de la base (chargement d'un établissement fictif,
   ouvert à tous) comme à un redémarrage. Le fichier est réécrit d'un bloc
-  (fichier temporaire puis remplacement) après chaque échange commencé et
-  chaque appel. La consommation compte aussi en mémoire, et le plus grand des
-  deux comptes fait foi ; une écriture impossible est journalisée et gardée
-  en mémoire, ajoutée à l'écriture suivante.
+  (fichier temporaire puis remplacement) après chaque appel et à la fin de
+  chaque échange qui a appelé le modèle. La consommation compte aussi en
+  mémoire, et le plus grand des deux comptes fait foi ; une écriture
+  impossible est journalisée et gardée en mémoire, ajoutée à l'écriture
+  suivante.
+- **Échange réservé** : un message accepté réserve son échange
+  (`reserver_echange`), qui compte aussitôt dans la limite du jour avec les
+  échanges en cours ; l'échange n'est écrit qu'à sa fin, s'il a tenté au
+  moins un appel au modèle (`valider_echange`), et rendu sinon
+  (`annuler_echange`). Un message refusé, ou arrêté avant tout appel, ne
+  consomme ainsi ni échange du jour, ni message de l'adresse, ni budget.
 - **Budget** : avant chaque appel au modèle, son coût maximal (les deux
   tentatives possibles, la demande et son repli, pour la taille réelle du
   contexte) est **réservé** ; l'appel n'a pas lieu si consommé + réservé +
@@ -177,7 +184,7 @@ def cout_maximal_appel(jetons_entree: int, config: ConfigurationAssistant) -> in
 
 FICHIER_CONSOMMATION = "consommation.json"
 NB_ESSAIS_REMPLACEMENT = 5
-"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : on réessaie."""
+"""Sous Windows, un lecteur qui tient le fichier ouvert empêche son remplacement : il est retenté."""
 
 
 def dossier_consommation() -> Path:
@@ -195,6 +202,7 @@ class Budget:
         self._memoire = Compteurs()
         self._a_ecrire = Compteurs()
         self._reserve = 0
+        self._echanges_reserves = 0
         self._averti = False
 
     @property
@@ -208,7 +216,7 @@ class Budget:
             if self._jour is not None and self._a_ecrire.appels + self._a_ecrire.echanges:
                 self._persister(self._jour, Compteurs())
             self._jour, self._memoire, self._a_ecrire = jour, Compteurs(), Compteurs()
-            self._reserve, self._averti = 0, False
+            self._reserve, self._echanges_reserves, self._averti = 0, 0, False
         return jour
 
     def consommation(self) -> Compteurs:
@@ -219,19 +227,36 @@ class Budget:
             enregistree.ajouter(self._a_ecrire)
             return enregistree.maximum(self._memoire)
 
-    def ouvrir_echange(self, config: ConfigurationAssistant) -> None:
-        """Compte un échange ; `LimiteAtteinte` si le nombre du jour ou le budget est atteint."""
+    def reserver_echange(self, config: ConfigurationAssistant) -> None:
+        """Réserve un échange ; `LimiteAtteinte` si le nombre du jour ou le budget est atteint.
+
+        Les échanges réservés (en cours) comptent dans la limite comme les
+        échanges écrits : deux envois simultanés ne la dépassent pas. Rien n'est
+        écrit avant `valider_echange`.
+        """
         with self._verrou:
-            jour = self._du_jour()
+            self._du_jour()
             actuelle = self.consommation()
             if (
-                actuelle.echanges >= config.messages_par_jour
+                actuelle.echanges + self._echanges_reserves >= config.messages_par_jour
                 or actuelle.cout >= config.budget_jour_micro
             ):
                 self._refuser(actuelle, config)
+            self._echanges_reserves += 1
+
+    def valider_echange(self) -> None:
+        """Compte l'échange réservé (au moins un appel au modèle tenté) : mémoire et fichier."""
+        with self._verrou:
+            jour = self._du_jour()
+            self._echanges_reserves = max(0, self._echanges_reserves - 1)
             delta = Compteurs(echanges=1)
             self._memoire.ajouter(delta)
             self._persister(jour, delta)
+
+    def annuler_echange(self) -> None:
+        """Rend l'échange réservé : message refusé ensuite, ou échange arrêté avant tout appel."""
+        with self._verrou:
+            self._echanges_reserves = max(0, self._echanges_reserves - 1)
 
     def reserver(self, cout_max: int, config: ConfigurationAssistant) -> int:
         """Réserve `cout_max` micro-dollars ; `LimiteAtteinte` si le budget serait dépassé."""
@@ -356,8 +381,11 @@ class CompteurAdresses:
         self._jour: dt.date | None = None
         self._comptes: dict[str, int] = {}
 
-    def compter(self, empreinte: str, config: ConfigurationAssistant) -> None:
-        """Compte un message ; `LimiteAtteinte` si l'adresse a atteint sa limite du jour."""
+    def compter(self, empreinte: str, config: ConfigurationAssistant) -> dt.date:
+        """Compte un message ; `LimiteAtteinte` si l'adresse a atteint sa limite du jour.
+
+        Renvoie le jour compté, à repasser à `rendre`.
+        """
         with self._verrou:
             jour = temps.aujourdhui()
             if jour != self._jour:
@@ -370,9 +398,13 @@ class CompteurAdresses:
                     "aujourd'hui ; l'assistant sera de nouveau disponible demain.",
                 )
             self._comptes[empreinte] = self._comptes.get(empreinte, 0) + 1
+            return jour
 
-    def rendre(self, empreinte: str) -> None:
-        """Annule le dernier compte d'une adresse (message refusé par une limite suivante)."""
+    def rendre(self, empreinte: str, jour: dt.date) -> None:
+        """Annule un compte de `jour` (message refusé ensuite, ou arrêté avant tout appel).
+
+        Après minuit, le compte du jour précédent n'existe plus : rien à rendre.
+        """
         with self._verrou:
-            if self._comptes.get(empreinte, 0) > 0:
+            if jour == self._jour and self._comptes.get(empreinte, 0) > 0:
                 self._comptes[empreinte] -= 1

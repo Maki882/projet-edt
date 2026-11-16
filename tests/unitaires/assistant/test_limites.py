@@ -128,14 +128,37 @@ def test_reservation_qui_depasserait_le_budget_refusee(base, jour):
 def test_echanges_du_jour_comptes_et_limites(base, jour, caplog):
     config = _config(EDT_ASSISTANT_MESSAGES_PAR_JOUR="2")
     budget = Budget()
-    budget.ouvrir_echange(config)
-    budget.ouvrir_echange(config)
+    for _ in range(2):
+        budget.reserver_echange(config)
+        budget.valider_echange()
     with caplog.at_level(logging.WARNING), pytest.raises(LimiteAtteinte, match="limite du jour"):
-        budget.ouvrir_echange(config)
+        budget.reserver_echange(config)
     with pytest.raises(LimiteAtteinte):
-        budget.ouvrir_echange(config)
+        budget.reserver_echange(config)
     assert caplog.text.count("limite du jour atteinte") == 1  # une seule fois par jour
     assert _fichier(JOUR) == (2, 0, 0)
+
+
+@pytest.mark.cas_limite
+def test_echange_reserve_compte_dans_la_limite_et_n_est_ecrit_qu_a_sa_validation(base, jour):
+    """Cas : deux échanges réservés en même temps sur une limite de 2 ; l'un s'arrête avant
+    tout appel au modèle (rendu), l'autre en a fait un (validé).
+
+    Risque : des échanges en cours ignorés par la limite (dépassée), ou un échange rendu
+    resté écrit dans le fichier (limite du jour atteinte par des messages qui n'ont rien
+    coûté).
+    """
+    config = _config(EDT_ASSISTANT_MESSAGES_PAR_JOUR="2")
+    budget = Budget()
+    budget.reserver_echange(config)
+    budget.reserver_echange(config)
+    with pytest.raises(LimiteAtteinte):
+        budget.reserver_echange(config)  # les deux échanges en cours comptent
+    assert _fichier(JOUR) is None and budget.consommation().echanges == 0
+    budget.annuler_echange()
+    budget.valider_echange()
+    assert _fichier(JOUR) == (1, 0, 0) and budget.consommation().echanges == 1
+    budget.reserver_echange(config)  # la place rendue est de nouveau libre
 
 
 @pytest.mark.cas_limite
@@ -167,7 +190,8 @@ def test_consommation_survit_a_une_remise_a_zero_puis_a_un_redemarrage(base, jou
 
     config = _config()
     budget = Budget()
-    budget.ouvrir_echange(config)
+    budget.reserver_echange(config)
+    budget.valider_echange()
     budget.solder(0, Compteurs(appels=1, cout=1_900_000))
     initialiser_base(reset=True, aujourdhui=JOUR)
     redemarre = Budget()
@@ -220,16 +244,20 @@ def test_consommation_impossible_a_ecrire_est_reportee(base, jour, caplog):
 def test_limite_par_adresse_et_par_jour(jour):
     config = _config(EDT_ASSISTANT_MESSAGES_PAR_ADRESSE="2")
     compteur = CompteurAdresses()
-    compteur.compter("adresse-a", config)
+    veille = compteur.compter("adresse-a", config)
     compteur.compter("adresse-a", config)
     with pytest.raises(LimiteAtteinte) as limite:
         compteur.compter("adresse-a", config)
     assert limite.value.limite is Limite.ADRESSE and "limite de 2 messages" in limite.value.message
     compteur.compter("adresse-b", config)  # une autre adresse n'est pas touchée
-    compteur.rendre("adresse-a")
+    compteur.rendre("adresse-a", veille)
     compteur.compter("adresse-a", config)
     jour["jour"] = JOUR + dt.timedelta(days=1)
     compteur.compter("adresse-a", config)
+    compteur.rendre("adresse-a", veille)  # un compte de la veille ne se rend pas le lendemain
+    compteur.compter("adresse-a", config)
+    with pytest.raises(LimiteAtteinte):
+        compteur.compter("adresse-a", config)
 
 
 def test_le_fichier_de_consommation_n_a_que_des_compteurs(base, jour):

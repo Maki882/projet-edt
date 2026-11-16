@@ -303,6 +303,8 @@ class ResultatBoucle:
     texte: str = ""
     message: str = ""
     appels: int = 0
+    tentatives: int = 0
+    """Appels envoyés au service, réussis ou non (0 : arrêté avant tout appel)."""
     outils: list[str] = field(default_factory=list)
     consommation: Compteurs = field(default_factory=Compteurs)
     modeles: list[str] = field(default_factory=list)
@@ -367,6 +369,7 @@ def derouler(
             delai = min(float(config.delai_appel_s), restant)
             signaler("Je lis votre demande…" if numero == 1 else "Je rédige la réponse…")
             debut = time.monotonic()
+            resultat.tentatives += 1
             try:
                 reponse = client.with_options(timeout=delai, max_retries=0).beta.messages.create(
                     **parametres_requete(messages, config, jetons_sortie=jetons_sortie)

@@ -23,6 +23,7 @@ La consommation du jour est aussi en base. `reinitialiser()` repart d'un
 
 from __future__ import annotations
 
+import datetime as dt
 import hashlib
 import hmac
 import logging
@@ -304,10 +305,13 @@ def envoyer(
     """Contrôle les limites, puis lance l'échange ; ne lève jamais pour une limite (voir l'en-tête).
 
     Ordre des contrôles : assistant disponible, pause, message, conversation
-    (close, échange en cours, nombre de messages), échanges simultanés, limite
-    de l'adresse, limite du site et budget ; puis, seulement si tout est passé,
-    création de la conversation (place en mémoire). Un message refusé ne crée
-    donc aucune conversation et ne consomme aucune place.
+    (close, échange en cours, nombre de messages), échanges simultanés, puis,
+    sous le même verrou : message de l'adresse compté, échange du jour réservé
+    (limite du site et budget), place en mémoire pour une nouvelle
+    conversation. Un refus à l'une de ces trois étapes rend ce que les
+    précédentes ont pris : un message refusé ne consomme ni message de
+    l'adresse, ni échange du jour, ni place. L'échange réservé n'est écrit
+    qu'à sa fin, s'il a tenté un appel au modèle (`_regler_echange`).
     """
     config = _config()
     page = page_affichee(page)
@@ -347,21 +351,26 @@ def envoyer(
             )
         identifiant_refus = None if nouvelle else conversation.identifiant
         try:
-            _etat.adresses.compter(cle, config)
+            jour_adresse = _etat.adresses.compter(cle, config)
         except LimiteAtteinte as limite:
             return _refus(limite.message, identifiant_refus)
         try:
-            _etat.budget.ouvrir_echange(config)
-            if conversation is None:
+            _etat.budget.reserver_echange(config)
+        except LimiteAtteinte as limite:
+            _etat.adresses.rendre(cle, jour_adresse)
+            return _refus(limite.message, identifiant_refus)
+        if conversation is None:
+            try:
                 conversation = registre.creer(
                     cle,
                     config.conversations_max,
                     config.conversations_par_adresse,
                     config.expiration_min * 60,
                 )
-        except LimiteAtteinte as limite:
-            _etat.adresses.rendre(cle)
-            return _refus(limite.message, identifiant_refus)
+            except LimiteAtteinte as limite:
+                _etat.budget.annuler_echange()
+                _etat.adresses.rendre(cle, jour_adresse)
+                return _refus(limite.message, identifiant_refus)
         echange = Echange(
             jeton=secrets.token_urlsafe(9),
             conversation_id=conversation.identifiant,
@@ -392,6 +401,7 @@ def envoyer(
     fil = threading.Thread(
         target=_executer,
         args=(conversation, echange, config, historique, suites, taille),
+        kwargs={"adresse": (cle, jour_adresse)},
         name=f"assistant-{echange.jeton}",
         daemon=True,
     )
@@ -406,8 +416,13 @@ def _executer(
     historique: list,
     suites: list[str],
     taille: int,
+    adresse: tuple[str, dt.date] | None = None,
 ) -> None:
-    """Corps du fil d'un échange : rien n'en sort, tout finit en bulle (réponse ou erreur)."""
+    """Corps du fil d'un échange : rien n'en sort, tout finit en bulle (réponse ou erreur).
+
+    `adresse` : l'empreinte et le jour du message compté pour l'adresse, rendu
+    avec l'échange réservé si l'échange s'arrête avant tout appel au modèle.
+    """
     jeton_contexte = contexte_requete.set(echange.reference)
     contexte = ContexteOutil(
         reference=echange.reference,
@@ -415,12 +430,14 @@ def _executer(
         numeroter=conversation.prochain_numero,
     )
     debut = time.monotonic()
+    aucun_appel = False
     try:
         try:
             client = module_client.creer_client(config)
         except Exception as erreur:  # traduite par issue_de, qui relance ce qui n'est pas du SDK
             resultat = ResultatBoucle(boucle.issue_de(erreur, 0))
             resultat.message = boucle.MESSAGES.get(resultat.issue, boucle.MESSAGES[Issue.INTERNE])
+            aucun_appel = True
         else:
             resultat = boucle.derouler(
                 historique=historique,
@@ -433,12 +450,14 @@ def _executer(
                 taille_connue=taille,
                 signaler=echange.signaler,
             )
+            aucun_appel = resultat.tentatives == 0
     except Exception:
         journal.exception(
             "Assistant : échange %s interrompu par une erreur inattendue", echange.reference
         )
         resultat = ResultatBoucle(Issue.INTERNE, message=boucle.MESSAGES[Issue.INTERNE])
     try:
+        _regler_echange(echange, aucun_appel, adresse)
         _terminer(conversation, echange, resultat, contexte, len(suites), config)
         journal.info(
             "Assistant : échange %s terminé (%s) en %.1f s : %d appel(s), outils [%s], jetons "
@@ -460,6 +479,27 @@ def _executer(
             journal.debug("Assistant : réponse de %s : %s", echange.reference, resultat.texte)
     finally:
         contexte_requete.reset(jeton_contexte)
+
+
+def _regler_echange(
+    echange: Echange, aucun_appel: bool, adresse: tuple[str, dt.date] | None
+) -> None:
+    """Compte l'échange réservé, ou le rend avec le message de l'adresse s'il n'a rien appelé.
+
+    Une erreur inattendue au milieu de l'échange (`aucun_appel` faux) le
+    laisse compté : le doute va au budget.
+    """
+    if not aucun_appel:
+        _etat.budget.valider_echange()
+        return
+    _etat.budget.annuler_echange()
+    if adresse is not None:
+        _etat.adresses.rendre(*adresse)
+    journal.info(
+        "Assistant : échange %s arrêté avant tout appel au modèle : ni l'échange du jour, ni le "
+        "message de l'adresse ne comptent",
+        echange.reference,
+    )
 
 
 def _terminer(
@@ -721,7 +761,7 @@ def repondre(texte: str) -> ResultatReponse:
         return ResultatReponse(False, config.raison_texte, issue=Issue.IDENTIFIANT)
     try:
         texte = verifier_texte(texte, config)
-        _etat.budget.ouvrir_echange(config)
+        _etat.budget.reserver_echange(config)
     except LimiteAtteinte as limite:
         return ResultatReponse(False, limite.message, issue=Issue.LIMITE)
     conversation = Conversation(
