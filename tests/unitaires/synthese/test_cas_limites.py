@@ -12,8 +12,9 @@ Règles que ces tests figent :
   (pas des noms de Faker, ni de la machine).
 
 Chaque test commence par « Cas : ... Risque : ... ». Tous portent le marqueur
-`cas_limite` ; les plus longs portent aussi `perf`. Aides : `tests/synthese/conftest.py`
-et `tests/synthese/controle_temoin.py`.
+`cas_limite` ; les plus longs portent aussi `perf`. Aides : `tests/outils/synthese/aides.py`
+et `tests/outils/synthese/controle_temoin.py`. Le cas limite de la commande
+`python -m edt jeu` est dans `tests/integration/synthese/test_cas_limites.py`.
 """
 
 from __future__ import annotations
@@ -25,8 +26,10 @@ import itertools
 import pytest
 from faker import Faker
 from sqlalchemy import delete, func, select, update
+from tests.outils.synthese.aides import creer_base, generer_dans, total_prevu
+from tests.outils.synthese.controle_temoin import problemes_du_temoin
+from tests.outils.synthese.empreinte import empreinte_semantique
 
-from edt import cli
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.domaine.enumerations import NatureGroupe, NatureJourFerme
@@ -37,10 +40,6 @@ from edt.services.regles import lister
 from edt.synthese import MOYEN, PETIT, ConfigPromotion, ConfigurationJeu, SallesSite
 from edt.synthese.configuration import ANNEE_DEBUT_MAX, ANNEE_DEBUT_MIN, GRAINE_MAX
 from edt.synthese.generateur import ESSAIS_NOM_UNIQUE, generer_jeu
-
-from .conftest import creer_base, generer_dans, total_prevu
-from .controle_temoin import problemes_du_temoin
-from .empreinte import empreinte_semantique
 
 pytestmark = pytest.mark.cas_limite
 
@@ -116,25 +115,6 @@ def test_borne_de_graine_identique_au_formulaire_web():
     from edt.web.routes.donnees_jeux import GRAINE_MAX as GRAINE_MAX_WEB
 
     assert GRAINE_MAX == GRAINE_MAX_WEB
-
-
-@pytest.mark.parametrize(
-    "arguments",
-    [["--graine", "-1"], ["--graine", str(GRAINE_MAX + 1)], ["--annee", "9999"]],
-)
-def test_commande_refuse_sans_toucher_a_la_base(lanceur, base, arguments):
-    """Cas : `python -m edt jeu --reset --oui` avec une graine ou une année refusée.
-    Risque : la base est vidée par la remise à zéro, puis la génération échoue."""
-    assert lanceur.invoke(cli.app, ["jeu", "--taille", "petit"]).exit_code == 0
-    with session_base() as session:
-        besoins = session.scalar(select(func.count()).select_from(m.Besoin))
-
-    resultat = lanceur.invoke(cli.app, ["jeu", "--taille", "petit", "--reset", "--oui", *arguments])
-
-    assert resultat.exit_code == 1, resultat.output
-    assert "invalide" in resultat.output
-    with session_base() as session:
-        assert session.scalar(select(func.count()).select_from(m.Besoin)) == besoins
 
 
 def test_service_refuse_une_graine_invalide_avant_la_remise_a_zero(base):

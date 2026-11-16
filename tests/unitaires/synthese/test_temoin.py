@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import pytest
+from tests.outils.synthese.controle_temoin import violations
 
 from edt.services.instantane import charger_instantane, charger_placements
-
-from .controle_temoin import violations
 
 
 @pytest.mark.parametrize("nom_jeu", ["jeu_petit", "jeu_moyen"])

@@ -7,6 +7,7 @@ from collections import Counter
 
 import pytest
 from sqlalchemy import select
+from tests.outils.synthese.controle_temoin import violations_regles
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -18,8 +19,6 @@ from edt.synthese import PETIT
 from edt.synthese.generateur import generer_jeu
 from edt.synthese.temoin import dejeuner_libre_respecte
 from edt.verification import verifier
-
-from .controle_temoin import violations_regles
 
 ACTIVE, INACTIVE, PROPOSEE = "active", "inactive", "proposee"
 

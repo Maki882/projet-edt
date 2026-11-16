@@ -5,8 +5,7 @@ from __future__ import annotations
 import time
 
 import pytest
-
-from .conftest import generer
+from tests.outils.synthese.aides import generer
 
 SEUIL_S = 60
 
