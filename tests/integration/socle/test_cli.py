@@ -36,6 +36,7 @@ def test_init_db_cree_la_base(lanceur, environnement):
 
     assert resultat.exit_code == 0, resultat.output
     assert "Base initialisée" in resultat.output
+    assert "Étape suivante" in resultat.output and "edt jeu --taille moyen" in resultat.output
     assert base_initialisee(obtenir_moteur())
     assert (environnement / "logs" / "edt.log").exists()
 
@@ -52,7 +53,9 @@ def test_init_db_reset_efface_les_donnees(lanceur, jeu_minimal):
 def test_jeu_minimal_puis_refus_du_second_chargement(lanceur, base):
     premier = lanceur.invoke(cli.app, ["jeu-minimal"])
     assert premier.exit_code == 0, premier.output
-    assert "16 besoins" in premier.output
+    assert "16 besoins" in premier.output and "edt generer --semestre" in premier.output
+    relance = lanceur.invoke(cli.app, ["init-db"])  # base garnie : plus de jeu à proposer
+    assert "Étape suivante : lancer « python -m edt serve »" in relance.output
     with session_base() as session:
         assert session.scalar(select(func.count()).select_from(Besoin)) == 16
 
@@ -67,7 +70,7 @@ def test_jeu_minimal_sans_base_initialisee(lanceur, environnement):
     assert "init-db" in resultat.output
 
 
-def test_doctor(lanceur, base):
+def test_doctor(lanceur, base, port_libre):
     resultat = lanceur.invoke(cli.app, ["doctor"])
 
     assert resultat.exit_code == 0, resultat.output
@@ -77,10 +80,11 @@ def test_doctor(lanceur, base):
     assert "Tout est prêt." in resultat.output
 
 
-def test_doctor_signale_une_base_non_initialisee(lanceur, environnement):
+def test_doctor_signale_une_base_non_initialisee(lanceur, environnement, port_libre):
     resultat = lanceur.invoke(cli.app, ["doctor"])
     assert resultat.exit_code == 0  # un avertissement, pas un échec
     assert "ATTENTION" in resultat.output and "non initialisée" in resultat.output
+    assert "Tout est prêt" not in resultat.output and "1 avertissement(s)" in resultat.output
 
 
 def test_configuration_invalide_donne_un_message_clair(lanceur, monkeypatch):
@@ -324,7 +328,7 @@ def test_commandes_de_calcul_avec_un_identifiant_inexistant(
 
 @pytest.mark.cas_limite
 def test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable(
-    lanceur, base, environnement
+    lanceur, base, environnement, port_libre
 ):
     """Cas : `<EDT_LOG_DIR>/generations` est un fichier (ou n'est pas inscriptible) alors que le
     dossier racine des journaux va bien.

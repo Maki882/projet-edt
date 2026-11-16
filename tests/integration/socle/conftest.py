@@ -15,6 +15,7 @@ Les tests de cas limites portent le marqueur `cas_limite` et une docstring
 from __future__ import annotations
 
 import os
+import socket
 import stat
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -31,6 +32,17 @@ from edt.db.moteur import liberer_moteurs
 def lanceur() -> CliRunner:
     """Lanceur de la ligne de commande (`python -m edt ...`)."""
     return CliRunner()
+
+
+@pytest.fixture
+def port_libre(monkeypatch: pytest.MonkeyPatch) -> int:
+    """EDT_PORT réglé sur un port libre du poste : doctor n'avertit pas d'un port occupé."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as prise:
+        prise.bind(("127.0.0.1", 0))
+        port = prise.getsockname()[1]
+    monkeypatch.setenv("EDT_HOST", "127.0.0.1")
+    monkeypatch.setenv("EDT_PORT", str(port))
+    return port
 
 
 @pytest.fixture

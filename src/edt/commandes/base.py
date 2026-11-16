@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, select, text
 
 from edt import __version__
 from edt.config import Configuration, charger_configuration
@@ -33,8 +33,10 @@ from edt.db.initialisation import (
     tables_manquantes,
 )
 from edt.db.jeux import creer_jeu_minimal
+from edt.db.modeles import Campus
 from edt.db.moteur import (
     chemin_base,
+    expliquer_erreur_base,
     obtenir_moteur,
     session_base,
     transaction_immediate,
@@ -123,6 +125,16 @@ def init_db(
     for table, nombre in rapport.ajouts.items():
         if nombre:
             typer.echo(f"  - {table} : {nombre}")
+    with session_base() as session:
+        vide = session.scalar(select(Campus.id).limit(1)) is None
+    if vide:
+        typer.echo(
+            "Étape suivante : charger des données fictives (« python -m edt jeu --taille moyen », "
+            "ou « python -m edt jeu-minimal » pour un tout petit jeu), puis lancer « python -m edt "
+            "serve »."
+        )
+    else:
+        typer.echo("Étape suivante : lancer « python -m edt serve ».")
 
 
 def _entree_interactive() -> bool:
@@ -199,6 +211,10 @@ def jeu_minimal() -> None:
         f"{jeu.nb_groupes} groupes, {jeu.nb_matieres} matières, {jeu.nb_besoins} besoins "
         f"(semestre n°{jeu.semestre_id})."
     )
+    typer.echo(
+        f"Étape suivante : « python -m edt generer --semestre {jeu.semestre_id} » calcule "
+        "l'emploi du temps ; « python -m edt serve » ouvre l'application dans le navigateur."
+    )
 
 
 @commandes.command("serve")
@@ -257,9 +273,20 @@ def doctor() -> None:
     for statut, message in controles:
         typer.echo(f"[{statut:^9}] {message}")
     echecs = sum(1 for statut, _ in controles if statut == ECHEC)
+    avertissements = sum(1 for statut, _ in controles if statut == ATTENTION)
     if echecs:
-        typer.echo(f"{echecs} contrôle(s) en échec.", err=True)
+        typer.echo(
+            f"{echecs} contrôle(s) en échec : corriger ce que disent les lignes ECHEC, puis "
+            "relancer « python -m edt doctor ».",
+            err=True,
+        )
         raise typer.Exit(1)
+    if avertissements:
+        typer.echo(
+            f"Aucun échec, {avertissements} avertissement(s) : suivre les indications des lignes "
+            "ATTENTION."
+        )
+        return
     typer.echo("Tout est prêt.")
 
 
@@ -389,7 +416,11 @@ def _controler_python() -> tuple[str, str]:
     requis = ".".join(map(str, PYTHON_MINIMUM))
     if actuelle[:2] >= PYTHON_MINIMUM:
         return OK, f"Python {texte} ({requis} ou plus requis)"
-    return ECHEC, f"Python {texte} : la version {requis} ou plus est requise"
+    return (
+        ECHEC,
+        f"Python {texte} : la version {requis} ou plus est requise ; l'installer, puis recréer "
+        "l'environnement du projet (README, « Installation »)",
+    )
 
 
 def _controler_ortools() -> tuple[str, str]:
@@ -397,7 +428,11 @@ def _controler_ortools() -> tuple[str, str]:
         import ortools
         from ortools.sat.python import cp_model
     except ImportError as erreur:
-        return ECHEC, f"OR-Tools introuvable ({erreur}) : installer les dépendances du projet"
+        return (
+            ECHEC,
+            f"OR-Tools introuvable ({erreur}) : installer les dépendances du projet "
+            "(« python -m pip install -e . »)",
+        )
     version_lue = ortools.__version__
     try:
         numerique = tuple(int(partie) for partie in version_lue.split(".")[:2])
@@ -405,7 +440,11 @@ def _controler_ortools() -> tuple[str, str]:
         return ECHEC, f"OR-Tools : version illisible ({version_lue!r})"
     requis = ".".join(map(str, ORTOOLS_MINIMUM))
     if numerique < ORTOOLS_MINIMUM:
-        return ECHEC, f"OR-Tools {version_lue} : la version {requis} ou plus est requise"
+        return (
+            ECHEC,
+            f"OR-Tools {version_lue} : la version {requis} ou plus est requise "
+            "(« python -m pip install -e . » la met à jour)",
+        )
 
     modele = cp_model.CpModel()
     x = modele.new_int_var(0, 10, "x")
@@ -431,7 +470,11 @@ def _controler_base(etat: EtatBase | str) -> tuple[str, str]:
     if isinstance(etat, str):
         return ECHEC, f"Base : {etat}"
     if not etat.accessible:
-        return ECHEC, f"Base {etat.url} inaccessible : {etat.erreur}"
+        return (
+            ECHEC,
+            f"Base {etat.url} inaccessible ({etat.erreur}) : "
+            f"{expliquer_erreur_base(Exception(etat.erreur))}",
+        )
     mode = f", mode {etat.mode_journal}" if etat.mode_journal else ""
     return OK, f"Base {etat.url} accessible{mode}"
 
@@ -487,7 +530,11 @@ def _controler_journaux(config: Configuration) -> tuple[str, str]:
         with (dossier / NOM_FICHIER).open("a", encoding="utf-8"):
             pass
     except OSError as erreur:
-        return ECHEC, f"Journaux : impossible d'écrire dans « {dossier} » ({erreur})"
+        return (
+            ECHEC,
+            f"Journaux : impossible d'écrire dans « {dossier} » ({erreur}) : corriger "
+            "EDT_LOG_DIR ou les droits de ce dossier",
+        )
     return OK, f"Journaux : dossier « {dossier} » et fichier {NOM_FICHIER} accessibles en écriture"
 
 
@@ -503,7 +550,7 @@ def _controler_journaux_calcul(config: Configuration) -> tuple[str, str]:
         return (
             ECHEC,
             f"Journaux de calcul : impossible d'écrire dans « {dossier} » ({erreur}) : aucun "
-            "calcul n'aurait de journal",
+            "calcul n'aurait de journal ; ce chemin doit être un dossier inscriptible",
         )
     return OK, f"Journaux de calcul : dossier « {dossier} » accessible en écriture"
 
