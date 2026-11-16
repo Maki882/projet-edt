@@ -325,7 +325,8 @@ membre de l'équipe du projet ou un examinateur.
   1. Dans **Emploi du temps**, en « Semaine type », l'utilisateur clique sur la séance : un
      panneau en donne le détail.
   2. Sous « Déplacer la séance (toutes les semaines) », il choisit le jour ; chaque heure de
-     début est marquée « (possible) » ou « (refusé) », et chaque salle occupée est signalée avec
+     début est marquée « (possible) », « (possible, avec avertissement) » ou « (refusé) », et
+     chaque salle occupée est signalée avec
      la séance qui l'occupe.
   3. Il choisit une heure possible et une salle libre, puis « Vérifier et enregistrer » ; il
      peut aussi cocher « Verrouiller la séance à sa nouvelle place ».
