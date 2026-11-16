@@ -5,6 +5,21 @@ Les tests du projet sont rangés en deux familles : **tests unitaires**
 famille est découpée par composant de l'application. Le classement suit une
 règle unique, contrôlée automatiquement.
 
+Pour aller plus loin : [`tests/unitaires/README.md`](unitaires/README.md)
+(chaque fichier de tests unitaires et ce qu'il vérifie) et
+[`tests/integration/README.md`](integration/README.md) (chaîne traversée, six
+parcours de bout en bout, chaque fichier de tests d'intégration).
+
+```mermaid
+flowchart TD
+    A["1 713 tests collectés"] --> U["tests/unitaires : 1 180 cas, 860 fonctions"]
+    A --> I["tests/integration : 518 cas, 419 fonctions"]
+    A --> C["tests/test_rangement.py : 15 cas de contrôle"]
+    U --> UC["8 composants : socle, solveur, verification, echange, synthese, exploitation, web_donnees, web_edt"]
+    I --> IP["parcours : 6 scénarios de bout en bout"]
+    I --> IC["8 composants : 512 cas"]
+```
+
 ## 1. Unitaire ou intégration : la règle
 
 La règle ci-dessous fait foi. Elle est appliquée par
@@ -55,12 +70,11 @@ tests/
 ├── test_rangement.py      contrôle automatique du rangement (voir section 6)
 ├── README.md              ce document
 ├── unitaires/             un module exercé seul, par ses fonctions Python
-│   ├── README.md
+│   ├── README.md          ce que vérifie chaque fichier, exemple commenté
 │   ├── socle/   solveur/   verification/   web_donnees/
 │   └── web_edt/ echange/   synthese/       exploitation/
 ├── integration/           plusieurs couches assemblées (HTTP, commande, processus, calcul complet)
-│   ├── README.md          présentation courte, point d'entrée : les six parcours
-│   ├── DOCUMENTATION.md   stratégie de test et détail des parcours
+│   ├── README.md          chaîne traversée, six parcours, fichiers par composant
 │   ├── parcours/          six scénarios de bout en bout
 │   ├── socle/   solveur/   verification/   web_donnees/
 │   └── web_edt/ echange/   synthese/       exploitation/
@@ -92,8 +106,8 @@ plusieurs cas).
 | `parcours` | six scénarios de bout en bout : web, ligne de commande, aller-retour des données, règle personnalisée, retouche, jeu fictif | — | 6 / 6 |
 | **Total** | | **860 / 1 180** | **419 / 518** |
 
-S'y ajoute le contrôle du rangement (`tests/test_rangement.py`, 6 fonctions,
-12 cas). Total collecté : 1 710 cas, dont 27 tests de charge (`perf`) : 24
+S'y ajoute le contrôle du rangement (`tests/test_rangement.py`, 8 fonctions,
+15 cas). Total collecté : 1 713 cas, dont 27 tests de charge (`perf`) : 24
 unitaires et 3 d'intégration.
 
 Recalculer les nombres de fonctions par côté et par composant :
@@ -137,6 +151,22 @@ charge en sont exclus.
 
 ## 5. Où ranger un nouveau test
 
+```mermaid
+flowchart TD
+    D["Nouveau test"] --> Q1{"Requête HTTP ? TestClient, AsyncClient, ASGITransport, fixture client ou site"}
+    Q1 -->|oui| INT["tests/integration/composant/"]
+    Q1 -->|non| Q2{"Ligne de commande ? CliRunner, fixture lanceur"}
+    Q2 -->|oui| INT
+    Q2 -->|non| Q3{"Autre processus ? subprocess, multiprocessing"}
+    Q3 -->|oui| INT
+    Q3 -->|non| Q4{"Calcul complet ? lancer_calcul, attendre_calcul"}
+    Q4 -->|oui| INT
+    Q4 -->|non| UNI["tests/unitaires/composant/"]
+```
+
+Chaque question vaut aussi quand le nom est utilisé par une fixture ou par une
+aide (du module ou de `tests/outils/`).
+
 1. Appliquer la règle de la section 1. Si le test utilise, directement ou par
    une fixture ou une aide, un client HTTP, `CliRunner`, un autre processus ou
    `lancer_calcul` / `attendre_calcul`, il va dans `tests/integration/`.
@@ -158,6 +188,21 @@ les rendre disponibles comme fixtures. Un module de tests n'importe jamais un
 autre module de tests (`test_*.py`) ni un `conftest.py` : il importe depuis
 `tests/outils/`.
 
+Cycle de vie d'un test, d'après `tests/conftest.py` :
+
+```mermaid
+flowchart TD
+    E["Fixture environnement, automatique"] --> D["Dossier temporaire propre au test : tmp_path"]
+    D --> V["Variables EDT_DB_URL, EDT_LOG_DIR et EDT_ENV vers ce dossier"]
+    V --> B["Base SQLite du test : fixtures base, session, jeu_minimal si demandées"]
+    B --> A["Appel du code testé"]
+    A --> C["Vérifications par assert"]
+    C --> N["Nettoyage : liberer_moteurs et reinitialiser_journalisation"]
+```
+
+Aucun test ne touche `data/` ni `logs/` : la base et les journaux vivent dans
+le dossier temporaire, effacé par pytest.
+
 Fixtures communes à tous les tests (`tests/conftest.py`) :
 
 - `environnement` (automatique) : base SQLite et journaux dans un dossier
@@ -177,7 +222,10 @@ Fixtures communes à tous les tests (`tests/conftest.py`) :
 - aucun fichier de tests n'existe hors de ces deux dossiers ;
 - aucun module de tests n'importe un autre module de tests ;
 - le classeur reconnaît bien chaque forme de preuve (usage direct, par une
-  fixture, par une aide du module, par une aide importée) et le cas unitaire.
+  fixture, par une aide du module, par une aide importée) et le cas unitaire ;
+- chaque fichier `test_*.py` est cité dans le `README.md` de son dossier
+  (`tests/unitaires/README.md` ou `tests/integration/README.md`) : ces
+  documents ne peuvent pas oublier un fichier.
 
 Le classeur (`tests/outils/classement.py`) lit le code sans l'exécuter. Pour
 chaque test, il suit les fixtures (module, `conftest.py` du dossier et des
