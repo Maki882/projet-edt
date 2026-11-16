@@ -1,11 +1,19 @@
-"""Outils exposés au modèle : schémas stricts et exécution.
+"""Outils exposés au modèle : schémas et exécution.
 
 Douze outils, triés par nom, construits une fois à l'import (`OUTILS`). Les
-schémas suivent le mode strict de l'API : `additionalProperties: false` sur
-chaque objet, toutes les propriétés requises (une valeur facultative s'écrit
-`anyOf` avec `null`), aucun mot-clé de borne (`minimum`, `maxLength`...) :
-les bornes sont contrôlées par les services. Les énumérations viennent du
-domaine (types et états de règle, portées, niveaux, jours).
+schémas ont la forme du mode strict de l'API (`additionalProperties: false`
+sur chaque objet, toutes les propriétés requises, une valeur non précisée
+s'écrit null par `anyOf` avec `null`, aucun mot-clé de borne comme `minimum`
+ou `maxLength` : les bornes sont contrôlées par les services), mais aucun
+outil n'est déclaré `strict`. Le service limite le mode strict, sur
+l'ensemble des schémas stricts d'une requête, à 16 paramètres à union (nous
+en avons 74), 24 paramètres facultatifs et 20 outils, plus une limite
+interne de taille de la grammaire compilée : au-delà, toute requête est
+refusée (400). Le schéma guide donc le modèle, et c'est l'exécution qui
+valide chaque argument (type, valeur, existence) : un argument absent compte
+comme null, un argument mal formé revient au modèle comme refus clair, qu'il
+corrige. Les énumérations viennent du domaine (types et états de règle,
+portées, niveaux, jours).
 
 Aucun outil n'écrit. Les outils de lecture appellent les services et
 rendent un texte français compact (`TAILLE_MAX` caractères au plus) ; les
@@ -373,8 +381,6 @@ def _construire_outils() -> list[dict[str, Any]]:
             ),
         },
     ]
-    for outil in outils:
-        outil["strict"] = True
     return sorted(outils, key=lambda outil: outil["name"])
 
 

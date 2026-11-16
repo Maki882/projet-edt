@@ -70,11 +70,11 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 490 cas : 297 cas en tests unitaires et 193 cas en tests d'intégration.
+Le catalogue compte 493 cas : 300 cas en tests unitaires et 193 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
-| `assistant` | 42 | 7 |
+| `assistant` | 45 | 7 |
 | `banc_tests` | 13 | 8 |
 | `echange` | 57 | 12 |
 | `exploitation` | 40 | 32 |
@@ -84,16 +84,17 @@ Le catalogue compte 490 cas : 297 cas en tests unitaires et 193 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 39 |
 | `web_edt` | 6 | 39 |
-| **Total** | **297** | **193** |
+| **Total** | **300** | **193** |
 
-### Tests unitaires (297 cas)
+### Tests unitaires (300 cas)
 
-#### `assistant` (42 cas)
+#### `assistant` (45 cas)
 
 [`tests/unitaires/assistant/test_boucle.py`](../tests/unitaires/assistant/test_boucle.py)
 
 | Test | Cas | Risque |
 |---|---|---|
+| Schemas envoyes dans les limites du mode strict | la requête réelle part avec les douze outils de l'assistant. | le service refuse toute requête en 400 (« Schemas contains too many parameters with union types (74 …) », limite 16) : l'assistant ne répond jamais, alors que tous les tests passent par le faux client, qui n'applique aucune de ces limites. |
 | Reponse tronquee avec appel d outil jamais execute | la réponse s'arrête à la limite de jetons au milieu d'un appel d'outil. | exécuter un outil aux arguments coupés (une proposition incomplète présentée). |
 | Trop d appels arrete l echange | le modèle appelle des outils sans jamais conclure. | une boucle sans fin qui consomme le budget du jour. |
 | Echeance de l echange jamais depassee | chaque appel prend presque tout le délai. | un échange qui dure plusieurs minutes, au-delà du délai du serveur web ; ici l'échange s'arrête avant l'appel qui dépasserait l'échéance. |
@@ -150,9 +151,11 @@ Le catalogue compte 490 cas : 297 cas en tests unitaires et 193 cas en tests d'i
 
 | Test | Cas | Risque |
 |---|---|---|
+| Arguments mal formes rendus en refus clair | le modèle envoie un argument absent ou du mauvais type (un nombre pour un code, un texte pour une liste, un objet inconnu...) : les outils ne sont pas stricts. | une exception imprévue, rendue au modèle en « erreur interne de l'outil » qu'il ne sait pas corriger, et une trace d'erreur dans le journal à chaque faute de forme. |
 | Exception inattendue d un outil devient erreur interne avec reference | un outil lève une exception non prévue (bogue). | l'échange entier échoue et l'utilisateur ne sait pas quoi faire ; ou la trace part au modèle. Ici : erreur interne avec la référence, trace dans le journal seulement. |
 | Base occupee pendant un outil | un chargement d'établissement fictif tient la base pendant que l'outil lit. | erreur interne ou échange perdu ; ici le modèle reçoit « base occupée, réessayer ». |
 | Quatrieme proposition d un echange refusee | le modèle enchaîne quatre propositions dans une réponse. | un panneau rempli de cartes que l'utilisateur confirme sans les lire. |
+| Argument omis vaut null | le modèle omet les paramètres non précisés au lieu d'écrire null (les outils ne sont pas stricts : rien ne l'oblige à tous les donner). | un paramètre omis lu autrement que null : une autre réponse, ou une période omise dans une modification prise pour « toute l'année » au lieu de « inchangée ». |
 | Emploi du temps d une classe compte ses demi groupes et ses langues | « la classe A1-G1 a-t-elle cours le mercredi ? » ; ce jour-là, seuls ses demi-groupes (TP) et le groupe de langue qui partage ses étudiants ont cours. | l'outil ne lit que la vue restreinte et répond « 0 séance » : l'assistant annonce la classe libre. |
 
 [`tests/unitaires/assistant/test_validations.py`](../tests/unitaires/assistant/test_validations.py)

@@ -31,9 +31,10 @@ Règles de l'API suivies :
 - l'historique est en ajout seul : un échange qui n'aboutit pas ne laisse
   aucune trace dans la conversation ;
 - ni `thinking` (réflexion toujours active), ni `tool_choice` (forcer un
-  outil est refusé par ce modèle), ni `temperature` ; outils stricts, effort
-  réglable, cache explicite sur les consignes et automatique en fin de
-  conversation, repli serveur par défaut en cas de refus.
+  outil est refusé par ce modèle), ni `temperature` ; outils non stricts
+  (voir `outils`), effort réglable, cache explicite sur les consignes et
+  automatique en fin de conversation, repli serveur par défaut en cas de
+  refus.
 
 Les erreurs du service sont traduites en `Issue` (matrice de
 `docs/assistant.md`), du plus précis au plus général. Une clé refusée, un

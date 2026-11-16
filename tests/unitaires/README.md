@@ -56,20 +56,20 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 091 fonctions de test** dans 10 composants, dont 297 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 095 fonctions de test** dans 10 composants, dont 300 marquées `cas_limite` et 20 marquées `perf`.
 
-### `assistant/` : Assistant en langage courant (132 fonctions)
+### `assistant/` : Assistant en langage courant (136 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`assistant/test_boucle.py`](assistant/test_boucle.py) | Boucle d'un échange avec le faux client : arrêts, outils, historique, bornes, arguments | 20 |
+| [`assistant/test_boucle.py`](assistant/test_boucle.py) | Boucle d'un échange avec le faux client : arrêts, outils, historique, bornes, arguments | 22 |
 | [`assistant/test_configuration.py`](assistant/test_configuration.py) | Configuration de l'assistant : défauts, variables invalides, clé absente ou en double | 11 |
 | [`assistant/test_consignes.py`](assistant/test_consignes.py) | Consignes système : figées, sans donnée variable, avec tout le catalogue des règles | 4 |
 | [`assistant/test_conversations.py`](assistant/test_conversations.py) | Conversations et propositions : échange dans son fil, limites, confirmation, refus, secret | 30 |
 | [`assistant/test_erreurs_api.py`](assistant/test_erreurs_api.py) | Matrice des erreurs du service : chaque cas, son message, son journal, sa pause | 3 |
 | [`assistant/test_limites.py`](assistant/test_limites.py) | Limites et coûts : prix d'un appel, réservation, compteurs du jour en base et en mémoire | 11 |
 | [`assistant/test_occupation.py`](assistant/test_occupation.py) | Occupation d'un créneau : plage d'un moment, salles libres, séances d'une ressource | 17 |
-| [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas stricts, outils de lecture, propositions sans écriture | 27 |
+| [`assistant/test_outils.py`](assistant/test_outils.py) | Outils de l'assistant : schémas, outils de lecture, propositions sans écriture | 29 |
 | [`assistant/test_validations.py`](assistant/test_validations.py) | Validations sans écriture utilisées par les propositions de l'assistant | 9 |
 
 ### `banc_tests/` : Tests unitaires du banc de tests : catalogue, cibles, résultats, garde-fous, menu (36 fonctions)

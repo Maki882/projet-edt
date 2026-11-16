@@ -1,4 +1,4 @@
-"""Outils de l'assistant : schémas stricts, outils de lecture, propositions sans écriture.
+"""Outils de l'assistant : schémas, outils de lecture, propositions sans écriture.
 
 Données : le jeu minimal et sa version saisie à la main (`version_minimale`),
 le 5 octobre 2026 (semestre S1 de 2026-2027).
@@ -75,12 +75,12 @@ def _cles(schema):
             yield from _cles(valeur)
 
 
-def test_douze_outils_stricts_tries_par_nom():
+def test_douze_outils_tries_par_nom_sans_mode_strict():
     noms = [outil["name"] for outil in OUTILS]
     assert len(noms) == 12 and noms == sorted(noms)
     assert set(noms) == set(outils._EXECUTANTS)
     for outil in OUTILS:
-        assert outil["strict"] is True and outil["description"]
+        assert "strict" not in outil and outil["description"]
         for objet in _objets(outil["input_schema"]):
             assert objet["additionalProperties"] is False, outil["name"]
             assert objet["required"] == list(objet["properties"]), outil["name"]
@@ -106,6 +106,78 @@ def test_enumerations_tirees_du_domaine():
     assert jours == list(JOURS)
     etats = par_nom["lister_regles"]["properties"]["etat"]["anyOf"][0]["enum"]
     assert etats == [e.value for e in EtatRegle]
+
+
+def _nullable(schema: dict) -> bool:
+    return any(branche.get("type") == "null" for branche in schema.get("anyOf", []))
+
+
+def _valeur_plausible(schema: dict):
+    """Une valeur du bon type pour ce schéma (null s'il l'accepte)."""
+    if _nullable(schema):
+        return None
+    if "enum" in schema:
+        return schema["enum"][0]
+    return {
+        "string": "X",
+        "integer": 1,
+        "array": [],
+        "object": {
+            nom: _valeur_plausible(sous) for nom, sous in schema.get("properties", {}).items()
+        },
+    }[schema["type"]]
+
+
+def _type_de(schema: dict) -> str:
+    if "anyOf" in schema:
+        return next(b["type"] for b in schema["anyOf"] if b.get("type") != "null")
+    return schema["type"]
+
+
+MAUVAISES_VALEURS = {
+    "string": [12, ["X"], {"x": 1}],
+    "integer": ["douze", 1.5, True, [1]],
+    "array": ["X", {"x": 1}, [12], [{"x": 1}], [None]],
+    "object": ["X", [1], {"inconnu": 1}],
+}
+
+
+def _entrees_mal_formees(schema: dict, base: dict):
+    """Pour chaque propriété (objets imbriqués compris) : absente, puis de chaque mauvais type."""
+    for nom, sous in schema["properties"].items():
+        yield nom + " absent", {k: v for k, v in base.items() if k != nom}
+        for valeur in MAUVAISES_VALEURS[_type_de(sous)]:
+            yield f"{nom}={valeur!r}", {**base, nom: valeur}
+        simple = next((b for b in sous.get("anyOf", []) if b.get("type") != "null"), sous)
+        if "enum" in simple or "enum" in simple.get("items", {}):
+            inconnue = "valeur_inconnue" if "enum" in simple else ["valeur_inconnue"]
+            yield f"{nom}={inconnue!r}", {**base, nom: inconnue}
+        objet = sous if sous.get("type") == "object" else None
+        if objet is None and _type_de(sous) == "object":
+            objet = next(b for b in sous["anyOf"] if b.get("type") == "object")
+        if objet is not None:
+            interne = _valeur_plausible({**objet})
+            for detail, valeur in _entrees_mal_formees(objet, interne):
+                yield f"{nom}.{detail}", {**base, nom: valeur}
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize("outil", OUTILS, ids=[o["name"] for o in OUTILS])
+def test_arguments_mal_formes_rendus_en_refus_clair(version_minimale, outil):
+    """Cas : le modèle envoie un argument absent ou du mauvais type (un nombre pour un code,
+    un texte pour une liste, un objet inconnu...) : les outils ne sont pas stricts.
+
+    Risque : une exception imprévue, rendue au modèle en « erreur interne de l'outil » qu'il
+    ne sait pas corriger, et une trace d'erreur dans le journal à chaque faute de forme.
+    """
+    schema = outil["input_schema"]
+    base = _valeur_plausible(schema)
+    internes = []
+    for detail, entree in [("vide", {}), *_entrees_mal_formees(schema, base)]:
+        resultat = _appeler(outil["name"], **entree)
+        if resultat["content"].startswith("Erreur interne"):
+            internes.append(detail)
+    assert internes == [], f"{outil['name']} : erreur interne pour {internes}"
 
 
 # --------------------------------------------------------------------------- #
@@ -420,6 +492,36 @@ def test_proposer_modification_regle(jeu_minimal):
     assert proposition.titre == "Modifier R002" and proposition.phrase_avant
     assert proposition.phrase != proposition.phrase_avant
     assert proposition.donnees["changements"] == {"parametres": {"duree": 90}}
+
+
+@pytest.mark.cas_limite
+def test_argument_omis_vaut_null(version_minimale):
+    """Cas : le modèle omet les paramètres non précisés au lieu d'écrire null (les outils ne
+    sont pas stricts : rien ne l'oblige à tous les donner).
+
+    Risque : un paramètre omis lu autrement que null : une autre réponse, ou une période
+    omise dans une modification prise pour « toute l'année » au lieu de « inchangée ».
+    """
+    avec_nuls = _appeler(
+        "salles_libres",
+        semestre=None,
+        jour="jeudi",
+        date=None,
+        moment="apres_midi",
+        debut=None,
+        fin=None,
+        capacite_min=30,
+        campus=None,
+        type_salle=None,
+    )
+    omis = _appeler("salles_libres", jour="jeudi", moment="apres_midi", capacite_min=30)
+    assert not omis.get("is_error") and omis["content"] == avec_nuls["content"]
+    contexte = _contexte()
+    resultat = _appeler(
+        "proposer_modification_regle", contexte, code="R002", parametres={"duree": 90}
+    )
+    assert not resultat.get("is_error"), resultat["content"]
+    assert contexte.propositions[0].donnees["changements"] == {"parametres": {"duree": 90}}
 
 
 def test_proposer_etat_regle(jeu_minimal):

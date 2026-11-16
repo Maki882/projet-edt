@@ -73,6 +73,128 @@ def _pause_levee():
 
 
 # --------------------------------------------------------------------------- #
+# Schémas envoyés : limites documentées du mode strict
+# --------------------------------------------------------------------------- #
+
+# « Structured outputs », § Schema complexity limits et § JSON Schema limitations
+# (platform.claude.com/docs/en/build-with-claude/structured-outputs). Les trois
+# limites chiffrées portent sur le total de tous les schémas stricts d'une requête ;
+# un outil sans `strict` n'y compte pas.
+OUTILS_STRICTS_MAX = 20
+PARAMETRES_FACULTATIFS_MAX = 24
+PARAMETRES_A_UNION_MAX = 16
+MOTS_REFUSES_EN_STRICT = frozenset(
+    {
+        "minimum",
+        "maximum",
+        "exclusiveMinimum",
+        "exclusiveMaximum",
+        "multipleOf",
+        "minLength",
+        "maxLength",
+        "maxItems",
+        "uniqueItems",
+        "contains",
+        "minProperties",
+        "maxProperties",
+        "patternProperties",
+        "oneOf",
+        "not",
+        "if",
+        "then",
+        "else",
+    }
+)
+FORMATS_PRIS_EN_CHARGE = frozenset(
+    {"date-time", "time", "date", "duration", "email", "hostname", "uri", "ipv4", "ipv6", "uuid"}
+)
+MOTIFS_REFUSES = ("(?=", "(?!", "(?<=", "(?<!", "\\b", "\\B", *(f"\\{n}" for n in range(1, 10)))
+
+
+def _sous_schemas(schema: dict):
+    """Le schéma et tous ses sous-schémas : propriétés, éléments, branches, définitions."""
+    yield schema
+    for sous in schema.get("properties", {}).values():
+        yield from _sous_schemas(sous)
+    if isinstance(schema.get("items"), dict):
+        yield from _sous_schemas(schema["items"])
+    for cle in ("anyOf", "allOf"):
+        for sous in schema.get(cle, []):
+            yield from _sous_schemas(sous)
+    for cle in ("$defs", "definitions"):
+        for sous in schema.get(cle, {}).values():
+            yield from _sous_schemas(sous)
+
+
+def depassements_du_mode_strict(outils_envoyes: list[dict]) -> list[str]:
+    """Limites documentées du mode strict que ces outils dépassent (liste vide : aucune)."""
+    stricts = [outil for outil in outils_envoyes if outil.get("strict")]
+    schemas = [(o["name"], s) for o in stricts for s in _sous_schemas(o["input_schema"])]
+    unions = sum(1 for _, s in schemas if "anyOf" in s or isinstance(s.get("type"), list))
+    facultatifs = sum(
+        len(set(s.get("properties", {})) - set(s.get("required", [])))
+        for _, s in schemas
+        if s.get("type") == "object"
+    )
+    erreurs = []
+    if len(stricts) > OUTILS_STRICTS_MAX:
+        erreurs.append(f"{len(stricts)} outils stricts (limite {OUTILS_STRICTS_MAX})")
+    if unions > PARAMETRES_A_UNION_MAX:
+        erreurs.append(f"{unions} paramètres à union (limite {PARAMETRES_A_UNION_MAX})")
+    if facultatifs > PARAMETRES_FACULTATIFS_MAX:
+        erreurs.append(
+            f"{facultatifs} paramètres facultatifs (limite {PARAMETRES_FACULTATIFS_MAX})"
+        )
+    for nom, s in schemas:
+        if s.get("type") == "object" and s.get("additionalProperties") is not False:
+            erreurs.append(f"{nom} : objet sans additionalProperties: false")
+        if refuses := sorted(MOTS_REFUSES_EN_STRICT & set(s)):
+            erreurs.append(f"{nom} : mots non pris en charge {refuses}")
+        if s.get("minItems", 0) not in (0, 1):
+            erreurs.append(f"{nom} : minItems {s['minItems']} (0 ou 1 seulement)")
+        if any(isinstance(v, dict | list) for v in s.get("enum", [])):
+            erreurs.append(f"{nom} : énumération de valeurs non simples")
+        if "format" in s and s["format"] not in FORMATS_PRIS_EN_CHARGE:
+            erreurs.append(f"{nom} : format {s['format']} non pris en charge")
+        if any(motif in s.get("pattern", "") for motif in MOTIFS_REFUSES):
+            erreurs.append(f"{nom} : motif {s['pattern']} non pris en charge")
+        if "$ref" in s:
+            erreurs.append(f"{nom} : $ref (récursif ou externe : refusé)")
+    return erreurs
+
+
+@pytest.mark.cas_limite
+def test_schemas_envoyes_dans_les_limites_du_mode_strict():
+    """Cas : la requête réelle part avec les douze outils de l'assistant.
+
+    Risque : le service refuse toute requête en 400 (« Schemas contains too many parameters
+    with union types (74 …) », limite 16) : l'assistant ne répond jamais, alors que tous les
+    tests passent par le faux client, qui n'applique aucune de ces limites.
+    """
+    outils_envoyes = boucle.parametres_requete([], _config())["tools"]
+    assert len(outils_envoyes) == 12
+    assert depassements_du_mode_strict(outils_envoyes) == []
+
+
+def test_le_controle_des_limites_detecte_un_depassement():
+    """Le contrôle lui-même : un outil strict à dix-sept paramètres nullables est refusé."""
+    trop = {
+        "name": "trop",
+        "strict": True,
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                f"p{i}": {"anyOf": [{"type": "string"}, {"type": "null"}]} for i in range(17)
+            },
+            "required": [f"p{i}" for i in range(17)],
+            "additionalProperties": False,
+        },
+    }
+    assert depassements_du_mode_strict([trop]) == ["17 paramètres à union (limite 16)"]
+    assert depassements_du_mode_strict([{**trop, "strict": False}]) == []
+
+
+# --------------------------------------------------------------------------- #
 # Arrêts du modèle
 # --------------------------------------------------------------------------- #
 
@@ -91,7 +213,7 @@ def test_reponse_directe_et_arguments_envoyes(base):
     assert arguments["system"] == [
         {"type": "text", "text": CONSIGNES, "cache_control": {"type": "ephemeral"}}
     ]
-    assert arguments["tools"] == OUTILS and all(o["strict"] for o in arguments["tools"])
+    assert arguments["tools"] == OUTILS and not any(o.get("strict") for o in OUTILS)
     assert arguments["max_tokens"] == 4096
     for interdit in ("thinking", "tool_choice", "temperature", "top_p", "top_k"):
         assert interdit not in arguments

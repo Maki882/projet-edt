@@ -137,7 +137,7 @@ python -m edt assistant --question "…"     # une question, réponse affichée
 - L'état dit si l'assistant est prêt, quelle variable porte l'identifiant (jamais sa
   valeur), les limites et la consommation du jour (échanges, appels, jetons, coût estimé).
 - L'essai fait **un** appel avec exactement les paramètres d'un échange (consignes, douze
-  outils stricts, en-tête de repli, effort) et le message « Répondez seulement : prêt. » ;
+  outils, en-tête de repli, effort) et le message « Répondez seulement : prêt. » ;
   il vérifie ainsi la clé, le modèle, l'en-tête bêta et l'acceptation des schémas. Il
   affiche la durée, l'arrêt, le modèle servi, les jetons (dont ceux lus en cache) et le coût
   estimé, qui compte dans la consommation du jour.
@@ -171,7 +171,7 @@ Paquet `edt.services.assistant` (aucun accès web), appelé par
 | `__init__` | API : `etat`, `vue`, `exemples`, `envoyer`, `lire_echange`, `confirmer`, `refuser`, `nouvelle_conversation`, `essayer`, `repondre`, `consommation_du_jour` |
 | `configuration` | variables § 2.1, table des prix, état (prêt, non configuré, désactivé, configuration) |
 | `consignes` | consignes système figées, suivies du catalogue des règles généré depuis le domaine |
-| `outils` | douze outils : schémas stricts, exécution, textes bornés, étapes affichées |
+| `outils` | douze outils : schémas (sans mode strict, § 5), exécution, textes bornés, étapes affichées |
 | `boucle` | déroulement d'un échange, paramètres de requête, matrice des erreurs, pause |
 | `limites` | coûts, budget réservé avant chaque appel, compteurs du jour (base et mémoire), par adresse |
 | `conversations` | registre en mémoire, conversations, échanges, bulles |
@@ -218,10 +218,10 @@ n'est pas utilisée (`docs/modele-donnees.md`).
      service (20 s au plus), et seulement si l'attente et un nouvel appel tiennent avant
      l'échéance ; sinon l'erreur est rendue aussitôt ;
    - paramètres fixes : modèle, `max_tokens`, consignes en `system` avec point de cache,
-     douze outils stricts, `output_config.effort`, cache automatique de la fin de
-     conversation, en-tête `server-side-fallback-2026-07-01` et `fallbacks: "default"` ; ni
-     `thinking` (réflexion toujours active sur ce modèle), ni `tool_choice` (un outil forcé
-     est refusé), ni `temperature` ;
+     douze outils (sans mode strict, § 5), `output_config.effort`, cache automatique de la
+     fin de conversation, en-tête `server-side-fallback-2026-07-01` et `fallbacks:
+     "default"` ; ni `thinking` (réflexion toujours active sur ce modèle), ni `tool_choice`
+     (un outil forcé est refusé), ni `temperature` ;
    - `stop_reason` est lu avant le contenu : `end_turn` termine, `tool_use` exécute les
      outils (tous les résultats dans un seul message, avec l'identifiant de chaque appel),
      `pause_turn` reprend, `refusal` et `max_tokens` arrêtent sans exécuter d'outil ;
@@ -250,6 +250,18 @@ le nombre de lignes manquantes).
 | `lister_regles`, `expliquer_regle` | règles de l'année (phrase, état, niveau, période) ; explication d'une règle |
 | `proposer_regle`, `proposer_modification_regle`, `proposer_etat_regle`, `proposer_indisponibilite` | validation par le service, puis une proposition ajoutée à l'échange (trois au plus) ; erreurs par champ sinon |
 | `preparer_formulaire_besoin` | résumé, besoins voisins, lien du formulaire prérempli construit par le serveur |
+
+Les schémas ont la forme du mode strict (chaque objet fermé, toutes les propriétés
+requises, null pour une valeur non précisée, aucune borne), mais aucun outil n'est déclaré
+`strict` : le service limite le mode strict, sur l'ensemble des schémas stricts d'une
+requête, à 16 paramètres à union (`anyOf` ou type en liste ; nos schémas ont 74
+paramètres nullables), 24 paramètres facultatifs et 20 outils, plus une limite interne de
+taille de la grammaire compilée, et refuse toute la requête au-delà (400). Le schéma guide
+le modèle ; l'exécution valide chaque argument : un argument absent compte comme null, un
+argument mal formé revient au modèle comme refus clair, qu'il corrige. Un test parcourt les
+outils réellement envoyés et vérifie ces limites ; un autre envoie, pour chaque paramètre
+de chaque outil, un argument absent ou du mauvais type et exige un refus clair, jamais une
+erreur interne.
 
 Les codes sont résolus sans casse : groupe et matière dans l'année en cours, enseignant par
 identifiant ou par nom unique, salle par code (« N105 (ISSY) » départage deux homonymes). Un

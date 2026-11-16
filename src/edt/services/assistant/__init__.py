@@ -651,7 +651,7 @@ def essayer() -> ResultatEssai:
     """Un appel avec exactement les paramètres d'un échange (consignes, outils, repli, effort).
 
     Vérifie la clé, le modèle, l'en-tête bêta et l'acceptation des schémas
-    stricts. Son coût compte dans la consommation du jour.
+    des outils. Son coût compte dans la consommation du jour.
     """
     config = _config()
     if not config.disponible:
