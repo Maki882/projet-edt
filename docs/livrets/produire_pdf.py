@@ -58,6 +58,8 @@ LIVRETS = (
     "3-guide-utilisateur",
     "4-cahier-de-recette",
 )
+ADRESSE_DES_PDF = "https://github.com/Maki882/projet-edt/blob/main/docs/livrets/pdf/"
+"""Adresse publique des PDF des livrets : un lien vers un autre livret y mène."""
 DELAI_CHROME_S = 180
 SIGNATURE_PNG = bytes.fromhex("89504e470d0a1a0a")
 LARGEUR_ECRAN_PX = 1366
@@ -97,7 +99,7 @@ ul, ol { margin: 0 0 8pt; padding-left: 18pt; }
 li { margin-bottom: 2pt; }
 a { color: #1a4a8a; text-decoration: none; }
 code { font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 9pt; background: #f1f3f6;
-       padding: 0 2pt; border-radius: 2pt; overflow-wrap: break-word; }
+       padding: 0 2pt; border-radius: 2pt; overflow-wrap: normal; }
 pre { background: #f1f3f6; padding: 6pt 8pt; font-size: 8.5pt; line-height: 1.35; white-space: pre-wrap;
       overflow-wrap: anywhere; break-inside: avoid; border-radius: 3pt; }
 pre code { background: none; padding: 0; }
@@ -114,6 +116,13 @@ figure { margin: 8pt 0 12pt; text-align: center; break-inside: avoid; }
 figure img { max-width: 100%; box-sizing: border-box; border: 1px solid #c3c9d2; }
 figcaption { font-size: 9pt; font-style: italic; color: #333; margin-top: 4pt; }
 figure.etroite { float: right; margin: 2pt 0 8pt 12pt; }
+figure.groupe img { margin: 0 3mm; vertical-align: top; }
+table.recette { table-layout: fixed; }
+table.recette th:nth-child(1) { width: 14%; }
+table.recette th:nth-child(2) { width: 11%; }
+table.recette th:nth-child(4) { width: 9%; }
+table.recette th:nth-last-child(1) { width: 12%; }
+table.recette th:nth-last-child(2), table.recette th:nth-last-child(3) { width: 9%; }
 h2, h3 { clear: both; }
 .saut-de-page { break-after: page; height: 0; }
 .garde { padding-top: 55mm; }
@@ -165,7 +174,8 @@ def texte_brut(inline: Token) -> str:
 
 
 def adapter_liens(inline: Token) -> None:
-    """Lien vers un autre livret : vers son PDF ; vers un autre fichier du dépôt : texte simple."""
+    """Lien vers un autre livret : vers son PDF dans le dépôt public (adresse absolue, jamais un
+    fichier du poste) ; vers un autre fichier du dépôt : texte simple."""
     pile: list[Token] = []
     for enfant in inline.children or []:
         if enfant.type == "link_open":
@@ -175,7 +185,7 @@ def adapter_liens(inline: Token) -> None:
                 continue
             fichier = cible.split("#", 1)[0]
             if "/" not in fichier and fichier.removesuffix(".md") in LIVRETS:
-                enfant.attrs["href"] = fichier.removesuffix(".md") + ".pdf"
+                enfant.attrs["href"] = ADRESSE_DES_PDF + fichier.removesuffix(".md") + ".pdf"
             else:
                 enfant.tag = "span"
                 enfant.attrs = {"class": "lien-depot", "title": cible}
@@ -186,11 +196,17 @@ def adapter_liens(inline: Token) -> None:
 
 
 def figure(correspondance: re.Match[str]) -> str:
-    """Une image seule dans son paragraphe, avec sa légende éventuelle : un bloc `<figure>`.
+    """Une ou plusieurs images seules dans leur paragraphe, avec leur légende éventuelle : un bloc
+    `<figure>`.
 
-    Une image étroite (classe `etroite`) donne une figure de sa largeur, à droite du texte.
+    Une image étroite (classe `etroite`) donne une figure de sa largeur, à droite du texte ;
+    plusieurs images forment une figure centrée, côte à côte, sous une seule légende.
     """
-    image, legende = correspondance.group(1), correspondance.group(2)
+    image, legende = correspondance.group(1).strip(), correspondance.group(2)
+    if image.count("<img ") > 1:
+        image = image.replace(' class="etroite"', "")
+        texte = f"<figcaption>{legende}</figcaption>" if legende else ""
+        return f'<figure class="groupe">{image}{texte}</figure>'
     attributs = ""
     if 'class="etroite"' in image:
         largeur = re.search(r"width: ([\d.]+mm)", image)
@@ -212,6 +228,8 @@ def vers_html(markdown: str, titre: str) -> str:
         elif jeton.type == "inline":
             adapter_liens(jeton)
             for enfant in jeton.children or []:
+                if enfant.type == "text":
+                    enfant.content = espaces_insecables(enfant.content)
                 if enfant.type == "image":
                     source = str(enfant.attrs.get("src", ""))
                     if not source.startswith(("http://", "https://", "file:")):
@@ -226,9 +244,27 @@ def vers_html(markdown: str, titre: str) -> str:
                                 enfant.attrs["class"] = "etroite"
     corps = analyseur.renderer.render(jetons, analyseur.options, {})
 
-    # Une image seule dans son paragraphe, suivie de sa légende « *Figure N. ...* » : une figure.
+    # Une ou plusieurs images seules dans leur paragraphe, suivies de leur légende
+    # « *Figure N. ...* » : une figure.
     corps = re.sub(
-        r"<p>(<img [^>]*>)</p>(?:\s*<p><em>(Figure .*?)</em></p>)?", figure, corps, flags=re.S
+        r"<p>((?:<img [^>]*>\s*)+)</p>(?:\s*<p><em>(Figure .*?)</em></p>)?",
+        figure,
+        corps,
+        flags=re.S,
+    )
+    # Identifiants de tests : coupure permise après « :: », « / » ou « _ », jamais dans un mot.
+    corps = re.sub(
+        r"(?<!<pre>)<code>([^<]*)</code>",
+        lambda m: "<code>"
+        + m.group(1).replace("::", "::<wbr>").replace("/", "/<wbr>").replace("_", "_<wbr>")
+        + "</code>",
+        corps,
+    )
+    # Tableau de recette (en-tête « Fiche | Fonction. | … ») : mêmes colonnes d'un tableau à l'autre.
+    corps = re.sub(
+        r"<table>(\s*<thead>\s*<tr>\s*<th>Fiche</th>\s*<th>Fonction\.</th>)",
+        r'<table class="recette">\1',
+        corps,
     )
     # Tableau de page de garde à en-tête vide (« | | | ») : sans ligne d'en-tête.
     corps = re.sub(r"<thead>\s*<tr>\s*(<th></th>\s*)+</tr>\s*</thead>", "", corps)
@@ -244,6 +280,25 @@ def vers_html(markdown: str, titre: str) -> str:
         f"<title>{html.escape(titre)}</title><style>{STYLE}</style></head>"
         f"<body>{corps}</body></html>\n"
     )
+
+
+def espaces_insecables(texte: str) -> str:
+    """Espaces insécables françaises d'un nœud de texte (jamais du code) : fine avant « : ; ? ! »
+    et à l'intérieur des guillemets, insécable dans « 12 h 30 », « 4 min 57 s » et « n° 54 »."""
+    texte = texte.replace("« ", "«\u202f")
+    texte = re.sub(r" ([»:;?!])", "\u202f" + r"\1", texte)
+    texte = re.sub(r"(\d) (h|min|s)\b", r"\1" + "\u00a0" + r"\2", texte)
+    texte = re.sub(r"\b(h|min) (\d)", r"\1" + "\u00a0" + r"\2", texte)
+    return re.sub(r"n° (\d)", "n°" + "\u00a0" + r"\1", texte)
+
+
+def pdf_douteux(pdf: Path) -> str | None:
+    """Ce qu'un PDF ne doit pas contenir (adresse « file:// » ou chemin d'un poste), ou None."""
+    contenu = pdf.read_bytes()
+    for motif in (b"file://", b"Users/"):
+        if motif in contenu:
+            return motif.decode()
+    return None
 
 
 def trouver_chrome(indique: str | None) -> str:
@@ -330,6 +385,17 @@ def produire(noms: list[str], chrome: str) -> int:
             except (OSError, RuntimeError) as erreur:
                 echecs += 1
                 journal.error("Échec pour %s : %s", nom, erreur)
+                continue
+            douteux = pdf_douteux(pdf)
+            if douteux is not None:
+                echecs += 1
+                journal.error(
+                    "%s contient « %s » (adresse d'un fichier du poste) : corriger le lien en "
+                    "cause dans %s.md avant de publier ce PDF.",
+                    pdf.name,
+                    douteux,
+                    nom,
+                )
                 continue
             pages = nombre_de_pages(pdf)
             journal.info(
