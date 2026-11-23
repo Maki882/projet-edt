@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 556 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 10 tests ajoutés au dépôt après les campagnes n'y figurent pas : `banc_tests/test_ecrans.py::test_confettis_une_fois_a_la_fin_d_une_execution_entierement_reussie`, `banc_tests/test_ecrans.py::test_pas_de_confettis_sans_test_reussi`, `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `socle/test_cli.py::test_une_base_non_initialisee_indique_init_db_et_le_code_1`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
+Le dépôt compte 559 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 13 tests ajoutés au dépôt après les campagnes n'y figurent pas : `banc_tests/test_ecrans.py::test_confettis_une_fois_a_la_fin_d_une_execution_entierement_reussie`, `banc_tests/test_ecrans.py::test_pas_de_confettis_sans_test_reussi`, `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `socle/test_cli.py::test_une_base_non_initialisee_indique_init_db_et_le_code_1`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route`, `web_edt/test_recette_affichage.py::test_impression_masque_le_bouton_des_filtres`, `web_edt/test_recette_affichage.py::test_impression_masque_le_repere_aujourd_hui`, `web_edt/test_recette_affichage.py::test_impression_masque_toute_la_barre_de_navigation` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -241,10 +241,10 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
-| `web_edt` | 149 | 0 | 113 | 143 | 143 |
-| **Total** | **556** | **4** | **407** | **542** | **540** |
+| `web_edt` | 152 | 0 | 113 | 143 | 143 |
+| **Total** | **559** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 556 tests d'intégration du dépôt (73,2 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 559 tests d'intégration du dépôt (72,8 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -1957,7 +1957,7 @@ traiter ».
 - Un document imprimable qui porte le nom du groupe, le semestre et la version, la grille de la semaine et sa légende.
 - Aucun élément de l'interface : ni onglets, ni boutons, ni champ de recherche, ni bouton de l'assistant.
 
-**Remarque.** Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel.
+**Remarque.** Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel. L'essai vaut aussi pour une semaine datée, qui porte une barre de navigation entre semaines : elle doit tenir sur une page, période imprimée une seule fois.
 
 **Tests automatisés (1).** `echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource`
 
@@ -2658,7 +2658,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 21 s | 20/20, 11 s | Conforme |
 | **test_niveaux_web.py** : Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 | 6 | 11/11, 5 s | 11/11, 3 s | Conforme |
 | **test_raccords.py** : Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
-| **test_recette_affichage.py** : Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
+| **test_recette_affichage.py** : Adaptation des écrans à un petit écran et à l'impression, vérifiable sans navigateur | 4 | 1 | 1/4, 1 s | 1/4, 1 s | Conforme (3 non exécutés dans les campagnes) |
 | **test_recette_deplacement.py** : Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 | 2 | 2/2, 1 s | 2/2, 1 s | Conforme |
 | **test_recette_resultat.py** : Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 | **test_recette_verrous.py** : Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 | 2 | 2/2, 2 s | 2/2, 1 s | Conforme |
