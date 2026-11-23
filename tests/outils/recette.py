@@ -835,7 +835,7 @@ def produire_synthese(recette: Recette) -> str:
         f"{_pluriel(manuelles, 'fiche')} d'essai manuel : "
         + ", ".join(f"{verdicts[v]} « {v} »" for v in VERDICTS)
         + f". Les fiches citent {len(cites)} des {total_tests} tests d'intégration du dépôt "
-        f"({_pourcentage(len(cites), total_tests)}) ; les autres figurent à l'annexe A, "
+        f"({_pourcentage(len(cites), total_tests)}) ; les autres figurent à l'annexe B, "
         "rangés par fichier.",
     ]
     return "\n".join(lignes) + "\n"
@@ -856,7 +856,7 @@ def _ligne_obtenue(o: Obtenu, total: int) -> str:
 def produire_fiche(fiche: Fiche, recette: Recette) -> str:
     """Une fiche, en Markdown."""
     libelles = {f.code: f.libelle for f in recette.fonctionnalites}
-    lignes = [f"#### {fiche.id}. {fiche.titre}", ""]
+    lignes = [f"#### {titre_de_fiche(fiche)}", ""]
     entete = "Fonctionnalités : " if len(fiche.fonctionnalites) > 1 else "Fonctionnalité : "
     entete += (
         " ; ".join(f"{c} {libelles.get(c, '?')}" for c in fiche.fonctionnalites) or "exploitation"
@@ -886,7 +886,10 @@ def produire_fiche(fiche: Fiche, recette: Recette) -> str:
         obtenu = " ".join(
             _ligne_obtenue(o, len(fiche.tests)) for o in obtenus(fiche, recette.campagnes)
         )
-        lignes += [f"**Résultat obtenu.** {obtenu or 'aucune campagne enregistrée.'}", ""]
+        resultat = f"**Résultat obtenu.** {obtenu or 'aucune campagne enregistrée.'}"
+        if fiche.essai is None:
+            resultat += f" **Verdict : {verdict(fiche, recette.campagnes)}.**"
+        lignes += [resultat, ""]
     if fiche.essai is not None:
         e = fiche.essai
         lignes += [
@@ -897,18 +900,92 @@ def produire_fiche(fiche: Fiche, recette: Recette) -> str:
         ]
         if e.reserve:
             lignes += [f"**Réserve.** {e.reserve}", ""]
-        for image, legende in e.preuves:
+        if len(e.preuves) == 1:
+            image, legende = e.preuves[0]
             lignes += [f"![{legende}]({image})", "", f"*Figure. {legende}*", ""]
-    lignes += [f"**Verdict : {verdict(fiche, recette.campagnes)}.**"]
-    return "\n".join(lignes) + "\n"
+        elif e.preuves:
+            # Plusieurs preuves : côte à côte dans un même paragraphe, avec une seule légende.
+            cotes = ["à gauche", "au milieu", "à droite"] if len(e.preuves) == 3 else []
+            cotes = cotes or (["à gauche", "à droite"] if len(e.preuves) == 2 else [])
+            morceaux = []
+            for position, (_, legende) in enumerate(e.preuves):
+                texte = legende.rstrip(".")
+                texte = texte if position == 0 else texte[0].lower() + texte[1:]
+                morceaux.append(f"{texte} ({cotes[position]})" if cotes else texte)
+            lignes += [" ".join(f"![{legende}]({image})" for image, legende in e.preuves), ""]
+            lignes += [f"*Figure. {' ; '.join(morceaux)}.*", ""]
+        lignes += [f"**Verdict : {verdict(fiche, recette.campagnes)}.**"]
+    return "\n".join(lignes).rstrip("\n") + "\n"
+
+
+def ancre(titre: str) -> str:
+    """Ancre d'un titre, calculée comme GitHub et `docs/livrets/produire_pdf.py`."""
+    return re.sub(r"[^\w\- ]", "", titre.strip().lower()).replace(" ", "-")
+
+
+def titre_de_fiche(fiche: Fiche) -> str:
+    """Titre de la fiche détaillée (annexe A), sans les dièses."""
+    return f"{fiche.id}. {fiche.titre}"
+
+
+def lien_de_fiche(fiche: Fiche) -> str:
+    """Lien du tableau vers la fiche détaillée ; ses tirets insécables gardent l'identifiant sur
+    une ligne à l'impression."""
+    identifiant = fiche.id.replace("-", "‑")
+    return f"[{identifiant}](#{ancre(titre_de_fiche(fiche))})"
+
+
+def entete_de_campagne(campagne: Campagne) -> str:
+    """En-tête de colonne court d'une campagne : le premier mot de son nom (« Serveur »)."""
+    return campagne.nom.split()[0]
+
+
+def _cellule_obtenue(o: Obtenu, fiche: Fiche) -> str:
+    """« 7/7 », « 6/8, 2 ignorés » : le résultat d'une fiche dans une campagne, pour le tableau."""
+    if not fiche.tests:
+        return "—"
+    texte = f"{o.reussis}/{len(fiche.tests)}"
+    for nombre, mot in ((o.echecs, "échec"), (sum(o.ignores.values()), "ignoré")):
+        if nombre:
+            texte += f", {_pluriel(nombre, mot)}"
+    if o.absents:
+        texte += f", {_pluriel(o.absents, 'non exécuté')}"
+    return texte
+
+
+def produire_tableau(recette: Recette) -> str:
+    """Section 4 : le tableau de recette, une ligne par fiche, par famille."""
+    lignes: list[str] = []
+    entetes = " | ".join(entete_de_campagne(c) for c in recette.campagnes)
+    for numero, (famille, titre) in enumerate(FAMILLES.items(), start=1):
+        lignes += [
+            f"### 4.{numero} {titre}",
+            "",
+            f"| Fiche | Fonction. | Ce qui est vérifié | Tests | {entetes} | Verdict |",
+            "|---|---|---|---|" + "---|" * len(recette.campagnes) + "---|",
+        ]
+        for f in (x for x in recette.fiches if x.famille == famille):
+            tests = str(len(f.tests)) if f.tests else ""
+            if f.essai is not None:
+                manuel = f"essai manuel du {_date(f.essai.date)}"
+                tests = f"{tests} + {manuel}" if tests else manuel
+            cellules = " | ".join(_cellule_obtenue(o, f) for o in obtenus(f, recette.campagnes))
+            lignes.append(
+                f"| {lien_de_fiche(f)} | {', '.join(f.fonctionnalites) or '—'} "
+                f"| {_cellule(f.titre)} | {tests} | {cellules} | {verdict(f, recette.campagnes)} |"
+            )
+        lignes.append("")
+    return "\n".join(lignes).rstrip("\n") + "\n"
 
 
 def produire_fiches(recette: Recette) -> str:
-    """Section 4 : les fiches, par famille."""
+    """Annexe A : les fiches détaillées ; chaque famille commence sur une nouvelle page (`---`)."""
     lignes: list[str] = []
     for numero, (famille, titre) in enumerate(FAMILLES.items(), start=1):
         de_la_famille = [f for f in recette.fiches if f.famille == famille]
-        lignes += [f"### 4.{numero} {titre}", ""]
+        if numero > 1:
+            lignes += ["---", ""]
+        lignes += [f"### A.{numero} {titre}", ""]
         if not de_la_famille:
             lignes += ["Aucune fiche.", ""]
         for fiche in de_la_famille:
@@ -991,7 +1068,7 @@ def produire_bilan(recette: Recette) -> str:
 
 
 def produire_annexe(recette: Recette) -> str:
-    """Annexe A : chaque fichier de tests d'intégration, ses nombres et son verdict."""
+    """Annexe B : chaque fichier de tests d'intégration, ses nombres et son verdict."""
     cites: Counter[str] = Counter()
     for fiche in recette.fiches:
         for t in set(fiche.tests):
@@ -1052,11 +1129,12 @@ def produire_annexe(recette: Recette) -> str:
 
 BLOCS: dict[str, Callable[[Recette], str]] = {
     "recette-synthese": produire_synthese,
-    "recette-fiches": produire_fiches,
+    "recette-tableau": produire_tableau,
     "recette-matrice": produire_matrice,
     "recette-reserves": produire_reserves,
     "recette-bilan": produire_bilan,
-    "recette-annexe-a": produire_annexe,
+    "recette-fiches": produire_fiches,
+    "recette-resultats-par-fichier": produire_annexe,
 }
 """Parties générées du livret, dans l'ordre du livret."""
 

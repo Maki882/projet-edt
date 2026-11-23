@@ -202,6 +202,8 @@ def figure(correspondance: re.Match[str]) -> str:
 def vers_html(markdown: str, titre: str) -> str:
     """Document HTML complet, prêt pour l'impression, d'un livret écrit en Markdown."""
     analyseur = MarkdownIt("commonmark", {"html": False}).enable("table")
+    # Les marqueurs des parties générées (« <!-- … --> » seuls sur leur ligne) ne s'impriment pas.
+    markdown = re.sub(r"^<!--.*-->[ \t]*\n", "", markdown, flags=re.M)
     jetons = analyseur.parse(markdown)
     deja: dict[str, int] = {}
     for position, jeton in enumerate(jetons):

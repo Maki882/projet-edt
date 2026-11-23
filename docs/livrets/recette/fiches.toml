@@ -1,7 +1,8 @@
 # Fiches de recette du livret 4 (docs/livrets/4-cahier-de-recette.md).
 #
 # Source unique, écrite à la main. L'outil `python -m tests.outils.recette --ecrire` en tire la
-# section 4 (fiches), la matrice de traçabilité et les nombres du livret ; le contrôle
+# tableau de recette (section 4), la matrice de traçabilité, les fiches détaillées (annexe A)
+# et les nombres du livret ; le contrôle
 # `tests/unitaires/socle/test_recette.py` vérifie que chaque test cité existe dans
 # tests/integration/ et que chaque fonctionnalité réalisée du livret 1 a une fiche.
 #

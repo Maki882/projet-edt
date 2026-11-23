@@ -5,8 +5,9 @@ Contrôles du dépôt réel :
 1. les parties générées du livret sont identiques à ce que produit `tests.outils.recette` ;
 2. chaque test cité par une fiche existe et se trouve dans `tests/integration/` ;
 3. chaque fonctionnalité réalisée du livret 1 a une fiche, ou est déclarée sans fiche ;
-4. chaque fichier de tests d'intégration figure à l'annexe A du livret ;
-5. chaque test d'une campagne existe encore dans le dépôt, ou le livret signale l'écart.
+4. chaque fiche a sa ligne au tableau de recette, avec un lien vers sa fiche détaillée ;
+5. chaque fichier de tests d'intégration figure à l'annexe B du livret ;
+6. chaque test d'une campagne existe encore dans le dépôt, ou le livret signale l'écart.
 
 Puis l'outil lui-même, éprouvé sur un dépôt miniature écrit dans `tmp_path` :
 enregistrement d'une campagne, verdicts, erreurs claires.
@@ -31,15 +32,18 @@ from tests.outils.recette import (
     NON_EXECUTEE,
     ErreurRecette,
     Resultat,
+    ancre,
     blocs_perimes,
     citations_invalides,
     debut_de_bloc,
     fin_de_bloc,
     fonctionnalites_sans_fiche,
+    lien_de_fiche,
     lire,
     main,
     partie_generee,
     resultats_disparus,
+    titre_de_fiche,
     verdict,
 )
 
@@ -59,7 +63,7 @@ def livret() -> str:
     return (RACINE / LIVRET).read_text(encoding="utf-8")
 
 
-# --- 1 à 5. Le dépôt réel ------------------------------------------------------
+# --- 1 à 6. Le dépôt réel ------------------------------------------------------
 
 
 def test_les_parties_generees_du_livret_sont_a_jour(recette, livret):
@@ -95,16 +99,31 @@ def test_chaque_fonctionnalite_realisee_a_une_fiche(recette):
     assert not fautes, "\n".join(f"  - {f}" for f in fautes)
 
 
-def test_chaque_fichier_de_tests_d_integration_figure_a_l_annexe_a(recette, livret):
-    """L'annexe A du livret nomme chaque fichier `test_*.py` de `tests/integration/`."""
-    annexe = partie_generee(livret, "recette-annexe-a")
-    assert annexe is not None, "marqueurs de l'annexe A absents du livret"
+def test_chaque_fiche_a_sa_ligne_au_tableau_de_recette_et_son_lien(recette, livret):
+    """Le tableau de la section 4 a une ligne par fiche, dont le lien mène à la fiche détaillée."""
+    tableau = partie_generee(livret, "recette-tableau")
+    fiches = partie_generee(livret, "recette-fiches")
+    assert tableau is not None and fiches is not None, "marqueurs du tableau ou des fiches absents"
+    fautes = []
+    for fiche in recette.fiches:
+        titre = titre_de_fiche(fiche)
+        if f"| {lien_de_fiche(fiche)} |" not in tableau or f"(#{ancre(titre)})" not in tableau:
+            fautes.append(f"{fiche.id} : ligne absente du tableau de recette")
+        if f"#### {titre}\n" not in fiches:
+            fautes.append(f"{fiche.id} : fiche détaillée absente de l'annexe A")
+    assert not fautes, f"lancer {COMMANDE} :\n" + "\n".join(f"  - {f}" for f in fautes)
+
+
+def test_chaque_fichier_de_tests_d_integration_figure_a_l_annexe_b(recette, livret):
+    """L'annexe B du livret nomme chaque fichier `test_*.py` de `tests/integration/`."""
+    annexe = partie_generee(livret, "recette-resultats-par-fichier")
+    assert annexe is not None, "marqueurs de l'annexe B absents du livret"
     absents = [
         f.chemin
         for f in recette.fichiers.values()
         if f"| **{f.chemin.rsplit('/', 1)[-1]}** :" not in annexe
     ]
-    assert not absents, f"fichier(s) absent(s) de l'annexe A ; lancer {COMMANDE} :\n" + "\n".join(
+    assert not absents, f"fichier(s) absent(s) de l'annexe B ; lancer {COMMANDE} :\n" + "\n".join(
         f"  - {a}" for a in absents
     )
 
@@ -126,7 +145,7 @@ def test_chaque_test_des_campagnes_existe_encore_ou_est_signale(recette, livret)
     )
 
 
-# --- 6. L'outil, sur un dépôt miniature ----------------------------------------
+# --- 7. L'outil, sur un dépôt miniature ----------------------------------------
 
 
 def _ecrire(racine: Path, chemin: str | Path, texte: str) -> Path:
