@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **547 fonctions de test** dans 11 composants, dont 214 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **548 fonctions de test** dans 11 composants, dont 215 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -392,7 +392,7 @@ Ce dossier compte **547 fonctions de test** dans 11 composants, dont 214 marqué
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (143 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (144 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -405,7 +405,7 @@ Ce dossier compte **547 fonctions de test** dans 11 composants, dont 214 marqué
 | [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | Grille, groupes liés, déplacements et annulations vérifiés | 20 |
 | [`web_edt/test_niveaux_web.py`](web_edt/test_niveaux_web.py) | Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 |
-| [`web_edt/test_recette_affichage.py`](web_edt/test_recette_affichage.py) | Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 |
+| [`web_edt/test_recette_affichage.py`](web_edt/test_recette_affichage.py) | Adaptation des écrans à un petit écran et à l'impression, vérifiable sans navigateur | 2 |
 | [`web_edt/test_recette_deplacement.py`](web_edt/test_recette_deplacement.py) | Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 |
 | [`web_edt/test_recette_resultat.py`](web_edt/test_recette_resultat.py) | Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 |
 | [`web_edt/test_recette_verrous.py`](web_edt/test_recette_verrous.py) | Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 |

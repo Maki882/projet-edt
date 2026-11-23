@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'intégration.
+Le catalogue compte 539 cas : 324 cas en tests unitaires et 215 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -83,8 +83,8 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
-| `web_edt` | 9 | 47 |
-| **Total** | **324** | **214** |
+| `web_edt` | 9 | 48 |
+| **Total** | **324** | **215** |
 
 ### Tests unitaires (324 cas)
 
@@ -757,7 +757,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (214 cas)
+### Tests d'intégration (215 cas)
 
 #### `assistant` (7 cas)
 
@@ -1067,7 +1067,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (47 cas)
+#### `web_edt` (48 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1145,6 +1145,12 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Formulaire seance sans debut possible reste lisible | dans le panneau d'une séance, choix d'un jour où elle ne tient sur aucun créneau avant la fermeture, ou d'un jour non proposé (le dimanche). | liste de débuts vide lue au rang 0 (IndexError), donc fragment 500 à la place du formulaire. |
+
+[`tests/integration/web_edt/test_recette_affichage.py`](../tests/integration/web_edt/test_recette_affichage.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Impression masque toute la barre de navigation | l'utilisateur imprime une semaine datée ou une vue « Jour », qui portent la barre de navigation entre périodes. | sans masquer la barre entière, sa période s'imprime sous le titre d'impression qui la donne déjà, et la légende part seule sur une deuxième page. |
 
 <!-- catalogue : fin de la partie générée -->
 

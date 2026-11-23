@@ -1,13 +1,16 @@
-"""Adaptation des écrans à un petit écran, vérifiable sans navigateur.
+"""Adaptation des écrans à un petit écran et à l'impression, vérifiable sans navigateur.
 
 Le client HTTP n'exécute ni CSS ni JavaScript : le rendu réel au téléphone ne se vérifie
-qu'à l'écran. Ce test vérifie ce dont ce rendu dépend : la largeur de la page suit celle de
-l'appareil, et les feuilles de style servies contiennent leurs règles pour les écrans étroits.
+qu'à l'écran, et la page imprimée qu'en PDF. Ces tests vérifient ce dont ces rendus dépendent :
+la largeur de la page suit celle de l'appareil, et les feuilles de style servies contiennent
+leurs règles pour les écrans étroits et pour l'impression.
 """
 
 from __future__ import annotations
 
 import re
+
+import pytest
 
 
 def _regle_media(feuille: str, condition: str) -> str:
@@ -48,3 +51,18 @@ def test_ecrans_prevus_pour_un_telephone(version_generee, client):
     assert "flex-direction: column" in mise_en_page.group(1)
     assert "align-items: stretch" in mise_en_page.group(1)
     assert re.search(r"\.edt-panneau\s*\{[^}]*width: 100%", etroit)
+
+
+@pytest.mark.cas_limite
+def test_impression_masque_toute_la_barre_de_navigation(client):
+    """Cas : l'utilisateur imprime une semaine datée ou une vue « Jour », qui portent la barre
+    de navigation entre périodes. Risque : sans masquer la barre entière, sa période s'imprime
+    sous le titre d'impression qui la donne déjà, et la légende part seule sur une deuxième
+    page."""
+    edt = client.get("/static/css/edt.css")
+    assert edt.status_code == 200
+    impression = _regle_media(edt.text, "print")
+    masques = re.search(r"([^{}]*)\{\s*display: none !important;", impression)
+    assert masques is not None
+    selecteurs = {selecteur.strip() for selecteur in masques.group(1).split(",")}
+    assert ".edt-navigation" in selecteurs, sorted(selecteurs)
