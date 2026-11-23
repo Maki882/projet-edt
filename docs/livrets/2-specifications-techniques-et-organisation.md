@@ -336,7 +336,7 @@ dépôt (discussions, décisions en séance, relectures orales) n'y figure pas.
 | Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 52 des 53 pull requests ; 812 des 820 commits de la branche principale (code, tests, documentation, déploiement). 680 des 820 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
 | Hugo | HugoLec94 | Premier vérificateur de conflits du planning et ses tests, versé par la première pull request ; il a ensuite été généralisé dans le vérificateur actuel. |
 | Kerime | kerime-2 | Réponses au questionnaire de cadrage (deux commits). |
-| — | dzzmimou48-cmd | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
+| — | `dzzmimou48-cmd` | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
 | Nassim Khiri | — | Aucun commit n'est rattaché à son nom dans l'historique. |
 
 Les réponses au questionnaire, données de vive voix ou par message, sont consolidées sans
@@ -450,9 +450,9 @@ d'une pull request) n'y est enregistrée.
 
 | Élément | Description |
 |---|---|
-| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; public depuis le 23 novembre 2026 (privé jusque-là), lisible par tous à son adresse, modifiable par les quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
+| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; dépôt privé, accès donné aux membres de l'équipe et à l'enseignant sur invitation, modifiable par les quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
 | Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
-| Protection de `main` | La protection automatique des branches n'était pas disponible tant que le dépôt était privé (offre gratuite de GitHub) et n'a pas été activée depuis : la règle « pas d'envoi direct sur `main` » reste une convention de l'équipe, appliquée depuis le 05/10. |
+| Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé (offre gratuite de GitHub) : la règle « pas d'envoi direct sur `main` » reste une convention de l'équipe, appliquée depuis le 05/10. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
 | Langue | Code, commentaires, messages, commits et documentation en français. |
 | Fichiers exclus | Environnements virtuels, bases, journaux, réglages d'éditeurs et secrets ne sont jamais suivis (`.gitignore`). |

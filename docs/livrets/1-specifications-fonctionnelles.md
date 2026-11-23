@@ -460,9 +460,9 @@ et ses opérations (ce que l'application lui demande de faire).
 - **Héritage** (flèche à triangle vide) : les dix classes du diagramme reliées à « Donnée
   importable » en héritent, ainsi que les étudiants, non représentés ; elle retient le fichier et la ligne d'où provient une donnée importée ainsi que les colonnes non
   reconnues du fichier. Une donnée saisie à la main laisse ces attributs vides.
-- **Multiplicités** : « 1 » exactement un, « 0..1 » au plus un, « * » zéro ou plusieurs,
-  « 1..* » au moins un. Par exemple, un besoin concerne au moins un groupe (1..*) et un nombre
-  quelconque d'enseignants (*), y compris aucun.
+- **Multiplicités** : « `1` » exactement un, « `0..1` » au plus un, « `*` » zéro ou plusieurs,
+  « `1..*` » au moins un. Par exemple, un besoin concerne au moins un groupe (`1..*`) et un nombre
+  quelconque d'enseignants (`*`), y compris aucun.
 
 **Opérations.** Les opérations indiquées sont celles que l'application applique réellement à
 ces objets : par exemple, « est accessible(inconnue acceptée) » dit si une salle convient à un

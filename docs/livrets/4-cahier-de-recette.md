@@ -22,7 +22,8 @@ Le présent livret reprend chaque fonctionnalité réalisée et chaque cas d'usa
 l'essai qui la vérifie (une fiche de recette), et donne le résultat obtenu lors de campagnes
 réelles.
 
-Les nombres de ce livret (tests, fiches, résultats, durées, dates) ne sont pas écrits à la main :
+Les nombres des parties générées de ce livret (tests, fiches, résultats, durées des campagnes)
+ne sont pas écrits à la main :
 ils sont produits par un outil du dépôt à partir des fiches, des tests eux-mêmes et des fichiers
 de résultats que l'application enregistre (annexe D).
 
@@ -93,8 +94,8 @@ livrets et qui est en service sur le serveur de démonstration. Elle couvre :
 Le rendu visuel, sur un petit écran et à l'impression, ne peut pas être jugé par un test qui
 lit les pages par HTTP : il fait l'objet de deux essais manuels (fiches REC-P1-2, en émulation
 d'appareil mobile dans Chrome et non sur un téléphone réel, et REC-U12-2). Un troisième essai
-manuel (REC-U13-3) rejoue en ligne de commande un défaut ouvert qu'aucun test d'intégration ne
-garde encore (anomalie ANO-21). Ce que les tests d'intégration ne couvrent pas, fonctionnalité par fonctionnalité,
+manuel (REC-U13-3) rejoue en ligne de commande un défaut de la version 1.0.0 qu'aucun test
+d'intégration de la recette ne gardait (anomalie ANO-21, corrigée depuis). Ce que les tests d'intégration ne couvrent pas, fonctionnalité par fonctionnalité,
 est dit à la section 7.
 
 ### 1.3 Documents de référence
@@ -103,7 +104,8 @@ est dit à la section 7.
   cas d'usage (section 2.4).
 - Livret 2, Spécifications techniques et organisation : organisation des tests (section 1.11).
 - Livret 3, Guide de l'utilisateur : libellés des écrans.
-- Dans le dépôt (https://github.com/Maki882/projet-edt) : `tests/integration/README.md`
+- Dans le dépôt (<https://github.com/Maki882/projet-edt>, privé, ouvert sur invitation aux
+  membres de l'équipe et à l'enseignant) : `tests/integration/README.md`
   (organisation des tests d'intégration), `docs/banque-de-tests.md` (cas limites),
   `docs/livrets/recette/fiches.toml` (fiches de ce livret) et
   `docs/livrets/recette/campagnes.json` (résultats enregistrés).
@@ -125,7 +127,7 @@ sur des tests automatisés plutôt que sur des essais manuels a trois avantages 
 rejoue entièrement en quelques minutes, à chaque modification ; le résultat attendu est écrit
 dans le test sous forme d'assertions, sans place pour l'interprétation ; et la recette est
 rejouée à l'identique sur plusieurs systèmes. Trois essais restent manuels : deux jugent un
-rendu visuel, le troisième rejoue un défaut ouvert (section 1.2).
+rendu visuel, le troisième rejoue un défaut de la version recettée (section 1.2).
 
 Les tests ne contrôlent jamais où le moteur de calcul a placé une séance : le moteur ne donne pas
 la même solution d'un système à l'autre. Ils contrôlent des propriétés (une version active
@@ -200,15 +202,16 @@ section 6 :
 
 Deux campagnes de référence ont été enregistrées le 23 novembre 2026, l'une sur le serveur de
 démonstration, l'autre sur le poste de développement. Elles ont tourné sur le même commit,
-77558fd : le code de l'application y est celui de la version 1.0.0, inchangé ; seuls des tests
-d'intégration et des documents s'y ajoutent. La version 1.0.0 comptait 533 fonctions de test
-d'intégration (livret 2, section 1.11) ; la recette en a ajouté 13. Chaque campagne a lancé
+77558fd : le code de l'application y est celui de la version 1.0.0, inchangé ; s'y ajoutent des
+tests d'intégration, l'outil de ce cahier avec son test unitaire, et des documents. La version
+1.0.0 comptait 533 fonctions de test d'intégration (livret 2, section 1.11) ; celles que la
+recette a ajoutées sont comprises dans le total ci-dessous. Chaque campagne a lancé
 toute la famille des tests d'intégration par la commande
 `python -m edt tests --famille integration`.
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 546 fonctions de test d'intégration ; les campagnes en exécutent 542, les 4 tests de charge se lançant à part.
+Le dépôt compte 547 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. Un test ajouté au dépôt après les campagnes n'y figure pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins` (non exécuté dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -230,7 +233,7 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 |---|---:|---:|---:|---:|---:|
 | `assistant` | 31 | 0 | 26 | 31 | 31 |
 | `banc_tests` | 22 | 0 | 21 | 22 | 22 |
-| `echange` | 40 | 0 | 40 | 40 | 40 |
+| `echange` | 41 | 0 | 40 | 40 | 40 |
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
 | `socle` | 79 | 0 | 68 | 79 | 79 |
@@ -239,11 +242,11 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
 | `web_edt` | 143 | 0 | 113 | 143 | 143 |
-| **Total** | **546** | **4** | **407** | **542** | **540** |
+| **Total** | **547** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 546 tests d'intégration du dépôt (74,5 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 547 tests d'intégration du dépôt (74,4 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
-**Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6). Le verdict d'ensemble est donné à la section 8.
+**Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
 <!-- recette-synthese : fin de la partie générée -->
 
@@ -324,7 +327,7 @@ développement) et le verdict (section 2.5). L'identifiant mène à la fiche dé
 | [REC‑U12‑2](#rec-u12-2-imprimer-lemploi-du-temps-ou-lenregistrer-en-pdf) | U12 | Imprimer l'emploi du temps ou l'enregistrer en PDF | 1 et essai manuel | 1/1 | 1/1 | Conforme |
 | [REC‑U13‑1](#rec-u13-1-gabarit-vide-export-de-toutes-les-données-et-réimport-sans-doublon) | U13 | Gabarit vide, export de toutes les données et réimport sans doublon | 5 | 5/5 | 5/5 | Conforme |
 | [REC‑U13‑2](#rec-u13-2-importer-un-emploi-du-temps-existant--référence-séances-verrouillées-séances-à-replacer) | U13, U7 | Importer un emploi du temps existant : référence, séances verrouillées, séances à replacer | 6 | 6/6 | 6/6 | Conforme |
-| [REC‑U13‑3](#rec-u13-3-réimport-dans-la-même-base-de-lemploi-du-temps-exporté) | U13 | Réimport, dans la même base, de l'emploi du temps exporté | essai manuel | — | — | Non conforme |
+| [REC‑U13‑3](#rec-u13-3-réimport-dans-la-même-base-de-lemploi-du-temps-exporté) | U13 | Réimport, dans la même base, de l'emploi du temps exporté | essai manuel | — | — | Non conforme ; suivi conforme |
 
 ### 4.4 Fonctionnalités optionnelles réalisées
 
@@ -414,7 +417,8 @@ Le tableau ci-dessous reprend les anomalies qui ont été relevées pendant la r
 ce que l'utilisateur voit ou ce dont l'exploitation dépend, avec leur correction. Les références
 renvoient aux demandes de fusion (« pull requests ») et aux commits du dépôt. Chaque correction
 de l'application est gardée par au moins un test de non-régression, cité avec elle. La dernière
-anomalie, relevée par les essais de cette recette, reste ouverte dans la version 1.0.0.
+anomalie, relevée par les essais de cette recette, est présente dans la version 1.0.0 recettée
+et a été corrigée après la recette.
 
 Gravité : *bloquante* (l'application ou une fonction principale devient inutilisable),
 *majeure* (résultat faux ou perte d'une action de l'utilisateur), *mineure* (message ou page
@@ -442,13 +446,13 @@ d'erreur inadaptés, sans perte).
 | ANO‑18 | 16/11/2026 | Quota quotidien de l'assistant consommé par des envois refusés | majeure | corrigée |
 | ANO‑19 | 16/11/2026 | Deux règles identiques créées par deux envois du même formulaire | mineure | corrigée |
 | ANO‑20 | 06/10/2026 et 16/11/2026 | Tests qui dépendaient de la solution du moteur, en échec sous Linux | mineure | corrigée |
-| ANO‑21 | 23/11/2026 | Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté | majeure | ouverte |
+| ANO‑21 | 23/11/2026 | Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté | majeure | corrigée après la recette |
 
 Le détail des anomalies corrigées (constat, détection, correction, référence et test de
-non-régression) figure à l'annexe C. Seule l'anomalie ouverte est détaillée ici.
+non-régression) figure à l'annexe C. Seule l'anomalie relevée par la recette est détaillée ici.
 
 **ANO-21. Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté (majeure,
-ouverte).** Une base qui réimporte, comme emploi du temps existant, la semaine type qu'elle vient
+corrigée après la recette).** Une base qui réimporte, comme emploi du temps existant, la semaine type qu'elle vient
 d'exporter ne retrouve pas tous ses besoins. Constat du 23/11/2026, par l'écran d'import, sur la
 version saisie à la main du jeu minimal (celle des tests de REC-U13-2), qui compte 16 besoins.
 
@@ -464,7 +468,7 @@ Avec l'agenda iCal, en mode « référence » ou « à replacer » :
 - un besoin au volume total du 07/09 au 23/10 passe du 08/09 au 20/10 ;
 - le projet IG.1101, sans enseignant, reçoit l'enseignant fictif `FICTIF-IG.1101-A1` (5 puis
   6 enseignants) ;
-- le calcul suivant place 18 séances au lieu de 17.
+- la semaine type compte 18 séances à placer au lieu de 17.
 
 Avec le fichier CSV, en mode « référence » ou « séances verrouillées » :
 
@@ -478,20 +482,33 @@ Avec le fichier CSV, en mode « référence » ou « séances verrouillées » :
   plus 1 par semaine ;
 - les trois de ces besoins qui avaient des dates de début et de fin les perdent.
 
-Avec la version calculée par le moteur, celle de la fiche REC-U13-3, les bilans de la simulation
-sont les mêmes ; les dates réécrites dépendent des séances placées. La simulation annonce ces
-nombres avant d'appliquer et liste chaque besoin reconstitué avec son état (« créé », « mis à
-jour (dates) », « mis à jour (volume, dates) », « mis à jour (enseignants) ») et ses nouvelles
-valeurs, sans montrer les anciennes. Le fichier CSV de la semaine type ne porte pas les dates des
+Avec la version calculée par le moteur, celle de la fiche REC-U13-3, la simulation en mode
+« référence » annonce les mêmes lignes « enseignants fictifs » et « besoins », pour l'agenda comme
+pour le fichier CSV. Les nombres de séances lues et d'occurrences diffèrent, et les dates
+réécrites dépendent des séances placées. Après application de l'agenda, le calcul suivant place
+18 séances au lieu de 17. La simulation annonce ces nombres avant d'appliquer et liste chaque
+besoin reconstitué avec son état (« inchangé », « créé », « mis à jour » suivi des champs
+changés : dates, volume, enseignants) et ses nouvelles valeurs, sans montrer les anciennes. Le fichier CSV de la semaine type ne porte pas les dates des
 séances ponctuelles.
 
 Le réimport est un usage documenté : `docs/import-export.md` annonce qu'un même fichier peut être
 réimporté dans un autre mode, les besoins étant retrouvés par leur identifiant métier, sans
 doublon. Gravité majeure, selon l'échelle ci-dessus : le résultat est faux. Détection : écriture
-des tests de cette recette ; essai manuel REC-U13-3, au verdict « Non conforme ». Suivi : ticket
-n° 54 du dépôt (« issue » GitHub), https://github.com/Maki882/projet-edt/issues/54. Contournement d'ici la correction : ne pas
-appliquer, sur sa base d'origine, l'import d'un emploi du temps qui en vient, et lire le compte
-rendu de simulation. Les tests ajoutés ne figent ni le défaut ni sa correction.
+des tests de cette recette ; essai manuel REC-U13-3, au verdict « Non conforme » sur la version
+1.0.0. Suivi : ticket n° 54 du dépôt (« issue » GitHub), <https://github.com/Maki882/projet-edt/issues/54>, encore ouvert le
+23/11/2026.
+
+Correction, après la recette : la pull request n° 55 (<https://github.com/Maki882/projet-edt/pull/55>), fusionnée le 23/11/2026 (commit
+3eb3514), corrige le rapprochement des besoins reconstitués (les exports conservent l'identifiant du
+besoin ; un besoin ponctuel est rapproché par sa date ; une période à volume total n'est plus
+rétrécie ; un besoin sans enseignant le reste), selon `docs/import-export.md`, et ajoute deux tests de non-régression : le test d'intégration
+`integration/echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`,
+pour l'agenda et pour le fichier CSV, et le test unitaire
+`unitaires/echange/test_import_edt.py::test_besoin_ponctuel_retrouve_par_sa_date_sans_libelle`.
+L'essai de la fiche REC-U13-3, refait le même jour sur le code corrigé (essai de suivi), donne
+« besoins : 15 inchangés » avec l'agenda, « besoins : 16 inchangés » avec le fichier CSV, et aucun
+enseignant fictif. Le nouveau test d'intégration ne figure pas dans les campagnes enregistrées,
+faites sur la version 1.0.0.
 
 ## 7. Limites et réserves
 
@@ -558,11 +575,12 @@ tests unitaires.
 
 ### 7.3 Réserves de la recette
 
-- **Fiche REC-U13-3 non conforme, anomalie majeure ouverte ANO-21** (section 6), suivie par
-  le ticket n° 54 : réimporter un emploi du temps exporté recrée ses séances ponctuelles en double
-  ou en séances hebdomadaires, et réécrit les dates ou le volume de besoins existants ; la
-  simulation l'annonce avant d'appliquer, besoin par besoin. La réserve se lève par la correction, son
-  test d'intégration et une campagne qui rejoue la fiche.
+- **Fiche REC-U13-3 non conforme sur la version 1.0.0, anomalie majeure ANO-21** (section 6) :
+  réimporter un emploi du temps exporté recrée ses séances ponctuelles en double ou en séances
+  hebdomadaires, et réécrit les dates ou le volume de besoins existants ; la simulation l'annonce
+  avant d'appliquer, besoin par besoin. La correction est faite après la recette (pull request
+  n° 55, avec son test d'intégration), et l'essai de suivi de la fiche est conforme ; la réserve
+  sera levée quand une campagne complète aura rejoué ce test.
 - **Réserve mineure de l'essai sur téléphone** (REC-P1-2), fait en émulation d'appareil mobile
   dans Chrome et non sur un téléphone réel : le bouton flottant « Assistant » recouvre la fin du
   pied de page sur une page courte et la fin de la légende de l'emploi du temps ; sans effet sur
@@ -598,16 +616,19 @@ Les deux campagnes ont tourné sur le même commit, 77558fd (section 3). Aucun t
 le poste de développement, pour une raison propre au système, et réussissent sur le serveur.
 
 **Verdict d'ensemble : la version 1.0.0 est acceptée, avec réserves**, selon la règle de
-décision de la section 2.5. Aucune anomalie bloquante n'est ouverte ; une anomalie majeure l'est
-(ANO-21), suivie par le ticket n° 54, et la fiche REC-U13-3 qui la constate est non conforme ;
+décision de la section 2.5, appliquée à la version 1.0.0 recettée. Aucune anomalie bloquante
+n'y est ouverte ; une anomalie majeure l'est (ANO-21), et la fiche REC-U13-3 qui la constate est
+non conforme ;
 toutes les autres fiches sont conformes et chaque fonctionnalité réalisée du livret 1 est
 vérifiée par au moins une fiche.
 
 ANO-21 n'est pas bloquante : l'application et ses fonctions principales restent utilisables ; le
 défaut touche un usage de U13, fonctionnalité classée « Utile » ; la simulation annonce les
-écritures, besoin par besoin, avant tout enregistrement. Les réserves sont celles de la section 7.3 : cette anomalie
-majeure ouverte, qui se lève par sa correction, son test d'intégration et une campagne qui
-rejoue la fiche, et les limites des essais manuels. La section 7.1 dit, fonctionnalité par
+écritures, besoin par besoin, avant tout enregistrement. Les réserves sont celles de la
+section 7.3. La réserve sur ANO-21 est levée par la correction faite après la recette (pull
+request n° 55), dont l'essai de suivi de la fiche REC-U13-3 est conforme ; elle reste à
+confirmer par la prochaine campagne complète, qui exécutera le nouveau test d'intégration. Les
+autres réserves sont les limites des essais manuels. La section 7.1 dit, fonctionnalité par
 fonctionnalité, ce que cette recette ne prouve pas ; c'est là que des tests d'intégration
 supplémentaires seraient les plus utiles, en particulier pour le respect de la pause déjeuner et
 des règles personnalisées autres que « Jours travaillés » par l'emploi du temps produit.
@@ -2004,7 +2025,7 @@ traiter ».
 - En séances verrouillées, la nouvelle version devient active, chaque séance à sa place et verrouillée ; en séances à replacer, seuls les besoins sont repris, sans version.
 - Semestre de vingt chiffres : « Nombre hors limites » ; semestre -7 : « Le semestre -7 n'existe pas » ; aucune version créée.
 
-**Remarque.** Réimporté dans sa base d'origine, un emploi du temps recrée ou réécrit des besoins : anomalie ouverte ANO-21 (section 6), constatée par la fiche REC-U13-3. Les tests de la présente fiche jouent ce réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous, pas les besoins ; ils ne figent ni ce défaut ni sa correction.
+**Remarque.** Réimporté dans sa base d'origine, un emploi du temps de la version 1.0.0 recrée ou réécrit des besoins : anomalie ANO-21 (section 6), constatée par la fiche REC-U13-3 et corrigée après la recette. Trois des tests de la présente fiche jouent ce réimport. Ils vérifient la version, les créneaux, les salles et les verrous. Pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import et que le bilan en compte d'« inchangés ». Ils ne figent ni ce défaut ni sa correction.
 
 **Tests automatisés (6).** `echange/test_web.py::test_import_d_emploi_du_temps_par_le_web` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter` · `echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible` · `echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference` · `echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran` · `echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins`
 
@@ -2028,13 +2049,19 @@ traiter ».
 
 - Tous les besoins reconstitués sont retrouvés : le bilan des besoins n'annonce que des besoins « inchangés », aucun « créé », aucun « mis à jour » ; aucun enseignant fictif.
 
-**Remarque.** La fiche REC-U13-2 reste conforme : ses tests jouent ce même réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous. La présente fiche vérifie les besoins, et c'est là que le défaut apparaît. Anomalie ouverte ANO-21 (section 6), suivie par le ticket n° 54 du dépôt.
+**Remarque.** La fiche REC-U13-2 reste conforme : trois de ses tests jouent ce même réimport, mais pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import. La présente fiche vérifie que chaque besoin est retrouvé inchangé, et c'est là que le défaut apparaît sur la version 1.0.0. Anomalie ANO-21 (section 6), corrigée après la recette par la pull request n° 55, qui ajoute un test d'intégration et un test unitaire de ce réimport.
 
 **Essai manuel du 23/11/2026.** Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, version 1.0.0.
 
 **Constat.** Avec l'agenda iCal, la simulation affiche « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour, 9 inchangés ». Avec le fichier CSV, « besoins : 2 créés, 5 mis à jour, 9 inchangés ».
 
 **Verdict : Non conforme.**
+
+**Essai de suivi du 23/11/2026, après la recette.** Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, mêmes étapes, sur le code de la version 1.0.0 corrigé par la pull request n° 55.
+
+**Constat.** Avec l'agenda iCal, la simulation affiche « enseignants fictifs : rien à traiter » et « besoins : 15 inchangés ». Avec le fichier CSV, « enseignants fictifs : rien à traiter » et « besoins : 16 inchangés ».
+
+**Verdict de l'essai de suivi : Conforme.** Il ne change pas le verdict de la fiche, établi sur la version recettée.
 
 ---
 
@@ -2541,11 +2568,11 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 |---|---:|---:|---|---|---|
 | **test_bornes.py** : Fichiers hostiles envoyés au site, pages bornées | 6 | 6 | 6/6, 3 s | 6/6, 1 s | Conforme |
 | **test_commandes.py** : Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 | 8 | 8/8, 2 s | 8/8, 1 s | Conforme |
-| **test_export_edt.py** : Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 | 5 | 5/5, 3 s | 5/5, 1 s | Conforme |
+| **test_export_edt.py** : Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 6 | 5 | 5/6, 3 s | 5/6, 1 s | Conforme (1 non exécuté dans les campagnes) |
 | **test_recette_echanges.py** : Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 | 5 | 5/5, 3 s | 5/5, 2 s | Conforme |
 | **test_web.py** : Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 | 16 | 16/16, 6 s | 16/16, 3 s | Conforme |
 
-#### `exploitation` : Contrats du déploiement
+#### `exploitation` : Commandes d'exploitation et scripts de déploiement
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
@@ -2556,12 +2583,12 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_aller_retour_donnees.py** : Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
-| **test_jeu_fictif_realiste.py** : Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
-| **test_parcours_ligne_de_commande.py** : Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
-| **test_parcours_web.py** : Scénario a : parcours complet d'un utilisateur dans l'application web | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
-| **test_regle_personnalisee.py** : Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
-| **test_retouche_manuelle.py** : Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_aller_retour_donnees.py** : Parcours REC-BOUT-3 : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_jeu_fictif_realiste.py** : Parcours REC-BOUT-6 : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
+| **test_parcours_ligne_de_commande.py** : Parcours REC-BOUT-2 : parcours complet en ligne de commande (`python -m edt ...`) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_parcours_web.py** : Parcours REC-BOUT-1 : parcours complet d'un utilisateur dans l'application web | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_regle_personnalisee.py** : Parcours REC-BOUT-4 : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_retouche_manuelle.py** : Parcours REC-BOUT-5 : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 
 #### `socle` : Commandes et application web du socle
 

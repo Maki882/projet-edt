@@ -20,6 +20,9 @@
 #   [fiche.essai]   : essai manuel, pour ce qu'aucun test par HTTP ne peut vérifier :
 #                     date, environnement, constat, verdict (« Conforme » ou « Non conforme »),
 #                     reserve (facultative), preuves = [{ image = "images/…", legende = "…" }]
+#   [fiche.suivi]   : facultatif ; essai refait après la recette, sur un code corrigé, mêmes
+#                     clés que [fiche.essai] ; affiché avec son verdict, sans changer celui de
+#                     la fiche, établi sur la version recettée
 #
 # [[sans_fiche]] : fonctionnalité réalisée sans fiche, avec sa raison (affichée dans les
 # réserves du livret). Aucune à ce jour.
@@ -598,7 +601,7 @@ tests = [
   "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran",
   "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins",
 ]
-remarque = "Réimporté dans sa base d'origine, un emploi du temps recrée ou réécrit des besoins : anomalie ouverte ANO-21 (section 6), constatée par la fiche REC-U13-3. Les tests de la présente fiche jouent ce réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous, pas les besoins ; ils ne figent ni ce défaut ni sa correction."
+remarque = "Réimporté dans sa base d'origine, un emploi du temps de la version 1.0.0 recrée ou réécrit des besoins : anomalie ANO-21 (section 6), constatée par la fiche REC-U13-3 et corrigée après la recette. Trois des tests de la présente fiche jouent ce réimport. Ils vérifient la version, les créneaux, les salles et les verrous. Pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import et que le bilan en compte d'« inchangés ». Ils ne figent ni ce défaut ni sa correction."
 
 [[fiche]]
 id = "REC-U13-3"
@@ -615,7 +618,7 @@ attendu = [
   "Tous les besoins reconstitués sont retrouvés : le bilan des besoins n'annonce que des besoins « inchangés », aucun « créé », aucun « mis à jour » ; aucun enseignant fictif.",
 ]
 tests = []
-remarque = "La fiche REC-U13-2 reste conforme : ses tests jouent ce même réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous. La présente fiche vérifie les besoins, et c'est là que le défaut apparaît. Anomalie ouverte ANO-21 (section 6), suivie par le ticket n° 54 du dépôt."
+remarque = "La fiche REC-U13-2 reste conforme : trois de ses tests jouent ce même réimport, mais pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import. La présente fiche vérifie que chaque besoin est retrouvé inchangé, et c'est là que le défaut apparaît sur la version 1.0.0. Anomalie ANO-21 (section 6), corrigée après la recette par la pull request n° 55, qui ajoute un test d'intégration et un test unitaire de ce réimport."
 anomalie = "ANO-21"
 
 [fiche.essai]
@@ -623,8 +626,12 @@ date = 2026-11-23
 environnement = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, version 1.0.0."
 constat = "Avec l'agenda iCal, la simulation affiche « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour, 9 inchangés ». Avec le fichier CSV, « besoins : 2 créés, 5 mis à jour, 9 inchangés »."
 verdict = "Non conforme"
-preuves = [
-]
+
+[fiche.suivi]
+date = 2026-11-23
+environnement = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, mêmes étapes, sur le code de la version 1.0.0 corrigé par la pull request n° 55."
+constat = "Avec l'agenda iCal, la simulation affiche « enseignants fictifs : rien à traiter » et « besoins : 15 inchangés ». Avec le fichier CSV, « enseignants fictifs : rien à traiter » et « besoins : 16 inchangés »."
+verdict = "Conforme"
 
 # =========================================================================================
 # O5, O6, U1, U5, U6, U7 : le calcul
