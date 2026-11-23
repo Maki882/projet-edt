@@ -13,6 +13,7 @@ import datetime as dt
 import json
 import logging
 import math
+import threading
 import time
 
 import pytest
@@ -131,7 +132,11 @@ def test_message_rappelle_que_les_donnees_sont_les_donnees_actuelles(jeu_minimal
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
     assert AVERTISSEMENT_DONNEES_ACTUELLES
-    assert AVERTISSEMENT_DONNEES_ACTUELLES in diagnostic.message
+    # Décision D5 : le résumé, puis l'avertissement, toujours en dernier ; la phrase des règles
+    # qui définissent le problème est écrite par la page et la commande, pas répétée ici.
+    assert diagnostic.message.endswith(AVERTISSEMENT_DONNEES_ACTUELLES)
+    assert diagnostic.message != AVERTISSEMENT_DONNEES_ACTUELLES
+    assert "définissent le problème" not in diagnostic.message
 
 
 def test_second_diagnostic_remplace_le_premier(jeu_minimal):
@@ -252,11 +257,13 @@ def test_diagnostic_arrete_au_budget_ne_laisse_aucun_fil(jeu_minimal):
     """Cas : un essai (sans la grille horaire, 60 séances d'un groupe) construit un modèle énorme ;
     le budget de 5 s est atteint en pleine construction.
 
-    Risque : un diagnostic qui rend la main au budget en laissant tourner son dernier essai reste
-    « en cours » : le calcul suivant et le diagnostic suivant sont refusés à tort (décision D4).
+    Risque : un diagnostic qui rend la main au budget en laissant tourner son dernier essai en
+    arrière-plan occupe encore les processeurs pendant le calcul ou le diagnostic suivant, qui
+    dépasse alors son propre budget (décision D4).
     """
     rendre_impossible(jeu_minimal.semestre_id)
     calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    fils_avant = set(threading.enumerate())
     debut = time.perf_counter()
 
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_MIN_S)
@@ -266,6 +273,8 @@ def test_diagnostic_arrete_au_budget_ne_laisse_aucun_fil(jeu_minimal):
     assert diagnostic.statut in (StatutDiagnostic.PARTIEL, StatutDiagnostic.MINIMAL)
     assert diagnostic.duree_s <= BUDGET_MIN_S
     assert ecoule <= BUDGET_MIN_S + 1.0, f"rendu en {ecoule:.1f} s pour un budget de 5 s"
+    restes = [fil.name for fil in set(threading.enumerate()) - fils_avant if fil.is_alive()]
+    assert not restes, f"fils encore en route après le diagnostic : {restes}"
     # Rien ne reste en route : un second diagnostic est accepté aussitôt.
     assert diagnostiquer_calcul(calcul_id, BUDGET_MIN_S).calcul_id == calcul_id
     assert service.diagnostic_en_cours() is None
@@ -353,7 +362,12 @@ def test_journal_du_diagnostic(jeu_minimal, caplog):
     with caplog.at_level(logging.INFO):
         diagnostiquer_calcul(calcul_id, BUDGET_S)
 
-    # Le diagnostic laisse une trace qui nomme son calcul (niveau INFO ou au-dessus).
+    # Le service laisse une trace qui nomme son calcul (niveau INFO ou au-dessus) ; le journal du
+    # solveur, qui ne connaît que le semestre, ne compte pas.
     assert [
-        r for r in caplog.records if r.levelno >= logging.INFO and str(calcul_id) in r.getMessage()
+        r
+        for r in caplog.records
+        if r.name == "edt.services.diagnostic"
+        and r.levelno >= logging.INFO
+        and f"calcul {calcul_id}" in r.getMessage()
     ]

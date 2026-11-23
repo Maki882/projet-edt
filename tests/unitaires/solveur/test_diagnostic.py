@@ -295,7 +295,10 @@ def test_essai_sans_conclusion_garde_l_element_et_rend_partiel():
             return ResultatSolveur(StatutSolveur.TEMPS_DEPASSE)
         return resoudre(filtre, opts)
 
-    resultat = isoler_impossibilite(instantane, OPTIONS_DIAGNOSTIC, BUDGET_S, essai=essai)
+    # Horaires de la grille au niveau souple : pas d'essai sans la grille, le plus long à résoudre
+    # (le test dure ainsi une fraction de seconde ; le cas reste impossible, voir D3).
+    souple = options(niveaux={**niveaux_par_defaut(), CodeContrainte.HORAIRES: Niveau.IMPORTANT})
+    resultat = isoler_impossibilite(instantane, souple, BUDGET_S, essai=essai)
 
     assert resultat.statut is StatutDiagnostic.PARTIEL, resultat.message
     besoins = _ids(resultat.donnees, "besoin")
