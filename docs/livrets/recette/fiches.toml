@@ -1870,17 +1870,19 @@ tests = [
 
 [[fiche]]
 id = "REC-EXP-6"
-titre = "Double envoi d'un formulaire : ni doublon, ni page d'erreur"
+titre = "Double envoi d'un formulaire et requêtes simultanées : ni doublon, ni page d'erreur"
 fonctionnalites = ["U6", "O1"]
-objectif = "Montrer qu'un formulaire envoyé deux fois (double clic, deux onglets, rechargement de page) ne crée ni doublon ni second traitement, et que le second envoi reçoit une réponse compréhensible."
+objectif = "Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas."
 depart = "Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours."
 etapes = [
   "Cliquer deux fois sur « Lancer le calcul » ; depuis un autre onglet, lancer avec d'autres réglages.",
   "Envoyer deux fois un formulaire qui crée un élément, puis recharger la page de résultat.",
+  "Cliquer sur « Arrêter le calcul » au moment où le calcul enregistre son état final ; pendant un import long, ouvrir une autre page.",
 ]
 attendu = [
   "Le second « Lancer le calcul » ramène au calcul déjà lancé ; l'autre onglet voit « déjà en cours » ; un seul calcul est enregistré.",
   "Le premier envoi enregistre l'élément et son message n'est affiché qu'une fois ; le second envoi est refusé sans doublon.",
+  "La demande d'arrêt n'est pas perdue ; pendant l'import, le site continue de répondre.",
 ]
 tests = [
   "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_lancer_le_calcul",

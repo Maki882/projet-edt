@@ -176,6 +176,12 @@ réalisée du livret 1 a au moins une fiche.
 
 ## 3. Synthèse des résultats
 
+Deux campagnes de référence ont été enregistrées le 23 novembre 2026, l'une sur le serveur de
+démonstration, l'autre sur le poste de développement. Elles ont tourné sur le même code : la
+version 1.0.0 de l'application, inchangée, plus les tests d'intégration ajoutés pour cette
+recette (commit f5e4401, qui n'ajoute que des tests). Chacune a lancé toute la famille des tests
+d'intégration par la commande `python -m edt tests --famille integration`.
+
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
@@ -2087,11 +2093,11 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Verdict : Conforme.**
 
-#### REC-EXP-6. Double envoi d'un formulaire : ni doublon, ni page d'erreur
+#### REC-EXP-6. Double envoi d'un formulaire et requêtes simultanées : ni doublon, ni page d'erreur
 
 *Fonctionnalités : U6 Suivre et piloter un calcul ; O1 Décrire l'établissement.*
 
-**Objectif.** Montrer qu'un formulaire envoyé deux fois (double clic, deux onglets, rechargement de page) ne crée ni doublon ni second traitement, et que le second envoi reçoit une réponse compréhensible.
+**Objectif.** Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas.
 
 **Conditions de départ.** Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours.
 
@@ -2099,11 +2105,13 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 1. Cliquer deux fois sur « Lancer le calcul » ; depuis un autre onglet, lancer avec d'autres réglages.
 2. Envoyer deux fois un formulaire qui crée un élément, puis recharger la page de résultat.
+3. Cliquer sur « Arrêter le calcul » au moment où le calcul enregistre son état final ; pendant un import long, ouvrir une autre page.
 
 **Résultat attendu.**
 
 - Le second « Lancer le calcul » ramène au calcul déjà lancé ; l'autre onglet voit « déjà en cours » ; un seul calcul est enregistré.
 - Le premier envoi enregistre l'élément et son message n'est affiché qu'une fois ; le second envoi est refusé sans doublon.
+- La demande d'arrêt n'est pas perdue ; pendant l'import, le site continue de répondre.
 
 **Remarque.** D'autres doubles envois sont dans leurs fiches : règle (REC-U3-3), version (REC-U7-1), établissement fictif (REC-O11-1), suppression (REC-O1-3), tests (REC-P4-2), assistant (REC-P3-2).
 
@@ -2228,13 +2236,299 @@ du livret 1 et les fiches qui l'illustrent.
 
 ## 6. Anomalies relevées et corrections
 
-ANOMALIES
+Le journal reprend les anomalies qui ont été relevées pendant la réalisation et qui touchaient
+ce que l'utilisateur voit ou ce dont l'exploitation dépend, avec leur correction. Les références
+renvoient aux demandes de fusion (« pull requests ») et aux commits du dépôt. Chaque correction
+est gardée par au moins un test de non-régression, qui échoue si elle est retirée. La dernière
+anomalie, relevée par les essais de cette recette, reste ouverte dans la version 1.0.0.
+
+Gravité : *bloquante* (l'application ou une fonction principale devient inutilisable),
+*majeure* (résultat faux ou perte d'une action de l'utilisateur), *mineure* (message ou page
+d'erreur inadaptés, sans perte).
+
+| N° | Date | Anomalie | Gravité | État |
+|---|---|---|---|---|
+| ANO-01 | 05/10/2026 | Application déclarée prête avec un schéma de base périmé | bloquante | corrigée |
+| ANO-02 | 05/10/2026 | Déplacement d'une séance refusé pour une anomalie déjà présente | majeure | corrigée |
+| ANO-03 | 06/10/2026 | Chargement d'un établissement fictif impossible sur une base neuve | majeure | corrigée |
+| ANO-04 | 13/10/2026 | Calcul refusé à tort pour une règle souple entre deux horaires fixes | majeure | corrigée |
+| ANO-05 | 02/11/2026 | Erreur 500 sur un lien dont l'identifiant est démesuré | mineure | corrigée |
+| ANO-06 | 09/11/2026 | Demande d'arrêt d'un calcul perdue | majeure | corrigée |
+| ANO-07 | 16/11/2026 | Écrans « Paramètres » et « Générer » inaccessibles après un ancien réglage illisible | bloquante | corrigée |
+| ANO-08 | 16/11/2026 | Base vidée par le chargement d'un établissement fictif après « Proposer une autre solution » | bloquante | corrigée |
+| ANO-09 | 16/11/2026 | Échec de la sauvegarde préalable à une remise à zéro mal dit sous Linux | mineure | corrigée |
+| ANO-10 | 16/11/2026 | Seconde remise à zéro par le rechargement de la page de résultat d'un chargement | majeure | corrigée |
+| ANO-11 | 16/11/2026 | Assistant refusé en bloc par le service réel | majeure | corrigée |
+| ANO-12 | 16/11/2026 | Proposition de l'assistant confirmée sur une autre cible que celle affichée | majeure | corrigée |
+| ANO-13 | 16/11/2026 | Gel d'une dizaine de secondes et calcul perdu au lancement | majeure | corrigée |
+| ANO-14 | 16/11/2026 | Page d'erreur à l'import d'un fichier mal encodé | mineure | corrigée |
+| ANO-15 | 16/11/2026 | Sauvegardes du déploiement évincées par des remises à zéro refusées | majeure | corrigée |
+| ANO-16 | 16/11/2026 | Heure annoncée « possible » refusée à l'enregistrement d'un déplacement | majeure | corrigée |
+| ANO-17 | 16/11/2026 | Calcul lancé pendant une exécution des tests : résultat dégradé, puis page d'erreur | majeure | corrigée |
+| ANO-18 | 16/11/2026 | Quota quotidien de l'assistant consommé par des envois refusés | majeure | corrigée |
+| ANO-19 | 16/11/2026 | Deux règles identiques créées par deux envois du même formulaire | mineure | corrigée |
+| ANO-20 | 16/11/2026 | Tests qui dépendaient de la solution du moteur, en échec sous Linux | mineure | corrigée |
+| ANO-21 | 23/11/2026 | Besoins ponctuels recréés en double par le réimport d'un emploi du temps dans la même base | mineure | ouverte |
+
+Les chemins des tests de non-régression sont relatifs au dossier `tests/`.
+
+**ANO-01. Application déclarée prête avec un schéma de base périmé.** Constat : après une mise à
+jour qui changeait les colonnes d'une table, « init-db » ne créait que les tables manquantes ;
+l'application démarrait, l'adresse de santé répondait et le déploiement se déclarait réussi,
+puis la première requête qui touchait la table modifiée tombait en erreur. Détection : relecture
+des scripts de déploiement. Correction : le schéma de chaque table est comparé au modèle ;
+« init-db » refuse sans rien modifier et liste les écarts, la commande « verifier-schema » est
+ajoutée, l'adresse de santé et « doctor » signalent l'écart (pull request n° 5, commit f6ebe3b).
+Non-régression : `integration/socle/test_schema.py::test_init_db_refuse_un_schema_perime_sans_rien_modifier`
+(fiche REC-EXP-4).
+
+**ANO-02. Déplacement d'une séance refusé pour une anomalie déjà présente.** Constat : la
+vérification d'un déplacement opposait toute anomalie qui citait la séance, même antérieure et
+sans rapport, si bien que certaines séances devenaient impossibles à déplacer. Détection : revue
+d'ensemble de l'application. Correction : la semaine type est vérifiée avant et après le
+déplacement ; seules les anomalies nouvelles ou aggravées sont opposées (pull request n° 14,
+commit c0c2678). Non-régression :
+`unitaires/verification/test_service.py::test_modification_ignore_les_violations_deja_presentes`.
+
+**ANO-03. Chargement d'un établissement fictif impossible sur une base neuve.** Constat : sur un
+fichier de base neuf, « python -m edt jeu --reset --oui » s'arrêtait sur une erreur de table
+absente. Détection : essai réel de la commande. Correction : sur une base sans tables, le
+contrôle du calcul en cours est sauté, avec une ligne de journal (pull request n° 18, commit
+7be88dc). Non-régression : `integration/synthese/test_commande.py::test_remise_a_zero_sur_une_base_neuve`
+(fiche REC-O11-1).
+
+**ANO-04. Calcul refusé à tort pour une règle souple entre deux horaires fixes.** Constat : deux
+séances à horaire fixe qui n'enfreignaient entre elles qu'une règle importante ou facultative
+faisaient déclarer le calcul impossible. Détection : revue des niveaux de règles. Correction :
+seules les règles nécessaires comptent entre horaires fixes ; l'entorse à une règle souple est
+comptée (pull request n° 23, commit 352d473). Non-régression :
+`unitaires/solveur/test_niveaux.py::test_deux_horaires_fixes_qui_n_enfreignent_qu_une_regle_souple_ne_refusent_pas_le_calcul`.
+
+**ANO-05. Erreur 500 sur un lien dont l'identifiant est démesuré.** Constat : un identifiant de
+vingt chiffres dans l'adresse d'un écran provoquait une erreur de dépassement de SQLite, donc une
+page d'erreur 500. Détection : écriture des tests de cas limites. Correction : les identifiants
+reçus sont bornés avant d'interroger la base ; au-delà, la page répond « introuvable » (pull
+request n° 30, commit bbb1f96). Non-régression :
+`integration/web_edt/test_cas_limites.py::test_identifiants_enormes_ou_negatifs_donnent_introuvable`
+(fiche REC-O7-2).
+
+**ANO-06. Demande d'arrêt d'un calcul perdue.** Constat : un clic sur « Arrêter le calcul »
+pouvait recevoir une erreur 503 et la demande était perdue, le calcul enregistrant son état final
+au même instant. Détection : contrôle automatique du dépôt sous Linux, où le défaut se
+manifestait, et non sous Windows. Correction : la demande d'arrêt prend le verrou d'écriture de
+la base dès le début de sa transaction (pull request n° 30, commit 9ced74d). Non-régression :
+`integration/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture`
+(fiche REC-EXP-6).
+
+**ANO-07. Écrans « Paramètres » et « Générer » inaccessibles après un ancien réglage
+illisible.** Constat : une ancienne valeur illisible du paramètre de pause déjeuner empêchait
+d'ouvrir l'écran des paramètres, seul moyen de la réparer, et l'écran « Générer ». Détection :
+relecture des écrans de données. Correction : la valeur illisible est signalée sous le champ ;
+l'écran s'ouvre et un enregistrement la répare (pull request n° 36, commit e0e2af4).
+Non-régression : `integration/web_donnees/test_parametres.py::test_ancien_parametre_de_dejeuner_illisible_reste_reparable`.
+
+**ANO-08. Base vidée par le chargement d'un établissement fictif après « Proposer une autre
+solution ».** Constat : après un calcul puis « Proposer une autre solution », charger un
+établissement fictif remettait la base à zéro puis refusait de charger en affirmant à tort que
+rien n'avait été modifié ; la base restait vide jusqu'au redémarrage du serveur. Défaut
+intermittent, lié aux connexions multiples à la base. Détection : répétition du scénario de
+démonstration sur un vrai serveur ; le client de test ne le reproduisait pas. Correction : le
+contrôle du schéma travaille sur une seule connexion, les connexions en attente sont renouvelées
+après la remise à zéro, et le message ne dit « Rien n'a été modifié » que lorsque c'est vrai (pull
+requests n° 38 et n° 43, commits 1dacab6 et 6394c61). Non-régression :
+`unitaires/socle/test_schema.py::test_une_remise_a_zero_avec_plusieurs_connexions_ouvertes_ne_cree_aucun_faux_ecart`
+et `integration/web_donnees/test_jeux.py::test_recharger_apres_une_autre_solution_sur_un_vrai_serveur`
+(test de charge, lancé à part).
+
+**ANO-09. Échec de la sauvegarde préalable à une remise à zéro mal dit sous Linux.** Constat :
+quand la sauvegarde préalable à « init-db --reset » échouait, le nettoyage de la copie partielle
+échouait à son tour sous Linux et la commande sortait en « erreur inattendue » au lieu de dire
+que la remise à zéro était annulée. Détection : contrôle automatique du dépôt sous Linux.
+Correction : le nettoyage est isolé et journalise son propre échec (pull request n° 38, commit
+503a488). Non-régression : `integration/socle/test_cli.py::test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue`
+(fiche REC-EXP-3).
+
+**ANO-10. Seconde remise à zéro par le rechargement de la page de résultat d'un chargement.**
+Constat : recharger (F5) la page de résultat d'un chargement d'établissement fictif renvoyait le
+formulaire, confirmation d'effacement comprise. Détection : relevé comme limite connue, puis
+repris dans l'inventaire des corrections. Correction : après l'envoi, la page redirige vers une
+adresse de résultat que l'on peut recharger sans effet (pull request n° 46, commit bf05ba7).
+Non-régression : `integration/web_donnees/test_jeux.py::test_page_de_resultat_rechargee_sans_second_chargement`
+(fiche REC-O11-1).
+
+**ANO-11. Assistant refusé en bloc par le service réel.** Constat : avec une vraie clé, le
+service externe refusait toute requête de l'assistant, dont la description des outils dépassait
+une limite du service, alors que tous les tests passaient avec le faux service, qui n'applique
+pas cette limite. Détection : premier essai avec le service réel. Correction : la description
+des outils respecte la limite et chaque argument est contrôlé à l'exécution (pull request n° 50,
+commit 76d74f8). Non-régression :
+`unitaires/assistant/test_boucle.py::test_schemas_envoyes_dans_les_limites_du_mode_strict`.
+
+**ANO-12. Proposition de l'assistant confirmée sur une autre cible que celle affichée.**
+Constat : après un rechargement de la base, l'identifiant d'une proposition pouvait désigner un
+autre élément que celui de la carte, et « Confirmer » écrivait sur une autre personne ou une
+autre règle. Détection : relecture de l'assistant. Correction : avant d'écrire, l'identité de la
+cible est comparée à celle de la carte ; toute confirmation est refusée si la base a été
+rechargée depuis la proposition (pull request n° 50, commits 4fbe89c et aff10a7). Non-régression :
+`unitaires/assistant/test_conversations.py::test_confirmer_refuse_apres_un_rechargement_de_la_base`.
+
+**ANO-13. Gel d'une dizaine de secondes et calcul perdu au lancement.** Constat : une écriture
+contrôlée (paramètres, chargement, suppression, import) qui croisait le lancement d'un calcul
+prenait deux verrous dans l'ordre inverse : les deux requêtes restaient figées une dizaine de
+secondes, puis le lancement échouait. Détection : relecture de tout le code. Correction : une
+écriture qui croise un lancement attend une seconde au plus, puis refuse en invitant à réessayer
+(pull request n° 51, commit cbbb0a6). Non-régression :
+`unitaires/solveur/test_services.py::test_controle_d_une_ecriture_n_attend_pas_un_lancement_de_calcul`.
+
+**ANO-14. Page d'erreur à l'import d'un fichier mal encodé.** Constat : un fichier qui
+annonçait l'encodage UTF-8 mais contenait ensuite un caractère d'un autre encodage faisait
+répondre l'import par « erreur inattendue ». Détection : relecture de tout le code. Correction :
+le rapport d'import contient une ligne d'erreur qui nomme le fichier et dit comment le
+réenregistrer (pull request n° 51, commit 3452875). Non-régression :
+`unitaires/echange/test_lecture.py::test_bom_utf8_suivi_d_un_octet_invalide_est_une_erreur`.
+
+**ANO-15. Sauvegardes du déploiement évincées par des remises à zéro refusées.** Constat : en
+production, « init-db --reset » écrivait sa copie de sauvegarde avant de vérifier qu'aucun
+calcul ni chargement ne tournait ; chaque essai refusé laissait une copie qui chassait de la
+rotation les sauvegardes du déploiement. Détection : relecture de tout le code. Correction : la
+copie est faite une fois les refus passés (pull request n° 51, commit f57776d). Non-régression :
+`integration/socle/test_cli.py::test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde`
+(fiche REC-EXP-3).
+
+**ANO-16. Heure annoncée « possible » refusée à l'enregistrement d'un déplacement.** Constat :
+le formulaire de déplacement d'une séance annonçait des heures « possibles » que l'enregistrement
+refusait ensuite ; sur l'établissement fictif « moyen », 29 heures possibles sur 56 seulement
+s'enregistraient. Détection : relecture, puis sonde sur des bases neuves des trois tailles.
+Correction : chaque heure est vérifiée avec la salle que le formulaire présélectionnera ; mesuré
+ensuite, toutes les heures annoncées possibles s'enregistrent sur les trois tailles ; une heure
+acceptée avec une entorse est annoncée « possible, avec avertissement » (pull requests n° 51 et
+n° 52, commits b31dd49 et ec03713). Non-régression :
+`integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit`
+(fiche REC-O8-1).
+
+**ANO-17. Calcul lancé pendant une exécution des tests : résultat dégradé, puis page
+d'erreur.** Constat : un calcul lancé pendant une exécution des tests partageait les processeurs
+du serveur et rendait, sans le dire, un emploi du temps moins bon ; une fois ce lancement
+refusé, le refus ouvrait une page d'erreur. Détection : relecture, puis répétition du scénario
+de démonstration avant la version 1.0.0. Correction : le lancement est refusé tant que des tests
+tournent, avec la cause et le remède sur l'écran « Générer », qui prévient avant le clic (pull
+requests n° 51 et n° 52, commits 3f93e32 et 76cb888). Non-régression :
+`integration/web_edt/test_calculs.py::test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif`
+(fiche REC-O5-3).
+
+**ANO-18. Quota quotidien de l'assistant consommé par des envois refusés.** Constat : un envoi
+refusé comptait quand même un échange du jour ; une seule adresse pouvait épuiser la limite du
+site sans aucun appel au service. Détection : vérification finale avant la version 1.0.0.
+Correction : un échange n'est compté que s'il a tenté un appel au service (pull request n° 52,
+commit c9eec82). Non-régression :
+`unitaires/assistant/test_conversations.py::test_envois_refuses_faute_de_place_ne_consomment_rien`.
+
+**ANO-19. Deux règles identiques créées par deux envois du même formulaire.** Constat : deux
+envois identiques du formulaire d'une nouvelle règle créaient deux règles. Détection :
+vérification finale avant la version 1.0.0. Correction : le second envoi ne crée rien et affiche
+« Règle R005 déjà créée avec ce contenu : rien n'a été ajouté. » (pull request n° 52, commit
+660ba4e). Non-régression :
+`integration/web_donnees/test_regles.py::test_double_envoi_d_une_regle_ne_cree_pas_de_doublon`
+(fiche REC-U3-3).
+
+**ANO-20. Tests qui dépendaient de la solution du moteur, en échec sous Linux.** Constat : le
+moteur ne donne pas la même solution sous Linux et sous Windows ; deux tests cherchaient leur cas
+dans la solution produite et échouaient sous Linux. Aucun défaut de l'application, mais des
+verdicts non fiables. Détection : contrôle automatique du dépôt sous Linux. Correction : le test
+du jour férié verrouille une séance un mercredi et recalcule autour du verrou ; le test du
+déplacement construit son cas dans une version saisie à la main (pull requests n° 17 et n° 52,
+commits 251107d et 9766c41). Non-régression :
+`integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine` (fiche
+REC-O5-2).
+
+**ANO-21. Besoins ponctuels recréés en double par le réimport d'un emploi du temps dans la même
+base (ouverte).** Constat : un emploi du temps exporté puis réimporté dans la même base comme
+emploi du temps existant recrée en double ses besoins ponctuels (le devoir surveillé de
+mathématiques, avec un agenda iCal ; aussi l'examen, avec un fichier CSV) et crée un enseignant
+fictif pour un besoin sans enseignant. La simulation d'import l'annonce avant d'appliquer
+(« 1 créé, 5 mis à jour, 9 inchangés » pour les besoins, avec l'agenda). Reproduit le
+23/11/2026 sur le jeu minimal : 16 besoins, puis 17 avec l'agenda, 18 avec le fichier CSV.
+L'usage visé, importer un emploi du temps dans une autre base, n'est pas touché. Détection :
+écriture des tests de cette recette (fiche REC-U13-2). Correction : à décider ; les tests ajoutés
+ne figent ni le défaut ni sa correction.
 
 ---
 
 ## 7. Limites et réserves
 
-RESERVES
+### 7.1 Ce que les tests d'intégration ne vérifient pas
+
+Pour chaque fonctionnalité, ce qu'aucun test d'intégration ne prouve, et ce qui le couvre
+ailleurs quand c'est le cas.
+
+| Fonctionnalité | Ce qui n'est pas vérifié par un test d'intégration | Couvert ailleurs |
+|---|---|---|
+| O1 Décrire l'établissement | Tri, recherche, filtre et modification ne sont essayés que sur les salles ; pour les autres éléments, seuls la liste, le formulaire et une création. Les valeurs enregistrées pour le statut et les heures maximales d'un enseignant, l'accessibilité d'une salle et les groupes transverses ne sont pas relues. | Tests unitaires des écrans de données (mécanisme commun). |
+| O2 Besoins | Les exigences de salle (types acceptés, équipements, salle ou campus imposé) et le jour imposé ne sont pas saisis par l'écran. | Respect de ces exigences par le calcul et le vérificateur : tests unitaires. |
+| O3 Disponibilités et calendrier | Seule une indisponibilité datée d'une salle est saisie par l'écran ; ni indisponibilité hebdomadaire, ni indisponibilité d'un enseignant ou d'un groupe ; ni vacances ni fermeture de tout l'établissement. | Effet des indisponibilités sur la vérification : tests unitaires. |
+| O4 Règles | La validité est prouvée globalement (aucune anomalie bloquante), pas règle par règle ; les avertissements des règles importantes ne sont pas comptés ; aucune entorse à une règle personnalisée n'est relevée sur une version réelle. | Chaque règle, dans le moteur et dans le vérificateur : tests unitaires. |
+| O6 Calcul impossible | Aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche : elle est produite par un moteur d'essai, et les impossibilités réelles sont refusées avant la recherche. | Impossibilité rendue par le vrai moteur sur de petits cas : tests unitaires. |
+| O11 Établissement fictif | Les tailles « moyen » et « grand » ne sont chargées que par le service ou par les tests de charge ; qu'un même numéro de variante redonne le même établissement n'est pas vérifié ici. | Tests unitaires du générateur d'établissements. |
+| U1 Vérifications avant le calcul | Les contrôles de charge (groupe, enseignant, type de salle) et de salles accessibles sont essayés avec des messages simulés. | Tests unitaires des vérifications préalables. |
+| U2 Niveaux | L'effet réel du niveau facultatif n'est pas essayé ; les nombres d'entorses affichés sont fournis par le test. | Tests unitaires des contraintes souples. |
+| U3 Règles personnalisées | Seul le type « Jours travaillés » est prouvé respecté de bout en bout ; aucune règle sur une période datée, ni sur un campus, une matière ou un besoin ; la reprise d'une règle de l'année précédente n'est vérifiée que lorsque sa cible a disparu. | Tests unitaires du moteur, du vérificateur et du service des règles. |
+| U4 Pause déjeuner | Le choix est enregistré et le calcul réussit, mais aucun test d'intégration ne vérifie que l'emploi du temps produit laisse la pause libre. | Tests unitaires du vérificateur et du moteur. |
+| U5 Confort | La case cochée par défaut sur l'écran et une baisse mesurée des trous, des changements de campus et des samedis ne sont pas vérifiées. | — |
+| U6 Suivi d'un calcul | L'actualisation automatique dans un vrai navigateur n'est pas exécutée : le test interroge lui-même le fragment de suivi. | — |
+| U7 Versions | La comparaison entre l'emploi du temps de référence et une version calculée n'est pas vérifiée. | — |
+| U13 Échanges | Le contenu du gabarit en fichiers CSV n'est pas relu (seul le classeur l'est). | — |
+| P3 Assistant | La pertinence des réponses, les outils de consultation et la confirmation des propositions autres qu'une nouvelle règle ne sont pas vérifiés de bout en bout ; l'ouverture du panneau par le bouton relève du navigateur. | Tests unitaires des outils et des conversations de l'assistant. |
+| P4 Tests depuis l'application | Les onglets ne sont essayés que sur un dépôt de tests factice ; le lancement d'un seul fichier n'est essayé qu'avec une cible refusée. | Les campagnes de la section 3 exercent la vraie suite par la commande. |
+| Exploitation | Le déploiement réel sur le serveur (connexion, installation, bascule, service, serveur frontal, HTTPS) n'est exécuté par aucun test. | Fichiers du service et du serveur frontal : tests unitaires. |
+
+### 7.2 Limites connues de la version 1.0.0
+
+- **Pas d'écran de connexion ni de rôles** : la version de démonstration est ouverte à tout
+  visiteur (P6, prévue). Tout visiteur peut ainsi arrêter une exécution des tests lancée par un
+  autre.
+- **Tests sans vrai navigateur** : les tests d'intégration lisent les pages par HTTP ; ils
+  n'exécutent ni le JavaScript ni les rafraîchissements de page, et ne jugent pas l'apparence.
+  Les deux essais manuels (REC-P1-2, REC-U12-2) en tiennent lieu pour le rendu.
+- **Propriétés plutôt que solutions** : les tests partent de petits jeux et cherchent un emploi
+  du temps valide, pas le meilleur ; une régression qui garderait un emploi du temps valide mais
+  moins bon ne serait pas vue.
+- **Pas de preuve d'optimalité** : sur un établissement complet, l'option « Emploi du temps plus
+  confortable » rend la meilleure solution trouvée dans le temps imparti, sans preuve, et deux
+  calculs identiques peuvent finir à des qualités différentes.
+- **Assistant** : la qualité des réponses se vérifie à la main, avec le service réel, sans jeu
+  d'évaluation automatique ; l'assistant n'explique pas le placement d'une séance, ne déplace
+  aucune séance et ne conserve pas les conversations.
+- **Calcul lancé en ligne de commande** : le bouton « Arrêter le calcul » n'atteint que les
+  calculs du processus du serveur ; un calcul lancé par une commande va à son terme, borné par
+  son temps limite.
+- **Code d'une règle supprimée** : il est repris par la règle créée ensuite ; le corriger
+  demande un changement du schéma de la base.
+- **Import** : rien ne limite le nombre d'imports lancés à la suite ; un gros import réserve la
+  base en écriture, et une saisie simultanée attend quelques secondes au plus avant d'être
+  refusée ; le rapport d'un import n'est pas conservé.
+- **Groupes transverses** : sans liste d'étudiants, les séances d'un groupe de langue ou
+  d'option ne sont pas vues dans la journée des demi-groupes pour le calcul des trous et des
+  changements de campus.
+- **Sauvegarde quotidienne** : elle ne prend pas le verrou du déploiement ; lancée pendant un
+  déploiement, elle échoue sans rien laisser et la suivante la remplace.
+
+### 7.3 Réserves de la recette
+
+- **Anomalie ouverte ANO-21** (section 6) : réimporter un emploi du temps dans la base dont il
+  vient recrée en double ses besoins ponctuels. La simulation l'annonce avant d'appliquer ;
+  l'usage prévu, l'import dans une autre base, n'est pas touché.
+- **Réserve mineure de l'essai sur téléphone** (REC-P1-2) : le bouton flottant « Assistant »
+  recouvre la fin du pied de page sur une page courte et le coin d'une séance ; sans effet sur
+  l'usage.
+- **Essai d'impression** (REC-U12-2) : la boîte d'impression du navigateur n'est pas exercée ;
+  le PDF est produit par la fonction d'impression qu'elle déclenche.
+- **Tests propres à Linux** : deux tests des scripts de déploiement ne tournent que sous Linux ;
+  ils sont ignorés sur le poste de développement et réussissent sur le serveur.
+- **Tests de charge** : lancés à part, par une commande de l'administrateur ; ils ne figurent
+  pas dans les campagnes.
+
+
+### 7.4 Fonctionnalités réalisées sans fiche
 
 <!-- recette-reserves : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
@@ -2248,14 +2542,26 @@ Chaque fonctionnalité réalisée du livret 1 a au moins une fiche.
 
 <!-- recette-bilan : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-- Serveur de démonstration, 23/11/2026 : 542 tests d'intégration exécutés, 542 réussis, 0 échec, 0 ignorés.
+- Serveur de démonstration, 23/11/2026 : 542 tests d'intégration exécutés, 542 réussis, 0 échec, 0 ignoré.
 - Poste de développement, 23/11/2026 : 542 tests d'intégration exécutés, 540 réussis, 0 échec, 2 ignorés.
 - 68 fiches : 68 « Conforme », 0 « Non conforme », 0 « Non exécutée ».
-- 28 fonctionnalités réalisées sur 28 ont au moins une fiche ; 0 est déclarée sans fiche (section 7).
+- 28 fonctionnalités réalisées sur 28 ont au moins une fiche.
 
 <!-- recette-bilan : fin de la partie générée -->
 
-BILAN
+Les deux campagnes ont tourné sur le même code : la version 1.0.0 de l'application, inchangée,
+plus les tests d'intégration ajoutés pour cette recette (commit f5e4401, qui n'ajoute que des
+tests). Aucun test n'a échoué, sur aucun des deux systèmes ; les seuls tests ignorés le sont sur
+le poste de développement, pour une raison propre au système, et réussissent sur le serveur.
+
+**Verdict d'ensemble : la version 1.0.0 est acceptée, avec réserves.** Toutes les fiches sont
+conformes et chaque fonctionnalité réalisée du livret 1 est vérifiée par au moins une fiche,
+selon le critère de la section 2.5. Les réserves sont celles de la section 7.3 : une anomalie
+mineure ouverte (ANO-21), qui ne touche pas l'usage prévu de l'import, et les limites des deux
+essais manuels. La section 7.1 dit, fonctionnalité par fonctionnalité, ce que cette recette ne
+prouve pas ; c'est là que des tests d'intégration supplémentaires seraient les plus utiles,
+en particulier pour le respect de la pause déjeuner et des règles personnalisées autres que
+« Jours travaillés » par l'emploi du temps produit.
 
 ---
 
@@ -2387,4 +2693,37 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 ## Annexe B. Tenue à jour du cahier
 
-ANNEXEB
+Le cahier se tient à jour à partir de trois sources du dépôt, sans recopier de nombre à la main :
+
+- `docs/livrets/recette/fiches.toml` : les fiches, écrites à la main ; chaque fiche cite ses
+  tests d'intégration par leur identifiant, ou décrit un essai manuel ;
+- `docs/livrets/recette/campagnes.json` : les campagnes enregistrées ;
+- les tests eux-mêmes, lus sans être exécutés, et le livret 1, dont sont lues les
+  fonctionnalités réalisées et les cas d'usage.
+
+L'outil `tests/outils/recette.py` en tire les parties générées de ce livret : la synthèse
+(section 3), les fiches (section 4), la matrice (section 5), la liste des fonctionnalités sans
+fiche (section 7), les nombres du bilan (section 8) et l'annexe A. Chacune est encadrée dans le
+texte source par deux commentaires qui l'annoncent.
+
+| Pour | Commande, depuis la racine du dépôt |
+|---|---|
+| Voir le bilan et les contrôles | `python -m tests.outils.recette` |
+| Mettre à jour le livret | `python -m tests.outils.recette --ecrire` |
+| Enregistrer une campagne | `python -m tests.outils.recette --campagne <fichier> --nom … --systeme … --python … --processeurs … --version …` |
+
+Une campagne s'enregistre ainsi : lancer toute la famille sur la machine
+(`python -m edt tests --famille integration`), récupérer le fichier de résultats que
+l'application écrit (`tests/resultats.json` dans son dossier des journaux), puis l'enregistrer
+sous le rôle de la machine (« Serveur de démonstration », « Poste de développement »). L'outil ne
+garde que les tests d'intégration datés de l'exécution enregistrée, écarte et liste les autres
+entrées, ne garde ni message d'échec ni chemin de fichier, et remplace une campagne de même nom.
+
+Le contrôle `tests/unitaires/socle/test_recette.py`, lancé avec les tests unitaires, échoue :
+
+- si une partie générée du livret n'est plus celle que produit l'outil ;
+- si une fiche cite un test qui n'existe pas ou qui n'est pas un test d'intégration ;
+- si une fonctionnalité réalisée du livret 1 n'a ni fiche ni déclaration motivée ;
+- si un fichier de tests d'intégration manque à l'annexe A ;
+- si une campagne contient le résultat d'un test qui n'existe plus, sans que le livret le
+  signale.

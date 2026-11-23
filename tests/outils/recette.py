@@ -966,7 +966,7 @@ def produire_bilan(recette: Recette) -> str:
         lignes.append(
             f"- {c.nom}, {_date(c.debut)} : {len(c.resultats)} tests d'intégration exécutés, "
             f"{c.compte('reussi')} réussis, {_pluriel(c.compte('echec'), 'échec')}, "
-            f"{c.compte('ignore')} ignorés."
+            f"{_pluriel(c.compte('ignore'), 'ignoré')}."
         )
     realisees = recette.realisees
     couvertes = {code for f in recette.fiches for code in f.fonctionnalites}
@@ -977,9 +977,13 @@ def produire_bilan(recette: Recette) -> str:
     )
     lignes.append(
         f"- {sum(f.code in couvertes for f in realisees)} fonctionnalités réalisées sur "
-        f"{len(realisees)} ont au moins une fiche ; "
-        f"{_pluriel(len(recette.sans_fiche), 'est déclarée', 'sont déclarées')} sans fiche "
-        "(section 7)."
+        f"{len(realisees)} ont au moins une fiche"
+        + (
+            f" ; {_pluriel(len(recette.sans_fiche), 'est déclarée', 'sont déclarées')} sans fiche "
+            "(section 7)."
+            if recette.sans_fiche
+            else "."
+        )
     )
     return "\n".join(lignes) + "\n"
 
