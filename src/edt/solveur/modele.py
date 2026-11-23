@@ -259,6 +259,7 @@ class ModeleHoraires:
         point_de_controle: Callable[[], None] = lambda: None,
     ) -> None:
         self.preparation = preparation
+        self._point_de_controle = point_de_controle
         self.regles = preparation.regles
         self.instantane = preparation.instantane
         self.seances = preparation.seances
@@ -659,6 +660,9 @@ class ModeleHoraires:
         cache: dict[tuple, dict] = {}
         nb_contraintes = nb_entorses = 0
         for i, j, enseignant, groupe in self.preparation.paires_de_personnes():
+            # Une paire coûte jusqu'à quelques centièmes de seconde quand les domaines sont
+            # grands (`HORAIRES` ignorée) : le contrôle, une lecture d'horloge, se fait à chacune.
+            self._point_de_controle()
             separees = (enseignant and unicite_enseignant) or (groupe and unicite_groupe)
             trajets_concernes = eloignes and not (len(campus[i]) == 1 and campus[i] == campus[j])
             pauses = regles.exigences_de_pause(self.seances[i].besoin, self.seances[j].besoin)
