@@ -24,8 +24,8 @@ Khiri, Kerime, Hugo.
 Démonstration en ligne : adresse communiquée par l'équipe.
 
 Elle tourne sur un établissement fictif complet. Pour essayer
-l'application sur votre poste, suivez le démarrage en cinq minutes
-ci-dessous.
+l'application sur votre poste, suivez le
+[démarrage en cinq minutes](#démarrage-en-5-minutes).
 
 ## Livrables du cours
 
@@ -38,9 +38,12 @@ ci-dessous.
 3. [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md)
    ([PDF](docs/livrets/pdf/3-guide-utilisateur.pdf)) : le mode d'emploi, écran
    par écran.
+4. [Cahier de recette](docs/livrets/4-cahier-de-recette.md)
+   ([PDF](docs/livrets/pdf/4-cahier-de-recette.pdf)) : la recette par les tests
+   d'intégration, fiche par fonctionnalité, avec les résultats des campagnes.
 
-Les trois livrets en PDF sont aussi joints à la version 1.0.0 publiée sur
-GitHub (page « Releases » du dépôt).
+Les PDF des livrets sont aussi joints aux publications du dépôt (page « Releases ») :
+les livrets 1 à 3 à la version 1.0.0, les quatre livrets à jour à la publication suivante.
 
 ## Ce que fait l'application
 
@@ -149,6 +152,7 @@ La carte complète, avec le public de chaque document, est dans
 | utiliser l'application | [Guide de l'utilisateur](docs/livrets/3-guide-utilisateur.md) |
 | comprendre ce qu'elle fait | [Spécifications fonctionnelles](docs/livrets/1-specifications-fonctionnelles.md), [Choix de conception](docs/decisions.md) |
 | lire ou modifier le code | [Architecture](docs/architecture.md), [Modèle de données](docs/modele-donnees.md), [Solveur](docs/solveur.md), [Vérificateur](docs/verification.md) |
+| vérifier qu'elle fait ce qu'elle annonce | [Cahier de recette](docs/livrets/4-cahier-de-recette.md) |
 | installer le serveur | [Déploiement](docs/deploiement.md) |
 
 ## Contribuer

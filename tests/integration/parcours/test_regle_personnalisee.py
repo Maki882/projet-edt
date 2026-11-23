@@ -1,4 +1,4 @@
-"""Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul."""
+"""Parcours REC-BOUT-4 : une règle personnalisée saisie par l'utilisateur est respectée par le calcul."""
 
 from __future__ import annotations
 
