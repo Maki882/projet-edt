@@ -420,3 +420,9 @@ main:has(.banc-integration) .entete-page h1 {
   }
 }
 
+/* Confettis de fin d'exécution réussie (static/js/confettis.js) : jamais à l'impression. */
+@media print {
+  .confettis {
+    display: none;
+  }
+}

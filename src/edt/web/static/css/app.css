@@ -179,14 +179,9 @@ h3 {
   color: #dfe8f4;
 }
 
-.marque-sigle {
-  padding: 0.32em 0.52em;
-  border-radius: 7px;
-  background: var(--accent);
-  color: var(--bandeau);
-  font-size: 0.91rem;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+.marque-logo {
+  display: block;
+  flex: none;
 }
 
 .marque-texte {

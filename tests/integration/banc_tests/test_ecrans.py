@@ -1,11 +1,18 @@
-"""Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus."""
+"""Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, confettis, refus."""
 
 from __future__ import annotations
 
 import re
 
 import pytest
-from tests.outils.banc_tests.depot import CLE_CHARGE, CLE_ECHEC, CLE_LENT, CLE_REUSSI, attendre_fin
+from tests.outils.banc_tests.depot import (
+    CLE_CHARGE,
+    CLE_ECHEC,
+    CLE_IGNORE,
+    CLE_LENT,
+    CLE_REUSSI,
+    attendre_fin,
+)
 
 from edt.services.banc_tests import execution as ex
 from edt.services.banc_tests import resultats as res
@@ -13,6 +20,8 @@ from edt.services.banc_tests.tableau import identifiant_html
 from edt.web.gabarits import DOSSIER_STATIQUE
 
 HTMX = {"HX-Request": "true"}
+CONFETTIS = "data-confettis"
+"""Repère lu par `static/js/confettis.js` : l'exécution suivie vient de finir sans échec."""
 DATE_AFFICHEE = re.compile(r"\d{2}/\d{2}/\d{4} à \d{2} h \d{2}")
 
 
@@ -75,6 +84,7 @@ def test_lancement_suivi_et_resultats_par_la_route_web(client, depot):
     ).text
     assert "hx-trigger" not in fragment  # terminée : l'interrogation s'arrête
     assert "5 tests terminés sur 5" in fragment
+    assert CONFETTIS not in fragment  # deux échecs : pas de confettis
     assert f'id="{identifiant_html("t", CLE_REUSSI)}" hx-swap-oob="true"' in fragment
     assert f'id="{identifiant_html("t", CLE_ECHEC)}" hx-swap-oob="true"' in fragment
     assert 'id="banc-resume-famille" hx-swap-oob="true"' in fragment
@@ -109,6 +119,7 @@ def test_suivi_pendant_l_execution_puis_arret(client, depot, lent):
     ).text
     assert 'hx-trigger="every 1s"' in fragment and "En cours" in fragment
     assert "Arrêter l&#39;exécution" in fragment
+    assert CONFETTIS not in fragment  # encore en cours
     page = client.get("/tests/integration").text
     assert "En attente" in page or "En cours" in page
 
@@ -117,6 +128,46 @@ def test_suivi_pendant_l_execution_puis_arret(client, depot, lent):
     suivi = attendre_fin(execution)
     assert suivi.issue == res.ISSUE_ARRETEE
     assert "Arrêtée" in client.get("/tests/integration").text
+    fin = client.get(
+        f"/tests/integration/suivi?execution={execution.id}&depuis=0", headers=HTMX
+    ).text
+    assert "Arrêtée" in fin and CONFETTIS not in fin  # arrêtée : pas de confettis
+
+
+@pytest.mark.parametrize(("famille", "cle"), [("unitaires", CLE_REUSSI), ("integration", CLE_LENT)])
+def test_confettis_une_fois_a_la_fin_d_une_execution_entierement_reussie(
+    client, depot, famille, cle
+):
+    """Le dernier suivi d'une exécution sans échec porte le repère des confettis, la page non."""
+    page = client.get(f"/tests/{famille}").text
+    assert "/static/js/confettis.js" in page and CONFETTIS not in page
+    client.post(f"/tests/{famille}/lancer", data={"cible": f"test:{cle}"})
+    execution = ex.execution_courante()
+    attendre_fin(execution)
+
+    fragment = client.get(
+        f"/tests/{famille}/suivi?execution={execution.id}&depuis=0", headers=HTMX
+    ).text
+
+    assert "1 réussi," in fragment and "0 échec," in fragment
+    assert CONFETTIS in fragment
+    assert CONFETTIS not in client.get(f"/tests/{famille}").text  # rechargement : rien
+
+
+@pytest.mark.cas_limite
+def test_pas_de_confettis_sans_test_reussi(client, depot):
+    """Cas : l'exécution ne contient qu'un test ignoré (aucun échec, aucun réussi).
+
+    Risque : fête pour une exécution qui n'a rien vérifié."""
+    client.post("/tests/unitaires/lancer", data={"cible": f"test:{CLE_IGNORE}"})
+    execution = ex.execution_courante()
+    attendre_fin(execution)
+
+    fragment = client.get(
+        f"/tests/unitaires/suivi?execution={execution.id}&depuis=0", headers=HTMX
+    ).text
+
+    assert "1 ignoré." in fragment and CONFETTIS not in fragment
 
 
 @pytest.mark.cas_limite

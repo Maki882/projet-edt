@@ -131,18 +131,18 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | Composant | Unitaires | Intégration | Total |
 |---|---:|---:|---:|
 | `assistant` | 141 | 31 | 172 |
-| `banc_tests` | 43 | 22 | 65 |
+| `banc_tests` | 43 | 24 | 67 |
 | `echange` | 149 | 41 | 190 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 250 | 79 | 329 |
+| `socle` | 251 | 80 | 331 |
 | `solveur` | 226 | 64 | 290 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 159 | 196 |
-| **Total** | **1 195** | **573** | **1 768** |
-| dont cas limites (`cas_limite`) | 345 | 228 | 573 |
+| `web_edt` | 37 | 162 | 199 |
+| **Total** | **1 196** | **579** | **1 775** |
+| dont cas limites (`cas_limite`) | 346 | 233 | 579 |
 | dont tests de charge (`perf`) | 21 | 4 | 25 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.

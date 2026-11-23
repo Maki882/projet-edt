@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **573 fonctions de test** dans 11 composants, dont 228 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **579 fonctions de test** dans 11 composants, dont 233 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -302,12 +302,12 @@ Ce dossier compte **573 fonctions de test** dans 11 composants, dont 228 marqué
 | [`assistant/test_panneau.py`](assistant/test_panneau.py) | Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 |
 | [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 18 |
 
-### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (22 fonctions)
+### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (24 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 4 |
-| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 |
+| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, confettis, refus | 13 |
 | [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 |
 
 ### `echange/` : Import et export par le site et la ligne de commande (41 fonctions)
@@ -338,11 +338,11 @@ Ce dossier compte **573 fonctions de test** dans 11 composants, dont 228 marqué
 | [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Parcours REC-BOUT-4 : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
 | [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Parcours REC-BOUT-5 : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
-### `socle/` : Commandes et application web du socle (79 fonctions)
+### `socle/` : Commandes et application web du socle (80 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 21 |
+| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 22 |
 | [`socle/test_config.py`](socle/test_config.py) | Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 |
 | [`socle/test_generation.py`](socle/test_generation.py) | Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 |
@@ -393,7 +393,7 @@ Ce dossier compte **573 fonctions de test** dans 11 composants, dont 228 marqué
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (159 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (162 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -408,7 +408,7 @@ Ce dossier compte **573 fonctions de test** dans 11 composants, dont 228 marqué
 | [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | Grille, groupes liés, déplacements et annulations vérifiés | 20 |
 | [`web_edt/test_niveaux_web.py`](web_edt/test_niveaux_web.py) | Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 |
-| [`web_edt/test_recette_affichage.py`](web_edt/test_recette_affichage.py) | Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 |
+| [`web_edt/test_recette_affichage.py`](web_edt/test_recette_affichage.py) | Adaptation des écrans à un petit écran et à l'impression, vérifiable sans navigateur | 4 |
 | [`web_edt/test_recette_deplacement.py`](web_edt/test_recette_deplacement.py) | Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 |
 | [`web_edt/test_recette_resultat.py`](web_edt/test_recette_resultat.py) | Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 |
 | [`web_edt/test_recette_verrous.py`](web_edt/test_recette_verrous.py) | Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 |

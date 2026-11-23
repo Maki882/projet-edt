@@ -361,7 +361,10 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
 - **Trois affichages** : semaine type ; semaine datée (navigation, saut à
   une date, jours fermés grisés avec leur libellé, séances annulées barrées,
   déplacées en pointillés, séances « à programmer » listées sous la grille) ;
-  jour.
+  jour. Sur téléphone, l'onglet « Jour » est mis en avant et présente les
+  séances en liste chronologique. Sur ordinateur, les jours et l'axe des
+  heures restent visibles pendant le défilement de la grille. Le jour de
+  la semaine en cours est signalé, avec « Aujourd'hui » sur la date réelle.
 - **Colonnes** : les jours travaillés de l'établissement, plus tout jour où
   tombe une séance affichée (samedi ouvert par une règle ou un type de
   séance).
@@ -375,7 +378,8 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
   `Instantane.reglages` : la plage réservée en horaires déterminés, la
   fenêtre en pause libre, rien sans pause ; une valeur venue d'une règle la
   nomme.
-- **Bloc** : horaire, matière, type, groupes, enseignants, salle ; couleur
+- **Bloc** : matière, horaire, salle, type, groupes, enseignants et libellé
+  des séances déplacées ou annulées ; couleur
   stable par matière et liseré de la couleur du type de séance ; cadenas si
   la séance est verrouillée ; marque colorée selon la gravité de ses
   anomalies ; mention d'une séance qui n'a pas lieu chaque semaine.
@@ -398,8 +402,12 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
   les retouches manuelles et le dit avant d'agir. Les séances datées
   importées ne se recalculent jamais depuis la semaine type (elles seraient
   doublées) : l'écran l'explique au lieu de proposer le bouton.
-- **Impression** : la feuille d'impression masque menus, sélecteurs et
-  panneau et imprime la grille en A4 paysage, avec ses couleurs et un titre.
+- **Impression** : la feuille d'impression masque menus, sélecteurs (et le
+  bouton « Filtres du planning » du téléphone), panneau et barre de
+  navigation entre périodes (sa période figure déjà dans le titre
+  d'impression), ainsi que le repère « Aujourd'hui » de l'en-tête du jour
+  (il ne vaut que le jour de l'impression), et imprime la grille en A4 paysage, avec ses
+  couleurs et un titre.
 - **Exports** : `/export/emploi-du-temps.csv` et `/export/emploi-du-temps.ics`
   pour la version, la couche et la cible affichées.
 
@@ -430,6 +438,9 @@ traiter.
 statistiques**, pour le semestre du jour :
 
 1. **Prochaine étape** : une phrase et le lien vers l'écran qui y mène.
+   Un planning stylisé accompagne le texte. Son animation peut être
+   suspendue. Elle est désactivée si la réduction des animations est activée
+   dans les réglages de l'appareil.
 2. **Emploi du temps du semestre** : le calcul en cours, ou la version
    active et ses points à traiter, ou l'absence d'emploi du temps.
 3. **Dernier calcul**, seulement s'il s'est terminé sans emploi du temps
@@ -611,6 +622,17 @@ test en cours), ses fichiers et ses tests.
   leur fichier, de leur composant et de la famille. Une exécution que le
   serveur ne connaît plus (redémarrage) fait recharger la page
   (`HX-Refresh`).
+- **Confettis** : la réponse du suivi qui voit une exécution finir avec
+  l'issue « terminée », aucun échec et au moins un test réussi (des tests
+  ignorés n'empêchent rien) porte le repère `data-confettis` sur
+  `#suivi-tests`. `static/js/confettis.js` le lit à l'insertion du fragment
+  (`htmx:load`), le retire, puis fait tomber des confettis pendant 2,5 s sur
+  un canevas plein écran qui ne capte aucun clic et se retire de lui-même.
+  Une exécution arrêtée, en échec ou sans test réussi ne porte pas le repère,
+  et la page entière ne le porte jamais : un rechargement ne relance rien.
+  Avec « réduire les animations » (`prefers-reduced-motion`), aucun confetti ;
+  rien à l'impression. Limite : une exécution finie avant le premier affichage
+  du suivi (page chargée après la fin) ne donne pas de confettis.
 - **Garde-fous** : une exécution à la fois (un second envoi mène au suivi en
   cours, sans erreur), refus pendant un calcul d'emploi du temps, durée
   maximale, tests de charge exclus des lancements par groupe, lancement
@@ -638,4 +660,4 @@ test en cours), ses fichiers et ses tests.
   bandeau, boutons, schéma).
 
 Fichiers : `web/routes/tests.py`, `web/templates/tests/`,
-`web/static/css/tests.css`.
+`web/static/css/tests.css`, `web/static/js/confettis.js`.

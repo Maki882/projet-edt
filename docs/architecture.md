@@ -195,7 +195,8 @@ sur verrou de 10 s (`DELAI_VERROU_MS`).
   unique avant `session.get` : hors bornes, la réponse est « n'existe pas ».
 - **Pannes.** `expliquer_erreur_base(erreur)` donne une phrase et un remède
   pour une panne du pilote (base verrouillée, fichier en lecture seule,
-  fichier qui n'est pas une base SQLite, disque plein) : code 1 en ligne de
+  fichier qui n'est pas une base SQLite, disque plein, base non initialisée
+  avec le remède « python -m edt init-db ») : code 1 en ligne de
   commande, page 503 sur le web.
 - **Opérations longues.** Pendant une remise à zéro ou un chargement de jeu
   fictif (`edt.services.jeux`), un fichier marqueur `<base>.operation` est
