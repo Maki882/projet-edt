@@ -48,9 +48,10 @@ limite, et aucun essai n'est lancé avec moins que la durée de préparation et 
 construction déjà observée plus `ESSAI_MIN_S`. Le moteur ne s'interrompt
 qu'entre deux étapes de la construction de son modèle, et une étape peut durer
 bien plus que le temps limite : chaque essai tourne donc dans son fil, attendu
-jusqu'à la fin du budget au plus. Celui qui n'a pas rendu la main reçoit
-l'ordre d'arrêt et finit en arrière-plan (`ResultatDiagnostic.essai_abandonne`)
-pendant que le diagnostic rend `PARTIEL` (ou `INDETERMINE` au premier essai).
+jusqu'à la fin du budget moins `RESERVE_ARRET_S`. Celui qui n'a pas rendu la
+main reçoit l'ordre d'arrêt et il est attendu pendant la réserve, puis le
+diagnostic rend `PARTIEL` (ou `INDETERMINE` au premier essai). Un fil encore
+vivant après la réserve est journalisé en erreur.
 
 Identifiants des éléments (`ElementEnCause.identifiant`, toujours un texte) :
 code du catalogue, identifiant de règle, de besoin, d'indisponibilité ou de
@@ -68,7 +69,7 @@ import math
 import threading
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 
 from edt.domaine.contraintes import CATALOGUE, CodeContrainte, Niveau
@@ -84,10 +85,15 @@ journal = logging.getLogger(__name__)
 
 ESSAI_MIN_S = 0.2
 """Temps limite le plus court donné à un essai : en dessous, la fonction s'arrête."""
-MARGE_MIN_S = 0.3
-"""Marge gardée sur le budget à chaque essai, avant tout dépassement observé."""
+MARGE_MIN_S = 0.6
+"""Marge gardée sur le budget à chaque essai, avant tout dépassement observé : plus que
+`RESERVE_ARRET_S`, pour qu'un essai atteigne son temps limite avant l'arrêt forcé."""
 ATTENTE_RESERVEE_S = 0.1
 """Part du budget gardée, après l'attente d'un essai, pour conclure."""
+RESERVE_ARRET_S = 0.5
+"""Fin du budget réservée à l'arrêt d'un essai qui n'a pas rendu la main : il est attendu
+pendant ce temps, moins `ATTENTE_RESERVEE_S`. Le moteur s'arrête à son prochain point de
+contrôle, quelques centièmes de seconde plus tard en pratique."""
 PART_MAX_ESSAI = 1 / 3
 """Part du temps restant qu'un essai de réduction ou de confirmation reçoit au plus (le premier
 essai, lui, peut prendre tout le budget)."""
@@ -165,9 +171,6 @@ class ResultatDiagnostic:
     message: str
     nb_essais: int
     duree_s: float
-    essai_abandonne: threading.Thread | None = field(default=None, compare=False)
-    """Fil d'un essai qui n'a pas rendu la main à temps : il a reçu l'ordre d'arrêt et finit en
-    arrière-plan (voir l'en-tête du module) ; `None` sinon."""
 
 
 Essai = Callable[[Instantane, OptionsSolveur], ResultatSolveur]
@@ -251,7 +254,6 @@ class _Recherche:
         self.depassement_s = 0.0
         self.cout_fixe_s = 0.0
         self.sans_conclusion = False
-        self.abandonne: threading.Thread | None = None
         self.niveaux_regles = (
             dict(options.niveaux_regles)
             if options.niveaux_regles is not None
@@ -424,13 +426,13 @@ class _Recherche:
     def _executer(
         self, instantane: Instantane, options: OptionsSolveur, numero: int, reste: float
     ) -> ResultatSolveur:
-        """L'essai dans un fil à part, attendu jusqu'à la fin du budget au plus.
+        """L'essai dans un fil à part, attendu jusqu'à la fin du budget, réserve d'arrêt déduite.
 
-        Le moteur ne s'interrompt qu'entre deux étapes de la construction de son
-        modèle : une étape peut durer bien plus que le temps limite (plusieurs
-        dizaines de secondes quand l'essai retire `HORAIRES` d'un grand besoin).
-        L'essai qui n'a pas rendu la main à l'échéance reçoit l'ordre d'arrêt et
-        est abandonné à son fil ; le diagnostic s'arrête là (`_Budget`).
+        Garde-fou : un essai qui n'a pas rendu la main à cette échéance (le moteur
+        ne s'arrête qu'à ses points de contrôle) reçoit l'ordre d'arrêt et il est
+        attendu pendant la réserve `RESERVE_ARRET_S`. Le diagnostic s'arrête là
+        (`_Budget`). Un fil encore vivant après la réserve est une erreur
+        journalisée : il finit seul, le diagnostic rend la main à l'heure.
         """
         arret = threading.Event()
         boite: list[ResultatSolveur | BaseException] = []
@@ -443,16 +445,24 @@ class _Recherche:
 
         fil = threading.Thread(target=executer, name=f"edt-diagnostic-essai-{numero}", daemon=True)
         fil.start()
-        fil.join(max(0.0, reste - ATTENTE_RESERVEE_S))
+        fil.join(max(0.0, reste - RESERVE_ARRET_S))
         if fil.is_alive():
             arret.set()
-            self.abandonne = fil
             self.nb_essais = numero
             journal.warning(
-                "Diagnostic, essai %d : pas de réponse à la fin du temps accordé ; l'essai est "
-                "arrêté et finit en arrière-plan, le diagnostic s'arrête là",
+                "Diagnostic, essai %d : pas de réponse à la fin du temps accordé ; arrêt demandé, "
+                "le diagnostic s'arrête là",
                 numero,
             )
+            fil.join(max(0.0, RESERVE_ARRET_S - ATTENTE_RESERVEE_S))
+            if fil.is_alive():
+                journal.error(
+                    "Diagnostic, essai %d : le moteur n'a pas rendu la main %.1f s après l'ordre "
+                    "d'arrêt ; il finira seul en arrière-plan (défaut du moteur, à signaler avec "
+                    "ce journal)",
+                    numero,
+                    RESERVE_ARRET_S,
+                )
             raise _Budget
         if isinstance(boite[0], BaseException):
             raise boite[0]
@@ -544,9 +554,7 @@ class _Recherche:
             self.nb_essais,
             duree,
         )
-        return ResultatDiagnostic(
-            statut, regles, donnees, message, self.nb_essais, duree, self.abandonne
-        )
+        return ResultatDiagnostic(statut, regles, donnees, message, self.nb_essais, duree)
 
     def _message(
         self, statut: StatutDiagnostic, nb_regles: int, nb_donnees: int, budget_epuise: bool

@@ -201,13 +201,7 @@ def message_diagnostic_en_cours() -> str | None:
 
 
 def _message_refus(calcul_id: int, echeance: float) -> str:
-    reste = math.ceil(echeance - time.monotonic())
-    if reste <= 0:
-        # Budget écoulé : un calcul d'essai abandonné finit de s'interrompre (`_liberer_apres`).
-        return (
-            f"Un diagnostic sur le calcul n° {calcul_id} finit d'interrompre son dernier calcul "
-            "d'essai : relancer dans quelques instants."
-        )
+    reste = max(1, math.ceil(echeance - time.monotonic()))
     return (
         f"Un diagnostic est en cours sur le calcul n° {calcul_id} ; il se termine en moins de "
         f"{reste} s : relancer ensuite."
@@ -250,7 +244,6 @@ def diagnostiquer_calcul(
         refus = _message_refus(*deja)
         journal.info("Diagnostic du calcul %d refusé : %s", calcul_id, refus)
         raise ErreurCalculEnCours(refus)
-    abandonne: threading.Thread | None = None
     try:
         # Inscrit avant de regarder les calculs : un lancement qui passe après ce contrôle
         # voit le diagnostic (`lancer_calcul`) ; un lancement passé avant est vu ici.
@@ -260,45 +253,16 @@ def diagnostiquer_calcul(
                 f"Le calcul n° {suivi.id} est en cours : attendre sa fin ou l'arrêter, puis "
                 "relancer le diagnostic."
             )
-        diagnostic, abandonne = _diagnostiquer(calcul_id, budget_s, debut, lance_le, config)
-        return diagnostic
+        return _diagnostiquer(calcul_id, budget_s, debut, lance_le, config)
     finally:
-        if abandonne is not None and abandonne.is_alive():
-            # L'essai abandonné occupe encore les processeurs : le diagnostic reste « en
-            # cours » (calculs et diagnostics refusés) jusqu'à ce qu'il ait rendu la main.
-            threading.Thread(
-                target=_liberer_apres,
-                args=(abandonne, calcul_id),
-                name="edt-diagnostic-liberation",
-                daemon=True,
-            ).start()
-        else:
-            with _verrou:
-                _en_cours = None
-
-
-def _liberer_apres(fil: threading.Thread, calcul_id: int) -> None:
-    """Attend la fin d'un calcul d'essai abandonné, puis libère la place du diagnostic."""
-    global _en_cours
-    debut = time.monotonic()
-    fil.join()
-    with _verrou:
-        _en_cours = None
-    journal.info(
-        "Diagnostic du calcul %d : le calcul d'essai abandonné s'est arrêté %.1f s après la fin "
-        "du diagnostic",
-        calcul_id,
-        time.monotonic() - debut,
-    )
+        with _verrou:
+            _en_cours = None
 
 
 def _diagnostiquer(
     calcul_id: int, budget_s: float, debut: float, lance_le: str, config: Configuration
-) -> tuple[Diagnostic, threading.Thread | None]:
-    """Corps de `diagnostiquer_calcul`, garde-fous de concurrence passés.
-
-    Rend aussi le fil d'un calcul d'essai abandonné encore en marche, s'il y en a un.
-    """
+) -> Diagnostic:
+    """Corps de `diagnostiquer_calcul`, garde-fous de concurrence passés."""
     with session_base(config.db_url) as session:
         calcul = session.get(Calcul, calcul_id)
         if calcul is None:
@@ -321,13 +285,12 @@ def _diagnostiquer(
     if not instantane.seances and not instantane.problemes_depliage:
         # Le calcul a été refusé faute de séance : il n'y a rien à réduire.
         statut, regles, donnees, nb_essais = StatutDiagnostic.MINIMAL, (), (), 0
-        message, abandonne = MESSAGE_SANS_SEANCE, None
+        message = MESSAGE_SANS_SEANCE
     else:
         restant = budget_s - (time.monotonic() - debut) - RESERVE_ENREGISTREMENT_S
         resultat = isoler_impossibilite(instantane, options, max(restant, 0.001))
         statut, regles, donnees = resultat.statut, resultat.regles, resultat.donnees
         message, nb_essais = resultat.message, resultat.nb_essais
-        abandonne = resultat.essai_abandonne
     diagnostic = Diagnostic(
         calcul_id=calcul_id,
         statut=statut,
@@ -351,7 +314,7 @@ def _diagnostiquer(
         nb_essais,
         time.monotonic() - debut,
     )
-    return diagnostic, abandonne
+    return diagnostic
 
 
 def _options_du_calcul(calcul: Calcul) -> OptionsSolveur:
