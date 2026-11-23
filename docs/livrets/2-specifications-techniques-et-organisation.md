@@ -6,18 +6,21 @@ Projet PTS Informatique, ISEP, année 2026-2027
 
 | | |
 |---|---|
-| Livret | 2 sur 3 : spécifications techniques et organisation du projet |
+| Livret | 2 sur 4 : spécifications techniques et organisation du projet |
 | Enseignant | Hervé Allanic |
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
-| Date | 16 novembre 2026 |
-| Version | 1.1 |
+| Date | 23 novembre 2026 |
+| Version | 1.2 |
 | Application décrite | EDT 1.0.0 |
+| Dépôt GitHub | https://github.com/Maki882/projet-edt |
 
 Ce livret décrit comment l'application est construite (matériels, systèmes, technologies,
 langages, bibliothèques) et comment le projet a été organisé (lots, planning, outils, méthodes,
 référentiel). Il complète le livret 1, [Spécifications fonctionnelles](1-specifications-fonctionnelles.md),
-qui décrit l'application du point de vue de l'utilisateur, et le livret 3,
-[guide de l'utilisateur](3-guide-utilisateur.md). Les chiffres cités sont mesurés sur la
+qui décrit l'application du point de vue de l'utilisateur, le livret 3,
+[guide de l'utilisateur](3-guide-utilisateur.md), et le livret 4,
+[cahier de recette](4-cahier-de-recette.md), qui présente la recette par les tests
+d'intégration. Les chiffres cités sont mesurés sur la
 branche principale à la version 1.0.0 de l'application (16 novembre 2026).
 
 ---
@@ -278,6 +281,10 @@ code de la version 1.0.0 : la famille des tests unitaires, lancée par
 la famille des tests d'intégration, 5 min 00 s : 529 tests (hors les
 4 tests de charge), 529 réussis.
 
+La recette de l'application (fiches de recette reliées aux fonctionnalités et aux cas d'usage
+du livret 1, campagnes et résultats) fait l'objet du livret 4,
+[cahier de recette](4-cahier-de-recette.md).
+
 ### 1.12 Assistant conversationnel
 
 Le panneau « Assistant », présent sur chaque page, transmet la demande de l'utilisateur au
@@ -353,6 +360,7 @@ brutes restent dans l'historique du dépôt.
 | **13. Assistant (optionnel)** | Consignes et douze outils de lecture ; propositions confirmées d'un clic ; limites et budget quotidien ; commande d'état et d'essai ; script d'installation de la clé. | 16/11 |
 | **14. Tests lancés depuis l'application** | Catalogue des tests, exécution dans un processus à part, suivi et arrêt ; deux onglets avec un schéma de l'organisation des tests ; commande `tests`. | 16/11 |
 | **15. Soutenance** | Scénario de démonstration ; préparation de la soutenance. | prévu à partir du 23/11 |
+| **16. Cahier de recette** | Livret 4 : fiches de recette reliées aux fonctionnalités et aux cas d'usage du livret 1, adossées aux tests d'intégration ; campagnes ; journal des anomalies corrigées ; bilan. | 23/11 |
 
 ### 2.3 Planning prévu et réalisé
 
@@ -373,7 +381,7 @@ partie concernée.
 | Tests unitaires | 12/10 | Écrits avec chaque lot dès le 05/10 ; 13/10 : règles personnalisées et leurs tests. |
 | Tests d'intégration | 02/11 | Premiers tests d'intégration des commandes le 05/10 ; banque de cas limites le 02/11 ; parcours de bout en bout le 09/11 ; séparation unitaires et intégration, tests lancés depuis l'application le 16/11. |
 | Finalisation des développements | 16/11 | 16/11 : ergonomie, textes, versions figées, assistant, onglets de tests, livrets 1, 2 et 3. |
-| Documentation utilisateur, préparation de la soutenance | 23/11 | Livret 3 (guide de l'utilisateur) rédigé le 16/11 ; préparation de la soutenance à venir. |
+| Documentation utilisateur, préparation de la soutenance | 23/11 | Livret 3 (guide de l'utilisateur) rédigé le 16/11 ; livret 4 (cahier de recette) rédigé le 23/11 ; préparation de la soutenance à venir. |
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
@@ -440,7 +448,7 @@ pull request) n'y est enregistrée.
 
 | Élément | Description |
 |---|---|
-| Dépôt | GitHub `Maki882/projet-edt`, privé, ouvert aux quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
+| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; privé, ouvert aux quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
 | Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
 | Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé avec l'offre gratuite de GitHub : la règle « pas d'envoi direct sur `main` » est une convention de l'équipe, appliquée depuis le 05/10. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
