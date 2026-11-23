@@ -47,8 +47,17 @@ quel résultat et quelles réserves. Les annexes se consultent au besoin : fiche
 - [5. Matrice de traçabilité](#5-matrice-de-traçabilité)
 - [6. Anomalies relevées et corrections](#6-anomalies-relevées-et-corrections)
 - [7. Limites et réserves](#7-limites-et-réserves)
+  - [7.1 Ce que les tests d'intégration ne vérifient pas](#71-ce-que-les-tests-dintégration-ne-vérifient-pas)
+  - [7.2 Limites connues de la version 1.0.0](#72-limites-connues-de-la-version-100)
+  - [7.3 Réserves de la recette](#73-réserves-de-la-recette)
+  - [7.4 Fonctionnalités réalisées sans fiche](#74-fonctionnalités-réalisées-sans-fiche)
 - [8. Bilan de la recette](#8-bilan-de-la-recette)
 - [Annexe A. Fiches détaillées](#annexe-a-fiches-détaillées)
+  - [A.1 Parcours de bout en bout](#a1-parcours-de-bout-en-bout)
+  - [A.2 Fonctionnalités obligatoires](#a2-fonctionnalités-obligatoires)
+  - [A.3 Fonctionnalités utiles](#a3-fonctionnalités-utiles)
+  - [A.4 Fonctionnalités optionnelles réalisées](#a4-fonctionnalités-optionnelles-réalisées)
+  - [A.5 Exploitation et robustesse](#a5-exploitation-et-robustesse)
 - [Annexe B. Résultats par fichier de tests d'intégration](#annexe-b-résultats-par-fichier-de-tests-dintégration)
 - [Annexe C. Détail des anomalies corrigées](#annexe-c-détail-des-anomalies-corrigées)
 - [Annexe D. Tenue à jour du cahier](#annexe-d-tenue-à-jour-du-cahier)
@@ -191,15 +200,15 @@ section 6 :
 
 Deux campagnes de référence ont été enregistrées le 23 novembre 2026, l'une sur le serveur de
 démonstration, l'autre sur le poste de développement. Elles ont tourné sur le même commit,
-77558fd : le code de l'application est celui de la version 1.0.0, inchangé ; s'y ajoutent les
-tests d'intégration écrits pour cette recette, deux assertions renforcées pendant sa relecture,
-et des documents. Le dépôt compte ainsi 546 fonctions de
-test d'intégration : les 533 de la version 1.0.0 (livret 2, section 1.11) et 13 ajoutées pour
-cette recette ; les campagnes en exécutent 542, les 4 tests de charge se lançant à part. Chacune
-a lancé toute la famille des tests d'intégration par la commande
+77558fd : le code de l'application y est celui de la version 1.0.0, inchangé ; seuls des tests
+d'intégration et des documents s'y ajoutent. La version 1.0.0 comptait 533 fonctions de test
+d'intégration (livret 2, section 1.11) ; la recette en a ajouté 13. Chaque campagne a lancé
+toute la famille des tests d'intégration par la commande
 `python -m edt tests --famille integration`.
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
+
+Le dépôt compte 546 fonctions de test d'intégration ; les campagnes en exécutent 542, les 4 tests de charge se lançant à part.
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -233,6 +242,8 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | **Total** | **546** | **4** | **407** | **542** | **540** |
 
 **Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 546 tests d'intégration du dépôt (74,5 %) ; les autres figurent à l'annexe B, rangés par fichier.
+
+**Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6). Le verdict d'ensemble est donné à la section 8.
 
 <!-- recette-synthese : fin de la partie générée -->
 
@@ -355,51 +366,51 @@ du livret 1 et les fiches qui l'illustrent.
 
 | N° | Fonctionnalité | Fiches | Tests | Verdict |
 |---|---|---|---:|---|
-| O1 | Décrire l'établissement | REC-O1-1, REC-O1-2, REC-O1-3 | 20 | Conforme |
-| O2 | Décrire les besoins d'enseignement | REC-O2-1 | 9 | Conforme |
-| O3 | Indiquer les disponibilités et le calendrier | REC-O3-1 | 7 | Conforme |
-| O4 | Respecter les règles du cahier des charges | REC-BOUT-1, REC-BOUT-2, REC-BOUT-4, REC-BOUT-6, REC-O4-1, REC-O4-2, REC-O5-2, REC-U2-2 | 22 | Conforme |
-| O5 | Générer l'emploi du temps d'un semestre | REC-BOUT-1, REC-BOUT-2, REC-BOUT-4, REC-BOUT-5, REC-BOUT-6, REC-O5-1, REC-O5-2, REC-O5-3 | 18 | Conforme |
-| O6 | Être prévenu quand c'est impossible | REC-O6-1, REC-O6-2, REC-U1-2 | 19 | Conforme |
-| O7 | Consulter l'emploi du temps | REC-BOUT-1, REC-O7-1, REC-O7-2, REC-U4-1 | 29 | Conforme |
-| O8 | Modifier une séance | REC-O8-1, REC-O8-2, REC-U9-1 | 17 | Conforme |
-| O9 | Importer des données | REC-BOUT-3, REC-O9-1, REC-O9-2 | 16 | Conforme |
-| O10 | Exporter l'emploi du temps | REC-BOUT-1, REC-BOUT-2, REC-O10-1, REC-O10-2 | 15 | Conforme |
-| O11 | Charger un établissement fictif | REC-BOUT-6, REC-O11-1, REC-O11-2 | 17 | Conforme |
-| U1 | Vérifications avant le calcul | REC-U1-1, REC-U1-2 | 13 | Conforme |
-| U2 | Niveau de chaque règle | REC-U2-1, REC-U2-2 | 14 | Conforme |
-| U3 | Règles personnalisées | REC-BOUT-4, REC-U2-1, REC-U3-1, REC-U3-2, REC-U3-3 | 28 | Conforme |
-| U4 | Pause déjeuner réglable | REC-U4-1 | 12 | Conforme |
-| U5 | Emploi du temps plus confortable | REC-U5-1 | 6 | Conforme |
-| U6 | Suivre et piloter un calcul | REC-U6-1, REC-U6-2 | 18 | Conforme |
-| U7 | Historique et versions | REC-BOUT-1, REC-U7-1, REC-U13-2 | 12 | Conforme |
-| U8 | Vues semaine type, semaine datée et jour | REC-O7-2, REC-U8-1, REC-U9-2 | 20 | Conforme |
-| U9 | Retouches et verrous | REC-BOUT-5, REC-U9-1, REC-U9-2 | 13 | Conforme |
-| U10 | Points à traiter | REC-U10-1 | 9 | Conforme |
-| U11 | Tableau de bord | REC-O5-1, REC-U5-1, REC-U11-1, REC-U11-2 | 17 | Conforme |
-| U12 | Agenda et impression | REC-BOUT-1, REC-O10-2, REC-U12-1, REC-U12-2 | 13 | Conforme |
-| U13 | Échanges de fichiers complets | REC-BOUT-3, REC-O9-1, REC-O9-2, REC-U13-1, REC-U13-2, REC-U13-3 | 27 | Non conforme |
-| P1 | Consultation sur téléphone | REC-P1-1, REC-P1-2 | 3 | Conforme |
-| P2 | Commandes pour un administrateur | REC-BOUT-2, REC-O11-1, REC-P2-1, REC-P2-2, REC-P4-3 | 19 | Conforme |
-| P3 | Assistant conversationnel | REC-P3-1, REC-P3-2, REC-P3-3 | 26 | Conforme |
-| P4 | Tests du logiciel lancés depuis l'application | REC-P4-1, REC-P4-2, REC-P4-3 | 21 | Conforme |
-| — | Exploitation et robustesse (hors livret 1) | REC-EXP-1, REC-EXP-2, REC-EXP-3, REC-EXP-4, REC-EXP-5, REC-EXP-6, REC-EXP-7, REC-EXP-8 | 85 | Conforme |
+| O1 | Décrire l'établissement | REC‑O1‑1, REC‑O1‑2, REC‑O1‑3 | 20 | Conforme |
+| O2 | Décrire les besoins d'enseignement | REC‑O2‑1 | 9 | Conforme |
+| O3 | Indiquer les disponibilités et le calendrier | REC‑O3‑1 | 7 | Conforme |
+| O4 | Respecter les règles du cahier des charges | REC‑BOUT‑1, REC‑BOUT‑2, REC‑BOUT‑4, REC‑BOUT‑6, REC‑O4‑1, REC‑O4‑2, REC‑O5‑2, REC‑U2‑2 | 22 | Conforme |
+| O5 | Générer l'emploi du temps d'un semestre | REC‑BOUT‑1, REC‑BOUT‑2, REC‑BOUT‑4, REC‑BOUT‑5, REC‑BOUT‑6, REC‑O5‑1, REC‑O5‑2, REC‑O5‑3 | 18 | Conforme |
+| O6 | Être prévenu quand c'est impossible | REC‑O6‑1, REC‑O6‑2, REC‑U1‑2 | 19 | Conforme |
+| O7 | Consulter l'emploi du temps | REC‑BOUT‑1, REC‑O7‑1, REC‑O7‑2, REC‑U4‑1 | 29 | Conforme |
+| O8 | Modifier une séance | REC‑O8‑1, REC‑O8‑2, REC‑U9‑1 | 17 | Conforme |
+| O9 | Importer des données | REC‑BOUT‑3, REC‑O9‑1, REC‑O9‑2 | 16 | Conforme |
+| O10 | Exporter l'emploi du temps | REC‑BOUT‑1, REC‑BOUT‑2, REC‑O10‑1, REC‑O10‑2 | 15 | Conforme |
+| O11 | Charger un établissement fictif | REC‑BOUT‑6, REC‑O11‑1, REC‑O11‑2 | 17 | Conforme |
+| U1 | Vérifications avant le calcul | REC‑U1‑1, REC‑U1‑2 | 13 | Conforme |
+| U2 | Niveau de chaque règle | REC‑U2‑1, REC‑U2‑2 | 14 | Conforme |
+| U3 | Règles personnalisées | REC‑BOUT‑4, REC‑U2‑1, REC‑U3‑1, REC‑U3‑2, REC‑U3‑3 | 28 | Conforme |
+| U4 | Pause déjeuner réglable | REC‑U4‑1 | 12 | Conforme |
+| U5 | Emploi du temps plus confortable | REC‑U5‑1 | 6 | Conforme |
+| U6 | Suivre et piloter un calcul | REC‑U6‑1, REC‑U6‑2 | 18 | Conforme |
+| U7 | Historique et versions | REC‑BOUT‑1, REC‑U7‑1, REC‑U13‑2 | 12 | Conforme |
+| U8 | Vues semaine type, semaine datée et jour | REC‑O7‑2, REC‑U8‑1, REC‑U9‑2 | 20 | Conforme |
+| U9 | Retouches et verrous | REC‑BOUT‑5, REC‑U9‑1, REC‑U9‑2 | 13 | Conforme |
+| U10 | Points à traiter | REC‑U10‑1 | 9 | Conforme |
+| U11 | Tableau de bord | REC‑O5‑1, REC‑U5‑1, REC‑U11‑1, REC‑U11‑2 | 17 | Conforme |
+| U12 | Agenda et impression | REC‑BOUT‑1, REC‑O10‑2, REC‑U12‑1, REC‑U12‑2 | 13 | Conforme |
+| U13 | Échanges de fichiers complets | REC‑BOUT‑3, REC‑O9‑1, REC‑O9‑2, REC‑U13‑1, REC‑U13‑2, REC‑U13‑3 | 27 | Non conforme |
+| P1 | Consultation sur téléphone | REC‑P1‑1, REC‑P1‑2 | 3 | Conforme |
+| P2 | Commandes pour un administrateur | REC‑BOUT‑2, REC‑O11‑1, REC‑P2‑1, REC‑P2‑2, REC‑P4‑3 | 19 | Conforme |
+| P3 | Assistant conversationnel | REC‑P3‑1, REC‑P3‑2, REC‑P3‑3 | 26 | Conforme |
+| P4 | Tests du logiciel lancés depuis l'application | REC‑P4‑1, REC‑P4‑2, REC‑P4‑3 | 21 | Conforme |
+| — | Exploitation et robustesse (hors livret 1) | REC‑EXP‑1, REC‑EXP‑2, REC‑EXP‑3, REC‑EXP‑4, REC‑EXP‑5, REC‑EXP‑6, REC‑EXP‑7, REC‑EXP‑8 | 85 | Conforme |
 
 | Cas d'usage du livret 1 | Fiches |
 |---|---|
-| Cas 1. Préparer et générer l'emploi du temps d'un semestre | REC-BOUT-1, REC-BOUT-2, REC-BOUT-4, REC-BOUT-6, REC-O4-1, REC-O5-1, REC-O5-2, REC-U1-1, REC-U2-1, REC-U6-1, REC-U7-1, REC-U11-1, REC-U11-2 |
-| Cas 2. Ajouter une exigence propre à l'établissement | REC-BOUT-4, REC-U2-1, REC-U3-1 |
-| Cas 3. Déplacer une séance pour tout le semestre | REC-O8-1, REC-O8-2, REC-U9-1 |
-| Cas 4. Réagir à une absence ponctuelle | REC-BOUT-5, REC-U8-1, REC-U9-2, REC-U10-1 |
-| Cas 5. Importer les données d'un établissement | REC-BOUT-3, REC-O9-1, REC-U13-1 |
-| Cas 6. Diffuser l'emploi du temps | REC-BOUT-1, REC-BOUT-2, REC-O7-1, REC-O10-1, REC-U12-1, REC-U12-2 |
-| Cas 7. Montrer que le logiciel est testé | REC-P4-1, REC-P4-2, REC-P4-3 |
+| Cas 1. Préparer et générer l'emploi du temps d'un semestre | REC‑BOUT‑1, REC‑BOUT‑2, REC‑BOUT‑4, REC‑BOUT‑6, REC‑O4‑1, REC‑O5‑1, REC‑O5‑2, REC‑U1‑1, REC‑U2‑1, REC‑U6‑1, REC‑U7‑1, REC‑U11‑1, REC‑U11‑2 |
+| Cas 2. Ajouter une exigence propre à l'établissement | REC‑BOUT‑4, REC‑U2‑1, REC‑U3‑1 |
+| Cas 3. Déplacer une séance pour tout le semestre | REC‑O8‑1, REC‑O8‑2, REC‑U9‑1 |
+| Cas 4. Réagir à une absence ponctuelle | REC‑BOUT‑5, REC‑U8‑1, REC‑U9‑2, REC‑U10‑1 |
+| Cas 5. Importer les données d'un établissement | REC‑BOUT‑3, REC‑O9‑1, REC‑U13‑1 |
+| Cas 6. Diffuser l'emploi du temps | REC‑BOUT‑1, REC‑BOUT‑2, REC‑O7‑1, REC‑O10‑1, REC‑U12‑1, REC‑U12‑2 |
+| Cas 7. Montrer que le logiciel est testé | REC‑P4‑1, REC‑P4‑2, REC‑P4‑3 |
 
 <!-- recette-matrice : fin de la partie générée -->
 
 ## 6. Anomalies relevées et corrections
 
-Le journal reprend les anomalies qui ont été relevées pendant la réalisation et qui touchaient
+Le tableau ci-dessous reprend les anomalies qui ont été relevées pendant la réalisation et qui touchaient
 ce que l'utilisateur voit ou ce dont l'exploitation dépend, avec leur correction. Les références
 renvoient aux demandes de fusion (« pull requests ») et aux commits du dépôt. Chaque correction
 de l'application est gardée par au moins un test de non-régression, cité avec elle. La dernière
@@ -411,58 +422,74 @@ d'erreur inadaptés, sans perte).
 
 | N° | Date | Anomalie | Gravité | État |
 |---|---|---|---|---|
-| ANO-01 | 05/10/2026 | Application déclarée prête avec un schéma de base périmé | bloquante | corrigée |
-| ANO-02 | 05/10/2026 | Déplacement d'une séance refusé pour une anomalie déjà présente | majeure | corrigée |
-| ANO-03 | 06/10/2026 | Chargement d'un établissement fictif impossible sur une base neuve | majeure | corrigée |
-| ANO-04 | 13/10/2026 | Calcul refusé à tort pour une règle souple entre deux horaires fixes | majeure | corrigée |
-| ANO-05 | 02/11/2026 | Erreur 500 sur un lien dont l'identifiant est démesuré | mineure | corrigée |
-| ANO-06 | 09/11/2026 | Demande d'arrêt d'un calcul perdue | majeure | corrigée |
-| ANO-07 | 16/11/2026 | Écrans « Paramètres » et « Générer » inaccessibles après un ancien réglage illisible | bloquante | corrigée |
-| ANO-08 | 16/11/2026 | Base vidée par le chargement d'un établissement fictif après « Proposer une autre solution » | bloquante | corrigée |
-| ANO-09 | 16/11/2026 | Échec de la sauvegarde préalable à une remise à zéro mal dit sous Linux | mineure | corrigée |
-| ANO-10 | 16/11/2026 | Seconde remise à zéro par le rechargement de la page de résultat d'un chargement | majeure | corrigée |
-| ANO-11 | 16/11/2026 | Assistant refusé en bloc par le service réel | majeure | corrigée |
-| ANO-12 | 16/11/2026 | Proposition de l'assistant confirmée sur une autre cible que celle affichée | majeure | corrigée |
-| ANO-13 | 16/11/2026 | Gel d'une dizaine de secondes et calcul perdu au lancement | majeure | corrigée |
-| ANO-14 | 16/11/2026 | Page d'erreur à l'import d'un fichier mal encodé | mineure | corrigée |
-| ANO-15 | 16/11/2026 | Sauvegardes du déploiement évincées par des remises à zéro refusées | majeure | corrigée |
-| ANO-16 | 16/11/2026 | Heure annoncée « possible » refusée à l'enregistrement d'un déplacement | majeure | corrigée |
-| ANO-17 | 16/11/2026 | Calcul lancé pendant une exécution des tests : résultat dégradé, puis page d'erreur | majeure | corrigée |
-| ANO-18 | 16/11/2026 | Quota quotidien de l'assistant consommé par des envois refusés | majeure | corrigée |
-| ANO-19 | 16/11/2026 | Deux règles identiques créées par deux envois du même formulaire | mineure | corrigée |
-| ANO-20 | 06/10/2026 et 16/11/2026 | Tests qui dépendaient de la solution du moteur, en échec sous Linux | mineure | corrigée |
-| ANO-21 | 23/11/2026 | Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté | majeure | ouverte |
+| ANO‑01 | 05/10/2026 | Application déclarée prête avec un schéma de base périmé | bloquante | corrigée |
+| ANO‑02 | 05/10/2026 | Déplacement d'une séance refusé pour une anomalie déjà présente | majeure | corrigée |
+| ANO‑03 | 06/10/2026 | Chargement d'un établissement fictif impossible sur une base neuve | majeure | corrigée |
+| ANO‑04 | 13/10/2026 | Calcul refusé à tort pour une règle souple entre deux horaires fixes | majeure | corrigée |
+| ANO‑05 | 02/11/2026 | Erreur 500 sur un lien dont l'identifiant est démesuré | mineure | corrigée |
+| ANO‑06 | 09/11/2026 | Demande d'arrêt d'un calcul perdue | majeure | corrigée |
+| ANO‑07 | 16/11/2026 | Écrans « Paramètres » et « Générer » inaccessibles après un ancien réglage illisible | bloquante | corrigée |
+| ANO‑08 | 16/11/2026 | Base vidée par le chargement d'un établissement fictif après « Proposer une autre solution » | bloquante | corrigée |
+| ANO‑09 | 16/11/2026 | Échec de la sauvegarde préalable à une remise à zéro mal dit sous Linux | mineure | corrigée |
+| ANO‑10 | 16/11/2026 | Seconde remise à zéro par le rechargement de la page de résultat d'un chargement | majeure | corrigée |
+| ANO‑11 | 16/11/2026 | Assistant refusé en bloc par le service réel | majeure | corrigée |
+| ANO‑12 | 16/11/2026 | Proposition de l'assistant confirmée sur une autre cible que celle affichée | majeure | corrigée |
+| ANO‑13 | 16/11/2026 | Gel d'une dizaine de secondes et calcul perdu au lancement | majeure | corrigée |
+| ANO‑14 | 16/11/2026 | Page d'erreur à l'import d'un fichier mal encodé | mineure | corrigée |
+| ANO‑15 | 16/11/2026 | Sauvegardes du déploiement évincées par des remises à zéro refusées | majeure | corrigée |
+| ANO‑16 | 16/11/2026 | Heure annoncée « possible » refusée à l'enregistrement d'un déplacement | majeure | corrigée |
+| ANO‑17 | 16/11/2026 | Calcul lancé pendant une exécution des tests : résultat dégradé, puis page d'erreur | majeure | corrigée |
+| ANO‑18 | 16/11/2026 | Quota quotidien de l'assistant consommé par des envois refusés | majeure | corrigée |
+| ANO‑19 | 16/11/2026 | Deux règles identiques créées par deux envois du même formulaire | mineure | corrigée |
+| ANO‑20 | 06/10/2026 et 16/11/2026 | Tests qui dépendaient de la solution du moteur, en échec sous Linux | mineure | corrigée |
+| ANO‑21 | 23/11/2026 | Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté | majeure | ouverte |
 
 Le détail des anomalies corrigées (constat, détection, correction, référence et test de
 non-régression) figure à l'annexe C. Seule l'anomalie ouverte est détaillée ici.
 
 **ANO-21. Besoins recréés ou réécrits par le réimport d'un emploi du temps exporté (majeure,
-ouverte).** Constat, mesuré le 23/11/2026 sur le jeu minimal, en réimportant dans la même base
-la semaine type qu'elle vient d'exporter, comme emploi du temps existant :
+ouverte).** Une base qui réimporte, comme emploi du temps existant, la semaine type qu'elle vient
+d'exporter ne retrouve pas tous ses besoins. Constat du 23/11/2026, par l'écran d'import, sur la
+version saisie à la main du jeu minimal (celle des tests de REC-U13-2), qui compte 16 besoins.
 
-- avec l'agenda iCal, en mode « référence » ou « à replacer » : la simulation annonce
-  « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour, 9 inchangés » ; après
-  application, la base passe de 16 à 17 besoins. Le devoir surveillé de mathématiques (IM.1101,
-  ponctuel le 19/11/2026, 180 min) est créé une seconde fois. Les dates de quatre besoins au
-  volume total sont réécrites : un besoin sans dates reçoit le 10/09/2026 au 07/01/2027 ; deux
-  besoins du 05/10 au 18/12 passent du 09/10 au 11/12 ; un besoin du 07/09 au 23/10 passe du
-  08/09 au 20/10. Le projet IG.1101, sans enseignant, reçoit l'enseignant fictif
-  `FICTIF-IG.1101-A1` (5 puis 6 enseignants) ;
-- avec le fichier CSV, en mode « référence » ou « séances verrouillées » : « besoins : 2 créés,
-  5 mis à jour, 9 inchangés » ; après application, 16 puis 18 besoins. L'examen (120 min) et le
-  devoir surveillé (180 min) sont recréés en besoins « chaque semaine », 1 par semaine. Quatre
-  besoins au volume total deviennent des besoins « chaque semaine » : 8 séances au total
-  deviennent 1 par semaine ; 6 deviennent 1 ; 6 deviennent 1 ; 10 au total, au plus 2 par
-  semaine, deviennent 2 par semaine. Leurs dates de début et de fin sont effacées ;
-- après un import appliqué de l'agenda, le calcul suivant place 18 séances au lieu de 17 ;
-- la simulation annonce ces nombres avant d'appliquer, sans dire quels besoins changent.
+Avec l'agenda iCal, en mode « référence » ou « à replacer » :
 
-Le fichier CSV de la semaine type ne porte pas les dates des séances ponctuelles. Le réimport est
-un usage documenté : `docs/import-export.md` annonce qu'un même fichier peut être réimporté dans
-un autre mode, les besoins étant retrouvés par leur identifiant métier, sans doublon. Gravité
-majeure, selon l'échelle ci-dessus : le résultat est faux. Détection : écriture des tests de cette
-recette ; essai manuel REC-U13-3, au verdict « Non conforme ». Suivi : issue n° 54 du dépôt,
-https://github.com/Maki882/projet-edt/issues/54. Contournement d'ici la correction : ne pas
+- la simulation annonce « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour,
+  9 inchangés » ;
+- le devoir surveillé de mathématiques (IM.1101, ponctuel le 19/11/2026, 180 min) est créé une
+  seconde fois : la base passe à 17 besoins ;
+- un besoin au volume total sans dates reçoit le 10/09/2026 au 07/01/2027 comme dates de début
+  et de fin ;
+- deux besoins au volume total du 05/10 au 18/12 passent du 09/10 au 11/12 ;
+- un besoin au volume total du 07/09 au 23/10 passe du 08/09 au 20/10 ;
+- le projet IG.1101, sans enseignant, reçoit l'enseignant fictif `FICTIF-IG.1101-A1` (5 puis
+  6 enseignants) ;
+- le calcul suivant place 18 séances au lieu de 17.
+
+Avec le fichier CSV, en mode « référence » ou « séances verrouillées » :
+
+- la simulation annonce « besoins : 2 créés, 5 mis à jour, 9 inchangés » ; la base passe à
+  18 besoins ;
+- l'examen (120 min) et le devoir surveillé (180 min) sont recréés en besoins d'une séance chaque
+  semaine ;
+- quatre besoins définis par un volume total deviennent des besoins hebdomadaires : trois
+  besoins de 8, 6 et 6 séances au total passent à 1 séance par semaine ;
+- le besoin de 10 séances au total, au plus 2 par semaine, passe à 2 séances par semaine, au
+  plus 1 par semaine ;
+- les trois de ces besoins qui avaient des dates de début et de fin les perdent.
+
+Avec la version calculée par le moteur, celle de la fiche REC-U13-3, les bilans de la simulation
+sont les mêmes ; les dates réécrites dépendent des séances placées. La simulation annonce ces
+nombres avant d'appliquer et liste chaque besoin reconstitué avec son état (« créé », « mis à
+jour (dates) », « mis à jour (volume, dates) », « mis à jour (enseignants) ») et ses nouvelles
+valeurs, sans montrer les anciennes. Le fichier CSV de la semaine type ne porte pas les dates des
+séances ponctuelles.
+
+Le réimport est un usage documenté : `docs/import-export.md` annonce qu'un même fichier peut être
+réimporté dans un autre mode, les besoins étant retrouvés par leur identifiant métier, sans
+doublon. Gravité majeure, selon l'échelle ci-dessus : le résultat est faux. Détection : écriture
+des tests de cette recette ; essai manuel REC-U13-3, au verdict « Non conforme ». Suivi : ticket
+n° 54 du dépôt (« issue » GitHub), https://github.com/Maki882/projet-edt/issues/54. Contournement d'ici la correction : ne pas
 appliquer, sur sa base d'origine, l'import d'un emploi du temps qui en vient, et lire le compte
 rendu de simulation. Les tests ajoutés ne figent ni le défaut ni sa correction.
 
@@ -532,9 +559,9 @@ tests unitaires.
 ### 7.3 Réserves de la recette
 
 - **Fiche REC-U13-3 non conforme, anomalie majeure ouverte ANO-21** (section 6), suivie par
-  l'issue n° 54 : réimporter un emploi du temps exporté recrée ses séances ponctuelles en double
+  le ticket n° 54 : réimporter un emploi du temps exporté recrée ses séances ponctuelles en double
   ou en séances hebdomadaires, et réécrit les dates ou le volume de besoins existants ; la
-  simulation en donne les nombres avant d'appliquer. La réserve se lève par la correction, son
+  simulation l'annonce avant d'appliquer, besoin par besoin. La réserve se lève par la correction, son
   test d'intégration et une campagne qui rejoue la fiche.
 - **Réserve mineure de l'essai sur téléphone** (REC-P1-2), fait en émulation d'appareil mobile
   dans Chrome et non sur un téléphone réel : le bouton flottant « Assistant » recouvre la fin du
@@ -563,24 +590,22 @@ Chaque fonctionnalité réalisée du livret 1 a au moins une fiche.
 - Serveur de démonstration, 23/11/2026 : 542 tests d'intégration exécutés, 542 réussis, 0 échec, 0 ignoré.
 - Poste de développement, 23/11/2026 : 542 tests d'intégration exécutés, 540 réussis, 0 échec, 2 ignorés.
 - 69 fiches : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ».
-- 28 fonctionnalités réalisées sur 28 ont au moins une fiche.
+- 28 sur 28 fonctionnalités réalisées ont au moins une fiche.
 
 <!-- recette-bilan : fin de la partie générée -->
 
-Les deux campagnes ont tourné sur le même commit, 77558fd : le code de l'application est celui
-de la version 1.0.0, inchangé ; s'y ajoutent les tests d'intégration écrits pour cette recette,
-deux assertions renforcées pendant sa relecture, et des documents. Aucun test automatisé n'a échoué, sur aucun des deux systèmes ; les seuls tests ignorés le sont sur
+Les deux campagnes ont tourné sur le même commit, 77558fd (section 3). Aucun test automatisé n'a échoué, sur aucun des deux systèmes ; les seuls tests ignorés le sont sur
 le poste de développement, pour une raison propre au système, et réussissent sur le serveur.
 
 **Verdict d'ensemble : la version 1.0.0 est acceptée, avec réserves**, selon la règle de
 décision de la section 2.5. Aucune anomalie bloquante n'est ouverte ; une anomalie majeure l'est
-(ANO-21), suivie par l'issue n° 54, et la fiche REC-U13-3 qui la constate est non conforme ;
+(ANO-21), suivie par le ticket n° 54, et la fiche REC-U13-3 qui la constate est non conforme ;
 toutes les autres fiches sont conformes et chaque fonctionnalité réalisée du livret 1 est
 vérifiée par au moins une fiche.
 
 ANO-21 n'est pas bloquante : l'application et ses fonctions principales restent utilisables ; le
 défaut touche un usage de U13, fonctionnalité classée « Utile » ; la simulation annonce les
-écritures avant tout enregistrement. Les réserves sont celles de la section 7.3 : cette anomalie
+écritures, besoin par besoin, avant tout enregistrement. Les réserves sont celles de la section 7.3 : cette anomalie
 majeure ouverte, qui se lève par sa correction, son test d'intégration et une campagne qui
 rejoue la fiche, et les limites des essais manuels. La section 7.1 dit, fonctionnalité par
 fonctionnalité, ce que cette recette ne prouve pas ; c'est là que des tests d'intégration
@@ -595,7 +620,10 @@ Les fiches sont rangées, comme au tableau de la section 4, en cinq familles : l
 plusieurs fonctionnalités comme un utilisateur ; puis les fonctionnalités obligatoires, utiles
 et optionnelles, dans l'ordre du livret 1 ; enfin l'exploitation et la robustesse. Les
 identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
-`fichier.py::fonction` désigne une fonction de test.
+`fichier.py::fonction` désigne une fonction de test. Quand une fiche fait vérifier une version,
+la vérification est demandée au service du vérificateur, celui qu'emploient la commande
+`python -m edt verifier` (avec `--datees` pour les séances datées) et la page « Points à
+traiter ».
 
 <!-- recette-fiches : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
@@ -623,7 +651,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Le vérificateur ne relève aucune anomalie bloquante, ni dans la semaine type, ni dans les séances datées.
 - Le fichier CSV a exactement une ligne par séance de la version ; le fichier iCal, exactement autant d'événements.
 
-**Remarque.** Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux). La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter ».
+**Remarque.** Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux).
 
 **Tests automatisés (1).** `parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export`
 
@@ -639,10 +667,10 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt init-db », puis « python -m edt jeu-minimal ».
-2. Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 ».
-3. Taper « python -m edt verifier --version <v> » sur la version devenue active.
-4. Taper « python -m edt exporter-edt --version <v> --sortie edt.csv » et ouvrir le fichier.
+1. Taper `python -m edt init-db`, puis `python -m edt jeu-minimal`.
+2. Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.
+3. Taper `python -m edt verifier --version <v>` sur la version devenue active.
+4. Taper `python -m edt exporter-edt --version <v> --sortie edt.csv` et ouvrir le fichier.
 
 **Résultat attendu.**
 
@@ -681,7 +709,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 #### REC-BOUT-4. Règle personnalisée de bout en bout : la classe A1-G1 ne travaille pas le lundi
 
-*Fonctionnalités : U3 Règles personnalisées ; O4 Respecter les règles du cahier des charges ; O5 Générer l'emploi du temps d'un semestre. Cas d'usage : 2, 1.*
+*Fonctionnalités : U3 Règles personnalisées ; O4 Respecter les règles du cahier des charges ; O5 Générer l'emploi du temps d'un semestre. Cas d'usage : 1, 2.*
 
 **Objectif.** Montrer qu'une règle personnalisée saisie par l'utilisateur est lue par le calcul, imposée par le moteur, puis contrôlée sans entorse par le vérificateur.
 
@@ -699,7 +727,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Le rapport du vérificateur est valide ; la nouvelle règle figure parmi les règles contrôlées et aucune anomalie ne la cite.
 - La classe A1-G1 a au moins une séance propre, et aucune n'a lieu le lundi.
 
-**Remarque.** La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération. La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter ».
+**Remarque.** La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération.
 
 **Tests automatisés (1).** `parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout`
 
@@ -725,8 +753,6 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - La séance a l'état annulé et son commentaire contient « grève » ; le nombre de séances annulées augmente d'exactement un.
 - La vérification des séances datées ne relève aucune anomalie bloquante.
 
-**Remarque.** La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter ».
-
 **Tests automatisés (1).** `parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site`
 
 **Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 1 réussi sur 1. Poste de développement, 23/11/2026 : 1 réussi sur 1. **Verdict : Conforme.**
@@ -751,8 +777,6 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Le chargement crée au moins un semestre, et le nombre de besoins en base est celui qu'annonce le compte rendu.
 - Chaque calcul réussit en moins de 20 secondes et place au moins une séance.
 - Ni la semaine type ni les séances datées ne présentent d'anomalie bloquante.
-
-**Remarque.** La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter ».
 
 **Tests automatisés (1).** `parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie`
 
@@ -928,7 +952,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 **Étapes.**
 
 1. Calculer le semestre du jeu minimal, en ligne de commande puis depuis l'écran « Générer ».
-2. Faire vérifier la semaine type (« python -m edt verifier --version <v> ») et les séances datées de chaque version.
+2. Faire vérifier la semaine type (`python -m edt verifier --version <v>`) et les séances datées de chaque version.
 3. Recommencer sur l'établissement « petit ».
 
 **Résultat attendu.**
@@ -953,10 +977,10 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt verifier --semestre <n> » (semaine type).
-2. Taper « python -m edt verifier --version <v> --datees », puis avec « --json ».
-3. Même commande sur une période (« --du 2026-11-09 --au 2026-11-13 ») et une seule règle (« -c DISPO_SALLE »).
-4. Demandes impossibles : version 999, règle inconnue, « --du » sans « --au » ; semestre sans version active.
+1. Taper `python -m edt verifier --semestre <n>` (semaine type).
+2. Taper `python -m edt verifier --version <v> --datees`, puis avec `--json`.
+3. Même commande sur une période (`--du 2026-11-09 --au 2026-11-13`) et une seule règle (« -c DISPO_SALLE »).
+4. Demandes impossibles : version 999, règle inconnue, `--du` sans `--au` ; semestre sans version active.
 
 **Résultat attendu.**
 
@@ -1003,10 +1027,10 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 », puis « python -m edt instancier --semestre <n> ».
+1. Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`, puis `python -m edt instancier --semestre <n>`.
 2. Compter les séances datées et les séances replacées ; faire vérifier la semaine type et les séances datées.
 3. Relancer le calcul autour du TD verrouillé le mercredi et lire les séances de la semaine du 11 novembre.
-4. Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer « python -m edt instancier --version <n> ».
+4. Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer `python -m edt instancier --version <n>`.
 
 **Résultat attendu.**
 
@@ -1014,7 +1038,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Une séance datée existe par séance de la semaine type et par semaine active ; planifiées, replacées et à programmer font le total.
 - Le vérificateur ne relève aucune anomalie bloquante ; aucune séance replacée ne tombe un jour fermé, et chacune garde sa date initiale et un commentaire.
 - La séance du TD verrouillé prévue le 11 novembre est replacée dans la même semaine, avec le commentaire « jour fermé ».
-- Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite « --version <n> », et la commande relancée produit les séances datées.
+- Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite `--version <n>`, et la commande relancée produit les séances datées.
 
 **Remarque.** Le verrou du TD est posé en base par le test : le moteur ne donne pas la même solution sous Linux et sous Windows, et le test ne doit pas dépendre de la place choisie. La panne de la production des séances datées est simulée par le test.
 
@@ -1054,7 +1078,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer que le résultat d'un calcul sans solution dit s'il est impossible ou seulement pas trouvé dans le temps imparti, avec les raisons connues, et ne crée aucune version.
 
-**Conditions de départ.** Jeu minimal. Le moteur est remplacé par un moteur d'essai qui rend directement l'issue voulue ; pour l'accueil, une version active existe déjà.
+**Conditions de départ.** Jeu minimal. Le moteur est remplacé par un moteur d'essai qui rend directement le résultat voulu ; pour l'accueil, une version active existe déjà.
 
 **Étapes.**
 
@@ -1068,7 +1092,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Temps dépassé : « Pas trouvé dans le temps imparti », « pas une preuve » et la proposition de relancer en cherchant plus longtemps.
 - L'accueil montre « Pas trouvé dans le temps imparti » avec un lien « Voir le détail » ; la version active d'avant reste proposée.
 
-**Remarque.** Les issues sont produites par un moteur d'essai ; aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche (section 7).
+**Remarque.** Les deux résultats sont produits par un moteur d'essai ; aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche (section 7).
 
 **Tests automatisés (5).** `web_edt/test_calculs.py::test_deux_messages_d_echec_distincts` · `web_edt/test_calculs.py::test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine` · `socle/test_generation.py::test_infaisable_ne_cree_aucune_version` · `solveur/test_services.py::test_avertissements_joints_au_suivi` · `web_edt/test_accueil.py::test_dernier_calcul_sans_solution_visible`
 
@@ -1159,7 +1183,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer que le panneau d'une séance propose les jours, les heures et les salles qui conviennent, et qu'une heure annoncée « (possible) », choisie telle que le formulaire se présente, est enregistrée.
 
-**Conditions de départ.** Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information et le verrou).
+**Conditions de départ.** Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information).
 
 **Étapes.**
 
@@ -1171,9 +1195,10 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 **Résultat attendu.**
 
 - Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.
-- Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour, chaque heure annoncée possible est acceptée par le vérificateur, et la première s'enregistre ; sur la version saisie, il en va de même pour la séance étudiée.
+- Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour proposé, chaque heure annoncée possible est acceptée par le vérificateur ; pour chaque séance, la première heure annoncée possible s'enregistre. Sur la version saisie, pour la séance étudiée, chaque heure annoncée possible est acceptée par le vérificateur.
 - Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.
 - Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».
+- Un déplacement accepté avec une simple information affiche « Séance déplacée au … à … » et « À noter », dans un message de succès (vert).
 
 **Remarque.** Le test rejoue par HTTP le rechargement du formulaire que le navigateur fait à chaque changement de jour ou d'heure.
 
@@ -1223,7 +1248,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 1. Ouvrir l'écran « Import » ; dans « Fichiers », choisir le fichier ; laisser « Données de l'établissement ».
 2. Cliquer sur « Simuler l'import » et lire le bilan, le rapport et l'aperçu.
 3. Cliquer sur « Appliquer l'import ».
-4. En ligne de commande : « python -m edt importer salles_avec_erreurs.csv --rapport rapport.csv ».
+4. En ligne de commande : `python -m edt importer salles_avec_erreurs.csv --rapport rapport.csv`.
 
 **Résultat attendu.**
 
@@ -1241,7 +1266,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer qu'un envoi vide, trop gros, illisible ou démesuré est refusé avec un message lisible et une page bornée, qu'un import « Tout remplacer » n'efface rien sans confirmation, et qu'un import est refusé pendant un calcul.
 
-**Conditions de départ.** Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives).
+**Conditions de départ.** Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, fichier annees.csv de 19,5 Mo aux 1 200 000 lignes invalides, document PDF, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives, dossier qui contient salles.csv et agenda.ics).
 
 **Étapes.**
 
@@ -1304,7 +1329,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 **Étapes.**
 
 1. Demander un export qui choisit à la fois un groupe et une salle.
-2. Demander l'export d'une version inexistante, négative, nulle ou de plusieurs milliers de chiffres, en CSV et en iCal, par le site et par « python -m edt exporter-edt ».
+2. Demander l'export d'une version inexistante, négative, nulle ou de plusieurs milliers de chiffres, en CSV et en iCal, par le site et par `python -m edt exporter-edt`.
 3. Demander un export filtré sur un groupe, un enseignant ou une salle inexistants.
 4. Exporter la version sans séance ; donner à un besoin le libellé « +33 SUM(A1) » et exporter.
 
@@ -1331,8 +1356,8 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 1. Ouvrir « Données › Établissement fictif » ; choisir « Petit », variante 0, puis « Charger l'établissement fictif ».
 2. Ajouter une donnée, puis recharger la page de résultat (F5).
-3. Sur une autre base vide, taper « python -m edt jeu --taille petit --reference ».
-4. Sans fichier de base, taper « python -m edt jeu --taille petit --reset --oui ».
+3. Sur une autre base vide, taper `python -m edt jeu --taille petit --reference`.
+4. Sans fichier de base, taper `python -m edt jeu --taille petit --reset --oui`.
 
 **Résultat attendu.**
 
@@ -1359,7 +1384,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 1. Choisir « Petit » et charger sans cocher « Confirmer l'effacement de toutes les données actuelles ».
 2. Sur une base vide, saisir 2147483648, puis « ² », comme numéro de variante.
 3. Pendant un calcul, puis pendant un autre chargement, charger avec la case cochée.
-4. En ligne de commande : « python -m edt jeu --taille petit » sur une base garnie, puis avec une taille inconnue, puis « --reset » en répondant « n », puis « --reset --oui » avec une variante ou une année invalide.
+4. En ligne de commande : `python -m edt jeu --taille petit` sur une base garnie, puis avec une taille inconnue, puis `--reset` en répondant « n », puis `--reset --oui` avec une variante ou une année invalide.
 5. « Remettre la base à zéro » sans cocher la confirmation, puis en la cochant.
 
 **Résultat attendu.**
@@ -1390,7 +1415,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Ouvrir « Générer » sur un semestre sans problème ; taper aussi « python -m edt pre-verifier --semestre <n> ».
+1. Ouvrir « Générer » sur un semestre sans problème ; taper aussi `python -m edt pre-verifier --semestre <n>`.
 2. Ouvrir « Générer » sur un semestre qui a un point bloquant ; cliquer quand même sur « Lancer le calcul ».
 3. Annuler une séance datée de la version active, puis revenir sur « Générer ».
 
@@ -1399,7 +1424,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Sans problème : la section « Vérifications avant le calcul » s'affiche sans « Le calcul ne peut pas être lancé » ; la commande rend le code 0 et dit que « rien n'empêche de lancer le calcul ».
 - Point bloquant : l'erreur et l'avertissement sont affichés avec « Le calcul ne peut pas être lancé » ; le lancement est refusé et aucun calcul n'est créé.
 - Après la retouche : « La version active compte 1 retouche à la main » et « seules les séances verrouillées gardent leur place ».
-- Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables rendent une liste d'anomalies lisible.
+- Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables s'exécutent sans erreur et rendent une liste d'anomalies ; la production des séances datées en donne au moins une, et planifiées, replacées et à programmer font le total.
 
 **Tests automatisés (6).** `web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non` · `web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles` · `solveur/test_services.py::test_commande_generer_puis_instancier` · `web_edt/test_revue.py::test_besoin_impossible_a_deplier_affiche_une_seule_fois` · `web_edt/test_calculs.py::test_retouches_de_la_version_active_annoncees_avant_le_calcul` · `web_edt/test_raccords.py::test_pre_verifications_et_instanciation_reelles`
 
@@ -1415,7 +1440,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt pre-verifier --semestre <n> », puis « python -m edt generer --semestre <n> ».
+1. Taper `python -m edt pre-verifier --semestre <n>`, puis `python -m edt generer --semestre <n>`.
 2. Ouvrir « Générer » sur un semestre sans besoin ; envoyer quand même le formulaire de lancement.
 3. Lancer le calcul aux verrous contradictoires, sans puis avec l'option qui tolère les violations héritées.
 
@@ -1604,9 +1629,9 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Lancer un calcul avec les réglages par défaut, depuis « Générer » ou par « python -m edt generer --semestre <n> --temps-limite 20 ».
+1. Lancer un calcul avec les réglages par défaut, depuis « Générer » ou par `python -m edt generer --semestre <n> --temps-limite 20`.
 2. Lire le bilan du résultat.
-3. Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 ».
+3. Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.
 
 **Résultat attendu.**
 
@@ -1653,13 +1678,13 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer que l'arrêt demandé garde la meilleure solution déjà trouvée, n'enregistre rien s'il n'y en a pas, et reste lisible pour un calcul déjà fini, un Ctrl+C ou un redémarrage ; montrer que l'utilisateur obtient une autre solution ou une recherche plus longue avec les mêmes règles, et qu'une relance pendant un calcul ne lance jamais un second calcul.
 
-**Conditions de départ.** Jeu minimal ; moteur retenu dans le test jusqu'à la demande d'arrêt. Jeu minimal ; vrai moteur pour l'autre solution ; moteur d'essai pour les relances et le calcul en cours.
+**Conditions de départ.** Jeu minimal ; moteur retenu dans le test jusqu'à la demande d'arrêt ; vrai moteur pour l'autre solution ; moteur d'essai pour les relances et le calcul en cours.
 
 **Étapes.**
 
 1. Lancer le calcul, puis cliquer sur « Arrêter le calcul » ; lire la page du calcul.
 2. Cliquer sur « Arrêter le calcul » d'un calcul déjà terminé.
-3. Interrompre « python -m edt generer » par Ctrl+C ; arrêter l'application pendant un calcul et la redémarrer.
+3. Interrompre `python -m edt generer` par Ctrl+C ; arrêter l'application pendant un calcul et la redémarrer.
 4. Après un calcul réussi, cliquer deux fois de suite sur « Proposer une autre solution ».
 5. Après un calcul « pas trouvé dans le temps imparti », relancer en cherchant plus longtemps.
 6. Pendant qu'un calcul tourne, relancer depuis la page d'un ancien calcul, ou lancer un nouveau calcul.
@@ -1762,7 +1787,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer qu'une séance datée se déplace ou s'annule avec un motif sans toucher aux autres semaines, et qu'un recalcul des séances datées conserve ces retouches ; montrer que les retouches impossibles d'une séance datée sont refusées avec un message clair, sans rien modifier.
 
-**Conditions de départ.** Jeu minimal et une version active calculée, avec ses séances datées. Jeu minimal et une version active calculée ; pour un essai, des séances datées rendues semblables à un import.
+**Conditions de départ.** Jeu minimal et une version active calculée, avec ses séances datées ; pour un essai, des séances datées rendues semblables à un import.
 
 **Étapes.**
 
@@ -1874,7 +1899,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 1. Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».
 2. Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.
-3. En ligne de commande : « python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics ».
+3. En ligne de commande : `python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics`.
 4. Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».
 
 **Résultat attendu.**
@@ -1923,9 +1948,9 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Réserve.** La boîte d'impression du navigateur elle-même n'est pas exercée : le PDF est produit par la fonction d'impression de Chrome, celle que le bouton « Imprimer » déclenche.
 
-![Emploi du temps du groupe A3-G1 imprimé en PDF (format A4) : en-tête, grille, bande du déjeuner et légende, sans les éléments de l'interface.](images/recette-impression.png)
+![Haut de la page A4 imprimée de l'emploi du temps du groupe A3-G1 : titre, semestre et version, grille de la semaine, bande du déjeuner et légende ; aucun élément de l'interface.](images/recette-impression.png)
 
-*Figure 1. Emploi du temps du groupe A3-G1 imprimé en PDF (format A4) : en-tête, grille, bande du déjeuner et légende, sans les éléments de l'interface.*
+*Figure 1. Haut de la page A4 imprimée de l'emploi du temps du groupe A3-G1 : titre, semestre et version, grille de la semaine, bande du déjeuner et légende ; aucun élément de l'interface.*
 
 **Verdict : Conforme.**
 
@@ -1940,9 +1965,9 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 **Étapes.**
 
 1. Écran « Export » : sections « Gabarit vide » et « Données de l'établissement », boutons « Classeur Excel (.xlsx) » et « Fichiers CSV (archive .zip) ».
-2. En ligne de commande : « python -m edt gabarit --sortie gabarit.xlsx ».
+2. En ligne de commande : `python -m edt gabarit --sortie gabarit.xlsx`.
 3. Réimporter le classeur exporté, sans le modifier, et cliquer sur « Simuler l'import ».
-4. En ligne de commande : « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».
+4. En ligne de commande : `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.
 5. Appliquer deux fois de suite, par l'écran « Import », le classeur des données exporté.
 
 **Résultat attendu.**
@@ -1979,7 +2004,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - En séances verrouillées, la nouvelle version devient active, chaque séance à sa place et verrouillée ; en séances à replacer, seuls les besoins sont repris, sans version.
 - Semestre de vingt chiffres : « Nombre hors limites » ; semestre -7 : « Le semestre -7 n'existe pas » ; aucune version créée.
 
-**Remarque.** Réimporté dans la même base, un emploi du temps recrée en double ses besoins ponctuels : anomalie ouverte ANO-21 (section 6). Les tests ne figent ni ce défaut ni sa correction.
+**Remarque.** Réimporté dans sa base d'origine, un emploi du temps recrée ou réécrit des besoins : anomalie ouverte ANO-21 (section 6), constatée par la fiche REC-U13-3. Les tests de la présente fiche jouent ce réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous, pas les besoins ; ils ne figent ni ce défaut ni sa correction.
 
 **Tests automatisés (6).** `echange/test_web.py::test_import_d_emploi_du_temps_par_le_web` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter` · `echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible` · `echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference` · `echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran` · `echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins`
 
@@ -1995,15 +2020,15 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt init-db », « python -m edt jeu-minimal », puis « python -m edt generer ».
-2. Taper « python -m edt exporter-edt --version 1 --format ics --sortie edt.ics », puis « python -m edt importer edt.ics --mode reference --simuler ».
-3. Recommencer les deux dernières commandes avec « --format csv » et edt.csv.
+1. Taper `python -m edt init-db`, `python -m edt jeu-minimal`, puis `python -m edt generer`.
+2. Taper `python -m edt exporter-edt --version 1 --format ics --sortie edt.ics`, puis `python -m edt importer edt.ics --mode reference --simuler`.
+3. Recommencer les deux dernières commandes avec `--format csv` et edt.csv.
 
 **Résultat attendu.**
 
-- Tous les besoins reconstitués sont retrouvés : « 0 créé, 0 mis à jour » pour les besoins, aucun enseignant fictif.
+- Tous les besoins reconstitués sont retrouvés : le bilan des besoins n'annonce que des besoins « inchangés », aucun « créé », aucun « mis à jour » ; aucun enseignant fictif.
 
-**Remarque.** Anomalie ouverte ANO-21 (section 6), suivie par l'issue n° 54 du dépôt. La fiche REC-U13-2 reste conforme : ses tests ne portent pas sur ce réimport.
+**Remarque.** La fiche REC-U13-2 reste conforme : ses tests jouent ce même réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous. La présente fiche vérifie les besoins, et c'est là que le défaut apparaît. Anomalie ouverte ANO-21 (section 6), suivie par le ticket n° 54 du dépôt.
 
 **Essai manuel du 23/11/2026.** Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, version 1.0.0.
 
@@ -2049,7 +2074,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Émuler un téléphone : écran de 390 x 844 points, densité 2, appareil tactile.
+1. Émuler un téléphone : écran de 390 × 844 points, densité 2, appareil tactile.
 2. Ouvrir successivement l'accueil, l'onglet « Emploi du temps », l'onglet « Générer », l'écran « Salles » de l'onglet « Données » et l'onglet « Tests d'intégration ».
 3. Relever pour chaque page la largeur de mise en page et la largeur du contenu rendues par le navigateur, et regarder la page.
 
@@ -2060,9 +2085,9 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Remarque.** Aucun test par HTTP ne peut juger un rendu : l'essai est manuel, fait en émulation d'appareil mobile dans Chrome et non sur un téléphone réel.
 
-**Essai manuel du 23/11/2026.** Chrome en émulation d'appareil mobile (390 x 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »).
+**Essai manuel du 23/11/2026.** Chrome en émulation d'appareil mobile (390 × 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »).
 
-**Constat.** Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. Image de la grille reprise le 23/11/2026 à 14 h 34 par les mêmes moyens, la page de l'emploi du temps défilée de 975 points.
+**Constat.** Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. L'image de la grille (figure ci-dessous, à droite) est prise de la même façon, la page de l'emploi du temps défilée de 975 points.
 
 **Réserve.** Le bouton flottant « Assistant », en bas à droite, recouvre la fin de la ligne de pied de page sur une page courte, et la fin de la légende de l'emploi du temps. Sans effet sur l'usage.
 
@@ -2082,19 +2107,19 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper « python -m edt version », puis « python -m edt init-db » et « python -m edt jeu-minimal ».
-2. Relancer « python -m edt init-db » sur la base garnie.
+1. Taper `python -m edt version`, puis `python -m edt init-db` et `python -m edt jeu-minimal`.
+2. Relancer `python -m edt init-db` sur la base garnie.
 3. Enchaîner « generer », « verifier » et « exporter-edt ».
-4. Taper « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».
+4. Taper `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.
 
 **Résultat attendu.**
 
 - « version » rend le code 0 et affiche le numéro de version ; « jeu-minimal » annonce « 16 besoins » et l'étape suivante.
-- « init-db » relancé propose l'étape suivante « python -m edt serve ».
+- « init-db » relancé propose l'étape suivante `python -m edt serve`.
 - Les commandes du calcul rendent le code 0 et le fichier CSV contient « Mathématiques ».
 - La simulation rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».
 
-**Remarque.** Les commandes sont lancées par l'outil de test de Typer, avec la même application que « python -m edt ». La sauvegarde par commande fait l'objet de la fiche REC-EXP-2.
+**Remarque.** Les commandes sont lancées par l'outil de test de Typer, avec la même application que `python -m edt`. La sauvegarde par commande fait l'objet de la fiche REC-EXP-2.
 
 **Tests automatisés (4).** `socle/test_cli.py::test_version` · `socle/test_cli.py::test_jeu_minimal_puis_refus_du_second_chargement` · `parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande` · `echange/test_commandes.py::test_exporter_puis_simuler_le_reimport`
 
@@ -2110,10 +2135,10 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Sans base initialisée, taper « python -m edt jeu-minimal » ; sur une base garnie, le relancer.
-2. Taper « python -m edt generer --semestre 999 », « pre-verifier --semestre 0 », « instancier --version 999 ».
+1. Sans base initialisée, taper `python -m edt jeu-minimal` ; sur une base garnie, le relancer.
+2. Taper `python -m edt generer --semestre 999`, « pre-verifier --semestre 0 », « instancier --version 999 ».
 3. Donner un identifiant au-delà des entiers de SQLite à « pre-verifier » et à « verifier ».
-4. Régler EDT_PORT à « pas-un-port », puis taper « python -m edt doctor ».
+4. Régler EDT_PORT à « pas-un-port », puis taper `python -m edt doctor`.
 
 **Résultat attendu.**
 
@@ -2193,7 +2218,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 1. Sans clé, ouvrir dix pages de l'application et le panneau ; envoyer un message.
 2. Avec une limite d'un message, envoyer deux messages ; avec un budget à zéro, en envoyer un.
 3. Faire envoyer un message depuis une page d'un autre site.
-4. Taper « python -m edt assistant », puis « python -m edt assistant --essai ».
+4. Taper `python -m edt assistant`, puis `python -m edt assistant --essai`.
 
 **Résultat attendu.**
 
@@ -2227,7 +2252,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Chaque test porte son état (réussi, échec avec son message, « Ignoré : raison de démonstration ») et « Dernière exécution » suivie d'une date.
 - Les tests tournent dans un autre processus, avec une base et des journaux temporaires ; un fichier qui ne se charge pas est en échec, les autres tournent.
 
-**Remarque.** Le processus pytest lancé est réel, mais il exécute le dépôt factice, pas la suite du projet. Les campagnes de la section 3 ont été lancées par la commande « python -m edt tests ».
+**Remarque.** Le processus pytest lancé est réel, mais il exécute le dépôt factice, pas la suite du projet. Les campagnes de la section 3 ont été lancées par la commande `python -m edt tests`.
 
 **Tests automatisés (7).** `banc_tests/test_ecrans.py::test_deux_onglets_colores_sur_toutes_les_pages_et_a_traiter_dans_generer` · `banc_tests/test_ecrans.py::test_page_avec_schema_resume_et_tests_jamais_lances` · `banc_tests/test_ecrans.py::test_lancement_suivi_et_resultats_par_la_route_web` · `banc_tests/test_execution.py::test_famille_lancee_de_bout_en_bout_et_resultats_enregistres` · `banc_tests/test_execution.py::test_environnement_du_sous_processus_assaini` · `banc_tests/test_execution.py::test_fichier_qui_ne_se_charge_pas` · `banc_tests/test_ecrans.py::test_pages_lisibles_sans_dossier_de_tests_et_avec_un_historique_illisible`
 
@@ -2261,15 +2286,15 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 *Fonctionnalités : P4 Tests du logiciel lancés depuis l'application ; P2 Commandes pour un administrateur. Cas d'usage : 7.*
 
-**Objectif.** Montrer que les tests de charge ne se lancent pas depuis le site mais par la commande « python -m edt tests », dont le code de sortie et les résultats enregistrés reflètent l'exécution.
+**Objectif.** Montrer que les tests de charge ne se lancent pas depuis le site mais par la commande `python -m edt tests`, dont le code de sortie et les résultats enregistrés reflètent l'exécution.
 
 **Conditions de départ.** Base initialisée ; dépôt factice : cinq tests unitaires lancés avec la famille, dont deux échecs, et un test de charge.
 
 **Étapes.**
 
 1. Dans « Tests unitaires », repérer la ligne du test de charge ; envoyer quand même son lancement.
-2. Taper « python -m edt tests --test <clé du test de charge> ».
-3. Taper « python -m edt tests --famille unitaires », puis « --composant inconnu ».
+2. Taper `python -m edt tests --test <clé du test de charge>`.
+3. Taper `python -m edt tests --famille unitaires`, puis `--composant inconnu`.
 
 **Résultat attendu.**
 
@@ -2289,15 +2314,15 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 *Exploitation et robustesse, sans fonctionnalité du livret 1.*
 
-**Objectif.** Montrer qu'une installation se prépare par « init-db », relançable sans effet de bord, et que « doctor », « verifier-schema » et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut avec son remède.
+**Objectif.** Montrer qu'une installation se prépare par `python -m edt init-db`, relançable sans effet de bord, et que `doctor`, `verifier-schema` et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut.
 
 **Conditions de départ.** Dossier de travail vide, puis base initialisée ; défauts provoqués un par un : adresse d'écoute introuvable, port occupé, journal impossible à ouvrir, base en lecture seule, adresse de base refusée.
 
 **Étapes.**
 
-1. Avant toute initialisation, taper « python -m edt doctor » ; puis « python -m edt init-db », deux fois.
-2. Taper « python -m edt verifier-schema » et « python -m edt doctor » ; interroger l'adresse de santé.
-3. Provoquer chaque défaut et relancer « python -m edt doctor » (pour une adresse de base en mémoire, « python -m edt init-db »).
+1. Avant toute initialisation, taper `python -m edt doctor` ; puis `python -m edt init-db`, deux fois.
+2. Taper `python -m edt verifier-schema` et `python -m edt doctor` ; interroger l'adresse de santé.
+3. Provoquer chaque défaut et relancer `python -m edt doctor` (pour une adresse de base en mémoire, `python -m edt init-db`).
 
 **Résultat attendu.**
 
@@ -2319,8 +2344,8 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Taper trois fois « python -m edt sauvegarder --garder 2 ».
-2. Taper « python -m edt verifier-sauvegarde <fichier> » sur une sauvegarde, puis sur un fichier abîmé, vide ou étranger.
+1. Taper trois fois `python -m edt sauvegarder --garder 2`.
+2. Taper `python -m edt verifier-sauvegarde <fichier>` sur une sauvegarde, puis sur un fichier abîmé, vide ou étranger.
 3. Sauvegarder une base abîmée, puis avec un disque plein.
 4. Restaurer une sauvegarde à la place de la base, puis taper « verifier-schema » et « doctor ».
 
@@ -2351,7 +2376,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Résultat attendu.**
 
-- Réponse « n » : les 6 salles sont toujours là ; avec « --oui », remise à zéro sans question.
+- Réponse « n » : les 6 salles sont toujours là ; avec `--oui`, remise à zéro sans question.
 - Calcul ou chargement en cours : code 1, rien n'est effacé.
 - En production : la sortie annonce la sauvegarde, dont la copie contient les 6 salles ; sauvegarde impossible : « remise à zéro annulée », rien n'est effacé.
 
@@ -2369,7 +2394,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Étapes.**
 
-1. Avec chaque panne, taper « python -m edt init-db » puis « python -m edt jeu-minimal ».
+1. Avec chaque panne, taper `python -m edt init-db` puis `python -m edt jeu-minimal`.
 2. Sur le fichier illisible, appliquer le remède annoncé, puis relancer « init-db ».
 3. Sur la base au schéma périmé, taper « verifier-schema », « doctor », « init-db » ; interroger l'adresse de santé ; taper « init-db --reset ».
 
@@ -2399,7 +2424,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 **Résultat attendu.**
 
 - Base non initialisée : l'accueil dit qu'elle n'est « pas encore initialisée » ; l'adresse de santé répond 503 ; le journal ne contient pas de trace.
-- Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer « python -m edt init-db » ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».
+- Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer `python -m edt init-db` ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».
 - Adresse inconnue : « Page introuvable » ; panne : « Une erreur inattendue » avec une référence, la trace étant au journal ; envoi trop volumineux : « Envoi trop volumineux ».
 
 **Tests automatisés (17).** `socle/test_web.py::test_accueil_reste_lisible_sans_base_initialisee` · `socle/test_web.py::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer` · `socle/test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue` · `socle/test_web.py::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede` · `socle/test_web.py::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs` · `socle/test_web.py::test_sante_signale_une_base_en_lecture_seule` · `socle/test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee` · `socle/test_web.py::test_base_non_initialisee_une_ligne_d_avertissement_sans_trace` · `web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante` · `socle/test_web.py::test_page_inconnue` · `socle/test_web.py::test_saisie_invalide_nomme_le_champ_sans_nom_technique` · `socle/test_web.py::test_une_methode_non_permise_donne_une_page_405` · `socle/test_web.py::test_erreur_inattendue_page_lisible_et_trace_journalisee` · `socle/test_web.py::test_erreur_metier_traduite_en_message` · `socle/test_web.py::test_un_envoi_trop_volumineux_donne_une_page_qui_dit_quoi_faire` · `socle/test_web.py::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire` · `socle/test_web.py::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes`
@@ -2412,7 +2437,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Objectif.** Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas.
 
-**Conditions de départ.** Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours. Pour le double envoi, une page d'essai ajoutée par le test crée un campus.
+**Conditions de départ.** Pour le calcul et l'import, base chargée du jeu minimal et un moteur lent qui garde le calcul en cours. Pour le double envoi, base initialisée sans données, et une page d'essai ajoutée par le test crée un campus.
 
 **Étapes.**
 
@@ -2444,7 +2469,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 1. Tuer brutalement un processus en pleine écriture, puis taper « init-db », « verifier-schema » et « doctor ».
 2. Redémarrer le serveur avec un calcul resté « en cours » ; interroger l'adresse de santé.
-3. Taper « python -m edt serve » et comparer avec la ligne de lancement du service ; donner un port invalide.
+3. Taper `python -m edt serve` et comparer avec la ligne de lancement du service ; donner un port invalide.
 
 **Résultat attendu.**
 
@@ -2803,7 +2828,7 @@ Le cahier se tient à jour à partir de trois sources du dépôt, sans recopier 
 
 L'outil `tests/outils/recette.py` en tire les parties générées de ce livret : la synthèse
 (section 3), le tableau de recette (section 4), la matrice (section 5), la liste des
-fonctionnalités sans fiche (section 7), les nombres du bilan (section 8), les fiches
+fonctionnalités sans fiche (section 7.4), les nombres du bilan (section 8), les fiches
 détaillées (annexe A) et les résultats par fichier (annexe B). Chacune est encadrée dans le
 texte source par deux commentaires qui l'annoncent.
 

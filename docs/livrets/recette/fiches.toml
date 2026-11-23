@@ -1,6 +1,6 @@
 # Fiches de recette du livret 4 (docs/livrets/4-cahier-de-recette.md).
 #
-# Source unique, écrite à la main. L'outil `python -m tests.outils.recette --ecrire` en tire la
+# Source unique, écrite à la main. L'outil `python -m tests.outils.recette --ecrire` en tire le
 # tableau de recette (section 4), la matrice de traçabilité, les fiches détaillées (annexe A)
 # et les nombres du livret ; le contrôle
 # `tests/unitaires/socle/test_recette.py` vérifie que chaque test cité existe dans
@@ -15,14 +15,17 @@
 #   etapes, attendu : listes de phrases ; un résultat attendu est vérifié par les tests cités
 #   tests           : identifiants pytest des tests d'intégration qui la prouvent
 #   remarque        : facultative (substitut employé, limite de la preuve)
+#   anomalie        : facultative ; pour une fiche non conforme, l'anomalie de la section 6
+#                     qui la suit (« ANO-21 »)
 #   [fiche.essai]   : essai manuel, pour ce qu'aucun test par HTTP ne peut vérifier :
 #                     date, environnement, constat, verdict (« Conforme » ou « Non conforme »),
 #                     reserve (facultative), preuves = [{ image = "images/…", legende = "…" }]
 #
 # [[sans_fiche]] : fonctionnalité réalisée sans fiche, avec sa raison (affichée dans les
-# réserves du livret). Aucune à cette passe.
+# réserves du livret). Aucune à ce jour.
 #
-# Les libellés « entre guillemets » sont ceux des écrans ou des messages de l'application.
+# Les libellés « entre guillemets » sont ceux des écrans ou des messages de l'application ;
+# les commandes s'écrivent entre accents graves.
 
 # =========================================================================================
 # Parcours de bout en bout
@@ -50,7 +53,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export",
 ]
-remarque = "Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux). La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
+remarque = "Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux)."
 
 [[fiche]]
 id = "REC-BOUT-2"
@@ -60,10 +63,10 @@ cas = [1, 6]
 objectif = "Montrer qu'un administrateur produit un emploi du temps vérifié et exporté sans ouvrir le site, les commandes s'enchaînant sur la même base."
 depart = "Dossier de travail vide : la base désignée par EDT_DB_URL n'existe pas encore ; aucun serveur web lancé."
 etapes = [
-  "Taper « python -m edt init-db », puis « python -m edt jeu-minimal ».",
-  "Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 ».",
-  "Taper « python -m edt verifier --version <v> » sur la version devenue active.",
-  "Taper « python -m edt exporter-edt --version <v> --sortie edt.csv » et ouvrir le fichier.",
+  "Taper `python -m edt init-db`, puis `python -m edt jeu-minimal`.",
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.",
+  "Taper `python -m edt verifier --version <v>` sur la version devenue active.",
+  "Taper `python -m edt exporter-edt --version <v> --sortie edt.csv` et ouvrir le fichier.",
 ]
 attendu = [
   "Les cinq commandes se terminent avec le code de sortie 0 ; pour « verifier », ce code signifie qu'aucune erreur n'est relevée.",
@@ -99,7 +102,7 @@ remarque = "L'import appelle le service qu'utilise l'écran « Import », sans p
 id = "REC-BOUT-4"
 titre = "Règle personnalisée de bout en bout : la classe A1-G1 ne travaille pas le lundi"
 fonctionnalites = ["U3", "O4", "O5"]
-cas = [2, 1]
+cas = [1, 2]
 objectif = "Montrer qu'une règle personnalisée saisie par l'utilisateur est lue par le calcul, imposée par le moteur, puis contrôlée sans entorse par le vérificateur."
 depart = "Base chargée du jeu minimal (classe A1-G1, deux règles personnalisées actives) ; option « Emploi du temps plus confortable » coupée ; aucun calcul."
 etapes = [
@@ -115,7 +118,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout",
 ]
-remarque = "La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération. La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
+remarque = "La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération."
 
 [[fiche]]
 id = "REC-BOUT-5"
@@ -137,7 +140,6 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site",
 ]
-remarque = "La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 [[fiche]]
 id = "REC-BOUT-6"
@@ -160,7 +162,6 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie",
 ]
-remarque = "La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 # =========================================================================================
 # O1, O2, O3, O11 : données de l'établissement
@@ -340,8 +341,8 @@ depart = "Base initialisée, sans aucune donnée d'établissement."
 etapes = [
   "Ouvrir « Données › Établissement fictif » ; choisir « Petit », variante 0, puis « Charger l'établissement fictif ».",
   "Ajouter une donnée, puis recharger la page de résultat (F5).",
-  "Sur une autre base vide, taper « python -m edt jeu --taille petit --reference ».",
-  "Sans fichier de base, taper « python -m edt jeu --taille petit --reset --oui ».",
+  "Sur une autre base vide, taper `python -m edt jeu --taille petit --reference`.",
+  "Sans fichier de base, taper `python -m edt jeu --taille petit --reset --oui`.",
 ]
 attendu = [
   "L'écran présente les tailles « Petit », « Moyen » et « Grand », variante 0 par défaut.",
@@ -368,7 +369,7 @@ etapes = [
   "Choisir « Petit » et charger sans cocher « Confirmer l'effacement de toutes les données actuelles ».",
   "Sur une base vide, saisir 2147483648, puis « ² », comme numéro de variante.",
   "Pendant un calcul, puis pendant un autre chargement, charger avec la case cochée.",
-  "En ligne de commande : « python -m edt jeu --taille petit » sur une base garnie, puis avec une taille inconnue, puis « --reset » en répondant « n », puis « --reset --oui » avec une variante ou une année invalide.",
+  "En ligne de commande : `python -m edt jeu --taille petit` sur une base garnie, puis avec une taille inconnue, puis `--reset` en répondant « n », puis `--reset --oui` avec une variante ou une année invalide.",
   "« Remettre la base à zéro » sans cocher la confirmation, puis en la cochant.",
 ]
 attendu = [
@@ -408,7 +409,7 @@ etapes = [
   "Ouvrir l'écran « Import » ; dans « Fichiers », choisir le fichier ; laisser « Données de l'établissement ».",
   "Cliquer sur « Simuler l'import » et lire le bilan, le rapport et l'aperçu.",
   "Cliquer sur « Appliquer l'import ».",
-  "En ligne de commande : « python -m edt importer salles_avec_erreurs.csv --rapport rapport.csv ».",
+  "En ligne de commande : `python -m edt importer salles_avec_erreurs.csv --rapport rapport.csv`.",
 ]
 attendu = [
   "La simulation annonce que « rien n'a été écrit », le bilan « 2 créés, 4 rejetés » et le message « Campus « LYON » inconnu » ; la base compte toujours 6 salles.",
@@ -428,7 +429,7 @@ id = "REC-O9-2"
 titre = "Import refusé : fichier vide, trop gros ou illisible, remplacement non confirmé, calcul en cours"
 fonctionnalites = ["O9", "U13"]
 objectif = "Montrer qu'un envoi vide, trop gros, illisible ou démesuré est refusé avec un message lisible et une page bornée, qu'un import « Tout remplacer » n'efface rien sans confirmation, et qu'un import est refusé pendant un calcul."
-depart = "Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives)."
+depart = "Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, fichier annees.csv de 19,5 Mo aux 1 200 000 lignes invalides, document PDF, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives, dossier qui contient salles.csv et agenda.ics)."
 etapes = [
   "Cliquer sur « Simuler l'import » sans fichier, puis avec le CSV de 21 Mo, puis avec une image.",
   "Simuler l'import d'un fichier de 19,5 Mo aux lignes invalides ; sans JavaScript, envoyer un document PDF directement à l'application de l'import.",
@@ -493,7 +494,7 @@ objectif = "Montrer qu'une demande d'export invalide est refusée avec un messag
 depart = "Jeu minimal et un emploi du temps calculé ; pour certains essais, une base sans version, ou une version sans séance."
 etapes = [
   "Demander un export qui choisit à la fois un groupe et une salle.",
-  "Demander l'export d'une version inexistante, négative, nulle ou de plusieurs milliers de chiffres, en CSV et en iCal, par le site et par « python -m edt exporter-edt ».",
+  "Demander l'export d'une version inexistante, négative, nulle ou de plusieurs milliers de chiffres, en CSV et en iCal, par le site et par `python -m edt exporter-edt`.",
   "Demander un export filtré sur un groupe, un enseignant ou une salle inexistants.",
   "Exporter la version sans séance ; donner à un besoin le libellé « +33 SUM(A1) » et exporter.",
 ]
@@ -524,7 +525,7 @@ depart = "Jeu minimal et emploi du temps calculé par le vrai moteur (17 séance
 etapes = [
   "Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».",
   "Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.",
-  "En ligne de commande : « python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics ».",
+  "En ligne de commande : `python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics`.",
   "Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».",
 ]
 attendu = [
@@ -551,9 +552,9 @@ objectif = "Montrer que le gabarit vide et l'export des données se télécharge
 depart = "Jeu minimal chargé (6 salles), aucun emploi du temps calculé."
 etapes = [
   "Écran « Export » : sections « Gabarit vide » et « Données de l'établissement », boutons « Classeur Excel (.xlsx) » et « Fichiers CSV (archive .zip) ».",
-  "En ligne de commande : « python -m edt gabarit --sortie gabarit.xlsx ».",
+  "En ligne de commande : `python -m edt gabarit --sortie gabarit.xlsx`.",
   "Réimporter le classeur exporté, sans le modifier, et cliquer sur « Simuler l'import ».",
-  "En ligne de commande : « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».",
+  "En ligne de commande : `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.",
   "Appliquer deux fois de suite, par l'écran « Import », le classeur des données exporté.",
 ]
 attendu = [
@@ -597,7 +598,7 @@ tests = [
   "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran",
   "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins",
 ]
-remarque = "Réimporté dans la même base, un emploi du temps recrée en double ses besoins ponctuels : anomalie ouverte ANO-21 (section 6). Les tests ne figent ni ce défaut ni sa correction."
+remarque = "Réimporté dans sa base d'origine, un emploi du temps recrée ou réécrit des besoins : anomalie ouverte ANO-21 (section 6), constatée par la fiche REC-U13-3. Les tests de la présente fiche jouent ce réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous, pas les besoins ; ils ne figent ni ce défaut ni sa correction."
 
 [[fiche]]
 id = "REC-U13-3"
@@ -606,15 +607,16 @@ fonctionnalites = ["U13"]
 objectif = "Montrer qu'un emploi du temps exporté puis réimporté dans sa base d'origine, comme emploi du temps existant, y retrouve tous ses besoins sans en créer ni en modifier."
 depart = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande."
 etapes = [
-  "Taper « python -m edt init-db », « python -m edt jeu-minimal », puis « python -m edt generer ».",
-  "Taper « python -m edt exporter-edt --version 1 --format ics --sortie edt.ics », puis « python -m edt importer edt.ics --mode reference --simuler ».",
-  "Recommencer les deux dernières commandes avec « --format csv » et edt.csv.",
+  "Taper `python -m edt init-db`, `python -m edt jeu-minimal`, puis `python -m edt generer`.",
+  "Taper `python -m edt exporter-edt --version 1 --format ics --sortie edt.ics`, puis `python -m edt importer edt.ics --mode reference --simuler`.",
+  "Recommencer les deux dernières commandes avec `--format csv` et edt.csv.",
 ]
 attendu = [
-  "Tous les besoins reconstitués sont retrouvés : « 0 créé, 0 mis à jour » pour les besoins, aucun enseignant fictif.",
+  "Tous les besoins reconstitués sont retrouvés : le bilan des besoins n'annonce que des besoins « inchangés », aucun « créé », aucun « mis à jour » ; aucun enseignant fictif.",
 ]
 tests = []
-remarque = "Anomalie ouverte ANO-21 (section 6), suivie par l'issue n° 54 du dépôt. La fiche REC-U13-2 reste conforme : ses tests ne portent pas sur ce réimport."
+remarque = "La fiche REC-U13-2 reste conforme : ses tests jouent ce même réimport, mais ne vérifient que la version, les créneaux, les salles et les verrous. La présente fiche vérifie les besoins, et c'est là que le défaut apparaît. Anomalie ouverte ANO-21 (section 6), suivie par le ticket n° 54 du dépôt."
+anomalie = "ANO-21"
 
 [fiche.essai]
 date = 2026-11-23
@@ -659,17 +661,17 @@ cas = [1]
 objectif = "Montrer que le calcul produit les séances datées de tout le semestre et replace automatiquement celles qui tombent un jour fermé."
 depart = "Jeu minimal sur l'année 2026-2027, dont le calendrier compte des jours fériés en semaine (le mercredi 11 novembre 2026) et des vacances. Pour qu'une séance tombe le 11 novembre, un TD est verrouillé un mercredi avant un nouveau calcul."
 etapes = [
-  "Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 », puis « python -m edt instancier --semestre <n> ».",
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`, puis `python -m edt instancier --semestre <n>`.",
   "Compter les séances datées et les séances replacées ; faire vérifier la semaine type et les séances datées.",
   "Relancer le calcul autour du TD verrouillé le mercredi et lire les séances de la semaine du 11 novembre.",
-  "Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer « python -m edt instancier --version <n> ».",
+  "Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer `python -m edt instancier --version <n>`.",
 ]
 attendu = [
   "« generer » rend le code 0 avec « 17 séance(s) placée(s) » et « Version enregistrée : n° 1. » ; « instancier » rend le code 0.",
   "Une séance datée existe par séance de la semaine type et par semaine active ; planifiées, replacées et à programmer font le total.",
   "Le vérificateur ne relève aucune anomalie bloquante ; aucune séance replacée ne tombe un jour fermé, et chacune garde sa date initiale et un commentaire.",
   "La séance du TD verrouillé prévue le 11 novembre est replacée dans la même semaine, avec le commentaire « jour fermé ».",
-  "Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite « --version <n> », et la commande relancée produit les séances datées.",
+  "Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite `--version <n>`, et la commande relancée produit les séances datées.",
 ]
 tests = [
   "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier",
@@ -710,7 +712,7 @@ id = "REC-O6-1"
 titre = "Distinguer « impossible » et « pas trouvé dans le temps imparti »"
 fonctionnalites = ["O6"]
 objectif = "Montrer que le résultat d'un calcul sans solution dit s'il est impossible ou seulement pas trouvé dans le temps imparti, avec les raisons connues, et ne crée aucune version."
-depart = "Jeu minimal. Le moteur est remplacé par un moteur d'essai qui rend directement l'issue voulue ; pour l'accueil, une version active existe déjà."
+depart = "Jeu minimal. Le moteur est remplacé par un moteur d'essai qui rend directement le résultat voulu ; pour l'accueil, une version active existe déjà."
 etapes = [
   "Lancer un calcul dont les contraintes ne peuvent pas toutes être respectées ; lire la page du calcul.",
   "Lancer un calcul qui n'aboutit pas dans la durée choisie ; lire la page du calcul.",
@@ -728,7 +730,7 @@ tests = [
   "tests/integration/solveur/test_services.py::test_avertissements_joints_au_suivi",
   "tests/integration/web_edt/test_accueil.py::test_dernier_calcul_sans_solution_visible",
 ]
-remarque = "Les issues sont produites par un moteur d'essai ; aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche (section 7)."
+remarque = "Les deux résultats sont produits par un moteur d'essai ; aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche (section 7)."
 
 [[fiche]]
 id = "REC-O6-2"
@@ -765,7 +767,7 @@ cas = [1]
 objectif = "Montrer que l'écran « Générer » affiche, avant tout lancement, les points bloquants et les avertissements, refuse le lancement en cas de point bloquant, et annonce les retouches qu'un nouveau calcul ne reprendra pas."
 depart = "Jeu minimal. Cas bloquant simulé (un faux vérificateur renvoie une erreur et un avertissement) ; cas bloquant réel (date d'un besoin ponctuel hors du semestre) ; une version active retouchée à la main."
 etapes = [
-  "Ouvrir « Générer » sur un semestre sans problème ; taper aussi « python -m edt pre-verifier --semestre <n> ».",
+  "Ouvrir « Générer » sur un semestre sans problème ; taper aussi `python -m edt pre-verifier --semestre <n>`.",
   "Ouvrir « Générer » sur un semestre qui a un point bloquant ; cliquer quand même sur « Lancer le calcul ».",
   "Annuler une séance datée de la version active, puis revenir sur « Générer ».",
 ]
@@ -773,7 +775,7 @@ attendu = [
   "Sans problème : la section « Vérifications avant le calcul » s'affiche sans « Le calcul ne peut pas être lancé » ; la commande rend le code 0 et dit que « rien n'empêche de lancer le calcul ».",
   "Point bloquant : l'erreur et l'avertissement sont affichés avec « Le calcul ne peut pas être lancé » ; le lancement est refusé et aucun calcul n'est créé.",
   "Après la retouche : « La version active compte 1 retouche à la main » et « seules les séances verrouillées gardent leur place ».",
-  "Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables rendent une liste d'anomalies lisible.",
+  "Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables s'exécutent sans erreur et rendent une liste d'anomalies ; la production des séances datées en donne au moins une, et planifiées, replacées et à programmer font le total.",
 ]
 tests = [
   "tests/integration/web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non",
@@ -791,7 +793,7 @@ fonctionnalites = ["U1", "O6"]
 objectif = "Montrer qu'un calcul lancé malgré un point bloquant est refusé avant la recherche, avec ses raisons, sans appeler le moteur ni créer de version, et qu'un semestre sans besoin ne remplace pas la version active."
 depart = "Jeu minimal rendu impossible (un besoin porté à 60 séances par semaine, ou un besoin total porté à 500 séances, ou deux séances verrouillées au même créneau dans la même salle), ou semestre sans aucun besoin dont la version active est une référence importée."
 etapes = [
-  "Taper « python -m edt pre-verifier --semestre <n> », puis « python -m edt generer --semestre <n> ».",
+  "Taper `python -m edt pre-verifier --semestre <n>`, puis `python -m edt generer --semestre <n>`.",
   "Ouvrir « Générer » sur un semestre sans besoin ; envoyer quand même le formulaire de lancement.",
   "Lancer le calcul aux verrous contradictoires, sans puis avec l'option qui tolère les violations héritées.",
 ]
@@ -817,9 +819,9 @@ fonctionnalites = ["U5", "U11"]
 objectif = "Montrer qu'avec l'option « Emploi du temps plus confortable » le calcul améliore le premier emploi du temps valide trouvé, s'arrête de lui-même et donne un bilan lisible, et que, l'option coupée, il garde la première solution."
 depart = "Jeu minimal, réglages par défaut de l'application rétablis (amélioration active) ; puis amélioration coupée."
 etapes = [
-  "Lancer un calcul avec les réglages par défaut, depuis « Générer » ou par « python -m edt generer --semestre <n> --temps-limite 20 ».",
+  "Lancer un calcul avec les réglages par défaut, depuis « Générer » ou par `python -m edt generer --semestre <n> --temps-limite 20`.",
   "Lire le bilan du résultat.",
-  "Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 ».",
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.",
 ]
 attendu = [
   "Par défaut, le calcul est enregistré avec un temps limite de 5 minutes et l'amélioration active ; la solution finale n'est pas moins bonne que la première trouvée.",
@@ -870,11 +872,11 @@ id = "REC-U6-2"
 titre = "Arrêter un calcul, proposer une autre solution, un seul calcul à la fois"
 fonctionnalites = ["U6"]
 objectif = "Montrer que l'arrêt demandé garde la meilleure solution déjà trouvée, n'enregistre rien s'il n'y en a pas, et reste lisible pour un calcul déjà fini, un Ctrl+C ou un redémarrage ; montrer que l'utilisateur obtient une autre solution ou une recherche plus longue avec les mêmes règles, et qu'une relance pendant un calcul ne lance jamais un second calcul."
-depart = "Jeu minimal ; moteur retenu dans le test jusqu'à la demande d'arrêt. Jeu minimal ; vrai moteur pour l'autre solution ; moteur d'essai pour les relances et le calcul en cours."
+depart = "Jeu minimal ; moteur retenu dans le test jusqu'à la demande d'arrêt ; vrai moteur pour l'autre solution ; moteur d'essai pour les relances et le calcul en cours."
 etapes = [
   "Lancer le calcul, puis cliquer sur « Arrêter le calcul » ; lire la page du calcul.",
   "Cliquer sur « Arrêter le calcul » d'un calcul déjà terminé.",
-  "Interrompre « python -m edt generer » par Ctrl+C ; arrêter l'application pendant un calcul et la redémarrer.",
+  "Interrompre `python -m edt generer` par Ctrl+C ; arrêter l'application pendant un calcul et la redémarrer.",
   "Après un calcul réussi, cliquer deux fois de suite sur « Proposer une autre solution ».",
   "Après un calcul « pas trouvé dans le temps imparti », relancer en cherchant plus longtemps.",
   "Pendant qu'un calcul tourne, relancer depuis la page d'un ancien calcul, ou lancer un nouveau calcul.",
@@ -943,7 +945,7 @@ objectif = "Montrer que l'emploi du temps produit par un vrai calcul respecte to
 depart = "Jeu minimal (16 besoins, jours fériés et vacances au calendrier), puis établissement fictif « petit » ; amélioration coupée, pour n'attendre qu'un emploi du temps valide."
 etapes = [
   "Calculer le semestre du jeu minimal, en ligne de commande puis depuis l'écran « Générer ».",
-  "Faire vérifier la semaine type (« python -m edt verifier --version <v> ») et les séances datées de chaque version.",
+  "Faire vérifier la semaine type (`python -m edt verifier --version <v>`) et les séances datées de chaque version.",
   "Recommencer sur l'établissement « petit ».",
 ]
 attendu = [
@@ -966,10 +968,10 @@ fonctionnalites = ["O4"]
 objectif = "Montrer que la commande de vérification distingue un emploi du temps valide (code 0) d'un emploi du temps qui enfreint des règles (code 1, anomalies listées) et refuse clairement une demande impossible (code 2)."
 depart = "Jeu minimal et une version saisie à la main (17 placements), dont les séances datées sont produites sans replacer les jours fermés : des séances tombent un jour fermé ou dans une salle indisponible."
 etapes = [
-  "Taper « python -m edt verifier --semestre <n> » (semaine type).",
-  "Taper « python -m edt verifier --version <v> --datees », puis avec « --json ».",
-  "Même commande sur une période (« --du 2026-11-09 --au 2026-11-13 ») et une seule règle (« -c DISPO_SALLE »).",
-  "Demandes impossibles : version 999, règle inconnue, « --du » sans « --au » ; semestre sans version active.",
+  "Taper `python -m edt verifier --semestre <n>` (semaine type).",
+  "Taper `python -m edt verifier --version <v> --datees`, puis avec `--json`.",
+  "Même commande sur une période (`--du 2026-11-09 --au 2026-11-13`) et une seule règle (« -c DISPO_SALLE »).",
+  "Demandes impossibles : version 999, règle inconnue, `--du` sans `--au` ; semestre sans version active.",
 ]
 attendu = [
   "Semaine type : code 0, « 17 placement(s) examiné(s) », « séances placées : 17 sur 17 (100,0 %) », emploi du temps valide.",
@@ -1236,7 +1238,7 @@ titre = "Déplacer une séance de la semaine type : heures annoncées « (possib
 fonctionnalites = ["O8"]
 cas = [3]
 objectif = "Montrer que le panneau d'une séance propose les jours, les heures et les salles qui conviennent, et qu'une heure annoncée « (possible) », choisie telle que le formulaire se présente, est enregistrée."
-depart = "Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information et le verrou)."
+depart = "Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information)."
 etapes = [
   "Ouvrir le panneau d'une séance ; sous « Déplacer la séance (toutes les semaines) », changer le jour.",
   "Lire l'annonce de chaque heure de début ; choisir une heure « (possible) ».",
@@ -1245,9 +1247,10 @@ etapes = [
 ]
 attendu = [
   "Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.",
-  "Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour, chaque heure annoncée possible est acceptée par le vérificateur, et la première s'enregistre ; sur la version saisie, il en va de même pour la séance étudiée.",
+  "Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour proposé, chaque heure annoncée possible est acceptée par le vérificateur ; pour chaque séance, la première heure annoncée possible s'enregistre. Sur la version saisie, pour la séance étudiée, chaque heure annoncée possible est acceptée par le vérificateur.",
   "Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.",
   "Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».",
+  "Un déplacement accepté avec une simple information affiche « Séance déplacée au … à … » et « À noter », dans un message de succès (vert).",
 ]
 tests = [
   "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit",
@@ -1350,7 +1353,7 @@ titre = "Déplacer ou annuler une seule séance datée, recalculer en gardant le
 fonctionnalites = ["U9", "U8"]
 cas = [4]
 objectif = "Montrer qu'une séance datée se déplace ou s'annule avec un motif sans toucher aux autres semaines, et qu'un recalcul des séances datées conserve ces retouches ; montrer que les retouches impossibles d'une séance datée sont refusées avec un message clair, sans rien modifier."
-depart = "Jeu minimal et une version active calculée, avec ses séances datées. Jeu minimal et une version active calculée ; pour un essai, des séances datées rendues semblables à un import."
+depart = "Jeu minimal et une version active calculée, avec ses séances datées ; pour un essai, des séances datées rendues semblables à un import."
 etapes = [
   "En « Semaine datée », ouvrir une séance ; sous « Déplacer cette séance seulement », choisir le jour ouvré suivant à 10 h 45, puis « Vérifier et enregistrer ».",
   "Sous « Annuler cette séance », saisir le motif « Grève » et confirmer.",
@@ -1490,7 +1493,7 @@ constat = "Le PDF compte une page. Son texte commence par « Groupe A3-G1 - Grou
 verdict = "Conforme"
 reserve = "La boîte d'impression du navigateur elle-même n'est pas exercée : le PDF est produit par la fonction d'impression de Chrome, celle que le bouton « Imprimer » déclenche."
 preuves = [
-  { image = "images/recette-impression.png", legende = "Emploi du temps du groupe A3-G1 imprimé en PDF (format A4) : en-tête, grille, bande du déjeuner et légende, sans les éléments de l'interface." },
+  { image = "images/recette-impression.png", legende = "Haut de la page A4 imprimée de l'emploi du temps du groupe A3-G1 : titre, semestre et version, grille de la semaine, bande du déjeuner et légende ; aucun élément de l'interface." },
 ]
 
 [[fiche]]
@@ -1521,7 +1524,7 @@ fonctionnalites = ["P1"]
 objectif = "Montrer que chaque page tient dans la largeur d'un écran de téléphone, sans défilement horizontal de la page, que les onglets et les formulaires se réorganisent et que l'emploi du temps reste lisible."
 depart = "Application en version 1.0.0 en service, établissement fictif « moyen », deux semestres générés ; essai en lecture seule."
 etapes = [
-  "Émuler un téléphone : écran de 390 x 844 points, densité 2, appareil tactile.",
+  "Émuler un téléphone : écran de 390 × 844 points, densité 2, appareil tactile.",
   "Ouvrir successivement l'accueil, l'onglet « Emploi du temps », l'onglet « Générer », l'écran « Salles » de l'onglet « Données » et l'onglet « Tests d'intégration ».",
   "Relever pour chaque page la largeur de mise en page et la largeur du contenu rendues par le navigateur, et regarder la page.",
 ]
@@ -1534,8 +1537,8 @@ remarque = "Aucun test par HTTP ne peut juger un rendu : l'essai est manuel, fai
 
 [fiche.essai]
 date = 2026-11-23
-environnement = "Chrome en émulation d'appareil mobile (390 x 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »)."
-constat = "Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. Image de la grille reprise le 23/11/2026 à 14 h 34 par les mêmes moyens, la page de l'emploi du temps défilée de 975 points."
+environnement = "Chrome en émulation d'appareil mobile (390 × 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »)."
+constat = "Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. L'image de la grille (figure ci-dessous, à droite) est prise de la même façon, la page de l'emploi du temps défilée de 975 points."
 verdict = "Conforme"
 reserve = "Le bouton flottant « Assistant », en bas à droite, recouvre la fin de la ligne de pied de page sur une page courte, et la fin de la légende de l'emploi du temps. Sans effet sur l'usage."
 preuves = [
@@ -1554,14 +1557,14 @@ fonctionnalites = ["P2"]
 objectif = "Montrer qu'un administrateur réalise au clavier l'installation, le chargement des données, le calcul, la vérification, l'export et la simulation d'un import, chaque commande relisant ce que la précédente a écrit."
 depart = "Dossier de travail vide : base et journaux dans un dossier propre à l'essai ; puis base chargée du jeu minimal."
 etapes = [
-  "Taper « python -m edt version », puis « python -m edt init-db » et « python -m edt jeu-minimal ».",
-  "Relancer « python -m edt init-db » sur la base garnie.",
+  "Taper `python -m edt version`, puis `python -m edt init-db` et `python -m edt jeu-minimal`.",
+  "Relancer `python -m edt init-db` sur la base garnie.",
   "Enchaîner « generer », « verifier » et « exporter-edt ».",
-  "Taper « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».",
+  "Taper `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.",
 ]
 attendu = [
   "« version » rend le code 0 et affiche le numéro de version ; « jeu-minimal » annonce « 16 besoins » et l'étape suivante.",
-  "« init-db » relancé propose l'étape suivante « python -m edt serve ».",
+  "« init-db » relancé propose l'étape suivante `python -m edt serve`.",
   "Les commandes du calcul rendent le code 0 et le fichier CSV contient « Mathématiques ».",
   "La simulation rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».",
 ]
@@ -1571,7 +1574,7 @@ tests = [
   "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande",
   "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport",
 ]
-remarque = "Les commandes sont lancées par l'outil de test de Typer, avec la même application que « python -m edt ». La sauvegarde par commande fait l'objet de la fiche REC-EXP-2."
+remarque = "Les commandes sont lancées par l'outil de test de Typer, avec la même application que `python -m edt`. La sauvegarde par commande fait l'objet de la fiche REC-EXP-2."
 
 [[fiche]]
 id = "REC-P2-2"
@@ -1580,10 +1583,10 @@ fonctionnalites = ["P2"]
 objectif = "Montrer qu'une commande lancée au mauvais moment ou avec un identifiant ou un réglage invalide s'arrête avec un message qui nomme la cause, sans trace technique et sans rien écrire."
 depart = "Selon l'essai : dossier sans base initialisée ; base chargée du jeu minimal sans calcul ; base initialisée."
 etapes = [
-  "Sans base initialisée, taper « python -m edt jeu-minimal » ; sur une base garnie, le relancer.",
-  "Taper « python -m edt generer --semestre 999 », « pre-verifier --semestre 0 », « instancier --version 999 ».",
+  "Sans base initialisée, taper `python -m edt jeu-minimal` ; sur une base garnie, le relancer.",
+  "Taper `python -m edt generer --semestre 999`, « pre-verifier --semestre 0 », « instancier --version 999 ».",
   "Donner un identifiant au-delà des entiers de SQLite à « pre-verifier » et à « verifier ».",
-  "Régler EDT_PORT à « pas-un-port », puis taper « python -m edt doctor ».",
+  "Régler EDT_PORT à « pas-un-port », puis taper `python -m edt doctor`.",
 ]
 attendu = [
   "« jeu-minimal » sans base rend le code 1 et cite « init-db » ; sur une base garnie, le code 1 avec « contient déjà », et la base garde ses 16 besoins.",
@@ -1664,7 +1667,7 @@ etapes = [
   "Sans clé, ouvrir dix pages de l'application et le panneau ; envoyer un message.",
   "Avec une limite d'un message, envoyer deux messages ; avec un budget à zéro, en envoyer un.",
   "Faire envoyer un message depuis une page d'un autre site.",
-  "Taper « python -m edt assistant », puis « python -m edt assistant --essai ».",
+  "Taper `python -m edt assistant`, puis `python -m edt assistant --essai`.",
 ]
 attendu = [
   "Les dix pages s'affichent ; le panneau dit « L'assistant n'est pas configuré sur ce serveur. » ; l'envoi est refusé proprement.",
@@ -1716,7 +1719,7 @@ tests = [
   "tests/integration/banc_tests/test_execution.py::test_fichier_qui_ne_se_charge_pas",
   "tests/integration/banc_tests/test_ecrans.py::test_pages_lisibles_sans_dossier_de_tests_et_avec_un_historique_illisible",
 ]
-remarque = "Le processus pytest lancé est réel, mais il exécute le dépôt factice, pas la suite du projet. Les campagnes de la section 3 ont été lancées par la commande « python -m edt tests »."
+remarque = "Le processus pytest lancé est réel, mais il exécute le dépôt factice, pas la suite du projet. Les campagnes de la section 3 ont été lancées par la commande `python -m edt tests`."
 
 [[fiche]]
 id = "REC-P4-2"
@@ -1751,12 +1754,12 @@ id = "REC-P4-3"
 titre = "Tests de charge et commande « tests » réservés à l'administrateur"
 fonctionnalites = ["P4", "P2"]
 cas = [7]
-objectif = "Montrer que les tests de charge ne se lancent pas depuis le site mais par la commande « python -m edt tests », dont le code de sortie et les résultats enregistrés reflètent l'exécution."
+objectif = "Montrer que les tests de charge ne se lancent pas depuis le site mais par la commande `python -m edt tests`, dont le code de sortie et les résultats enregistrés reflètent l'exécution."
 depart = "Base initialisée ; dépôt factice : cinq tests unitaires lancés avec la famille, dont deux échecs, et un test de charge."
 etapes = [
   "Dans « Tests unitaires », repérer la ligne du test de charge ; envoyer quand même son lancement.",
-  "Taper « python -m edt tests --test <clé du test de charge> ».",
-  "Taper « python -m edt tests --famille unitaires », puis « --composant inconnu ».",
+  "Taper `python -m edt tests --test <clé du test de charge>`.",
+  "Taper `python -m edt tests --famille unitaires`, puis `--composant inconnu`.",
 ]
 attendu = [
   "La ligne du test de charge porte « Par la commande », sans bouton ; le lancement envoyé est refusé et rien n'est lancé.",
@@ -1780,12 +1783,12 @@ tests = [
 id = "REC-EXP-1"
 titre = "Installer la base et diagnostiquer l'installation"
 fonctionnalites = []
-objectif = "Montrer qu'une installation se prépare par « init-db », relançable sans effet de bord, et que « doctor », « verifier-schema » et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut avec son remède."
+objectif = "Montrer qu'une installation se prépare par `python -m edt init-db`, relançable sans effet de bord, et que `doctor`, `verifier-schema` et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut."
 depart = "Dossier de travail vide, puis base initialisée ; défauts provoqués un par un : adresse d'écoute introuvable, port occupé, journal impossible à ouvrir, base en lecture seule, adresse de base refusée."
 etapes = [
-  "Avant toute initialisation, taper « python -m edt doctor » ; puis « python -m edt init-db », deux fois.",
-  "Taper « python -m edt verifier-schema » et « python -m edt doctor » ; interroger l'adresse de santé.",
-  "Provoquer chaque défaut et relancer « python -m edt doctor » (pour une adresse de base en mémoire, « python -m edt init-db »).",
+  "Avant toute initialisation, taper `python -m edt doctor` ; puis `python -m edt init-db`, deux fois.",
+  "Taper `python -m edt verifier-schema` et `python -m edt doctor` ; interroger l'adresse de santé.",
+  "Provoquer chaque défaut et relancer `python -m edt doctor` (pour une adresse de base en mémoire, `python -m edt init-db`).",
 ]
 attendu = [
   "Avant initialisation, « doctor » rend le code 0 avec « ATTENTION » et « non initialisée » ; « init-db » affiche « Base initialisée », puis, relancé, « 0 ligne(s) par défaut ajoutée(s) ».",
@@ -1816,8 +1819,8 @@ fonctionnalites = []
 objectif = "Montrer que « sauvegarder » écrit une copie vérifiée avec rotation, que « verifier-sauvegarde » contrôle sans modifier et refuse un fichier inutilisable, qu'une sauvegarde impossible ne laisse rien, et qu'une sauvegarde restaurée est relue par l'application."
 depart = "Base chargée du jeu minimal (16 besoins) ; heure figée ; selon l'essai, base abîmée, disque plein simulé, ou fichiers inutilisables."
 etapes = [
-  "Taper trois fois « python -m edt sauvegarder --garder 2 ».",
-  "Taper « python -m edt verifier-sauvegarde <fichier> » sur une sauvegarde, puis sur un fichier abîmé, vide ou étranger.",
+  "Taper trois fois `python -m edt sauvegarder --garder 2`.",
+  "Taper `python -m edt verifier-sauvegarde <fichier>` sur une sauvegarde, puis sur un fichier abîmé, vide ou étranger.",
   "Sauvegarder une base abîmée, puis avec un disque plein.",
   "Restaurer une sauvegarde à la place de la base, puis taper « verifier-schema » et « doctor ».",
 ]
@@ -1852,7 +1855,7 @@ etapes = [
   "En production, taper « init-db --reset --oui », puis avec une sauvegarde impossible.",
 ]
 attendu = [
-  "Réponse « n » : les 6 salles sont toujours là ; avec « --oui », remise à zéro sans question.",
+  "Réponse « n » : les 6 salles sont toujours là ; avec `--oui`, remise à zéro sans question.",
   "Calcul ou chargement en cours : code 1, rien n'est effacé.",
   "En production : la sortie annonce la sauvegarde, dont la copie contient les 6 salles ; sauvegarde impossible : « remise à zéro annulée », rien n'est effacé.",
 ]
@@ -1874,7 +1877,7 @@ fonctionnalites = []
 objectif = "Montrer qu'une commande qui trouve la base indisponible nomme la cause et un remède qui permet d'en sortir, et qu'une base dont les tables ne correspondent plus au modèle est signalée partout et n'est réparée que sur demande."
 depart = "Base initialisée ou chargée du jeu minimal ; pannes provoquées une par une : verrou d'écriture tenu par un autre processus, fichier en lecture seule, fichier qui n'est plus une base, colonne en trop ou table absente."
 etapes = [
-  "Avec chaque panne, taper « python -m edt init-db » puis « python -m edt jeu-minimal ».",
+  "Avec chaque panne, taper `python -m edt init-db` puis `python -m edt jeu-minimal`.",
   "Sur le fichier illisible, appliquer le remède annoncé, puis relancer « init-db ».",
   "Sur la base au schéma périmé, taper « verifier-schema », « doctor », « init-db » ; interroger l'adresse de santé ; taper « init-db --reset ».",
 ]
@@ -1909,7 +1912,7 @@ etapes = [
 ]
 attendu = [
   "Base non initialisée : l'accueil dit qu'elle n'est « pas encore initialisée » ; l'adresse de santé répond 503 ; le journal ne contient pas de trace.",
-  "Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer « python -m edt init-db » ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».",
+  "Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer `python -m edt init-db` ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».",
   "Adresse inconnue : « Page introuvable » ; panne : « Une erreur inattendue » avec une référence, la trace étant au journal ; envoi trop volumineux : « Envoi trop volumineux ».",
 ]
 tests = [
@@ -1937,7 +1940,7 @@ id = "REC-EXP-6"
 titre = "Double envoi d'un formulaire et requêtes simultanées : ni doublon, ni page d'erreur"
 fonctionnalites = []
 objectif = "Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas."
-depart = "Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours. Pour le double envoi, une page d'essai ajoutée par le test crée un campus."
+depart = "Pour le calcul et l'import, base chargée du jeu minimal et un moteur lent qui garde le calcul en cours. Pour le double envoi, base initialisée sans données, et une page d'essai ajoutée par le test crée un campus."
 etapes = [
   "Cliquer deux fois sur « Lancer le calcul » ; depuis un autre onglet, lancer avec d'autres réglages.",
   "Envoyer deux fois un formulaire qui crée un élément, puis recharger la page de résultat.",
@@ -1965,7 +1968,7 @@ depart = "Base initialisée ou chargée du jeu minimal ; un processus séparé �
 etapes = [
   "Tuer brutalement un processus en pleine écriture, puis taper « init-db », « verifier-schema » et « doctor ».",
   "Redémarrer le serveur avec un calcul resté « en cours » ; interroger l'adresse de santé.",
-  "Taper « python -m edt serve » et comparer avec la ligne de lancement du service ; donner un port invalide.",
+  "Taper `python -m edt serve` et comparer avec la ligne de lancement du service ; donner un port invalide.",
 ]
 attendu = [
   "Après l'arrêt brutal, le contrôle d'intégrité répond « ok », seule l'écriture validée est présente, et les trois commandes rendent le code 0.",
