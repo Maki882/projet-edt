@@ -39,11 +39,12 @@ def test_base_vide_propose_un_etablissement_fictif(client):
     )
     assert 'href="/import"' in page and 'href="/salles"' in page
     assert 'class="edt-hologramme" aria-hidden="true"' in page
-    assert '<label for="edt-hologramme-pause">Suspendre l’animation</label>' in page
+    assert "edt-hologramme-pause" not in page
     styles = client.get("/static/css/edt.css")
     assert styles.status_code == 200
     assert "@media screen and (prefers-reduced-motion: no-preference)" in styles.text
-    assert ".edt-hologramme-pause:checked ~ .edt-hologramme" in styles.text
+    assert "animation: edt-balayage 4.8s linear both;" in styles.text
+    assert "animation: edt-levitation 4.8s ease-in-out;" in styles.text
     # Base vide : la prochaine étape suffit, ni bloc sur la base ni carte du semestre.
     assert "État de la base de données" not in page
     assert "La base ne contient encore aucune donnée" not in page

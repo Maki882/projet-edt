@@ -143,13 +143,19 @@ h3 {
 .barre {
   display: flex;
   align-items: stretch;
-  gap: 1.5rem;
+  gap: clamp(0.65rem, 2vw, 1.5rem);
+  min-height: 3.75rem;
   padding: 0 clamp(1rem, 3vw, 2.5rem);
-  background: var(--bandeau);
+  background: radial-gradient(ellipse at 10% 0%, #21436c 0%, transparent 60%), var(--bandeau);
   color: var(--bandeau-texte);
-  border-bottom: 1px solid #273955;
+  border-bottom: 1px solid #3a536d;
+  box-shadow: 0 4px 14px #111e362e;
   position: relative;
   z-index: 20;
+}
+
+.barre:has(.acces) {
+  flex-wrap: wrap;
 }
 
 .marque {
@@ -182,6 +188,8 @@ h3 {
 .marque-logo {
   display: block;
   flex: none;
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px #a5bdfa40, 0 0 0.85rem #85d9d133;
 }
 
 .marque-texte {
@@ -212,6 +220,7 @@ h3 {
 }
 
 .onglet > a {
+  position: relative;
   display: flex;
   align-items: center;
   margin: 0.5rem 0;
@@ -220,13 +229,47 @@ h3 {
   font-size: 0.875rem;
   font-weight: 600;
   text-decoration: none;
-  border-radius: 7px;
+  border-radius: 0.75rem;
   white-space: nowrap;
 }
 
-.onglet > a:hover {
+.onglet > a:is(:hover, :focus-visible) {
   background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
+}
+
+.onglet > a::after {
+  position: absolute;
+  inset: auto 0.65rem 0.24rem;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), #a5bdfa);
+  content: "";
+  opacity: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+
+.onglet > a:is(:hover, :focus-visible, .actif)::after {
+  opacity: 1;
+  transform: scaleX(1);
+}
+
+.onglet-deroulant > a::before {
+  order: 1;
+  flex: none;
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-left: 0.45rem;
+  border-right: 1px solid currentColor;
+  border-bottom: 1px solid currentColor;
+  content: "";
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.onglet-deroulant:is(:hover, :focus-within) > a::before {
+  transform: translateY(1px) rotate(225deg);
 }
 
 /* Compteur d'un onglet (points à traiter, sur « Générer ») : pastille chargée par HTMX, sans effet sur la hauteur. */
@@ -246,8 +289,8 @@ h3 {
 
 .onglet > a.actif {
   color: #ffffff;
-  box-shadow: inset 0 -2px var(--accent);
-  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 0 0 1px #a5bdfa3d;
+  background: linear-gradient(145deg, #85d9d131, #a5bdfa14);
 }
 
 /* Menu déroulant d'un onglet : toutes ses pages, ouvert au survol ou au clavier. */
@@ -1598,6 +1641,10 @@ fieldset.champ {
     display: none;
   }
 
+  .onglet-deroulant > a::before {
+    display: none;
+  }
+
   .cadre {
     flex-direction: column;
   }
@@ -1657,6 +1704,27 @@ fieldset.champ {
   .bouton-mobile::after {
     transition: transform 150ms ease;
   }
+
+  .marque-logo,
+  .onglet > a::after,
+  .onglet-deroulant > a::before {
+    transition: transform 180ms ease-out, opacity 180ms ease-out, box-shadow 180ms ease-out;
+  }
+
+  .marque:is(:hover, :focus-visible) .marque-logo {
+    transform: translateY(-2px) rotate(-6deg);
+    box-shadow: 0 0 0 1px #a5bdfa70, 0 0 1rem #85d9d166;
+  }
+
+  .onglet-deroulant:is(:hover, :focus-within) .menu-deroulant,
+  .bouton-menu[aria-expanded="true"] + .onglets {
+    animation: barre-entree 180ms ease-out;
+  }
+}
+
+@keyframes barre-entree {
+  from { opacity: 0; transform: translateY(-0.25rem); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {

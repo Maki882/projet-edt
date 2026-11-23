@@ -839,11 +839,7 @@
 }
 
 .edt-etape-illustration {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: center;
   justify-self: center;
-  column-gap: 0.45rem;
   width: min(100%, 29rem);
 }
 
@@ -854,7 +850,6 @@
 }
 
 .edt-hologramme {
-  grid-area: 1 / 1 / 2 / -1;
   position: relative;
   display: grid;
   place-items: center;
@@ -963,44 +958,21 @@
 .edt-etape-calendrier span:nth-child(4) { grid-area: 4 / 4 / 6 / 5; }
 .edt-etape-calendrier span:nth-child(5) { grid-area: 1 / 5 / 3 / 6; --edt-lumiere: #a5bdfa; }
 
-.edt-hologramme-pause,
-.edt-etape-illustration label {
-  display: none;
-}
-
 @media screen and (prefers-reduced-motion: no-preference) {
-  .edt-hologramme-pause {
-    display: block;
-    margin: 0;
-    accent-color: var(--accent);
-  }
-
-  .edt-etape-illustration label {
-    display: block;
-    padding-block: 0.25rem;
-    color: var(--bandeau-texte);
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-
-  .edt-hologramme-pause:checked ~ .edt-hologramme {
-    --edt-lecture-hologramme: paused;
-  }
-
   .edt-hologramme-cadre {
-    animation: edt-levitation 6s ease-in-out infinite var(--edt-lecture-hologramme, running);
+    animation: edt-levitation 4.8s ease-in-out;
   }
 
   .edt-hologramme-orbite {
-    animation: edt-orbite 12s linear infinite var(--edt-lecture-hologramme, running);
+    animation: edt-orbite 4.8s ease-in-out;
   }
 
   .edt-etape-calendrier::after {
-    animation: edt-balayage 4.8s linear infinite var(--edt-lecture-hologramme, running);
+    animation: edt-balayage 4.8s linear both;
   }
 
   .edt-etape-calendrier span {
-    animation: edt-creneau-flottant 4s ease-in-out infinite var(--edt-lecture-hologramme, running);
+    animation: edt-creneau-flottant 4s ease-in-out;
   }
 
   .edt-etape-calendrier span:nth-child(2) { animation-delay: -0.7s; }
