@@ -1,5 +1,5 @@
 {#
-  Grille d'un emploi du temps. Variables : vue (vues.VueEmploiDuTemps), url_vue, selection.
+  Grille d'un emploi du temps. Variables : vue (vues.VueEmploiDuTemps), url_vue, selection, aujourdhui.
   Les positions viennent du service (disposition.py) : top et height en % de l'axe horaire,
   --edt-gauche et --edt-largeur en % de la colonne (séances simultanées côte à côte).
 #}
@@ -26,7 +26,7 @@
   {%- if b.gravite %} edt-bloc-{{ b.gravite.value }}{% endif %}
   {%- if selection == b.cle %} edt-bloc-selection{% endif %}"
   href="{{ lien }}" hx-get="{{ panneau }}" hx-target="#edt-panneau" hx-swap="innerHTML"
-  style="top: {{ p.haut }}%; height: {{ p.hauteur }}%; --edt-gauche: {{ p.gauche }}%; --edt-largeur: {{ p.largeur }}%;{% if b.couleur_type %} --edt-trait-type: {{ b.couleur_type }};{% endif %}"
+  style="--edt-haut: {{ p.haut }}%; --edt-hauteur: {{ p.hauteur }}%; --edt-gauche: {{ p.gauche }}%; --edt-largeur: {{ p.largeur }}%;{% if b.couleur_type %} --edt-trait-type: {{ b.couleur_type }};{% endif %}"
   title="{{ infobulle|trim }}" data-cle="{{ b.cle }}">
   {%- if b.verrou or b.gravite %}
   <span class="edt-marques">
@@ -34,26 +34,29 @@
     {%- if b.verrou %}<span class="edt-marque edt-marque-verrou" aria-label="Séance verrouillée">{{ verrou() }}</span>{% endif %}
   </span>
   {%- endif %}
-  <span class="edt-bloc-horaire edt-bloc-detail">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
   <strong class="edt-bloc-titre edt-bloc-ligne">{{ b.titre }}</strong>
-  <span class="edt-bloc-ligne">{{ b.type_code if b.type_code|length <= 3 else b.type_libelle }} - {{ b.groupes|join(", ") }}</span>
+  {%- if b.annulee %}<span class="edt-bloc-statut edt-statut-annule">Annulée</span>{% elif b.deplacee %}<span class="edt-bloc-statut edt-statut-deplace">Déplacée</span>{% endif %}
+  <span class="edt-bloc-horaire edt-bloc-ligne">{{ b.debut|heure }} - {{ b.fin|heure }}</span>
+  <span class="edt-bloc-ligne edt-bloc-salle">{{ b.salle or "Salle à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</span>
+  <span class="edt-bloc-ligne edt-bloc-meta">{{ b.type_code if b.type_code|length <= 3 else b.type_libelle }} - {{ b.groupes|join(", ") }}</span>
   {%- if b.enseignants %}<span class="edt-bloc-ligne edt-bloc-detail">{{ b.enseignants|join(", ") }}</span>{% endif %}
-  <span class="edt-bloc-ligne">{{ b.salle or "Salle à définir" }}{% if b.campus %} ({{ b.campus }}){% endif %}</span>
   {%- if b.semaines_texte %}<span class="edt-bloc-semaines edt-bloc-ligne edt-bloc-detail">{{ b.semaines_texte }}</span>{% endif %}
   {%- if b.partielle %}<span class="edt-bloc-partie edt-bloc-ligne edt-bloc-detail">Une partie du groupe</span>{% endif %}
-  {%- if b.annulee %}<span class="edt-bloc-statut">Annulée</span>{% elif b.deplacee %}<span class="edt-bloc-statut">Déplacée{% if b.date_initiale and b.date_initiale != b.date %} (prévue le {{ b.date_initiale|date_fr }}){% endif %}</span>{% endif %}
 </a>
 {%- endmacro %}
 {#- Chaque jour est au moins assez large pour ses séances simultanées (--edt-largeur-voie chacune). #}
-<div class="edt-grille" style="--edt-nb-jours: {{ vue.jours|length }}; --edt-duree: {{ axe.duree }}; grid-template-columns: var(--edt-largeur-axe){% for j in vue.jours %} minmax(max(7.5rem, calc({{ vue.disposition.voies_de(j.jour) }} * var(--edt-largeur-voie))), 1fr){% endfor %};">
+<div class="edt-grille{% if vue.affichage.value == 'jour' %} edt-grille-jour{% endif %}" role="region" aria-label="Planning" tabindex="0" style="--edt-nb-jours: {{ vue.jours|length }}; --edt-duree: {{ axe.duree }}; grid-template-columns: var(--edt-largeur-axe){% for j in vue.jours %} minmax(max(7.5rem, calc({{ vue.disposition.voies_de(j.jour) }} * var(--edt-largeur-voie))), 1fr){% endfor %};">
   <div class="edt-coin"></div>
   {%- for j in vue.jours %}
-  <div class="edt-entete-jour{% if j.fermeture %} edt-entete-ferme{% endif %}">
+  {%- set est_aujourdhui = j.date == aujourdhui %}
+  {%- set jour_courant = est_aujourdhui or (j.date is none and j.jour == aujourdhui.weekday()) %}
+  <div class="edt-entete-jour{% if j.fermeture %} edt-entete-ferme{% endif %}{% if jour_courant %} edt-entete-jour-courant{% endif %}">
     {%- if vue.couche.value == "date" %}
-    <a href="{{ url_vue(affichage='jour', date=j.date.isoformat(), seance=none) }}">{{ j.libelle|capitalize }}</a>
+    <a href="{{ url_vue(affichage='jour', date=j.date.isoformat(), seance=none) }}"{% if est_aujourdhui %} aria-current="date"{% endif %}>{{ j.libelle|capitalize }}</a>
     {%- else %}
     <a href="{{ url_vue(affichage='jour', jour=j.jour, seance=none) }}">{{ j.libelle|capitalize }}</a>
     {%- endif %}
+    {%- if est_aujourdhui %}<span class="edt-repere-jour">Aujourd’hui</span>{% endif %}
     {%- if j.fermeture %}<small>{{ j.fermeture }}</small>{% endif %}
   </div>
   {%- endfor %}

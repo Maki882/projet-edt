@@ -337,7 +337,10 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
 - **Trois affichages** : semaine type ; semaine datée (navigation, saut à
   une date, jours fermés grisés avec leur libellé, séances annulées barrées,
   déplacées en pointillés, séances « à programmer » listées sous la grille) ;
-  jour.
+  jour. Sur téléphone, l'onglet « Jour » est mis en avant et présente les
+  séances en liste chronologique. Sur ordinateur, les jours et l'axe des
+  heures restent visibles pendant le défilement de la grille. Le jour de
+  la semaine en cours est signalé, avec « Aujourd'hui » sur la date réelle.
 - **Colonnes** : les jours travaillés de l'établissement, plus tout jour où
   tombe une séance affichée (samedi ouvert par une règle ou un type de
   séance).
@@ -351,7 +354,8 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
   `Instantane.reglages` : la plage réservée en horaires déterminés, la
   fenêtre en pause libre, rien sans pause ; une valeur venue d'une règle la
   nomme.
-- **Bloc** : horaire, matière, type, groupes, enseignants, salle ; couleur
+- **Bloc** : matière, horaire, salle, type, groupes, enseignants et libellé
+  des séances déplacées ou annulées ; couleur
   stable par matière et liseré de la couleur du type de séance ; cadenas si
   la séance est verrouillée ; marque colorée selon la gravité de ses
   anomalies ; mention d'une séance qui n'a pas lieu chaque semaine.
@@ -409,6 +413,9 @@ traiter.
 statistiques**, pour le semestre du jour :
 
 1. **Prochaine étape** : une phrase et le lien vers l'écran qui y mène.
+   Un planning stylisé accompagne le texte. Son animation peut être
+   suspendue. Elle est désactivée si la réduction des animations est activée
+   dans les réglages de l'appareil.
 2. **Emploi du temps du semestre** : le calcul en cours, ou la version
    active et ses points à traiter, ou l'absence d'emploi du temps.
 3. **Dernier calcul**, seulement s'il s'est terminé sans emploi du temps
