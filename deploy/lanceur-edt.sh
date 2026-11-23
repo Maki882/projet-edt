@@ -17,14 +17,15 @@
 # à la main, sans sudo...), une commande utiliserait une AUTRE base sans le
 # dire : ce lanceur ne s'exécute donc qu'en root (directement ou par sudo).
 # Il refuse aussi de démarrer pendant un déploiement (verrou partagé). La clé
-# de l'assistant (/etc/edt/assistant.env, facultative) est lue comme par le
-# service.
+# de l'assistant (/etc/edt/assistant.env) et les mots de passe d'accès au site
+# (/etc/edt/comptes.env), tous deux facultatifs, sont lus comme par le service.
 # =============================================================================
 set -euo pipefail
 
 readonly COURANT="/opt/edt/courant"
 readonly FICHIER_ENV="/etc/edt/edt.env"
 readonly FICHIER_ASSISTANT="/etc/edt/assistant.env"
+readonly FICHIER_COMPTES="/etc/edt/comptes.env"
 readonly UTILISATEUR_APP="edt"
 # Même verrou que deployer-distant.sh, pris ici en partagé : refus pendant un
 # déploiement (qui le prend en exclusif), et le déploiement attend la fin de
@@ -53,6 +54,7 @@ fi
 if [ -t 0 ] && [ -t 1 ]; then mode="--pty"; else mode="--pipe"; fi
 environnement=(-p EnvironmentFile="$FICHIER_ENV")
 if [ -e "$FICHIER_ASSISTANT" ]; then environnement+=(-p EnvironmentFile="$FICHIER_ASSISTANT"); fi
+if [ -e "$FICHIER_COMPTES" ]; then environnement+=(-p EnvironmentFile="$FICHIER_COMPTES"); fi
 exec systemd-run --quiet --wait --collect "$mode" --service-type=exec \
   --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
   "${environnement[@]}" -p WorkingDirectory="$COURANT/code" \

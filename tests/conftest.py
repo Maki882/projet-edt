@@ -55,7 +55,13 @@ def environnement(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[P
     monkeypatch.setenv("EDT_DB_URL", f"sqlite:///{(tmp_path / 'edt.db').as_posix()}")
     monkeypatch.setenv("EDT_LOG_DIR", str(tmp_path / "logs"))
     monkeypatch.setenv("EDT_ENV", "dev")
-    for variable in ("EDT_HOST", "EDT_PORT", "EDT_LOG_LEVEL"):
+    for variable in (
+        "EDT_HOST",
+        "EDT_PORT",
+        "EDT_LOG_LEVEL",
+        "EDT_MDP_GESTION",
+        "EDT_MDP_CONSULTATION",
+    ):
         monkeypatch.delenv(variable, raising=False)
     yield tmp_path
     liberer_moteurs()

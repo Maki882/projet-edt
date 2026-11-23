@@ -175,6 +175,12 @@ if [ -e /etc/edt/assistant.env ]; then
 else
   echo "Assistant : clé absente (deploy/installer-cle-assistant.sh pour l'installer)"
 fi
+# Existence du fichier seulement : les mots de passe ne sont jamais lus ici.
+if [ -e /etc/edt/comptes.env ]; then
+  echo "Accès au site : protégé par mot de passe (/etc/edt/comptes.env)"
+else
+  echo "Accès au site : ouvert à tous (docs/deploiement.md, « Accès au site »)"
+fi
 
 titre "Sauvegardes de la base (/var/lib/edt/sauvegardes)"
 for prefixe in quotidienne edt manuelle corrompue; do

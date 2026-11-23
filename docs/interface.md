@@ -601,7 +601,7 @@ test en cours), ses fichiers et ses tests.
 - **Après une exécution**, la page s'appuie sur l'historique enregistré, pas
   sur l'exécution gardée en mémoire : des résultats écrits ensuite par la
   commande `edt tests` s'affichent aussitôt.
-- **Limite connue** : sans écran de connexion, tout visiteur peut arrêter
+- **Limite connue** : sans accès par mot de passe (`edt.web.acces`), tout visiteur peut arrêter
   l'exécution lancée par un autre (bouton « Arrêter l'exécution »).
 - **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
   exécution dans un sous-processus pytest, greffon, résultats, tableau d'une

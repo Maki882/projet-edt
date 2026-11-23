@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'intégration.
+Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -78,15 +78,15 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | `banc_tests` | 19 | 10 |
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
-| `socle` | 64 | 35 |
+| `socle` | 67 | 35 |
 | `solveur` | 22 | 21 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
-| `web_edt` | 9 | 47 |
-| **Total** | **324** | **214** |
+| `web_edt` | 9 | 49 |
+| **Total** | **327** | **216** |
 
-### Tests unitaires (324 cas)
+### Tests unitaires (327 cas)
 
 #### `assistant` (50 cas)
 
@@ -365,7 +365,14 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (64 cas)
+#### `socle` (67 cas)
+
+[`tests/unitaires/socle/test_acces.py`](../tests/unitaires/socle/test_acces.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Un jeton falsifie ou mal forme ne donne aucun role | un visiteur fabrique ou retouche son cookie (rôle changé, expiration repoussée). | l'accès en consultation se change en gestion sans le mot de passe. |
+| Apres connexion on ne revient que sur une page du site | l'adresse de retour de la connexion vient de l'adresse demandée (« suite »). | un lien piégé renvoie, après la connexion, vers un autre site ou injecte un en-tête. |
 
 [`tests/unitaires/socle/test_base.py`](../tests/unitaires/socle/test_base.py)
 
@@ -391,6 +398,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 |---|---|---|
 | Variables d environnement invalides levent une erreur de configuration | une variable EDT_* porte une valeur hors domaine (port « ² », hôte avec espace, niveau de journal ou environnement inconnus). | `ValueError` brute au démarrage (code 2, trace) ou repli silencieux sur le défaut ; le message doit nommer la variable et la valeur lue. |
 | Valeurs vides ou entourees d espaces | variables présentes mais vides, ou avec espaces et casse libres. | une variable vide refusée au lieu de prendre son défaut, ou « PROD » non reconnu. |
+| Mots de passe d acces incoherents refuses sans afficher leur valeur | mot de passe de consultation sans gestionnaire, trop court, entouré d'espaces, ou identique pour les deux rôles. | site resté ouvert alors qu'on le croit protégé, consultation qui donne tous les droits, ou mot de passe recopié dans le message d'erreur et donc dans le journal. |
 
 [`tests/unitaires/socle/test_conflits_groupes.py`](../tests/unitaires/socle/test_conflits_groupes.py)
 
@@ -757,7 +765,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (214 cas)
+### Tests d'intégration (216 cas)
 
 #### `assistant` (7 cas)
 
@@ -857,7 +865,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Test | Cas | Risque |
 |---|---|---|
 | Chaque script passe le controle de syntaxe de bash | un script de deploy/ modifié contient une erreur de syntaxe. | le déploiement ou l'installation s'arrête sur le serveur, au pire en pleine bascule. |
-| Les commandes du deploiement lisent la cle comme le service | le déploiement lance init-db, doctor ou version (systemd-run) sur un serveur avec ou sans clé de l'assistant. | sans clé, systemd-run refuse un fichier d'environnement absent et chaque déploiement échoue ; avec clé, les commandes ne voient pas la configuration du service. |
+| Les commandes du deploiement lisent la cle comme le service | le déploiement lance init-db, doctor ou version (systemd-run) sur un serveur avec ou sans clé de l'assistant, avec ou sans mots de passe d'accès au site. | sans clé, systemd-run refuse un fichier d'environnement absent et chaque déploiement échoue ; avec clé, les commandes ne voient pas la configuration du service. |
 | Processus hors service liste une commande de l utilisateur | un processus de l'utilisateur de l'application tourne hors du service. | la recherche ne le voit pas (lecture de /proc, format de ps) et la bascule remplace la base qu'il est en train d'écrire. |
 | Processus hors service ignore les processus du service | seuls les processus du service lui-même tiennent la base. | la recherche les compte comme étrangers et chaque déploiement est refusé. |
 | La sauvegarde du deploiement reussit puis retire sa copie en cas d echec | la base à sauvegarder pendant la bascule est illisible (ou le disque se remplit). | une copie partielle reste sous un nom de sauvegarde et le script continue. |
@@ -1067,13 +1075,20 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (47 cas)
+#### `web_edt` (49 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Option tous les semestres affiche tous les semestres | option « Tous les semestres » de « Points à traiter » (`semestre_id=` vide), même adresse gardée en favori sur Générer, l'historique et la grille. | la chaîne vide refusée pour un entier remplace la page par « Saisie invalide » : impossible de revenir à tous les semestres. |
+
+[`tests/integration/web_edt/test_acces.py`](../tests/integration/web_edt/test_acces.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Mauvais mot de passe refuse sans cookie | mot de passe faux, vide, ou cookie fabriqué à la main. | accès ouvert sans le bon mot de passe, ou essais en rafale sans aucun frein. |
+| Une ecriture sans connexion est refusee avant la route | un envoi de formulaire ou un fragment HTMX arrive sans connexion. | l'écriture passe (aucune route ne vérifie elle-même l'accès), ou HTMX insère la page de connexion entière dans un fragment. |
 
 [`tests/integration/web_edt/test_accueil.py`](../tests/integration/web_edt/test_accueil.py)
 

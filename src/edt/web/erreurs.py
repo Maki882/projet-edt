@@ -52,6 +52,7 @@ from edt.erreurs import (
 )
 from edt.journal import contexte_requete
 from edt.services.jeux import operation_en_cours
+from edt.web.acces import contexte_acces
 from edt.web.gabarits import est_htmx, gabarits
 
 journal = logging.getLogger(__name__)
@@ -140,12 +141,26 @@ def reponse_erreur(
         "details": details,
         "statut": statut,
         "id_requete": id_requete,
-        "menu": getattr(request.app.state, "menu", ()),
+        **contexte_acces(request, getattr(request.app.state, "menu", ())),
         "chemin": request.url.path,
         "messages": [],
     }
     gabarit = "erreur_fragment.html" if est_htmx(request) else "erreur.html"
     return gabarits.TemplateResponse(request, gabarit, contexte, status_code=statut)
+
+
+def reponse_acces_refuse(request: Request) -> Response:
+    """Page « réservée au gestionnaire » (403), pour l'accès en consultation (`edt.web.acces`)."""
+    return reponse_erreur(
+        request,
+        statut=403,
+        titre="Page réservée au gestionnaire",
+        message=(
+            "Vous êtes connecté en consultation : vous pouvez consulter l'emploi du temps et "
+            "l'exporter, sans rien modifier. Pour le reste, se connecter avec le mot de passe "
+            "de gestion."
+        ),
+    )
 
 
 def _statut_et_titre(erreur: ErreurEDT) -> tuple[int, str]:
