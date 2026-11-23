@@ -777,8 +777,8 @@ def produire_synthese(recette: Recette) -> str:
         if c.ecartes:
             lignes += [
                 "",
-                f"{c.nom} : {_pluriel(len(c.ecartes), 'entrée écartée', 'entrées écartées')} du "
-                "fichier de résultats, non comptée(s) :",
+                f"{c.nom} : {_pluriel(len(c.ecartes), 'entrée du fichier de résultats écartée', 'entrées du fichier de résultats écartées')}"
+                ", non comptées dans les nombres ci-dessus :",
             ]
             lignes += [
                 f"- `{_court(e['test'])}` (résultat du {_date(dt.datetime.fromisoformat(e['le']))}"
@@ -911,7 +911,12 @@ def produire_fiches(recette: Recette) -> str:
             lignes += ["Aucune fiche.", ""]
         for fiche in de_la_famille:
             lignes += [produire_fiche(fiche, recette)]
-    return "\n".join(lignes).rstrip("\n") + "\n"
+    texte = "\n".join(lignes).rstrip("\n") + "\n"
+    # Les légendes des preuves sont numérotées dans l'ordre du livret (« *Figure 1. …* »).
+    morceaux = texte.split("*Figure. ")
+    return morceaux[0] + "".join(
+        f"*Figure {numero}. {suite}" for numero, suite in enumerate(morceaux[1:], start=1)
+    )
 
 
 def produire_matrice(recette: Recette) -> str:

@@ -1,8 +1,8 @@
-"""Produit les PDF des trois livrets du cours à partir de leur texte Markdown.
+"""Produit les PDF des quatre livrets du cours à partir de leur texte Markdown.
 
 Usage, depuis la racine du dépôt, avec l'interpréteur de l'application :
 
-    python docs/livrets/produire_pdf.py                      # les trois livrets
+    python docs/livrets/produire_pdf.py                      # les quatre livrets
     python docs/livrets/produire_pdf.py 3-guide-utilisateur  # un seul livret
     python docs/livrets/produire_pdf.py --chrome /chemin/vers/chrome
 
@@ -56,6 +56,7 @@ LIVRETS = (
     "1-specifications-fonctionnelles",
     "2-specifications-techniques-et-organisation",
     "3-guide-utilisateur",
+    "4-cahier-de-recette",
 )
 DELAI_CHROME_S = 180
 SIGNATURE_PNG = bytes.fromhex("89504e470d0a1a0a")
@@ -345,7 +346,7 @@ def main(arguments: list[str] | None = None) -> int:
         "livrets",
         nargs="*",
         metavar="LIVRET",
-        help="nom d'un livret sans extension (défaut : les trois) : " + ", ".join(LIVRETS),
+        help="nom d'un livret sans extension (défaut : les quatre) : " + ", ".join(LIVRETS),
     )
     parametres.add_argument("--chrome", help="chemin de Chrome ou Chromium")
     parametres.add_argument("--detail", action="store_true", help="journal détaillé")
