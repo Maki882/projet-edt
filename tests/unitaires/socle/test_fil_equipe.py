@@ -8,6 +8,7 @@ ici, de la même forme que les vraies.
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import sys
 from pathlib import Path
@@ -155,3 +156,84 @@ def test_la_commande_ecrit_le_fil_et_rend_zero(equipe, tmp_path):
 def test_la_commande_rend_un_si_une_transcription_manque(tmp_path, caplog):
     assert fil_equipe.principal(["--membre", f"chef=id={tmp_path / 'absent.jsonl'}"]) == 1
     assert "transcription introuvable" in caplog.text
+
+
+def test_un_envoi_refuse_par_l_outil_est_marque_et_signale(tmp_path, caplog):
+    envoi = _envoi("2026-11-23T10:00:00.000Z", "idb", "[question] tu es là ?")
+    envoi["message"]["content"][0]["id"] = "appel-1"
+    refus = {
+        "type": "user",
+        "timestamp": "2026-11-23T10:00:01.000Z",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "appel-1",
+                    "is_error": True,
+                    "content": "No agent named idb",
+                }
+            ]
+        },
+    }
+    fichier = _transcription(tmp_path, "a", [envoi, refus])
+    (message,) = fil_equipe.fil({"a": ("id-a", fichier)})
+    assert message.texte.startswith("(envoi refusé)")
+    assert "refusé par l'outil" in caplog.text and "No agent named idb" in caplog.text
+
+
+def test_une_transcription_avec_marque_d_ordre_d_octets_garde_sa_premiere_ligne(tmp_path):
+    ligne = json.dumps(_envoi("2026-11-23T10:00:00.000Z", "id-b", "premier"), ensure_ascii=False)
+    fichier = tmp_path / "bom.jsonl"
+    fichier.write_text(ligne + "\n", encoding="utf-8-sig")
+    assert [m.texte for m in fil_equipe.fil({"a": ("id-a", fichier)})] == ["premier"]
+
+
+def test_un_message_du_pilote_en_blocs_de_texte_est_releve(tmp_path):
+    texte = _du_pilote("2026-11-23T10:00:00.000Z", "[décision] go")["message"]["content"]
+    entree = {
+        "type": "user",
+        "timestamp": "2026-11-23T10:00:00.000Z",
+        "message": {"content": [{"type": "text", "text": texte}]},
+    }
+    fichier = _transcription(tmp_path, "a", [entree])
+    (message,) = fil_equipe.fil({"a": ("id-a", fichier)})
+    assert (message.de, message.texte) == ("pilote", "[décision] go")
+
+
+def test_un_en_tete_de_pilote_inconnu_est_signale(tmp_path, caplog):
+    entree = {
+        "type": "user",
+        "timestamp": "2026-11-23T10:00:00.000Z",
+        "message": {"content": "The lead sent a message:\n[décision] go"},
+    }
+    fichier = _transcription(tmp_path, "a", [entree])
+    assert fil_equipe.fil({"a": ("id-a", fichier)}) == []
+    assert "en-tête non reconnu" in caplog.text
+
+
+def test_le_texte_d_un_message_ne_deforme_pas_le_document(tmp_path):
+    piege = "## faux titre\n```python\nprint(1)"
+    fichier = _transcription(
+        tmp_path,
+        "a",
+        [
+            _envoi("2026-11-23T10:00:00.000Z", "id-b", piege),
+            _envoi("2026-11-23T10:01:00.000Z", "id-b", "suite"),
+        ],
+    )
+    lignes = fil_equipe.en_markdown(fil_equipe.fil({"a": ("id-a", fichier)})).splitlines()
+    assert "> ## faux titre" in lignes and "> ```python" in lignes
+    assert not any(ligne.startswith(("## faux", "```")) for ligne in lignes)
+    assert "## 2. a à id-b, " in "\n".join(lignes)
+
+
+def test_l_affichage_ecrit_les_caracteres_hors_de_la_page_de_code(tmp_path, monkeypatch):
+    fichier = _transcription(
+        tmp_path, "a", [_envoi("2026-11-23T10:00:00.000Z", "id-b", "[livraison] T1 → fait ✓")]
+    )
+    tampon = io.BytesIO()
+    console = io.TextIOWrapper(tampon, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", console)
+    assert fil_equipe.principal(["--membre", f"a=id-a={fichier}"]) == 0
+    console.flush()
+    assert "T1 → fait ✓" in tampon.getvalue().decode("utf-8")

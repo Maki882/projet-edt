@@ -35,6 +35,11 @@ ENTETES_PILOTE = (
 )
 # Phrase que l'environnement ajoute après le message du pilote : elle n'en fait pas partie.
 SUITE_PILOTE = "Address this before completing your current task."
+# Fragment commun aux en-têtes ci-dessus : un message qui le contient sans commencer par un
+# en-tête connu signale un format nouveau, à dire plutôt qu'à ignorer en silence.
+INDICE_PILOTE = "sent a message"
+# Préfixe d'un envoi que l'outil a refusé : le message n'est jamais arrivé.
+MARQUE_REFUS = "(envoi refusé)"
 
 
 class ErreurFil(Exception):
@@ -91,11 +96,48 @@ def _heure(valeur: object, fichier: Path, numero: int) -> datetime:
         ) from erreur
 
 
+def _texte_recu(contenu: object) -> str | None:
+    """Texte d'une entrée reçue par l'agent : une chaîne, ou les blocs de texte d'une liste."""
+    if isinstance(contenu, str):
+        return contenu
+    if isinstance(contenu, list):
+        morceaux = [
+            str(bloc.get("text", ""))
+            for bloc in contenu
+            if isinstance(bloc, dict) and bloc.get("type") == "text"
+        ]
+        return "\n".join(morceaux) if morceaux else None
+    return None
+
+
+def _envois_refuses(entrees: list[dict]) -> dict[str, str]:
+    """Identifiants des appels d'outil que l'environnement a refusés, avec le motif du refus."""
+    refuses: dict[str, str] = {}
+    for entree in entrees:
+        contenu = (entree.get("message") or {}).get("content")
+        if entree.get("type") != "user" or not isinstance(contenu, list):
+            continue
+        for bloc in contenu:
+            if (
+                isinstance(bloc, dict)
+                and bloc.get("type") == "tool_result"
+                and bloc.get("is_error")
+                and bloc.get("tool_use_id")
+            ):
+                refuses[str(bloc["tool_use_id"])] = str(bloc.get("content", ""))[:200]
+    return refuses
+
+
 def messages_d_un_membre(role: str, fichier: Path, noms: dict[str, str]) -> list[Message]:
-    """Messages envoyés par ce membre, et messages qu'il a reçus du pilote."""
-    trouves: list[Message] = []
+    """Messages envoyés par ce membre, et messages qu'il a reçus du pilote.
+
+    Un envoi que l'outil a refusé (destinataire inconnu, par exemple) reste dans le fil, marqué
+    « (envoi refusé) » : il n'est jamais arrivé, mais l'agent a cru l'envoyer.
+    """
+    entrees: list[tuple[int, dict]] = []
     illisibles = 0
-    for numero, ligne in enumerate(fichier.read_text(encoding="utf-8").splitlines(), 1):
+    # `utf-8-sig` : une transcription enregistrée avec une marque d'ordre d'octets reste lisible.
+    for numero, ligne in enumerate(fichier.read_text(encoding="utf-8-sig").splitlines(), 1):
         if not ligne.strip():
             continue
         try:
@@ -103,32 +145,66 @@ def messages_d_un_membre(role: str, fichier: Path, noms: dict[str, str]) -> list
         except json.JSONDecodeError:
             illisibles += 1
             continue
+        if isinstance(entree, dict):
+            entrees.append((numero, entree))
+        else:
+            illisibles += 1
+    refuses = _envois_refuses([entree for _, entree in entrees])
+
+    trouves: list[Message] = []
+    for numero, entree in entrees:
         contenu = (entree.get("message") or {}).get("content")
         if entree.get("type") == "assistant" and isinstance(contenu, list):
             for bloc in contenu:
-                if bloc.get("type") == "tool_use" and bloc.get("name") == OUTIL:
-                    appel = bloc.get("input") or {}
-                    destinataire = str(appel.get("to", "?"))
-                    trouves.append(
-                        Message(
-                            heure=_heure(entree.get("timestamp"), fichier, numero),
-                            de=role,
-                            a=noms.get(destinataire, destinataire),
-                            texte=str(appel.get("message", "")),
-                        )
+                if not (
+                    isinstance(bloc, dict)
+                    and bloc.get("type") == "tool_use"
+                    and bloc.get("name") == OUTIL
+                ):
+                    continue
+                appel = bloc.get("input") or {}
+                destinataire = str(appel.get("to", "?"))
+                texte = str(appel.get("message", ""))
+                motif = refuses.get(str(bloc.get("id")))
+                if motif is not None:
+                    journal.warning(
+                        "%s, ligne %d : envoi à « %s » refusé par l'outil (%s)",
+                        fichier,
+                        numero,
+                        destinataire,
+                        motif,
                     )
-        elif entree.get("type") == "user" and isinstance(contenu, str):
-            for entete in ENTETES_PILOTE:
-                if contenu.startswith(entete):
-                    trouves.append(
-                        Message(
-                            heure=_heure(entree.get("timestamp"), fichier, numero),
-                            de=PILOTE,
-                            a=role,
-                            texte=contenu[len(entete) :].strip().removesuffix(SUITE_PILOTE).strip(),
-                        )
+                    texte = f"{MARQUE_REFUS} {texte}"
+                trouves.append(
+                    Message(
+                        heure=_heure(entree.get("timestamp"), fichier, numero),
+                        de=role,
+                        a=noms.get(destinataire, destinataire),
+                        texte=texte,
                     )
-                    break
+                )
+        elif entree.get("type") == "user":
+            texte = _texte_recu(contenu)
+            if texte is None:
+                continue
+            entete = next((e for e in ENTETES_PILOTE if texte.startswith(e)), None)
+            if entete is None:
+                if INDICE_PILOTE in texte[:200]:
+                    journal.warning(
+                        "%s, ligne %d : message qui semble venir du pilote, en-tête non reconnu ;"
+                        " il n'est pas repris dans le fil",
+                        fichier,
+                        numero,
+                    )
+                continue
+            trouves.append(
+                Message(
+                    heure=_heure(entree.get("timestamp"), fichier, numero),
+                    de=PILOTE,
+                    a=role,
+                    texte=texte[len(entete) :].strip().removesuffix(SUITE_PILOTE).strip(),
+                )
+            )
     if illisibles:
         journal.warning("%s : %d ligne(s) illisible(s) ignorée(s)", fichier, illisibles)
     journal.info("%s : %d message(s) relevé(s) dans %s", role, len(trouves), fichier)
@@ -164,12 +240,11 @@ def en_markdown(messages: list[Message]) -> str:
             f"| {numero} | {message.heure:%H:%M:%S} | {message.de} | {message.a} | {objet} |"
         )
     for numero, message in enumerate(messages, 1):
-        lignes += [
-            "",
-            f"## {numero}. {message.de} à {message.a}, {message.heure:%H:%M:%S}",
-            "",
-            message.texte.strip() or "(message vide)",
-        ]
+        # Le texte est cité ligne à ligne : un titre ou un bloc de code non fermé dans un
+        # message ne déforme pas la suite du document.
+        texte = message.texte.strip() or "(message vide)"
+        lignes += ["", f"## {numero}. {message.de} à {message.a}, {message.heure:%H:%M:%S}", ""]
+        lignes += [f"> {ligne}" if ligne.strip() else ">" for ligne in texte.splitlines()]
     return "\n".join(lignes) + "\n"
 
 
@@ -196,6 +271,10 @@ def principal(arguments: list[str] | None = None) -> int:
         options.sortie.write_text(texte, encoding="utf-8", newline="\n")
         journal.info("fil écrit : %s (%d messages)", options.sortie, len(messages))
     else:
+        # La console de Windows n'écrit pas tous les caractères d'un message (flèches,
+        # coches) : l'affichage passe en UTF-8 plutôt que d'échouer.
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8")
         sys.stdout.write(texte)
     return 0
 
