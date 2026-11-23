@@ -39,6 +39,8 @@
  * 10. Tableaux défilants : après un remplacement HTMX, un tableau qui montre
  *    une ligne de confirmation de suppression (`tr.ligne-suppression`) revient
  *    à gauche, pour que la question et ses boutons soient lisibles.
+ * 11. Volets mobiles : les commandes du menu et des filtres replient leur
+ *    contenu sur les petits écrans. Sans JavaScript, il reste accessible.
  *
  * Les points 4 et 5 s'appliquent aussi aux fragments chargés par HTMX.
  */
@@ -277,7 +279,7 @@
     });
 
     document.addEventListener("keydown", function (evenement) {
-      if (evenement.key === "Escape" && estOuvert()) {
+      if (evenement.key === "Escape" && !evenement.defaultPrevented && estOuvert()) {
         fermer(true);
       }
     });
@@ -285,7 +287,7 @@
     // État conservé pendant la navigation, sur un grand écran seulement : au téléphone, le
     // panneau couvre toute la page et ne se rouvre pas de lui-même d'une page à l'autre.
     // Rouvert sans animation ni vol du focus.
-    var grandEcran = window.matchMedia("(min-width: 56.01rem)").matches;
+    var grandEcran = !window.matchMedia("(max-width: 58rem)").matches;
     if ((memorise() === "ouvert" && grandEcran) || window.location.hash === "#assistant") {
       document.body.classList.add("sans-transition");
       ouvrir(false);
@@ -491,8 +493,34 @@
     }
   }
 
+  function initialiserVoletsMobiles() {
+    document.querySelectorAll("[data-volet-mobile]").forEach(function (bouton) {
+      var volet = document.getElementById(bouton.getAttribute("aria-controls"));
+      if (!volet) {
+        return;
+      }
+
+      bouton.addEventListener("click", function () {
+        bouton.setAttribute("aria-expanded", bouton.getAttribute("aria-expanded") === "false");
+      });
+
+      function fermerAvecEchap(evenement) {
+        if (evenement.key === "Escape" && bouton.offsetWidth && bouton.getAttribute("aria-expanded") === "true") {
+          evenement.preventDefault();
+          bouton.setAttribute("aria-expanded", "false");
+          bouton.focus();
+        }
+      }
+
+      bouton.addEventListener("keydown", fermerAvecEchap);
+      volet.addEventListener("keydown", fermerAvecEchap);
+      bouton.hidden = false;
+    });
+  }
+
   function demarrer() {
     initialiserAssistant();
+    initialiserVoletsMobiles();
     montrerPageActive();
     initialiser(document);
   }

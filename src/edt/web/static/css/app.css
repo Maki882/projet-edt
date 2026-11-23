@@ -16,28 +16,33 @@
 /* ----- 1. Variables et bases ------------------------------------------------ */
 
 :root {
-  --fond: #f4f6f9;
+  --fond: #f2f5fa;
   --surface: #ffffff;
-  --bordure: #d9dee7;
-  --bordure-forte: #aab3c0;
-  --texte: #1f2733;
-  --texte-discret: #5d6878;
-  --marque: #1d4f91;
-  --marque-fonce: #163d70;
-  --marque-pale: #e8f0fa;
+  --bordure: #dae2ef;
+  --bordure-forte: #8695ac;
+  --texte: #15233a;
+  --texte-discret: #4e5d74;
+  --marque: #2459bc;
+  --marque-fonce: #173e82;
+  --marque-pale: #e9f0ff;
+  --bandeau: #111e36;
+  --bandeau-texte: #dbe5f5;
+  --accent: #85d9d1;
   --succes: #1f7a4d;
   --succes-pale: #e6f4ec;
   --attention: #9a6200;
   --attention-pale: #fdf3dc;
   --erreur: #b3261e;
   --erreur-pale: #fbe9e7;
-  --info: #1d4f91;
-  --info-pale: #e8f0fa;
-  --rayon: 6px;
+  --info: var(--marque-fonce);
+  --info-pale: var(--marque-pale);
+  --rayon: 9px;
+  --rayon-carte: 14px;
   --espace: 1rem;
   --largeur-navigation: 13.5rem;
   --largeur-assistant: 24rem;
-  --ombre: 0 6px 24px rgba(20, 35, 60, 0.18);
+  --ombre: 0 10px 28px rgba(17, 30, 54, 0.18);
+  --ombre-surface: 0 2px 5px rgba(17, 30, 54, 0.04), 0 10px 24px rgba(17, 30, 54, 0.04);
   --police: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --police-code: ui-monospace, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
 }
@@ -65,6 +70,7 @@ body {
 
 a {
   color: var(--marque);
+  text-underline-offset: 0.15em;
 }
 
 a:hover {
@@ -88,11 +94,13 @@ h3 {
 }
 
 h1 {
-  font-size: 1.5rem;
+  font-size: clamp(1.6rem, 1.25rem + 0.95vw, 2.2rem);
+  letter-spacing: -0.035em;
 }
 
 h2 {
-  font-size: 1.1rem;
+  font-size: 1.175rem;
+  letter-spacing: -0.016em;
 }
 
 h3 {
@@ -136,9 +144,10 @@ h3 {
   display: flex;
   align-items: stretch;
   gap: 1.5rem;
-  padding: 0 calc(var(--espace) * 1.5);
-  background: var(--marque-fonce);
-  color: #dfe8f4;
+  padding: 0 clamp(1rem, 3vw, 2.5rem);
+  background: var(--bandeau);
+  color: var(--bandeau-texte);
+  border-bottom: 1px solid #273955;
   position: relative;
   z-index: 20;
 }
@@ -146,7 +155,7 @@ h3 {
 .marque {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.65rem;
   color: #ffffff;
   text-decoration: none;
   white-space: nowrap;
@@ -156,15 +165,37 @@ h3 {
   color: #ffffff;
 }
 
+/* Accès au site (edt.web.acces) : rôle connecté et bouton de déconnexion, à droite. */
+.acces {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.acces-role {
+  font-size: 0.9rem;
+  color: #dfe8f4;
+}
+
 .marque-sigle {
-  font-size: 1.35rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  padding: 0.32em 0.52em;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--bandeau);
+  font-size: 0.91rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .marque-texte {
   font-size: 0.85rem;
-  opacity: 0.85;
+  font-weight: 650;
+}
+
+.bouton-mobile:not([hidden]) {
+  display: none;
 }
 
 .onglets {
@@ -174,6 +205,7 @@ h3 {
 
 .onglets > ul {
   display: flex;
+  gap: 0.25rem;
   list-style: none;
   margin: 0;
   padding: 0;
@@ -187,10 +219,13 @@ h3 {
 .onglet > a {
   display: flex;
   align-items: center;
-  padding: 0.85rem 1rem 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0.55rem 0.72rem;
   color: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
   text-decoration: none;
-  border-bottom: 3px solid transparent;
+  border-radius: 7px;
   white-space: nowrap;
 }
 
@@ -216,9 +251,8 @@ h3 {
 
 .onglet > a.actif {
   color: #ffffff;
-  font-weight: 600;
-  border-bottom-color: #ffffff;
-  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 -2px var(--accent);
+  background: rgba(255, 255, 255, 0.13);
 }
 
 /* Menu déroulant d'un onglet : toutes ses pages, ouvert au survol ou au clavier. */
@@ -239,7 +273,7 @@ h3 {
   background: var(--surface);
   color: var(--texte);
   border: 1px solid var(--bordure);
-  border-radius: 0 0 var(--rayon) var(--rayon);
+  border-radius: 0 0 var(--rayon-carte) var(--rayon-carte);
   box-shadow: var(--ombre);
 }
 
@@ -329,10 +363,12 @@ h3 {
 
 .sous-navigation li a {
   display: block;
-  padding: 0.3rem var(--espace);
+  margin: 0.08rem 0.5rem;
+  padding: 0.36rem 0.6rem;
   color: var(--texte);
   text-decoration: none;
   border-left: 3px solid transparent;
+  border-radius: 6px;
 }
 
 .sous-navigation li a:hover {
@@ -349,10 +385,9 @@ h3 {
 main {
   flex: 1;
   min-width: 0;
-  padding: calc(var(--espace) * 1.5);
+  padding: clamp(1.5rem, 3vw, 2.5rem);
   /* Le bouton « Assistant », fixé en bas à droite, ne cache pas la dernière ligne. */
   padding-bottom: 4.5rem;
-  max-width: 84rem;
 }
 
 .entete-page {
@@ -361,7 +396,7 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: var(--espace);
+  margin-bottom: 1.4rem;
 }
 
 .entete-page h1 {
@@ -394,9 +429,10 @@ main {
 .carte {
   background: var(--surface);
   border: 1px solid var(--bordure);
-  border-radius: var(--rayon);
-  padding: var(--espace) calc(var(--espace) * 1.25);
+  border-radius: var(--rayon-carte);
+  padding: clamp(1rem, 2vw, 1.4rem);
   margin-bottom: var(--espace);
+  box-shadow: var(--ombre-surface);
 }
 
 .carte > :last-child {
@@ -563,9 +599,10 @@ main {
 .tableau-defilant {
   overflow-x: auto;
   border: 1px solid var(--bordure);
-  border-radius: var(--rayon);
+  border-radius: var(--rayon-carte);
   background: var(--surface);
   margin-bottom: var(--espace);
+  box-shadow: var(--ombre-surface);
 }
 
 .tableau {
@@ -590,7 +627,7 @@ main {
 
 .tableau thead th {
   background: var(--fond);
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
 }
 
@@ -823,10 +860,11 @@ main {
 .formulaire {
   background: var(--surface);
   border: 1px solid var(--bordure);
-  border-radius: var(--rayon);
+  border-radius: var(--rayon-carte);
   padding: var(--espace) calc(var(--espace) * 1.25);
   margin-bottom: var(--espace);
   max-width: 48rem;
+  box-shadow: var(--ombre-surface);
 }
 
 .formulaire-large {
@@ -1019,6 +1057,7 @@ main {
   background: var(--surface);
   color: var(--texte);
   font: inherit;
+  font-weight: 600;
   line-height: 1.4;
   text-decoration: none;
   cursor: pointer;
@@ -1039,6 +1078,7 @@ main {
   background: var(--marque);
   border-color: var(--marque);
   color: #ffffff;
+  box-shadow: 0 2px 4px rgba(17, 30, 54, 0.14);
 }
 
 .bouton-principal:hover {
@@ -1480,37 +1520,86 @@ fieldset.champ {
 
 .colonnes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: var(--espace);
 }
 
 /* ----- 12. Petits écrans et impression ------------------------------------------ */
 
-@media (max-width: 56rem) {
+@media (max-width: 58rem) {
   .barre {
     flex-wrap: wrap;
-    gap: 0;
-    padding: 0 var(--espace);
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.2rem var(--espace) 0.45rem;
   }
 
   .marque {
     padding: 0.5rem 0;
   }
 
-  /* Les six onglets restent tous visibles : ils passent sur deux rangées s'il le faut. */
+  .bouton-mobile:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+  }
+
+  .bouton-mobile:not([hidden])[aria-expanded="false"] + :is(.onglets, .edt-barre-outils) {
+    display: none;
+  }
+
+  .bouton-mobile::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+
+  .bouton-mobile[aria-expanded="true"]::after {
+    transform: translateY(2px) rotate(225deg);
+  }
+
+  .bouton-menu {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #64758f;
+    border-radius: var(--rayon);
+    background: transparent;
+    color: var(--bandeau-texte);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .bouton-menu[aria-expanded="true"] {
+    color: var(--bandeau);
+    background: var(--accent);
+  }
+
   .onglets {
     flex-basis: 100%;
+    padding-top: 0.35rem;
   }
 
   .onglets > ul {
-    flex-wrap: wrap;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .onglet > a {
-    padding: 0.45rem 0.65rem;
+    width: 100%;
+    min-height: 2.75rem;
+    margin: 0;
+    padding: 0.4rem 0.6rem;
+    white-space: normal;
   }
 
-  .menu-deroulant {
+  .onglet-deroulant:is(:hover, :focus-within) .menu-deroulant {
     display: none;
   }
 
@@ -1545,6 +1634,7 @@ fieldset.champ {
     border-left: none;
     border-radius: var(--rayon);
     padding: 0.2rem 0.6rem;
+    margin: 0;
   }
 
   main {
@@ -1562,8 +1652,29 @@ fieldset.champ {
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  .bouton,
+  .onglet > a,
+  .sous-navigation li a {
+    transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .bouton-mobile::after {
+    transition: transform 150ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant,
+  .assistant.ouvert,
+  .assistant:target {
+    transition: none;
+  }
+}
+
 @media print {
   .barre,
+  .acces,
   .sous-navigation,
   .pied,
   .entete-actions,
@@ -1582,7 +1693,12 @@ fieldset.champ {
 
   main {
     padding: 0;
-    max-width: none;
+  }
+
+  .carte,
+  .tableau-defilant,
+  .formulaire {
+    box-shadow: none;
   }
 
   .carte,
@@ -1626,8 +1742,4 @@ fieldset.champ {
 .onglet-tests-integration > a.actif {
   background: var(--tests-integration-fonce);
   color: #ffffff;
-}
-
-.onglet-tests-unitaires + .onglet-tests-integration {
-  margin-left: 2px;
 }
