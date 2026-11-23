@@ -45,6 +45,10 @@ def test_ecrans_prevus_pour_un_telephone(version_generee, client):
     assert edt.status_code == 200
     filtres = _regle_media(edt.text, "screen and (max-width: 58rem)")
     assert re.search(r"\.edt-barre-outils\s*\{[^}]*display: grid", filtres)
+    assert re.search(r"\.edt-grille-jour\s*\{[^}]*display: block", filtres)
+    large = _regle_media(edt.text, "screen and (width > 58rem)")
+    assert re.search(r"\.edt-grille\s*\{[^}]*overflow: auto", large)
+    assert re.search(r"\.edt-axe\s*\{[^}]*position: sticky", large)
     etroit = _regle_media(edt.text, "(max-width: 64rem)")
     mise_en_page = re.search(r"\.edt-mise-en-page\s*\{([^}]*)\}", etroit)
     assert mise_en_page is not None

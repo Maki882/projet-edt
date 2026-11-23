@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **555 fonctions de test** dans 11 composants, dont 217 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **556 fonctions de test** dans 11 composants, dont 218 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -338,11 +338,11 @@ Ce dossier compte **555 fonctions de test** dans 11 composants, dont 217 marqué
 | [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Parcours REC-BOUT-4 : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
 | [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Parcours REC-BOUT-5 : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
-### `socle/` : Commandes et application web du socle (79 fonctions)
+### `socle/` : Commandes et application web du socle (80 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 21 |
+| [`socle/test_cli.py`](socle/test_cli.py) | Ligne de commande : commandes générales et mécanisme d'extension | 22 |
 | [`socle/test_config.py`](socle/test_config.py) | Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 |
 | [`socle/test_generation.py`](socle/test_generation.py) | Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 |

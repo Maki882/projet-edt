@@ -24,6 +24,7 @@ from edt.domaine.instantane import id_seance
 from edt.services.emploi_du_temps import modifications, presentation, vues
 from edt.services.emploi_du_temps.vues import Affichage, Cible, Couche, NatureCible
 from edt.verification.contrat import Anomalie
+from edt.web.routes import emploi_du_temps
 
 
 def _cible(session, nature: str) -> tuple[str, object]:
@@ -76,13 +77,14 @@ def _date_de_la_cible(session, version_id: int, filtre) -> dt.date:
     [("hebdo", "semaine"), ("date", "semaine"), ("hebdo", "jour"), ("date", "jour")],
 )
 def test_trois_affichages_pour_un_groupe_un_enseignant_une_salle(
-    seances_datees, client, nature, couche, affichage
+    seances_datees, client, monkeypatch, nature, couche, affichage
 ):
     version = seances_datees.version_id
     with session_base() as session:
         cible, filtre = _cible(session, nature)
         date = _date_de_la_cible(session, version, filtre)
         jour = jour_avec_seance(session, version, filtre)
+    monkeypatch.setattr(emploi_du_temps, "_date_du_jour", lambda: date)
     parametres = f"couche={couche}&affichage={affichage}"
     if couche == "date":
         parametres += f"&date={date.isoformat()}"
@@ -99,6 +101,10 @@ def test_trois_affichages_pour_un_groupe_un_enseignant_une_salle(
     page = reponse.text
     assert attendu in page
     assert 'class="edt-bloc edt-couleur-' in page  # au moins une séance dans la grille
+    assert ('class="edt-grille edt-grille-jour"' in page) == (affichage == "jour")
+    assert page.count('aria-current="date"') == int(couche == "date")
+    if couche == "date":
+        assert 'class="edt-repere-jour">Aujourd’hui' in page
     assert "Traceback" not in page
     assert "installation incomplète" not in page
     assert f"/export/emploi-du-temps.csv?version_id={version}" in page
@@ -439,6 +445,11 @@ def test_deplacer_puis_annuler_une_seance_datee(seances_datees, client, faux_ver
             date=mardi,
         )
     assert any(b.occurrence_id == identifiant and b.annulee for b in vue.blocs)
+    grille = client.get(
+        "/emploi-du-temps",
+        params={"version_id": version, "salle_id": salle, "couche": "date", "date": mardi},
+    ).text
+    assert 'class="edt-bloc-statut edt-statut-annule">Annulée' in grille
 
 
 def test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut(version_generee, client):

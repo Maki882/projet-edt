@@ -170,6 +170,23 @@ def test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_
 
 
 @pytest.mark.cas_limite
+@pytest.mark.parametrize("commande", [["pre-verifier"], ["generer"]])
+def test_une_base_non_initialisee_indique_init_db_et_le_code_1(lanceur, environnement, commande):
+    """Cas : `EDT_DB_URL` désigne une base absente (première installation sans `init-db`,
+    faute de frappe dans le chemin) et une commande de calcul la lit.
+
+    Risque : « base inaccessible : no such table » laisse croire à une panne de droits ou à un
+    verrou ; il faut le code 1 et le remède « python -m edt init-db ».
+    """
+    resultat = lanceur.invoke(cli.app, commande)
+
+    assert resultat.exit_code == cli.CODE_ERREUR_METIER, resultat.output
+    # Le message affiché suit « Erreur : » ; le journal, qui garde la requête complète, le précède.
+    affiche = " ".join(resultat.output.split()).rpartition("Erreur : ")[2]
+    assert "python -m edt init-db" in affiche and "inaccessible" not in affiche, resultat.output
+
+
+@pytest.mark.cas_limite
 @pytest.mark.parametrize("env", ["dev", "prod"])
 def test_base_illisible_le_remede_annonce_permet_d_en_sortir(
     lanceur, base, environnement, monkeypatch, corrompre_base, env

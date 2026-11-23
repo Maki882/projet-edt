@@ -81,9 +81,11 @@
     <a href="{{ url_vue(couche='hebdo', affichage='semaine', date=none, jour=none) }}" title="La semaine modèle, répétée toutes les semaines de cours du semestre"{% if vue.couche.value == 'hebdo' and vue.affichage.value == 'semaine' %} class="actif" aria-current="page"{% endif %}>Semaine type</a>
     <a href="{{ url_vue(couche='date', affichage='semaine', jour=none) }}" title="Une semaine réelle du semestre : jours fériés, séances replacées et retouches à la main"{% if vue.couche.value == 'date' and vue.affichage.value == 'semaine' %} class="actif" aria-current="page"{% endif %}>Semaine datée</a>
     {%- if vue.couche.value == 'hebdo' %}
-    <a href="{{ url_vue(affichage='jour', jour=vue.jour if vue.jour is not none else 0) }}"{% if vue.affichage.value == 'jour' %} class="actif" aria-current="page"{% endif %}>Jour</a>
+    {%- set jours = vue.jours|map(attribute="jour")|list %}
+    {%- set jour_vise = vue.jour if vue.jour is not none else (aujourdhui.weekday() if aujourdhui.weekday() in jours else jours|first|default(0)) %}
+    <a href="{{ url_vue(affichage='jour', jour=jour_vise) }}" class="edt-onglet-jour{% if vue.affichage.value == 'jour' %} actif{% endif %}"{% if vue.affichage.value == 'jour' %} aria-current="page"{% endif %}>Jour</a>
     {%- else %}
-    <a href="{{ url_vue(affichage='jour') }}"{% if vue.affichage.value == 'jour' %} class="actif" aria-current="page"{% endif %}>Jour</a>
+    <a href="{{ url_vue(affichage='jour') }}" class="edt-onglet-jour{% if vue.affichage.value == 'jour' %} actif{% endif %}"{% if vue.affichage.value == 'jour' %} aria-current="page"{% endif %}>Jour</a>
     {%- endif %}
   </nav>
 </div>
