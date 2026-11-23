@@ -2,8 +2,8 @@
 
 - `OPTIONS` : options de calcul des tests de service (30 s, graine 1, un fil, sans arrêt sur
   stagnation, critère qui lit l'horloge : résultat reproductible quelle que soit la charge) ;
-- `rendre_impossible`, `calcul_fictif`, `calcul_abandonne`, `etat`, `regles_du_jeu` : préparer
-  ou lire la base ;
+- `rendre_impossible`, `calcul_fictif`, `calcul_abandonne`, `calcul_impossible`, `etat`,
+  `regles_du_jeu` : préparer ou lire la base ;
 - `journalise` : enregistrements du journal capturés par `caplog`.
 """
 
@@ -24,13 +24,17 @@ from edt.solveur import OptionsSolveur
 OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1, arret_sur_stagnation=False)
 
 
-def rendre_impossible(semestre_id: int) -> None:
-    """Demande 60 séances par semaine à un groupe : aucune semaine ne peut les contenir."""
+def rendre_impossible(semestre_id: int) -> int:
+    """Demande 60 séances par semaine à un groupe : aucune semaine ne peut les contenir.
+
+    Renvoie l'identifiant du besoin modifié.
+    """
     with session_base() as session:
         besoin = session.scalar(
             select(m.Besoin).where(m.Besoin.mode_volume == ModeVolume.PAR_SEMAINE)
         )
         besoin.nombre = 60
+        return besoin.id
 
 
 def calcul_fictif(semestre_id: int, **champs) -> int:
@@ -63,6 +67,26 @@ def calcul_abandonne(semestre_id: int) -> int:
         demarre_le=dt.datetime(2026, 10, 5, 8, 0),
         statistiques={CLE_PROCESSUS: 999_999},
     )
+
+
+def calcul_impossible(semestre_id: int, **champs) -> int:
+    """Rend le semestre impossible (`rendre_impossible`) et inscrit un calcul terminé « impossible ».
+
+    Le calcul est inscrit tel quel, sans lancer le moteur ; `champs` remplace une colonne
+    (par défaut, statistiques `{"temoin": "garde"}`, pour vérifier qu'elles restent intactes).
+    """
+    rendre_impossible(semestre_id)
+    maintenant = dt.datetime.now()
+    valeurs = {
+        "etat": EtatCalcul.INFAISABLE,
+        "demarre_le": maintenant - dt.timedelta(seconds=2),
+        "termine_le": maintenant,
+        "duree_s": 2.0,
+        "statistiques": {"temoin": "garde"},
+        "message": "Aucun emploi du temps ne respecte toutes les règles.",
+        **champs,
+    }
+    return calcul_fictif(semestre_id, **valeurs)
 
 
 def etat(calcul_id: int) -> EtatCalcul:
