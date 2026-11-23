@@ -203,3 +203,36 @@ def test_diagnostic_d_un_identifiant_non_entier(jeu_minimal, client):
     reponse = client.post("/calculs/abc/diagnostic", follow_redirects=False)
 
     assert reponse.status_code == 404
+
+
+@pytest.mark.cas_limite
+def test_diagnostic_reserve_au_gestionnaire_quand_le_site_a_des_mots_de_passe(
+    semestre_bloque, monkeypatch
+):
+    """Cas : site protégé par mots de passe ; le diagnostic est demandé sans connexion, puis par
+    un compte de consultation, enfin par le gestionnaire.
+
+    Risque : un visiteur ou un lecteur lancerait 30 s de calcul sur le serveur et écrirait dans
+    le calcul ; ou le gestionnaire connecté ne pourrait plus lancer le diagnostic.
+    """
+    from fastapi.testclient import TestClient
+
+    from edt.web.app import creer_app
+
+    calcul_id = calcul_impossible(semestre_bloque)
+    monkeypatch.setenv("EDT_MDP_GESTION", "essai-gestion")
+    monkeypatch.setenv("EDT_MDP_CONSULTATION", "essai-consultation")
+    site = TestClient(creer_app(), follow_redirects=False)
+    adresse = f"/calculs/{calcul_id}/diagnostic"
+
+    anonyme = site.post(adresse)
+    assert anonyme.status_code == 303 and anonyme.headers["location"].startswith("/connexion")
+    assert site.post(adresse, headers=HX).status_code == 401
+
+    site.post("/connexion", data={"mot_de_passe": "essai-consultation", "suite": "/"})
+    assert site.post(adresse, headers=HX).status_code == 403
+    assert lire_diagnostic(calcul_id) is None
+
+    site.post("/connexion", data={"mot_de_passe": "essai-gestion", "suite": "/"})
+    assert site.post(adresse, headers=HX).status_code == 200
+    assert lire_diagnostic(calcul_id) is not None
