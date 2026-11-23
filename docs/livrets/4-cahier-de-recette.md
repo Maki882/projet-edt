@@ -420,7 +420,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 - La liste annonce « 6 salles. » ; triée par capacité, N016 passe avant N310 ; la recherche donne « 1 salle correspondant » ; le filtre ISSY, « 2 salles correspondant ».
 - Le message « Salle « N999 (NDC) » créée. » s'affiche ; la salle est enregistrée avec 30 places et 2 équipements.
-- La salle N016 a 150 places ; l'écran revient à la liste triée d'où l'on venait.
+- La salle N016 a 150 places ; l'écran revient à la liste triée d'origine.
 - Pour chaque sorte d'élément, la liste et le formulaire s'ouvrent et l'ajout affiche un message de création.
 - La durée du trajet passe de 60 à 45 ; l'arbre présente A1-G1 avant son demi-groupe A1-G1a et signale les groupes qui se chevauchent.
 
@@ -1162,7 +1162,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - L'étape 1 présente 14 types, dont l'exemple « Le groupe A1 ne travaille pas le samedi. ».
 - L'aperçu écrit « La classe A1-G2 a aussi cours le samedi. » ; la création affiche « Règle R005 créée » ; la règle est active, au niveau important.
 - La pause déjeuner est enregistrée pour 75 minutes au semestre 1 ; la règle de salles, avec les salles L115 et N310.
-- R002 est enregistrée avec ses nouvelles valeurs ; le retour se fait sur la liste d'où l'on venait.
+- R002 est enregistrée avec ses nouvelles valeurs ; le retour se fait sur la liste d'origine.
 
 **Remarque.** Le respect d'une règle par le calcul est prouvé de bout en bout pour le type « Jours travaillés » (REC-BOUT-4) ; les autres types sont couverts par les tests unitaires (section 7).
 
@@ -2352,7 +2352,7 @@ Correction : le nettoyage est isolé et journalise son propre échec (pull reque
 Constat : recharger (F5) la page de résultat d'un chargement d'établissement fictif renvoyait le
 formulaire, confirmation d'effacement comprise. Détection : relevé comme limite connue, puis
 repris dans l'inventaire des corrections. Correction : après l'envoi, la page redirige vers une
-adresse de résultat que l'on peut recharger sans effet (pull request n° 46, commit bf05ba7).
+adresse de résultat qui se recharge sans effet (pull request n° 46, commit bf05ba7).
 Non-régression : `integration/web_donnees/test_jeux.py::test_page_de_resultat_rechargee_sans_second_chargement`
 (fiche REC-O11-1).
 

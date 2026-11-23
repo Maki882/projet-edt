@@ -179,7 +179,7 @@ etapes = [
 attendu = [
   "La liste annonce « 6 salles. » ; triée par capacité, N016 passe avant N310 ; la recherche donne « 1 salle correspondant » ; le filtre ISSY, « 2 salles correspondant ».",
   "Le message « Salle « N999 (NDC) » créée. » s'affiche ; la salle est enregistrée avec 30 places et 2 équipements.",
-  "La salle N016 a 150 places ; l'écran revient à la liste triée d'où l'on venait.",
+  "La salle N016 a 150 places ; l'écran revient à la liste triée d'origine.",
   "Pour chaque sorte d'élément, la liste et le formulaire s'ouvrent et l'ajout affiche un message de création.",
   "La durée du trajet passe de 60 à 45 ; l'arbre présente A1-G1 avant son demi-groupe A1-G1a et signale les groupes qui se chevauchent.",
 ]
@@ -1004,7 +1004,7 @@ attendu = [
   "L'étape 1 présente 14 types, dont l'exemple « Le groupe A1 ne travaille pas le samedi. ».",
   "L'aperçu écrit « La classe A1-G2 a aussi cours le samedi. » ; la création affiche « Règle R005 créée » ; la règle est active, au niveau important.",
   "La pause déjeuner est enregistrée pour 75 minutes au semestre 1 ; la règle de salles, avec les salles L115 et N310.",
-  "R002 est enregistrée avec ses nouvelles valeurs ; le retour se fait sur la liste d'où l'on venait.",
+  "R002 est enregistrée avec ses nouvelles valeurs ; le retour se fait sur la liste d'origine.",
 ]
 tests = [
   "tests/integration/web_donnees/test_regles.py::test_choix_du_type_puis_formulaire_tire_du_schema",
