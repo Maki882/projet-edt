@@ -53,3 +53,44 @@ def test_valeurs_vides_ou_entourees_d_espaces():
         "DEBUG",
     )
     assert config.est_prod and config.db_url == DEFAUTS["EDT_DB_URL"]
+
+
+@pytest.mark.cas_limite
+@pytest.mark.parametrize(
+    ("gestion", "consultation", "variable"),
+    [
+        ("", "lecture-seule", "EDT_MDP_CONSULTATION"),
+        ("court", "", "EDT_MDP_GESTION"),
+        ("gestion-secrete", "court", "EDT_MDP_CONSULTATION"),
+        (" gestion-secrete", "", "EDT_MDP_GESTION"),
+        ("meme-mot-de-passe", "meme-mot-de-passe", "EDT_MDP_GESTION"),
+    ],
+)
+def test_mots_de_passe_d_acces_incoherents_refuses_sans_afficher_leur_valeur(
+    gestion, consultation, variable
+):
+    """Cas : mot de passe de consultation sans gestionnaire, trop court, entouré d'espaces, ou
+    identique pour les deux rôles.
+    Risque : site resté ouvert alors qu'on le croit protégé, consultation qui donne tous les
+    droits, ou mot de passe recopié dans le message d'erreur et donc dans le journal.
+    """
+    with pytest.raises(ErreurConfiguration) as capture:
+        charger_configuration(
+            {**DEFAUTS, "EDT_MDP_GESTION": gestion, "EDT_MDP_CONSULTATION": consultation}
+        )
+    message = str(capture.value)
+    assert variable in message
+    for secret in (gestion.strip(), consultation.strip()):
+        if secret:
+            assert secret not in message
+
+
+def test_sans_mot_de_passe_le_site_reste_ouvert_et_les_secrets_ne_s_affichent_pas():
+    ouvert = charger_configuration(DEFAUTS)
+    protege = charger_configuration(
+        {**DEFAUTS, "EDT_MDP_GESTION": "gestion-secrete", "EDT_MDP_CONSULTATION": "lecture-seule"}
+    )
+
+    assert not ouvert.comptes_actifs
+    assert protege.comptes_actifs
+    assert "gestion-secrete" not in repr(protege) and "lecture-seule" not in repr(protege)
