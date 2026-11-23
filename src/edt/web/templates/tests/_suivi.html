@@ -5,13 +5,18 @@
   composant et de la famille, arrivent remplacés à part (hx-swap-oob).
   Variables : t (TableauFamille), duree, oob (vrai dans la réponse au suivi), lignes_oob,
   fichiers_oob, composants_oob.
+  Repère `data-confettis` : posé seulement dans la réponse au suivi qui voit l'exécution finir
+  (issue « terminée », aucun échec, au moins un réussi) ; la page entière ne montre jamais une
+  exécution terminée par `s` (voir edt.services.banc_tests.tableau), donc un rechargement ne
+  le porte pas. Lu par static/js/confettis.js.
 #}
 {% import "macros.html" as ui %}
 {% import "tests/_macros.html" as banc with context %}
 {%- set s = t.suivi %}
 {%- set ISSUES = {"terminee": ("Terminée", "succes"), "arretee": ("Arrêtée", "attention"), "temps_depasse": ("Durée maximale atteinte", "attention"), "erreur": ("Erreur", "erreur"), "interrompue": ("Interrompue", "attention")} %}
 <section id="suivi-tests" class="carte banc-suivi" aria-live="polite" aria-labelledby="suivi-tests-titre"
-  {%- if s and s.en_cours %} hx-get="/tests/{{ t.famille }}/suivi?execution={{ s.id }}&amp;depuis={{ s.termines|length }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  {%- if s and s.en_cours %} hx-get="/tests/{{ t.famille }}/suivi?execution={{ s.id }}&amp;depuis={{ s.termines|length }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}
+  {%- if oob and s and s.issue == "terminee" and not s.compte("echec") and s.compte("reussi") %} data-confettis{% endif %}>
   {%- if s %}
   {%- set nb_echecs = s.compte("echec") %}
   <h2 id="suivi-tests-titre">Exécution : {{ s.libelle }}
