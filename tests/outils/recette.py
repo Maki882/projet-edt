@@ -28,8 +28,12 @@ désignée par son rôle (`--nom`).
 Verdict d'une fiche : « Non conforme » si l'un de ses tests a échoué dans une
 campagne ; sinon « Conforme » si chacun de ses tests a réussi dans au moins une
 campagne (un test ignoré sur un système, pour une raison de système, est dit
-avec sa raison) ; sinon « Non exécutée ». Une fiche d'essai manuel prend le
-verdict de son essai.
+avec sa raison) ; sinon « Non exécutée » (une seule règle : `verdict_des_tests`).
+Une fiche d'essai manuel prend aussi le verdict de son essai, le moins favorable
+l'emportant. Une fiche sans test ni essai est « Non exécutée », jamais
+« Conforme ». Une clé inconnue de `fiches.toml`, une exécution partielle donnée
+pour une campagne ou un état de test inconnu sont des erreurs qui disent quoi
+faire.
 
 Usage, depuis la racine du dépôt :
 
@@ -47,13 +51,14 @@ from __future__ import annotations
 import argparse
 import ast
 import datetime as dt
+import difflib
 import json
 import logging
 import re
 import sys
 import tomllib
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -231,6 +236,8 @@ class Fiche:
     tests: tuple[str, ...]
     remarque: str | None
     essai: EssaiManuel | None
+    anomalie: str | None = None
+    """Pour une fiche non conforme : l'anomalie de la section 6 qui la suit (« ANO-21 »)."""
 
     @property
     def famille(self) -> str:
@@ -254,6 +261,46 @@ class SansFiche:
     raison: str
 
 
+CLES_FICHE = frozenset(
+    {
+        "id",
+        "titre",
+        "fonctionnalites",
+        "cas",
+        "objectif",
+        "depart",
+        "etapes",
+        "attendu",
+        "tests",
+        "remarque",
+        "anomalie",
+        "essai",
+    }
+)
+"""Clés permises dans une table `[[fiche]]` de `fiches.toml`."""
+
+CLES_ESSAI = frozenset({"date", "environnement", "constat", "verdict", "reserve", "preuves"})
+"""Clés permises dans une table `[fiche.essai]`."""
+
+CLES_PREUVE = frozenset({"image", "legende"})
+"""Clés permises dans une preuve d'essai manuel."""
+
+CLES_SANS_FICHE = frozenset({"fonctionnalite", "raison"})
+"""Clés permises dans une table `[[sans_fiche]]`."""
+
+_ANOMALIE = re.compile(r"^ANO-\d+$")
+
+
+def _cles_connues(table: dict, permises: frozenset[str], ou: str) -> None:
+    """Lève `ErreurRecette` si la table porte une clé inconnue (faute de frappe, par exemple)."""
+    inconnues = sorted(set(table) - permises)
+    if inconnues:
+        raise ErreurRecette(
+            f"{FICHES.as_posix()} : {ou} : clé(s) inconnue(s) {', '.join(inconnues)} ; clés "
+            f"permises : {', '.join(sorted(permises))} (voir l'en-tête du fichier)"
+        )
+
+
 def _texte(table: dict, cle: str, ou: str, obligatoire: bool = True) -> str | None:
     valeur = table.get(cle)
     if valeur is None and not obligatoire:
@@ -275,6 +322,7 @@ def _essai(table: object, ou: str) -> EssaiManuel | None:
         return None
     if not isinstance(table, dict):
         raise ErreurRecette(f"{FICHES.as_posix()} : {ou} : « essai » doit être une table")
+    _cles_connues(table, CLES_ESSAI, f"{ou}, essai")
     date = table.get("date")
     if not isinstance(date, dt.date):
         raise ErreurRecette(f"{FICHES.as_posix()} : {ou} : date de l'essai absente (AAAA-MM-JJ)")
@@ -288,6 +336,7 @@ def _essai(table: object, ou: str) -> EssaiManuel | None:
     for preuve in table.get("preuves", []):
         if not isinstance(preuve, dict):
             raise ErreurRecette(f"{FICHES.as_posix()} : {ou} : preuve mal formée")
+        _cles_connues(preuve, CLES_PREUVE, f"{ou}, preuve")
         preuves.append((_texte(preuve, "image", ou), _texte(preuve, "legende", ou)))
     return EssaiManuel(
         date=date,
@@ -322,6 +371,12 @@ def lire_fiches(racine: Path) -> tuple[list[Fiche], list[SansFiche]]:
         if identifiant in vus:
             raise ErreurRecette(f"{FICHES.as_posix()} : {ou} : identifiant en double")
         vus.add(identifiant)
+        _cles_connues(table, CLES_FICHE, ou)
+        anomalie = _texte(table, "anomalie", ou, obligatoire=False)
+        if anomalie is not None and not _ANOMALIE.match(anomalie):
+            raise ErreurRecette(
+                f"{FICHES.as_posix()} : {ou} : anomalie « {anomalie} » : ANO-n attendu"
+            )
         fiche = Fiche(
             id=identifiant,
             titre=_texte(table, "titre", ou),
@@ -334,6 +389,7 @@ def lire_fiches(racine: Path) -> tuple[list[Fiche], list[SansFiche]]:
             tests=_liste(table, "tests", ou),
             remarque=_texte(table, "remarque", ou, obligatoire=False),
             essai=_essai(table.get("essai"), ou),
+            anomalie=anomalie,
         )
         if not fiche.etapes or not fiche.attendu:
             raise ErreurRecette(f"{FICHES.as_posix()} : {ou} : étapes ou résultat attendu vides")
@@ -344,6 +400,14 @@ def lire_fiches(racine: Path) -> tuple[list[Fiche], list[SansFiche]]:
                 "doit figurer dans « fonctionnalites »"
             )
         fiches.append(fiche)
+    for i, t in enumerate(donnees.get("sans_fiche", []), start=1):
+        _cles_connues(t, CLES_SANS_FICHE, f"sans_fiche n° {i}")
+    inconnues = sorted(set(donnees) - {"fiche", "sans_fiche"})
+    if inconnues:
+        raise ErreurRecette(
+            f"{FICHES.as_posix()} : table(s) inconnue(s) {', '.join(inconnues)} ; "
+            "tables permises : [[fiche]] et [[sans_fiche]]"
+        )
     sans_fiche = [
         SansFiche(
             _texte(t, "fonctionnalite", f"sans_fiche n° {i}"),
@@ -423,7 +487,7 @@ def lire_campagnes(racine: Path) -> list[Campagne]:
                     debut=dt.datetime.fromisoformat(brut["debut"]),
                     fin=dt.datetime.fromisoformat(brut["fin"]),
                     resultats={
-                        cle: Resultat(r["etat"], float(r["duree_s"]), r.get("raison"))
+                        cle: Resultat(_etat(r["etat"], cle), float(r["duree_s"]), r.get("raison"))
                         for cle, r in brut["resultats"].items()
                     },
                     ecartes=list(brut.get("ecartes", [])),
@@ -435,6 +499,17 @@ def lire_campagnes(racine: Path) -> list[Campagne]:
             "l'enregistrer de nouveau par --campagne"
         ) from erreur
     return campagnes
+
+
+ETATS = ("reussi", "echec", "ignore")
+"""États qu'un résultat de campagne peut prendre."""
+
+
+def _etat(etat: object, cle: str) -> str:
+    """L'état lu, ou `ValueError` s'il est inconnu."""
+    if etat not in ETATS:
+        raise ValueError(f"état inconnu « {etat} » pour {cle}")
+    return str(etat)
 
 
 def _neutraliser(texte: str | None) -> str | None:
@@ -481,13 +556,14 @@ def campagne_depuis_resultats(
             continue
         try:
             le = dt.datetime.fromisoformat(brut["le"])
-            etat = brut["etat"]
+            etat = _etat(brut["etat"], cle)
             duree = round(float(brut.get("duree_s") or 0.0), 3)
+            dans_l_execution = debut <= le <= fin
         except (ValueError, KeyError, TypeError) as erreur:
             raise ErreurRecette(
                 f"{fichier.name} : résultat de {cle} illisible ({erreur})"
             ) from erreur
-        if not debut <= le <= fin:
+        if not dans_l_execution:
             ecartes.append(
                 {
                     "test": cle,
@@ -498,12 +574,24 @@ def campagne_depuis_resultats(
             continue
         raison = _neutraliser(brut.get("raison")) if etat == "ignore" else None
         resultats[cle] = Resultat(etat, duree, raison)
+    remede = "relancer `python -m edt tests --famille integration`"
     if not resultats:
         raise ErreurRecette(
-            f"{fichier.name} : aucun test d'intégration dans l'exécution enregistrée"
+            f"{fichier.name} : aucun test d'intégration dans l'exécution enregistrée : {remede}"
         )
-    for e in ecartes:
-        logger.warning("Entrée écartée : %s (%s, %s)", e["test"], e["le"], e["motif"])
+    if derniere.get("famille") != "integration" or derniere.get("nb_tests") != len(resultats):
+        raise ErreurRecette(
+            f"{fichier.name} : la dernière exécution est « {derniere.get('libelle')} » "
+            f"({derniere.get('nb_tests')} tests), pas toute la famille des tests d'intégration "
+            f"({len(resultats)} résultats datés de l'exécution) : {remede}"
+        )
+    if ecartes:
+        logger.warning(
+            "%d entrée(s) écartée(s) du fichier de résultats, dont %s (%s)",
+            len(ecartes),
+            ecartes[0]["test"],
+            ecartes[0]["motif"],
+        )
     return Campagne(nom, systeme, python, processeurs, version, debut, fin, resultats, ecartes)
 
 
@@ -673,27 +761,26 @@ def obtenus(fiche: Fiche, campagnes: list[Campagne]) -> list[Obtenu]:
 
 def verdict(fiche: Fiche, campagnes: list[Campagne]) -> str:
     """Verdict de la fiche (règle en tête du module)."""
-    verdicts = []
-    if fiche.tests:
-        if any(
-            c.resultats.get(t, Resultat("", 0)).etat == "echec"
-            for c in campagnes
-            for t in fiche.tests
-        ):
-            verdicts.append(NON_CONFORME)
-        elif all(
-            any(c.resultats.get(t, Resultat("", 0)).etat == "reussi" for c in campagnes)
-            for t in fiche.tests
-        ):
-            verdicts.append(CONFORME)
-        else:
-            verdicts.append(NON_EXECUTEE)
+    verdicts = [verdict_des_tests(fiche.tests, campagnes)] if fiche.tests else []
     if fiche.essai is not None:
         verdicts.append(fiche.essai.verdict)
-    for possible in (NON_CONFORME, NON_EXECUTEE):
-        if possible in verdicts:
-            return possible
-    return CONFORME
+    # Sans test ni essai, la liste est vide : « Non exécutée », jamais « Conforme ».
+    return _pire(verdicts)
+
+
+def verdict_des_tests(tests: Iterable[str], campagnes: list[Campagne]) -> str:
+    """Règle unique du verdict d'un ensemble de tests : un échec dans une campagne donne
+    « Non conforme » ; sinon chaque test réussi dans au moins une campagne donne « Conforme » ;
+    sinon « Non exécutée ». Un ensemble vide est « Non exécutée »."""
+    tests = list(tests)
+    if not tests:
+        return NON_EXECUTEE
+    etats = [[c.resultats[t].etat for c in campagnes if t in c.resultats] for t in tests]
+    if any("echec" in e for e in etats):
+        return NON_CONFORME
+    if all("reussi" in e for e in etats):
+        return CONFORME
+    return NON_EXECUTEE
 
 
 def _pire(verdicts: list[str]) -> str:
@@ -745,7 +832,16 @@ def produire_synthese(recette: Recette) -> str:
     lignes: list[str] = []
     if not recette.campagnes:
         return "Aucune campagne enregistrée.\n"
+    charge = sum(len(f.charge) for f in recette.fichiers.values())
     lignes += [
+        f"Le dépôt compte {_pluriel(len(recette.tests), 'fonction')} de test d'intégration ; les "
+        f"campagnes en exécutent {len(recette.tests) - charge}, "
+        + (
+            f"les {_pluriel(charge, 'test')} de charge se lançant à part."
+            if charge > 1
+            else f"{_pluriel(charge, 'test')} de charge se lançant à part."
+        ),
+        "",
         "| Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |",
         "|---|---|---|---|---:|---:|---:|---:|---:|",
     ]
@@ -843,6 +939,21 @@ def produire_synthese(recette: Recette) -> str:
         f"({_pourcentage(len(cites), total_tests)}) ; les autres figurent à l'annexe B, "
         "rangés par fichier.",
     ]
+    non_conformes = [f for f in recette.fiches if verdict(f, recette.campagnes) == NON_CONFORME]
+    if non_conformes:
+        details = [
+            f"{f.id}, « {f.titre} »"
+            + (f", suivie par l'anomalie {f.anomalie} (section 6)" if f.anomalie else "")
+            for f in non_conformes
+        ]
+        lignes += [
+            "",
+            f"**{'Fiche non conforme' if len(details) == 1 else 'Fiches non conformes'}.** "
+            + " ; ".join(details)
+            + ". Le verdict d'ensemble est donné à la section 8.",
+        ]
+    else:
+        lignes += ["", "Aucune fiche non conforme. Le verdict d'ensemble est donné à la section 8."]
     return "\n".join(lignes) + "\n"
 
 
@@ -935,10 +1046,15 @@ def titre_de_fiche(fiche: Fiche) -> str:
     return f"{fiche.id}. {fiche.titre}"
 
 
+def _insecable(identifiant: str) -> str:
+    """Identifiant à traits d'union insécables (U+2011) : il ne se coupe pas à l'impression."""
+    return identifiant.replace("-", "\u2011")
+
+
 def lien_de_fiche(fiche: Fiche) -> str:
     """Lien du tableau vers la fiche détaillée ; ses tirets insécables gardent l'identifiant sur
     une ligne à l'impression."""
-    identifiant = fiche.id.replace("-", "‑")
+    identifiant = _insecable(fiche.id)
     return f"[{identifiant}](#{ancre(titre_de_fiche(fiche))})"
 
 
@@ -1020,7 +1136,7 @@ def produire_matrice(recette: Recette) -> str:
         else:
             etat = "Sans fiche (section 7)" if f.code in declarees else "**Sans fiche**"
         lignes.append(
-            f"| {f.code} | {_cellule(f.libelle)} | {', '.join(x.id for x in fiches) or '—'} | "
+            f"| {f.code} | {_cellule(f.libelle)} | {', '.join(_insecable(x.id) for x in fiches) or '—'} | "
             f"{len(tests)} | {etat} |"
         )
     exploitation = [x for x in recette.fiches if not x.fonctionnalites]
@@ -1029,11 +1145,11 @@ def produire_matrice(recette: Recette) -> str:
         etat = _pire([verdict(x, recette.campagnes) for x in exploitation])
         lignes.append(
             f"| — | Exploitation et robustesse (hors livret 1) | "
-            f"{', '.join(x.id for x in exploitation)} | {len(tests)} | {etat} |"
+            f"{', '.join(_insecable(x.id) for x in exploitation)} | {len(tests)} | {etat} |"
         )
     lignes += ["", "| Cas d'usage du livret 1 | Fiches |", "|---|---|"]
     for numero, titre in sorted(recette.cas.items()):
-        fiches = [x.id for x in recette.fiches if numero in x.cas]
+        fiches = [_insecable(x.id) for x in recette.fiches if numero in x.cas]
         lignes.append(f"| Cas {numero}. {_cellule(titre)} | {', '.join(fiches) or '—'} |")
     return "\n".join(lignes) + "\n"
 
@@ -1058,20 +1174,25 @@ def produire_bilan(recette: Recette) -> str:
     lignes = []
     for c in recette.campagnes:
         lignes.append(
-            f"- {c.nom}, {_date(c.debut)} : {len(c.resultats)} tests d'intégration exécutés, "
-            f"{c.compte('reussi')} réussis, {_pluriel(c.compte('echec'), 'échec')}, "
+            f"- {c.nom}, {_date(c.debut)} : "
+            + _pluriel(
+                len(c.resultats), "test d'intégration exécuté", "tests d'intégration exécutés"
+            )
+            + ", "
+            f"{_pluriel(c.compte('reussi'), 'réussi')}, {_pluriel(c.compte('echec'), 'échec')}, "
             f"{_pluriel(c.compte('ignore'), 'ignoré')}."
         )
     realisees = recette.realisees
     couvertes = {code for f in recette.fiches for code in f.fonctionnalites}
     lignes.append(
-        f"- {len(recette.fiches)} fiches : "
+        f"- {_pluriel(len(recette.fiches), 'fiche')} : "
         + ", ".join(f"{verdicts[v]} « {v} »" for v in VERDICTS)
         + "."
     )
     lignes.append(
-        f"- {sum(f.code in couvertes for f in realisees)} fonctionnalités réalisées sur "
-        f"{len(realisees)} ont au moins une fiche"
+        f"- {sum(f.code in couvertes for f in realisees)} sur "
+        f"{_pluriel(len(realisees), 'fonctionnalité réalisée', 'fonctionnalités réalisées')} "
+        "ont au moins une fiche"
         + (
             f" ; {_pluriel(len(recette.sans_fiche), 'est déclarée', 'sont déclarées')} sans fiche "
             "(section 7)."
@@ -1084,10 +1205,7 @@ def produire_bilan(recette: Recette) -> str:
 
 def produire_annexe(recette: Recette) -> str:
     """Annexe B : chaque fichier de tests d'intégration, ses nombres et son verdict."""
-    cites: Counter[str] = Counter()
-    for fiche in recette.fiches:
-        for t in set(fiche.tests):
-            cites[t] += 1
+    cites = {t for f in recette.fiches for t in f.tests}
     entetes = " | ".join(c.nom for c in recette.campagnes)
     lignes = [
         "Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée des tests. "
@@ -1119,21 +1237,12 @@ def produire_annexe(recette: Recette) -> str:
                     texte += f", {ignores} ignoré" + ("s" if ignores > 1 else "")
                 cellules.append(texte)
             executables = [t for t in f.tests if t not in f.charge]
-            if any(
-                c.resultats.get(t, Resultat("", 0)).etat == "echec"
-                for c in recette.campagnes
-                for t in f.tests
-            ):
-                etat = NON_CONFORME
-            elif not executables:
+            if not executables:
                 etat = "Charge, lancé à part"
-            elif all(
-                any(c.resultats.get(t, Resultat("", 0)).etat == "reussi" for c in recette.campagnes)
-                for t in executables
-            ):
-                etat = CONFORME + (f" ({len(f.charge)} charge)" if f.charge else "")
             else:
-                etat = NON_EXECUTEE
+                etat = verdict_des_tests(executables, recette.campagnes)
+                if etat == CONFORME and f.charge:
+                    etat += f" ({len(f.charge)} charge)"
             description = _cellule(f.description or "docstring de module absente")
             lignes.append(
                 f"| **{nom}** : {description} | {len(f.tests)} | "
@@ -1201,9 +1310,13 @@ def blocs_perimes(document: str, recette: Recette) -> list[str]:
         attendue = produire(recette)
         if actuelle == attendue:
             continue
-        lignes_actuelles, lignes_attendues = set(actuelle.splitlines()), attendue.splitlines()
-        ecarts = [f"(attendu) {x}" for x in lignes_attendues if x not in lignes_actuelles]
-        ecarts += [f"(en trop) {x}" for x in sorted(lignes_actuelles - {*lignes_attendues})]
+        ecarts = [
+            ligne
+            for ligne in difflib.unified_diff(
+                actuelle.splitlines(), attendue.splitlines(), lineterm="", n=0
+            )
+            if ligne[:1] in "+-" and ligne[:3] not in ("+++", "---")
+        ]
         perimes.append(
             f"bloc « {nom} » périmé ; premiers écarts :\n"
             + "\n".join(f"    {x[:160]}" for x in ecarts[:8])
@@ -1216,16 +1329,18 @@ def bilan(recette: Recette) -> str:
     verdicts = Counter(verdict(f, recette.campagnes) for f in recette.fiches)
     cites = {t for f in recette.fiches for t in f.tests}
     lignes = [
-        f"{len(recette.fiches)} fiches : "
+        f"{_pluriel(len(recette.fiches), 'fiche')} : "
         + ", ".join(f"{verdicts[v]} {v.lower()}" for v in VERDICTS),
-        f"{len(cites)} tests cités sur {len(recette.tests)} tests d'intégration "
-        f"({len(recette.fichiers)} fichiers)",
+        f"{_pluriel(len(cites), 'test cité', 'tests cités')} sur "
+        f"{_pluriel(len(recette.tests), 'test')} d'intégration "
+        f"({_pluriel(len(recette.fichiers), 'fichier')})",
     ]
     for c in recette.campagnes:
         lignes.append(
-            f"campagne « {c.nom} » du {_date(c.debut)} : {len(c.resultats)} tests, "
-            f"{c.compte('reussi')} réussis, {c.compte('echec')} échecs, {c.compte('ignore')} ignorés, "
-            f"{len(c.ecartes)} entrée(s) écartée(s)"
+            f"campagne « {c.nom} » du {_date(c.debut)} : {_pluriel(len(c.resultats), 'test')}, "
+            f"{_pluriel(c.compte('reussi'), 'réussi')}, {_pluriel(c.compte('echec'), 'échec')}, "
+            f"{_pluriel(c.compte('ignore'), 'ignoré')}, "
+            f"{_pluriel(len(c.ecartes), 'entrée écartée', 'entrées écartées')}"
         )
     for nom, tests in resultats_disparus(recette).items():
         lignes.append(f"campagne « {nom} » : {len(tests)} test(s) disparu(s) du dépôt (signalés)")
@@ -1268,11 +1383,15 @@ def main(argv: list[str] | None = None) -> int:
                 options.processeurs,
                 options.version,
             )
-            campagnes = [c for c in lire_campagnes(racine) if c.nom != nouvelle.nom]
-            remplacee = len(campagnes) < len(lire_campagnes(racine))
-            campagnes.append(nouvelle)
+            campagnes = lire_campagnes(racine)
+            rang = next((i for i, c in enumerate(campagnes) if c.nom == nouvelle.nom), None)
+            remplacee = rang is not None
+            if rang is not None:
+                campagnes[rang] = nouvelle  # garde sa place : l'ordre des colonnes ne change pas
+            else:
+                campagnes.append(nouvelle)
             ecrire_campagnes(racine, campagnes)
-            logger.info("Campagne %s enregistrée dans %s", nouvelle.nom, CAMPAGNES)
+            logger.info("Campagne %s enregistrée dans %s", nouvelle.nom, CAMPAGNES.as_posix())
             print(
                 f"{CAMPAGNES.as_posix()} : campagne « {nouvelle.nom} » "
                 f"{'remplacée' if remplacee else 'ajoutée'} ({len(nouvelle.resultats)} tests, "
