@@ -1,7 +1,8 @@
 """Section « Diagnostic » de la page d'un calcul : présence, bouton, fragment rendu, erreurs.
 
-Requêtes HTTP au serveur de test, sur le jeu minimal rendu impossible (`calcul_impossible` : un
-calcul « impossible » inscrit tel quel). Le diagnostic tourne pour de vrai, avec le budget de la
+Requêtes HTTP au serveur de test, sur le jeu minimal rendu impossible (`semestre_bloque` :
+l'enseignante d'anglais absente tous les jours ; `calcul_impossible` : un calcul « impossible »
+inscrit tel quel). Le diagnostic tourne pour de vrai, avec le budget de la
 page. Les textes comparés sont ceux du contrat entre le calcul et les écrans (PLAN P9, §1 et §4).
 """
 
@@ -11,8 +12,13 @@ import datetime as dt
 import html
 
 import pytest
-from sqlalchemy import select
-from tests.outils.solveur.en_base import calcul_fictif, calcul_impossible
+from sqlalchemy import delete
+from tests.outils.solveur.en_base import (
+    MOTIF_BLOCAGE,
+    bloquer_un_enseignant,
+    calcul_fictif,
+    calcul_impossible,
+)
 from tests.outils.web_edt.aides import HX
 
 from edt.db import modeles as m
@@ -30,6 +36,13 @@ LIBELLES_STATUT = {
 }
 
 
+@pytest.fixture
+def semestre_bloque(jeu_minimal) -> int:
+    """Semestre du jeu minimal rendu impossible : l'enseignante d'anglais absente tous les jours."""
+    bloquer_un_enseignant(jeu_minimal.semestre_id)
+    return jeu_minimal.semestre_id
+
+
 def _texte(reponse) -> str:
     """Texte de la réponse, entités HTML décodées (« n&#39;est » devient « n'est »)."""
     return html.unescape(reponse.text)
@@ -44,8 +57,8 @@ def _section_presente(page: str) -> bool:
 # --------------------------------------------------------------------------- #
 
 
-def test_section_presente_sur_un_calcul_impossible(jeu_minimal, client):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+def test_section_presente_sur_un_calcul_impossible(semestre_bloque, client):
+    calcul_id = calcul_impossible(semestre_bloque)
 
     reponse = client.get(f"/calculs/{calcul_id}")
 
@@ -84,8 +97,8 @@ def test_section_absente_sur_un_calcul_ni_impossible_ni_reussi(jeu_minimal, clie
 # --------------------------------------------------------------------------- #
 
 
-def test_bouton_rend_le_fragment_du_diagnostic(jeu_minimal, client):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+def test_bouton_rend_le_fragment_du_diagnostic(semestre_bloque, client):
+    calcul_id = calcul_impossible(semestre_bloque)
 
     reponse = client.post(f"/calculs/{calcul_id}/diagnostic", headers=HX)
 
@@ -106,8 +119,8 @@ def test_bouton_rend_le_fragment_du_diagnostic(jeu_minimal, client):
         assert "peut-être pas le plus petit" in fragment and "--temps 600" in fragment
 
 
-def test_diagnostic_reaffiche_a_l_ouverture_de_la_page(jeu_minimal, client):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+def test_diagnostic_reaffiche_a_l_ouverture_de_la_page(semestre_bloque, client):
+    calcul_id = calcul_impossible(semestre_bloque)
 
     reponse = client.post(f"/calculs/{calcul_id}/diagnostic", follow_redirects=False)
 
@@ -121,15 +134,15 @@ def test_diagnostic_reaffiche_a_l_ouverture_de_la_page(jeu_minimal, client):
 
 
 @pytest.mark.cas_limite
-def test_donnees_corrigees_depuis_le_calcul_le_fragment_le_dit(jeu_minimal, client):
+def test_donnees_corrigees_depuis_le_calcul_le_fragment_le_dit(semestre_bloque, client):
     """Cas : la donnée fautive est corrigée après le calcul ; diagnostic lancé depuis la page.
 
     Risque : la page montrerait des listes vides comme un ensemble trouvé, ou des causes qui
     n'existent plus, au lieu de dire que le calcul n'est plus impossible.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(semestre_bloque)
     with session_base() as session:
-        session.scalar(select(m.Besoin).where(m.Besoin.nombre == 60)).nombre = 1
+        session.execute(delete(m.Indisponibilite).where(m.Indisponibilite.motif == MOTIF_BLOCAGE))
 
     fragment = _texte(client.post(f"/calculs/{calcul_id}/diagnostic", headers=HX))
 

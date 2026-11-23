@@ -26,6 +26,7 @@ from tests.outils.solveur.fabrique import (
 )
 from tests.outils.solveur.generateur import generer
 
+from edt.domaine.contraintes import CodeContrainte, niveaux_par_defaut
 from edt.domaine.enumerations import ModeVolume
 from edt.erreurs import ErreurDonneesInvalides
 from edt.solveur import ResultatSolveur, StatutSolveur, resoudre
@@ -686,3 +687,101 @@ def test_salles_interrompues_le_message_donne_la_duree_reelle(monkeypatch):
     attendu = "moins d'une seconde" if duree < 1 else f"en {round(duree)} s"
     assert attendu in resultat.message, resultat.message
     assert "salles" in resultat.message
+
+
+def _construction_longue():
+    """Un groupe à 32 séances sur deux campus, horaires de la grille ignorés.
+
+    Sans la contrainte des horaires, chaque séance peut commencer à toute heure du jour : l'étape
+    des pauses et des trajets examine des milliers de couples de débuts. Sur le moteur qui ne
+    s'interrompait qu'entre deux étapes, la construction seule dure une quinzaine de secondes.
+    """
+    f = Fabrique()
+    nord, sud = f.campus(), f.campus()
+    f.trajet(nord, sud, 60)
+    classe = f.groupe("A1")
+    for campus in (nord, nord, sud):
+        f.salle(campus=campus)
+    f.besoin([classe], [f.enseignant()], nombre=30)
+    f.besoin([classe], [f.enseignant()], nombre=2)
+    sans_horaires = {
+        code: niveau
+        for code, niveau in niveaux_par_defaut().items()
+        if code is not CodeContrainte.HORAIRES
+    }
+    return f.instantane(), sans_horaires
+
+
+MARGE_INTERRUPTION_S = 3.0
+"""Temps toléré entre l'échéance (temps limite ou arrêt) et le retour du moteur."""
+
+
+@pytest.mark.cas_limite
+def test_temps_limite_tenu_pendant_une_construction_longue():
+    """Cas : temps limite d'1 s sur un problème dont la construction du modèle dure bien plus.
+
+    Risque : le moteur ne regarde l'horloge qu'entre deux étapes de construction ; il rend la main
+    des dizaines de secondes après son temps limite, et le diagnostic d'un calcul impossible, qui
+    enchaîne des essais courts, dépasse son budget (décision D4).
+    """
+    instantane, niveaux = _construction_longue()
+    debut = time.perf_counter()
+
+    resultat = resoudre(instantane, options(temps_limite_s=1, niveaux=niveaux))
+
+    ecoule = time.perf_counter() - debut
+    assert resultat.statut is StatutSolveur.TEMPS_DEPASSE, resultat.message
+    assert ecoule <= 1 + MARGE_INTERRUPTION_S, (
+        f"rendu en {ecoule:.1f} s pour un temps limite de 1 s"
+    )
+
+
+class _EtapeVue(logging.Handler):
+    """Lève un événement quand la construction du modèle journalise la fin d'une étape."""
+
+    def __init__(self, etape: str) -> None:
+        super().__init__(logging.DEBUG)
+        self.etape = etape
+        self.vue = threading.Event()
+
+    def emit(self, record: logging.LogRecord) -> None:
+        if record.getMessage().startswith(f"Étape {self.etape} :"):
+            self.vue.set()
+
+
+@pytest.mark.cas_limite
+def test_arret_tenu_pendant_une_construction_longue(caplog):
+    """Cas : arrêt demandé pendant la construction d'un modèle long (temps limite de 60 s).
+
+    Risque : le bouton « Arrêter » ou la fin d'un diagnostic n'agit qu'après la construction ;
+    le calcul reste « en cours » des dizaines de secondes de plus (décision D4).
+    """
+    instantane, niveaux = _construction_longue()
+    # L'étape longue (pauses et trajets) suit la séparation des personnes : l'arrêt est demandé
+    # une fois celle-ci journalisée, pendant l'étape longue et non entre deux étapes.
+    caplog.set_level(logging.DEBUG, logger="edt.solveur.modele")
+    guetteur = _EtapeVue("separer_les_personnes")
+    logging.getLogger("edt.solveur.modele").addHandler(guetteur)
+    arret = threading.Event()
+    resultats: list[ResultatSolveur] = []
+    fil = threading.Thread(
+        target=lambda: resultats.append(
+            resoudre(instantane, options(temps_limite_s=60, niveaux=niveaux), arret=arret)
+        ),
+        daemon=True,
+    )
+    fil.start()
+    try:
+        assert guetteur.vue.wait(20), "la construction du modèle n'a pas atteint l'étape longue"
+        time.sleep(0.5)  # l'étape longue est en route (elle dure bien plus sans interruption)
+        arret.set()
+        demande = time.perf_counter()
+        fil.join(60)
+    finally:
+        arret.set()
+        logging.getLogger("edt.solveur.modele").removeHandler(guetteur)
+
+    ecoule = time.perf_counter() - demande
+    assert not fil.is_alive(), "le moteur n'a pas rendu la main en 60 s"
+    assert resultats[0].statut is StatutSolveur.ARRETE, resultats[0].message
+    assert ecoule <= MARGE_INTERRUPTION_S, f"arrêt pris en compte {ecoule:.1f} s après la demande"

@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 566 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 20 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `solveur/test_diagnostic.py::test_calcul_et_second_diagnostic_refuses_pendant_un_diagnostic`, `solveur/test_diagnostic.py::test_commande_affiche_le_diagnostic`, `solveur/test_diagnostic.py::test_commande_calcul_introuvable`, `solveur/test_diagnostic.py::test_commande_sans_aucun_calcul`, `solveur/test_diagnostic.py::test_commande_sans_identifiant_diagnostique_le_dernier_calcul`, `solveur/test_diagnostic.py::test_commande_sur_un_dernier_calcul_reussi`, `solveur/test_diagnostic.py::test_commande_temps_hors_bornes`, `solveur/test_diagnostic.py::test_commande_temps_non_numerique`, `solveur/test_diagnostic.py::test_diagnostic_d_un_calcul_refuse_par_les_verifications_prealables`, `solveur/test_diagnostic.py::test_diagnostic_refuse_pendant_un_calcul`, `web_edt/test_diagnostic.py::test_bouton_rend_le_fragment_du_diagnostic`, `web_edt/test_diagnostic.py::test_diagnostic_d_un_calcul_introuvable`, `web_edt/test_diagnostic.py::test_diagnostic_d_un_calcul_reussi_refuse_proprement`, `web_edt/test_diagnostic.py::test_diagnostic_d_un_identifiant_non_entier`, `web_edt/test_diagnostic.py::test_diagnostic_reaffiche_a_l_ouverture_de_la_page`, `web_edt/test_diagnostic.py::test_donnees_corrigees_depuis_le_calcul_le_fragment_le_dit`, `web_edt/test_diagnostic.py::test_section_absente_sur_un_calcul_ni_impossible_ni_reussi`, `web_edt/test_diagnostic.py::test_section_absente_sur_un_calcul_reussi`, `web_edt/test_diagnostic.py::test_section_presente_sur_un_calcul_impossible` (non exécutés dans les campagnes).
+Le dépôt compte 553 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 7 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -237,14 +237,14 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
 | `socle` | 79 | 0 | 68 | 79 | 79 |
-| `solveur` | 64 | 1 | 26 | 53 | 53 |
+| `solveur` | 54 | 1 | 26 | 53 | 53 |
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
-| `web_edt` | 152 | 0 | 113 | 143 | 143 |
-| **Total** | **566** | **4** | **407** | **542** | **540** |
+| `web_edt` | 149 | 0 | 113 | 143 | 143 |
+| **Total** | **553** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 566 tests d'intégration du dépôt (71,9 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 553 tests d'intégration du dépôt (73,6 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -2083,7 +2083,7 @@ traiter ».
 **Résultat attendu.**
 
 - Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.
-- La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).
+- Jusqu'à 58rem, le menu et les filtres du planning se replient et la sous-navigation défile horizontalement. Jusqu'à 64rem, le panneau de la séance s'affiche sous la grille.
 
 **Remarque.** Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2.
 
@@ -2609,7 +2609,6 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_diagnostic.py** : Diagnostic d'un calcul impossible face aux calculs, et commande « diagnostiquer » | 10 | 0 | 0/10, 0 s | 0/10, 0 s | Non exécuté dans les campagnes |
 | **test_niveaux.py** : Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 | 3 | 6/6, 3 s | 6/6, 2 s | Conforme |
 | **test_regles.py** : Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 | 1 | 3/3, 2 s | 3/3, 1 s | Conforme |
 | **test_services.py** : Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 | 22 | 44/45, 22 s | 44/45, 12 s | Conforme (1 charge) |
@@ -2650,12 +2649,12 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 3 s | 6/6, 6 s | Conforme |
+| **test_acces.py** : Accès au site par mot de passe : connexion, droits de la consultation, site ouvert par défaut | 6 | 0 | 0/6, 0 s | 0/6, 0 s | Non exécuté dans les campagnes |
 | **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 8 s | Conforme |
 | **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 16 s | 26/26, 25 s | Conforme |
 | **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 30 s | 25/25, 16 s | Conforme |
 | **test_dejeuner.py** : Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 | 8 | 8/8, 4 s | 8/8, 2 s | Conforme |
 | **test_deplacement_possible.py** : Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 4 | 4 | 4/4, 47 s | 4/4, 21 s | Conforme |
-| **test_diagnostic.py** : Section « Diagnostic » de la page d'un calcul : présence, bouton, fragment rendu, erreurs | 9 | 0 | 0/9, 0 s | 0/9, 0 s | Non exécuté dans les campagnes |
 | **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 21 s | 20/20, 11 s | Conforme |
 | **test_niveaux_web.py** : Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 | 6 | 11/11, 5 s | 11/11, 3 s | Conforme |
 | **test_raccords.py** : Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |

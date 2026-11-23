@@ -112,10 +112,11 @@ src/edt/
     dependances.py             SessionRequete, transaction des requêtes d'écriture
     gabarits.py, menu.py       rendre(), rediriger(), filtres ; entrées de menu
     intergiciels.py, erreurs.py  identifiant et journal des requêtes ; erreurs -> pages
+    acces.py                   accès par mot de passe (gestion, consultation), facultatif
     donnees/                   écrans génériques des données, formulaire des règles
     routes/                    un module par écran (accueil, données, Générer,
                                Emploi du temps, Points à traiter, import et
-                               export, assistant, tests)
+                               export, assistant, tests, connexion)
     templates/, static/        gabarits Jinja2 ; CSS, JavaScript, HTMX embarqué
 tests/                         unitaires/, integration/, outils/ : voir tests/README.md
 ```
@@ -133,6 +134,15 @@ utilisables telles quelles (`edt.config.charger_configuration()`).
 | `EDT_PORT` | `8000` | port d'écoute |
 | `EDT_ENV` | `dev` | `dev` ou `prod` (en `prod`, `/docs` est désactivé) |
 | `EDT_LOG_LEVEL` | `INFO` | niveau de journalisation |
+| `EDT_MDP_GESTION` | (vide) | mot de passe de gestion ; vide = site ouvert, sans connexion |
+| `EDT_MDP_CONSULTATION` | (vide) | mot de passe de consultation, en lecture seule (facultatif) |
+
+Les deux mots de passe sont des secrets : au moins 8 caractères, différents,
+jamais dans le dépôt ni dans `edt.env` (sur le serveur : `/etc/edt/comptes.env`,
+voir [deploiement.md](deploiement.md), section 14). Le rôle reconnu est gardé
+dans un cookie signé ; `edt.web.acces.IntergicielAcces` applique les droits
+avant toute route, et un écran nouveau reste réservé à la gestion tant qu'il
+n'est pas ajouté à `autorise_en_consultation`.
 
 Une valeur invalide lève `ErreurConfiguration` : jamais de repli silencieux.
 `EDT_PORT` est un entier de 1 à 65535 en chiffres ASCII, `EDT_HOST` une

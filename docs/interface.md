@@ -69,8 +69,9 @@ Chaque écran se range dans un onglet par la `section` de son entrée de menu
   « Tests d'intégration »), visible sur toutes les pages.
 - L'onglet actif est celui dont une entrée correspond à l'adresse affichée
   (l'entrée `/salles` couvre aussi `/salles/12`).
-- Sur un écran étroit, les six onglets passent sur deux rangées : aucun
-  n'est caché.
+- Sur un écran étroit, le bouton « Menu » ouvre les six onglets. Les pages
+  d'un onglet restent accessibles par sa sous-navigation défilante. Sans
+  JavaScript, les onglets sont visibles dès l'ouverture de la page.
 
 ```python
 # src/edt/web/routes/calculs.py
@@ -600,7 +601,7 @@ test en cours), ses fichiers et ses tests.
 - **Après une exécution**, la page s'appuie sur l'historique enregistré, pas
   sur l'exécution gardée en mémoire : des résultats écrits ensuite par la
   commande `edt tests` s'affichent aussitôt.
-- **Limite connue** : sans écran de connexion, tout visiteur peut arrêter
+- **Limite connue** : sans accès par mot de passe (`edt.web.acces`), tout visiteur peut arrêter
   l'exécution lancée par un autre (bouton « Arrêter l'exécution »).
 - **Où vit la logique** : `edt.services.banc_tests` (catalogue lu par `ast`,
   exécution dans un sous-processus pytest, greffon, résultats, tableau d'une

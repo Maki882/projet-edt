@@ -20,8 +20,10 @@ référentiel). Il complète le livret 1, [Spécifications fonctionnelles](1-spe
 qui décrit l'application du point de vue de l'utilisateur, le livret 3,
 [guide de l'utilisateur](3-guide-utilisateur.md), et le livret 4,
 [cahier de recette](4-cahier-de-recette.md), qui présente la recette par les tests
-d'intégration. Les chiffres cités sont mesurés sur la
-branche principale à la version 1.0.0 de l'application (16 novembre 2026).
+d'intégration. Les chiffres de la partie 1 sont mesurés sur la
+branche principale à la version 1.0.0 de l'application (16 novembre 2026) ; ceux de la partie 2
+qui portent sur l'historique Git et sur GitHub (commits, comptes, pull requests, issues) sont
+mesurés le 23 novembre 2026, au commit `dd7a404` de la branche principale.
 
 ---
 
@@ -333,10 +335,12 @@ dépôt (discussions, décisions en séance, relectures orales) n'y figure pas.
 
 | Membre | Compte GitHub | Contributions visibles dans l'historique |
 |---|---|---|
-| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 52 des 53 pull requests ; 812 des 820 commits de la branche principale (code, tests, documentation, déploiement). 680 des 820 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
+| Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 54 des 56 pull requests fusionnées ; 859 des 871 commits de la branche principale (code, tests, documentation, déploiement). 720 des 871 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
 | Hugo | HugoLec94 | Premier vérificateur de conflits du planning et ses tests, versé par la première pull request ; il a ensuite été généralisé dans le vérificateur actuel. |
 | Kerime | kerime-2 | Réponses au questionnaire de cadrage (deux commits). |
 | — | `dzzmimou48-cmd` | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
+| — | `leepsj0` | Ouverture et fusion de la pull request n° 55 (réimport d'un emploi du temps exporté) ; trois commits du 23/11 : la fusion de la n° 55 et deux modifications de `README.md` déposées directement sur `main` (section 2.6). |
+| — | `MonsterFeeder` | Correction du réimport d'un emploi du temps exporté (un commit), versée par la pull request n° 55. |
 | Nassim Khiri | — | Aucun commit n'est rattaché à son nom dans l'historique. |
 
 Les réponses au questionnaire, données de vive voix ou par message, sont consolidées sans
@@ -387,7 +391,8 @@ partie concernée.
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
-41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 357 le 16/11 sur la branche principale.
+41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11, 357 le 16/11 et 51 le 23/11 sur la branche
+principale.
 
 ### 2.4 Environnement de développement
 
@@ -408,7 +413,7 @@ réglages sont exclus du suivi (`.gitignore`).
 > **Encadré : usage des assistants de programmation**
 >
 > Le projet a été réalisé avec des assistants de programmation fondés sur l'intelligence
-> artificielle ; 680 des 820 commits de la branche principale portent leur co-signature.
+> artificielle ; 720 des 871 commits de la branche principale portent leur co-signature.
 > Outils employés : Claude Code (Anthropic) ; le fichier `AGENTS.md` sert aussi à Codex.
 > Ils ont été employés selon les principes suivants. Les équipes d'agents mises en place
 > ensuite sont décrites dans [docs/organisation-agents.md](../organisation-agents.md).
@@ -427,7 +432,8 @@ réglages sont exclus du suivi (`.gitignore`).
 > - **Un test appelle le vrai code et doit pouvoir échouer** : un correctif s'accompagne d'un
 >   test qui échoue sans lui.
 > - **Rien n'échoue en silence**, et **tout chiffre écrit est mesuré**.
-> - **Chaque changement passe par une branche, une pull request et le contrôle automatique.**
+> - **Chaque changement passe par une branche, une pull request et le contrôle automatique.** Après la mise en place du dépôt, cette
+>   règle a été suivie à deux exceptions près (section 2.6).
 > - **La contribution des assistants reste visible dans l'historique** (ligne
 >   `Co-Authored-By` des commits).
 
@@ -436,24 +442,24 @@ réglages sont exclus du suivi (`.gitignore`).
 | Méthode | Description |
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
-| Pull requests | 53 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 23 dernières (31 à 53) datent de la journée de finalisation du 16/11. |
+| Pull requests | 58 pull requests : 56 fusionnées et 2 ouvertes, aucune fermée sans fusion ; chacune est décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les n° 31 à 53 datent de la journée de finalisation du 16/11, les n° 55 et 57 à 60 du 23/11. |
 | Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il a servi pour la première fois le 23/11/2026, pour l'issue n° 54 ([lien](https://github.com/Maki882/projet-edt/issues/54)), qui suit l'anomalie ouverte relevée par la recette (livret 4) ; jusque-là, le suivi passait par les pull requests et le document des décisions. Les issues ouvertes par l'équipe d'agents suivent aussi ce modèle ([organisation-agents.md](../organisation-agents.md)). |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |
 | Documentation de conception | Un document par partie de l'application (architecture, modèle de données, générateur, vérification, import et export, établissements fictifs, déploiement, tests), versé avec le code de cette partie. |
 
 Les échanges de l'équipe en dehors de GitHub (réunions, messagerie) ne sont pas consignés dans
-le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Sur GitHub, une
-issue est ouverte (n° 54) ; aucun jalon n'est ouvert, et aucune relecture formelle (approbation
-d'une pull request) n'y est enregistrée.
+le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Sur GitHub,
+cinq issues sont ouvertes (n° 54, 56, 61, 62 et 63) ; aucun jalon n'est ouvert, et aucune
+relecture formelle (approbation d'une pull request) n'y est enregistrée.
 
 ### 2.6 Référentiel du projet
 
 | Élément | Description |
 |---|---|
-| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; dépôt privé, accès donné aux membres de l'équipe et à l'enseignant sur invitation, modifiable par les quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
-| Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
-| Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé (offre gratuite de GitHub) : la règle « pas d'envoi direct sur `main` » reste une convention de l'équipe, appliquée depuis le 05/10. |
+| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; dépôt public, lisible par tous, modifiable seulement par son propriétaire et les comptes invités. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
+| Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; ensuite, les changements sont passés par des pull requests, à l'exception de deux commits du 23/11 (`7d02cf5` et `5f0c2dc`, deux modifications de `README.md`) déposés directement sur `main`. La règle à suivre reste « aucun envoi direct sur `main` ». |
+| Protection de `main` | Aucune protection n'est activée sur `main` (constaté le 23/11) : GitHub n'empêche pas un envoi direct, et la règle « pas d'envoi direct sur `main` » est une convention de l'équipe. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
 | Langue | Code, commentaires, messages, commits et documentation en français. |
 | Fichiers exclus | Environnements virtuels, bases, journaux, réglages d'éditeurs et secrets ne sont jamais suivis (`.gitignore`). |

@@ -1,6 +1,6 @@
 """Diagnostic d'un calcul impossible face aux calculs, et commande « diagnostiquer ».
 
-Base SQLite temporaire du jeu minimal rendu impossible (`calcul_impossible`). Les refus croisés
+Base SQLite temporaire du jeu minimal rendu impossible (`semestre_bloque`). Les refus croisés
 (un calcul pendant un diagnostic, un diagnostic pendant un calcul ou un autre diagnostic) passent
 par `lancer_calcul` ; la commande passe par `CliRunner`. Les fonctions du service seules sont
 dans `tests/unitaires/solveur/test_diagnostic_service.py`.
@@ -14,7 +14,12 @@ from contextlib import contextmanager
 
 import pytest
 from sqlalchemy import func, select
-from tests.outils.solveur.en_base import OPTIONS, calcul_fictif, calcul_impossible
+from tests.outils.solveur.en_base import (
+    OPTIONS,
+    bloquer_un_enseignant,
+    calcul_fictif,
+    calcul_impossible,
+)
 
 from edt import cli, solveur
 from edt.db import modeles as m
@@ -41,6 +46,13 @@ LIBELLES_STATUT = {
     StatutDiagnostic.POSSIBLE: "Le calcul n'est plus impossible",
     StatutDiagnostic.INDETERMINE: "Diagnostic sans conclusion",
 }
+
+
+@pytest.fixture
+def semestre_bloque(jeu_minimal) -> int:
+    """Semestre du jeu minimal rendu impossible : l'enseignante d'anglais absente tous les jours."""
+    bloquer_un_enseignant(jeu_minimal.semestre_id)
+    return jeu_minimal.semestre_id
 
 
 def _nb_calculs() -> int:
@@ -89,21 +101,21 @@ def _diagnostic_bloque(calcul_id: int, monkeypatch) -> Iterator[threading.Thread
 
 
 @pytest.mark.cas_limite
-def test_calcul_et_second_diagnostic_refuses_pendant_un_diagnostic(jeu_minimal, monkeypatch):
+def test_calcul_et_second_diagnostic_refuses_pendant_un_diagnostic(semestre_bloque, monkeypatch):
     """Cas : un calcul, puis un second diagnostic, demandés pendant qu'un diagnostic tourne.
 
     Risque : le calcul ou le second diagnostic se partageraient les processeurs avec le premier,
     qui dépasserait son budget ; le message doit dire quel calcul est diagnostiqué et quoi faire.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
-    autre_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(semestre_bloque)
+    autre_id = calcul_impossible(semestre_bloque)
     nb_calculs = _nb_calculs()
 
     with _diagnostic_bloque(calcul_id, monkeypatch):
         assert service.diagnostic_en_cours() == calcul_id
 
         with pytest.raises(ErreurCalculEnCours) as refus_calcul:
-            generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+            generation.lancer_calcul(semestre_bloque, OPTIONS)
         with pytest.raises(ErreurCalculEnCours) as refus_diagnostic:
             diagnostiquer_calcul(autre_id, BUDGET_MIN_S)
 
@@ -116,17 +128,17 @@ def test_calcul_et_second_diagnostic_refuses_pendant_un_diagnostic(jeu_minimal, 
     assert lire_diagnostic(calcul_id) is not None
     assert lire_diagnostic(autre_id) is None
     # Le diagnostic fini, un calcul se lance de nouveau.
-    calcul = generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    calcul = generation.lancer_calcul(semestre_bloque, OPTIONS)
     assert generation.attendre_calcul(calcul, DELAI).etat.est_termine
 
 
 @pytest.mark.cas_limite
-def test_diagnostic_refuse_pendant_un_calcul(jeu_minimal, monkeypatch):
+def test_diagnostic_refuse_pendant_un_calcul(semestre_bloque, monkeypatch):
     """Cas : diagnostic demandé pendant qu'un calcul tourne.
 
     Risque : le diagnostic lirait des données en cours de remplacement et ralentirait le calcul.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(semestre_bloque)
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -135,7 +147,7 @@ def test_diagnostic_refuse_pendant_un_calcul(jeu_minimal, monkeypatch):
         return ResultatSolveur(StatutSolveur.ARRETE)
 
     monkeypatch.setattr(solveur, "resoudre", moteur_lent)
-    en_cours = generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
+    en_cours = generation.lancer_calcul(semestre_bloque, OPTIONS)
     try:
         assert demarre.wait(DELAI), "le calcul n'a pas démarré"
         with pytest.raises(ErreurCalculEnCours) as refus:
@@ -148,12 +160,9 @@ def test_diagnostic_refuse_pendant_un_calcul(jeu_minimal, monkeypatch):
     assert lire_diagnostic(calcul_id) is None
 
 
-def test_diagnostic_d_un_calcul_refuse_par_les_verifications_prealables(jeu_minimal):
-    """Le vrai calcul du jeu rendu impossible est refusé avant la recherche ; il se diagnostique."""
-    calcul_impossible(jeu_minimal.semestre_id)  # rend le semestre impossible
-    refuse = generation.attendre_calcul(
-        generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS), DELAI
-    )
+def test_diagnostic_d_un_calcul_refuse_par_les_verifications_prealables(semestre_bloque):
+    """Le vrai calcul du semestre rendu impossible se termine « impossible » ; il se diagnostique."""
+    refuse = generation.attendre_calcul(generation.lancer_calcul(semestre_bloque, OPTIONS), DELAI)
     assert refuse.etat is EtatCalcul.INFAISABLE
 
     diagnostic = diagnostiquer_calcul(refuse.id, BUDGET_MIN_S)
@@ -168,8 +177,8 @@ def test_diagnostic_d_un_calcul_refuse_par_les_verifications_prealables(jeu_mini
 # --------------------------------------------------------------------------- #
 
 
-def test_commande_affiche_le_diagnostic(lanceur, jeu_minimal):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+def test_commande_affiche_le_diagnostic(lanceur, semestre_bloque):
+    calcul_id = calcul_impossible(semestre_bloque)
 
     resultat = lanceur.invoke(cli.app, ["diagnostiquer", str(calcul_id), "--temps", "5"])
 
@@ -185,9 +194,9 @@ def test_commande_affiche_le_diagnostic(lanceur, jeu_minimal):
     assert "essai" in sortie.splitlines()[-1]
 
 
-def test_commande_sans_identifiant_diagnostique_le_dernier_calcul(lanceur, jeu_minimal):
-    ancien = calcul_impossible(jeu_minimal.semestre_id)
-    dernier = calcul_impossible(jeu_minimal.semestre_id)
+def test_commande_sans_identifiant_diagnostique_le_dernier_calcul(lanceur, semestre_bloque):
+    ancien = calcul_impossible(semestre_bloque)
+    dernier = calcul_impossible(semestre_bloque)
 
     resultat = lanceur.invoke(cli.app, ["diagnostiquer", "--temps", "5"])
 
@@ -227,12 +236,12 @@ def test_commande_sur_un_dernier_calcul_reussi(lanceur, jeu_minimal):
 
 @pytest.mark.cas_limite
 @pytest.mark.parametrize("temps", ["4.9", "600.5", "0", "-5", "nan", "inf"])
-def test_commande_temps_hors_bornes(lanceur, jeu_minimal, temps):
+def test_commande_temps_hors_bornes(lanceur, semestre_bloque, temps):
     """Cas : `--temps` sous 5 s, au-dessus de 600 s, nul, négatif, NaN ou infini.
 
     Risque : un diagnostic sans borne de temps qui bloque le terminal, ou une trace Python.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(semestre_bloque)
 
     resultat = lanceur.invoke(cli.app, ["diagnostiquer", str(calcul_id), "--temps", temps])
 
@@ -242,12 +251,12 @@ def test_commande_temps_hors_bornes(lanceur, jeu_minimal, temps):
 
 
 @pytest.mark.cas_limite
-def test_commande_temps_non_numerique(lanceur, jeu_minimal):
+def test_commande_temps_non_numerique(lanceur, semestre_bloque):
     """Cas : `--temps trente`.
 
     Risque : une trace Python au lieu de l'erreur d'usage de la ligne de commande.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(semestre_bloque)
 
     resultat = lanceur.invoke(cli.app, ["diagnostiquer", str(calcul_id), "--temps", "trente"])
 
