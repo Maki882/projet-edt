@@ -15,6 +15,19 @@
     {%- if r.optimiser %} - emploi du temps plus confortable{% endif %}</p>
   {% include "edt/_suivi_calcul.html" %}
 </section>
+{%- if r.issue in ("impossible", "refuse") %}
+<section class="carte" id="diagnostic">
+  <h2>Diagnostic</h2>
+  <p>Le diagnostic cherche un plus petit ensemble de règles et de données qui, ensemble, rendent le calcul impossible : en retirer un seul élément le rendrait possible. Il fait des calculs d'essai sans rien modifier, et s'arrête au plus tard au bout de {{ budget_page }}.</p>
+  <form method="post" action="/calculs/{{ r.suivi.id }}/diagnostic" class="edt-boutons"
+        hx-post="/calculs/{{ r.suivi.id }}/diagnostic" hx-target="#diagnostic-resultat" hx-swap="outerHTML"
+        hx-indicator="#indicateur-diagnostic" hx-disabled-elt="find button">
+    <button type="submit" class="bouton{% if not diagnostic %} bouton-principal{% endif %}">Chercher les règles et les données en cause</button>
+    <span id="indicateur-diagnostic" class="htmx-indicator discret">Recherche en cours : au plus {{ budget_page }}.</span>
+  </form>
+  {% include "edt/_diagnostic.html" %}
+</section>
+{%- endif %}
 {% endblock %}
 
 {% block styles %}{{ edt.ressources() }}{% endblock %}
