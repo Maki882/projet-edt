@@ -58,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 121 fonctions de test** dans 10 composants, dont 324 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 132 fonctions de test** dans 10 composants, dont 324 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (141 fonctions)
 
@@ -104,7 +104,7 @@ Ce dossier compte **1 121 fonctions de test** dans 10 composants, dont 324 marqu
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-### `socle/` : Domaine, base et services transverses (207 fonctions)
+### `socle/` : Domaine, base et services transverses (218 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -124,6 +124,7 @@ Ce dossier compte **1 121 fonctions de test** dans 10 composants, dont 324 marqu
 | [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base : URL acceptées, transactions SQLite, identifiants, verrous d'écriture | 10 |
 | [`socle/test_niveaux.py`](socle/test_niveaux.py) | Niveaux des contraintes (nécessaire, important, facultatif) : contrat du catalogue | 7 |
 | [`socle/test_parametres.py`](socle/test_parametres.py) | Un paramètre corrompu en base reste réparable | 1 |
+| [`socle/test_recette.py`](socle/test_recette.py) | Cahier de recette (livret 4) : parties générées à jour, fiches valides, couverture, outil | 11 |
 | [`socle/test_regles.py`](socle/test_regles.py) | Règles personnalisées, côté domaine : catalogue, validation, phrases, résolution | 31 |
 | [`socle/test_regles_service.py`](socle/test_regles_service.py) | Règles personnalisées, côté base et service : table, chargement, écriture, propositions | 29 |
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |

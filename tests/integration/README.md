@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **546 fonctions de test** dans 11 composants, dont 214 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -310,13 +310,14 @@ Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marqué
 | [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 |
 | [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 |
 
-### `echange/` : Import et export par le site et la ligne de commande (35 fonctions)
+### `echange/` : Import et export par le site et la ligne de commande (40 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`echange/test_bornes.py`](echange/test_bornes.py) | Fichiers hostiles envoyés au site, pages bornées | 6 |
 | [`echange/test_commandes.py`](echange/test_commandes.py) | Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 |
 | [`echange/test_export_edt.py`](echange/test_export_edt.py) | Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 |
+| [`echange/test_recette_echanges.py`](echange/test_recette_echanges.py) | Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 |
 | [`echange/test_web.py`](echange/test_web.py) | Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 |
 
 ### `exploitation/` : Contrats du déploiement (32 fonctions)
@@ -337,7 +338,7 @@ Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marqué
 | [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
 | [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
-### `socle/` : Commandes et application web du socle (77 fonctions)
+### `socle/` : Commandes et application web du socle (79 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -348,6 +349,7 @@ Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marqué
 | [`socle/test_journal.py`](socle/test_journal.py) | Journalisation vue par la ligne de commande : fichier journal non ouvrable, signalé par doctor | 1 |
 | [`socle/test_moteur.py`](socle/test_moteur.py) | Moteur de base vu par la ligne de commande : URL de base refusées avec une erreur de configuration | 2 |
 | [`socle/test_parametres.py`](socle/test_parametres.py) | Paramètres globaux vus par l'application web : l'écran reste ouvrable avec une valeur corrompue | 1 |
+| [`socle/test_recette_petit_ecran.py`](socle/test_recette_petit_ecran.py) | Recette de la consultation sur téléphone : ce qu'un test par HTTP peut prouver | 2 |
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension | 27 |
 
@@ -390,7 +392,7 @@ Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marqué
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (137 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (143 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -403,6 +405,10 @@ Ce dossier compte **533 fonctions de test** dans 11 composants, dont 214 marqué
 | [`web_edt/test_emploi_du_temps.py`](web_edt/test_emploi_du_temps.py) | Grille, groupes liés, déplacements et annulations vérifiés | 20 |
 | [`web_edt/test_niveaux_web.py`](web_edt/test_niveaux_web.py) | Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 |
 | [`web_edt/test_raccords.py`](web_edt/test_raccords.py) | Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 |
+| [`web_edt/test_recette_affichage.py`](web_edt/test_recette_affichage.py) | Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 |
+| [`web_edt/test_recette_deplacement.py`](web_edt/test_recette_deplacement.py) | Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 |
+| [`web_edt/test_recette_resultat.py`](web_edt/test_recette_resultat.py) | Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 |
+| [`web_edt/test_recette_verrous.py`](web_edt/test_recette_verrous.py) | Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 |
 | [`web_edt/test_regles_web.py`](web_edt/test_regles_web.py) | Règles personnalisées sur les écrans de l'emploi du temps : Générer, suivi, grille, anomalies | 13 |
 | [`web_edt/test_revue.py`](web_edt/test_revue.py) | Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 |
 

@@ -132,16 +132,16 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 |---|---:|---:|---:|
 | `assistant` | 141 | 31 | 172 |
 | `banc_tests` | 43 | 22 | 65 |
-| `echange` | 148 | 35 | 183 |
+| `echange` | 148 | 40 | 188 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 207 | 77 | 284 |
+| `socle` | 218 | 79 | 297 |
 | `solveur` | 196 | 54 | 250 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 137 | 174 |
-| **Total** | **1 121** | **533** | **1 654** |
+| `web_edt` | 37 | 143 | 180 |
+| **Total** | **1 132** | **546** | **1 678** |
 | dont cas limites (`cas_limite`) | 324 | 214 | 538 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
