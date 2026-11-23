@@ -1,0 +1,43 @@
+{#
+  Résultat du diagnostic d'un calcul impossible (fragment), rendu dans la page du calcul et en
+  réponse à « Chercher les règles et les données en cause ». Variables (voir
+  `_contexte_diagnostic` dans `edt.web.routes.calculs`) : calcul_id ; diagnostic
+  (edt.services.diagnostic.Diagnostic, ou None tant qu'aucun n'a été fait) ; diagnostic_le
+  (date lisible) ; libelles_statut ; avertissement_donnees ; fmt (presentation).
+#}
+{% import "macros.html" as ui %}
+<div id="diagnostic-resultat" aria-live="polite">
+  {%- if diagnostic %}
+  {%- set trouve = diagnostic.statut in ("minimal", "partiel") %}
+  <h3>{{ libelles_statut.get(diagnostic.statut, diagnostic.statut) }}</h3>
+  <p>{{ diagnostic.message }}</p>
+  {%- if diagnostic.statut == "partiel" %}
+  {{ ui.message("Cet ensemble rend bien le calcul impossible, mais il n'est peut-être pas le plus petit : le temps a manqué pour le vérifier. Pour aller plus loin, lancer « python -m edt diagnostiquer " ~ calcul_id ~ " --temps 600 ».", "attention") }}
+  {%- endif %}
+  {%- if trouve %}
+  <h4>Règles en cause</h4>
+  {%- if diagnostic.regles %}
+  <ul class="edt-diagnostic-liste">
+    {%- for element in diagnostic.regles %}
+    <li>{{ element.libelle }}</li>
+    {%- endfor %}
+  </ul>
+  {%- else %}
+  <p>Aucune règle en cause en plus des règles qui définissent le problème.</p>
+  {%- endif %}
+  <h4>Données en cause</h4>
+  {%- if diagnostic.donnees %}
+  <ul class="edt-diagnostic-liste">
+    {%- for element in diagnostic.donnees %}
+    <li>{{ element.libelle }}</li>
+    {%- endfor %}
+  </ul>
+  {%- else %}
+  <p>Aucune donnée en cause : la règle suffit à rendre le calcul impossible.</p>
+  {%- endif %}
+  <p class="discret">Les règles qui définissent le problème sont toujours gardées : une seule séance à la fois par salle, par enseignant et par groupe, toutes les séances placées, séances verrouillées et jours fermés respectés.</p>
+  {%- endif %}
+  <p class="discret">{{ avertissement_donnees }}</p>
+  <p class="discret">Diagnostic du {{ diagnostic_le }} : {{ fmt.pluriel(diagnostic.nb_essais, "essai") }} en {{ fmt.duree_secondes(diagnostic.duree_s) }} (au plus {{ fmt.duree_secondes(diagnostic.budget_s) }}).</p>
+  {%- endif %}
+</div>
