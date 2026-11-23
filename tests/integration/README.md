@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **554 fonctions de test** dans 11 composants, dont 217 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **556 fonctions de test** dans 11 composants, dont 218 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -302,12 +302,12 @@ Ce dossier compte **554 fonctions de test** dans 11 composants, dont 217 marqué
 | [`assistant/test_panneau.py`](assistant/test_panneau.py) | Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 |
 | [`assistant/test_web.py`](assistant/test_web.py) | Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 18 |
 
-### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (22 fonctions)
+### `banc_tests/` : Tests d'intégration du banc de tests : vrai sous-processus pytest, écrans, commande (24 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`banc_tests/test_commande.py`](banc_tests/test_commande.py) | Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 4 |
-| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 |
+| [`banc_tests/test_ecrans.py`](banc_tests/test_ecrans.py) | Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, confettis, refus | 13 |
 | [`banc_tests/test_execution.py`](banc_tests/test_execution.py) | Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 |
 
 ### `echange/` : Import et export par le site et la ligne de commande (41 fonctions)

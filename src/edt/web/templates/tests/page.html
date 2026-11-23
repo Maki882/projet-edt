@@ -8,6 +8,7 @@
 {% import "tests/_macros.html" as banc with context %}
 {% block titre %}{{ t.titre }}{% endblock %}
 {% block styles %}<link rel="stylesheet" href="/static/css/tests.css?v={{ version_application }}">{% endblock %}
+{% block scripts %}<script src="/static/js/confettis.js?v={{ version_application }}" defer></script>{% endblock %}
 {% block contenu %}
 <div class="banc banc-{{ t.famille }}">
   <details class="carte banc-schema" id="banc-schema" open>
