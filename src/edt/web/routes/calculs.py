@@ -15,7 +15,11 @@ Adresses :
   à son suivi ; un niveau illisible ou interdit, ou une pause déjeuner mal
   saisie, réaffiche la page (422) avec le message ;
 - `GET /calculs/{id}` et `GET /calculs/{id}/etat` (fragment interrogé
-  chaque seconde) : suivi et résultat ;
+  chaque seconde) : suivi et résultat ; pour un calcul impossible, la page
+  montre aussi le dernier diagnostic enregistré ;
+- `POST /calculs/{id}/diagnostic` : cherche les règles et les données en cause
+  d'un calcul impossible (`edt.services.diagnostic`, au plus `BUDGET_PAGE_S`)
+  et rend le fragment du résultat ;
 - `POST /calculs/{id}/arreter`, `POST /calculs/{id}/relancer` ;
 - `GET /versions`, `POST /versions/{id}/activer`, `POST /versions/{id}/supprimer`.
 
@@ -25,6 +29,7 @@ que lire les formulaires et choisir la page.
 
 from __future__ import annotations
 
+import datetime as _dt
 import logging
 from typing import Annotated
 from urllib.parse import urlencode
@@ -35,7 +40,7 @@ from starlette.responses import Response
 from edt.config import charger_configuration
 from edt.domaine.contraintes import Niveaux
 from edt.erreurs import ErreurCalculEnCours, ErreurIntrouvable
-from edt.services import generation
+from edt.services import diagnostic, generation
 from edt.services.emploi_du_temps import (
     calculs,
     prechauffage,
@@ -354,10 +359,76 @@ def lancer(
 
 @routeur.get("/calculs/{calcul_id:int}", name="calcul")
 def page_calcul(request: Request, session: SessionRequete, calcul_id: int):
-    """Suivi puis résultat d'un calcul."""
+    """Suivi puis résultat d'un calcul ; pour un calcul impossible, son dernier diagnostic."""
     resultat = calculs.resultat_calcul(session, calcul_id)
     _prechauffer_si_fini(resultat)
-    return rendre(request, "edt/calcul.html", {"r": resultat, "fmt": presentation})
+    contexte = {"r": resultat, "fmt": presentation}
+    if resultat.issue in ISSUES_DIAGNOSTIQUABLES:
+        # `lire_diagnostic` ne lève jamais à l'affichage : `None` sans diagnostic lisible.
+        contexte |= _contexte_diagnostic(calcul_id, diagnostic.lire_diagnostic(calcul_id))
+    return rendre(request, "edt/calcul.html", contexte)
+
+
+ISSUES_DIAGNOSTIQUABLES = frozenset({calculs.Issue.IMPOSSIBLE, calculs.Issue.REFUSE})
+"""Issues d'un calcul dont la page propose le diagnostic : impossibilité prouvée par le moteur
+ou refus des pré-vérifications (les deux sont l'état « impossible » en base)."""
+
+LIBELLES_STATUT_DIAGNOSTIC = {
+    diagnostic.StatutDiagnostic.MINIMAL: "Ensemble minimal trouvé",
+    diagnostic.StatutDiagnostic.PARTIEL: "Ensemble trouvé, peut-être pas le plus petit",
+    diagnostic.StatutDiagnostic.POSSIBLE: "Le calcul n'est plus impossible",
+    diagnostic.StatutDiagnostic.INDETERMINE: "Diagnostic sans conclusion",
+}
+"""Titre affiché pour chaque statut de diagnostic (le même que dans la commande)."""
+
+
+def _date_diagnostic(lance_le: str) -> str:
+    """« 23/11/2026 à 14 h 05 » d'après la date ISO du diagnostic ; telle quelle si illisible."""
+    try:
+        return _dt.datetime.fromisoformat(lance_le).strftime("%d/%m/%Y à %H h %M")
+    except (TypeError, ValueError):
+        journal.warning("Date de diagnostic illisible : %r", lance_le)
+        return str(lance_le)
+
+
+def _contexte_diagnostic(calcul_id: int, resultat: diagnostic.Diagnostic | None) -> dict:
+    """Variables du gabarit `edt/_diagnostic.html` (`diagnostic` : `None` sans diagnostic)."""
+    return {
+        "calcul_id": calcul_id,
+        "diagnostic": resultat,
+        "diagnostic_le": _date_diagnostic(resultat.lance_le) if resultat else "",
+        "libelles_statut": LIBELLES_STATUT_DIAGNOSTIC,
+        "avertissement_donnees": diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES,
+        "budget_page": presentation.duree_secondes(diagnostic.BUDGET_PAGE_S),
+        "fmt": presentation,
+    }
+
+
+@routeur.post("/calculs/{calcul_id:int}/diagnostic", name="diagnostiquer_calcul")
+def diagnostiquer(request: Request, calcul_id: int):
+    """Cherche les règles et les données qui rendent ce calcul impossible (fragment HTMX).
+
+    Synchrone, borné par `BUDGET_PAGE_S` (le service s'arrête de lui-même, marge comprise).
+    Le service ouvre sa propre session et enregistre le résultat avec le calcul : rien d'autre
+    n'est modifié. Ses refus (calcul introuvable, pas impossible, calcul ou diagnostic en
+    cours) remontent au gestionnaire d'erreurs, qui affiche leur message. Hors HTMX
+    (navigateur sans JavaScript), retour à la page du calcul, qui réaffiche le diagnostic.
+
+    Pas de `SessionRequete` ici, exprès : une session de requête POST prend le verrou
+    d'écriture d'emblée (`edt.web.dependances`) et l'enregistrement du service l'attendrait
+    en vain. Accès : réservé au gestionnaire, comme tout `/calculs` (`edt.web.acces`).
+    """
+    resultat = diagnostic.diagnostiquer_calcul(calcul_id, diagnostic.BUDGET_PAGE_S)
+    journal.info(
+        "Diagnostic du calcul %s : %s, %d essai(s) en %.1f s",
+        calcul_id,
+        resultat.statut,
+        resultat.nb_essais,
+        resultat.duree_s,
+    )
+    if not est_htmx(request):
+        return rediriger(request, f"/calculs/{calcul_id}", "Diagnostic terminé.")
+    return rendre(request, "edt/_diagnostic.html", _contexte_diagnostic(calcul_id, resultat))
 
 
 def _prechauffer_si_fini(resultat: calculs.ResultatCalcul) -> None:

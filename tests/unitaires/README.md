@@ -58,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 166 fonctions de test** dans 10 composants, dont 328 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 196 fonctions de test** dans 10 composants, dont 346 marquées `cas_limite` et 21 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (141 fonctions)
 
@@ -132,7 +132,7 @@ Ce dossier compte **1 166 fonctions de test** dans 10 composants, dont 328 marqu
 | [`socle/test_schema.py`](socle/test_schema.py) | Schéma périmé détecté (colonnes, index, unicités) | 12 |
 | [`socle/test_web.py`](socle/test_web.py) | Application web : fonctions appelées directement (module de routes sans routeur refusé, macros des gabarits) | 6 |
 
-### `solveur/` : Solveur CP-SAT et préparation du calcul (196 fonctions)
+### `solveur/` : Solveur CP-SAT et préparation du calcul (226 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -140,7 +140,9 @@ Ce dossier compte **1 166 fonctions de test** dans 10 composants, dont 328 marqu
 | [`solveur/test_contraintes.py`](solveur/test_contraintes.py) | Une contrainte, un test : chaque contrainte est déterminante sur un petit problème | 48 |
 | [`solveur/test_couche_datee.py`](solveur/test_couche_datee.py) | Couche datée : instanciation de la semaine type, puis replacement des séances empêchées | 16 |
 | [`solveur/test_dejeuner.py`](solveur/test_dejeuner.py) | Pause déjeuner dans le solveur : mode libre borné et mode « aucun » | 11 |
-| [`solveur/test_moteur.py`](solveur/test_moteur.py) | Le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 31 |
+| [`solveur/test_diagnostic.py`](solveur/test_diagnostic.py) | Diagnostic d'un calcul impossible : isolement d'un ensemble irréductible de règles et de données | 11 |
+| [`solveur/test_diagnostic_service.py`](solveur/test_diagnostic_service.py) | Service du diagnostic d'un calcul impossible : garde-fous, enregistrement, relecture, message | 16 |
+| [`solveur/test_moteur.py`](solveur/test_moteur.py) | Le moteur dans son ensemble : issues, semaines actives, reproductibilité, objectif, arrêt | 34 |
 | [`solveur/test_niveaux.py`](solveur/test_niveaux.py) | Niveaux de règles : des options du calcul jusqu'au suivi et à la commande | 23 |
 | [`solveur/test_preverification.py`](solveur/test_preverification.py) | Pré-vérifications : impossibilités certaines et situations tendues, dites en clair | 19 |
 | [`solveur/test_regles.py`](solveur/test_regles.py) | Règles personnalisées dans le solveur : poseurs, réglages par personne, niveaux | 33 |

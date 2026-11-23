@@ -270,6 +270,7 @@ rien n'est supprimé et la page le dit. Ce calcul est fait par
 | `POST /calculs` | lit les niveaux, enregistre la pause déjeuner si elle a changé, lance le calcul et redirige vers son suivi |
 | `GET /calculs/{id}`, `GET /calculs/{id}/etat` | suivi puis résultat ; le fragment d'état est interrogé chaque seconde tant que le calcul tourne |
 | `POST /calculs/{id}/arreter`, `POST /calculs/{id}/relancer` | arrêt ; relance plus longue ou autre solution |
+| `POST /calculs/{id}/diagnostic` | diagnostic d'un calcul impossible : rend le fragment `edt/_diagnostic.html` (hors HTMX, retour à la page du calcul) |
 | `GET /versions?semestre_id=` | historique des calculs et des versions |
 | `POST /versions/{id}/activer`, `POST /versions/{id}/supprimer` | activation ; suppression (refusée pour la version active) |
 
@@ -318,6 +319,29 @@ rien n'est supprimé et la page le dit. Ce calcul est fait par
   relance plus longue) ; erreur (numéro du calcul et fichier journal, jamais
   de trace). Dans tous les cas, les avertissements du calcul sont comptés et
   dépliables, et seuls les niveaux qui s'écartent du défaut sont rappelés.
+- **Diagnostic d'un calcul impossible** (section `id="diagnostic"` de
+  `/calculs/{id}`, seulement pour un calcul impossible ou refusé par les
+  vérifications préalables) : le bouton « Chercher les règles et les données
+  en cause » appelle `edt.services.diagnostic.diagnostiquer_calcul` avec
+  `BUDGET_PAGE_S` (30 s) ; un indicateur annonce l'attente maximale et le
+  bouton reste inactif pendant la recherche. Le fragment montre le statut
+  (ensemble minimal, ensemble peut-être pas le plus petit, calcul plus
+  impossible, sans conclusion), le message, les règles et les données en
+  cause par leur libellé, le rappel des règles qui définissent le problème
+  (toujours gardées), la phrase `AVERTISSEMENT_DONNEES_ACTUELLES` (le
+  diagnostic porte sur les données actuelles), la date, la durée et le nombre
+  d'essais. Le dernier diagnostic est enregistré avec le calcul et réaffiché à
+  chaque ouverture de la page (`lire_diagnostic`, jamais d'erreur à
+  l'affichage). Les refus du service (calcul introuvable : 404 ; pas
+  impossible, calcul ou diagnostic en cours : 409 ; durée hors limites : 422)
+  passent par le gestionnaire d'erreurs habituel. Une page ouverte pendant le
+  calcul ne montre la section qu'une fois rechargée.
+- **En ligne de commande** : `python -m edt diagnostiquer [CALCUL_ID]
+  [--temps S]` (défaut : le dernier calcul, `BUDGET_COMMANDE_S` = 60 s, de 5
+  à 600 s) affiche le même contenu en texte et l'enregistre de la même
+  façon. Code de sortie `0` dès qu'un diagnostic est rendu, quel que soit son
+  statut ; `1` avec le message (« Erreur : ... » sur la sortie d'erreur) si le
+  diagnostic est refusé ou s'il n'y a encore aucun calcul.
 
 ## 6. Onglet « Emploi du temps »
 

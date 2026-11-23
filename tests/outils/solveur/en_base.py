@@ -2,8 +2,8 @@
 
 - `OPTIONS` : options de calcul des tests de service (30 s, graine 1, un fil, sans arrêt sur
   stagnation, critère qui lit l'horloge : résultat reproductible quelle que soit la charge) ;
-- `rendre_impossible`, `calcul_fictif`, `calcul_abandonne`, `etat`, `regles_du_jeu` : préparer
-  ou lire la base ;
+- `rendre_impossible`, `bloquer_un_enseignant`, `calcul_fictif`, `calcul_abandonne`,
+  `calcul_impossible`, `etat`, `regles_du_jeu` : préparer ou lire la base ;
 - `journalise` : enregistrements du journal capturés par `caplog`.
 """
 
@@ -16,7 +16,7 @@ from sqlalchemy import select
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
-from edt.domaine.enumerations import EtatCalcul, ModeVolume
+from edt.domaine.enumerations import CibleIndisponibilite, EtatCalcul, ModeVolume
 from edt.services.generation import CLE_PROCESSUS
 from edt.services.regles import charger_regles_actives
 from edt.solveur import OptionsSolveur
@@ -24,13 +24,50 @@ from edt.solveur import OptionsSolveur
 OPTIONS = OptionsSolveur(temps_limite_s=30, graine=1, nb_workers=1, arret_sur_stagnation=False)
 
 
-def rendre_impossible(semestre_id: int) -> None:
-    """Demande 60 séances par semaine à un groupe : aucune semaine ne peut les contenir."""
+def rendre_impossible(semestre_id: int) -> int:
+    """Demande 60 séances par semaine à un groupe : aucune semaine ne peut les contenir.
+
+    Renvoie l'identifiant du besoin modifié.
+    """
     with session_base() as session:
         besoin = session.scalar(
             select(m.Besoin).where(m.Besoin.mode_volume == ModeVolume.PAR_SEMAINE)
         )
         besoin.nombre = 60
+        return besoin.id
+
+
+MOTIF_BLOCAGE = "Absente toute la semaine (test)"
+"""Motif des indisponibilités posées par `bloquer_un_enseignant` (pour les retrouver)."""
+
+
+def bloquer_un_enseignant(semestre_id: int) -> int:
+    """Rend l'enseignante d'anglais du jeu minimal (ENS005) indisponible tous les jours.
+
+    Six indisponibilités récurrentes, du lundi au samedi, toute la journée : son unique besoin
+    ne peut plus être placé. Impossibilité petite et vite prouvée, à la différence de
+    `rendre_impossible`, dont les essais sans la grille horaire construisent un modèle énorme.
+    Renvoie l'identifiant du besoin devenu impossible.
+    """
+    with session_base() as session:
+        enseignant = session.scalar(
+            select(m.Enseignant).where(m.Enseignant.identifiant == "ENS005")
+        )
+        session.add_all(
+            m.Indisponibilite(
+                cible=CibleIndisponibilite.ENSEIGNANT,
+                enseignant=enseignant,
+                jour=jour,
+                motif=MOTIF_BLOCAGE,
+            )
+            for jour in range(6)
+        )
+        besoin = session.scalar(
+            select(m.Besoin)
+            .where(m.Besoin.semestre_id == semestre_id)
+            .where(m.Besoin.enseignants.contains(enseignant))
+        )
+        return besoin.id
 
 
 def calcul_fictif(semestre_id: int, **champs) -> int:
@@ -63,6 +100,26 @@ def calcul_abandonne(semestre_id: int) -> int:
         demarre_le=dt.datetime(2026, 10, 5, 8, 0),
         statistiques={CLE_PROCESSUS: 999_999},
     )
+
+
+def calcul_impossible(semestre_id: int, **champs) -> int:
+    """Inscrit un calcul terminé « impossible », tel quel, sans lancer le moteur.
+
+    Les données ne changent pas : le test rend d'abord le semestre impossible
+    (`bloquer_un_enseignant` ou `rendre_impossible`). `champs` remplace une colonne (par défaut,
+    statistiques `{"temoin": "garde"}`, pour vérifier qu'elles restent intactes).
+    """
+    maintenant = dt.datetime.now()
+    valeurs = {
+        "etat": EtatCalcul.INFAISABLE,
+        "demarre_le": maintenant - dt.timedelta(seconds=2),
+        "termine_le": maintenant,
+        "duree_s": 2.0,
+        "statistiques": {"temoin": "garde"},
+        "message": "Aucun emploi du temps ne respecte toutes les règles.",
+        **champs,
+    }
+    return calcul_fictif(semestre_id, **valeurs)
 
 
 def etat(calcul_id: int) -> EtatCalcul:

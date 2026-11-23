@@ -251,6 +251,8 @@ class JourFerme:
     libelle: str
     nature: NatureJourFerme
     groupes: frozenset[int] | None = None
+    id: int | None = field(default=None, compare=False)
+    """Identifiant en base, pour nommer la fermeture (diagnostic) ; `None` hors de la base."""
 
     def concerne(self, jour: dt.date, groupes: Iterable[int], ponctuelle: bool = False) -> bool:
         """Vrai si une séance des groupes `groupes` ne peut pas avoir lieu le `jour`.

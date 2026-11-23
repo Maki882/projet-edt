@@ -89,6 +89,7 @@ src/edt/
     instantane.py              base -> instantané
     conflits_groupes.py        relation de conflit entre groupes
     generation.py              orchestration d'un calcul
+    diagnostic.py              diagnostic d'un calcul impossible : garde-fous, enregistrement
     instanciation.py           séances datées d'une version, replacement
     verification.py            vérification d'une version ou d'une modification
     parametres.py, niveaux.py  paramètres ; niveaux des règles d'un calcul
@@ -102,7 +103,8 @@ src/edt/
   verification/                vérificateur : une règle par code du catalogue, indicateurs
   solveur/                     CP-SAT : préparation, pré-vérifications, horaires (modele.py),
                                salles (salles.py), moteur, séances datées, replacement,
-                               règles personnalisées
+                               règles personnalisées, diagnostic d'un calcul impossible
+                               (diagnostic.py)
   echange/                     format d'échange, lecture, écriture, iCal, rapport d'import
   synthese/                    générateur d'établissements fictifs et emploi du temps témoin
   web/

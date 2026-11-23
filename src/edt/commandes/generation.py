@@ -1,4 +1,4 @@
-"""Commandes de génération : `generer`, `pre-verifier`, `instancier`.
+"""Commandes de génération : `generer`, `pre-verifier`, `instancier`, `diagnostiquer`.
 
     python -m edt pre-verifier --semestre 1
     python -m edt pre-verifier --niveau PAUSE=facultatif  # mêmes options de règles que generer
@@ -7,12 +7,16 @@
     python -m edt generer -d EQUIPEMENT -d PAUSE          # contraintes ignorées
     python -m edt generer --niveau PAUSE=facultatif       # niveau d'une contrainte
     python -m edt instancier --version 4
+    python -m edt diagnostiquer 12 --temps 120       # règles et données en cause
 
 `generer` lance un calcul par le même service que l'interface
 (`edt.services.generation`), attend sa fin et affiche le résultat : en cas de
 succès, une nouvelle version d'emploi du temps est enregistrée, contrôlée par
 le vérificateur, et ses séances datées sont produites. `instancier` refait
-seulement les séances datées d'une version existante.
+seulement les séances datées d'une version existante. `diagnostiquer` cherche,
+pour un calcul impossible, un plus petit ensemble de règles et de données qui
+le rend impossible (`edt.services.diagnostic`), l'enregistre avec le calcul et
+l'affiche.
 
 Une interruption au clavier (Ctrl+C) pendant `generer` arrête le calcul
 proprement : s'il a déjà trouvé un emploi du temps valide, celui-ci est
@@ -21,7 +25,10 @@ il est clos au prochain lancement.
 
 Codes de sortie : `0` si tout a réussi ; `1` si le calcul n'aboutit pas
 (impossible, temps dépassé, arrêté, refusé) ou, pour `pre-verifier`, si une
-impossibilité certaine est relevée ; `2` pour une erreur inattendue.
+impossibilité certaine est relevée ; `2` pour une erreur inattendue. Pour
+`diagnostiquer` : `0` dès qu'un diagnostic est rendu, quel que soit son
+statut ; `1` si le diagnostic est refusé (calcul introuvable ou pas
+impossible, durée hors limites, calcul en cours).
 """
 
 from __future__ import annotations
@@ -44,8 +51,9 @@ from edt.domaine.contraintes import (
 )
 from edt.domaine.enumerations import Gravite
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
-from edt.services import generation
+from edt.services import diagnostic, generation
 from edt.services.calendrier import semestre_par_defaut
+from edt.services.emploi_du_temps import presentation
 from edt.services.instanciation import RapportInstanciation, instancier_version
 from edt.services.parametres import lire_parametres
 from edt.services.regles import charger_regles_actives
@@ -364,6 +372,104 @@ def instancier(
         rapport = instancier_version(session, version_id)
     for ligne in lignes_du_rapport(rapport):
         typer.echo(ligne)
+
+
+LIBELLES_STATUT_DIAGNOSTIC = {
+    diagnostic.StatutDiagnostic.MINIMAL: "Ensemble minimal trouvé",
+    diagnostic.StatutDiagnostic.PARTIEL: "Ensemble trouvé, peut-être pas le plus petit",
+    diagnostic.StatutDiagnostic.POSSIBLE: "Le calcul n'est plus impossible",
+    diagnostic.StatutDiagnostic.INDETERMINE: "Diagnostic sans conclusion",
+}
+"""Titre de chaque statut de diagnostic : les mêmes que sur la page du calcul
+(`edt.web.routes.calculs.LIBELLES_STATUT_DIAGNOSTIC`)."""
+
+RAPPEL_REGLES_GARDEES = (
+    "Les règles qui définissent le problème sont toujours gardées : une seule séance à la fois "
+    "par salle, par enseignant et par groupe, toutes les séances placées, séances verrouillées "
+    "et jours fermés respectés."
+)
+
+AUCUN_CALCUL = (
+    "Aucun calcul n'a encore été lancé : lancer d'abord un calcul (« python -m edt generer »), "
+    "puis le diagnostiquer s'il est impossible."
+)
+
+
+@commandes.command("diagnostiquer")
+def diagnostiquer(
+    calcul_id: Annotated[
+        int | None,
+        typer.Argument(
+            metavar="[CALCUL_ID]",
+            help="Numéro du calcul impossible à diagnostiquer (défaut : le dernier calcul).",
+        ),
+    ] = None,
+    temps: Annotated[
+        float,
+        typer.Option(
+            "--temps",
+            help=f"Durée maximale du diagnostic, en secondes, de {diagnostic.BUDGET_MIN_S:g} à "
+            f"{diagnostic.BUDGET_MAX_S:g}.",
+        ),
+    ] = diagnostic.BUDGET_COMMANDE_S,
+) -> None:
+    """Désigne les règles et les données qui, ensemble, rendent un calcul impossible."""
+    if calcul_id is None:
+        dernier = generation.dernier_calcul()
+        if dernier is None:
+            raise ErreurIntrouvable(AUCUN_CALCUL)
+        calcul_id = dernier.id
+    if diagnostic.BUDGET_MIN_S <= temps <= diagnostic.BUDGET_MAX_S:
+        # Hors bornes (NaN, infini compris), le service refuse : rien à annoncer.
+        typer.echo(
+            f"Recherche des règles et des données en cause du calcul n° {calcul_id} "
+            f"(au plus {temps:g} s)..."
+        )
+    # La durée hors limites, le calcul introuvable ou pas impossible : refus du service (code 1).
+    resultat = diagnostic.diagnostiquer_calcul(calcul_id, temps)
+    for ligne in lignes_du_diagnostic(resultat):
+        typer.echo(ligne)
+
+
+def lignes_du_diagnostic(resultat: diagnostic.Diagnostic) -> list[str]:
+    """Texte lisible d'un diagnostic : le même contenu que la page du calcul."""
+    statut = LIBELLES_STATUT_DIAGNOSTIC.get(resultat.statut, str(resultat.statut))
+    lignes = [f"Diagnostic du calcul n° {resultat.calcul_id} : {statut}", resultat.message]
+    if resultat.statut is diagnostic.StatutDiagnostic.PARTIEL:
+        partiel = (
+            "Cet ensemble rend bien le calcul impossible, mais il n'est peut-être pas le plus "
+            "petit : le temps a manqué pour le vérifier."
+        )
+        if resultat.budget_s < diagnostic.BUDGET_MAX_S:
+            partiel += (
+                " Pour aller plus loin, lancer « python -m edt diagnostiquer "
+                f"{resultat.calcul_id} --temps {diagnostic.BUDGET_MAX_S:g} »."
+            )
+        lignes.append(partiel)
+    if resultat.statut in (
+        diagnostic.StatutDiagnostic.MINIMAL,
+        diagnostic.StatutDiagnostic.PARTIEL,
+    ):
+        lignes.append("Règles en cause :")
+        lignes.extend(f"  - {element.libelle}" for element in resultat.regles)
+        if not resultat.regles:
+            lignes.append("  Aucune règle en cause en plus des règles qui définissent le problème.")
+        lignes.append("Données en cause :")
+        lignes.extend(f"  - {element.libelle}" for element in resultat.donnees)
+        if not resultat.donnees:
+            lignes.append(
+                "  Aucune donnée en cause : la règle suffit à rendre le calcul impossible."
+            )
+        lignes.append(RAPPEL_REGLES_GARDEES)
+    if diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES not in resultat.message:
+        # Le message le rappelle déjà en principe (décision D1) : pas de répétition.
+        lignes.append(diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES)
+    lignes.append(
+        f"{presentation.pluriel(resultat.nb_essais, 'essai')} en "
+        f"{presentation.duree_secondes(resultat.duree_s)} "
+        f"(au plus {presentation.duree_secondes(resultat.budget_s)})."
+    )
+    return lignes
 
 
 def lignes_du_rapport(rapport: RapportInstanciation) -> list[str]:

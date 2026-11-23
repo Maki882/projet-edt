@@ -778,8 +778,10 @@ vérificateur, avec la même phrase.
   les fils (`NB_WORKERS_MAX`, 64) ; la graine est un entier quelconque,
   ramenée dans les bornes de CP-SAT par le moteur (modulo 2³¹ − 1).
 - **Arrêt** : un fil de surveillance relit l'événement `arret` dix fois par
-  seconde et interrompt CP-SAT ; la construction du modèle le relit entre
-  ses étapes. Le moteur rend la main en moins de deux secondes, avant la
+  seconde et interrompt CP-SAT ; la construction du modèle le relit, avec le
+  temps limite, entre ses étapes et à chaque paire de séances de l'étape des
+  pauses et trajets (la seule qui dure plusieurs secondes quand les domaines
+  sont grands). Le moteur rend la main en moins de deux secondes, avant la
   première solution comme pendant l'amélioration.
 - **Niveaux de règles** : un identifiant de règle inconnu de l'instantané
   (règle supprimée, désactivée ou d'une autre année) est signalé dans les
@@ -853,6 +855,177 @@ salles qui conviennent à un besoin), ce qui couvre le type, la capacité, les
 équipements et l'accessibilité d'un seul coup. Ces bornes sont nécessaires,
 pas suffisantes : un calcul sans erreur de pré-vérification peut encore être
 impossible, et c'est alors CP-SAT qui le prouve.
+
+## Diagnostic d'un calcul impossible
+
+Un calcul impossible (prouvé par CP-SAT ou refusé par les pré-vérifications)
+peut être **diagnostiqué** à la demande : le diagnostic désigne un ensemble
+**irréductible** de règles nécessaires et de données qui, ensemble, rendent
+le calcul impossible, et dont aucun élément ne peut être retiré sans que le
+calcul devienne possible. C'est le plus petit au sens de l'inclusion, pas
+forcément en nombre : plusieurs ensembles irréductibles peuvent exister, le
+diagnostic en rend un. Il ne crée aucune version et ne modifie ni règle, ni
+niveau, ni donnée : il ne fait que des **calculs d'essai** sur des
+sous-ensembles.
+
+| Fichier | Rôle |
+|---|---|
+| `src/edt/solveur/diagnostic.py` | `isoler_impossibilite` : candidats, essais, réduction, confirmation, budget (fonction pure) |
+| `src/edt/services/diagnostic.py` | `diagnostiquer_calcul`, `lire_diagnostic`, `diagnostic_en_cours` : chargement, garde-fous, enregistrement |
+
+```python
+# edt.solveur.diagnostic
+def isoler_impossibilite(instantane, options: OptionsSolveur, budget_s: float, *,
+                         essai=None) -> ResultatDiagnostic
+
+# edt.services.diagnostic
+def diagnostiquer_calcul(calcul_id: int, budget_s: float = 30.0, *, config=None) -> Diagnostic
+def lire_diagnostic(calcul_id: int, *, config=None) -> Diagnostic | None
+def diagnostic_en_cours() -> int | None
+```
+
+**Candidats.** Règles : les contraintes du catalogue au niveau nécessaire et
+modifiables (`Contrainte.modifiable`), les règles personnalisées au niveau
+nécessaire, chacune par son identifiant. Données : les besoins (avec toutes
+leurs séances), les verrous (un par séance verrouillée), les
+indisponibilités récurrentes et dures (les seules que lit la semaine type),
+les jours fermés. Les contraintes qui définissent le problème (une séance à
+la fois par salle, par enseignant et par groupe, toutes les séances placées,
+verrous et jours fermés en tant que règles) ne sont jamais candidates :
+elles restent dans chaque essai, et la page comme la commande les rappellent
+(pas le message du diagnostic, pour ne pas le dire deux fois). Retirer un jour
+fermé refait le dépliage, puisqu'une semaine peut rouvrir.
+
+**Un essai** est un appel à `resoudre` sur l'instantané privé de certains
+candidats, en mode faisable, graine 0, sans indices. INFAISABLE dit que les
+éléments retirés ne sont pas nécessaires ; SOLUTION qu'il en faut au moins
+un ; TEMPS_DEPASSE ne dit rien : l'élément est gardé et le résultat devient
+partiel.
+
+Les **contraintes et règles souples restent dans chaque essai**, à leur
+niveau. Les retirer ne serait pas neutre : `HORAIRES` ou `JOURS` ignorées
+ouvrent des débuts hors de la grille, quand souples elles gardent ceux de la
+grille, et une règle de réglage ignorée (`JOURS_TRAVAILLES`,
+`PAUSE_DEJEUNER`, `PAUSE_MINIMALE`) rend la place au standard, qui peut être
+plus strict. Pour que les entorses souples ne coûtent pas une amélioration,
+un essai s'arrête à la **première solution valide** : `sur_premiere_solution`
+lève l'événement `arret` passé à `resoudre`, qui rend alors SOLUTION sans
+améliorer. Le résultat de l'essai n'est lu que pour son statut ; ses
+avertissements ne remontent pas.
+
+**Journal.** Le moteur décrit un essai comme un calcul : « Contraintes
+désactivées à la demande de l'utilisateur » (ce sont les retraits de
+l'essai), « Pré-vérification [...] » en erreur (les impossibilités que
+l'essai cherche), « Calcul arrêté à votre demande » (l'arrêt voulu à la
+première solution). Pendant un essai, ces lignes descendent au niveau DEBUG
+(`_EssaiDuDiagnostic`, filtre posé sur les journaux du moteur,
+`JOURNAUX_DES_ESSAIS`) : elles sont visibles seulement avec ce niveau, et
+rien n'apparaît en avertissement ni en erreur qui ne soit une vraie
+anomalie. Le filtre vise les enregistrements des fils d'essai
+(`edt-diagnostic-essai-<n>`), et, pendant un essai, ceux du journal générique
+`edt.calcul`, qui reçoit les rappels de CP-SAT hors de tout calcul. Un
+enregistrement qui porte une exception garde son niveau. Un calcul
+ordinaire, dans son fil `calcul-<n>` et son propre journal, journalise comme
+avant. Le diagnostic écrit une ligne par essai, au niveau INFO : éléments
+retirés, nombre d'éléments gardés, verdict, durée. Mesure (commande
+`diagnostiquer --temps 20`, jeu minimal, un enseignant indisponible toute la
+semaine, 37 essais) : 338 lignes, dont 16 en erreur et 17 en avertissement,
+avant ce filtre ; 57 lignes, aucune en erreur ni en avertissement, après.
+
+**Déroulement.**
+
+1. Essai complet : SOLUTION donne `POSSIBLE` (les données ont changé depuis
+   le calcul) ; sans conclusion dans le budget, `INDETERMINE`.
+2. Réduction, famille par famille : besoins, verrous, indisponibilités,
+   jours fermés, contraintes, règles personnalisées, puis `HORAIRES` et
+   `JOURS`, essayées à part et en dernier (sans elles, chaque séance reçoit
+   des débuts toutes les 30 minutes et le modèle grossit beaucoup). Dans une
+   famille, la famille entière est d'abord retirée, puis des blocs deux fois
+   plus petits, jusqu'à un élément à la fois.
+3. Confirmation : chaque élément gardé est retiré seul de l'ensemble final.
+   Le statut `MINIMAL` n'est rendu que si chacun de ces essais donne
+   SOLUTION. Un élément dont le retrait laisse le calcul impossible (effet
+   non monotone, par exemple une règle de minimum) est retiré et la passe
+   reprend.
+
+| Statut | Sens | Éléments |
+|---|---|---|
+| `minimal` | ensemble irréductible, prouvé par la confirmation | l'ensemble |
+| `partiel` | l'ensemble rend toujours le calcul impossible, mais n'est peut-être pas irréductible (budget épuisé, essai sans conclusion) | l'ensemble |
+| `possible` | avec les données actuelles, un emploi du temps existe | aucun |
+| `indetermine` | le premier essai n'a pas conclu dans le budget | aucun |
+
+**Budget.** La durée totale, chargement et enregistrement compris, ne
+dépasse pas le budget (30 s depuis la page, de 5 à 600 s en ligne de
+commande, 60 s par défaut) : le diagnostic s'arrête de lui-même et rend
+`partiel` ou `indetermine` plutôt que d'être coupé. Le service garde 0,5 s
+pour l'enregistrement (`RESERVE_ENREGISTREMENT_S`). Le premier essai reçoit
+le reste du budget moins une marge (`MARGE_MIN_S`, 0,6 s, augmentée du plus
+grand dépassement observé d'un essai sur son temps limite) ; les suivants au
+plus un tiers du temps restant (`PART_MAX_ESSAI`), pour qu'un essai sans
+conclusion ne prenne pas tout : ses blocs se divisent ensuite. Aucun essai
+n'est lancé avec moins que la durée de préparation et de construction déjà
+observée plus 0,2 s (`ESSAI_MIN_S`).
+
+Garde-fou : chaque essai tourne dans son fil, attendu jusqu'à la fin du
+budget moins `RESERVE_ARRET_S` (0,5 s). Un essai qui n'a pas rendu la main
+reçoit l'ordre d'arrêt et il est attendu pendant la réserve, puis le
+diagnostic s'arrête. Le moteur s'arrête à son prochain point de contrôle :
+la construction du modèle en a un entre ses étapes et un par paire de
+séances dans l'étape des pauses et trajets, la plus longue quand les
+domaines sont grands (37 s pour un besoin de 60 séances par semaine dont
+`HORAIRES` est retirée, avant ce point de contrôle). Un fil encore vivant
+après la réserve est une erreur journalisée.
+
+**Service.** `diagnostiquer_calcul` recharge l'instantané du semestre
+(`charger_instantane` : données actuelles, verrous de la version active) et
+reprend les options du calcul : niveaux, niveaux des règles (une règle
+active au niveau qu'elle avait), tolérance des violations héritées, fils de
+calcul. Il n'écrit que `calcul.statistiques["diagnostic"]`, dans une
+transaction ouverte par `transaction_immediate`, sans toucher aux autres
+clés ; un nouveau diagnostic remplace l'ancien. Le message rappelle que le
+diagnostic porte sur les données actuelles (`AVERTISSEMENT_DONNEES_ACTUELLES`).
+Un semestre refusé faute de séance donne `minimal` sans élément, avec le
+message du refus. `lire_diagnostic` rend `None` sans diagnostic, et `None`
+avec un avertissement au journal si l'entrée est illisible : la page d'un
+calcul s'affiche toujours.
+
+Garde-fous, chacun avec un message qui dit quoi faire : calcul inexistant
+(`ErreurIntrouvable`), calcul qui n'est pas impossible (`ErreurRegleMetier`),
+budget non numérique ou hors de [5, 600] (`ErreurDonneesInvalides`), calcul
+ou autre diagnostic en cours (`ErreurCalculEnCours`). Pendant un diagnostic,
+`lancer_calcul` refuse aussi un calcul (« Un diagnostic est en cours sur le
+calcul n° X ; il se termine en moins de N s : relancer ensuite. »). Le
+diagnostic s'inscrit avant de regarder les calculs en cours, et
+`lancer_calcul` le regarde avant d'inscrire son calcul : l'un des deux voit
+toujours l'autre.
+
+**Identifiants des éléments** (`ElementEnCause.identifiant`, toujours un
+texte) : code du catalogue, identifiant de règle, de besoin,
+d'indisponibilité ou de jour fermé (`JourFerme.id`), identifiant de séance
+pour un verrou (« 12-1 »). Un jour fermé construit en mémoire, sans
+identifiant, est désigné par `jour_ferme:<rang>`. Le `libelle` est une
+phrase prête à afficher.
+
+**Mesures** (jeu minimal, un seul fil, budget 30 s, base d'essai) :
+
+| Impossibilité | Statut | Essais | Durée | Ensemble rendu |
+|---|---|---|---|---|
+| M. Leroy indisponible du lundi au vendredi (refus des pré-vérifications) | `minimal` | 37 | 0,13 s | disponibilité des enseignants, la règle « A1 du lundi au vendredi », un besoin de M. Leroy, ses cinq indisponibilités |
+| un besoin porté à 60 séances par semaine (refus) | `partiel` | 15 | 29,5 s | grille horaire, jours de cours, ce besoin ; la confirmation sans les jours de cours n'aboutit pas dans le temps |
+| un besoin porté à 12 séances par semaine (prouvé par CP-SAT en 8 s) | `partiel` | 18 | 29,0 s | 10 règles et 26 données : chaque essai demande plusieurs secondes de preuve |
+
+Limites :
+
+- un diagnostic n'est rapide que si chaque essai l'est : une impossibilité
+  que CP-SAT met plusieurs secondes à prouver donne un résultat partiel en
+  30 s, plus réduit avec plus de temps (ligne de commande) ;
+- un diagnostic lancé en ligne de commande n'empêche pas un calcul lancé
+  depuis le serveur web (autre processus) ; le diagnostic, qui ne fait que
+  lire, n'en est pas faussé, mais les deux se partagent les processeurs ;
+- la granularité est le besoin entier, le verrou d'une séance,
+  l'indisponibilité, le jour fermé et la règle : le diagnostic ne descend
+  pas à une séance ou à un créneau.
 
 ## Séances datées
 
