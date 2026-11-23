@@ -410,6 +410,9 @@ traiter.
 statistiques**, pour le semestre du jour :
 
 1. **Prochaine étape** : une phrase et le lien vers l'écran qui y mène.
+   Un planning stylisé accompagne le texte. Son animation peut être
+   suspendue. Elle est désactivée si la réduction des animations est activée
+   dans les réglages de l'appareil.
 2. **Emploi du temps du semestre** : le calcul en cours, ou la version
    active et ses points à traiter, ou l'absence d'emploi du temps.
 3. **Dernier calcul**, seulement s'il s'est terminé sans emploi du temps

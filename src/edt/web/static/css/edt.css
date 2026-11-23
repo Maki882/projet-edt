@@ -799,7 +799,8 @@
   align-items: center;
   gap: 1.75rem;
   padding: clamp(1.4rem, 4vw, 3rem);
-  background: linear-gradient(125deg, var(--bandeau), var(--marque-fonce));
+  background: radial-gradient(ellipse at 78% 64%, #285c97, transparent 56%),
+    linear-gradient(120deg, var(--bandeau), var(--marque-fonce));
   color: #ffffff;
 }
 
@@ -838,60 +839,191 @@
 }
 
 .edt-etape-illustration {
-  display: none;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  justify-self: center;
+  column-gap: 0.45rem;
+  width: min(100%, 29rem);
 }
 
 @media screen and (min-width: 52rem) {
   .edt-prochaine-etape {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
   }
+}
 
-  .edt-etape-illustration {
-    display: block;
-    justify-self: center;
-    width: min(100%, 22rem);
-    padding: 1.15rem 1rem 1rem;
-    border: 1px solid rgba(219, 229, 245, 0.38);
-    border-radius: var(--rayon-carte);
-    background: rgba(255, 255, 255, 0.09);
-    box-shadow: var(--ombre);
-  }
+.edt-hologramme {
+  grid-area: 1 / 1 / 2 / -1;
+  position: relative;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  min-height: clamp(10rem, 21vw, 18rem);
+  padding: 0.7rem 0.8rem 1.85rem;
+  perspective: 700px;
+  background: radial-gradient(ellipse at 50% 78%, #85d9d12b, transparent 64%);
+}
 
-  .edt-etape-calendrier {
-    display: grid;
-    grid-template: repeat(5, 1fr) / repeat(5, 1fr);
-    aspect-ratio: 1.8;
-    padding: 0.25rem;
-    border: 1px solid rgba(219, 229, 245, 0.24);
-    border-radius: 6px;
-    background-image: linear-gradient(to right, rgba(219, 229, 245, 0.18) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(219, 229, 245, 0.18) 1px, transparent 1px);
-    background-size: 20% 20%;
-    background-position: -1px -1px;
-  }
+.edt-hologramme::before,
+.edt-hologramme-orbite {
+  position: absolute;
+  bottom: 5%;
+  left: 15%;
+  width: 70%;
+  aspect-ratio: 2.6;
+  border-radius: 50%;
+}
 
-  .edt-etape-calendrier span {
-    margin: 0.2rem;
-    border-radius: 4px;
-    background: var(--accent);
-  }
+.edt-hologramme::before {
+  content: "";
+  background: radial-gradient(ellipse, #85d9d176, #85d9d126 45%, transparent 70%);
+  transform: rotateX(55deg);
+}
 
-  .edt-etape-calendrier span:nth-child(1) { grid-area: 1 / 1 / 3 / 2; }
-  .edt-etape-calendrier span:nth-child(2) { grid-area: 3 / 2 / 5 / 3; background: #a5bdfa; }
-  .edt-etape-calendrier span:nth-child(3) { grid-area: 2 / 3 / 4 / 4; background: #d1c7f5; }
-  .edt-etape-calendrier span:nth-child(4) { grid-area: 4 / 4 / 6 / 5; }
-  .edt-etape-calendrier span:nth-child(5) { grid-area: 1 / 5 / 3 / 6; background: #a5bdfa; }
+.edt-hologramme::after {
+  position: absolute;
+  z-index: -1;
+  inset: 16% 12% 12%;
+  content: "";
+  background: linear-gradient(transparent, #85d9d144);
+  clip-path: polygon(7% 0, 93% 0, 64% 100%, 36% 100%);
+}
+
+.edt-hologramme-orbite {
+  border: 2px solid #85d9d166;
+  border-left-color: var(--accent);
+  border-right-color: #c5b7f5;
+  box-shadow: 0 0 1.1rem #85d9d12e, inset 0 0 1rem #85d9d130;
+  transform: rotateX(65deg) rotateZ(-12deg);
+}
+
+.edt-hologramme-cadre {
+  position: relative;
+  width: min(82%, 24rem);
+  padding: 0.55rem 0.65rem 0.65rem;
+  border: 1px solid #aeeae1a6;
+  border-radius: var(--rayon-carte);
+  background: linear-gradient(155deg, #3974a7ed, #172d58f0 58%, #237783eb);
+  box-shadow: 0 1.4rem 1.7rem #070f2870, 0 0 1.65rem #85d9d13c, inset 0 0 1.2rem #aeeae11c;
+  transform: rotateX(8deg) rotateY(-12deg) rotateZ(-4deg);
+}
+
+.edt-hologramme-points {
+  display: flex;
+  gap: 0.24rem;
+  margin: 0 0 0.5rem 0.15rem;
+}
+
+.edt-hologramme-points span {
+  width: 0.32rem;
+  height: 0.32rem;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0.45rem var(--accent);
+}
+
+.edt-etape-calendrier {
+  position: relative;
+  display: grid;
+  grid-template: repeat(5, 1fr) / repeat(5, 1fr);
+  aspect-ratio: 2.1;
+  overflow: hidden;
+  border: 1px solid #dbe5f552;
+  border-radius: var(--rayon);
+  background: linear-gradient(90deg, #dbe5f525 1px, transparent 1px),
+    linear-gradient(#dbe5f525 1px, transparent 1px), #111e3647;
+  background-size: 20% 20%, 20% 20%, auto;
+}
+
+.edt-etape-calendrier::after {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 32%;
+  content: "";
+  border-bottom: 1px solid #b8fff4;
+  background: linear-gradient(transparent, #85d9d160);
+  opacity: 0.55;
+  transform: translateY(145%);
+}
+
+.edt-etape-calendrier span {
+  --edt-lumiere: var(--accent);
+  position: relative;
+  z-index: 1;
+  margin: 0.22rem;
+  border-radius: 5px;
+  background: linear-gradient(145deg, #ffffff80, transparent), var(--edt-lumiere);
+  box-shadow: 0 0 0.75rem var(--edt-lumiere);
+}
+
+.edt-etape-calendrier span:nth-child(1) { grid-area: 1 / 1 / 3 / 2; }
+.edt-etape-calendrier span:nth-child(2) { grid-area: 3 / 2 / 5 / 3; --edt-lumiere: #a5bdfa; }
+.edt-etape-calendrier span:nth-child(3) { grid-area: 2 / 3 / 5 / 4; --edt-lumiere: #c5b7f5; }
+.edt-etape-calendrier span:nth-child(4) { grid-area: 4 / 4 / 6 / 5; }
+.edt-etape-calendrier span:nth-child(5) { grid-area: 1 / 5 / 3 / 6; --edt-lumiere: #a5bdfa; }
+
+.edt-hologramme-pause,
+.edt-etape-illustration label {
+  display: none;
 }
 
 @media screen and (prefers-reduced-motion: no-preference) {
-  .edt-etape-calendrier span {
-    animation: edt-apparition 360ms ease-out both;
+  .edt-hologramme-pause {
+    display: block;
+    margin: 0;
+    accent-color: var(--accent);
   }
 
-  .edt-etape-calendrier span:nth-child(2) { animation-delay: 45ms; }
-  .edt-etape-calendrier span:nth-child(3) { animation-delay: 90ms; }
-  .edt-etape-calendrier span:nth-child(4) { animation-delay: 135ms; }
-  .edt-etape-calendrier span:nth-child(5) { animation-delay: 180ms; }
+  .edt-etape-illustration label {
+    display: block;
+    padding-block: 0.25rem;
+    color: var(--bandeau-texte);
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+
+  .edt-hologramme-pause:checked ~ .edt-hologramme {
+    --edt-lecture-hologramme: paused;
+  }
+
+  .edt-hologramme-cadre {
+    animation: edt-levitation 6s ease-in-out infinite var(--edt-lecture-hologramme, running);
+  }
+
+  .edt-hologramme-orbite {
+    animation: edt-orbite 12s linear infinite var(--edt-lecture-hologramme, running);
+  }
+
+  .edt-etape-calendrier::after {
+    animation: edt-balayage 4.8s linear infinite var(--edt-lecture-hologramme, running);
+  }
+
+  .edt-etape-calendrier span {
+    animation: edt-creneau-flottant 4s ease-in-out infinite var(--edt-lecture-hologramme, running);
+  }
+
+  .edt-etape-calendrier span:nth-child(2) { animation-delay: -0.7s; }
+  .edt-etape-calendrier span:nth-child(3) { animation-delay: -1.4s; }
+  .edt-etape-calendrier span:nth-child(4) { animation-delay: -2.1s; }
+  .edt-etape-calendrier span:nth-child(5) { animation-delay: -2.8s; }
+
+  @keyframes edt-levitation {
+    50% { transform: translateY(-0.8rem) rotateX(-3deg) rotateY(10deg) rotateZ(2deg); }
+  }
+
+  @keyframes edt-orbite {
+    to { transform: rotateX(65deg) rotateZ(348deg); }
+  }
+
+  @keyframes edt-balayage {
+    from { transform: translateY(-105%); }
+    to { transform: translateY(320%); }
+  }
+
+  @keyframes edt-creneau-flottant {
+    50% { transform: translateY(-0.18rem); opacity: 0.82; }
+  }
 
   .edt-bloc {
     transition: box-shadow 140ms ease;
@@ -1048,6 +1180,7 @@
   .edt-saut-date,
   .edt-panneau,
   .edt-ecran-seulement,
+  .edt-etape-illustration,
   .messages,
   .entete-page {
     display: none !important;
