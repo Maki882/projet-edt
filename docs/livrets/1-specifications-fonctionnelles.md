@@ -6,18 +6,19 @@ Projet PTS Informatique, ISEP, année 2026-2027
 
 | | |
 |---|---|
-| Livret | 1 sur 3 : spécifications fonctionnelles |
+| Livret | 1 sur 4 : spécifications fonctionnelles |
 | Enseignant | Hervé Allanic |
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
-| Date | 16 novembre 2026 |
-| Version | 1.1 |
+| Date | 23 novembre 2026 |
+| Version | 1.2 |
 | Application décrite | EDT 1.0.0 |
 
 Ce livret décrit l'application du point de vue de la personne qui l'utilise : à quoi elle
 sert, ce qu'elle permet de faire et comment elle s'organise. Il ne contient aucun détail de
 réalisation ; ceux-ci figurent dans le livret 2, [Spécifications techniques et
 organisation](2-specifications-techniques-et-organisation.md). Le mode d'emploi pas à pas
-fait l'objet du livret 3, le [guide de l'utilisateur](3-guide-utilisateur.md).
+fait l'objet du livret 3, le [guide de l'utilisateur](3-guide-utilisateur.md) ; la recette de
+ces fonctionnalités fait l'objet du livret 4, le [cahier de recette](4-cahier-de-recette.md).
 
 ---
 
@@ -378,7 +379,8 @@ membre de l'équipe du projet ou un examinateur.
   3. L'onglet **Tests d'intégration** montre de même les tests qui traversent l'application
      entière, dont six parcours de bout en bout.
 - **Résultat** : chaque test lancé affiche son résultat et la date de cette exécution ; pour un
-  échec, le message d'erreur se déplie.
+  échec, le message d'erreur se déplie. Le [cahier de recette](4-cahier-de-recette.md)
+  (livret 4) relie ces tests aux fonctionnalités et aux cas d'usage de ce livret.
 
 ### 2.5 Les écrans
 

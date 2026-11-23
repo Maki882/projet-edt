@@ -17,6 +17,11 @@ Ce dossier contient (nombres de tests et détail par fichier en section 6) :
   écrans de chaque composant par HTTP, ses commandes par `CliRunner`, ses
   calculs complets (section 6).
 
+Le document de recette de ces tests est le
+[cahier de recette](../../docs/livrets/4-cahier-de-recette.md) (livret 4) :
+il relie les tests d'intégration aux fonctionnalités et aux cas d'usage du
+livret 1 et donne les résultats des campagnes.
+
 La règle de classement, la vue d'ensemble et les tests unitaires sont décrits
 dans [`tests/README.md`](../README.md) et
 [`tests/unitaires/README.md`](../unitaires/README.md).

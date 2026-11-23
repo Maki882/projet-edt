@@ -6,18 +6,19 @@ Projet PTS Informatique, ISEP, année 2026-2027
 
 | | |
 |---|---|
-| Livret | 3 sur 3 : guide de l'utilisateur |
+| Livret | 3 sur 4 : guide de l'utilisateur |
 | Enseignant | Hervé Allanic |
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
-| Date | 16 novembre 2026 |
-| Version | 1.0 |
+| Date | 23 novembre 2026 |
+| Version | 1.1 |
 | Application décrite | EDT 1.0.0 |
 
 Ce livret est le mode d'emploi de l'application, écran par écran. Il s'adresse au
 responsable de la scolarité qui la découvre et ne suppose aucune connaissance en
 informatique. Ce que fait l'application et pourquoi est décrit dans le livret 1,
 [Spécifications fonctionnelles](1-specifications-fonctionnelles.md) ; sa construction, dans le
-livret 2, [Spécifications techniques et organisation](2-specifications-techniques-et-organisation.md).
+livret 2, [Spécifications techniques et organisation](2-specifications-techniques-et-organisation.md) ;
+sa recette, dans le livret 4, [Cahier de recette](4-cahier-de-recette.md).
 
 Toutes les captures proviennent de l'application sur l'établissement fictif « moyen » (une
 promotion de troisième année, 39 groupes, 34 enseignants, 34 salles). Les noms de personnes

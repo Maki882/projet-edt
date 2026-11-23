@@ -33,7 +33,7 @@ se discute d'abord avec l'équipe, dans une tâche ou une pull request.
 
 ## 2. Travailler avec Git et GitHub
 
-La protection de branche n'est pas disponible sur ce dépôt : GitHub
+Aucune protection de branche n'est activée sur ce dépôt : GitHub
 n'empêche pas techniquement de pousser sur `main`. Les règles suivantes sont
 donc des règles d'équipe :
 

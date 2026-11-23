@@ -8,7 +8,9 @@ règle unique, contrôlée automatiquement.
 Pour aller plus loin : [`tests/unitaires/README.md`](unitaires/README.md)
 (chaque fichier de tests unitaires et ce qu'il vérifie) et
 [`tests/integration/README.md`](integration/README.md) (chaîne traversée,
-parcours de bout en bout, chaque fichier de tests d'intégration).
+parcours de bout en bout, chaque fichier de tests d'intégration). La recette
+de l'application par les tests d'intégration (fiches, campagnes, résultats)
+est le [cahier de recette](../docs/livrets/4-cahier-de-recette.md), livret 4.
 
 ```mermaid
 flowchart TD
