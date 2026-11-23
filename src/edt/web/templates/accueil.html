@@ -23,9 +23,17 @@
     </p>
     {%- endif %}
   </div>
-  <div class="edt-etape-illustration" aria-hidden="true">
-    <div class="edt-etape-calendrier">
-      <span></span><span></span><span></span><span></span><span></span>
+  <div class="edt-etape-illustration">
+    <input class="edt-hologramme-pause" id="edt-hologramme-pause" type="checkbox">
+    <label for="edt-hologramme-pause">Suspendre l’animation</label>
+    <div class="edt-hologramme" aria-hidden="true">
+      <div class="edt-hologramme-orbite"></div>
+      <div class="edt-hologramme-cadre">
+        <div class="edt-hologramme-points"><span></span><span></span><span></span></div>
+        <div class="edt-etape-calendrier">
+          <span></span><span></span><span></span><span></span><span></span>
+        </div>
+      </div>
     </div>
   </div>
 </section>

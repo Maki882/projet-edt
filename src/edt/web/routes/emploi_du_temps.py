@@ -44,6 +44,8 @@ from edt.web.gabarits import (
 )
 from edt.web.menu import SECTION_EMPLOI_DU_TEMPS, EntreeMenu
 
+_date_du_jour = dt.date.today
+
 journal = logging.getLogger(__name__)
 
 routeur = APIRouter(prefix="/emploi-du-temps")
@@ -230,6 +232,8 @@ def page(
     if choisie is None:
         choisie = vues.cible_par_defaut(session, annee_id, version.id)
 
+    aujourdhui = _date_du_jour()
+
     def construire(cible_vue, etendu_vue):
         return vues.construire_vue(
             session,
@@ -240,6 +244,7 @@ def page(
             date=date,
             jour=jour,
             etendu=etendu_vue,
+            aujourdhui=aujourdhui,
         )
 
     try:
@@ -274,6 +279,7 @@ def page(
         export[f"{vue.cible.nature.value}_id"] = vue.cible.id
     contexte.update(
         vue=vue,
+        aujourdhui=aujourdhui,
         url_vue=url_vue,
         retour=url_vue(seance=seance) if seance else url_vue(),
         selection=seance,
