@@ -24,8 +24,8 @@ Khiri, Kerime, Hugo.
 Démonstration en ligne : adresse communiquée par l'équipe.
 
 Elle tourne sur un établissement fictif complet. Pour essayer
-l'application sur votre poste, suivez le démarrage en cinq minutes
-ci-dessous.
+l'application sur votre poste, suivez le
+[démarrage en cinq minutes](#démarrage-en-5-minutes).
 
 ## Livrables du cours
 
