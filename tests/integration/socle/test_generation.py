@@ -57,6 +57,10 @@ def test_calcul_reussi_enregistre_une_version_active(jeu_minimal):
         version = session.get(m.VersionEdt, suivi.version_id)
         assert version.active and version.numero == 1 and version.calcul_id == identifiant
         assert len(version.seances) == 17
+        sans_salle = [seance.id for seance in version.seances if seance.salle_id is None]
+        assert all(seance.salle_id is not None for seance in version.seances), (
+            f"séance(s) enregistrée(s) sans salle : {sans_salle}"
+        )
         une = version.seances[0]
         assert une.salle_id is not None and une.semaines  # semaines actives enregistrées
 

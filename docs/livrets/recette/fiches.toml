@@ -1,0 +1,2029 @@
+# Fiches de recette du livret 4 (docs/livrets/4-cahier-de-recette.md).
+#
+# Source unique, écrite à la main. L'outil `python -m tests.outils.recette --ecrire` en tire le
+# tableau de recette (section 4), la matrice de traçabilité, les fiches détaillées (annexe A)
+# et les nombres du livret ; le contrôle
+# `tests/unitaires/socle/test_recette.py` vérifie que chaque test cité existe dans
+# tests/integration/ et que chaque fonctionnalité réalisée du livret 1 a une fiche.
+#
+# Une fiche :
+#   id              REC-BOUT-n (parcours), REC-O5-n, REC-U3-n, REC-P2-n (fonctionnalité),
+#                   REC-EXP-n (exploitation et robustesse)
+#   titre, objectif, depart (conditions de départ) : texte
+#   fonctionnalites : codes du livret 1 (O1 à O11, U1 à U13, P1 à P10)
+#   cas             : numéros des cas d'usage du livret 1 qu'elle illustre (facultatif)
+#   etapes, attendu : listes de phrases ; un résultat attendu est vérifié par les tests cités
+#   tests           : identifiants pytest des tests d'intégration qui la prouvent
+#   remarque        : facultative (substitut employé, limite de la preuve)
+#   anomalie        : facultative ; pour une fiche non conforme, l'anomalie de la section 6
+#                     qui la suit (« ANO-21 »)
+#   [fiche.essai]   : essai manuel, pour ce qu'aucun test par HTTP ne peut vérifier :
+#                     date, environnement, constat, verdict (« Conforme » ou « Non conforme »),
+#                     reserve (facultative), preuves = [{ image = "images/…", legende = "…" }]
+#   [fiche.suivi]   : facultatif ; essai refait après la recette, sur un code corrigé, mêmes
+#                     clés que [fiche.essai] ; affiché avec son verdict, sans changer celui de
+#                     la fiche, établi sur la version recettée
+#
+# [[sans_fiche]] : fonctionnalité réalisée sans fiche, avec sa raison (affichée dans les
+# réserves du livret). Aucune à ce jour.
+#
+# Les libellés « entre guillemets » sont ceux des écrans ou des messages de l'application ;
+# les commandes s'écrivent entre accents graves.
+
+# =========================================================================================
+# Parcours de bout en bout
+# =========================================================================================
+
+[[fiche]]
+id = "REC-BOUT-1"
+titre = "Parcours sur le site : générer l'emploi du temps du semestre, le consulter et l'exporter"
+fonctionnalites = ["O5", "O4", "U7", "O7", "O10", "U12"]
+cas = [1, 6]
+objectif = "Montrer que, depuis le site, un calcul lancé sur le semestre produit une version active, affichée dans la grille, sans anomalie bloquante, et que les exports CSV et iCal contiennent exactement les séances enregistrées."
+depart = "Base neuve chargée du jeu minimal (2 campus, 6 salles, 5 enseignants, 9 groupes, 6 matières, 16 besoins, semestre 1 de 2026-2027) ; option « Emploi du temps plus confortable » coupée ; aucun emploi du temps calculé. Vrai moteur de calcul, vrai vérificateur."
+etapes = [
+  "Onglet « Générer », semestre 1 : cliquer sur « Lancer le calcul » sans changer les réglages, puis attendre la fin du calcul.",
+  "Ouvrir « Historique et versions », puis l'emploi du temps de la version produite.",
+  "Faire vérifier la semaine type et les séances datées de la version.",
+  "Dans « Données › Export », section « Emploi du temps », télécharger la version en CSV puis en iCal.",
+]
+attendu = [
+  "L'envoi du formulaire redirige vers la page du calcul ; le calcul se termine avec succès en moins de 20 secondes.",
+  "L'historique montre une version portant l'étiquette « Active » ; la grille de la version contient des séances.",
+  "Le vérificateur ne relève aucune anomalie bloquante, ni dans la semaine type, ni dans les séances datées.",
+  "Le fichier CSV a exactement une ligne par séance de la version ; le fichier iCal, exactement autant d'événements.",
+]
+tests = [
+  "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export",
+]
+remarque = "Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux)."
+
+[[fiche]]
+id = "REC-BOUT-2"
+titre = "Parcours en ligne de commande : de la base vide au fichier CSV de l'emploi du temps"
+fonctionnalites = ["P2", "O5", "O4", "O10"]
+cas = [1, 6]
+objectif = "Montrer qu'un administrateur produit un emploi du temps vérifié et exporté sans ouvrir le site, les commandes s'enchaînant sur la même base."
+depart = "Dossier de travail vide : la base désignée par EDT_DB_URL n'existe pas encore ; aucun serveur web lancé."
+etapes = [
+  "Taper `python -m edt init-db`, puis `python -m edt jeu-minimal`.",
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.",
+  "Taper `python -m edt verifier --version <v>` sur la version devenue active.",
+  "Taper `python -m edt exporter-edt --version <v> --sortie edt.csv` et ouvrir le fichier.",
+]
+attendu = [
+  "Les cinq commandes se terminent avec le code de sortie 0 ; pour « verifier », ce code signifie qu'aucune erreur n'est relevée.",
+  "Le fichier edt.csv existe, n'est pas vide et contient la matière « Mathématiques » du jeu minimal.",
+]
+tests = [
+  "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande",
+]
+
+[[fiche]]
+id = "REC-BOUT-3"
+titre = "Aller-retour des données : exporter le classeur d'un établissement et le réimporter dans une base neuve"
+fonctionnalites = ["U13", "O9"]
+cas = [5]
+objectif = "Montrer que le classeur des données exporté par le site se réimporte sans rejet ni perte dans une installation neuve."
+depart = "Installation A : base chargée du jeu minimal (16 besoins). Installation B : seconde base, initialisée, sans aucune donnée d'établissement."
+etapes = [
+  "Sur A, ouvrir « Données › Export », section « Données de l'établissement », et télécharger le « Classeur Excel (.xlsx) ».",
+  "Sur B, importer ce classeur comme données de l'établissement et appliquer l'import.",
+  "Comparer, entre A et B, les nombres de salles, d'enseignants, de groupes, de matières et de besoins.",
+]
+attendu = [
+  "Le téléchargement répond avec un fichier non vide.",
+  "L'import dans la base neuve ne rejette aucune ligne.",
+  "La base neuve compte autant de salles, d'enseignants, de groupes, de matières et de besoins que la base d'origine.",
+]
+tests = [
+  "tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve",
+]
+remarque = "L'import appelle le service qu'utilise l'écran « Import », sans passer par son formulaire. Le classeur Excel suit le même format que les fichiers CSV de O9."
+
+[[fiche]]
+id = "REC-BOUT-4"
+titre = "Règle personnalisée de bout en bout : la classe A1-G1 ne travaille pas le lundi"
+fonctionnalites = ["U3", "O4", "O5"]
+cas = [1, 2]
+objectif = "Montrer qu'une règle personnalisée saisie par l'utilisateur est lue par le calcul, imposée par le moteur, puis contrôlée sans entorse par le vérificateur."
+depart = "Base chargée du jeu minimal (classe A1-G1, deux règles personnalisées actives) ; option « Emploi du temps plus confortable » coupée ; aucun calcul."
+etapes = [
+  "Dans « Données › Règles personnalisées », créer une règle « Jours travaillés » pour le groupe A1-G1 : mardi à vendredi, niveau nécessaire.",
+  "Lancer le calcul du semestre 1 et attendre sa fin.",
+  "Faire vérifier la version produite et relever les jours des séances propres à A1-G1.",
+]
+attendu = [
+  "Le calcul se termine avec succès en moins de 20 secondes.",
+  "Le rapport du vérificateur est valide ; la nouvelle règle figure parmi les règles contrôlées et aucune anomalie ne la cite.",
+  "La classe A1-G1 a au moins une séance propre, et aucune n'a lieu le lundi.",
+]
+tests = [
+  "tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout",
+]
+remarque = "La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération."
+
+[[fiche]]
+id = "REC-BOUT-5"
+titre = "Retouche à la main : annuler une séance datée par le site, avec un motif"
+fonctionnalites = ["U9", "O5"]
+cas = [4]
+objectif = "Montrer qu'une annulation faite à la main après le calcul ne touche qu'une séance datée, enregistre son motif et laisse l'emploi du temps sans anomalie bloquante."
+depart = "Base chargée du jeu minimal ; un calcul du semestre 1 a réussi avec le vrai moteur et produit ses séances datées."
+etapes = [
+  "Dans « Emploi du temps », en « Semaine datée », ouvrir une séance prévue.",
+  "Sous « Annuler cette séance », saisir le motif « grève » et cliquer sur « Annuler la séance ».",
+  "Relire la séance, compter les séances annulées, faire vérifier les séances datées.",
+]
+attendu = [
+  "La demande d'annulation est acceptée et redirige.",
+  "La séance a l'état annulé et son commentaire contient « grève » ; le nombre de séances annulées augmente d'exactement un.",
+  "La vérification des séances datées ne relève aucune anomalie bloquante.",
+]
+tests = [
+  "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site",
+]
+
+[[fiche]]
+id = "REC-BOUT-6"
+titre = "Établissement fictif réaliste : charger le jeu « petit », le calculer et le vérifier"
+fonctionnalites = ["O11", "O5", "O4"]
+cas = [1]
+objectif = "Montrer que l'établissement fictif, le moteur de calcul et le vérificateur s'accordent sur des données plus riches que le jeu minimal (deux sites, salles spécialisées, vacataires, absences, partiels)."
+depart = "Base initialisée, sans aucune donnée d'établissement."
+etapes = [
+  "Dans « Données › Établissement fictif », choisir « Petit », variante 0, et charger.",
+  "Couper l'option « Emploi du temps plus confortable » dans les paramètres.",
+  "Pour chaque semestre de l'établissement, lancer le calcul et attendre sa fin.",
+  "Faire vérifier chaque version produite : semaine type, puis séances datées.",
+]
+attendu = [
+  "Le chargement crée au moins un semestre, et le nombre de besoins en base est celui qu'annonce le compte rendu.",
+  "Chaque calcul réussit en moins de 20 secondes et place au moins une séance.",
+  "Ni la semaine type ni les séances datées ne présentent d'anomalie bloquante.",
+]
+tests = [
+  "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie",
+]
+
+# =========================================================================================
+# O1, O2, O3, O11 : données de l'établissement
+# =========================================================================================
+
+[[fiche]]
+id = "REC-O1-1"
+titre = "Créer, retrouver et modifier les éléments de l'établissement"
+fonctionnalites = ["O1"]
+objectif = "Montrer que chaque sorte d'élément se crée depuis son écran de l'espace « Données », que la liste se trie, se recherche et se filtre, et qu'une modification est enregistrée."
+depart = "Base chargée du jeu minimal (campus NDC et ISSY, 6 salles, 5 enseignants, 9 groupes, 6 matières)."
+etapes = [
+  "Ouvrir « Données › Salles » ; trier par capacité décroissante, rechercher « n2 », filtrer sur le campus ISSY.",
+  "Cliquer sur « Nouvelle salle », saisir N999 (campus NDC, 30 places, deux équipements), puis « Ajouter ».",
+  "Ouvrir la salle N016, porter sa capacité à 150, puis « Enregistrer ».",
+  "Pour les campus, enseignants, groupes, étudiants, matières, types de séance, types de salle et équipements : ouvrir la liste et le formulaire, créer un élément valide.",
+  "Dans « Campus et trajets », remplacer la durée du trajet entre NDC et ISSY par 45 ; ouvrir l'arbre des groupes.",
+  "Dans « Types de salle », modifier le libellé d'une ligne dans la ligne même, puis l'enregistrer.",
+]
+attendu = [
+  "La liste annonce « 6 salles. » ; triée par capacité, N016 passe avant N310 ; la recherche donne « 1 salle correspondant » ; le filtre ISSY, « 2 salles correspondant ».",
+  "Le message « Salle « N999 (NDC) » créée. » s'affiche ; la salle est enregistrée avec 30 places et 2 équipements.",
+  "La salle N016 a 150 places ; l'écran revient à la liste triée d'origine.",
+  "Pour chaque sorte d'élément, la liste et le formulaire s'ouvrent et l'ajout affiche un message de création.",
+  "La durée du trajet passe de 60 à 45 ; l'arbre présente A1-G1 avant son demi-groupe A1-G1a et signale les groupes qui se chevauchent.",
+  "La ligne passe en édition ; après l'enregistrement, elle affiche le nouveau libellé « Grand amphi ».",
+]
+tests = [
+  "tests/integration/web_donnees/test_generique.py::test_liste_triee_recherchee_et_filtree",
+  "tests/integration/web_donnees/test_generique.py::test_creation_puis_message",
+  "tests/integration/web_donnees/test_generique.py::test_modification",
+  "tests/integration/web_donnees/test_entites.py::test_liste_formulaire_et_creation",
+  "tests/integration/web_donnees/test_entites.py::test_matrice_des_trajets",
+  "tests/integration/web_donnees/test_entites.py::test_arbre_des_groupes",
+  "tests/integration/web_donnees/test_generique.py::test_edition_dans_la_ligne",
+]
+remarque = "Le tri, la recherche, le filtre et la modification sont vérifiés sur les salles : le mécanisme de liste et de formulaire est commun à tous les écrans."
+
+[[fiche]]
+id = "REC-O1-2"
+titre = "Saisie invalide d'un élément : refus expliqué sous le champ, rien n'est enregistré"
+fonctionnalites = ["O1"]
+objectif = "Montrer qu'une saisie invalide (texte au lieu d'un nombre, doublon, valeur hors bornes) est refusée avec un message sous le champ, sans erreur technique et sans rien enregistrer."
+depart = "Base chargée du jeu minimal (salle N016 sur le campus NDC)."
+etapes = [
+  "« Nouvelle salle » : code N016 sur le campus NDC, capacité « trente », puis « Ajouter » ; recommencer avec une capacité de 30.",
+  "Saisir une capacité de vingt chiffres, puis des chiffres d'autres écritures (« ² », « ٣ »).",
+  "« Nouvel enseignant » : saisir 0 h comme maximum d'enseignement par jour.",
+  "« Campus et trajets » : saisir « beaucoup » comme temps de trajet.",
+  "« Nouveau groupe » : saisir un effectif de vingt chiffres.",
+]
+attendu = [
+  "Refus avec « Nombre entier attendu. », les valeurs saisies réaffichées ; puis refus avec « Une salle porte déjà ce code sur ce campus. ».",
+  "Capacité de vingt chiffres : « La valeur maximale est 100000. » ; autres écritures : « Nombre entier attendu. ».",
+  "Maximum nul : refus avec, sous le champ, « La valeur minimale est … » ; aucun enseignant créé.",
+  "Trajet illisible : refus avec « Nombre de minutes attendu. ».",
+  "Effectif de vingt chiffres : « La valeur maximale est 100000. ».",
+]
+tests = [
+  "tests/integration/web_donnees/test_generique.py::test_erreur_de_saisie_reaffichee_avec_les_valeurs",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_capacite_trop_grande",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_chiffres_exotiques_refuses",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_effectif_trop_grand",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_maximum_d_enseignement_nul_refuse_sous_le_champ",
+  "tests/integration/web_donnees/test_entites.py::test_matrice_des_trajets",
+]
+
+[[fiche]]
+id = "REC-O1-3"
+titre = "Supprimer un élément : confirmation, refus avec liens, conséquences expliquées"
+fonctionnalites = ["O1"]
+objectif = "Montrer qu'une suppression demande une confirmation et dit ce qu'elle entraîne, qu'elle est refusée avec un lien vers ce qui en dépend, et qu'aucune suppression n'est acceptée pendant un calcul."
+depart = "Base chargée du jeu minimal (Mme Martin assure 3 besoins ; la salle L115 a une indisponibilité). Pour un essai, un calcul en cours ; pour un autre, l'établissement fictif « moyen » avec son emploi du temps de référence."
+etapes = [
+  "« Salles » : « Supprimer » sur N016, puis « Supprimer définitivement » ; « Supprimer » sur L115.",
+  "« Enseignants » : « Supprimer » sur Mme Martin, puis suivre le lien proposé.",
+  "Sur l'établissement « moyen », ouvrir la confirmation de suppression d'une salle où des séances sont placées.",
+  "Envoyer deux fois la même suppression ; pendant un calcul, demander la suppression d'un besoin et d'une salle.",
+]
+attendu = [
+  "« Salle « N016 (NDC) » supprimée. » ; pour L115, la confirmation annonce « Son indisponibilité sera supprimée avec elle. ».",
+  "Pour Mme Martin : « Cet enseignant assure 3 besoins. », sans bouton de suppression, avec le lien « Voir ces 3 besoins » ; un envoi forcé est refusé avec le même message ; les 16 besoins restent.",
+  "La confirmation explique que les séances « resteront sans salle » et renvoie aux « Points à traiter » et au prochain calcul.",
+  "Le second envoi affiche « Cet élément n'existe plus : il a déjà été supprimé. » ; pendant le calcul, les suppressions sont refusées et rien ne disparaît.",
+]
+tests = [
+  "tests/integration/web_donnees/test_generique.py::test_suppression_confirmee",
+  "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_quand_la_suppression_est_possible",
+  "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_refusee_avec_lien",
+  "tests/integration/web_donnees/test_generique.py::test_suppression_refusee_avant_la_base_avec_message",
+  "tests/integration/web_donnees/test_suppression.py::test_refus_par_campus_et_par_groupe",
+  "tests/integration/web_donnees/test_suppression.py::test_parcours_reel_sur_le_jeu_moyen",
+  "tests/integration/web_donnees/test_suppression.py::test_rejeu_d_une_suppression_et_d_une_annulation",
+  "tests/integration/web_donnees/test_cas_limites.py::test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee",
+]
+
+[[fiche]]
+id = "REC-O2-1"
+titre = "Saisir, retrouver et dupliquer les besoins d'enseignement"
+fonctionnalites = ["O2"]
+objectif = "Montrer qu'un besoin se saisit « chaque semaine », en volume total réparti entre deux dates ou en séance ponctuelle datée, que seuls les champs du mode choisi sont enregistrés, et qu'un besoin incomplet ou hors du semestre est refusé ; montrer que la liste des besoins se filtre, qu'un besoin se duplique et que la charge hebdomadaire par groupe suit les filtres."
+depart = "Base chargée du jeu minimal : semestre 1 de 2026-2027, matière IM.1101, classe A1-G1 ; 16 besoins, dont 3 assurés par Mme Martin et 2 ponctuels."
+etapes = [
+  "« Données › Besoins › Nouveau besoin » : TD de IM.1101 pour A1-G1, 1 h 30, « Chaque semaine », 2 séances par semaine, puis « Ajouter ».",
+  "Même saisie en « Volume total réparti entre deux dates » : 10 séances, 2 au plus par semaine, du 07/09/2026 au 23/10/2026 ; puis en laissant vide le nombre total.",
+  "Même saisie en « Séance ponctuelle datée » le 19/11/2026 à 13:45 ; puis à la date du 01/05/2027.",
+  "Saisir un commentaire de 5 001 caractères, puis de 5 000.",
+  "Ouvrir « Données › Besoins » ; filtrer sur Mme Martin, puis sur la promotion A1, puis sur le volume « Séance ponctuelle datée ».",
+  "Ouvrir le bloc « Charge hebdomadaire par groupe » ; rechercher « Anglais ».",
+  "Cliquer sur « Dupliquer » sur la ligne d'un besoin.",
+]
+attendu = [
+  "Le besoin hebdomadaire est enregistré : 2 séances de 90 minutes.",
+  "Le besoin au volume total est enregistré (10 séances, 2 au plus par semaine) ; sans nombre total, refus « Ce champ est obligatoire pour ce mode de volume. ».",
+  "La séance ponctuelle est enregistrée au 19/11/2026, début imposé à 13 h 45, sans les champs d'un autre mode ; hors du semestre, refus « La date doit être comprise dans le semestre ».",
+  "5 001 caractères : refus « 5000 caractères au plus. », rien d'enregistré ; 5 000 caractères : le besoin est enregistré.",
+  "« 3 besoins correspondant » pour Mme Martin, « 16 besoins correspondant » pour A1, « 2 besoins correspondant » en ponctuel.",
+  "Le bloc de charge est replié par défaut et suit la recherche et les filtres.",
+  "Le message « Copie créée » s'affiche ; la base compte 17 besoins.",
+]
+tests = [
+  "tests/integration/web_donnees/test_besoins.py::test_formulaire_marque_les_champs_propres_a_chaque_mode",
+  "tests/integration/web_donnees/test_besoins.py::test_mode_par_semaine",
+  "tests/integration/web_donnees/test_besoins.py::test_mode_total_entre_deux_dates",
+  "tests/integration/web_donnees/test_besoins.py::test_mode_ponctuel",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur",
+  "tests/integration/web_donnees/test_besoins.py::test_liste_filtrable_et_ajout_rapide",
+  "tests/integration/web_donnees/test_besoins.py::test_liste_compacte",
+  "tests/integration/web_donnees/test_besoins.py::test_charges_repliees_et_limitees_aux_groupes_concernes",
+  "tests/integration/web_donnees/test_besoins.py::test_duplication",
+]
+
+[[fiche]]
+id = "REC-O3-1"
+titre = "Tenir le calendrier, les indisponibilités et la grille horaire ; dates aberrantes refusées"
+fonctionnalites = ["O3"]
+objectif = "Montrer que le calendrier, les indisponibilités et la grille horaire se tiennent depuis leurs écrans, qu'une année se crée avec ses semestres sans doublon, qu'une date aberrante est refusée sous le champ et que le semestre en cours de calcul ne peut pas être supprimé."
+depart = "Base initialisée (année 2026-2027, ses semestres et ses jours fériés) et chargée du jeu minimal ; pour le dernier essai, un calcul en cours sur le semestre 1."
+etapes = [
+  "Ouvrir « Données › Calendrier » ; cliquer sur « Préremplir les jours fériés ».",
+  "Dans « Ajouter une année scolaire », saisir 2028 puis « Créer l'année et ses semestres » ; recommencer.",
+  "Créer une fermeture « Pont » le 10/11/2026 limitée au groupe A1, et un semestre d'été.",
+  "« Nouvelle indisponibilité » : salle N016, à partir du 01/12/2026.",
+  "« Nouveau créneau » le samedi de 13:45 à 15:45 ; puis de 15:00 à 14:00.",
+  "« Nouvelle année scolaire » du 01/09/2026 au 31/12/9999 ; puis du 01/09/9998 au 31/08/9999.",
+  "Créer une année de deux ans, puis un semestre qui dure presque deux ans.",
+  "Pendant le calcul, demander la suppression du semestre 1, puis de l'année 2026-2027.",
+  "Dans « Ajouter une année scolaire », saisir « ² » comme année de début.",
+]
+attendu = [
+  "La page affiche « Année 2026-2027 » et « Semestre 1 (2026-2027) » ; les jours fériés sont annoncés « déjà présents ».",
+  "Premier envoi : « Année scolaire 2028-2029 créée » ; second envoi : refus, l'année « existe déjà ».",
+  "La fermeture, le semestre, l'indisponibilité et le créneau valide sont créés, chacun avec un message de création.",
+  "Le créneau qui finit avant de commencer est refusé avec « La fin doit suivre le début. ».",
+  "Refus sous la date de fin : « Une année scolaire dure deux ans au plus » ; pour 9998 : l'année doit « commencer entre 2000 et 2100 » ; rien n'est créé.",
+  "Le semestre est refusé avec « Un semestre dure un an au plus » et n'est pas créé.",
+  "La confirmation dit qu'un « calcul d'emploi du temps est en cours » ; le semestre et l'année restent ; le calcul se termine avec succès.",
+  "Le calendrier affiche « Année de début invalide ».",
+]
+tests = [
+  "tests/integration/web_donnees/test_entites.py::test_calendrier_et_jours_feries",
+  "tests/integration/web_donnees/test_entites.py::test_liste_formulaire_et_creation",
+  "tests/integration/web_donnees/test_entites.py::test_creneau_refuse_une_fin_avant_le_debut",
+  "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_une_annee_bornee",
+  "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_un_semestre_bornee",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_annee_de_debut_exotique",
+  "tests/integration/web_donnees/test_cas_limites.py::test_suppression_du_semestre_refusee_pendant_son_calcul",
+]
+remarque = "Le test des listes est paramétré : ses cas « annee_scolaire », « semestre », « jour_ferme », « indisponibilite » et « creneau » portent sur cette fiche."
+
+[[fiche]]
+id = "REC-O11-1"
+titre = "Charger un établissement fictif, depuis l'écran et par la commande"
+fonctionnalites = ["O11", "P2"]
+objectif = "Montrer que l'écran « Établissement fictif » propose trois tailles et charge en une fois l'établissement « petit » avec un compte rendu, que recharger la page de résultat ne relance rien, et que la commande « jeu » fait de même."
+depart = "Base initialisée, sans aucune donnée d'établissement."
+etapes = [
+  "Ouvrir « Données › Établissement fictif » ; choisir « Petit », variante 0, puis « Charger l'établissement fictif ».",
+  "Ajouter une donnée, puis recharger la page de résultat (F5).",
+  "Sur une autre base vide, taper `python -m edt jeu --taille petit --reference`.",
+  "Sans fichier de base, taper `python -m edt jeu --taille petit --reset --oui`.",
+]
+attendu = [
+  "L'écran présente les tailles « Petit », « Moyen » et « Grand », variante 0 par défaut.",
+  "« Établissement fictif « petit » chargé » ; le compte rendu liste « 2 campus, 14 salles », « 13 groupes, 65 étudiants » et « 7 enseignants, 7 matières, 23 besoins d'enseignement ».",
+  "Le rechargement réaffiche le compte rendu sans rien recharger ni effacer : la donnée ajoutée reste.",
+  "La commande rend le code 0, affiche « Jeu fictif « petit » (graine 0) » et « vérificateur sur l'emploi du temps de référence : 0 erreur, » ; la base contient une version de référence.",
+  "La commande rend le code 0 et la base contient des besoins.",
+]
+tests = [
+  "tests/integration/web_donnees/test_jeux.py::test_page_decrit_les_tailles",
+  "tests/integration/web_donnees/test_jeux.py::test_chargement_du_jeu_petit",
+  "tests/integration/web_donnees/test_jeux.py::test_page_de_resultat_rechargee_sans_second_chargement",
+  "tests/integration/synthese/test_commande.py::test_commande_jeu_charge_et_affiche_le_resume",
+  "tests/integration/synthese/test_commande.py::test_remise_a_zero_sur_une_base_neuve",
+]
+
+[[fiche]]
+id = "REC-O11-2"
+titre = "Chargement refusé : effacement non confirmé, variante invalide, calcul ou chargement en cours"
+fonctionnalites = ["O11"]
+objectif = "Montrer que charger un établissement fictif exige une confirmation d'effacement, refuse un numéro de variante invalide et est refusé pendant un calcul ou un autre chargement, sans toucher à la base, à l'écran comme en ligne de commande."
+depart = "Base chargée du jeu minimal (6 salles, 16 besoins), ou base vide selon l'essai ; calcul et chargement en cours simulés par le test."
+etapes = [
+  "Choisir « Petit » et charger sans cocher « Confirmer l'effacement de toutes les données actuelles ».",
+  "Sur une base vide, saisir 2147483648, puis « ² », comme numéro de variante.",
+  "Pendant un calcul, puis pendant un autre chargement, charger avec la case cochée.",
+  "En ligne de commande : `python -m edt jeu --taille petit` sur une base garnie, puis avec une taille inconnue, puis `--reset` en répondant « n », puis `--reset --oui` avec une variante ou une année invalide.",
+  "« Remettre la base à zéro » sans cocher la confirmation, puis en la cochant.",
+]
+attendu = [
+  "Sans la case : refus avec « Cochez la case » ; toujours 16 besoins.",
+  "Variante trop grande : refus avec « de 0 à 2147483647 », aucun campus créé ; « ² » : « Nombre entier positif attendu ».",
+  "Calcul en cours : refus qui dit qu'« un calcul d'emploi du temps est en cours » ; chargement en cours : refus du second chargement, le premier se termine.",
+  "La commande rend le code 1 avec « déjà des données » ou « Taille de jeu inconnue » ; après « n », le nombre de besoins est inchangé ; avec une variante ou une année invalide, code 1 avec « invalide », et la base n'est pas vidée.",
+  "Sans la case : refus, les campus restent ; avec la case : « La base a été remise à zéro », plus aucun campus ni besoin.",
+]
+tests = [
+  "tests/integration/web_donnees/test_jeux.py::test_rechargement_exige_une_confirmation_d_effacement",
+  "tests/integration/web_donnees/test_jeux.py::test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran",
+  "tests/integration/web_donnees/test_saisies_extremes.py::test_graine_exotique",
+  "tests/integration/web_donnees/test_jeux.py::test_refus_clair_pendant_un_calcul",
+  "tests/integration/web_donnees/test_jeux.py::test_page_rechargee_pendant_un_chargement_le_dit",
+  "tests/integration/web_donnees/test_concurrence.py::test_deux_chargements_simultanes_depuis_la_page",
+  "tests/integration/web_donnees/test_jeux.py::test_remise_a_zero_confirmee",
+  "tests/integration/synthese/test_commande.py::test_second_chargement_refuse_avec_un_message_clair",
+  "tests/integration/synthese/test_commande.py::test_remise_a_zero_demande_confirmation",
+  "tests/integration/synthese/test_commande.py::test_taille_inconnue",
+  "tests/integration/synthese/test_cas_limites.py::test_commande_refuse_sans_toucher_a_la_base",
+]
+remarque = "À l'écran, le champ s'appelle « Numéro de variante » ; le compte rendu et la commande parlent de « graine »."
+
+# =========================================================================================
+# O9, O10, U12, U13 : échanges de fichiers
+# =========================================================================================
+
+[[fiche]]
+id = "REC-O9-1"
+titre = "Importer un fichier CSV de salles : simulation, puis application"
+fonctionnalites = ["O9", "U13"]
+cas = [5]
+objectif = "Montrer qu'un fichier CSV s'importe en deux temps, une simulation qui n'écrit rien puis l'application, et que les lignes valides entrent tandis que les lignes fautives sont listées avec leur raison."
+depart = "Base chargée du jeu minimal (6 salles : 4 sur le campus NDC, 2 sur ISSY). Fichier fictif salles_avec_erreurs.csv : 6 lignes, dont une capacité « quarante », un campus « LYON » inconnu et une ligne sans code."
+etapes = [
+  "Ouvrir l'écran « Import » ; dans « Fichiers », choisir le fichier ; laisser « Données de l'établissement ».",
+  "Cliquer sur « Simuler l'import » et lire le bilan, le rapport et l'aperçu.",
+  "Cliquer sur « Appliquer l'import ».",
+  "En ligne de commande : `python -m edt importer salles_avec_erreurs.csv --rapport rapport.csv`.",
+]
+attendu = [
+  "La simulation annonce que « rien n'a été écrit », le bilan « 2 créés, 4 rejetés » et le message « Campus « LYON » inconnu » ; la base compte toujours 6 salles.",
+  "L'application affiche « Import appliqué » et signale les lignes non importées ; la base compte 2 salles de plus.",
+  "La commande rend le code 1 (des lignes sont rejetées), affiche « salles : 2 créés, 4 rejetés » et situe les erreurs par ligne et par colonne (par exemple « ligne 3, colonne capacite ») ; le rapport écrit contient « Campus « LYON » inconnu ».",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_menu_et_page_d_import",
+  "tests/integration/echange/test_web.py::test_simulation_en_htmx_affiche_apercu_bilan_rapport",
+  "tests/integration/echange/test_web.py::test_simulation_sans_htmx_rend_la_page_entiere",
+  "tests/integration/echange/test_web.py::test_application",
+  "tests/integration/echange/test_commandes.py::test_importer_avec_rejets_sort_en_erreur",
+]
+
+[[fiche]]
+id = "REC-O9-2"
+titre = "Import refusé : fichier vide, trop gros ou illisible, remplacement non confirmé, calcul en cours"
+fonctionnalites = ["O9", "U13"]
+objectif = "Montrer qu'un envoi vide, trop gros, illisible ou démesuré est refusé avec un message lisible et une page bornée, qu'un import « Tout remplacer » n'efface rien sans confirmation, et qu'un import est refusé pendant un calcul."
+depart = "Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, fichier annees.csv de 19,5 Mo aux 1 200 000 lignes invalides, document PDF, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives, dossier qui contient salles.csv et agenda.ics)."
+etapes = [
+  "Cliquer sur « Simuler l'import » sans fichier, puis avec le CSV de 21 Mo, puis avec une image.",
+  "Simuler l'import d'un fichier de 19,5 Mo aux lignes invalides ; sans JavaScript, envoyer un document PDF directement à l'application de l'import.",
+  "Simuler l'import de l'archive démesurée, puis du fichier de 1 500 lignes fautives, et télécharger le rapport complet.",
+  "Cocher « Tout remplacer », simuler, puis appliquer sans cocher la confirmation ; puis en la cochant.",
+  "Appliquer un import pendant un calcul en cours.",
+  "En ligne de commande, simuler l'import d'un dossier qui contient un fichier de salles et un agenda .ics.",
+]
+attendu = [
+  "Sans fichier : « Aucun fichier » ; 21 Mo : refus qui rappelle la limite de « 20 Mo » ; image : « « photo.png » n'est pas un fichier de données lisible ici », sans bouton « Appliquer l'import ».",
+  "L'archive est refusée dans une page de moins de 200 Ko ; les 3 000 erreurs donnent une page bornée (« les 200 premières affichées ») et un rapport CSV complet.",
+  "Fichier de 19,5 Mo : réponse en moins de 15 secondes, page de moins de 200 Ko, tableau refusé car il a « plus de 50000 lignes de données » ; PDF envoyé à l'application : la page dit « Rien n'a été importé », jamais « 0 ligne ou séance ».",
+  "Sans confirmation, le remplacement est refusé et aucune salle ne disparaît ; avec confirmation, il est appliqué.",
+  "Pendant un calcul, l'import est refusé (réponse 409) avec « Un calcul d'emploi du temps est en cours ».",
+  "Dossier mélangé : code 1, « salles : 1 créé », et l'agenda est signalé : « Un fichier iCal décrit un emploi du temps ».",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_envoi_sans_fichier_ou_trop_gros",
+  "tests/integration/echange/test_web.py::test_simulation_d_une_image_sans_bouton_appliquer",
+  "tests/integration/echange/test_web.py::test_application_sans_htmx_d_un_fichier_refuse_ne_dit_pas_0_ligne_non_importee",
+  "tests/integration/echange/test_bornes.py::test_import_web_d_une_archive_bombe",
+  "tests/integration/echange/test_bornes.py::test_fichier_de_19_mo_refuse_vite_par_le_web",
+  "tests/integration/echange/test_bornes.py::test_page_bornee_et_rapport_complet_telechargeable",
+  "tests/integration/echange/test_web.py::test_tout_remplacer_demande_confirmation",
+  "tests/integration/echange/test_commandes.py::test_tout_remplacer_demande_confirmation",
+  "tests/integration/echange/test_web.py::test_import_refuse_pendant_un_calcul",
+  "tests/integration/echange/test_commandes.py::test_dossier_melange_signale_l_agenda_en_mode_donnees",
+]
+remarque = "Le calcul en cours est simulé par une ligne de calcul « en cours » écrite en base."
+
+[[fiche]]
+id = "REC-O10-1"
+titre = "Exporter l'emploi du temps en CSV, pour tout l'établissement ou une seule ressource"
+fonctionnalites = ["O10"]
+cas = [6]
+objectif = "Montrer que l'emploi du temps calculé s'exporte en un fichier CSV lisible par un tableur, entier ou limité à un groupe, un enseignant ou une salle."
+depart = "Jeu minimal et un emploi du temps calculé par le vrai moteur (version 1, active, 17 séances dans la semaine type)."
+etapes = [
+  "Ouvrir l'écran « Export », garder la version présélectionnée et « Semaine type », cliquer sur « Télécharger en CSV ».",
+  "Recommencer pour le seul demi-groupe A1-G1a, puis l'enseignant ENS001, puis la salle N016.",
+  "Sur l'écran « Emploi du temps », repérer le lien d'export pour un tableur.",
+]
+attendu = [
+  "Le fichier emploi-du-temps-v1-hebdo.csv est de type CSV, en UTF-8 avec BOM, avec 17 lignes de séances et les colonnes jour, debut, fin, matiere, matiere_libelle, type, libelle, groupes, enseignants, enseignants_noms, salle, campus, semaines, verrou, besoin.",
+  "Filtré sur A1-G1a : ses séances et celles de sa promotion, aucune de la classe voisine ; sur ENS001 : chaque ligne porte ENS001 ; sur N016 : chaque ligne a la salle N016.",
+  "L'écran « Emploi du temps » contient le lien d'export CSV de la version affichée ; la version active reste présélectionnée dans l'écran « Export ».",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_export_d_emploi_du_temps",
+  "tests/integration/echange/test_export_edt.py::test_csv_de_la_semaine_type",
+  "tests/integration/echange/test_export_edt.py::test_filtres_par_groupe_enseignant_salle",
+  "tests/integration/echange/test_bornes.py::test_export_preselectionne_la_version_active",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle",
+]
+remarque = "Le contenu du CSV et les exports filtrés sont vérifiés par le service d'export, celui qu'emploie l'écran ; par le site, le test vérifie le type et le nom du fichier."
+
+[[fiche]]
+id = "REC-O10-2"
+titre = "Export refusé ou limite : paramètres invalides, version vide, formule dans un libellé"
+fonctionnalites = ["O10", "U12"]
+objectif = "Montrer qu'une demande d'export invalide est refusée avec un message lisible, jamais « erreur inattendue », qu'une version sans séance donne des fichiers valides et vides, et qu'un libellé ne devient pas une formule dans le tableur."
+depart = "Jeu minimal et un emploi du temps calculé ; pour certains essais, une base sans version, ou une version sans séance."
+etapes = [
+  "Demander un export qui choisit à la fois un groupe et une salle.",
+  "Demander l'export d'une version inexistante, négative, nulle ou de plusieurs milliers de chiffres, en CSV et en iCal, par le site et par `python -m edt exporter-edt`.",
+  "Demander un export filtré sur un groupe, un enseignant ou une salle inexistants.",
+  "Exporter la version sans séance ; donner à un besoin le libellé « +33 SUM(A1) » et exporter.",
+]
+attendu = [
+  "Deux filtres à la fois : refus (le service exige « au plus un filtre »).",
+  "Version inexistante : « La version d'emploi du temps … n'existe pas », jamais « inattendue » ; la commande rend le code 1.",
+  "Ressource inexistante : « Le groupe … n'existe pas », « L'enseignant -1 n'existe pas », « La salle … n'existe pas ».",
+  "Version sans séance : CSV réduit à sa ligne d'en-tête, iCal valide sans événement ; le libellé « +33 SUM(A1) » est écrit précédé d'une espace.",
+]
+tests = [
+  "tests/integration/echange/test_export_edt.py::test_au_plus_un_filtre",
+  "tests/integration/echange/test_export_edt.py::test_parametres_invalides",
+  "tests/integration/echange/test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable",
+  "tests/integration/echange/test_web.py::test_ressource_hostile_dans_l_adresse_donne_une_erreur_lisible",
+  "tests/integration/echange/test_commandes.py::test_fichier_introuvable_et_groupe_inconnu",
+  "tests/integration/echange/test_commandes.py::test_version_hors_limites_en_ligne_de_commande_donne_un_message",
+  "tests/integration/web_edt/test_cas_limites.py::test_version_sans_seance_s_affiche_et_s_exporte",
+  "tests/integration/echange/test_bornes.py::test_csv_d_emploi_du_temps_neutralise",
+]
+
+[[fiche]]
+id = "REC-U12-1"
+titre = "Exporter l'emploi du temps vers un agenda (format iCal)"
+fonctionnalites = ["U12"]
+cas = [6]
+objectif = "Montrer que l'emploi du temps s'exporte en un fichier iCal valide, relisible par une bibliothèque d'agenda, au bon fuseau horaire, avec des séries hebdomadaires qui sautent les vacances et des identifiants stables."
+depart = "Jeu minimal et emploi du temps calculé par le vrai moteur (17 séances dans la semaine type), vacances de la Toussaint dans la semaine du 26/10/2026 ; pour la ligne de commande, la version de référence importée de seances_existantes.csv ; pour le lien de l'écran, une version saisie à la main."
+etapes = [
+  "Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».",
+  "Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.",
+  "En ligne de commande : `python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics`.",
+  "Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».",
+]
+attendu = [
+  "Le fichier est de type text/calendar, contient BEGIN:VCALENDAR et déclare le fuseau Europe/Paris.",
+  "Relu, l'export de la semaine type contient 17 événements, chacun avec son début, sa règle de répétition, son lieu et sa matière ; des dates de la semaine des vacances sont exclues des séries.",
+  "Deux exports successifs donnent les mêmes identifiants d'événements.",
+  "La commande rend le code 0 ; le fichier g1.ics contient 7 événements.",
+  "Le lien de l'écran donne un agenda en pièce jointe qui ne contient que les séances de cet enseignant.",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_export_d_emploi_du_temps",
+  "tests/integration/echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar",
+  "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter",
+  "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource",
+]
+remarque = "Aucun test n'importe le fichier dans un vrai logiciel d'agenda : la relecture par la bibliothèque icalendar en tient lieu."
+
+[[fiche]]
+id = "REC-U13-1"
+titre = "Gabarit vide, export de toutes les données et réimport sans doublon"
+fonctionnalites = ["U13"]
+cas = [5]
+objectif = "Montrer que le gabarit vide et l'export des données se téléchargent en classeur Excel ou en fichiers CSV, et que des données exportées puis réimportées telles quelles ne donnent rien de nouveau à écrire."
+depart = "Jeu minimal chargé (6 salles), aucun emploi du temps calculé."
+etapes = [
+  "Écran « Export » : sections « Gabarit vide » et « Données de l'établissement », boutons « Classeur Excel (.xlsx) » et « Fichiers CSV (archive .zip) ».",
+  "En ligne de commande : `python -m edt gabarit --sortie gabarit.xlsx`.",
+  "Réimporter le classeur exporté, sans le modifier, et cliquer sur « Simuler l'import ».",
+  "En ligne de commande : `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.",
+  "Appliquer deux fois de suite, par l'écran « Import », le classeur des données exporté.",
+]
+attendu = [
+  "Chaque bouton télécharge un classeur Excel ou une archive ZIP en pièce jointe ; un format non proposé est refusé.",
+  "La commande « gabarit » rend le code 0 ; le classeur commence par les feuilles annees, semestres et campus, toutes vides.",
+  "La simulation dit « Rien à appliquer » et que l'établissement « a déjà ces données », sans conseiller de « Corriger les fichiers ».",
+  "La simulation en ligne de commande rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».",
+  "Après chaque application, les vingt tables des données de l'établissement gardent leur nombre de lignes, et le bilan ne donne que des lignes « inchangé ».",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_page_et_telechargements_d_export",
+  "tests/integration/echange/test_commandes.py::test_gabarit",
+  "tests/integration/echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger",
+  "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport",
+  "tests/integration/echange/test_recette_echanges.py::test_export_complet_reimporte_deux_fois_par_l_ecran_sans_doublon",
+]
+
+[[fiche]]
+id = "REC-U13-2"
+titre = "Importer un emploi du temps existant : référence, séances verrouillées, séances à replacer"
+fonctionnalites = ["U13", "U7"]
+objectif = "Montrer qu'un emploi du temps existant, en tableau de séances ou en agenda iCal, s'importe comme référence, comme séances verrouillées ou comme séances à replacer, et qu'un semestre invalide est refusé sans rien créer."
+depart = "Jeu minimal (semestre 1 de 2026-2027), aucune version pour l'import du fichier fictif ; pour les réimports, une version active saisie à la main. Fichier fictif seances_existantes.csv : séances datées, dont une séance annulée, une déplacée et une d'un groupe inconnu."
+etapes = [
+  "Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier seances_existantes.csv, puis appliquer ; de même en ligne de commande.",
+  "Exporter une version vers un agenda, puis réimporter le fichier iCal comme référence.",
+  "Réimporter la semaine type exportée en séances verrouillées, puis l'agenda en séances à replacer.",
+  "Simuler un import avec un semestre de vingt chiffres, puis le semestre -7.",
+]
+attendu = [
+  "« Version d'emploi du temps créée » et « Semaine type de A1 … » ; la commande rend le code 1, car la séance d'un groupe inconnu est mise de côté.",
+  "L'agenda réimporté donne une version de référence, non active, aux mêmes créneaux et salles, avec ses séances datées ; la version active ne change pas.",
+  "En séances verrouillées, la nouvelle version devient active, chaque séance à sa place et verrouillée ; en séances à replacer, seuls les besoins sont repris, sans version.",
+  "Semestre de vingt chiffres : « Nombre hors limites » ; semestre -7 : « Le semestre -7 n'existe pas » ; aucune version créée.",
+]
+tests = [
+  "tests/integration/echange/test_web.py::test_import_d_emploi_du_temps_par_le_web",
+  "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter",
+  "tests/integration/echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible",
+  "tests/integration/echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference",
+  "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran",
+  "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins",
+]
+remarque = "Réimporté dans sa base d'origine, un emploi du temps de la version 1.0.0 recrée ou réécrit des besoins : anomalie ANO-21 (section 6), constatée par la fiche REC-U13-3 et corrigée après la recette. Trois des tests de la présente fiche jouent ce réimport. Ils vérifient la version, les créneaux, les salles et les verrous. Pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import et que le bilan en compte d'« inchangés ». Ils ne figent ni ce défaut ni sa correction."
+
+[[fiche]]
+id = "REC-U13-3"
+titre = "Réimport, dans la même base, de l'emploi du temps exporté"
+fonctionnalites = ["U13"]
+objectif = "Montrer qu'un emploi du temps exporté puis réimporté dans sa base d'origine, comme emploi du temps existant, y retrouve tous ses besoins sans en créer ni en modifier."
+depart = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande."
+etapes = [
+  "Taper `python -m edt init-db`, `python -m edt jeu-minimal`, puis `python -m edt generer`.",
+  "Taper `python -m edt exporter-edt --version 1 --format ics --sortie edt.ics`, puis `python -m edt importer edt.ics --mode reference --simuler`.",
+  "Recommencer les deux dernières commandes avec `--format csv` et edt.csv.",
+]
+attendu = [
+  "Tous les besoins reconstitués sont retrouvés : le bilan des besoins n'annonce que des besoins « inchangés », aucun « créé », aucun « mis à jour » ; aucun enseignant fictif.",
+]
+tests = []
+remarque = "La fiche REC-U13-2 reste conforme : trois de ses tests jouent ce même réimport, mais pour les besoins, ils vérifient seulement qu'il n'y en a pas moins après l'import. La présente fiche vérifie que chaque besoin est retrouvé inchangé, et c'est là que le défaut apparaît sur la version 1.0.0. Anomalie ANO-21 (section 6), corrigée après la recette par la pull request n° 55, qui ajoute un test d'intégration et un test unitaire de ce réimport."
+anomalie = "ANO-21"
+
+[fiche.essai]
+date = 2026-11-23
+environnement = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, version 1.0.0."
+constat = "Avec l'agenda iCal, la simulation affiche « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour, 9 inchangés ». Avec le fichier CSV, « besoins : 2 créés, 5 mis à jour, 9 inchangés »."
+verdict = "Non conforme"
+
+[fiche.suivi]
+date = 2026-11-23
+environnement = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, mêmes étapes, sur le code de la version 1.0.0 corrigé par la pull request n° 55."
+constat = "Avec l'agenda iCal, la simulation affiche « enseignants fictifs : rien à traiter » et « besoins : 15 inchangés ». Avec le fichier CSV, « enseignants fictifs : rien à traiter » et « besoins : 16 inchangés »."
+verdict = "Conforme"
+
+# =========================================================================================
+# O5, O6, U1, U5, U6, U7 : le calcul
+# =========================================================================================
+
+[[fiche]]
+id = "REC-O5-1"
+titre = "Générer l'emploi du temps d'un semestre depuis l'écran « Générer »"
+fonctionnalites = ["O5", "U11"]
+cas = [1]
+objectif = "Montrer qu'un calcul lancé depuis l'écran « Générer un emploi du temps » aboutit à une version active enregistrée, avec le compte des séances placées et des séances datées."
+depart = "Base chargée du jeu minimal (16 besoins, 17 séances par semaine type) ; amélioration coupée ; aucun calcul ni version. Vrai moteur de calcul."
+etapes = [
+  "Ouvrir l'onglet « Générer » sur le semestre du jeu minimal ; lire « Ce que le calcul va placer » et les réglages repliés.",
+  "Dans la section « Règles », passer « Pause entre deux séances » au niveau facultatif.",
+  "Cliquer sur « Lancer le calcul » et attendre la fin sur la page du calcul.",
+]
+attendu = [
+  "L'écran annonce « 16 besoins d'enseignement, soit 17 séances par semaine type » et « 13 règles réglables, toutes à leur niveau par défaut ; 6 toujours nécessaires » ; les sections de réglages sont repliées.",
+  "L'envoi redirige vers la page du calcul, qui affiche « Emploi du temps généré », le rappel « Règles : Pause entre deux séances : facultatif » et les compteurs des séances placées et datées, égaux au bilan enregistré.",
+  "En base : une version active de 17 séances, chacune avec une salle ; le journal du calcul contient « Fin du calcul ».",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles",
+  "tests/integration/web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis",
+  "tests/integration/socle/test_generation.py::test_calcul_reussi_enregistre_une_version_active",
+]
+
+[[fiche]]
+id = "REC-O5-2"
+titre = "Séances datées du semestre et replacement des jours fermés"
+fonctionnalites = ["O5", "O4"]
+cas = [1]
+objectif = "Montrer que le calcul produit les séances datées de tout le semestre et replace automatiquement celles qui tombent un jour fermé."
+depart = "Jeu minimal sur l'année 2026-2027, dont le calendrier compte des jours fériés en semaine (le mercredi 11 novembre 2026) et des vacances. Pour qu'une séance tombe le 11 novembre, un TD est verrouillé un mercredi avant un nouveau calcul."
+etapes = [
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`, puis `python -m edt instancier --semestre <n>`.",
+  "Compter les séances datées et les séances replacées ; faire vérifier la semaine type et les séances datées.",
+  "Relancer le calcul autour du TD verrouillé le mercredi et lire les séances de la semaine du 11 novembre.",
+  "Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer `python -m edt instancier --version <n>`.",
+]
+attendu = [
+  "« generer » rend le code 0 avec « 17 séance(s) placée(s) » et « Version enregistrée : n° 1. » ; « instancier » rend le code 0.",
+  "Une séance datée existe par séance de la semaine type et par semaine active ; planifiées, replacées et à programmer font le total.",
+  "Le vérificateur ne relève aucune anomalie bloquante ; aucune séance replacée ne tombe un jour fermé, et chacune garde sa date initiale et un commentaire.",
+  "La séance du TD verrouillé prévue le 11 novembre est replacée dans la même semaine, avec le commentaire « jour fermé ».",
+  "Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite `--version <n>`, et la commande relancée produit les séances datées.",
+]
+tests = [
+  "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier",
+  "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout",
+  "tests/integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine",
+  "tests/integration/web_edt/test_raccords.py::test_pre_verifications_et_instanciation_reelles",
+  "tests/integration/web_edt/test_calculs.py::test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit",
+  "tests/integration/solveur/test_services.py::test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation",
+]
+remarque = "Le verrou du TD est posé en base par le test : le moteur ne donne pas la même solution sous Linux et sous Windows, et le test ne doit pas dépendre de la place choisie. La panne de la production des séances datées est simulée par le test."
+
+[[fiche]]
+id = "REC-O5-3"
+titre = "Calcul refusé pendant une exécution des tests, un import ou un chargement"
+fonctionnalites = ["O5"]
+objectif = "Montrer qu'un calcul demandé pendant qu'une autre opération occupe l'application est refusé avec son motif, sans créer de calcul, puis accepté une fois l'opération finie."
+depart = "Jeu minimal et une version déjà calculée ; exécution des tests, import ou chargement d'un établissement fictif simulés en cours."
+etapes = [
+  "Pendant une exécution des tests, ouvrir l'onglet « Générer » ; cliquer sur « Lancer le calcul », puis « Relancer le même calcul » et « Proposer une autre solution ».",
+  "Recommencer pendant un import, puis pendant un chargement d'établissement fictif.",
+  "L'opération terminée, relancer le calcul.",
+]
+attendu = [
+  "Avant tout clic, l'écran prévient : « Une exécution des tests est en cours ».",
+  "Chaque envoi ramène à l'écran « Générer » avec un seul bandeau « Le calcul n'a pas été lancé. Une exécution des tests est en cours », sans référence d'incident ; aucun calcul n'est créé.",
+  "Pendant un import ou un chargement, le refus nomme l'opération en cours ; le chargement fini, le calcul réussit.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif",
+  "tests/integration/solveur/test_services.py::test_calcul_refuse_pendant_une_execution_des_tests",
+  "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_chargement_est_refuse",
+  "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_import_est_refuse",
+]
+remarque = "Pendant un import ou un chargement, le calcul est demandé au service de génération, celui qu'appelle l'écran « Générer »."
+
+[[fiche]]
+id = "REC-O6-1"
+titre = "Distinguer « impossible » et « pas trouvé dans le temps imparti »"
+fonctionnalites = ["O6"]
+objectif = "Montrer que le résultat d'un calcul sans solution dit s'il est impossible ou seulement pas trouvé dans le temps imparti, avec les raisons connues, et ne crée aucune version."
+depart = "Jeu minimal. Le moteur est remplacé par un moteur d'essai qui rend directement le résultat voulu ; pour l'accueil, une version active existe déjà."
+etapes = [
+  "Lancer un calcul dont les contraintes ne peuvent pas toutes être respectées ; lire la page du calcul.",
+  "Lancer un calcul qui n'aboutit pas dans la durée choisie ; lire la page du calcul.",
+  "Revenir à l'accueil et lire le bloc « Dernier calcul ».",
+]
+attendu = [
+  "Impossible : « Impossible avec ces contraintes », avec le message du moteur ; aucune version n'est créée.",
+  "Temps dépassé : « Pas trouvé dans le temps imparti », « pas une preuve » et la proposition de relancer en cherchant plus longtemps.",
+  "L'accueil montre « Pas trouvé dans le temps imparti » avec un lien « Voir le détail » ; la version active d'avant reste proposée.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_deux_messages_d_echec_distincts",
+  "tests/integration/web_edt/test_calculs.py::test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine",
+  "tests/integration/socle/test_generation.py::test_infaisable_ne_cree_aucune_version",
+  "tests/integration/solveur/test_services.py::test_avertissements_joints_au_suivi",
+  "tests/integration/web_edt/test_accueil.py::test_dernier_calcul_sans_solution_visible",
+]
+remarque = "Les deux résultats sont produits par un moteur d'essai ; aucun test d'intégration n'obtient l'impossibilité d'une vraie recherche (section 7)."
+
+[[fiche]]
+id = "REC-O6-2"
+titre = "Aucun emploi du temps partiel ou incohérent n'est enregistré"
+fonctionnalites = ["O6"]
+objectif = "Montrer qu'un calcul dont le résultat est incomplet, incohérent ou périmé finit en erreur lisible, sans aucune version enregistrée."
+depart = "Jeu minimal. Selon l'essai : un besoin ou une salle supprimé pendant le calcul ; un moteur d'essai qui rend une solution amputée, qui place deux séances dans la même salle au même moment, qui oublie une salle, ou qui tombe en panne. La suppression pendant le calcul est faite par le test directement en base."
+etapes = [
+  "Lancer le calcul ; pendant le calcul, un besoin du semestre ou une salle disparaît de la base par un autre accès que l'application (les écrans « Données » refusent toute suppression pendant un calcul, voir REC-O1-3).",
+  "Lancer le calcul avec chacun des défauts du moteur.",
+  "Lire la page du calcul et l'historique des versions.",
+]
+attendu = [
+  "Données modifiées pendant le calcul : erreur avec « ont changé pendant le calcul », aucune version.",
+  "Solution incomplète, sans salle ou qui enfreint une règle : refusée (le vérificateur indépendant relève le défaut du moteur), aucune version.",
+  "Panne du moteur : « Le calcul n'a pas pu aboutir » avec le numéro du calcul et le journal à communiquer, sans détail technique ; la trace complète est au journal du calcul.",
+]
+tests = [
+  "tests/integration/solveur/test_services.py::test_donnees_modifiees_pendant_le_calcul_sont_dites",
+  "tests/integration/solveur/test_services.py::test_salle_supprimee_pendant_le_calcul_est_dite",
+  "tests/integration/socle/test_generation.py::test_solution_incomplete_refusee",
+  "tests/integration/solveur/test_services.py::test_defaut_du_moteur_releve_par_le_verificateur",
+  "tests/integration/solveur/test_services.py::test_solution_sans_salle_ou_a_salle_inconnue_du_moteur_est_refusee",
+  "tests/integration/web_edt/test_calculs.py::test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique",
+  "tests/integration/socle/test_generation.py::test_erreur_du_moteur_journalisee_sans_version",
+]
+remarque = "Le calcul est lancé par le service de génération ; la suppression simule un accès extérieur à l'application."
+
+[[fiche]]
+id = "REC-U1-1"
+titre = "Vérifications avant le calcul sur l'écran « Générer »"
+fonctionnalites = ["U1"]
+cas = [1]
+objectif = "Montrer que l'écran « Générer » affiche, avant tout lancement, les points bloquants et les avertissements, refuse le lancement en cas de point bloquant, et annonce les retouches qu'un nouveau calcul ne reprendra pas."
+depart = "Jeu minimal. Cas bloquant simulé (un faux vérificateur renvoie une erreur et un avertissement) ; cas bloquant réel (date d'un besoin ponctuel hors du semestre) ; une version active retouchée à la main."
+etapes = [
+  "Ouvrir « Générer » sur un semestre sans problème ; taper aussi `python -m edt pre-verifier --semestre <n>`.",
+  "Ouvrir « Générer » sur un semestre qui a un point bloquant ; cliquer quand même sur « Lancer le calcul ».",
+  "Annuler une séance datée de la version active, puis revenir sur « Générer ».",
+]
+attendu = [
+  "Sans problème : la section « Vérifications avant le calcul » s'affiche sans « Le calcul ne peut pas être lancé » ; la commande rend le code 0 et dit que « rien n'empêche de lancer le calcul ».",
+  "Point bloquant : l'erreur et l'avertissement sont affichés avec « Le calcul ne peut pas être lancé » ; le lancement est refusé et aucun calcul n'est créé.",
+  "Après la retouche : « La version active compte 1 retouche à la main » et « seules les séances verrouillées gardent leur place ».",
+  "Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables s'exécutent sans erreur et rendent une liste d'anomalies ; la production des séances datées en donne au moins une, et planifiées, replacées et à programmer font le total.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non",
+  "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles",
+  "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier",
+  "tests/integration/web_edt/test_revue.py::test_besoin_impossible_a_deplier_affiche_une_seule_fois",
+  "tests/integration/web_edt/test_calculs.py::test_retouches_de_la_version_active_annoncees_avant_le_calcul",
+  "tests/integration/web_edt/test_raccords.py::test_pre_verifications_et_instanciation_reelles",
+]
+
+[[fiche]]
+id = "REC-U1-2"
+titre = "Calcul refusé avant la recherche : point bloquant, semestre sans besoin, verrous contradictoires"
+fonctionnalites = ["U1", "O6"]
+objectif = "Montrer qu'un calcul lancé malgré un point bloquant est refusé avant la recherche, avec ses raisons, sans appeler le moteur ni créer de version, et qu'un semestre sans besoin ne remplace pas la version active."
+depart = "Jeu minimal rendu impossible (un besoin porté à 60 séances par semaine, ou un besoin total porté à 500 séances, ou deux séances verrouillées au même créneau dans la même salle), ou semestre sans aucun besoin dont la version active est une référence importée."
+etapes = [
+  "Taper `python -m edt pre-verifier --semestre <n>`, puis `python -m edt generer --semestre <n>`.",
+  "Ouvrir « Générer » sur un semestre sans besoin ; envoyer quand même le formulaire de lancement.",
+  "Lancer le calcul aux verrous contradictoires, sans puis avec l'option qui tolère les violations héritées.",
+]
+attendu = [
+  "pre-verifier rend le code 1 et dit que « le calcul serait refusé » ; generer rend le code 1 avec « Non lancé (points bloquants) » ; aucune version.",
+  "Sans besoin : « Aucun besoin d'enseignement à placer pour ce semestre. », boutons de lancement désactivés ; l'envoi forcé est refusé ; la version de référence reste la seule, active.",
+  "Verrous contradictoires : refus qui conseille de « tolérer » ; avec l'option, réussite, la violation est signalée et les séances verrouillées restent à leur place.",
+]
+tests = [
+  "tests/integration/solveur/test_services.py::test_commande_generer_echec_code_1",
+  "tests/integration/socle/test_generation.py::test_besoin_impossible_a_deplier_refuse_le_calcul",
+  "tests/integration/solveur/test_services.py::test_calcul_refuse_par_les_pre_verifications",
+  "tests/integration/web_edt/test_calculs.py::test_generer_sans_aucun_besoin_dit_quoi_faire",
+  "tests/integration/web_edt/test_revue.py::test_pas_de_calcul_sans_besoin",
+  "tests/integration/solveur/test_services.py::test_semestre_sans_besoin_ne_cree_pas_de_version_vide",
+  "tests/integration/solveur/test_services.py::test_verrous_contradictoires_toleres_de_bout_en_bout",
+]
+
+[[fiche]]
+id = "REC-U5-1"
+titre = "Emploi du temps plus confortable, ou premier emploi du temps valide"
+fonctionnalites = ["U5", "U11"]
+objectif = "Montrer qu'avec l'option « Emploi du temps plus confortable » le calcul améliore le premier emploi du temps valide trouvé, s'arrête de lui-même et donne un bilan lisible, et que, l'option coupée, il garde la première solution."
+depart = "Jeu minimal, réglages par défaut de l'application rétablis (amélioration active) ; puis amélioration coupée."
+etapes = [
+  "Lancer un calcul avec les réglages par défaut, depuis « Générer » ou par `python -m edt generer --semestre <n> --temps-limite 20`.",
+  "Lire le bilan du résultat.",
+  "Taper `python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30`.",
+]
+attendu = [
+  "Par défaut, le calcul est enregistré avec un temps limite de 5 minutes et l'amélioration active ; la solution finale n'est pas moins bonne que la première trouvée.",
+  "Le résultat donne le « Bilan sur l'ensemble du semestre », sans terme technique ; la raison d'arrêt est dite.",
+  "Sans amélioration : code 0, « sans optimisation », 17 séances placées ; le calcul s'arrête à la première solution.",
+]
+tests = [
+  "tests/integration/socle/test_generation.py::test_reglages_par_defaut_le_calcul_ameliore_la_solution_valide",
+  "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier",
+  "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon",
+  "tests/integration/solveur/test_services.py::test_commande_generer_ameliore_par_defaut",
+  "tests/integration/solveur/test_services.py::test_commande_generer_avec_optimisation_et_contrainte_desactivee",
+  "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout",
+]
+remarque = "Les tests vérifient des propriétés (amélioration non dégradante, raison d'arrêt, bilan), jamais un nombre précis de trous ou de samedis."
+
+[[fiche]]
+id = "REC-U6-1"
+titre = "Choisir la durée et suivre l'avancement d'un calcul"
+fonctionnalites = ["U6"]
+cas = [1]
+objectif = "Montrer que l'utilisateur choisit la durée maximale, suit le calcul sans recharger la page, est prévenu dès qu'un emploi du temps est trouvé, et lit à la fin des durées cohérentes."
+depart = "Jeu minimal ; moteur ralenti dans le test pour observer un calcul en cours."
+etapes = [
+  "Dans « Générer », déplier « Durée et options » et choisir la durée de recherche.",
+  "Lancer le calcul et rester sur sa page ; revenir sur « Générer », puis sur l'accueil.",
+  "Attendre l'annonce d'un premier emploi du temps trouvé, puis la fin.",
+]
+attendu = [
+  "« Durée et options » propose de rechercher jusqu'à la durée courte ou jusqu'à la durée longue réglées dans les paramètres.",
+  "Le suivi s'actualise chaque seconde et propose « Arrêter le calcul » ; « Générer » montre le calcul en cours ; l'accueil propose « Suivre le calcul ».",
+  "Dès qu'un emploi du temps est trouvé : « Un emploi du temps est déjà trouvé » et « le meilleur sera gardé ».",
+  "Le résultat reprend les durées du suivi ; une durée hors bornes passée à la commande est refusée sans créer de calcul.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret",
+  "tests/integration/web_edt/test_accueil.py::test_calcul_en_cours_conseille_de_le_suivre",
+  "tests/integration/web_edt/test_calculs.py::test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve",
+  "tests/integration/web_edt/test_calculs.py::test_suivi_apres_la_recherche_ne_propose_plus_l_arret",
+  "tests/integration/web_edt/test_calculs.py::test_resultat_dit_les_memes_durees_que_le_suivi",
+  "tests/integration/solveur/test_services.py::test_options_hors_bornes_refusees_par_la_commande",
+  "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles",
+]
+remarque = "Le client de test n'exécute pas le rafraîchissement du navigateur : le test interroge lui-même le fragment de suivi."
+
+[[fiche]]
+id = "REC-U6-2"
+titre = "Arrêter un calcul, proposer une autre solution, un seul calcul à la fois"
+fonctionnalites = ["U6"]
+objectif = "Montrer que l'arrêt demandé garde la meilleure solution déjà trouvée, n'enregistre rien s'il n'y en a pas, et reste lisible pour un calcul déjà fini, un Ctrl+C ou un redémarrage ; montrer que l'utilisateur obtient une autre solution ou une recherche plus longue avec les mêmes règles, et qu'une relance pendant un calcul ne lance jamais un second calcul."
+depart = "Jeu minimal ; moteur retenu dans le test jusqu'à la demande d'arrêt ; vrai moteur pour l'autre solution ; moteur d'essai pour les relances et le calcul en cours."
+etapes = [
+  "Lancer le calcul, puis cliquer sur « Arrêter le calcul » ; lire la page du calcul.",
+  "Cliquer sur « Arrêter le calcul » d'un calcul déjà terminé.",
+  "Interrompre `python -m edt generer` par Ctrl+C ; arrêter l'application pendant un calcul et la redémarrer.",
+  "Après un calcul réussi, cliquer deux fois de suite sur « Proposer une autre solution ».",
+  "Après un calcul « pas trouvé dans le temps imparti », relancer en cherchant plus longtemps.",
+  "Pendant qu'un calcul tourne, relancer depuis la page d'un ancien calcul, ou lancer un nouveau calcul.",
+]
+attendu = [
+  "Avec solution : « Calcul arrêté : meilleure solution conservée » ; la version est active avec ses 17 séances.",
+  "Sans solution : « Calcul arrêté » et « Aucun emploi du temps n'a été enregistré ».",
+  "Calcul déjà fini : « Ce calcul est déjà terminé : rien à arrêter. ».",
+  "Ctrl+C : code 1 et « Interruption demandée » ; après redémarrage, le calcul est dit « interrompu par un arrêt de l'application » et « Relancer le même calcul » réussit.",
+  "Deux autres solutions successives ne partent pas de l'emploi du temps précédent, et leurs placements diffèrent.",
+  "La relance longue garde les niveaux de règles de l'original et prend la durée longue réglée.",
+  "Pendant un calcul, toute relance mène au calcul en cours (« Un calcul est déjà en cours ») ; un seul calcul existe en base.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_arret_avec_solution_conservee",
+  "tests/integration/solveur/test_services.py::test_arret_avec_une_solution_la_version_est_enregistree",
+  "tests/integration/socle/test_generation.py::test_arret_demande_par_l_utilisateur",
+  "tests/integration/web_edt/test_calculs.py::test_arret_d_un_calcul_termine_dit_qu_il_est_fini",
+  "tests/integration/solveur/test_services.py::test_commande_generer_interrompue_au_clavier",
+  "tests/integration/web_edt/test_calculs.py::test_calcul_interrompu_par_un_redemarrage",
+  "tests/integration/web_edt/test_calculs.py::test_autre_solution_donne_un_autre_emploi_du_temps",
+  "tests/integration/web_edt/test_calculs.py::test_relance_longue_et_autre_solution",
+  "tests/integration/web_edt/test_cas_limites.py::test_relance_pendant_un_calcul_mene_au_calcul_en_cours",
+  "tests/integration/socle/test_generation.py::test_un_seul_calcul_a_la_fois",
+  "tests/integration/web_edt/test_calculs.py::test_double_envoi_de_relancer_dit_calcul_relance",
+  "tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret",
+]
+
+[[fiche]]
+id = "REC-U7-1"
+titre = "Historique des versions : une seule active, rendre active, supprimer"
+fonctionnalites = ["U7"]
+cas = [1]
+objectif = "Montrer que chaque calcul réussi crée une version, qu'une seule est active par semestre, qu'une version se rend active ou se supprime, et que la version active est protégée."
+depart = "Jeu minimal ; deux calculs réussis du vrai moteur sur le même semestre."
+etapes = [
+  "Ouvrir « Historique et versions ».",
+  "Sur la version 1, cliquer sur « Rendre active » ; sur la version 2, « Supprimer » (deux fois de suite).",
+  "Demander la suppression de la version active ; ouvrir la page du calcul dont la version a été supprimée.",
+  "Ouvrir l'écran « Emploi du temps » et lire la liste des versions.",
+]
+attendu = [
+  "L'historique liste « Version 1 », « Version 2 » et l'étiquette « Active » ; après deux calculs, seule la version 2 est active.",
+  "Après « Rendre active » puis « Supprimer », il ne reste que la version 1, active ; le second clic affiche « déjà été supprimée ».",
+  "La version active « ne peut pas être supprimée » ; la page du calcul dit que sa version « a depuis été supprimée », sans lien cassé.",
+  "Le sélecteur de version affiche le libellé de la version suivi de « (active) ».",
+]
+tests = [
+  "tests/integration/socle/test_generation.py::test_une_nouvelle_version_remplace_la_version_active",
+  "tests/integration/web_edt/test_calculs.py::test_historique_activation_et_suppression_des_versions",
+  "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_supprimer_une_version",
+  "tests/integration/web_edt/test_revue.py::test_calcul_dont_la_version_a_ete_supprimee",
+  "tests/integration/web_edt/test_revue.py::test_meme_nom_de_version_partout",
+]
+
+# =========================================================================================
+# O4, U2, U3, U4 : les règles
+# =========================================================================================
+
+[[fiche]]
+id = "REC-O4-1"
+titre = "Un emploi du temps calculé ne présente aucune erreur au vérificateur"
+fonctionnalites = ["O4"]
+cas = [1]
+objectif = "Montrer que l'emploi du temps produit par un vrai calcul respecte toutes les règles nécessaires : le vérificateur indépendant ne relève aucune anomalie bloquante, ni dans la semaine type ni dans les séances datées."
+depart = "Jeu minimal (16 besoins, jours fériés et vacances au calendrier), puis établissement fictif « petit » ; amélioration coupée, pour n'attendre qu'un emploi du temps valide."
+etapes = [
+  "Calculer le semestre du jeu minimal, en ligne de commande puis depuis l'écran « Générer ».",
+  "Faire vérifier la semaine type (`python -m edt verifier --version <v>`) et les séances datées de chaque version.",
+  "Recommencer sur l'établissement « petit ».",
+]
+attendu = [
+  "Chaque calcul réussit ; sur le jeu minimal, les 17 séances de la semaine type sont placées.",
+  "« verifier --version <v> » rend le code 0 (semaine type valide) ; le vérificateur juge valides les séances datées, jours fermés compris.",
+  "Sur l'établissement « petit », chaque semestre est calculé et vérifié sans anomalie bloquante.",
+]
+tests = [
+  "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout",
+  "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande",
+  "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export",
+  "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie",
+]
+remarque = "« Valide » signifie : aucune anomalie de gravité erreur. Les règles de niveau important peuvent laisser des avertissements ; ces tests ne les comptent pas. Les règles une à une sont vérifiées par les tests unitaires (section 7)."
+
+[[fiche]]
+id = "REC-O4-2"
+titre = "Le vérificateur signale les règles non respectées et refuse une vérification impossible"
+fonctionnalites = ["O4"]
+objectif = "Montrer que la commande de vérification distingue un emploi du temps valide (code 0) d'un emploi du temps qui enfreint des règles (code 1, anomalies listées) et refuse clairement une demande impossible (code 2)."
+depart = "Jeu minimal et une version saisie à la main (17 placements), dont les séances datées sont produites sans replacer les jours fermés : des séances tombent un jour fermé ou dans une salle indisponible."
+etapes = [
+  "Taper `python -m edt verifier --semestre <n>` (semaine type).",
+  "Taper `python -m edt verifier --version <v> --datees`, puis avec `--json`.",
+  "Même commande sur une période (`--du 2026-11-09 --au 2026-11-13`) et une seule règle (« -c DISPO_SALLE »).",
+  "Demandes impossibles : version 999, règle inconnue, `--du` sans `--au` ; semestre sans version active.",
+]
+attendu = [
+  "Semaine type : code 0, « 17 placement(s) examiné(s) », « séances placées : 17 sur 17 (100,0 %) », emploi du temps valide.",
+  "Séances datées : code 1, « Erreurs (6) : », des lignes « [JOUR_FERME] » et « emploi du temps NON valide » ; le JSON donne 2 anomalies DISPO_SALLE et 4 JOUR_FERME.",
+  "Période et règle choisies : code 0, « du 09/11/2026 au 13/11/2026 », « 1 contrainte(s) vérifiée(s) ».",
+  "Demandes impossibles : code 2 et « Vérification impossible » ; sans version active : code 2 et « n'a pas de version active ».",
+]
+tests = [
+  "tests/integration/verification/test_commande.py::test_semaine_type_valide_code_0",
+  "tests/integration/verification/test_commande.py::test_seances_datees_avec_erreurs_code_1",
+  "tests/integration/verification/test_commande.py::test_periode_et_contrainte_choisie",
+  "tests/integration/verification/test_commande.py::test_sortie_json",
+  "tests/integration/verification/test_commande.py::test_verification_impossible_code_2",
+  "tests/integration/verification/test_commande.py::test_semestre_sans_version_active",
+]
+
+[[fiche]]
+id = "REC-U2-1"
+titre = "Choisir le niveau des règles pour un calcul et le retrouver dans le résultat"
+fonctionnalites = ["U2", "U3"]
+cas = [1, 2]
+objectif = "Montrer que, dans « Générer », chaque règle réglable et chaque règle personnalisée active se règle à trois niveaux pour un calcul, qu'une règle personnalisée peut être ignorée, et que ces choix sont transmis au calcul et rappelés dans le résultat et l'historique."
+depart = "Jeu minimal : règles personnalisées R001 (nécessaire) et R002 (importante) actives, R003 et R004 proposées ; aucun calcul."
+etapes = [
+  "Onglet « Générer » : déplier « Règles » et « Règles personnalisées ».",
+  "Choisir « Facultatif » pour « Pause entre deux séances » et pour R001 ; cocher « Ignorer pour ce calcul » pour R002 ; lancer le calcul.",
+  "Lire la page du calcul et « Historique et versions » ; revenir sur « Générer ».",
+]
+attendu = [
+  "Chaque règle réglable propose « Nécessaire », « Important », « Facultatif », son niveau par défaut coché ; les six autres affichent « Toujours nécessaire » ; deux règles proposées sont annoncées sans effet tant qu'elles ne sont pas activées.",
+  "Le calcul reçoit « Pause entre deux séances » au niveau facultatif, R001 facultative, R002 absente, toutes les autres règles à leur niveau par défaut.",
+  "La page du calcul et l'historique rappellent « Pause entre deux séances : facultatif », R001 facultative et R002 « ignorée » ; de retour sur « Générer », R001 est précochée à facultatif et R002 revient à son niveau, non ignorée.",
+]
+tests = [
+  "tests/integration/web_edt/test_niveaux_web.py::test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires",
+  "tests/integration/web_edt/test_niveaux_web.py::test_niveau_choisi_transmis_et_le_reste_par_defaut",
+  "tests/integration/web_edt/test_niveaux_web.py::test_suivi_et_historique_disent_les_niveaux_modifies_et_les_entorses",
+  "tests/integration/web_edt/test_regles_web.py::test_tableau_des_regles_personnalisees_sur_generer",
+  "tests/integration/web_edt/test_regles_web.py::test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul",
+  "tests/integration/web_edt/test_regles_web.py::test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses",
+  "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau",
+  "tests/integration/solveur/test_regles.py::test_commande_generer_regle",
+]
+remarque = "Les nombres d'entorses affichés sont vérifiés avec un décompte fourni par le test ; seule la fiche REC-U2-2 produit de vraies entorses."
+
+[[fiche]]
+id = "REC-U2-2"
+titre = "Effet du niveau : une règle nécessaire n'est jamais enfreinte, une règle importante l'est faute de mieux"
+fonctionnalites = ["U2", "O4"]
+objectif = "Montrer que la même situation impossible rend le calcul infaisable si la règle est nécessaire et donne un emploi du temps avec entorses signalées si elle est importante, et qu'un niveau illisible est refusé sans rien lancer."
+depart = "Jeu minimal où Mme Martin est indisponible du lundi au samedi ; puis une version calculée avec la pause entre deux séances portée à 20 minutes."
+etapes = [
+  "Lancer un calcul avec « Disponibilité des enseignants » au niveau nécessaire, puis au niveau important.",
+  "Déplacer une séance contre une autre séance de la même personne, puis sur une salle occupée, et « Vérifier et enregistrer ».",
+  "Envoyer depuis « Générer » ou par la commande un niveau inconnu, ou un niveau pour une règle toujours nécessaire.",
+]
+attendu = [
+  "Règle nécessaire : le calcul est déclaré impossible, sans emploi du temps. Règle importante : il réussit, et les entorses ne concernent que la disponibilité des enseignants.",
+  "Le déplacement qui n'enfreint que la pause (importante) est enregistré avec un avertissement ; celui qui occupe une salle prise est refusé (« Une séance par salle »).",
+  "Niveau illisible ou interdit : « Le calcul n'a pas été lancé » avec le motif (« niveau inconnu », « définit le problème »), les autres choix restant cochés ; aucun calcul en base.",
+]
+tests = [
+  "tests/integration/solveur/test_niveaux.py::test_calcul_reussi_malgre_une_indisponibilite_impossible_a_respecter",
+  "tests/integration/web_edt/test_niveaux_web.py::test_retouche_d_une_version_a_regle_ignoree_garde_les_niveaux",
+  "tests/integration/web_edt/test_niveaux_web.py::test_niveau_illisible_ou_interdit_reaffiche_la_page_sans_rien_lancer",
+  "tests/integration/web_edt/test_regles_web.py::test_choix_illisible_sur_une_regle_reaffiche_la_page",
+  "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau_refuse",
+  "tests/integration/web_edt/test_cas_limites.py::test_saisies_de_cinq_mille_chiffres_au_lancement",
+]
+
+[[fiche]]
+id = "REC-U3-1"
+titre = "Créer et modifier une règle personnalisée par l'ajout guidé"
+fonctionnalites = ["U3"]
+cas = [2]
+objectif = "Montrer qu'une règle personnalisée se crée parmi quatorze types, avec sa cible, ses paramètres, son niveau et sa période, que l'aperçu en donne la phrase avant l'enregistrement, et qu'elle est active à sa création."
+depart = "Jeu minimal (année 2026-2027, règles R001 à R004) ; pour une variante, l'établissement fictif « moyen »."
+etapes = [
+  "« Données › Règles personnalisées » : « Nouvelle règle », puis « Choisir » sur « Jours travaillés ».",
+  "Concerne la classe A1-G2, du lundi au samedi, niveau « Important » ; lire l'aperçu ; « Créer la règle ».",
+  "Créer une « Pause déjeuner » pour Mme Martin et une règle de salles imposées pour les TP.",
+  "Ouvrir la règle R002, changer sa durée et son niveau, « Enregistrer ».",
+]
+attendu = [
+  "L'étape 1 présente 14 types, dont l'exemple « Le groupe A1 ne travaille pas le samedi. ».",
+  "L'aperçu écrit « La classe A1-G2 a aussi cours le samedi. » ; la création affiche « Règle R005 créée » ; la règle est active, au niveau important.",
+  "La pause déjeuner est enregistrée pour 75 minutes au semestre 1 ; la règle de salles, avec les salles L115 et N310.",
+  "R002 est enregistrée avec ses nouvelles valeurs ; le retour se fait sur la liste d'origine.",
+]
+tests = [
+  "tests/integration/web_donnees/test_regles.py::test_choix_du_type_puis_formulaire_tire_du_schema",
+  "tests/integration/web_donnees/test_regles.py::test_ajout_jours_travailles_avec_apercu_et_erreurs",
+  "tests/integration/web_donnees/test_regles.py::test_pages_des_regles_sans_jargon",
+  "tests/integration/web_donnees/test_regles.py::test_ajout_pause_dejeuner_d_un_enseignant",
+  "tests/integration/web_donnees/test_regles.py::test_ajout_salles_imposees_et_portee_refusee",
+  "tests/integration/web_donnees/test_regles.py::test_modification_preremplie_et_doublon_refuse",
+  "tests/integration/web_donnees/test_regles.py::test_parcours_reel_sur_le_jeu_moyen",
+  "tests/integration/web_edt/test_regles_web.py::test_une_relance_applique_les_regles_creees_depuis_et_le_dit",
+]
+remarque = "Le respect d'une règle par le calcul est prouvé de bout en bout pour le type « Jours travaillés » (REC-BOUT-4) ; les autres types sont couverts par les tests unitaires (section 7)."
+
+[[fiche]]
+id = "REC-U3-2"
+titre = "Activer, écarter et désactiver des règles ; règles proposées à la création d'une année"
+fonctionnalites = ["U3"]
+objectif = "Montrer les états d'une règle (proposée, active, inactive), l'activation d'un clic des règles proposées, la proposition des règles de base à la création d'une année, et l'effet d'une désactivation sur les retouches."
+depart = "Jeu minimal : R001 et R002 actives, R003 et R004 proposées ; pour le dernier essai, une version calculée."
+etapes = [
+  "Ouvrir « Règles personnalisées » ; sur R003, « Activer » ; sur R004, « Écarter ».",
+  "Remettre R004 à l'état proposé, puis cliquer sur « Activer la règle » dans le bandeau des règles proposées.",
+  "Créer l'année 2027-2028 depuis le calendrier, puis ouvrir ses règles.",
+  "Ouvrir une séance de TP de A1-G1a et lire les jours proposés pour la déplacer ; « Désactiver » R001 et recommencer.",
+]
+attendu = [
+  "Le bandeau annonce « 2 règles proposées à activer » ; R003 devient active, R004 inactive.",
+  "Le bandeau confirme « 1 règle activée en 2026-2027. ».",
+  "« Année scolaire 2027-2028 créée » et « 2 règles proposées, à revoir dans Règles personnalisées. ».",
+  "Tant que R001 est active, le samedi n'est pas proposé ; après sa désactivation, il l'est.",
+]
+tests = [
+  "tests/integration/web_donnees/test_regles.py::test_liste_de_l_annee_et_bandeau_des_regles_proposees",
+  "tests/integration/web_donnees/test_regles.py::test_bandeau_les_voir_ignore_les_filtres_en_cours",
+  "tests/integration/web_donnees/test_regles.py::test_etats_activer_ecarter_desactiver_tout_confirmer",
+  "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_propose_les_regles",
+  "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees",
+  "tests/integration/web_donnees/test_regles.py::test_proposer_pour_une_annee_existante_liste_les_regles_a_revoir",
+  "tests/integration/web_edt/test_regles_web.py::test_les_jours_proposes_pour_une_retouche_suivent_les_regles",
+]
+remarque = "R004 est remise à l'état proposé par l'envoi direct du formulaire d'état : aucun bouton ne le propose à l'écran."
+
+[[fiche]]
+id = "REC-U3-3"
+titre = "Saisie d'une règle refusée, double envoi et règle disparue"
+fonctionnalites = ["U3"]
+objectif = "Montrer qu'une règle mal saisie est refusée avec un message sous le champ en cause, sans rien créer, que le double envoi ne crée pas de doublon, et qu'une règle supprimée entre-temps est dite introuvable."
+depart = "Jeu minimal (R001 à R004 ; R002 est une pause déjeuner libre de A1-G1)."
+etapes = [
+  "« Jours travaillés » pour A1-G2 sans aucun jour coché, puis sans cible ; « Créer la règle ».",
+  "« Pause déjeuner » sur une période datée ; puis une pause plus longue que sa fenêtre.",
+  "Créer une règle identique à R002 ; envoyer deux fois de suite le même formulaire de création.",
+  "Supprimer R001 dans un onglet, puis l'ouvrir depuis une page restée ouverte.",
+  "Cliquer deux fois de suite sur « Supprimer » d'une règle.",
+]
+attendu = [
+  "Chaque saisie invalide est refusée avec un message sous le champ en cause ; aucune règle n'est créée.",
+  "Le doublon est refusé : « La règle R002 règle déjà … ».",
+  "Double envoi : « Règle R005 déjà créée » ; une seule règle de plus en base.",
+  "Règle supprimée : « Règle n° … introuvable : elle a peut-être été supprimée. ».",
+  "Second clic : « Cette règle n'existe plus : elle a déjà été supprimée. » ; la règle n'existe plus.",
+]
+tests = [
+  "tests/integration/web_donnees/test_regles.py::test_type_non_datable_sans_mode_dates_et_dates_refusees",
+  "tests/integration/web_donnees/test_regles.py::test_ajout_jours_travailles_avec_apercu_et_erreurs",
+  "tests/integration/web_donnees/test_regles.py::test_ajout_pause_dejeuner_d_un_enseignant",
+  "tests/integration/web_donnees/test_regles.py::test_modification_preremplie_et_doublon_refuse",
+  "tests/integration/web_donnees/test_regles.py::test_double_envoi_d_une_regle_ne_cree_pas_de_doublon",
+  "tests/integration/web_donnees/test_regles.py::test_regle_supprimee_entre_temps_dit_introuvable",
+  "tests/integration/web_donnees/test_regles.py::test_double_clic_sur_la_suppression_d_une_regle",
+]
+
+[[fiche]]
+id = "REC-U4-1"
+titre = "Choisir la pause déjeuner, au lancement d'un calcul ou dans les paramètres, et la voir dans la grille"
+fonctionnalites = ["U4", "O7"]
+objectif = "Montrer que l'écran « Générer » propose les trois modes de pause déjeuner, préremplis depuis les paramètres, enregistre le choix au lancement, et refuse une pause mal saisie sans rien lancer ; montrer que le mode de pause déjeuner se règle aussi dans « Paramètres » et que la grille dessine la pause selon le mode choisi et selon la règle propre à un groupe."
+depart = "Jeu minimal, paramètres par défaut (horaires déterminés de 12 h 45 à 13 h 45, durée 60 minutes), aucun calcul. Jeu minimal ; une version calculée ; règle R002 active (A1-G1 : pause libre d'au moins 1 h entre 12 h et 14 h)."
+etapes = [
+  "Onglet « Générer » : déplier la section « Pause déjeuner ».",
+  "Choisir « Pause libre bornée » de 12:00 à 14:00, au moins 75 minutes, puis lancer ; recommencer en « Horaires déterminés », puis en « Pas de pause ».",
+  "Saisir une pause libre de 75 minutes dans une fenêtre d'une heure, ou une fin avant le début, puis lancer.",
+  "« Données › Paramètres » : choisir « Pause libre bornée », fin 14:00, durée 75, puis « Enregistrer ».",
+  "Afficher l'emploi du temps de la promotion A1 dans chaque mode, puis celui de la classe A1-G1.",
+]
+attendu = [
+  "La section propose « Horaires déterminés » (coché), « Pause libre bornée » et « Pas de pause ».",
+  "Chaque mode est enregistré dans les paramètres et le calcul réussit.",
+  "Pause mal saisie : refus avec, sous le champ, « Une pause de 75 min ne tient pas dans la fenêtre du déjeuner » ou « La fin du déjeuner doit venir après son début » ; aucun calcul, paramètres inchangés.",
+  "« Paramètres enregistrés. » ; à la réouverture, « Pause libre bornée » est sélectionné.",
+  "Promotion A1 : bande « Déjeuner » fixe en horaires déterminés, bande de pause libre en pause libre bornée, aucune bande sans pause.",
+  "Classe A1-G1 : bande de pause libre qui cite la règle R002.",
+]
+tests = [
+  "tests/integration/web_edt/test_dejeuner.py::test_trois_choix_preremplis_depuis_les_parametres",
+  "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_enregistree_avant_le_calcul",
+  "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_enregistres_avant_le_calcul",
+  "tests/integration/web_edt/test_dejeuner.py::test_pas_de_pause_enregistre_puis_lance",
+  "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_mal_saisie_refusee_sous_le_champ",
+  "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_mal_saisis_reaffiches_sans_lancer_ni_enregistrer",
+  "tests/integration/web_edt/test_dejeuner.py::test_mode_inconnu_refuse",
+  "tests/integration/web_donnees/test_parametres.py::test_pause_dejeuner_liste_deroulante_et_champs_selon_le_mode",
+  "tests/integration/web_donnees/test_parametres.py::test_pause_libre_enregistree_et_valeur_hors_choix_refusee",
+  "tests/integration/web_donnees/test_parametres.py::test_pause_libre_plus_longue_que_sa_fenetre_signalee_sous_le_champ",
+  "tests/integration/web_edt/test_dejeuner.py::test_la_grille_dessine_la_bande_selon_le_mode",
+  "tests/integration/web_edt/test_regles_web.py::test_la_bande_dejeuner_suit_le_reglage_du_groupe_affiche",
+]
+remarque = "Ces tests vérifient l'enregistrement du choix et la réussite du calcul, pas que l'emploi du temps produit laisse la pause libre (section 7)."
+
+# =========================================================================================
+# O7, O8, U8, U9, U10, U11, P1, U12 : consulter et retoucher
+# =========================================================================================
+
+[[fiche]]
+id = "REC-O7-1"
+titre = "Consulter l'emploi du temps d'un groupe, d'un enseignant ou d'une salle"
+fonctionnalites = ["O7"]
+cas = [6]
+objectif = "Montrer que la grille de la version active s'affiche pour un groupe, un enseignant et une salle, avec des séances colorées et le détail d'une séance dans son panneau, et qu'une classe voit aussi les séances de sa promotion."
+depart = "Jeu minimal et un calcul réussi du vrai moteur : une version active avec ses séances datées."
+etapes = [
+  "Ouvrir l'onglet « Emploi du temps » ; choisir successivement le groupe A1-G1, l'enseignante Mme Martin, puis une salle.",
+  "Afficher la promotion A1 et cliquer sur le cours magistral de mathématiques.",
+  "Sur la classe A1-G1, lire l'encadré de ce qui est affiché, puis cliquer sur « Afficher aussi ces séances ».",
+]
+attendu = [
+  "La page s'ouvre sur une classe ; elle rouvre ensuite la dernière cible consultée.",
+  "Pour le groupe, l'enseignant et la salle, la page répond sans erreur et contient au moins une séance dessinée avec sa couleur.",
+  "Le panneau de la séance s'ouvre, avec « Déplacer la séance » et les exigences de la séance.",
+  "L'encadré indique « Affiché : les séances de A1-G1 et de A1 » ; la vue étendue ajoute les séances des demi-groupes, marquées comme ne concernant qu'une partie du groupe.",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_bandeau_et_bascule_vers_la_vue_etendue",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_une_classe_s_ouvre_sur_ses_seances_et_celles_de_sa_promotion",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants",
+]
+remarque = "Le test vérifie qu'une classe de couleur est posée sur chaque séance, pas le rendu visuel ; le rendu sur un petit écran est l'objet de l'essai manuel REC-P1-2."
+
+[[fiche]]
+id = "REC-O7-2"
+titre = "Lien périmé ou adresse abîmée vers l'emploi du temps"
+fonctionnalites = ["O7", "U8"]
+objectif = "Montrer qu'un groupe, une séance ou une date qui n'existe pas, ou un paramètre illisible dans l'adresse, donne une page lisible qui le dit, jamais une erreur 500."
+depart = "Jeu minimal et une version active calculée."
+etapes = [
+  "Ouvrir l'emploi du temps avec un groupe inconnu, puis un identifiant de vingt chiffres.",
+  "Ouvrir une séance qui n'existe pas, ou supprimée depuis un autre onglet.",
+  "Demander une semaine datée très lointaine, une vue inconnue, un numéro de version écrit en lettres.",
+  "Revenir sur l'onglet avec un témoin de dernière cible illisible ou démesuré.",
+]
+attendu = [
+  "Cible inconnue : la page dit « n'existe pas » et affiche une autre classe à la place.",
+  "Séance inconnue : page sans panneau, avec « La séance a pu être déplacée ou supprimée ».",
+  "Date lointaine : la page dit que la date est « trop loin » du semestre ; paramètre illisible : page « Saisie invalide » qui nomme le champ par son libellé (« Version : valeur manquante ou invalide »).",
+  "Témoin illisible : la page s'ouvre sur la cible par défaut.",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut",
+  "tests/integration/web_edt/test_cas_limites.py::test_cible_enorme_dans_l_adresse_montre_la_premiere_classe",
+  "tests/integration/web_edt/test_cas_limites.py::test_seance_enorme_dans_l_adresse_ouvre_la_page_sans_panneau",
+  "tests/integration/web_edt/test_cas_limites.py::test_panneau_d_une_seance_supprimee_entre_temps",
+  "tests/integration/web_edt/test_cas_limites.py::test_identifiant_qui_n_est_pas_un_entier_donne_saisie_invalide",
+  "tests/integration/web_edt/test_cas_limites.py::test_cookie_de_cible_illisible_ou_enorme_est_ignore",
+  "tests/integration/web_edt/test_cas_limites.py::test_date_tres_ancienne_ou_lointaine_sans_erreur",
+  "tests/integration/web_edt/test_cas_limites.py::test_filtres_inconnus_refuses_lisiblement",
+  "tests/integration/web_edt/test_cas_limites.py::test_identifiants_enormes_ou_negatifs_donnent_introuvable",
+]
+
+[[fiche]]
+id = "REC-O8-1"
+titre = "Déplacer une séance de la semaine type : heures annoncées « (possible) », salles qui conviennent"
+fonctionnalites = ["O8"]
+cas = [3]
+objectif = "Montrer que le panneau d'une séance propose les jours, les heures et les salles qui conviennent, et qu'une heure annoncée « (possible) », choisie telle que le formulaire se présente, est enregistrée."
+depart = "Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information)."
+etapes = [
+  "Ouvrir le panneau d'une séance ; sous « Déplacer la séance (toutes les semaines) », changer le jour.",
+  "Lire l'annonce de chaque heure de début ; choisir une heure « (possible) ».",
+  "Cliquer sur « Vérifier et enregistrer » sans rien changer d'autre.",
+  "Ouvrir le panneau du TP d'un demi-groupe qui a besoin d'une salle accessible, puis celui d'un TD dont la salle est occupée à l'heure choisie.",
+]
+attendu = [
+  "Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.",
+  "Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour proposé, chaque heure annoncée possible est acceptée par le vérificateur ; pour chaque séance, la première heure annoncée possible s'enregistre. Sur la version saisie, pour la séance étudiée, chaque heure annoncée possible est acceptée par le vérificateur.",
+  "Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.",
+  "Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».",
+  "Un déplacement accepté avec une simple information affiche « Séance déplacée au … à … » et « À noter », dans un message de succès (vert).",
+]
+tests = [
+  "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit",
+  "tests/integration/web_edt/test_deplacement_possible.py::test_changer_le_jour_puis_choisir_une_heure_possible",
+  "tests/integration/web_edt/test_deplacement_possible.py::test_chaque_heure_possible_du_jeu_minimal_s_enregistre",
+  "tests/integration/web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord",
+  "tests/integration/web_edt/test_recette_deplacement.py::test_heure_acceptee_avec_un_avertissement_annoncee_et_enregistree",
+]
+remarque = "Le test rejoue par HTTP le rechargement du formulaire que le navigateur fait à chaque changement de jour ou d'heure."
+
+[[fiche]]
+id = "REC-O8-2"
+titre = "Déplacement refusé : conflit, salle occupée, créneau ou jour impossible"
+fonctionnalites = ["O8"]
+cas = [3]
+objectif = "Montrer qu'un déplacement qui enfreint une règle nécessaire, ou une saisie impossible, n'enregistre rien et dit pourquoi."
+depart = "Jeu minimal et une version active, calculée par le moteur ou saisie à la main ; vrai vérificateur, ou vérificateur d'essai qui signale une erreur. Pour l'essai du jour impossible : fermeture à 10 h et aucune pause déjeuner réservée."
+etapes = [
+  "Déplacer le TD de A1-G1 au jour et à l'heure du cours magistral de sa promotion, puis « Vérifier et enregistrer ».",
+  "Forcer la salle actuelle, occupée à la nouvelle heure.",
+  "Envoyer un début qui n'est pas un début de créneau, ou un jour hors de la semaine.",
+  "Choisir un jour où aucun créneau ne laisse tenir la séance avant la fermeture.",
+  "Tenter un déplacement quand les vérifications automatiques sont indisponibles.",
+]
+attendu = [
+  "Conflit de groupes : « n'a pas été enregistrée » avec la règle « Une séance par groupe » ; la séance reste en place.",
+  "Salle occupée : refus avec la règle « Une séance par salle ».",
+  "Saisie impossible : refus avec « n'est pas un début de créneau » ou « Jour invalide », sans trace technique.",
+  "Jour impossible : le formulaire reste lisible, dit qu'aucun début de créneau ne convient et garde le jour actuel.",
+  "Jour où toutes les heures sont refusées : « Aucune heure possible le mardi avec les salles proposées : essayer un autre jour », avec la règle la plus souvent en cause.",
+  "Sans vérificateur disponible, aucune séance n'est déplacée et le message dit que les « vérifications automatiques sont indisponibles ».",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_refusee_par_une_erreur_du_verificateur",
+  "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit",
+  "tests/integration/web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee",
+  "tests/integration/web_edt/test_recette_deplacement.py::test_jour_sans_aucune_heure_possible_dit_quoi_faire",
+]
+
+[[fiche]]
+id = "REC-U8-1"
+titre = "Passer de la semaine type à la semaine datée et au jour, naviguer de semaine en semaine"
+fonctionnalites = ["U8"]
+cas = [4]
+objectif = "Montrer que les trois vues s'affichent pour chaque cible, que la semaine datée montre les jours fermés et permet de passer aux semaines voisines, et qu'une version sans séances datées le dit."
+depart = "Jeu minimal et une version active calculée, avec ses séances datées ; pour le dernier essai, une version dont les séances datées ont été retirées."
+etapes = [
+  "Pour un groupe, un enseignant et une salle, cliquer sur « Semaine type », « Jour », « Semaine datée », puis « Jour » en semaine datée.",
+  "En « Semaine datée », aller à la semaine du 28/10/2026 pour A1-G1 ; utiliser les liens vers les semaines voisines.",
+  "Sur une version sans séances datées, cliquer sur « Semaine datée », puis sur le bouton qui les produit.",
+]
+attendu = [
+  "Dans chacune des douze combinaisons, la page répond et contient au moins une séance ; la semaine datée porte la période « du semestre ».",
+  "La semaine du 28/10/2026 affiche « Vacances de la Toussaint » et des jours grisés ; les liens mènent aux semaines du 19/10/2026 et du 02/11/2026.",
+  "Sans séances datées, la page dit qu'elles n'ont « pas encore été produites » ; le bouton les produit (« Séances datées recalculées »).",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_semaine_datee_grise_les_vacances_et_navigue",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_version_sans_seances_datees_puis_produites",
+]
+
+[[fiche]]
+id = "REC-U9-1"
+titre = "Verrouiller et déverrouiller une séance ; place gardée au calcul suivant"
+fonctionnalites = ["U9", "O8"]
+cas = [3]
+objectif = "Montrer qu'une séance se verrouille et se déverrouille depuis son panneau, que le verrou est marqué dans la grille, et que le calcul suivant, lancé depuis « Générer », la laisse à sa place."
+depart = "Jeu minimal et une version saisie à la main (identique sur toutes les machines), puis une version calculée par le vrai moteur."
+etapes = [
+  "Ouvrir le panneau d'une séance et cliquer sur « Verrouiller à cette place » ; cliquer une seconde fois.",
+  "Afficher la grille ; lancer un nouveau calcul du semestre depuis « Générer ».",
+  "Ouvrir de nouveau le panneau et cliquer sur « Déverrouiller ».",
+  "Lancer un calcul avec la règle « Séances verrouillées » décochée.",
+  "Verrouiller un TD un mercredi, puis recalculer : le mercredi 11/11/2026 est férié.",
+]
+attendu = [
+  "« Séance verrouillée : les prochains calculs la laisseront à sa place. » ; le panneau propose « Déverrouiller » ; un second clic répond « La séance était déjà verrouillée. ».",
+  "La grille porte la marque « Séance verrouillée » ; dans la nouvelle version, la séance garde son jour, son début, sa fin et sa salle, reste verrouillée, et c'est la seule.",
+  "Après « Déverrouiller », la place est dite « Libre : un nouveau calcul peut la déplacer » et le verrou est retiré.",
+  "Règle « Séances verrouillées » décochée au calcul, une séance que le moteur déplace n'est plus marquée verrouillée.",
+  "Le TD verrouillé reste un mercredi ; sa séance datée du 11/11/2026 est replacée dans la même semaine.",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou",
+  "tests/integration/solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee",
+  "tests/integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine",
+  "tests/integration/web_edt/test_recette_verrous.py::test_verrouiller_puis_deverrouiller_une_seance_depuis_son_panneau",
+  "tests/integration/web_edt/test_recette_verrous.py::test_verrou_pose_par_le_site_tenu_par_le_calcul_suivant",
+]
+
+[[fiche]]
+id = "REC-U9-2"
+titre = "Déplacer ou annuler une seule séance datée, recalculer en gardant les retouches ; retouches refusées"
+fonctionnalites = ["U9", "U8"]
+cas = [4]
+objectif = "Montrer qu'une séance datée se déplace ou s'annule avec un motif sans toucher aux autres semaines, et qu'un recalcul des séances datées conserve ces retouches ; montrer que les retouches impossibles d'une séance datée sont refusées avec un message clair, sans rien modifier."
+depart = "Jeu minimal et une version active calculée, avec ses séances datées ; pour un essai, des séances datées rendues semblables à un import."
+etapes = [
+  "En « Semaine datée », ouvrir une séance ; sous « Déplacer cette séance seulement », choisir le jour ouvré suivant à 10 h 45, puis « Vérifier et enregistrer ».",
+  "Sous « Annuler cette séance », saisir le motif « Grève » et confirmer.",
+  "Cliquer sur « Recalculer les séances datées ».",
+  "Annuler une séance datée, renvoyer la même annulation, puis tenter de la déplacer.",
+  "Déplacer une séance datée au 04/01/1999.",
+  "Saisir un motif d'annulation de 2 001 caractères.",
+  "Ouvrir la semaine datée d'une version aux séances datées importées.",
+]
+attendu = [
+  "La séance déplacée a la nouvelle date et 10 h 45, garde sa date initiale et est marquée comme retouche à la main.",
+  "La séance annulée porte le motif dans son commentaire.",
+  "Le recalcul affiche « Séances datées recalculées » ; les deux retouches sont conservées, sans séance en double dans leur semaine.",
+  "Second envoi : « était déjà annulée » ; une séance annulée « ne peut pas être déplacée ».",
+  "Date hors du semestre : refus « en dehors du semestre » ; la date ne change pas.",
+  "Motif trop long : « Motif trop long : 2000 caractères au plus (lu : 2001) », séance non annulée.",
+  "Le bouton « Recalculer les séances datées » est absent et la page dit que les séances datées « ont été importées » ; une demande de recalcul envoyée quand même est refusée car il « les doublerait » ; leur nombre ne change pas.",
+]
+tests = [
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_deplacer_puis_annuler_une_seance_datee",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_seances_datees_produites_par_le_calcul_puis_recalculees",
+  "tests/integration/web_edt/test_emploi_du_temps.py::test_les_retouches_survivent_au_recalcul_sans_doublon",
+  "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site",
+  "tests/integration/web_edt/test_cas_limites.py::test_seance_annulee_ni_reannulee_ni_deplacee",
+  "tests/integration/web_edt/test_cas_limites.py::test_deplacer_une_seance_datee_hors_du_semestre",
+  "tests/integration/web_edt/test_cas_limites.py::test_motif_d_annulation_borne",
+  "tests/integration/web_edt/test_revue.py::test_seances_datees_importees_jamais_recalculees",
+]
+
+[[fiche]]
+id = "REC-U10-1"
+titre = "Page « Points à traiter » : anomalies par gravité, séances à programmer, même nombre partout"
+fonctionnalites = ["U10"]
+cas = [4]
+objectif = "Montrer que la page « Points à traiter » classe les anomalies en erreurs, avertissements et informations, liste les séances à programmer, mène à la séance concernée, et que le même nombre de points s'affiche sur l'accueil, l'onglet « Générer » et la page."
+depart = "Jeu minimal et une version active calculée ; vérificateur d'essai qui renvoie des anomalies choisies, ou vrai vérificateur ; une séance datée passée « à programmer »."
+etapes = [
+  "Ouvrir « Générer › Points à traiter » ; lire les sections et suivre un lien vers la grille.",
+  "Lire le nombre affiché sur l'onglet « Générer » et sur l'accueil.",
+  "Passer une séance datée « à programmer » et relire les trois nombres.",
+  "Ouvrir la page avant tout calcul, puis sans vérifications automatiques.",
+  "Choisir « Tous les semestres » ; sur une version calculée avec la règle de capacité décochée, enregistrer une retouche qui l'enfreint.",
+]
+attendu = [
+  "Les sections « Règles non respectées », « Situations à vérifier » et « Pour information » se suivent, regroupées par règle ; chaque anomalie mène à sa séance.",
+  "« Séances à programmer » liste la séance avec sa raison ; le compteur additionne erreurs, avertissements et séances à programmer.",
+  "L'accueil, l'onglet et la page donnent toujours le même nombre, recalculé dès qu'une séance change.",
+  "Avant tout calcul : « Aucun emploi du temps actif » ; sans vérificateur : « Les vérifications automatiques sont indisponibles », jamais « Aucune anomalie ».",
+  "Chaque anomalie d'une règle importante ou facultative porte l'étiquette « règle importante » ou « règle facultative » ; « Tous les semestres » affiche chaque semestre qui a une version active ; l'entorse à la règle décochée est présentée à part (« Entorses aux règles ignorées pour ce calcul »).",
+]
+tests = [
+  "tests/integration/web_edt/test_a_traiter.py::test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer",
+  "tests/integration/web_edt/test_a_traiter.py::test_avec_le_vrai_verificateur",
+  "tests/integration/web_edt/test_revue.py::test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois",
+  "tests/integration/web_edt/test_a_traiter.py::test_compteur_memorise_puis_recalcule_quand_une_seance_change",
+  "tests/integration/web_edt/test_niveaux_web.py::test_a_traiter_etiquette_le_niveau_des_anomalies",
+  "tests/integration/web_edt/test_a_traiter.py::test_sans_emploi_du_temps_actif",
+  "tests/integration/web_edt/test_a_traiter.py::test_sans_verificateur_l_absence_est_dite",
+  "tests/integration/web_edt/test_a_traiter.py::test_option_tous_les_semestres_affiche_tous_les_semestres",
+  "tests/integration/web_edt/test_revue.py::test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part",
+]
+
+[[fiche]]
+id = "REC-U11-1"
+titre = "Accueil : la prochaine étape et l'état du semestre selon l'avancement"
+fonctionnalites = ["U11"]
+cas = [1]
+objectif = "Montrer que l'encadré « Prochaine étape » de l'accueil propose l'action utile à chaque étape et que la carte du semestre donne la version active et le nombre de points à traiter."
+depart = "Base vide, puis jeu minimal sans calcul, calcul en cours, version active, version avec un point à traiter ; date du jour figée dans le semestre 1."
+etapes = [
+  "Ouvrir l'accueil sur une base vide, puis après chaque étape : chargement, calcul en cours, version active, point à traiter.",
+  "Ouvrir l'accueil quand les vérifications automatiques sont indisponibles.",
+]
+attendu = [
+  "Base vide : bouton « Charger un établissement fictif » ; données sans calcul : « Vérifier les données et lancer le calcul » ; calcul en cours : « Suivre le calcul ».",
+  "Version active : « Version active » et « Aucun point à traiter » ou « 1 point à traiter », avec un seul lien vers « Points à traiter ».",
+  "Sans vérificateur, l'accueil le dit (« vérifications automatiques indisponibles ») au lieu d'inventer un nombre.",
+]
+tests = [
+  "tests/integration/web_edt/test_accueil.py::test_base_vide_propose_un_etablissement_fictif",
+  "tests/integration/web_edt/test_accueil.py::test_donnees_sans_emploi_du_temps_conseille_de_generer",
+  "tests/integration/web_edt/test_accueil.py::test_calcul_en_cours_conseille_de_le_suivre",
+  "tests/integration/web_edt/test_accueil.py::test_tout_va_bien_version_a_consulter_et_rien_d_autre",
+  "tests/integration/web_edt/test_accueil.py::test_points_a_traiter_sans_indicateurs",
+  "tests/integration/web_edt/test_accueil.py::test_version_active_sans_verificateur",
+  "tests/integration/socle/test_web.py::test_accueil_tait_une_base_en_bon_etat",
+]
+
+[[fiche]]
+id = "REC-U11-2"
+titre = "Résultat d'un calcul : compteurs des séances, indicateurs et bilan de qualité"
+fonctionnalites = ["U11"]
+cas = [1]
+objectif = "Montrer que la page de résultat d'un calcul réussi donne les nombres de séances placées, datées et replacées, les indicateurs de qualité du vérificateur et le bilan du moteur."
+depart = "Jeu minimal, aucun calcul."
+etapes = [
+  "Lancer un calcul depuis « Générer » et lire les compteurs du résultat.",
+  "Lancer un calcul avec « Emploi du temps plus confortable » et lire le bilan.",
+]
+attendu = [
+  "La page affiche « Emploi du temps généré », les « séances placées dans la semaine type », les « séances datées sur le semestre » et les séances replacées, égaux aux nombres enregistrés avec le calcul.",
+  "Avec l'amélioration, la page affiche le « Bilan sur l'ensemble du semestre », sans répéter les compteurs.",
+  "Sous « Qualité de l'emploi du temps », la page affiche « des séances placées », « conflits (règles non respectées) », « d'utilisation des salles » et « changements de campus », égaux aux valeurs que le vérificateur rend pour la même version.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis",
+  "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon",
+  "tests/integration/web_edt/test_recette_resultat.py::test_resultat_d_un_calcul_affiche_les_indicateurs_du_verificateur",
+]
+
+[[fiche]]
+id = "REC-U12-2"
+titre = "Imprimer l'emploi du temps ou l'enregistrer en PDF"
+fonctionnalites = ["U12"]
+cas = [6]
+objectif = "Montrer que l'emploi du temps d'un groupe s'imprime en un document lisible qui porte le nom du groupe, le semestre et la version, la grille et sa légende, sans les éléments de l'interface."
+depart = "Application en version 1.0.0 en service, établissement fictif « moyen », deux semestres générés ; essai en lecture seule."
+etapes = [
+  "Ouvrir l'onglet « Emploi du temps » sur le groupe A3-G1, en semaine type.",
+  "Imprimer la page (bouton « Imprimer » ou impression du navigateur) et l'enregistrer en PDF, format A4.",
+  "Lire le PDF et y chercher les libellés de l'interface.",
+]
+attendu = [
+  "L'écran porte le bouton « Imprimer » et un titre réservé à l'impression qui nomme la ressource affichée.",
+  "Un document imprimable qui porte le nom du groupe, le semestre et la version, la grille de la semaine et sa légende.",
+  "Aucun élément de l'interface : ni onglets, ni boutons, ni champ de recherche, ni bouton de l'assistant.",
+]
+tests = [
+  "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource",
+]
+remarque = "Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel."
+
+[fiche.essai]
+date = 2026-11-23
+environnement = "Impression en PDF par le navigateur Chrome, format A4, de l'emploi du temps du groupe A3-G1 en semaine type, sur l'application en version 1.0.0 en service (établissement fictif « moyen »)."
+constat = "Le PDF compte une page. Son texte commence par « Groupe A3-G1 - Groupe 1 (3e année) », puis « Semestre 1 (2026-2027) - Version 2 (générée le 16/11/2026 à 17 h 43) - semaine type », suivi des colonnes du lundi au vendredi, des séances (horaire, matière, type, groupe, enseignant, salle), de la bande « Déjeuner » et de la légende. Aucune occurrence de « Tests unitaires », « Exporter pour un tableur », « Imprimer », « Assistant » ni « Rechercher un groupe »."
+verdict = "Conforme"
+reserve = "La boîte d'impression du navigateur elle-même n'est pas exercée : le PDF est produit par la fonction d'impression de Chrome, celle que le bouton « Imprimer » déclenche."
+preuves = [
+  { image = "images/recette-impression.png", legende = "Haut de la page A4 imprimée de l'emploi du temps du groupe A3-G1 : titre, semestre et version, grille de la semaine, bande du déjeuner et légende ; aucun élément de l'interface." },
+]
+
+[[fiche]]
+id = "REC-P1-1"
+titre = "Pages prévues pour un petit écran"
+fonctionnalites = ["P1"]
+objectif = "Montrer que les pages principales déclarent leur adaptation à la largeur de l'écran et que les feuilles de style servies contiennent les règles pour petits écrans."
+depart = "Jeu minimal et une version saisie à la main ; pages lues par HTTP."
+etapes = [
+  "Ouvrir l'accueil, les six onglets, « Salles » et « Enseignants » ; lire l'en-tête de chaque page.",
+  "Lire les feuilles de style servies par l'application.",
+]
+attendu = [
+  "Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.",
+  "La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).",
+]
+tests = [
+  "tests/integration/web_edt/test_recette_affichage.py::test_ecrans_prevus_pour_un_telephone",
+  "tests/integration/socle/test_recette_petit_ecran.py::test_pages_principales_adaptees_a_la_largeur_du_telephone",
+  "tests/integration/socle/test_recette_petit_ecran.py::test_regles_pour_petits_ecrans_servies_et_elements_presents",
+]
+remarque = "Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2."
+
+[[fiche]]
+id = "REC-P1-2"
+titre = "Consulter l'application sur un écran de téléphone (émulation dans Chrome)"
+fonctionnalites = ["P1"]
+objectif = "Montrer que chaque page tient dans la largeur d'un écran de téléphone, sans défilement horizontal de la page, que les onglets et les formulaires se réorganisent et que l'emploi du temps reste lisible."
+depart = "Application en version 1.0.0 en service, établissement fictif « moyen », deux semestres générés ; essai en lecture seule."
+etapes = [
+  "Émuler un téléphone : écran de 390 × 844 points, densité 2, appareil tactile.",
+  "Ouvrir successivement l'accueil, l'onglet « Emploi du temps », l'onglet « Générer », l'écran « Salles » de l'onglet « Données » et l'onglet « Tests d'intégration ».",
+  "Relever pour chaque page la largeur de mise en page et la largeur du contenu rendues par le navigateur, et regarder la page.",
+]
+attendu = [
+  "Chaque page tient dans la largeur de l'écran, sans défilement horizontal de la page.",
+  "Les onglets et les formulaires se réorganisent ; l'emploi du temps reste lisible.",
+]
+tests = []
+remarque = "Aucun test par HTTP ne peut juger un rendu : l'essai est manuel, fait en émulation d'appareil mobile dans Chrome et non sur un téléphone réel."
+
+[fiche.essai]
+date = 2026-11-23
+environnement = "Chrome en émulation d'appareil mobile (390 × 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »)."
+constat = "Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. L'image de la grille (figure ci-dessous, à droite) est prise de la même façon, la page de l'emploi du temps défilée de 975 points."
+verdict = "Conforme"
+reserve = "Le bouton flottant « Assistant », en bas à droite, recouvre la fin de la ligne de pied de page sur une page courte, et la fin de la légende de l'emploi du temps. Sans effet sur l'usage."
+preuves = [
+  { image = "images/recette-telephone-accueil.png", legende = "Accueil sur un écran de téléphone de 390 points de large." },
+  { image = "images/recette-telephone-emploi-du-temps.png", legende = "Emploi du temps d'un groupe sur le même écran, défilé jusqu'à la grille : lundi, mardi et le début du mercredi, la grille défilant dans son cadre ; la bande « Déjeuner » et la légende, dont la fin est recouverte par le bouton « Assistant »." },
+]
+
+# =========================================================================================
+# P2, P3, P4 : commandes, assistant, tests depuis l'application
+# =========================================================================================
+
+[[fiche]]
+id = "REC-P2-1"
+titre = "Réaliser les opérations courantes en ligne de commande, sans ouvrir le site"
+fonctionnalites = ["P2"]
+objectif = "Montrer qu'un administrateur réalise au clavier l'installation, le chargement des données, le calcul, la vérification, l'export et la simulation d'un import, chaque commande relisant ce que la précédente a écrit."
+depart = "Dossier de travail vide : base et journaux dans un dossier propre à l'essai ; puis base chargée du jeu minimal."
+etapes = [
+  "Taper `python -m edt version`, puis `python -m edt init-db` et `python -m edt jeu-minimal`.",
+  "Relancer `python -m edt init-db` sur la base garnie.",
+  "Enchaîner « generer », « verifier » et « exporter-edt ».",
+  "Taper `python -m edt exporter-donnees --format zip`, puis `python -m edt importer <archive> --simuler`.",
+]
+attendu = [
+  "« version » rend le code 0 et affiche le numéro de version ; « jeu-minimal » annonce « 16 besoins » et l'étape suivante.",
+  "« init-db » relancé propose l'étape suivante `python -m edt serve`.",
+  "Les commandes du calcul rendent le code 0 et le fichier CSV contient « Mathématiques ».",
+  "La simulation rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».",
+]
+tests = [
+  "tests/integration/socle/test_cli.py::test_version",
+  "tests/integration/socle/test_cli.py::test_jeu_minimal_puis_refus_du_second_chargement",
+  "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande",
+  "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport",
+]
+remarque = "Les commandes sont lancées par l'outil de test de Typer, avec la même application que `python -m edt`. La sauvegarde par commande fait l'objet de la fiche REC-EXP-2."
+
+[[fiche]]
+id = "REC-P2-2"
+titre = "Commande mal employée : refus avec un message clair et un code de sortie non nul"
+fonctionnalites = ["P2"]
+objectif = "Montrer qu'une commande lancée au mauvais moment ou avec un identifiant ou un réglage invalide s'arrête avec un message qui nomme la cause, sans trace technique et sans rien écrire."
+depart = "Selon l'essai : dossier sans base initialisée ; base chargée du jeu minimal sans calcul ; base initialisée."
+etapes = [
+  "Sans base initialisée, taper `python -m edt jeu-minimal` ; sur une base garnie, le relancer.",
+  "Taper `python -m edt generer --semestre 999`, « pre-verifier --semestre 0 », « instancier --version 999 ».",
+  "Donner un identifiant au-delà des entiers de SQLite à « pre-verifier » et à « verifier ».",
+  "Régler EDT_PORT à « pas-un-port », puis taper `python -m edt doctor`.",
+]
+attendu = [
+  "« jeu-minimal » sans base rend le code 1 et cite « init-db » ; sur une base garnie, le code 1 avec « contient déjà », et la base garde ses 16 besoins.",
+  "Identifiant inexistant : code 1 avec « n'existe pas », sans « Traceback » ; aucun calcul enregistré.",
+  "Identifiant hors bornes : « n'existe pas », sans trace technique.",
+  "Réglage invalide : code 1, le message nomme EDT_PORT.",
+]
+tests = [
+  "tests/integration/socle/test_cli.py::test_jeu_minimal_sans_base_initialisee",
+  "tests/integration/socle/test_cli.py::test_jeu_minimal_puis_refus_du_second_chargement",
+  "tests/integration/socle/test_cli.py::test_commandes_de_calcul_avec_un_identifiant_inexistant",
+  "tests/integration/socle/test_instantane.py::test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas",
+  "tests/integration/socle/test_cli.py::test_configuration_invalide_donne_un_message_clair",
+]
+
+[[fiche]]
+id = "REC-P3-1"
+titre = "Poser une question à l'assistant et lire sa réponse"
+fonctionnalites = ["P3"]
+objectif = "Montrer qu'une question en langage courant, envoyée depuis le panneau « Assistant », reçoit une réponse affichée dans la conversation, avec la page consultée transmise au service, y compris sans JavaScript."
+depart = "Base initialisée ; pour les exemples tirés des données, base chargée du jeu minimal. Assistant configuré avec une clé factice ; le service externe est remplacé par un faux service qui rejoue des réponses écrites d'avance (aucun appel réel, aucun réseau)."
+etapes = [
+  "Ouvrir le panneau « Assistant » ; lire les exemples de demandes.",
+  "Depuis l'écran des salles, écrire « Quel est le semestre courant ? » et cliquer sur « Envoyer ».",
+  "Attendre la réponse ; cliquer sur « Nouvelle conversation ».",
+  "Dans un navigateur sans JavaScript, envoyer un message.",
+]
+attendu = [
+  "Le panneau propose des exemples tirés des données et annonce « 10 messages possibles dans cette conversation ».",
+  "La question s'affiche aussitôt ; la réponse s'affiche mise en forme, une balise écrite dans la réponse restant du texte ; le panneau annonce « 9 messages possibles dans cette conversation ».",
+  "La page consultée est transmise au service avec la question ; « Nouvelle conversation » vide le fil.",
+  "Sans JavaScript, la page de l'assistant affiche la conversation et se recharge jusqu'à la réponse.",
+]
+tests = [
+  "tests/integration/assistant/test_panneau.py::test_configure_le_panneau_charge_la_conversation_a_l_ouverture",
+  "tests/integration/assistant/test_web.py::test_exemples_tires_des_donnees",
+  "tests/integration/assistant/test_web.py::test_question_puis_reponse",
+  "tests/integration/assistant/test_web.py::test_interrogation_sans_changement_repond_204",
+  "tests/integration/assistant/test_web.py::test_nouvelle_conversation",
+  "tests/integration/assistant/test_web.py::test_page_sans_javascript",
+]
+remarque = "Le faux service rend des réponses écrites d'avance : la fiche vérifie le circuit de l'application, pas la pertinence des réponses (section 7)."
+
+[[fiche]]
+id = "REC-P3-2"
+titre = "Confirmer ou refuser une proposition de l'assistant"
+fonctionnalites = ["P3"]
+objectif = "Montrer que l'assistant ne fait que proposer : rien n'est enregistré avant le clic sur « Confirmer », « Refuser » n'enregistre rien, et un second clic ne crée pas de doublon."
+depart = "Base chargée du jeu minimal ; faux service qui propose une nouvelle règle (« Pas de CM le mercredi après-midi »), la désactivation de R001 ou un besoin."
+etapes = [
+  "Envoyer « Pas de CM le mercredi après-midi. » et lire la carte proposée.",
+  "Cliquer sur « Confirmer », puis une seconde fois.",
+  "Sur une nouvelle proposition, cliquer sur « Refuser ».",
+  "Confirmer pendant qu'un autre processus tient la base en écriture ; confirmer une proposition qui n'existe plus.",
+]
+attendu = [
+  "La carte porte « À confirmer » ; le nombre de règles n'a pas changé.",
+  "« Confirmer » affiche « Enregistrée : règle R005, active. » ; une règle de plus ; le second clic affiche « Déjà confirmée ».",
+  "« Refuser » affiche « Refusée : rien n'a été enregistré. ».",
+  "Base occupée : « Base occupée : rien n'a été enregistré, réessayez. » ; proposition disparue : « Cette proposition n'existe plus ».",
+]
+tests = [
+  "tests/integration/assistant/test_web.py::test_proposition_confirmee_par_le_bouton",
+  "tests/integration/assistant/test_web.py::test_proposition_refusee_par_le_bouton",
+  "tests/integration/assistant/test_web.py::test_base_occupee_au_clic_sur_confirmer",
+  "tests/integration/assistant/test_web.py::test_proposition_inconnue",
+  "tests/integration/assistant/test_web.py::test_formulaire_prerempli_du_besoin",
+  "tests/integration/assistant/test_commande.py::test_question_affiche_la_reponse_et_les_propositions",
+]
+
+[[fiche]]
+id = "REC-P3-3"
+titre = "Assistant non configuré, désactivé ou limité, et contrôlé par l'administrateur"
+fonctionnalites = ["P3"]
+objectif = "Montrer que, sans service configuré, le panneau le dit et toutes les pages restent utilisables, que la limite de messages, la dépense du jour et l'origine des envois sont contrôlées avant tout appel, et que l'administrateur vérifie la configuration au clavier sans que la clé soit jamais affichée."
+depart = "Base initialisée ; selon l'essai, aucune clé, assistant désactivé, limite d'un message par conversation ou budget du jour à zéro ; faux service."
+etapes = [
+  "Sans clé, ouvrir dix pages de l'application et le panneau ; envoyer un message.",
+  "Avec une limite d'un message, envoyer deux messages ; avec un budget à zéro, en envoyer un.",
+  "Faire envoyer un message depuis une page d'un autre site.",
+  "Taper `python -m edt assistant`, puis `python -m edt assistant --essai`.",
+]
+attendu = [
+  "Les dix pages s'affichent ; le panneau dit « L'assistant n'est pas configuré sur ce serveur. » ; l'envoi est refusé proprement.",
+  "Le second message est refusé (« Cette conversation est terminée ») ; le budget nul est signalé ; aucun appel au service dans ces cas.",
+  "L'envoi depuis un autre site est refusé, sans appel au service.",
+  "« assistant » rend le code 0 et dit que la clé est présente, sa valeur jamais affichée ; l'essai en échec donne le remède ; aucune page ni sortie ne contient la clé.",
+]
+tests = [
+  "tests/integration/assistant/test_panneau.py::test_sans_cle_toutes_les_pages_s_affichent_et_le_panneau_dit_non_configure",
+  "tests/integration/assistant/test_web.py::test_sans_cle_l_envoi_est_refuse_proprement",
+  "tests/integration/assistant/test_panneau.py::test_desactive_par_l_administrateur",
+  "tests/integration/assistant/test_web.py::test_limite_de_la_conversation_sans_appel",
+  "tests/integration/assistant/test_web.py::test_budget_du_jour_a_zero",
+  "tests/integration/assistant/test_web.py::test_envoi_depuis_un_autre_site_refuse",
+  "tests/integration/assistant/test_web.py::test_aucune_reponse_ne_contient_la_cle",
+  "tests/integration/assistant/test_commande.py::test_etat_sans_cle_code_1",
+  "tests/integration/assistant/test_commande.py::test_etat_configure_code_0_sans_afficher_la_cle",
+  "tests/integration/assistant/test_commande.py::test_etat_configuration_invalide",
+  "tests/integration/assistant/test_commande.py::test_essai_reussi_avec_le_faux_client",
+  "tests/integration/assistant/test_commande.py::test_essai_en_echec_code_1_avec_le_remede",
+  "tests/integration/assistant/test_commande.py::test_essai_sans_cle_code_1",
+  "tests/integration/assistant/test_commande.py::test_essai_et_question_ensemble_refuses",
+]
+
+[[fiche]]
+id = "REC-P4-1"
+titre = "Lire les onglets de tests et lancer une famille de tests depuis le site"
+fonctionnalites = ["P4"]
+cas = [7]
+objectif = "Montrer que les onglets « Tests unitaires » et « Tests d'intégration » présentent le schéma et la liste des tests, lancent une famille dans un processus séparé et affichent pour chaque test son résultat et la date de sa dernière exécution."
+depart = "Base initialisée. Les onglets lisent un dépôt de tests factice (désigné par EDT_TESTS_RACINE) : six tests unitaires (deux réussis, dont une méthode de classe, un en échec, un ignoré, un paramétré à trois cas, un test de charge) et, en intégration, un fichier qui ne se charge pas."
+etapes = [
+  "Ouvrir « Tests unitaires » ; déplier « Comment sont organisés ces tests ».",
+  "Cliquer sur « Lancer tous les tests unitaires » et suivre l'avancement jusqu'à la fin.",
+  "Déplier « Voir le détail de l'échec » ; dans « Tests d'intégration », lancer toute la famille.",
+]
+attendu = [
+  "La page montre le schéma, « 6 tests » et « 6 jamais lancés », la première phrase de la docstring de chaque test et la mention « Test de charge ».",
+  "Le lancement affiche « Exécution lancée : tous les tests unitaires. » ; le cadre finit sur « 5 tests terminés sur 5 » ; le test de charge n'est pas lancé.",
+  "Chaque test porte son état (réussi, échec avec son message, « Ignoré : raison de démonstration ») et « Dernière exécution » suivie d'une date.",
+  "Les tests tournent dans un autre processus, avec une base et des journaux temporaires ; un fichier qui ne se charge pas est en échec, les autres tournent.",
+]
+tests = [
+  "tests/integration/banc_tests/test_ecrans.py::test_deux_onglets_colores_sur_toutes_les_pages_et_a_traiter_dans_generer",
+  "tests/integration/banc_tests/test_ecrans.py::test_page_avec_schema_resume_et_tests_jamais_lances",
+  "tests/integration/banc_tests/test_ecrans.py::test_lancement_suivi_et_resultats_par_la_route_web",
+  "tests/integration/banc_tests/test_execution.py::test_famille_lancee_de_bout_en_bout_et_resultats_enregistres",
+  "tests/integration/banc_tests/test_execution.py::test_environnement_du_sous_processus_assaini",
+  "tests/integration/banc_tests/test_execution.py::test_fichier_qui_ne_se_charge_pas",
+  "tests/integration/banc_tests/test_ecrans.py::test_pages_lisibles_sans_dossier_de_tests_et_avec_un_historique_illisible",
+]
+remarque = "Le processus pytest lancé est réel, mais il exécute le dépôt factice, pas la suite du projet. Les campagnes de la section 3 ont été lancées par la commande `python -m edt tests`."
+
+[[fiche]]
+id = "REC-P4-2"
+titre = "Suivre et arrêter une exécution des tests ; double clic et lancements refusés"
+fonctionnalites = ["P4"]
+cas = [7]
+objectif = "Montrer que l'exécution se suit en direct et s'arrête sur demande, et qu'un double clic, une cible fabriquée, un lancement désactivé ou une relance trop rapprochée ne lancent pas d'exécution en trop."
+depart = "Base initialisée ; dépôt factice dont un test dure une minute."
+etapes = [
+  "Lancer le test lent, puis cliquer sur « Arrêter l'exécution ».",
+  "Cliquer deux fois de suite sur le bouton de lancement ; pendant une exécution, en demander une autre.",
+  "Envoyer une cible fabriquée ; sur un serveur où le lancement est désactivé, cliquer sur un bouton de lancement.",
+]
+attendu = [
+  "Pendant l'exécution, le cadre affiche « En cours » et propose « Arrêter l'exécution » ; l'arrêt prend moins de 5 secondes et la page affiche « Arrêtée ».",
+  "Le second clic affiche « Cette exécution est déjà en cours : voici son avancement. » ; une seule exécution existe ; toute seconde demande est refusée.",
+  "La cible fabriquée est refusée avec « Fichier de tests inconnu » ; le lancement désactivé est dit et refusé ; rien n'est lancé.",
+]
+tests = [
+  "tests/integration/banc_tests/test_ecrans.py::test_suivi_pendant_l_execution_puis_arret",
+  "tests/integration/banc_tests/test_execution.py::test_arret_demande_tue_le_processus_et_garde_les_resultats",
+  "tests/integration/banc_tests/test_ecrans.py::test_double_clic_ne_lance_qu_une_execution_sans_erreur",
+  "tests/integration/banc_tests/test_execution.py::test_seconde_demande_pendant_une_execution",
+  "tests/integration/banc_tests/test_execution.py::test_duree_maximale_depassee",
+  "tests/integration/banc_tests/test_ecrans.py::test_cible_inconnue_refusee_par_la_route_web",
+  "tests/integration/banc_tests/test_ecrans.py::test_lancement_desactive_par_la_route_web",
+  "tests/integration/banc_tests/test_ecrans.py::test_relance_depuis_le_site_retardee_et_resultats_de_la_commande_affiches",
+]
+
+[[fiche]]
+id = "REC-P4-3"
+titre = "Tests de charge et commande « tests » réservés à l'administrateur"
+fonctionnalites = ["P4", "P2"]
+cas = [7]
+objectif = "Montrer que les tests de charge ne se lancent pas depuis le site mais par la commande `python -m edt tests`, dont le code de sortie et les résultats enregistrés reflètent l'exécution."
+depart = "Base initialisée ; dépôt factice : cinq tests unitaires lancés avec la famille, dont deux échecs, et un test de charge."
+etapes = [
+  "Dans « Tests unitaires », repérer la ligne du test de charge ; envoyer quand même son lancement.",
+  "Taper `python -m edt tests --test <clé du test de charge>`.",
+  "Taper `python -m edt tests --famille unitaires`, puis `--composant inconnu`.",
+]
+attendu = [
+  "La ligne du test de charge porte « Par la commande », sans bouton ; le lancement envoyé est refusé et rien n'est lancé.",
+  "Le test de charge lancé par la commande rend le code 0 et son résultat est enregistré.",
+  "La famille rend le code 1 avec « 2 échecs » ; ses résultats sont enregistrés ; une cible inconnue rend le code 1.",
+]
+tests = [
+  "tests/integration/banc_tests/test_ecrans.py::test_tests_de_charge_par_la_commande_seulement",
+  "tests/integration/banc_tests/test_commande.py::test_commande_lance_un_test_de_charge_par_sa_cle",
+  "tests/integration/banc_tests/test_execution.py::test_test_de_charge_lance_seul",
+  "tests/integration/banc_tests/test_commande.py::test_commande_sort_en_erreur_s_il_y_a_un_echec",
+  "tests/integration/banc_tests/test_commande.py::test_commande_reussie_sur_un_composant",
+  "tests/integration/banc_tests/test_commande.py::test_commande_refuse_une_cible_inconnue",
+]
+
+# =========================================================================================
+# Exploitation et robustesse
+# =========================================================================================
+
+[[fiche]]
+id = "REC-EXP-1"
+titre = "Installer la base et diagnostiquer l'installation"
+fonctionnalites = []
+objectif = "Montrer qu'une installation se prépare par `python -m edt init-db`, relançable sans effet de bord, et que `doctor`, `verifier-schema` et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut."
+depart = "Dossier de travail vide, puis base initialisée ; défauts provoqués un par un : adresse d'écoute introuvable, port occupé, journal impossible à ouvrir, base en lecture seule, adresse de base refusée."
+etapes = [
+  "Avant toute initialisation, taper `python -m edt doctor` ; puis `python -m edt init-db`, deux fois.",
+  "Taper `python -m edt verifier-schema` et `python -m edt doctor` ; interroger l'adresse de santé.",
+  "Provoquer chaque défaut et relancer `python -m edt doctor` (pour une adresse de base en mémoire, `python -m edt init-db`).",
+]
+attendu = [
+  "Avant initialisation, « doctor » rend le code 0 avec « ATTENTION » et « non initialisée » ; « init-db » affiche « Base initialisée », puis, relancé, « 0 ligne(s) par défaut ajoutée(s) ».",
+  "« verifier-schema » dit « schéma à jour » ; « doctor » conclut « Tout est prêt. » ; l'adresse de santé répond « ok ».",
+  "Chaque défaut est nommé (EDT_HOST introuvable, port EDT_PORT occupé, fichier journal impossible à ouvrir et ses droits, dossier des journaux de calcul, base en lecture seule, EDT_DB_URL refusée), avec un code qui distingue l'échec (« ECHEC », code 1) de l'avertissement (port occupé, « ATTENTION », code 0).",
+]
+tests = [
+  "tests/integration/socle/test_schema.py::test_verifier_schema_avant_la_premiere_initialisation",
+  "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_non_initialisee",
+  "tests/integration/socle/test_cli.py::test_init_db_cree_la_base",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_relance_a_chaque_deploiement_n_ajoute_rien",
+  "tests/integration/socle/test_schema.py::test_verifier_schema_a_jour",
+  "tests/integration/socle/test_cli.py::test_doctor",
+  "tests/integration/socle/test_web.py::test_sante",
+  "tests/integration/socle/test_config.py::test_doctor_signale_une_adresse_d_ecoute_introuvable",
+  "tests/integration/socle/test_config.py::test_doctor_signale_un_port_deja_occupe_sans_echouer",
+  "tests/integration/socle/test_journal.py::test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit",
+  "tests/integration/socle/test_cli.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable",
+  "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_en_lecture_seule",
+  "tests/integration/socle/test_moteur.py::test_une_url_sqlite_sans_fichier_est_refusee",
+  "tests/integration/socle/test_moteur.py::test_une_url_sans_pilote_ou_de_schema_inconnu_est_une_erreur_de_configuration",
+]
+
+[[fiche]]
+id = "REC-EXP-2"
+titre = "Sauvegarder la base, contrôler une sauvegarde et la restaurer"
+fonctionnalites = []
+objectif = "Montrer que « sauvegarder » écrit une copie vérifiée avec rotation, que « verifier-sauvegarde » contrôle sans modifier et refuse un fichier inutilisable, qu'une sauvegarde impossible ne laisse rien, et qu'une sauvegarde restaurée est relue par l'application."
+depart = "Base chargée du jeu minimal (16 besoins) ; heure figée ; selon l'essai, base abîmée, disque plein simulé, ou fichiers inutilisables."
+etapes = [
+  "Taper trois fois `python -m edt sauvegarder --garder 2`.",
+  "Taper `python -m edt verifier-sauvegarde <fichier>` sur une sauvegarde, puis sur un fichier abîmé, vide ou étranger.",
+  "Sauvegarder une base abîmée, puis avec un disque plein.",
+  "Restaurer une sauvegarde à la place de la base, puis taper « verifier-schema » et « doctor ».",
+]
+attendu = [
+  "Chaque sauvegarde annonce « Sauvegarde vérifiée » ; il en reste exactement deux, la plus ancienne étant supprimée ; la copie contient les 16 besoins.",
+  "Sur une sauvegarde : « intégrité ok » et « restaurable avec cette version », sans modifier le fichier ; sur un fichier inutilisable : code 1 avec la raison.",
+  "Sauvegarde impossible : code 1 (« illisible », « Espace disque insuffisant ») et aucun fichier laissé.",
+  "Après restauration, les deux commandes rendent le code 0 et la base contient de nouveau 16 besoins.",
+]
+tests = [
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_ecrit_une_copie_verifiee_et_garde_les_plus_recentes",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_la_commande_de_la_sauvegarde_quotidienne_fonctionne_telle_quelle",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_garde_toutes_les_sauvegardes_manuelles",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_retire_un_fichier_partiel_abandonne",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_accepte_une_sauvegarde_conforme_sans_la_modifier",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_une_sauvegarde_restauree_a_la_place_de_la_base_est_relue_par_l_application",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_une_base_illisible_echoue_sans_laisser_de_fichier",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_refuse_quand_le_disque_est_plein",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_sans_base_le_dit",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_refuse_un_fichier_abime_vide_ou_absent",
+]
+
+[[fiche]]
+id = "REC-EXP-3"
+titre = "Remise à zéro de la base protégée par confirmation, refus et sauvegarde préalable"
+fonctionnalites = []
+objectif = "Montrer que « init-db --reset » n'efface les données que lorsque c'est sûr : confirmation dans un terminal, refus pendant un calcul ou un chargement, sauvegarde préalable en production, aucune question posée à un script."
+depart = "Base chargée du jeu minimal (6 salles) ; environnement de développement, puis de production ; calcul et chargement en cours simulés."
+etapes = [
+  "Dans un terminal, taper « init-db --reset » et répondre « n » ; comme un script, taper « init-db --reset --oui ».",
+  "Pendant un calcul, puis pendant un chargement, taper « init-db --reset --oui ».",
+  "En production, taper « init-db --reset --oui », puis avec une sauvegarde impossible.",
+]
+attendu = [
+  "Réponse « n » : les 6 salles sont toujours là ; avec `--oui`, remise à zéro sans question.",
+  "Calcul ou chargement en cours : code 1, rien n'est effacé.",
+  "En production : la sortie annonce la sauvegarde, dont la copie contient les 6 salles ; sauvegarde impossible : « remise à zéro annulée », rien n'est effacé.",
+]
+tests = [
+  "tests/integration/socle/test_cli.py::test_init_db_reset_efface_les_donnees",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_non_interactif_ne_pose_pas_de_question",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_reset_du_deploiement_ne_pose_aucune_question",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_est_refuse_pendant_un_chargement_de_jeu",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde",
+  "tests/integration/socle/test_cli.py::test_init_db_reset_sans_sauvegarde_ne_double_pas_celle_du_deploiement",
+]
+
+[[fiche]]
+id = "REC-EXP-4"
+titre = "Base verrouillée, illisible ou au schéma périmé : signalée, jamais réparée en silence"
+fonctionnalites = []
+objectif = "Montrer qu'une commande qui trouve la base indisponible nomme la cause et un remède qui permet d'en sortir, et qu'une base dont les tables ne correspondent plus au modèle est signalée partout et n'est réparée que sur demande."
+depart = "Base initialisée ou chargée du jeu minimal ; pannes provoquées une par une : verrou d'écriture tenu par un autre processus, fichier en lecture seule, fichier qui n'est plus une base, colonne en trop ou table absente."
+etapes = [
+  "Avec chaque panne, taper `python -m edt init-db` puis `python -m edt jeu-minimal`.",
+  "Sur le fichier illisible, appliquer le remède annoncé, puis relancer « init-db ».",
+  "Sur la base au schéma périmé, taper « verifier-schema », « doctor », « init-db » ; interroger l'adresse de santé ; taper « init-db --reset ».",
+]
+attendu = [
+  "Code 1 avec « verrouillée », « lecture seule » ou « n'est pas une base SQLite », sans trace technique ; le remède, mettre le fichier de côté, permet à « init-db » de réussir.",
+  "Schéma périmé : « verifier-schema » rend le code 1 et liste chaque écart ; « init-db » cite l'écart et affiche « Rien n'a été modifié » ; les 16 besoins restent.",
+  "L'adresse de santé répond 503 ; « init-db --reset » répare la base au prix des données.",
+]
+tests = [
+  "tests/integration/socle/test_cli.py::test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1",
+  "tests/integration/socle/test_cli.py::test_base_illisible_le_remede_annonce_permet_d_en_sortir",
+  "tests/integration/socle/test_cli.py::test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture",
+  "tests/integration/socle/test_schema.py::test_verifier_schema_base_inaccessible",
+  "tests/integration/socle/test_schema.py::test_doctor_a_une_ligne_pour_le_schema",
+  "tests/integration/socle/test_schema.py::test_verifier_schema_perime_liste_les_ecarts_sans_rien_modifier",
+  "tests/integration/socle/test_schema.py::test_init_db_refuse_un_schema_perime_sans_rien_modifier",
+  "tests/integration/socle/test_schema.py::test_jeu_minimal_refuse_une_base_au_schema_perime",
+  "tests/integration/socle/test_schema.py::test_sante_repond_503_quand_le_schema_est_perime",
+  "tests/integration/socle/test_schema.py::test_init_db_reset_repare_un_schema_perime",
+  "tests/integration/web_edt/test_accueil.py::test_base_au_schema_perime",
+]
+
+[[fiche]]
+id = "REC-EXP-5"
+titre = "Le site face à une base indisponible, et des pages d'erreur qui disent quoi faire"
+fonctionnalites = []
+objectif = "Montrer que le serveur démarre et répond quel que soit l'état de la base, que l'accueil reste lisible, que l'adresse de santé signale la panne, et que chaque erreur donne une page qui dit ce qui s'est passé et quoi faire, sans trace technique."
+depart = "Selon l'essai : base non initialisée, illisible, verrouillée, en lecture seule ou en cours de remise à zéro ; pour les pannes, des pages d'essai ajoutées par le test lèvent l'erreur voulue."
+etapes = [
+  "Démarrer le serveur sur chaque état de la base ; ouvrir l'accueil et l'adresse de santé ; enregistrer un formulaire.",
+  "Ouvrir une adresse inconnue ; envoyer une méthode non permise ; provoquer une panne, un refus métier, un envoi trop volumineux.",
+]
+attendu = [
+  "Base non initialisée : l'accueil dit qu'elle n'est « pas encore initialisée » ; l'adresse de santé répond 503 ; le journal ne contient pas de trace.",
+  "Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer `python -m edt init-db` ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».",
+  "Adresse inconnue : « Page introuvable » ; panne : « Une erreur inattendue » avec une référence, la trace étant au journal ; envoi trop volumineux : « Envoi trop volumineux ».",
+]
+tests = [
+  "tests/integration/socle/test_web.py::test_accueil_reste_lisible_sans_base_initialisee",
+  "tests/integration/socle/test_web.py::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer",
+  "tests/integration/socle/test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue",
+  "tests/integration/socle/test_web.py::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede",
+  "tests/integration/socle/test_web.py::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs",
+  "tests/integration/socle/test_web.py::test_sante_signale_une_base_en_lecture_seule",
+  "tests/integration/socle/test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee",
+  "tests/integration/socle/test_web.py::test_base_non_initialisee_une_ligne_d_avertissement_sans_trace",
+  "tests/integration/web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante",
+  "tests/integration/socle/test_web.py::test_page_inconnue",
+  "tests/integration/socle/test_web.py::test_saisie_invalide_nomme_le_champ_sans_nom_technique",
+  "tests/integration/socle/test_web.py::test_une_methode_non_permise_donne_une_page_405",
+  "tests/integration/socle/test_web.py::test_erreur_inattendue_page_lisible_et_trace_journalisee",
+  "tests/integration/socle/test_web.py::test_erreur_metier_traduite_en_message",
+  "tests/integration/socle/test_web.py::test_un_envoi_trop_volumineux_donne_une_page_qui_dit_quoi_faire",
+  "tests/integration/socle/test_web.py::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire",
+  "tests/integration/socle/test_web.py::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes",
+]
+
+[[fiche]]
+id = "REC-EXP-6"
+titre = "Double envoi d'un formulaire et requêtes simultanées : ni doublon, ni page d'erreur"
+fonctionnalites = []
+objectif = "Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas."
+depart = "Pour le calcul et l'import, base chargée du jeu minimal et un moteur lent qui garde le calcul en cours. Pour le double envoi, base initialisée sans données, et une page d'essai ajoutée par le test crée un campus."
+etapes = [
+  "Cliquer deux fois sur « Lancer le calcul » ; depuis un autre onglet, lancer avec d'autres réglages.",
+  "Envoyer deux fois un formulaire qui crée un élément, puis recharger la page de résultat.",
+  "Cliquer sur « Arrêter le calcul » au moment où le calcul enregistre son état final ; pendant un import long, ouvrir une autre page.",
+]
+attendu = [
+  "Le second « Lancer le calcul » ramène au calcul déjà lancé ; l'autre onglet voit « déjà en cours » ; un seul calcul est enregistré.",
+  "Le premier envoi enregistre le campus et « Campus ZZ créé. » ne s'affiche qu'une fois ; le second envoi est refusé (code 409, « Opération refusée »).",
+  "La demande d'arrêt n'est pas perdue ; pendant l'import, le site continue de répondre.",
+]
+tests = [
+  "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_lancer_le_calcul",
+  "tests/integration/socle/test_web.py::test_session_validee_avant_la_redirection_et_message_affiche",
+  "tests/integration/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture",
+  "tests/integration/echange/test_bornes.py::test_un_import_ne_gele_pas_les_autres_requetes",
+]
+remarque = "D'autres doubles envois sont dans leurs fiches : règle (REC-U3-3), version (REC-U7-1), établissement fictif (REC-O11-1), suppression (REC-O1-3), tests (REC-P4-2), assistant (REC-P3-2)."
+
+[[fiche]]
+id = "REC-EXP-7"
+titre = "Démarrage, arrêt brutal et redémarrage du service"
+fonctionnalites = []
+objectif = "Montrer que la base reste intacte après un arrêt brutal, qu'un calcul tué est clos au redémarrage, que le démarrage est robuste et journalisé, et que « serve » lance la même application que le service du serveur."
+depart = "Base initialisée ou chargée du jeu minimal ; un processus séparé écrit dans la base ; un calcul resté « en cours » d'un service tué."
+etapes = [
+  "Tuer brutalement un processus en pleine écriture, puis taper « init-db », « verifier-schema » et « doctor ».",
+  "Redémarrer le serveur avec un calcul resté « en cours » ; interroger l'adresse de santé.",
+  "Taper `python -m edt serve` et comparer avec la ligne de lancement du service ; donner un port invalide.",
+]
+attendu = [
+  "Après l'arrêt brutal, le contrôle d'intégrité répond « ok », seule l'écriture validée est présente, et les trois commandes rendent le code 0.",
+  "Au redémarrage, le calcul abandonné est clos en erreur ; le journal note le démarrage, l'arrêt et la clôture du calcul.",
+  "« serve » lance la même application que le service ; un port invalide est refusé et le serveur ne démarre pas.",
+]
+tests = [
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_la_base_reste_saine_apres_un_arret_brutal_en_pleine_ecriture",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_le_redemarrage_clot_le_calcul_tue_avec_le_service",
+  "tests/integration/socle/test_web.py::test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise",
+  "tests/integration/socle/test_web.py::test_une_panne_de_preparation_n_empeche_pas_de_servir",
+  "tests/integration/socle/test_web.py::test_head_repond_comme_get_sans_corps",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_et_le_service_lancent_la_meme_application",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_refuse_un_port_ou_une_adresse_invalide",
+  "tests/integration/exploitation/test_commandes_exploitation.py::test_doctor_tolere_le_port_tenu_par_le_service",
+]
+
+[[fiche]]
+id = "REC-EXP-8"
+titre = "Scripts de déploiement et installation de la clé de l'assistant, contrôlés hors du serveur"
+fonctionnalites = []
+objectif = "Montrer, sans se connecter au serveur, que les scripts de déploiement sont corrects, refusent de partir sans configuration, lisent leurs paramètres sans rien exécuter, et que la clé de l'assistant s'installe sans jamais être affichée."
+depart = "Copie des scripts de déploiement dans un dossier d'essai ; les outils de connexion et d'installation sont remplacés par des témoins qui notent tout appel ; clé factice."
+etapes = [
+  "Contrôler la syntaxe de chaque script ; lancer sans fichier de paramètres les cinq scripts du poste (deployer.sh, etat.sh, journaux.sh, installer-serveur.sh, activer-https.sh).",
+  "Écrire des paramètres valides, puis une ligne douteuse ou une commande shell.",
+  "Compter les arrêts pour mémoire épuisée dans des extraits du journal ; chercher les processus hors du service.",
+  "Coller la clé à la question du script d'installation, puis une clé vide ou mal copiée.",
+]
+attendu = [
+  "Chaque script passe le contrôle de syntaxe ; sans paramètres, chacun de ces cinq scripts s'arrête avec « paramètre(s) manquant(s) », sans aucun appel extérieur.",
+  "Les paramètres sont lus exactement ; une ligne douteuse est refusée et une commande shell est lue comme du texte, jamais exécutée.",
+  "Les arrêts pour mémoire épuisée sont comptés ; un processus étranger au service est listé.",
+  "La clé est écrite avec les bons droits sans jamais être affichée ; une saisie vide ou mal copiée est refusée sans rien modifier.",
+]
+tests = [
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_chaque_script_passe_le_controle_de_syntaxe_de_bash",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_un_script_sans_parametres_s_arrete_avant_toute_action",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_lit_le_modele_et_l_environnement_l_emporte",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_refuse_une_ligne_douteuse_sans_l_executer",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_la_sauvegarde_du_deploiement_reussit_puis_retire_sa_copie_en_cas_d_echec",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_etat_compte_les_arrets_pour_memoire_epuisee",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_liste_une_commande_de_l_utilisateur",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_ignore_les_processus_du_service",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_la_cle_saisie_est_ecrite_sans_jamais_etre_affichee",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_une_cle_vide_ou_mal_copiee_est_refusee_sans_rien_ecrire",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_un_echec_d_ecriture_de_la_cle_laisse_l_ancien_fichier",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_le_script_de_la_cle_refuse_de_s_executer_hors_root_ou_avec_une_option_inconnue",
+  "tests/integration/exploitation/test_scripts_deploiement.py::test_les_commandes_du_deploiement_lisent_la_cle_comme_le_service",
+]
+remarque = "Les deux tests de recherche de processus ne tournent que sous Linux. Le déploiement réel sur le serveur n'est exécuté par aucun test (section 7)."

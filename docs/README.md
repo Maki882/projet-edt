@@ -9,14 +9,18 @@ ou exploitant du serveur.
 - **Utilisateur** (responsable de scolarité) : le
   [guide de l'utilisateur](livrets/3-guide-utilisateur.md), puis
   l'[assistant](assistant.md) pour les demandes en langage courant.
-- **Enseignant, jury** : les trois livrets, dans l'ordre :
+- **Enseignant, jury** : les quatre livrets, dans l'ordre :
   [spécifications fonctionnelles](livrets/1-specifications-fonctionnelles.md),
   [spécifications techniques et organisation](livrets/2-specifications-techniques-et-organisation.md),
-  [guide de l'utilisateur](livrets/3-guide-utilisateur.md) ; leurs versions
-  PDF : [livret 1](livrets/pdf/1-specifications-fonctionnelles.pdf),
+  [guide de l'utilisateur](livrets/3-guide-utilisateur.md),
+  [cahier de recette](livrets/4-cahier-de-recette.md) (recette par les tests
+  d'intégration) ; leurs versions PDF :
+  [livret 1](livrets/pdf/1-specifications-fonctionnelles.pdf),
   [livret 2](livrets/pdf/2-specifications-techniques-et-organisation.pdf),
-  [livret 3](livrets/pdf/3-guide-utilisateur.pdf), aussi jointes à la
-  version 1.0.0 publiée sur GitHub (page « Releases » du dépôt) ; puis la
+  [livret 3](livrets/pdf/3-guide-utilisateur.pdf),
+  [livret 4](livrets/pdf/4-cahier-de-recette.pdf), aussi jointes aux
+  publications du dépôt (page « Releases ») : les livrets 1 à 3 à la version
+  1.0.0, les quatre livrets à jour à la publication suivante ; puis la
   [stratégie de test](../tests/README.md). Les tests se lancent aussi depuis
   l'application, dans les onglets « Tests unitaires » et « Tests d'intégration »
   (commande équivalente : `python -m edt tests`).
@@ -33,6 +37,7 @@ ou exploitant du serveur.
 | [Livret 1 : spécifications fonctionnelles](livrets/1-specifications-fonctionnelles.md) | ce que fait l'application, fonctionnalités classées, diagramme de classes | enseignant, utilisateur |
 | [Livret 2 : spécifications techniques et organisation](livrets/2-specifications-techniques-et-organisation.md) | technologies, architecture d'ensemble, organisation de l'équipe | enseignant, développeur |
 | [Livret 3 : guide de l'utilisateur](livrets/3-guide-utilisateur.md) | mode d'emploi, écran par écran | utilisateur |
+| [Livret 4 : cahier de recette](livrets/4-cahier-de-recette.md) | recette par les tests d'intégration : fiches reliées aux fonctionnalités et aux cas d'usage du livret 1, campagnes, résultats | enseignant, développeur |
 | [Choix de conception](decisions.md) | périmètre, pile technique, modèle, calendrier, règles, solveur, import et export, interface, évolutions | développeur, enseignant |
 | [Architecture](architecture.md) | couches, arborescence, configuration, base, extension, contrats, journaux, erreurs | développeur |
 | [Modèle de données](modele-donnees.md) | diagramme de classes UML et description de chaque table | développeur, enseignant |
@@ -48,6 +53,7 @@ ou exploitant du serveur.
 | [Déploiement](deploiement.md) | installation du serveur, mise à jour, sauvegardes, pannes | exploitant |
 | [Guide de contribution](../CONTRIBUTING.md) | Git et GitHub, conventions de code et d'écriture, tests | développeur |
 | [Consignes des assistants de programmation](../AGENTS.md) | méthode de travail propre aux assistants | développeur |
+| [Organisation des agents](organisation-agents.md) | équipes d'assistants de programmation : rôles, échanges par GitHub ou par messages directs, règles communes | développeur, enseignant |
 
 Les captures d'écran du README sont dans `docs/images/` ; celles des livrets,
 avec leurs schémas, dans `docs/livrets/images/`. Les PDF des livrets sont dans
