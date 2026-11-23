@@ -4,7 +4,7 @@
 
 ## Pourquoi
 
-<!-- Le besoin et la tâche liée (par exemple « Ferme #12 »). -->
+<!-- Le besoin et la tâche liée, par « Closes #12 » (mot-clé anglais que GitHub reconnaît ; l'issue se ferme à la fusion dans `main`). -->
 
 ## Comment vérifier
 

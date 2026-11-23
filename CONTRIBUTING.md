@@ -44,7 +44,8 @@ donc des règles d'équipe :
   `docs/guide-utilisateur`, `test/cas-limites-import`.
 - **Une tâche GitHub par travail** (gabarit « Tâche »), avec son classement
   obligatoire, utile ou optionnelle. La pull request la ferme par
-  « Ferme #n ».
+  « Closes #n » : GitHub ne reconnaît que les mots-clés anglais, et ne ferme
+  l'issue qu'à la fusion dans `main`.
 - **Des commits petits et par sujet**, en français, à l'impératif :
   `Ajouter la contrainte de capacité des salles`.
 - **Chaque membre commite et ouvre ses pull requests sous son propre
@@ -66,8 +67,10 @@ Ce qui a été appliqué dans ce projet est décrit dans le
 [livret 2](docs/livrets/2-specifications-techniques-et-organisation.md),
 sections 2.5 et 2.6. En résumé : après les premiers commits de mise en place, chaque
 changement passe par une branche et une pull request vérifiée par
-l'intégration continue ; en revanche, aucune tâche ni aucun jalon n'est ouvert
-sur GitHub, aucune approbation de pull request n'y est enregistrée, et presque
+l'intégration continue ; en revanche, jusqu'à la version 1.0.0, aucune tâche ni
+aucun jalon n'a été ouvert sur GitHub (depuis, les issues ouvertes par l'équipe
+d'agents suivent le modèle « Tâche » :
+[docs/organisation-agents.md](docs/organisation-agents.md)), aucune approbation de pull request n'y est enregistrée, et presque
 toutes les pull requests ont été ouvertes et fusionnées par le même compte.
 Les règles de relecture, de tâches et de commits sous le compte de chacun
 restent celles à suivre pour la suite.
