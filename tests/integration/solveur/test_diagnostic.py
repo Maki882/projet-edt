@@ -133,12 +133,15 @@ def test_calcul_et_second_diagnostic_refuses_pendant_un_diagnostic(semestre_bloq
 
 
 @pytest.mark.cas_limite
-def test_diagnostic_refuse_pendant_un_calcul(semestre_bloque, monkeypatch):
+def test_diagnostic_refuse_pendant_un_calcul(jeu_minimal, monkeypatch):
     """Cas : diagnostic demandé pendant qu'un calcul tourne.
 
     Risque : le diagnostic lirait des données en cours de remplacement et ralentirait le calcul.
     """
-    calcul_id = calcul_impossible(semestre_bloque)
+    # Le semestre n'est pas bloqué : un semestre bloqué serait refusé par les vérifications
+    # préalables sans que le moteur (lent) tourne. Le refus ne dépend que du calcul en cours :
+    # le calcul « impossible » inscrit tel quel suffit.
+    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
     demarre = threading.Event()
 
     def moteur_lent(instantane, options, arret=None):
@@ -147,7 +150,7 @@ def test_diagnostic_refuse_pendant_un_calcul(semestre_bloque, monkeypatch):
         return ResultatSolveur(StatutSolveur.ARRETE)
 
     monkeypatch.setattr(solveur, "resoudre", moteur_lent)
-    en_cours = generation.lancer_calcul(semestre_bloque, OPTIONS)
+    en_cours = generation.lancer_calcul(jeu_minimal.semestre_id, OPTIONS)
     try:
         assert demarre.wait(DELAI), "le calcul n'a pas démarré"
         with pytest.raises(ErreurCalculEnCours) as refus:

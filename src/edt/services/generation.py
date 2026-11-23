@@ -314,7 +314,9 @@ def lancer_calcul(
     chargement d'établissement fictif, une remise à zéro, un import ou une
     exécution des tests, `ErreurIntrouvable` si le semestre n'existe pas.
     """
-    # Imports locaux : `edt.services.jeux` et `edt.services.echange` importent ce module.
+    # Imports locaux : `edt.services.jeux`, `edt.services.echange` et `edt.services.diagnostic`
+    # importent ce module.
+    from edt.services.diagnostic import diagnostic_en_cours, message_diagnostic_en_cours
     from edt.services.echange import import_en_cours
     from edt.services.jeux import operation_en_cours
 
@@ -348,6 +350,16 @@ def lancer_calcul(
                 "Impossible de lancer un calcul : un import de données est en cours et modifie "
                 "ce que le calcul lirait. Attendre la fin de l'import, puis relancer le calcul."
             )
+        diagnostique = diagnostic_en_cours()
+        if diagnostique is not None:
+            # Le diagnostic fait ses calculs d'essai en tenant les processeurs ; il s'inscrit
+            # avant de regarder les calculs en cours : l'un des deux voit toujours l'autre.
+            refus = message_diagnostic_en_cours() or (
+                f"Un diagnostic est en cours sur le calcul n° {diagnostique} : relancer le calcul "
+                "à sa fin."
+            )
+            journal.info("Calcul refusé pour le semestre %d : %s", semestre_id, refus)
+            raise ErreurCalculEnCours(refus)
         with session_base(config.db_url) as session:
             # Deux processus (serveur et commande) peuvent lancer la même seconde : le verrou
             # d'écriture est pris d'emblée (BEGIN IMMEDIATE, avant toute lecture), le contrôle et
