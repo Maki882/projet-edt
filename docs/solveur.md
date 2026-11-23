@@ -911,11 +911,26 @@ plus strict. Pour que les entorses souples ne coûtent pas une amélioration,
 un essai s'arrête à la **première solution valide** : `sur_premiere_solution`
 lève l'événement `arret` passé à `resoudre`, qui rend alors SOLUTION sans
 améliorer. Le résultat de l'essai n'est lu que pour son statut ; ses
-avertissements ne remontent pas. Dans le journal, le moteur décrit chaque
-essai comme un calcul : « Contraintes désactivées à la demande de
-l'utilisateur » désigne les contraintes que l'essai retire, et « Calcul
-arrêté à votre demande » l'arrêt voulu à la première solution. La ligne
-« Diagnostic, essai n » qui précède chaque essai le rappelle.
+avertissements ne remontent pas.
+
+**Journal.** Le moteur décrit un essai comme un calcul : « Contraintes
+désactivées à la demande de l'utilisateur » (ce sont les retraits de
+l'essai), « Pré-vérification [...] » en erreur (les impossibilités que
+l'essai cherche), « Calcul arrêté à votre demande » (l'arrêt voulu à la
+première solution). Pendant un essai, ces lignes descendent au niveau DEBUG
+(`_EssaiDuDiagnostic`, filtre posé sur les journaux du moteur,
+`JOURNAUX_DES_ESSAIS`) : elles sont visibles seulement avec ce niveau, et
+rien n'apparaît en avertissement ni en erreur qui ne soit une vraie
+anomalie. Le filtre vise les enregistrements des fils d'essai
+(`edt-diagnostic-essai-<n>`), et, pendant un essai, ceux du journal générique
+`edt.calcul`, qui reçoit les rappels de CP-SAT hors de tout calcul. Un
+enregistrement qui porte une exception garde son niveau. Un calcul
+ordinaire, dans son fil `calcul-<n>` et son propre journal, journalise comme
+avant. Le diagnostic écrit une ligne par essai, au niveau INFO : éléments
+retirés, nombre d'éléments gardés, verdict, durée. Mesure (commande
+`diagnostiquer --temps 20`, jeu minimal, un enseignant indisponible toute la
+semaine, 37 essais) : 338 lignes, dont 16 en erreur et 17 en avertissement,
+avant ce filtre ; 57 lignes, aucune en erreur ni en avertissement, après.
 
 **Déroulement.**
 
