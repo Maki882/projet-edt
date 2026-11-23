@@ -255,9 +255,11 @@ def vers_html(markdown: str, titre: str) -> str:
     # Identifiants de tests : coupure permise après « :: », « / » ou « _ », jamais dans un mot.
     corps = re.sub(
         r"(?<!<pre>)<code>([^<]*)</code>",
-        lambda m: "<code>"
-        + m.group(1).replace("::", "::<wbr>").replace("/", "/<wbr>").replace("_", "_<wbr>")
-        + "</code>",
+        lambda m: (
+            "<code>"
+            + m.group(1).replace("::", "::<wbr>").replace("/", "/<wbr>").replace("_", "_<wbr>")
+            + "</code>"
+        ),
         corps,
     )
     # Tableau de recette (en-tête « Fiche | Fonction. | … ») : mêmes colonnes d'un tableau à l'autre.
