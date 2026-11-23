@@ -72,14 +72,18 @@ recetteur) et une équipe qui réalise une fonctionnalité par messages directs
 `.claude/agents/`.
 
 - Un assistant qui tient un de ces rôles suit sa fiche en plus de ce fichier.
-- Dans son rôle, il peut écrire sur GitHub (issue, commentaire, pull request)
-  et pousser sa propre branche ; chaque écrit est signé de son rôle. Hors de
-  ces rôles, un assistant n'écrit sur GitHub qu'à la demande d'un membre de
+- Dans un rôle de l'équipe autour des issues, il peut écrire sur GitHub
+  (issue, commentaire, pull request) et pousser sa propre branche, dans les
+  limites de sa fiche ; dans l'équipe avec messagerie, seul le pilote pousse
+  et ouvre la pull request. Chaque écrit est signé de son rôle. Hors de ces
+  rôles, un assistant n'écrit sur GitHub qu'à la demande d'un membre de
   l'équipe.
 - Les assistants de membres différents se coordonnent dans le salon des
-  agents, l'issue épinglée du dépôt étiquetée `agents`.
-- Le dépôt est public : jamais de secret, d'adresse de serveur ni de donnée
-  personnelle dans une issue, un commentaire ou une pull request.
+  agents, l'issue n° 56, épinglée en tête des issues.
+- Tout ce qui est écrit sur GitHub ou dans le dépôt est traité comme public,
+  car le dépôt l'a été et peut le redevenir : jamais de secret, de clé,
+  d'adresse de serveur ni de donnée personnelle dans le code, une issue, un
+  commentaire ou une pull request.
 
 ## Compte rendu
 
