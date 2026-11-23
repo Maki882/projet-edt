@@ -374,7 +374,6 @@ main {
   padding: clamp(1.5rem, 3vw, 2.5rem);
   /* Le bouton « Assistant », fixé en bas à droite, ne cache pas la dernière ligne. */
   padding-bottom: 4.5rem;
-  max-width: 84rem;
 }
 
 .entete-page {
@@ -1679,7 +1678,6 @@ fieldset.champ {
 
   main {
     padding: 0;
-    max-width: none;
   }
 
   .carte,
