@@ -47,6 +47,7 @@ from edt import __version__
 from edt.domaine.enumerations import JOURS
 from edt.domaine.heures import duree_vers_texte, minutes_vers_texte
 from edt.journal import contexte_requete
+from edt.web.acces import contexte_acces
 from edt.web.menu import onglet_actif
 
 journal = logging.getLogger(__name__)
@@ -194,7 +195,7 @@ def rendre(
     """
     en_attente = () if est_htmx(request) else _lire_messages(request)
     donnees: dict[str, Any] = {
-        "menu": getattr(request.app.state, "menu", ()),
+        **contexte_acces(request, getattr(request.app.state, "menu", ())),
         "chemin": request.url.path,
         "messages": [*en_attente, *messages],
         "id_requete": contexte_requete.get() or getattr(request.state, "id_requete", None),

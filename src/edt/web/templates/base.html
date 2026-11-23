@@ -8,8 +8,9 @@
   - styles      : feuilles de style propres à l'écran, dans l'en-tête (facultatif) ;
   - scripts     : scripts propres à l'écran, en fin de page (facultatif).
 
-  Variables fournies par `edt.web.gabarits.rendre` : menu (onglets), chemin, messages, id_requete
-  (référence de la requête : affichée par les pages d'erreur, pas par le pied de page).
+  Variables fournies par `edt.web.gabarits.rendre` : menu (onglets), chemin, messages, id_requete,
+  acces_actif, role, libelle_role, lecture_seule (accès au site : edt.web.acces)
+  (id_requete : référence de la requête, affichée par les pages d'erreur, pas par le pied de page).
 #}
 {% import "macros.html" as ui %}
 {%- set nav = namespace(actif=onglet_actif(menu, chemin)) %}
@@ -59,6 +60,12 @@
         {%- endfor %}
       </ul>
     </nav>
+    {%- if acces_actif and role %}
+    <form class="acces" method="post" action="/deconnexion">
+      <span class="acces-role">{{ libelle_role }}</span>
+      <button type="submit" class="bouton bouton-petit">Se déconnecter</button>
+    </form>
+    {%- endif %}
   </header>
   <div class="cadre{% if nav.actif is not none and nav.actif.a_sous_navigation %} cadre-sous-navigation{% endif %}">
     {%- if nav.actif is not none and nav.actif.a_sous_navigation %}
@@ -88,7 +95,9 @@
     EDT {{ version_application }} - générateur d'emplois du temps
   </footer>
 
+  {%- if not lecture_seule and (role or not acces_actif) %}
   {% include "assistant/_panneau.html" ignore missing %}
+  {%- endif %}
   {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -156,6 +156,20 @@ h3 {
   color: #ffffff;
 }
 
+/* Accès au site (edt.web.acces) : rôle connecté et bouton de déconnexion, à droite. */
+.acces {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.acces-role {
+  font-size: 0.9rem;
+  color: #dfe8f4;
+}
+
 .marque-sigle {
   font-size: 1.35rem;
   font-weight: 700;
@@ -1564,6 +1578,7 @@ fieldset.champ {
 
 @media print {
   .barre,
+  .acces,
   .sous-navigation,
   .pied,
   .entete-actions,

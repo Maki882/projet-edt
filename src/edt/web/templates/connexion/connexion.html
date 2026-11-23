@@ -1,0 +1,16 @@
+{#
+  Page de connexion (edt.web.routes.connexion) : un seul champ, le mot de passe,
+  qui décide du rôle (gestion ou consultation). Variable : suite (page où revenir).
+#}
+{% extends "base.html" %}
+{% block titre %}Connexion{% endblock %}
+{% block contenu %}
+<form class="formulaire" method="post" action="/connexion">
+  <p>Le site demande un mot de passe. Le mot de passe de <strong>gestion</strong> ouvre tous les droits ; celui de <strong>consultation</strong> permet de consulter et d'exporter l'emploi du temps, sans rien modifier.</p>
+  <input type="hidden" name="suite" value="{{ suite }}">
+  {{ ui.champ("mot_de_passe", "Mot de passe", type="password", requis=true, attributs={"autocomplete": "current-password", "autofocus": true}) }}
+  <div class="formulaire-actions">
+    <button type="submit" class="bouton bouton-principal">Se connecter</button>
+  </div>
+</form>
+{% endblock %}
