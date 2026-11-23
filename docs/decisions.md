@@ -291,6 +291,15 @@ Préférences (objectif à minimiser, actif par défaut) :
   fils sinon.
 - Calcul en arrière-plan (un fil), **un seul à la fois**, état interrogé
   chaque seconde, temps écoulé, bouton d'arrêt.
+- **Diagnostic d'un calcul impossible**, lancé à la demande : des calculs
+  d'essai sur des sous-ensembles désignent un ensemble irréductible de règles
+  nécessaires et de données (besoins, verrous, indisponibilités, jours
+  fermés) qui rend le calcul impossible. Il est borné en temps (30 s depuis
+  la page, de 5 à 600 s en ligne de commande) : faute de temps, le résultat
+  est dit partiel. Il porte sur les données actuelles, ne modifie ni règle ni
+  donnée et n'enregistre que son résultat, avec le calcul. Pendant un
+  diagnostic, aucun autre diagnostic ni calcul ne démarre. Détail :
+  [`solveur.md`](solveur.md).
 - Performance visée et vérifiée par les tests de charge (`perf`) : 200 séances
   en moins de 30 s, jeu « grand » en moins de 120 s par semestre.
 - Le même moteur de **replacement daté** sert au replacement des jours
@@ -386,6 +395,5 @@ prépare.
 - Glisser-déposer dans la grille.
 - Alternance semaine A / semaine B et calendrier d'alternance des
   apprentis.
-- Diagnostic fin d'une impossibilité (règles en cause).
 - Calcul limité à une partie de l'établissement.
 - Migrations de schéma.
