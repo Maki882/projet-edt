@@ -58,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 132 fonctions de test** dans 10 composants, dont 327 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 133 fonctions de test** dans 10 composants, dont 327 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (141 fonctions)
 
@@ -83,7 +83,7 @@ Ce dossier compte **1 132 fonctions de test** dans 10 composants, dont 327 marqu
 | [`banc_tests/test_menu_et_tableau.py`](banc_tests/test_menu_et_tableau.py) | Onglets des tests dans le menu, et tableau d'une famille : état affiché de chaque test et comptes | 9 |
 | [`banc_tests/test_resultats.py`](banc_tests/test_resultats.py) | Regroupement des comptes rendus de pytest par fonction de test, et historique des résultats sur disque | 8 |
 
-### `echange/` : Import et export (148 fonctions)
+### `echange/` : Import et export (149 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -92,7 +92,7 @@ Ce dossier compte **1 132 fonctions de test** dans 10 composants, dont 327 marqu
 | [`echange/test_format.py`](echange/test_format.py) | Le format d'échange : gabarit XLSX et ZIP, documentation générée depuis la description | 5 |
 | [`echange/test_ical.py`](echange/test_ical.py) | Adaptateur iCal : événements simples, récurrences, exceptions, remplacements, changement d'heure | 19 |
 | [`echange/test_import_donnees.py`](echange/test_import_donnees.py) | Import des données de l'établissement : aller-retour, import partiel, simulation, réimport | 32 |
-| [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 13 |
+| [`echange/test_import_edt.py`](echange/test_import_edt.py) | Import d'un emploi du temps existant (trois modes) | 14 |
 | [`echange/test_lecture.py`](echange/test_lecture.py) | Lecture tolérante : encodages, séparateurs, dates, heures, oui/non, codes, classeurs | 41 |
 | [`echange/test_regles.py`](echange/test_regles.py) | Feuille « regles » du format d'échange : gabarit, import, export, réimport, tout remplacer | 12 |
 

@@ -164,6 +164,19 @@ def test_reimport_dans_un_autre_mode_sans_doublon(importer_edt, jeu_minimal):
     assert compter(m.VersionEdt) == 2
 
 
+def test_besoin_ponctuel_retrouve_par_sa_date_sans_libelle(jeu_minimal, importer):
+    fichier = csv_envoye(
+        "seances.csv",
+        "date;debut;fin;matiere;type;groupes;enseignants;salle",
+        "19/11/2026;13:45;16:45;IM.1101;DST;A1;ENS001;N016",
+    )
+
+    rapport = importer(fichier, mode=ModeImport.A_REPLACER, semestre_id=jeu_minimal.semestre_id)
+
+    assert rapport.bilan("besoins").compteurs == {"inchanges": 1}
+    assert compter(m.Besoin) == jeu_minimal.nb_besoins
+
+
 def test_simulation_d_un_import_d_emploi_du_temps(importer_edt, jeu_minimal):
     rapport = importer_edt(ModeImport.REFERENCE, simuler=True)
 
