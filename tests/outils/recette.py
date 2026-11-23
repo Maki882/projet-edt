@@ -568,7 +568,7 @@ def lire(racine: Path = RACINE) -> Recette:
     )
 
 
-def tests_invalides(recette: Recette) -> list[str]:
+def citations_invalides(recette: Recette) -> list[str]:
     """Tests cités par une fiche qui n'existent pas ou ne sont pas dans `tests/integration/`."""
     connus = recette.tests
     fautes = []
@@ -622,7 +622,7 @@ def fonctionnalites_sans_fiche(recette: Recette) -> list[str]:
     return fautes
 
 
-def tests_disparus(recette: Recette) -> dict[str, list[str]]:
+def resultats_disparus(recette: Recette) -> dict[str, list[str]]:
     """Par campagne, les tests enregistrés qui n'existent plus dans le dépôt."""
     connus = recette.tests
     return {
@@ -635,7 +635,9 @@ def tests_disparus(recette: Recette) -> dict[str, list[str]]:
 def problemes(recette: Recette) -> list[str]:
     """Tous les défauts qui empêchent de produire un livret juste."""
     return (
-        tests_invalides(recette) + fiches_sans_preuve(recette) + fonctionnalites_sans_fiche(recette)
+        citations_invalides(recette)
+        + fiches_sans_preuve(recette)
+        + fonctionnalites_sans_fiche(recette)
     )
 
 
@@ -785,7 +787,7 @@ def produire_synthese(recette: Recette) -> str:
                 f" : {e['motif']})"
                 for e in c.ecartes
             ]
-    disparus = tests_disparus(recette)
+    disparus = resultats_disparus(recette)
     for nom, tests in disparus.items():
         lignes += [
             "",
@@ -1132,7 +1134,7 @@ def bilan(recette: Recette) -> str:
             f"{c.compte('reussi')} réussis, {c.compte('echec')} échecs, {c.compte('ignore')} ignorés, "
             f"{len(c.ecartes)} entrée(s) écartée(s)"
         )
-    for nom, tests in tests_disparus(recette).items():
+    for nom, tests in resultats_disparus(recette).items():
         lignes.append(f"campagne « {nom} » : {len(tests)} test(s) disparu(s) du dépôt (signalés)")
     return "\n".join(lignes)
 
