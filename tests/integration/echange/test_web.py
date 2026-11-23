@@ -149,7 +149,11 @@ def test_import_refuse_pendant_un_calcul(jeu_minimal, client, fichier_exemple):
             )
         )
     reponse = client.post("/import/appliquer", **_envoi(fichier_exemple("salles_avec_erreurs.csv")))
-    assert reponse.status_code == 409 and "calcul" in reponse.text
+    assert reponse.status_code == 409
+    # Le mot « calcul » figure toujours dans la page (lien de navigation) : le vrai message est lu.
+    assert "Un calcul d'emploi du temps est en cours" in html.unescape(reponse.text), (
+        "le refus doit dire qu'un calcul d'emploi du temps est en cours"
+    )
 
 
 def test_page_et_telechargements_d_export(jeu_minimal, client):
