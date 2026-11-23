@@ -19,11 +19,14 @@
 {%- elif not version %}
 {{ edt.choix_semestre(semestres, semestre, "/emploi-du-temps") }}
 {{ ui.message("Aucun emploi du temps n'a encore été généré pour ce semestre.", "info") }}
+{%- if not lecture_seule %}
 <p><a class="bouton bouton-principal" href="/calculs?semestre_id={{ semestre.id }}">Générer l'emploi du temps</a></p>
+{%- endif %}
 {%- else %}
 {%- set limite_anomalies = 100 %}
 
-<form class="edt-barre-outils" method="get" action="/emploi-du-temps">
+<button type="button" class="bouton-mobile bouton edt-bouton-filtres" aria-controls="edt-filtres" aria-expanded="false" data-volet-mobile hidden>Filtres du planning</button>
+<form class="edt-barre-outils" id="edt-filtres" method="get" action="/emploi-du-temps">
   <div class="champ">
     <label for="choix-semestre">Semestre</label>
     <select id="choix-semestre" name="semestre_id" data-envoi-auto data-desactiver="version_id cible">
@@ -124,14 +127,16 @@
 {%- if vue.couche.value == "date" and not vue.occurrences_disponibles %}
 <div class="message message-info" role="status">
   <p>Les séances datées de cette version n'ont pas encore été produites : la semaine type n'a pas encore été appliquée au calendrier du semestre (c'est le cas d'une version importée ou de référence).</p>
+  {%- if not lecture_seule %}
   <form method="post" action="/emploi-du-temps/versions/{{ vue.version.id }}/seances-datees" class="edt-boutons">
     <input type="hidden" name="retour" value="{{ retour }}">
     <button type="submit" class="bouton">Produire les séances datées</button>
   </form>
+  {%- endif %}
 </div>
 {%- elif vue.couche.value == "date" and vue.seances_datees_importees %}
 <p class="edt-recalcul edt-ecran-seulement discret">Les séances datées de cette version ont été importées : elles ne se recalculent pas depuis la semaine type (cela les doublerait). Pour en changer une, la déplacer ou l'annuler.</p>
-{%- elif vue.couche.value == "date" %}
+{%- elif vue.couche.value == "date" and not lecture_seule %}
 <details class="edt-recalcul edt-ecran-seulement">
   <summary>Recalculer les séances datées</summary>
   <p>La semaine type est réappliquée à tout le semestre : chaque séance revient à sa date, celles qui tombent un jour fermé ou pendant une indisponibilité sont replacées, ou passent « à programmer ». <strong>Vos retouches à la main (séances datées déplacées ou annulées) sont conservées.</strong> Utile après avoir modifié la semaine type, le calendrier ou des indisponibilités.</p>
@@ -176,7 +181,7 @@
     {%- endif %}
     <div class="edt-ecran-seulement">{{ edt.ecarts_decoches(vue.controle) }}</div>
   </div>
-  <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite">
+  <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite" tabindex="-1">
     {%- if panneau -%}
     {%- with f = panneau.f, marques = panneau.marques or (), controle = panneau.controle, resultat = none -%}
     {%- if panneau.type == "seance" %}{% include "edt/_panneau_seance.html" %}{% else %}{% include "edt/_panneau_occurrence.html" %}{% endif -%}

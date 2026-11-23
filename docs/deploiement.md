@@ -905,6 +905,25 @@ de main (gestionnaire de mots de passe), jamais copiée dans un fichier du poste
   défaut) borne la durée d'une exécution, en secondes ; `EDT_TESTS_LANCEMENT=non`
   désactive les lancements (les derniers résultats restent consultables). Les
   résultats sont dans `/var/log/edt/tests/`.
+- **Accès au site** (mot de passe) : sans réglage, le site est ouvert à tous.
+  Pour demander une connexion, créer `/etc/edt/comptes.env` (lu comme la clé
+  de l'assistant : `EnvironmentFile=-/etc/edt/comptes.env` dans `edt.service`,
+  le lanceur `sudo edt` et les déploiements ; jamais dans `edt.env`, qui est
+  affiché) :
+
+  ```bash
+  serveur -t 'sudo install -m 640 -o root -g edt /dev/null /etc/edt/comptes.env && sudo nano /etc/edt/comptes.env'
+  ```
+
+  y écrire `EDT_MDP_GESTION=...` (tous les droits) et, si besoin,
+  `EDT_MDP_CONSULTATION=...` (lecture seule de l'emploi du temps et de son
+  export, pour les étudiants), 8 caractères au moins, différents l'un de
+  l'autre, puis `serveur 'sudo systemctl restart edt'`. Changer un mot de passe
+  déconnecte tout le monde ; supprimer le fichier rouvre le site. Activer
+  HTTPS (section 11) avant : sinon, le mot de passe circule en clair.
+  `deploy/etat.sh` dit « Accès au site : protégé par mot de passe » ou « ouvert
+  à tous » (existence du fichier seulement). Les droits de chaque accès sont
+  décrits dans `edt.web.acces`.
 - **Service, minuteur, lanceur, nginx ou pages d'erreur** : modifier le fichier
   dans `deploy/`, committer, puis refaire les étapes 1 et 2 de la section 3. Si
   `nginx -t` refuse la nouvelle configuration, l'ancienne est remise automatiquement.

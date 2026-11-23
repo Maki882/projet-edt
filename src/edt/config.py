@@ -12,6 +12,12 @@ sont résolus par rapport au répertoire de lancement.
 | `EDT_PORT`      | `8000`                 | port d'écoute du serveur web            |
 | `EDT_ENV`       | `dev`                  | `dev` ou `prod`                         |
 | `EDT_LOG_LEVEL` | `INFO`                 | niveau de journalisation                |
+| `EDT_MDP_GESTION` | (vide)               | mot de passe du gestionnaire ; vide = site ouvert, sans connexion |
+| `EDT_MDP_CONSULTATION` | (vide)          | mot de passe de l'accès en consultation (facultatif) |
+
+Les deux mots de passe sont des secrets : sur le serveur, ils vont dans
+`/etc/edt/comptes.env` (voir docs/deploiement.md), jamais dans `edt.env` ni
+dans le dépôt. Ils n'apparaissent ni dans `repr()` ni dans les journaux.
 
 La configuration est relue à chaque appel de `charger_configuration()` : il
 n'y a pas d'état global à invalider (utile pour les tests).
@@ -21,7 +27,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -37,7 +43,12 @@ DEFAUTS: dict[str, str] = {
     "EDT_PORT": "8000",
     "EDT_ENV": "dev",
     "EDT_LOG_LEVEL": "INFO",
+    "EDT_MDP_GESTION": "",
+    "EDT_MDP_CONSULTATION": "",
 }
+
+LONGUEUR_MIN_MOT_DE_PASSE = 8
+"""Longueur minimale d'un mot de passe d'accès (`EDT_MDP_GESTION`, `EDT_MDP_CONSULTATION`)."""
 
 
 @dataclass(frozen=True)
@@ -50,6 +61,13 @@ class Configuration:
     port: int
     env: str
     log_level: str
+    mdp_gestion: str = field(default="", repr=False)
+    mdp_consultation: str = field(default="", repr=False)
+
+    @property
+    def comptes_actifs(self) -> bool:
+        """Vrai si le site demande une connexion (`EDT_MDP_GESTION` renseigné)."""
+        return bool(self.mdp_gestion)
 
     @property
     def est_prod(self) -> bool:
@@ -114,6 +132,10 @@ def charger_configuration(environ: Mapping[str, str] | None = None) -> Configura
             + f" (valeur lue : {niveau!r})."
         )
 
+    mdp_gestion = source.get("EDT_MDP_GESTION", "")
+    mdp_consultation = source.get("EDT_MDP_CONSULTATION", "")
+    _verifier_mots_de_passe(mdp_gestion, mdp_consultation)
+
     return Configuration(
         db_url=lire("EDT_DB_URL"),
         log_dir=Path(lire("EDT_LOG_DIR")),
@@ -121,4 +143,35 @@ def charger_configuration(environ: Mapping[str, str] | None = None) -> Configura
         port=int(port_brut),
         env=env,
         log_level=niveau,
+        mdp_gestion=mdp_gestion,
+        mdp_consultation=mdp_consultation,
     )
+
+
+def _verifier_mots_de_passe(gestion: str, consultation: str) -> None:
+    """Refuse une combinaison de mots de passe d'accès incohérente.
+
+    Les messages nomment la variable, jamais sa valeur (c'est un secret).
+    Un mot de passe n'est pas « nettoyé » : des espaces autour seraient
+    retirés en silence, et le mot de passe tapé ne correspondrait plus.
+    """
+    for nom, valeur in (("EDT_MDP_GESTION", gestion), ("EDT_MDP_CONSULTATION", consultation)):
+        if valeur and valeur != valeur.strip():
+            raise ErreurConfiguration(
+                f"{nom} commence ou finit par un espace : le retirer (la valeur n'est pas affichée)."
+            )
+        if valeur and len(valeur) < LONGUEUR_MIN_MOT_DE_PASSE:
+            raise ErreurConfiguration(
+                f"{nom} doit compter au moins {LONGUEUR_MIN_MOT_DE_PASSE} caractères "
+                "(la valeur n'est pas affichée)."
+            )
+    if consultation and not gestion:
+        raise ErreurConfiguration(
+            "EDT_MDP_CONSULTATION est renseigné sans EDT_MDP_GESTION : sans mot de passe du "
+            "gestionnaire, le site reste ouvert à tous. Renseigner les deux, ou aucun."
+        )
+    if gestion and gestion == consultation:
+        raise ErreurConfiguration(
+            "EDT_MDP_GESTION et EDT_MDP_CONSULTATION sont identiques : la consultation donnerait "
+            "tous les droits. Choisir deux mots de passe différents."
+        )

@@ -49,6 +49,9 @@ readonly FICHIER_ENV="/etc/edt/edt.env"
 # Clé de l'assistant (installer-cle-assistant.sh) : facultative, lue comme le
 # fait le service (EnvironmentFile=-/etc/edt/assistant.env dans edt.service).
 readonly FICHIER_ASSISTANT="/etc/edt/assistant.env"
+# Mots de passe d'accès au site : facultatifs, lus comme le fait le service
+# (EnvironmentFile=-/etc/edt/comptes.env dans edt.service).
+readonly FICHIER_COMPTES="/etc/edt/comptes.env"
 readonly DOSSIER_DONNEES="/var/lib/edt"
 readonly DOSSIER_SAUVEGARDES="/var/lib/edt/sauvegardes"
 readonly DOSSIER_JOURNAUX_DEPLOIEMENT="/var/log/edt-deploiements"
@@ -210,12 +213,14 @@ retour_arriere() {
 # « set -e ») : chaque commande y est donc suivie de « || return 1 ».
 
 # Lance une commande dans les conditions du service : utilisateur edt,
-# variables de /etc/edt/edt.env (et de /etc/edt/assistant.env s'il existe)
+# variables de /etc/edt/edt.env (et de /etc/edt/assistant.env et
+# /etc/edt/comptes.env s'ils existent)
 # lues par systemd lui-même, dossier du code de la NOUVELLE version. Le code
 # de sortie de la commande est transmis.
 lancer_comme_app() {
   local environnement=(-p EnvironmentFile="$FICHIER_ENV")
   if [ -e "$FICHIER_ASSISTANT" ]; then environnement+=(-p EnvironmentFile="$FICHIER_ASSISTANT"); fi
+  if [ -e "$FICHIER_COMPTES" ]; then environnement+=(-p EnvironmentFile="$FICHIER_COMPTES"); fi
   systemd-run --quiet --wait --pipe --collect --service-type=exec \
     --uid="$UTILISATEUR_APP" --gid="$UTILISATEUR_APP" -p UMask=0027 \
     "${environnement[@]}" -p WorkingDirectory="$DOSSIER_CODE" \

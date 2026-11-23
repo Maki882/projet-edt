@@ -25,6 +25,9 @@ EnvironmentFile=/etc/edt/edt.env
 # Clé de l'assistant, facultative (« - » : fichier absent toléré) ; écrite par
 # deploy/installer-cle-assistant.sh, jamais dans edt.env.
 EnvironmentFile=-/etc/edt/assistant.env
+# Mots de passe d'accès au site (EDT_MDP_GESTION, EDT_MDP_CONSULTATION), facultatifs :
+# sans ce fichier, le site reste ouvert à tous. Voir docs/deploiement.md, « Accès au site ».
+EnvironmentFile=-/etc/edt/comptes.env
 Environment=PYTHONUNBUFFERED=1
 # Un seul processus (le calcul tourne dans un thread et son état est en
 # mémoire), sans rechargement automatique. --proxy-headers : les en-têtes

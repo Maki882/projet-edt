@@ -1,8 +1,9 @@
 """Service du diagnostic d'un calcul impossible : garde-fous, enregistrement, relecture, message.
 
-Base SQLite temporaire du jeu minimal rendu impossible (`calcul_impossible` : un besoin de
-60 séances par semaine et un calcul « impossible » inscrit tel quel, sans lancer le moteur). Le
-diagnostic tourne pour de vrai sur cette base. Les refus pendant un calcul ou un autre diagnostic
+Base SQLite temporaire du jeu minimal rendu impossible (`bloquer_un_enseignant` : l'enseignante
+d'anglais absente tous les jours), avec un calcul « impossible » inscrit tel quel, sans lancer le
+moteur (`calcul_impossible`). Le diagnostic tourne pour de vrai sur cette base. Un cas lourd
+(`rendre_impossible`, 60 séances par semaine) vérifie l'arrêt au budget. Les refus pendant un calcul ou un autre diagnostic
 passent par `lancer_calcul` : ils sont dans `tests/integration/solveur/test_diagnostic.py`.
 """
 
@@ -12,10 +13,17 @@ import datetime as dt
 import json
 import logging
 import math
+import time
 
 import pytest
-from sqlalchemy import func, select
-from tests.outils.solveur.en_base import calcul_fictif, calcul_impossible
+from sqlalchemy import delete, func, select
+from tests.outils.solveur.en_base import (
+    MOTIF_BLOCAGE,
+    bloquer_un_enseignant,
+    calcul_fictif,
+    calcul_impossible,
+    rendre_impossible,
+)
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
@@ -56,9 +64,20 @@ def _compte(modele) -> int:
         return session.scalar(select(func.count()).select_from(modele))
 
 
-def _nombre_du_besoin(besoin_id: int) -> int:
+def _blocages() -> set[int]:
+    """Identifiants des indisponibilités posées par `bloquer_un_enseignant`."""
     with session_base() as session:
-        return session.get(m.Besoin, besoin_id).nombre
+        return set(
+            session.scalars(
+                select(m.Indisponibilite.id).where(m.Indisponibilite.motif == MOTIF_BLOCAGE)
+            )
+        )
+
+
+def _calcul_bloque(jeu_minimal) -> tuple[int, int]:
+    """Semestre rendu impossible et calcul « impossible » inscrit : (calcul, besoin en cause)."""
+    besoin_id = bloquer_un_enseignant(jeu_minimal.semestre_id)
+    return calcul_impossible(jeu_minimal.semestre_id), besoin_id
 
 
 # --------------------------------------------------------------------------- #
@@ -67,18 +86,23 @@ def _nombre_du_besoin(besoin_id: int) -> int:
 
 
 def test_diagnostic_designe_le_besoin_en_cause_et_n_ecrit_que_sa_cle(jeu_minimal):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
-    with session_base() as session:
-        besoin_id = session.scalar(select(m.Besoin.id).where(m.Besoin.nombre == 60))
+    calcul_id, besoin_id = _calcul_bloque(jeu_minimal)
+    blocages = _blocages()
     avant = _calcul(calcul_id)
-    nb_versions, nb_calculs, nb_regles = _compte(m.Version), _compte(m.Calcul), _compte(m.Regle)
+    nb_versions, nb_calculs, nb_regles = _compte(m.VersionEdt), _compte(m.Calcul), _compte(m.Regle)
 
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
     assert isinstance(diagnostic, Diagnostic)
     assert diagnostic.calcul_id == calcul_id
-    assert diagnostic.statut in (StatutDiagnostic.MINIMAL, StatutDiagnostic.PARTIEL)
+    assert diagnostic.statut is StatutDiagnostic.MINIMAL, diagnostic.message
     assert ("besoin", str(besoin_id)) in {(e.nature, e.identifiant) for e in diagnostic.donnees}
+    # Ensemble irréductible : seules les absences posées pour le test, jamais une indisponibilité
+    # sans rapport (celles des autres enseignants, ni celle du vendredi après-midi, redondante).
+    indisponibilites = {
+        int(e.identifiant) for e in diagnostic.donnees if e.nature == "indisponibilite"
+    }
+    assert indisponibilites and indisponibilites <= blocages
     assert all(e.nature in ("contrainte", "regle") for e in diagnostic.regles)
     assert all(e.nature not in ("contrainte", "regle") for e in diagnostic.donnees)
     assert all(e.libelle for e in diagnostic.regles + diagnostic.donnees)
@@ -92,17 +116,17 @@ def test_diagnostic_designe_le_besoin_en_cause_et_n_ecrit_que_sa_cle(jeu_minimal
     assert apres["statistiques"].pop("diagnostic") == diagnostic.vers_dict()
     assert apres == avant
     # Aucune version, aucun calcul, aucune règle créés ; la donnée en cause n'est pas corrigée.
-    assert (_compte(m.Version), _compte(m.Calcul), _compte(m.Regle)) == (
+    assert (_compte(m.VersionEdt), _compte(m.Calcul), _compte(m.Regle)) == (
         nb_versions,
         nb_calculs,
         nb_regles,
     )
-    assert _nombre_du_besoin(besoin_id) == 60
+    assert _blocages() == blocages
     assert lire_diagnostic(calcul_id) == diagnostic
 
 
 def test_message_rappelle_que_les_donnees_sont_les_donnees_actuelles(jeu_minimal):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
 
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
@@ -111,7 +135,7 @@ def test_message_rappelle_que_les_donnees_sont_les_donnees_actuelles(jeu_minimal
 
 
 def test_second_diagnostic_remplace_le_premier(jeu_minimal):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
     premier = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
     second = diagnostiquer_calcul(calcul_id, BUDGET_S + 1)
@@ -131,9 +155,9 @@ def test_donnees_corrigees_depuis_le_calcul_donnent_possible(jeu_minimal):
     ensemble, désignerait des causes qui n'existent plus ; il doit dire que le calcul n'est plus
     impossible, avec les données actuelles.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
     with session_base() as session:
-        session.scalar(select(m.Besoin).where(m.Besoin.nombre == 60)).nombre = 1
+        session.execute(delete(m.Indisponibilite).where(m.Indisponibilite.motif == MOTIF_BLOCAGE))
 
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
@@ -210,7 +234,7 @@ def test_budget_aux_bornes_accepte(jeu_minimal):
     Risque : des bornes exclues par erreur refuseraient le réglage le plus court ou le plus long
     que la commande propose.
     """
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
 
     assert diagnostiquer_calcul(calcul_id, BUDGET_MIN_S).budget_s == BUDGET_MIN_S
     assert diagnostiquer_calcul(calcul_id, BUDGET_MAX_S).budget_s == BUDGET_MAX_S
@@ -218,7 +242,32 @@ def test_budget_aux_bornes_accepte(jeu_minimal):
 
 def test_aucun_diagnostic_en_cours_hors_diagnostic(jeu_minimal):
     assert service.diagnostic_en_cours() is None
-    diagnostiquer_calcul(calcul_impossible(jeu_minimal.semestre_id), BUDGET_S)
+    diagnostiquer_calcul(_calcul_bloque(jeu_minimal)[0], BUDGET_S)
+    assert service.diagnostic_en_cours() is None
+
+
+@pytest.mark.cas_limite
+@pytest.mark.perf  # deux diagnostics menés jusqu'au budget minimal de 5 s
+def test_diagnostic_arrete_au_budget_ne_laisse_aucun_fil(jeu_minimal):
+    """Cas : un essai (sans la grille horaire, 60 séances d'un groupe) construit un modèle énorme ;
+    le budget de 5 s est atteint en pleine construction.
+
+    Risque : un diagnostic qui rend la main au budget en laissant tourner son dernier essai reste
+    « en cours » : le calcul suivant et le diagnostic suivant sont refusés à tort (décision D4).
+    """
+    rendre_impossible(jeu_minimal.semestre_id)
+    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    debut = time.perf_counter()
+
+    diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_MIN_S)
+
+    ecoule = time.perf_counter() - debut
+    assert service.diagnostic_en_cours() is None
+    assert diagnostic.statut in (StatutDiagnostic.PARTIEL, StatutDiagnostic.MINIMAL)
+    assert diagnostic.duree_s <= BUDGET_MIN_S
+    assert ecoule <= BUDGET_MIN_S + 1.0, f"rendu en {ecoule:.1f} s pour un budget de 5 s"
+    # Rien ne reste en route : un second diagnostic est accepté aussitôt.
+    assert diagnostiquer_calcul(calcul_id, BUDGET_MIN_S).calcul_id == calcul_id
     assert service.diagnostic_en_cours() is None
 
 
@@ -299,7 +348,7 @@ def test_lire_diagnostic_d_un_calcul_introuvable_ne_leve_pas_d_erreur_technique(
 
 
 def test_journal_du_diagnostic(jeu_minimal, caplog):
-    calcul_id = calcul_impossible(jeu_minimal.semestre_id)
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
 
     with caplog.at_level(logging.INFO):
         diagnostiquer_calcul(calcul_id, BUDGET_S)

@@ -11,7 +11,8 @@
  * 3. Impression : un bouton `data-imprimer` ouvre l'impression du navigateur
  *    (c'est l'export PDF).
  * 4. Panneau latéral : un clic sur un bloc le met en évidence ; `data-fermer-panneau`
- *    ou la touche Échap vident le panneau.
+ *    ou la touche Échap vident le panneau. Sur téléphone, l'ouverture
+ *    amène au détail et la fermeture ramène à la séance.
  * Sans JavaScript, chaque action reste possible par un lien ou un formulaire ordinaire.
  */
 (function () {
@@ -60,7 +61,7 @@
         champ.form.requestSubmit ? champ.form.requestSubmit() : champ.form.submit();
       }
     }
-    if (evenement.key === "Escape") {
+    if (evenement.key === "Escape" && !evenement.defaultPrevented) {
       fermerPanneau();
     }
   });
@@ -83,13 +84,30 @@
 
   function fermerPanneau() {
     var panneau = document.getElementById("edt-panneau");
+    var retourFocus = panneau && panneau.contains(document.activeElement)
+      ? document.querySelector(".edt-bloc-selection")
+      : null;
     if (panneau) {
       panneau.innerHTML = "";
     }
     Array.prototype.forEach.call(document.querySelectorAll(".edt-bloc-selection"), function (bloc) {
       bloc.classList.remove("edt-bloc-selection");
     });
+    if (retourFocus) {
+      retourFocus.focus();
+    }
   }
+
+  document.addEventListener("htmx:afterSwap", function (evenement) {
+    var detail = evenement.detail;
+    var panneau = detail.target;
+    if (panneau.id === "edt-panneau" && panneau.firstElementChild &&
+        detail.requestConfig.verb === "get" && window.matchMedia("(max-width: 58rem)").matches) {
+      var reduire = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      panneau.focus({ preventScroll: true });
+      panneau.scrollIntoView({ behavior: reduire ? "instant" : "smooth", block: "start" });
+    }
+  });
 
   document.addEventListener("click", function (evenement) {
     var cible = evenement.target.closest ? evenement.target.closest("[data-imprimer], [data-fermer-panneau], .edt-bloc") : null;

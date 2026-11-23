@@ -135,14 +135,14 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `echange` | 149 | 41 | 190 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 239 | 79 | 318 |
-| `solveur` | 221 | 64 | 285 |
+| `socle` | 250 | 79 | 329 |
+| `solveur` | 196 | 54 | 250 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 152 | 189 |
-| **Total** | **1 179** | **566** | **1 745** |
-| dont cas limites (`cas_limite`) | 337 | 225 | 562 |
+| `web_edt` | 37 | 149 | 186 |
+| **Total** | **1 165** | **553** | **1 718** |
+| dont cas limites (`cas_limite`) | 327 | 216 | 543 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.
