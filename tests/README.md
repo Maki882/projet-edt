@@ -140,9 +140,9 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 150 | 187 |
-| **Total** | **1 165** | **554** | **1 719** |
-| dont cas limites (`cas_limite`) | 327 | 217 | 544 |
+| `web_edt` | 37 | 151 | 188 |
+| **Total** | **1 165** | **555** | **1 720** |
+| dont cas limites (`cas_limite`) | 327 | 218 | 545 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
 S'y ajoute le contrôle du rangement, `tests/test_rangement.py` : 11 fonctions.

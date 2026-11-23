@@ -62,10 +62,25 @@ def test_impression_masque_toute_la_barre_de_navigation(client):
     de navigation entre périodes. Risque : sans masquer la barre entière, sa période s'imprime
     sous le titre d'impression qui la donne déjà, et la légende part seule sur une deuxième
     page."""
+    selecteurs = _masques_a_l_impression(client)
+    assert ".edt-navigation" in selecteurs, sorted(selecteurs)
+
+
+@pytest.mark.cas_limite
+def test_impression_masque_le_bouton_des_filtres(client):
+    """Cas : l'utilisateur imprime l'emploi du temps ; le script de la page a rendu visible le
+    bouton « Filtres du planning », prévu pour le téléphone, et la règle des écrans étroits
+    peut s'appliquer à la page imprimée. Risque : le bouton s'imprime au-dessus du titre et
+    pousse la légende d'une semaine datée seule sur une deuxième page."""
+    selecteurs = _masques_a_l_impression(client)
+    assert ".edt-bouton-filtres" in selecteurs, sorted(selecteurs)
+
+
+def _masques_a_l_impression(client) -> set[str]:
+    """Les sélecteurs que le bloc `@media print` de `edt.css` masque (`display: none`)."""
     edt = client.get("/static/css/edt.css")
     assert edt.status_code == 200
     impression = _regle_media(edt.text, "print")
     masques = re.search(r"([^{}]*)\{\s*display: none !important;", impression)
     assert masques is not None
-    selecteurs = {selecteur.strip() for selecteur in masques.group(1).split(",")}
-    assert ".edt-navigation" in selecteurs, sorted(selecteurs)
+    return {selecteur.strip() for selecteur in masques.group(1).split(",")}
