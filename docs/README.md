@@ -53,6 +53,7 @@ ou exploitant du serveur.
 | [Déploiement](deploiement.md) | installation du serveur, mise à jour, sauvegardes, pannes | exploitant |
 | [Guide de contribution](../CONTRIBUTING.md) | Git et GitHub, conventions de code et d'écriture, tests | développeur |
 | [Consignes des assistants de programmation](../AGENTS.md) | méthode de travail propre aux assistants | développeur |
+| [Organisation des agents](organisation-agents.md) | équipes d'assistants de programmation : rôles, échanges par GitHub ou par messages directs, règles communes | développeur, enseignant |
 
 Les captures d'écran du README sont dans `docs/images/` ; celles des livrets,
 avec leurs schémas, dans `docs/livrets/images/`. Les PDF des livrets sont dans

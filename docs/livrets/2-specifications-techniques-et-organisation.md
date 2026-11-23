@@ -410,7 +410,8 @@ réglages sont exclus du suivi (`.gitignore`).
 > Le projet a été réalisé avec des assistants de programmation fondés sur l'intelligence
 > artificielle ; 680 des 820 commits de la branche principale portent leur co-signature.
 > Outils employés : Claude Code (Anthropic) ; le fichier `AGENTS.md` sert aussi à Codex.
-> Ils ont été employés selon les principes suivants.
+> Ils ont été employés selon les principes suivants. Les équipes d'agents mises en place
+> ensuite sont décrites dans [docs/organisation-agents.md](../organisation-agents.md).
 >
 > - **L'équipe décide et vérifie ; l'assistant propose et exécute** dans un cadre écrit,
 >   le fichier [`AGENTS.md`](../../AGENTS.md) : architecture, conventions, ce qu'un assistant ne
@@ -436,7 +437,7 @@ réglages sont exclus du suivi (`.gitignore`).
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
 | Pull requests | 53 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 23 dernières (31 à 53) datent de la journée de finalisation du 16/11. |
-| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il a servi pour la première fois le 23/11/2026, pour l'issue n° 54 ([lien](https://github.com/Maki882/projet-edt/issues/54)), qui suit l'anomalie ouverte relevée par la recette (livret 4) ; jusque-là, le suivi passait par les pull requests et le document des décisions. |
+| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il a servi pour la première fois le 23/11/2026, pour l'issue n° 54 ([lien](https://github.com/Maki882/projet-edt/issues/54)), qui suit l'anomalie ouverte relevée par la recette (livret 4) ; jusque-là, le suivi passait par les pull requests et le document des décisions. Les issues ouvertes par l'équipe d'agents suivent aussi ce modèle ([organisation-agents.md](../organisation-agents.md)). |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |
 | Documentation de conception | Un document par partie de l'application (architecture, modèle de données, générateur, vérification, import et export, établissements fictifs, déploiement, tests), versé avec le code de cette partie. |

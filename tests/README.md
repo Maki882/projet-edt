@@ -135,13 +135,13 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `echange` | 149 | 41 | 190 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 223 | 79 | 302 |
+| `socle` | 239 | 79 | 318 |
 | `solveur` | 196 | 54 | 250 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
 | `web_edt` | 37 | 143 | 180 |
-| **Total** | **1 138** | **547** | **1 685** |
+| **Total** | **1 154** | **547** | **1 701** |
 | dont cas limites (`cas_limite`) | 324 | 214 | 538 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
