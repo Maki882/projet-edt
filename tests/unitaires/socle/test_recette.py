@@ -381,7 +381,10 @@ def test_un_echec_est_affiche_partout(depot):
     assert "| 2 | 1/2, 1 échec | Non conforme |" in partie_generee(texte, "recette-tableau")
     assert "1 réussi sur 2 ; 1 échec." in partie_generee(texte, "recette-fiches")
     annexe = partie_generee(texte, "recette-resultats-par-fichier")
-    assert "| 1/3, 3 s, 1 échec | Non conforme |" in annexe
+    assert (
+        "| 1/3, 3 s, 1 échec | Non conforme (1 charge, 1 non exécuté dans les campagnes) |"
+        in annexe
+    )
     assert "1 échec" in partie_generee(texte, "recette-bilan")
     assert "**Fiche non conforme.** REC-O1-1, « Créer une salle »" in partie_generee(
         texte, "recette-synthese"
@@ -519,3 +522,44 @@ def test_les_controles_de_l_outil_ne_relevent_rien(recette):
     """Citations, fiches sans preuve et couverture : les contrôles de l'outil ne relèvent rien."""
     fautes = problemes(recette)
     assert not fautes, f"{FICHES.as_posix()} :\n" + "\n".join(f"  - {f}" for f in fautes)
+
+
+def test_un_essai_de_suivi_est_affiche_sans_changer_le_verdict(depot):
+    """L'essai de suivi, fait après la recette, est rendu avec son verdict ; la fiche garde le
+    verdict de son essai sur la version recettée. Un test absent des campagnes est dit tel."""
+    suivi = (
+        '\n[fiche.suivi]\ndate = 2026-11-24\nenvironnement = "Code corrigé."\n'
+        'constat = "Rien ne change."\nverdict = "Conforme"\n'
+    )
+    fiches = depot / FICHES
+    fiches.write_text(
+        FICHES_MINI.replace('verdict = "Conforme"', 'verdict = "Non conforme"') + suivi,
+        encoding="utf-8",
+    )
+    fichier = _resultats(
+        depot,
+        {
+            "tests/integration/alpha/test_un.py::test_a": _resultat("reussi"),
+            "tests/integration/alpha/test_un.py::test_b": _resultat("reussi"),
+        },
+    )
+    options = ["--nom", "Serveur", "--systeme", "Linux", "--python", "3.14", "--version", "1.0.0"]
+    assert main(["--racine", str(depot), "--campagne", str(fichier), *options]) == 0
+    recette = lire(depot)
+    manuelle = next(f for f in recette.fiches if f.essai is not None)
+    assert manuelle.suivi is not None and manuelle.suivi.verdict == CONFORME
+    assert verdict(manuelle, recette.campagnes) == NON_CONFORME
+
+    assert main(["--racine", str(depot), "--ecrire"]) == 0
+    texte = (depot / LIVRET).read_text(encoding="utf-8")
+    assert "**Essai de suivi du 24/11/2026, après la recette.** Code corrigé." in texte
+    assert "**Verdict de l'essai de suivi : Conforme.**" in texte
+    assert "| Non conforme ; suivi conforme |" in partie_generee(texte, "recette-tableau")
+    assert "essai de suivi du 24/11/2026, après la recette : « Conforme »" in partie_generee(
+        texte, "recette-synthese"
+    )
+    # TestBeta::test_m n'est dans aucune campagne : dit à part, jamais compté en échec.
+    synthese = partie_generee(texte, "recette-synthese")
+    assert "`alpha/test_un.py::TestBeta::test_m` (non exécuté dans les campagnes)" in synthese
+    annexe = partie_generee(texte, "recette-resultats-par-fichier")
+    assert "| Conforme (1 charge, 1 non exécuté dans les campagnes) |" in annexe

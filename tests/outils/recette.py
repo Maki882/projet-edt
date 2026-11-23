@@ -30,7 +30,8 @@ campagne ; sinon « Conforme » si chacun de ses tests a réussi dans au moins u
 campagne (un test ignoré sur un système, pour une raison de système, est dit
 avec sa raison) ; sinon « Non exécutée » (une seule règle : `verdict_des_tests`).
 Une fiche d'essai manuel prend aussi le verdict de son essai, le moins favorable
-l'emportant. Une fiche sans test ni essai est « Non exécutée », jamais
+l'emportant. Un essai de suivi (`[fiche.suivi]`), fait après la recette sur un code
+corrigé, est affiché avec son verdict sans changer celui de la fiche. Une fiche sans test ni essai est « Non exécutée », jamais
 « Conforme ». Une clé inconnue de `fiches.toml`, une exécution partielle donnée
 pour une campagne ou un état de test inconnu sont des erreurs qui disent quoi
 faire.
@@ -236,6 +237,8 @@ class Fiche:
     tests: tuple[str, ...]
     remarque: str | None
     essai: EssaiManuel | None
+    suivi: EssaiManuel | None = None
+    """Essai fait après la recette, sur un code corrigé : affiché, sans changer le verdict."""
     anomalie: str | None = None
     """Pour une fiche non conforme : l'anomalie de la section 6 qui la suit (« ANO-21 »)."""
 
@@ -275,6 +278,7 @@ CLES_FICHE = frozenset(
         "remarque",
         "anomalie",
         "essai",
+        "suivi",
     }
 )
 """Clés permises dans une table `[[fiche]]` de `fiches.toml`."""
@@ -389,6 +393,7 @@ def lire_fiches(racine: Path) -> tuple[list[Fiche], list[SansFiche]]:
             tests=_liste(table, "tests", ou),
             remarque=_texte(table, "remarque", ou, obligatoire=False),
             essai=_essai(table.get("essai"), ou),
+            suivi=_essai(table.get("suivi"), f"{ou}, suivi"),
             anomalie=anomalie,
         )
         if not fiche.etapes or not fiche.attendu:
@@ -832,15 +837,29 @@ def produire_synthese(recette: Recette) -> str:
     lignes: list[str] = []
     if not recette.campagnes:
         return "Aucune campagne enregistrée.\n"
-    charge = sum(len(f.charge) for f in recette.fichiers.values())
+    charge = {t for f in recette.fichiers.values() for t in f.charge}
+    executes = {t for c in recette.campagnes for t in c.resultats}
+    jamais = sorted(t for t in recette.tests - charge if t not in executes)
+    phrase = (
+        f"Le dépôt compte {_pluriel(len(recette.tests), 'fonction')} de test d'intégration, dont "
+        f"{_pluriel(len(charge), 'test')} de charge, lancés à part ; les campagnes enregistrées "
+        f"en ont exécuté {len(recette.tests & executes)}."
+    )
+    if jamais:
+        phrase += (
+            " "
+            + ("Un test ajouté" if len(jamais) == 1 else f"{len(jamais)} tests ajoutés")
+            + " au dépôt après les "
+            "campagnes n'y "
+            + ("figure" if len(jamais) == 1 else "figurent")
+            + " pas : "
+            + ", ".join(f"`{_court(t)}`" for t in jamais)
+            + " (non exécuté"
+            + ("s" if len(jamais) > 1 else "")
+            + " dans les campagnes)."
+        )
     lignes += [
-        f"Le dépôt compte {_pluriel(len(recette.tests), 'fonction')} de test d'intégration ; les "
-        f"campagnes en exécutent {len(recette.tests) - charge}, "
-        + (
-            f"les {_pluriel(charge, 'test')} de charge se lançant à part."
-            if charge > 1
-            else f"{_pluriel(charge, 'test')} de charge se lançant à part."
-        ),
+        phrase,
         "",
         "| Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |",
         "|---|---|---|---|---:|---:|---:|---:|---:|",
@@ -944,6 +963,12 @@ def produire_synthese(recette: Recette) -> str:
         details = [
             f"{f.id}, « {f.titre} »"
             + (f", suivie par l'anomalie {f.anomalie} (section 6)" if f.anomalie else "")
+            + (
+                f" ; essai de suivi du {_date(f.suivi.date)}, après la recette : "
+                f"« {f.suivi.verdict} »"
+                if f.suivi is not None
+                else ""
+            )
             for f in non_conformes
         ]
         lignes += [
@@ -1033,6 +1058,21 @@ def produire_fiche(fiche: Fiche, recette: Recette) -> str:
             lignes += [" ".join(f"![{legende}]({image})" for image, legende in e.preuves), ""]
             lignes += [f"*Figure. {' ; '.join(morceaux)}.*", ""]
         lignes += [f"**Verdict : {verdict(fiche, recette.campagnes)}.**"]
+    if fiche.suivi is not None:
+        s = fiche.suivi
+        lignes += [
+            "",
+            f"**Essai de suivi du {_date(s.date)}, après la recette.** {s.environnement}",
+            "",
+            f"**Constat.** {s.constat}",
+            "",
+        ]
+        if s.reserve:
+            lignes += [f"**Réserve.** {s.reserve}", ""]
+        lignes += [
+            f"**Verdict de l'essai de suivi : {s.verdict}.** Il ne change pas le verdict de la "
+            "fiche, établi sur la version recettée.",
+        ]
     return "\n".join(lignes).rstrip("\n") + "\n"
 
 
@@ -1095,7 +1135,9 @@ def produire_tableau(recette: Recette) -> str:
             cellules = " | ".join(_cellule_obtenue(o, f) for o in obtenus(f, recette.campagnes))
             lignes.append(
                 f"| {lien_de_fiche(f)} | {', '.join(f.fonctionnalites) or '—'} "
-                f"| {_cellule(f.titre)} | {tests} | {cellules} | {verdict(f, recette.campagnes)} |"
+                f"| {_cellule(f.titre)} | {tests} | {cellules} | {verdict(f, recette.campagnes)}"
+                + (f" ; suivi {f.suivi.verdict.lower()}" if f.suivi is not None else "")
+                + " |"
             )
         lignes.append("")
     return "\n".join(lignes).rstrip("\n") + "\n"
@@ -1206,6 +1248,7 @@ def produire_bilan(recette: Recette) -> str:
 def produire_annexe(recette: Recette) -> str:
     """Annexe B : chaque fichier de tests d'intégration, ses nombres et son verdict."""
     cites = {t for f in recette.fiches for t in f.tests}
+    executes = {t for c in recette.campagnes for t in c.resultats}
     entetes = " | ".join(c.nom for c in recette.campagnes)
     lignes = [
         "Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée des tests. "
@@ -1237,12 +1280,24 @@ def produire_annexe(recette: Recette) -> str:
                     texte += f", {ignores} ignoré" + ("s" if ignores > 1 else "")
                 cellules.append(texte)
             executables = [t for t in f.tests if t not in f.charge]
+            # Tests ajoutés au dépôt après les campagnes : dits à part, jamais comptés en échec.
+            jamais = [t for t in executables if t not in executes]
+            executables = [t for t in executables if t in executes]
+            precisions = []
+            if f.charge:
+                precisions.append(f"{len(f.charge)} charge")
+            if jamais:
+                precisions.append(
+                    f"{len(jamais)} non exécuté"
+                    + ("s" if len(jamais) > 1 else "")
+                    + " dans les campagnes"
+                )
             if not executables:
-                etat = "Charge, lancé à part"
+                etat = "Charge, lancé à part" if not jamais else "Non exécuté dans les campagnes"
             else:
                 etat = verdict_des_tests(executables, recette.campagnes)
-                if etat == CONFORME and f.charge:
-                    etat += f" ({len(f.charge)} charge)"
+                if precisions:
+                    etat += f" ({', '.join(precisions)})"
             description = _cellule(f.description or "docstring de module absente")
             lignes.append(
                 f"| **{nom}** : {description} | {len(f.tests)} | "
