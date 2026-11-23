@@ -892,7 +892,8 @@ indisponibilités récurrentes et dures (les seules que lit la semaine type),
 les jours fermés. Les contraintes qui définissent le problème (une séance à
 la fois par salle, par enseignant et par groupe, toutes les séances placées,
 verrous et jours fermés en tant que règles) ne sont jamais candidates :
-elles restent dans chaque essai et le message les rappelle. Retirer un jour
+elles restent dans chaque essai, et la page comme la commande les rappellent
+(pas le message du diagnostic, pour ne pas le dire deux fois). Retirer un jour
 fermé refait le dépliage, puisqu'une semaine peut rouvrir.
 
 **Un essai** est un appel à `resoudre` sur l'instantané privé de certains
