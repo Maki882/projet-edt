@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'intégration.
+Le catalogue compte 565 cas : 340 cas en tests unitaires et 225 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -79,14 +79,14 @@ Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'i
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
 | `socle` | 64 | 35 |
-| `solveur` | 35 | 28 |
+| `solveur` | 38 | 28 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
 | `web_edt` | 9 | 51 |
-| **Total** | **337** | **225** |
+| **Total** | **340** | **225** |
 
-### Tests unitaires (337 cas)
+### Tests unitaires (340 cas)
 
 #### `assistant` (50 cas)
 
@@ -501,7 +501,7 @@ Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'i
 | Requete annulee par l arret du serveur n est pas journalisee en 500 | le serveur s'arrête pendant qu'une page se prépare (préparation des premières pages au démarrage, ou visiteur en cours) : la requête est annulée (`CancelledError`). | le journal note « GET / -> 500 », une erreur qui n'a pas eu lieu, sans trace ni cause ; l'exploitant cherche une panne qui n'existe pas. |
 | Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script et les appels qui leur donnent leur effet. |
 
-#### `solveur` (35 cas)
+#### `solveur` (38 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
@@ -538,6 +538,7 @@ Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'i
 | Calcul qui n est pas impossible refuse | diagnostic demandé sur un calcul réussi, en temps dépassé, arrêté ou en erreur. | un « temps dépassé » n'a pas de preuve d'impossibilité ; le diagnostiquer présenterait comme causes des éléments qui n'en sont pas. |
 | Budget hors bornes refuse sans rien ecrire | budget sous 5 s, au-dessus de 600 s, nul, négatif, NaN, infini ou non numérique. | un budget infini ou énorme bloquerait la page ou le serveur ; un budget trop court donnerait toujours « sans conclusion » sans le dire. |
 | Budget aux bornes accepte | budget exactement à 5 s puis à 600 s. | des bornes exclues par erreur refuseraient le réglage le plus court ou le plus long que la commande propose. |
+| Diagnostic arrete au budget ne laisse aucun fil | un essai (sans la grille horaire, 60 séances d'un groupe) construit un modèle énorme ; le budget de 5 s est atteint en pleine construction. | un diagnostic qui rend la main au budget en laissant tourner son dernier essai reste « en cours » : le calcul suivant et le diagnostic suivant sont refusés à tort (décision D4). |
 | Lire diagnostic illisible rend none et journalise | entrée « diagnostic » des statistiques abîmée (texte, nombre, liste, clés manquantes). | une exception à l'affichage de la page du calcul, qui deviendrait inaccessible ; ou une entrée abîmée ignorée sans trace dans le journal. |
 | Lire diagnostic d un calcul introuvable ne leve pas d erreur technique | relecture du diagnostic d'un calcul supprimé ou d'un identifiant inventé. | une exception SQL brute au lieu de `None` ou d'une erreur métier lisible. |
 
@@ -551,6 +552,8 @@ Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'i
 | Arret pendant la premiere recherche est suivi d effet | instantané de 300 séances, arrêt demandé dès que le modèle est construit, pendant la première recherche, avant toute solution (la première solution demande ici plus d'une minute). | le moteur ignore l'arrêt tant qu'aucune solution n'existe : bouton « Arrêter » sans effet avant la première solution. Borne large sur le délai, machine chargée ou non ; la réactivité fine est mesurée à part (`test_arret_pendant_la_premiere_recherche_repond_en_moins_de_deux_secondes`, `perf`). |
 | Parametres extremes restent valides | pause de 120 min, trajet de 100 000 min entre deux campus, poids 1000, graines -5 et 2^40, mode optimisé. | coefficients CP-SAT qui débordent (MODEL_INVALID), graine refusée, codage jour × pas des débuts faux quand le pas dépasse 100 000. |
 | Salles interrompues le message donne la duree reelle | des horaires sont trouvés, puis l'attribution des salles s'interrompt sur son propre temps maximal sans rien prouver (machine très chargée), bien avant le temps limite de 300 s. | le calcul s'arrête « pas trouvé » après une minute, mais son message affirme « Aucun emploi du temps n'a été trouvé en 300 s » : deux durées différentes à l'écran. |
+| Temps limite tenu pendant une construction longue | temps limite d'1 s sur un problème dont la construction du modèle dure bien plus. | le moteur ne regarde l'horloge qu'entre deux étapes de construction ; il rend la main des dizaines de secondes après son temps limite, et le diagnostic d'un calcul impossible, qui enchaîne des essais courts, dépasse son budget (décision D4). |
+| Arret tenu pendant une construction longue | arrêt demandé pendant la construction d'un modèle long (temps limite de 60 s). | le bouton « Arrêter » ou la fin d'un diagnostic n'agit qu'après la construction ; le calcul reste « en cours » des dizaines de secondes de plus (décision D4). |
 
 [`tests/unitaires/solveur/test_preverification.py`](../tests/unitaires/solveur/test_preverification.py)
 
