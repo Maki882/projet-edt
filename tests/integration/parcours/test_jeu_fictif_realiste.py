@@ -1,4 +1,4 @@
-"""Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié."""
+"""Parcours REC-BOUT-6 : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié."""
 
 from __future__ import annotations
 
