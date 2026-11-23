@@ -630,6 +630,13 @@ retrouvés par leur identifiant métier, sans doublon.
   enseignants réels du besoin sont remplacés, par exemple par l'enseignant
   fictif parce que le fichier ne nomme pas d'enseignant, un avertissement
   les cite : l'affectation saisie à la main ne disparaît pas en silence.
+  Les exports EDT conservent l'identifiant du besoin ; il est réutilisé si la
+  matière, le type et les groupes concordent. Sans cet identifiant, un besoin
+  ponctuel est rapproché par sa matière, son type, ses groupes et sa date,
+  même si son libellé n'est pas repris par le fichier. Une période à volume
+  total déjà plus large que les séances observées n'est pas rétrécie. Un
+  besoin existant sans enseignant reste sans enseignant quand l'export EDT
+  n'en nomme aucun.
 - Une séance qui ne respecte pas la grille ou les règles n'est **ni rejetée
   ni corrigée** : elle entre telle quelle et le vérificateur la signalera.
 - Une séance hors des dates du semestre choisi est mise de côté.

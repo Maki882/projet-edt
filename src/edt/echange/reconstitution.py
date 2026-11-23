@@ -14,7 +14,9 @@ Règles de résolution
 - Séance annulée : non comptée (tracée dans le rapport). Séance déplacée :
   comptée à sa position finale. Sans statut : réalisée.
 - Enseignant absent, « à recruter » ou inconnu : l'enseignant fictif propre à
-  la matière (créé au besoin, exclu des contraintes d'enseignant).
+  la matière (créé au besoin, exclu des contraintes d'enseignant). L'absence
+  reste toutefois une absence si un export EDT désigne un besoin existant sans
+  enseignant.
 - Salle vide ou « à définir » : aucune salle, le générateur choisira.
 - Groupe inconnu (ou matière, type, salle inconnus) : la séance est mise de
   côté et listée, l'import continue.
@@ -43,6 +45,9 @@ Des séances datées à la semaine type
    les plus fréquents s'il lui en manque.
 4. Deux besoins de même identifiant métier (même matière, type, groupes,
    mais enseignants ou durée différents) reçoivent des libellés distincts.
+5. Au réimport, l'identifiant conservé par un export EDT retrouve son besoin
+   si matière, type et groupes concordent. Sans cet identifiant, un besoin
+   ponctuel est aussi rapproché par sa date, indépendamment de son libellé.
 """
 
 from __future__ import annotations
@@ -112,6 +117,7 @@ class SeanceRetenue:
     groupes: tuple[m.Groupe, ...]
     enseignants: tuple[m.Enseignant, ...]
     salle: m.Salle | None
+    besoin_source: m.Besoin | None
     deplacee: bool
     datee: bool
     semaine: int
@@ -133,13 +139,14 @@ class SeanceRetenue:
         return (self.jour, self.debut, self.salle.id if self.salle else None)
 
     def cle(self) -> tuple:
-        """Clé de regroupement : (matière, type, groupes, enseignants, durée)."""
+        """Clé de regroupement : identité visible, durée et besoin cité par l'export EDT."""
         return (
             self.matiere.id,
             self.type_seance.id,
             frozenset(g.id for g in self.groupes),
             frozenset(e.id for e in self.enseignants),
             self.duree,
+            self.besoin_source.id if self.besoin_source is not None else None,
         )
 
 
@@ -169,6 +176,10 @@ class BesoinPrevu:
     @property
     def premiere(self) -> SeanceRetenue:
         return self.seances[0]
+
+    @property
+    def besoin_source(self) -> m.Besoin | None:
+        return self.premiere.besoin_source
 
     @property
     def libelle(self) -> str | None:
@@ -207,6 +218,21 @@ class ResultatReconstitution:
     version_id: int | None
     semaines_types: tuple[str, ...]
     besoins: tuple[dict[str, Any], ...]
+
+
+def _identifiant_besoin_exporte(seance: SeanceLue) -> int | None:
+    """Identifiant du besoin conservé dans un CSV EDT ou dans l'UID de son iCal."""
+    valeur = seance.extra.get("besoin")
+    if valeur is None:
+        uid = seance.extra.get("uid", "")
+        morceaux = uid.removesuffix("@edt").split("-")
+        if len(morceaux) == 3 and morceaux[0] == "seance":
+            valeur = morceaux[1]
+    try:
+        identifiant = int(valeur) if valeur is not None else None
+    except ValueError:
+        return None
+    return identifiant if identifiant is not None and identifiant > 0 else None
 
 
 # --------------------------------------------------------------------------- #
@@ -271,7 +297,8 @@ class Resolveur:
         except Rejet as rejet:
             raise _Ecart(rejet.colonne, rejet.message + " Séance mise de côté.") from None
         matiere = self._matiere(seance.matiere, groupes)
-        enseignants = self._enseignants(seance, matiere)
+        besoin_source = self._besoin_source(seance, matiere, type_seance, groupes)
+        enseignants = self._enseignants(seance, matiere, besoin_source)
         if seance.statut is StatutSeance.A_PROGRAMMER:
             raise _Ecart(
                 "statut", "Séance « à programmer » : elle n'a pas de position, non importée."
@@ -291,6 +318,7 @@ class Resolveur:
                 groupes,
                 enseignants,
                 salle,
+                besoin_source,
                 deplacee,
                 datee,
                 semaine.numero,
@@ -347,7 +375,37 @@ class Resolveur:
             candidates = precises
         return candidates[0]
 
-    def _enseignants(self, seance: SeanceLue, matiere: m.Matiere) -> tuple[m.Enseignant, ...]:
+    def _besoin_source(
+        self,
+        seance: SeanceLue,
+        matiere: m.Matiere,
+        type_seance: m.TypeSeance,
+        groupes: tuple[m.Groupe, ...],
+    ) -> m.Besoin | None:
+        """Retrouve le besoin cité par un export EDT, sans accepter un identifiant incohérent."""
+        identifiant = _identifiant_besoin_exporte(seance)
+        besoin = self.session.get(m.Besoin, identifiant) if identifiant is not None else None
+        if besoin is None:
+            return None
+        identite = (
+            besoin.semestre_id,
+            besoin.matiere_id,
+            besoin.type_seance_id,
+            frozenset(g.id for g in besoin.groupes),
+        )
+        attendue = (
+            self.semestre.id,
+            matiere.id,
+            type_seance.id,
+            frozenset(g.id for g in groupes),
+        )
+        return besoin if identite == attendue else None
+
+    def _enseignants(
+        self, seance: SeanceLue, matiere: m.Matiere, besoin_source: m.Besoin | None
+    ) -> tuple[m.Enseignant, ...]:
+        if not seance.enseignants and besoin_source is not None and not besoin_source.enseignants:
+            return ()
         retenus: dict[int, m.Enseignant] = {}
         fictif = not seance.enseignants
         for identifiant in seance.enseignants:
@@ -583,6 +641,20 @@ def _prevoir_cours(seances: list[SeanceRetenue], instantane: Instantane) -> Beso
         + (", ".join(e.identifiant for e in premiere.enseignants) or "sans enseignant"),
         f"{JOURS[premiere.jour]} {minutes_vers_hhmm(premiere.debut)}",
     )
+    source = premiere.besoin_source
+    if source is not None:
+        return BesoinPrevu(
+            seances,
+            False,
+            source.mode_volume,
+            source.nombre,
+            source.max_par_semaine,
+            date_debut=source.date_debut,
+            date_fin=source.date_fin,
+            date_ponctuelle=source.date_ponctuelle,
+            libelle_base=source.libelle,
+            complements=complements,
+        )
     if len(seances) == 1 and premiere.datee:
         return BesoinPrevu(
             seances,
@@ -732,7 +804,18 @@ def _ecrire_besoin(
     s = prevu.premiere
     cle = (semestre.id, *prevu.cle_metier())
     index = ctx.besoins(semestre.id)
-    existants = index.get(cle, [])
+    if prevu.besoin_source is not None:
+        existants = [prevu.besoin_source]
+    else:
+        existants = index.get(cle, [])
+        if not existants and prevu.mode is ModeVolume.PONCTUEL:
+            prefixe = cle[:4]
+            existants = [
+                besoin
+                for cle_existante, besoins in index.items()
+                if cle_existante[:4] == prefixe and cle_existante[-1] == prevu.date_ponctuelle
+                for besoin in besoins
+            ]
     if len(existants) > 1:
         bilan.ajouter("rejetes")
         signalements.append(
@@ -777,6 +860,11 @@ def _ecrire_besoin(
         prevu.besoin, prevu.action = besoin, Action.CREE
     else:
         besoin = existants[0]
+        if prevu.mode is ModeVolume.TOTAL and besoin.mode_volume is ModeVolume.TOTAL:
+            if besoin.date_debut is None or besoin.date_debut <= prevu.date_debut:
+                champs["date_debut"] = besoin.date_debut
+            if besoin.date_fin is None or besoin.date_fin >= prevu.date_fin:
+                champs["date_fin"] = besoin.date_fin
         changements = []
         for attribut, valeur in champs.items():
             if getattr(besoin, attribut) != valeur:
@@ -955,10 +1043,14 @@ def _resume(prevu: BesoinPrevu) -> dict[str, Any]:
     elif prevu.mode is ModeVolume.PAR_SEMAINE:
         volume = f"{prevu.nombre} par semaine"
     else:
-        volume = (
-            f"{prevu.nombre} au total, {prevu.max_par_semaine} par semaine au plus, du "
-            f"{prevu.date_debut:%d/%m/%Y} au {prevu.date_fin:%d/%m/%Y}"
-        )
+        periode = "sur tout le semestre"
+        if prevu.date_debut is not None and prevu.date_fin is not None:
+            periode = f"du {prevu.date_debut:%d/%m/%Y} au {prevu.date_fin:%d/%m/%Y}"
+        elif prevu.date_debut is not None:
+            periode = f"à partir du {prevu.date_debut:%d/%m/%Y}"
+        elif prevu.date_fin is not None:
+            periode = f"jusqu'au {prevu.date_fin:%d/%m/%Y}"
+        volume = f"{prevu.nombre} au total, {prevu.max_par_semaine} par semaine au plus, {periode}"
     salles = {sa.id: sa.code for x in prevu.seances if (sa := x.salle) is not None}
     creneaux = "; ".join(
         f"{JOURS[jour]} {minutes_vers_hhmm(debut)}"
