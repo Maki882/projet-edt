@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 547 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. Un test ajouté au dépôt après les campagnes n'y figure pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins` (non exécuté dans les campagnes).
+Le dépôt compte 548 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 2 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `socle/test_cli.py::test_une_base_non_initialisee_indique_init_db_et_le_code_1` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -236,15 +236,15 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `echange` | 41 | 0 | 40 | 40 | 40 |
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
-| `socle` | 79 | 0 | 68 | 79 | 79 |
+| `socle` | 80 | 0 | 68 | 79 | 79 |
 | `solveur` | 54 | 1 | 26 | 53 | 53 |
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
 | `web_edt` | 143 | 0 | 113 | 143 | 143 |
-| **Total** | **547** | **4** | **407** | **542** | **540** |
+| **Total** | **548** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 547 tests d'intégration du dépôt (74,4 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 548 tests d'intégration du dépôt (74,3 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -2594,7 +2594,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 21 | 20 | 21/21, 6 s | 21/21, 4 s | Conforme |
+| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 22 | 20 | 21/22, 6 s | 21/22, 4 s | Conforme (1 non exécuté dans les campagnes) |
 | **test_config.py** : Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 | 2 | 2/2, 0 s | 2/2, 0 s | Conforme |
 | **test_generation.py** : Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 | 9 | 12/12, 6 s | 12/12, 3 s | Conforme |
 | **test_instantane.py** : Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 | 1 | 2/2, 0 s | 2/2, 0 s | Conforme |
