@@ -391,7 +391,8 @@ partie concernée.
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
-41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11 et 357 le 16/11 sur la branche principale.
+41 le 06/10, 93 le 13/10, 105 le 02/11, 6 le 09/11, 357 le 16/11 et 51 le 23/11 sur la branche
+principale.
 
 ### 2.4 Environnement de développement
 
@@ -431,7 +432,8 @@ réglages sont exclus du suivi (`.gitignore`).
 > - **Un test appelle le vrai code et doit pouvoir échouer** : un correctif s'accompagne d'un
 >   test qui échoue sans lui.
 > - **Rien n'échoue en silence**, et **tout chiffre écrit est mesuré**.
-> - **Chaque changement passe par une branche, une pull request et le contrôle automatique.**
+> - **Chaque changement passe par une branche, une pull request et le contrôle automatique.** Après la mise en place du dépôt, cette
+>   règle a été suivie à deux exceptions près (section 2.6).
 > - **La contribution des assistants reste visible dans l'historique** (ligne
 >   `Co-Authored-By` des commits).
 
