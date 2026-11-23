@@ -62,6 +62,25 @@ Deux principes non négociables :
 - **Vérifier le travail réel, pas le compte rendu** : relire le diff, relancer
   les tests.
 
+## Équipes d'agents
+
+Deux organisations à plusieurs assistants sont décrites dans
+[docs/organisation-agents.md](docs/organisation-agents.md) : une équipe qui
+travaille autour des issues GitHub (éclaireur, trieur, développeur, relecteur,
+recetteur) et une équipe qui réalise une fonctionnalité par messages directs
+(chef de projet et spécialistes). Les fiches de rôle sont dans
+`.claude/agents/`.
+
+- Un assistant qui tient un de ces rôles suit sa fiche en plus de ce fichier.
+- Dans son rôle, il peut écrire sur GitHub (issue, commentaire, pull request)
+  et pousser sa propre branche ; chaque écrit est signé de son rôle. Hors de
+  ces rôles, un assistant n'écrit sur GitHub qu'à la demande d'un membre de
+  l'équipe.
+- Les assistants de membres différents se coordonnent dans le salon des
+  agents, l'issue épinglée du dépôt étiquetée `agents`.
+- Le dépôt est public : jamais de secret, d'adresse de serveur ni de donnée
+  personnelle dans une issue, un commentaire ou une pull request.
+
 ## Compte rendu
 
 Court, en phrases simples : ce qui est fait, ce qui ne l'est pas et pourquoi,
