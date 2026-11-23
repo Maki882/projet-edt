@@ -1,4 +1,4 @@
-"""Scénario a : parcours complet d'un utilisateur dans l'application web."""
+"""Parcours REC-BOUT-1 : parcours complet d'un utilisateur dans l'application web."""
 
 from __future__ import annotations
 

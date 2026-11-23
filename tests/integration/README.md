@@ -320,7 +320,7 @@ Ce dossier compte **547 fonctions de test** dans 11 composants, dont 214 marqué
 | [`echange/test_recette_echanges.py`](echange/test_recette_echanges.py) | Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 |
 | [`echange/test_web.py`](echange/test_web.py) | Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 |
 
-### `exploitation/` : Contrats du déploiement (32 fonctions)
+### `exploitation/` : Commandes d'exploitation et scripts de déploiement (32 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -331,12 +331,12 @@ Ce dossier compte **547 fonctions de test** dans 11 composants, dont 214 marqué
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
-| [`parcours/test_aller_retour_donnees.py`](parcours/test_aller_retour_donnees.py) | Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 |
-| [`parcours/test_jeu_fictif_realiste.py`](parcours/test_jeu_fictif_realiste.py) | Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 |
-| [`parcours/test_parcours_ligne_de_commande.py`](parcours/test_parcours_ligne_de_commande.py) | Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 |
-| [`parcours/test_parcours_web.py`](parcours/test_parcours_web.py) | Scénario a : parcours complet d'un utilisateur dans l'application web | 1 |
-| [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
-| [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
+| [`parcours/test_aller_retour_donnees.py`](parcours/test_aller_retour_donnees.py) | Parcours REC-BOUT-3 : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 |
+| [`parcours/test_jeu_fictif_realiste.py`](parcours/test_jeu_fictif_realiste.py) | Parcours REC-BOUT-6 : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 |
+| [`parcours/test_parcours_ligne_de_commande.py`](parcours/test_parcours_ligne_de_commande.py) | Parcours REC-BOUT-2 : parcours complet en ligne de commande (`python -m edt ...`) | 1 |
+| [`parcours/test_parcours_web.py`](parcours/test_parcours_web.py) | Parcours REC-BOUT-1 : parcours complet d'un utilisateur dans l'application web | 1 |
+| [`parcours/test_regle_personnalisee.py`](parcours/test_regle_personnalisee.py) | Parcours REC-BOUT-4 : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 |
+| [`parcours/test_retouche_manuelle.py`](parcours/test_retouche_manuelle.py) | Parcours REC-BOUT-5 : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 |
 
 ### `socle/` : Commandes et application web du socle (79 fonctions)
 
