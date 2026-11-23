@@ -292,7 +292,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-integration : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **548 fonctions de test** dans 11 composants, dont 215 marquées `cas_limite` et 4 marquées `perf`.
+Ce dossier compte **554 fonctions de test** dans 11 composants, dont 217 marquées `cas_limite` et 4 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant par le site et la ligne de commande (31 fonctions)
 
@@ -392,11 +392,12 @@ Ce dossier compte **548 fonctions de test** dans 11 composants, dont 215 marqué
 | [`web_donnees/test_sans_trace.py`](web_donnees/test_sans_trace.py) | Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 |
 | [`web_donnees/test_suppression.py`](web_donnees/test_suppression.py) | Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 |
 
-### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (144 fonctions)
+### `web_edt/` : Écrans Générer et emploi du temps, par HTTP (150 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
 | [`web_edt/test_a_traiter.py`](web_edt/test_a_traiter.py) | Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 |
+| [`web_edt/test_acces.py`](web_edt/test_acces.py) | Accès au site par mot de passe : connexion, droits de la consultation, site ouvert par défaut | 6 |
 | [`web_edt/test_accueil.py`](web_edt/test_accueil.py) | Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 |
 | [`web_edt/test_calculs.py`](web_edt/test_calculs.py) | Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 |
 | [`web_edt/test_cas_limites.py`](web_edt/test_cas_limites.py) | Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 |

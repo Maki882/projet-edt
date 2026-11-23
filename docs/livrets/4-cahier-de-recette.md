@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 548 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 2 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_recette_affichage.py::test_impression_masque_toute_la_barre_de_navigation` (non exécutés dans les campagnes).
+Le dépôt compte 554 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 8 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route`, `web_edt/test_recette_affichage.py::test_impression_masque_toute_la_barre_de_navigation` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -241,10 +241,10 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
-| `web_edt` | 144 | 0 | 113 | 143 | 143 |
-| **Total** | **548** | **4** | **407** | **542** | **540** |
+| `web_edt` | 150 | 0 | 113 | 143 | 143 |
+| **Total** | **554** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 548 tests d'intégration du dépôt (74,3 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 554 tests d'intégration du dépôt (73,5 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -2083,7 +2083,7 @@ traiter ».
 **Résultat attendu.**
 
 - Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.
-- La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).
+- Jusqu'à 58rem, le menu et les filtres du planning se replient et la sous-navigation défile horizontalement. Jusqu'à 64rem, le panneau de la séance s'affiche sous la grille.
 
 **Remarque.** Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2.
 
@@ -2649,6 +2649,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 3 s | 6/6, 6 s | Conforme |
+| **test_acces.py** : Accès au site par mot de passe : connexion, droits de la consultation, site ouvert par défaut | 6 | 0 | 0/6, 0 s | 0/6, 0 s | Non exécuté dans les campagnes |
 | **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 8 s | Conforme |
 | **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 16 s | 26/26, 25 s | Conforme |
 | **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 30 s | 25/25, 16 s | Conforme |

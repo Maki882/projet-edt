@@ -19,7 +19,10 @@ jeux fictifs générés ([`donnees-fictives.md`](donnees-fictives.md)).
   (toutes les promotions, plusieurs campus), sans mode de démonstration ni
   placement de secours.
 - Déployée sur un serveur (2 cœurs, 3,7 Go de mémoire, Python 3.14),
-  accessible par le web, **sans écran de connexion**. L'usage est celui d'une
+  accessible par le web, **sans écran de connexion par défaut**. Une
+  connexion par mot de passe est possible en option (`EDT_MDP_GESTION`,
+  `EDT_MDP_CONSULTATION`) : gestion avec tous les droits, consultation en
+  lecture seule de l'emploi du temps (`edt.web.acces`). L'usage est celui d'une
   seule personne à la fois, mais rien dans le code ne suppose un seul
   utilisateur : tout passe par la base, sauf quelques états en mémoire perdus
   au redémarrage (suivi des calculs, mémoire des écrans, conversations de
@@ -382,7 +385,8 @@ prépare.
   référence, en dérangeant le moins possible. Le moteur de replacement et
   `edt.services.instanciation.replacer_occurrences` en sont le point
   d'entrée.
-- Authentification et rôles ; hébergement de plusieurs établissements.
+- Comptes nominatifs et rôles plus fins que gestion et consultation ;
+  hébergement de plusieurs établissements.
 - Glisser-déposer dans la grille.
 - Alternance semaine A / semaine B et calendrier d'alternance des
   apprentis.

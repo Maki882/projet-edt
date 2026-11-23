@@ -8,7 +8,9 @@ quand aucun emploi du temps n'est possible, il le dit et explique pourquoi.
 L'emploi du temps produit se consulte par groupe, enseignant ou salle, se
 retouche à la main et s'exporte vers un agenda.
 
-Toutes les données sont fictives. L'application n'a pas d'écran de connexion.
+Toutes les données sont fictives. Par défaut, l'application n'a pas d'écran de connexion ;
+un accès par mot de passe (gestion, ou consultation en lecture seule) s'active sur le serveur
+([docs/deploiement.md](docs/deploiement.md), section 14).
 
 ![Accueil de l'application](docs/images/accueil.png)
 

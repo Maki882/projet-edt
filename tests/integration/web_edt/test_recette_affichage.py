@@ -27,7 +27,7 @@ def _regle_media(feuille: str, condition: str) -> str:
 def test_ecrans_prevus_pour_un_telephone(version_generee, client):
     """L'utilisateur ouvre l'accueil, Générer, l'emploi du temps et les points à traiter sur
     un téléphone : chaque page se met à la largeur de l'appareil, et les feuilles de style
-    qu'elle charge prévoient l'écran étroit (menu en colonne, grille qui défile dans son
+    qu'elle charge prévoient l'écran étroit (menu repliable, grille qui défile dans son
     cadre, panneau de séance sous la grille)."""
     for adresse in ("/", "/calculs", "/emploi-du-temps", "/a-traiter"):
         page = client.get(adresse).text
@@ -40,11 +40,14 @@ def test_ecrans_prevus_pour_un_telephone(version_generee, client):
 
     app = client.get("/static/css/app.css")
     assert app.status_code == 200 and "text/css" in app.headers["content-type"]
-    # Des règles dans le bloc, pas un bloc vide.
-    assert _regle_media(app.text, "(max-width: 56rem)").count("{") > 1
+    menu = _regle_media(app.text, "(max-width: 58rem)")
+    assert ".bouton-mobile" in menu
+    assert 'aria-expanded="false"' in menu
 
     edt = client.get("/static/css/edt.css")
     assert edt.status_code == 200
+    filtres = _regle_media(edt.text, "screen and (max-width: 58rem)")
+    assert re.search(r"\.edt-barre-outils\s*\{[^}]*display: grid", filtres)
     etroit = _regle_media(edt.text, "(max-width: 64rem)")
     mise_en_page = re.search(r"\.edt-mise-en-page\s*\{([^}]*)\}", etroit)
     assert mise_en_page is not None

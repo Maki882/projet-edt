@@ -24,7 +24,7 @@
 {{ edt.encart_controle(controle) }}
 {{ edt.anomalies(marques, "Anomalies de cette séance") }}
 
-{%- if f.modifiable %}
+{%- if f.modifiable and not lecture_seule %}
 {% include "edt/_formulaire_occurrence.html" %}
 <form class="formulaire" method="post" action="/emploi-du-temps/occurrences/{{ b.occurrence_id }}/annuler"
   data-confirmation="Annuler la séance du {{ b.date|date_fr }} ? Elle n'aura pas lieu et ne comptera plus dans le volume. Elle ne pourra pas être rétablie dans cette version.">
@@ -37,6 +37,6 @@
   </div>
 </form>
 <p class="discret">Pour verrouiller la séance à sa place : passer en « Semaine type ».</p>
-{%- else %}
+{%- elif not f.modifiable %}
 {{ ui.message("Cette séance est annulée : elle n'a pas lieu.", "info") }}
 {%- endif %}
