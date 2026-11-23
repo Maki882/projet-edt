@@ -80,6 +80,16 @@ def test_impression_masque_le_bouton_des_filtres(client):
     assert ".edt-bouton-filtres" in selecteurs, sorted(selecteurs)
 
 
+@pytest.mark.cas_limite
+def test_impression_masque_le_repere_aujourd_hui(client):
+    """Cas : l'utilisateur imprime la vue « Jour » datée du jour même, sans séance ; l'en-tête
+    porte le repère « Aujourd'hui » et la grille la mention « Aucune séance ce jour-là ».
+    Risque : ce repère, qui ne vaut que le jour de l'impression, grandit l'en-tête juste assez
+    pour envoyer la légende seule sur une deuxième page."""
+    selecteurs = _masques_a_l_impression(client)
+    assert ".edt-repere-jour" in selecteurs, sorted(selecteurs)
+
+
 def _masques_a_l_impression(client) -> set[str]:
     """Les sélecteurs que le bloc `@media print` de `edt.css` masque (`display: none`)."""
     edt = client.get("/static/css/edt.css")

@@ -381,7 +381,8 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
 - **Impression** : la feuille d'impression masque menus, sélecteurs (et le
   bouton « Filtres du planning » du téléphone), panneau et barre de
   navigation entre périodes (sa période figure déjà dans le titre
-  d'impression) et imprime la grille en A4 paysage, avec ses
+  d'impression), ainsi que le repère « Aujourd'hui » de l'en-tête du jour
+  (il ne vaut que le jour de l'impression), et imprime la grille en A4 paysage, avec ses
   couleurs et un titre.
 - **Exports** : `/export/emploi-du-temps.csv` et `/export/emploi-du-temps.ics`
   pour la version, la couche et la cible affichées.

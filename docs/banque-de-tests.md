@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 547 cas : 328 cas en tests unitaires et 219 cas en tests d'intégration.
+Le catalogue compte 548 cas : 328 cas en tests unitaires et 220 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -83,8 +83,8 @@ Le catalogue compte 547 cas : 328 cas en tests unitaires et 219 cas en tests d'i
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
-| `web_edt` | 9 | 51 |
-| **Total** | **328** | **219** |
+| `web_edt` | 9 | 52 |
+| **Total** | **328** | **220** |
 
 ### Tests unitaires (328 cas)
 
@@ -766,7 +766,7 @@ Le catalogue compte 547 cas : 328 cas en tests unitaires et 219 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (219 cas)
+### Tests d'intégration (220 cas)
 
 #### `assistant` (7 cas)
 
@@ -1077,7 +1077,7 @@ Le catalogue compte 547 cas : 328 cas en tests unitaires et 219 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (51 cas)
+#### `web_edt` (52 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1169,6 +1169,7 @@ Le catalogue compte 547 cas : 328 cas en tests unitaires et 219 cas en tests d'i
 |---|---|---|
 | Impression masque toute la barre de navigation | l'utilisateur imprime une semaine datée ou une vue « Jour », qui portent la barre de navigation entre périodes. | sans masquer la barre entière, sa période s'imprime sous le titre d'impression qui la donne déjà, et la légende part seule sur une deuxième page. |
 | Impression masque le bouton des filtres | l'utilisateur imprime l'emploi du temps ; le script de la page a rendu visible le bouton « Filtres du planning », prévu pour le téléphone, et la règle des écrans étroits peut s'appliquer à la page imprimée. | le bouton s'imprime au-dessus du titre et pousse la légende d'une semaine datée seule sur une deuxième page. |
+| Impression masque le repere aujourd hui | l'utilisateur imprime la vue « Jour » datée du jour même, sans séance ; l'en-tête porte le repère « Aujourd'hui » et la grille la mention « Aucune séance ce jour-là ». | ce repère, qui ne vaut que le jour de l'impression, grandit l'en-tête juste assez pour envoyer la légende seule sur une deuxième page. |
 
 <!-- catalogue : fin de la partie générée -->
 
