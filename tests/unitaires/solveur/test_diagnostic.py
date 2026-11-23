@@ -4,8 +4,9 @@ Petits instantanés impossibles fabriqués en mémoire (`tests.outils.solveur.fa
 Chaque cas mêle au noyau impossible des éléments sans rapport (un besoin, une indisponibilité,
 une règle d'un autre enseignant ou d'un autre groupe) : le diagnostic doit rendre le noyau, et lui
 seul. Les tests ne dépendent pas de l'ordre des essais ni de la solution trouvée par le moteur,
-seulement du résultat promis par le contrat (PLAN P9, §3 et §4) : un ensemble irréductible est
-unique quand les éléments sans rapport ne jouent aucun rôle dans l'impossibilité.
+seulement du résultat promis par le contrat (PLAN P9, §3 et §4). Chaque ensemble attendu a été
+vérifié irréductible au moteur (impossible avec ses seuls éléments, possible sans l'un d'eux) ;
+quand deux ensembles irréductibles existent, le test accepte l'un ou l'autre.
 """
 
 from __future__ import annotations
@@ -204,7 +205,14 @@ def test_noyau_minimal_avec_une_regle_personnalisee_necessaire():
     resultat = isoler_impossibilite(instantane, OPTIONS_DIAGNOSTIC, BUDGET_S)
 
     assert resultat.statut is StatutDiagnostic.MINIMAL, resultat.message
-    assert [(e.nature, e.identifiant) for e in resultat.regles] == [("regle", str(ids["regle_g1"]))]
+    # Deux ensembles irréductibles existent (vérifiés au moteur) : sans les horaires de la grille
+    # ni les jours de cours, des débuts s'ouvrent le mardi et la règle se satisfait. La règle et
+    # l'une des deux contraintes, au choix de l'ordre des essais, forment l'ensemble.
+    regles = [(e.nature, e.identifiant) for e in resultat.regles]
+    assert regles in (
+        [("contrainte", "HORAIRES"), ("regle", str(ids["regle_g1"]))],
+        [("contrainte", "JOURS"), ("regle", str(ids["regle_g1"]))],
+    )
     assert [(e.nature, e.identifiant) for e in resultat.donnees] == [("besoin", str(ids["a"]))]
 
 
