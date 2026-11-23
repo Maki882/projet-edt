@@ -1174,10 +1174,12 @@
     --edt-largeur-axe: 2.8rem;
   }
 
+  .edt-bouton-filtres,
   .edt-barre-outils,
   .edt-onglets,
-  .edt-navigation .bouton,
+  .edt-navigation,
   .edt-saut-date,
+  .edt-repere-jour,
   .edt-panneau,
   .edt-ecran-seulement,
   .edt-etape-illustration,
