@@ -9,10 +9,12 @@ from icalendar import Calendar
 from sqlalchemy import select
 from tests.outils.echange.export_edt import exporter_edt as _exporter
 from tests.outils.echange.export_edt import lignes_csv as _lignes
+from tests.outils.echange.fabrique import compter
 
 from edt.db import modeles as m
 from edt.db.moteur import session_base
 from edt.erreurs import ErreurDonneesInvalides, ErreurIntrouvable
+from edt.services.echange import FichierEnvoye, ModeImport
 
 
 def _identifiant(modele, **critere) -> int:
@@ -99,3 +101,23 @@ def test_ical_de_la_semaine_type_relu_par_icalendar(version_generee):
     # Identifiants stables : deux exports successifs donnent les mêmes événements.
     second = Calendar.from_ical(_exporter(version_generee, "ics").contenu)
     assert [str(e["UID"]) for e in second.walk("VEVENT")] == [str(e["UID"]) for e in evenements]
+
+
+@pytest.mark.parametrize(("format_", "nb_inchanges"), [("ics", 15), ("csv", 16)])
+def test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins(
+    version_generee, jeu_minimal, importer, format_, nb_inchanges
+):
+    fichier = _exporter(version_generee, format_)
+    nb_besoins = compter(m.Besoin)
+    nb_enseignants = compter(m.Enseignant)
+
+    rapport = importer(
+        FichierEnvoye(fichier.nom, fichier.contenu),
+        mode=ModeImport.REFERENCE,
+        semestre_id=jeu_minimal.semestre_id,
+    )
+
+    assert rapport.bilan("besoins").compteurs == {"inchanges": nb_inchanges}
+    assert rapport.bilan("enseignants fictifs").compteurs == {}
+    assert compter(m.Besoin) == nb_besoins
+    assert compter(m.Enseignant) == nb_enseignants
