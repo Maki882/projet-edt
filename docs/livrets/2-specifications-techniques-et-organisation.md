@@ -434,15 +434,15 @@ réglages sont exclus du suivi (`.gitignore`).
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
 | Pull requests | 53 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 23 dernières (31 à 53) datent de la journée de finalisation du 16/11. |
-| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il n'a pas servi : aucune issue n'a été ouverte (voir ci-dessous). |
+| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il a servi pour la première fois le 23/11/2026, pour l'issue n° 54 ([lien](https://github.com/Maki882/projet-edt/issues/54)), qui suit l'anomalie ouverte relevée par la recette (livret 4) ; jusque-là, le suivi passait par les pull requests et le document des décisions. |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |
 | Documentation de conception | Un document par partie de l'application (architecture, modèle de données, générateur, vérification, import et export, établissements fictifs, déploiement, tests), versé avec le code de cette partie. |
 
 Les échanges de l'équipe en dehors de GitHub (réunions, messagerie) ne sont pas consignés dans
-le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Aucune
-issue ni aucun jalon n'est ouvert sur GitHub, et aucune relecture formelle (approbation d'une
-pull request) n'y est enregistrée.
+le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Sur GitHub, une
+issue est ouverte (n° 54) ; aucun jalon n'est ouvert, et aucune relecture formelle (approbation
+d'une pull request) n'y est enregistrée.
 
 ### 2.6 Référentiel du projet
 
