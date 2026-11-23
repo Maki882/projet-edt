@@ -180,6 +180,10 @@ h3 {
   font-weight: 650;
 }
 
+.bouton-mobile:not([hidden]) {
+  display: none;
+}
+
 .onglets {
   display: flex;
   min-width: 0;
@@ -1503,7 +1507,7 @@ fieldset.champ {
 
 .colonnes {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
   gap: var(--espace);
 }
 
@@ -1512,7 +1516,9 @@ fieldset.champ {
 @media (max-width: 58rem) {
   .barre {
     flex-wrap: wrap;
-    gap: 0;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.25rem;
     padding: 0.2rem var(--espace) 0.45rem;
   }
 
@@ -1520,21 +1526,67 @@ fieldset.champ {
     padding: 0.5rem 0;
   }
 
-  /* Les six onglets restent tous visibles : ils passent sur deux rangées s'il le faut. */
+  .bouton-mobile:not([hidden]) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-height: 2.75rem;
+  }
+
+  .bouton-mobile:not([hidden])[aria-expanded="false"] + :is(.onglets, .edt-barre-outils) {
+    display: none;
+  }
+
+  .bouton-mobile::after {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: translateY(-2px) rotate(45deg);
+  }
+
+  .bouton-mobile[aria-expanded="true"]::after {
+    transform: translateY(2px) rotate(225deg);
+  }
+
+  .bouton-menu {
+    padding: 0.45rem 0.7rem;
+    border: 1px solid #64758f;
+    border-radius: var(--rayon);
+    background: transparent;
+    color: var(--bandeau-texte);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .bouton-menu[aria-expanded="true"] {
+    color: var(--bandeau);
+    background: var(--accent);
+  }
+
   .onglets {
     flex-basis: 100%;
+    padding-top: 0.35rem;
   }
 
   .onglets > ul {
-    flex-wrap: wrap;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .onglet > a {
+    width: 100%;
+    min-height: 2.75rem;
     margin: 0;
     padding: 0.4rem 0.6rem;
+    white-space: normal;
   }
 
-  .menu-deroulant {
+  .onglet-deroulant:is(:hover, :focus-within) .menu-deroulant {
     display: none;
   }
 
@@ -1584,6 +1636,26 @@ fieldset.champ {
   .bouton-assistant {
     right: 0.75rem;
     bottom: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .bouton,
+  .onglet > a,
+  .sous-navigation li a {
+    transition: background-color 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+
+  .bouton-mobile::after {
+    transition: transform 150ms ease;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .assistant,
+  .assistant.ouvert,
+  .assistant:target {
+    transition: none;
   }
 }
 

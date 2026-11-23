@@ -850,6 +850,30 @@
   .edt-etape-calendrier span:nth-child(5) { grid-area: 1 / 5 / 3 / 6; background: #a5bdfa; }
 }
 
+@media screen and (prefers-reduced-motion: no-preference) {
+  .edt-etape-calendrier span {
+    animation: edt-apparition 360ms ease-out both;
+  }
+
+  .edt-etape-calendrier span:nth-child(2) { animation-delay: 45ms; }
+  .edt-etape-calendrier span:nth-child(3) { animation-delay: 90ms; }
+  .edt-etape-calendrier span:nth-child(4) { animation-delay: 135ms; }
+  .edt-etape-calendrier span:nth-child(5) { animation-delay: 180ms; }
+
+  .edt-bloc {
+    transition: box-shadow 140ms ease;
+  }
+
+  .edt-panneau:not(:empty) {
+    animation: edt-apparition 160ms ease-out;
+  }
+
+  @keyframes edt-apparition {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+
 /* ----- Impression, écrans étroits ------------------------------------------------- */
 
 .edt-impression-seulement {
@@ -866,6 +890,43 @@
     position: static;
     width: 100%;
     max-height: none;
+  }
+}
+
+@media screen and (max-width: 58rem) {
+  .edt-bouton-filtres {
+    width: 100%;
+    margin-bottom: 0.65rem;
+  }
+
+  .edt-barre-outils {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .edt-barre-outils .champ {
+    min-width: 0;
+  }
+
+  .edt-barre-outils .edt-champ-large {
+    grid-column: 1 / -1;
+  }
+
+  .edt-onglets {
+    width: 100%;
+  }
+
+  .edt-onglets a {
+    flex: 1;
+    padding: 0.55rem 0.35rem;
+    text-align: center;
+    font-size: 0.86rem;
+  }
+
+  .edt-navigation-periode {
+    flex: 1 0 100%;
+    order: -1;
+    text-align: left;
   }
 }
 

@@ -33,7 +33,8 @@
       <span class="marque-sigle">EDT</span>
       <span class="marque-texte">Emplois du temps</span>
     </a>
-    <nav class="onglets" aria-label="Navigation principale">
+    <button type="button" class="bouton-mobile bouton-menu" aria-controls="navigation-principale" aria-expanded="false" data-volet-mobile hidden>Menu</button>
+    <nav class="onglets" id="navigation-principale" aria-label="Navigation principale">
       <ul>
         {%- for onglet in menu %}
         {%- set est_actif = nav.actif is not none and onglet.titre == nav.actif.titre %}

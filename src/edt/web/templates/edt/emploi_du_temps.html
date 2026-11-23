@@ -23,7 +23,8 @@
 {%- else %}
 {%- set limite_anomalies = 100 %}
 
-<form class="edt-barre-outils" method="get" action="/emploi-du-temps">
+<button type="button" class="bouton-mobile bouton edt-bouton-filtres" aria-controls="edt-filtres" aria-expanded="false" data-volet-mobile hidden>Filtres du planning</button>
+<form class="edt-barre-outils" id="edt-filtres" method="get" action="/emploi-du-temps">
   <div class="champ">
     <label for="choix-semestre">Semestre</label>
     <select id="choix-semestre" name="semestre_id" data-envoi-auto data-desactiver="version_id cible">
@@ -176,7 +177,7 @@
     {%- endif %}
     <div class="edt-ecran-seulement">{{ edt.ecarts_decoches(vue.controle) }}</div>
   </div>
-  <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite">
+  <aside id="edt-panneau" class="edt-panneau" aria-label="Détail de la séance" aria-live="polite" tabindex="-1">
     {%- if panneau -%}
     {%- with f = panneau.f, marques = panneau.marques or (), controle = panneau.controle, resultat = none -%}
     {%- if panneau.type == "seance" %}{% include "edt/_panneau_seance.html" %}{% else %}{% include "edt/_panneau_occurrence.html" %}{% endif -%}
