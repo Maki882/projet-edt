@@ -371,3 +371,30 @@ def test_journal_du_diagnostic(jeu_minimal, caplog):
         and r.levelno >= logging.INFO
         and f"calcul {calcul_id}" in r.getMessage()
     ]
+
+
+@pytest.mark.cas_limite
+def test_journal_du_diagnostic_sans_alerte_ni_retrait_attribue_a_l_utilisateur(jeu_minimal, caplog):
+    """Cas : diagnostic d'un calcul impossible ; ses essais retirent des règles et des données, et
+    plusieurs sont refusés par les vérifications préalables.
+
+    Risque : la commande et le journal affichent des dizaines d'alertes du moteur pour des essais
+    voulus, dont « Contraintes désactivées à la demande de l'utilisateur », ce qui est faux : c'est
+    le diagnostic qui retire les règles (tâche T8).
+    """
+    calcul_id, _ = _calcul_bloque(jeu_minimal)
+    caplog.set_level(logging.DEBUG)
+
+    diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
+
+    assert diagnostic.nb_essais > 1  # des essais ont bien retiré des éléments
+    alertes = [
+        f"{r.name} {r.levelname} : {r.getMessage()}"
+        for r in caplog.records
+        if r.levelno >= logging.WARNING
+    ]
+    assert not alertes, "\n".join(alertes)
+    attribues = [
+        r.getMessage() for r in caplog.records if "à la demande de l'utilisateur" in r.getMessage()
+    ]
+    assert not attribues, "\n".join(attribues)
