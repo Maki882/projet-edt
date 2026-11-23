@@ -180,8 +180,8 @@ réalisée du livret 1 a au moins une fiche.
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| Serveur de démonstration (EDT 1.0.0, 2 processeurs) | 23/11/2026, 11 h 59 à 12 h 04 | Linux (noyau 7.0) | 3.14.4 | 529 | 529 | 0 | 0 | 4 min 57 s |
-| Poste de développement (EDT 1.0.0, 32 processeurs) | 23/11/2026, 12 h 01 à 12 h 07 | Windows 11 | 3.11.9 | 529 | 527 | 0 | 2 | 6 min 00 s |
+| Serveur de démonstration (EDT 1.0.0, 2 processeurs) | 23/11/2026, 14 h 00 à 14 h 05 | Linux (noyau 7.0) | 3.14.4 | 542 | 542 | 0 | 0 | 5 min 05 s |
+| Poste de développement (EDT 1.0.0, 32 processeurs) | 23/11/2026, 13 h 58 à 14 h 02 | Windows 11 | 3.11.9 | 542 | 540 | 0 | 2 | 3 min 31 s |
 
 La durée va de la première à la dernière heure enregistrées par l'application pour l'exécution.
 
@@ -198,18 +198,18 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 |---|---:|---:|---:|---:|---:|
 | `assistant` | 31 | 0 | 26 | 31 | 31 |
 | `banc_tests` | 22 | 0 | 21 | 22 | 22 |
-| `echange` | 35 | 0 | 35 | 35 | 35 |
+| `echange` | 40 | 0 | 40 | 40 | 40 |
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
-| `socle` | 77 | 0 | 66 | 77 | 77 |
+| `socle` | 79 | 0 | 68 | 79 | 79 |
 | `solveur` | 54 | 1 | 26 | 53 | 53 |
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 66 | 124 | 124 |
-| `web_edt` | 137 | 0 | 107 | 137 | 137 |
-| **Total** | **533** | **4** | **395** | **529** | **527** |
+| `web_edt` | 143 | 0 | 113 | 143 | 143 |
+| **Total** | **546** | **4** | **408** | **542** | **540** |
 
-**Fiches.** Le cahier compte 67 fiches, dont 2 fiches d'essai manuel : 67 « Conforme », 0 « Non conforme », 0 « Non exécutée ». Les fiches citent 395 des 533 tests d'intégration du dépôt (74,1 %) ; les autres figurent à l'annexe A, rangés par fichier.
+**Fiches.** Le cahier compte 68 fiches, dont 2 fiches d'essai manuel : 68 « Conforme », 0 « Non conforme », 0 « Non exécutée ». Les fiches citent 408 des 546 tests d'intégration du dépôt (74,7 %) ; les autres figurent à l'annexe A, rangés par fichier.
 
 <!-- recette-synthese : fin de la partie générée -->
 
@@ -765,7 +765,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Le panneau de la séance s'ouvre, avec « Déplacer la séance » et les exigences de la séance.
 - L'encadré indique « Affiché : les séances de A1-G1 et de A1 » ; la vue étendue ajoute les séances des demi-groupes, marquées comme ne concernant qu'une partie du groupe.
 
-**Remarque.** Le test vérifie qu'une classe de couleur est posée sur chaque séance, pas le rendu visuel ; le rendu sur un petit écran est l'objet de l'essai manuel REC-P1-1.
+**Remarque.** Le test vérifie qu'une classe de couleur est posée sur chaque séance, pas le rendu visuel ; le rendu sur un petit écran est l'objet de l'essai manuel REC-P1-2.
 
 **Tests automatisés (7).** `web_edt/test_emploi_du_temps.py::test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee` · `web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle` · `web_edt/test_emploi_du_temps.py::test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx` · `web_edt/test_emploi_du_temps.py::test_bandeau_et_bascule_vers_la_vue_etendue` · `web_edt/test_emploi_du_temps.py::test_une_classe_s_ouvre_sur_ses_seances_et_celles_de_sa_promotion` · `web_edt/test_emploi_du_temps.py::test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants` · `web_edt/test_emploi_du_temps.py::test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants`
 
@@ -819,12 +819,13 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.
 - Le déplacement est accepté et la base contient le jour, le début et la salle choisis ; sur les deux versions, chaque heure annoncée possible s'enregistre.
 - Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.
+- Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».
 
 **Remarque.** Le test rejoue par HTTP le rechargement du formulaire que le navigateur fait à chaque changement de jour ou d'heure.
 
-**Tests automatisés (6).** `web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit` · `web_edt/test_deplacement_possible.py::test_changer_le_jour_puis_choisir_une_heure_possible` · `web_edt/test_deplacement_possible.py::test_chaque_heure_possible_du_jeu_minimal_s_enregistre` · `web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur` · `web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou` · `web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord`
+**Tests automatisés (7).** `web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit` · `web_edt/test_deplacement_possible.py::test_changer_le_jour_puis_choisir_une_heure_possible` · `web_edt/test_deplacement_possible.py::test_chaque_heure_possible_du_jeu_minimal_s_enregistre` · `web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur` · `web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou` · `web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord` · `web_edt/test_recette_deplacement.py::test_heure_acceptee_avec_un_avertissement_annoncee_et_enregistree`
 
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 6 réussis sur 6. Poste de développement, 23/11/2026 : 6 réussis sur 6.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 7 réussis sur 7. Poste de développement, 23/11/2026 : 7 réussis sur 7.
 
 **Verdict : Conforme.**
 
@@ -849,10 +850,11 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Salle occupée : refus avec la règle « Une séance par salle ».
 - Saisie impossible : refus avec « n'est pas un début de créneau » ou « Jour invalide », sans trace technique.
 - Jour impossible : le formulaire reste lisible, dit qu'aucun début de créneau ne convient et garde le jour actuel.
+- Jour où toutes les heures sont refusées : « Aucune heure possible le mardi avec les salles proposées : essayer un autre jour », avec la règle la plus souvent en cause.
 
-**Tests automatisés (6).** `web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe` · `web_edt/test_emploi_du_temps.py::test_modification_refusee_par_une_erreur_du_verificateur` · `web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit` · `web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant` · `web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible` · `web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee`
+**Tests automatisés (7).** `web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe` · `web_edt/test_emploi_du_temps.py::test_modification_refusee_par_une_erreur_du_verificateur` · `web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit` · `web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant` · `web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible` · `web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee` · `web_edt/test_recette_deplacement.py::test_jour_sans_aucune_heure_possible_dit_quoi_faire`
 
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 6 réussis sur 6. Poste de développement, 23/11/2026 : 6 réussis sur 6.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 7 réussis sur 7. Poste de développement, 23/11/2026 : 7 réussis sur 7.
 
 **Verdict : Conforme.**
 
@@ -1394,31 +1396,30 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Verdict : Conforme.**
 
-#### REC-U9-1. Verrouiller une séance : marque dans la grille, place gardée au calcul suivant
+#### REC-U9-1. Verrouiller et déverrouiller une séance ; place gardée au calcul suivant
 
 *Fonctionnalités : U9 Retouches et verrous ; O8 Modifier une séance. Cas d'usage : 3.*
 
-**Objectif.** Montrer qu'une séance verrouillée est enregistrée comme telle, marquée dans la grille, et que les calculs suivants la laissent à sa place.
+**Objectif.** Montrer qu'une séance se verrouille et se déverrouille depuis son panneau, que le verrou est marqué dans la grille, et que le calcul suivant, lancé depuis « Générer », la laisse à sa place.
 
-**Conditions de départ.** Jeu minimal et une version active calculée ; pour le calcul suivant, des séances verrouillées en base par le test.
+**Conditions de départ.** Jeu minimal et une version saisie à la main (identique sur toutes les machines), puis une version calculée par le vrai moteur.
 
 **Étapes.**
 
-1. Ouvrir le panneau du cours magistral de mathématiques de A1 et cliquer sur « Verrouiller à cette place ».
-2. Afficher l'emploi du temps de la salle de cette séance.
-3. Lancer un nouveau calcul du semestre, avec puis sans la règle « Séances verrouillées ».
+1. Ouvrir le panneau d'une séance et cliquer sur « Verrouiller à cette place » ; cliquer une seconde fois.
+2. Afficher la grille ; lancer un nouveau calcul du semestre depuis « Générer ».
+3. Ouvrir de nouveau le panneau et cliquer sur « Déverrouiller ».
 
 **Résultat attendu.**
 
-- La séance est enregistrée verrouillée et la grille porte la marque « Séance verrouillée ».
-- Avec la règle active, chaque séance verrouillée garde son jour, son début, sa fin et sa salle, et reste verrouillée.
-- Règle décochée, une séance que le moteur déplace n'est plus marquée verrouillée.
+- « Séance verrouillée : les prochains calculs la laisseront à sa place. » ; le panneau propose « Déverrouiller » ; un second clic répond « La séance était déjà verrouillée. ».
+- La grille porte la marque « Séance verrouillée » ; dans la nouvelle version, la séance garde son jour, son début, sa fin et sa salle, reste verrouillée, et c'est la seule.
+- Après « Déverrouiller », la place est dite « Libre : un nouveau calcul peut la déplacer » et le verrou est retiré.
+- Règle « Séances verrouillées » décochée au calcul, une séance que le moteur déplace n'est plus marquée verrouillée.
 
-**Remarque.** Le bouton « Déverrouiller » n'est vérifié par aucun test à cette passe (section 7).
+**Tests automatisés (5).** `web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou` · `solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee` · `solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine` · `web_edt/test_recette_verrous.py::test_verrouiller_puis_deverrouiller_une_seance_depuis_son_panneau` · `web_edt/test_recette_verrous.py::test_verrou_pose_par_le_site_tenu_par_le_calcul_suivant`
 
-**Tests automatisés (3).** `web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou` · `solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee` · `solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine`
-
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 3 réussis sur 3. Poste de développement, 23/11/2026 : 3 réussis sur 3.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 5 réussis sur 5. Poste de développement, 23/11/2026 : 5 réussis sur 5.
 
 **Verdict : Conforme.**
 
@@ -1509,11 +1510,11 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Verdict : Conforme.**
 
-#### REC-U11-2. Résultat d'un calcul : compteurs des séances et bilan de qualité
+#### REC-U11-2. Résultat d'un calcul : compteurs des séances, indicateurs et bilan de qualité
 
 *Fonctionnalité : U11 Tableau de bord. Cas d'usage : 1.*
 
-**Objectif.** Montrer que la page de résultat d'un calcul réussi donne les nombres de séances placées, datées et replacées, et le bilan de qualité du moteur.
+**Objectif.** Montrer que la page de résultat d'un calcul réussi donne les nombres de séances placées, datées et replacées, les indicateurs de qualité du vérificateur et le bilan du moteur.
 
 **Conditions de départ.** Jeu minimal, aucun calcul.
 
@@ -1526,12 +1527,11 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 - La page affiche « Emploi du temps généré », les « séances placées dans la semaine type », les « séances datées sur le semestre » et les séances replacées, égaux aux nombres enregistrés avec le calcul.
 - Avec l'amélioration, la page affiche le « Bilan sur l'ensemble du semestre », sans répéter les compteurs.
+- Sous « Qualité de l'emploi du temps », la page affiche « des séances placées », « conflits (règles non respectées) », « d'utilisation des salles » et « changements de campus », égaux aux valeurs que le vérificateur rend pour la même version.
 
-**Remarque.** Les indicateurs de qualité affichés sous les compteurs (utilisation des salles, changements de campus) ne sont vérifiés par aucun test d'intégration à cette passe (section 7).
+**Tests automatisés (3).** `web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis` · `web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon` · `web_edt/test_recette_resultat.py::test_resultat_d_un_calcul_affiche_les_indicateurs_du_verificateur`
 
-**Tests automatisés (2).** `web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis` · `web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon`
-
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 2 réussis sur 2. Poste de développement, 23/11/2026 : 2 réussis sur 2.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 3 réussis sur 3. Poste de développement, 23/11/2026 : 3 réussis sur 3.
 
 **Verdict : Conforme.**
 
@@ -1548,6 +1548,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 1. Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».
 2. Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.
 3. En ligne de commande : « python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics ».
+4. Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».
 
 **Résultat attendu.**
 
@@ -1555,12 +1556,13 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - Relu, l'export de la semaine type contient 17 événements, chacun avec son début, sa règle de répétition, son lieu et sa matière ; la semaine des vacances est exclue des séries.
 - Deux exports successifs donnent les mêmes identifiants d'événements.
 - La commande rend le code 0 ; le fichier g1.ics contient 7 événements.
+- Le lien de l'écran donne un agenda en pièce jointe qui ne contient que les séances de cet enseignant.
 
 **Remarque.** Aucun test n'importe le fichier dans un vrai logiciel d'agenda : la relecture par la bibliothèque icalendar en tient lieu.
 
-**Tests automatisés (3).** `echange/test_web.py::test_export_d_emploi_du_temps` · `echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter`
+**Tests automatisés (4).** `echange/test_web.py::test_export_d_emploi_du_temps` · `echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter` · `echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource`
 
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 3 réussis sur 3. Poste de développement, 23/11/2026 : 3 réussis sur 3.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 4 réussis sur 4. Poste de développement, 23/11/2026 : 4 réussis sur 4.
 
 **Verdict : Conforme.**
 
@@ -1580,10 +1582,15 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 
 **Résultat attendu.**
 
+- L'écran porte le bouton « Imprimer » et un titre réservé à l'impression qui nomme la ressource affichée.
 - Un document imprimable qui porte le nom du groupe, le semestre et la version, la grille de la semaine et sa légende.
 - Aucun élément de l'interface : ni onglets, ni boutons, ni champ de recherche, ni bouton de l'assistant.
 
-**Remarque.** Aucun test par HTTP ne peut produire une impression : l'essai est manuel.
+**Remarque.** Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel.
+
+**Tests automatisés (1).** `echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource`
+
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 1 réussis sur 1. Poste de développement, 23/11/2026 : 1 réussis sur 1.
 
 **Essai manuel du 23/11/2026.** Impression en PDF par le navigateur Chrome, format A4, de l'emploi du temps du groupe A3-G1 en semaine type, sur l'application en version 1.0.0 en service (établissement fictif « moyen »).
 
@@ -1611,6 +1618,7 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 2. En ligne de commande : « python -m edt gabarit --sortie gabarit.xlsx ».
 3. Réimporter le classeur exporté, sans le modifier, et cliquer sur « Simuler l'import ».
 4. En ligne de commande : « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».
+5. Appliquer deux fois de suite, par l'écran « Import », le classeur des données exporté.
 
 **Résultat attendu.**
 
@@ -1618,45 +1626,71 @@ identifiants des tests sont relatifs au dossier `tests/integration/` ; la forme
 - La commande « gabarit » rend le code 0 ; le classeur commence par les feuilles annees, semestres et campus, toutes vides.
 - La simulation dit « Rien à appliquer » et que l'établissement « a déjà ces données », sans conseiller de « Corriger les fichiers ».
 - La simulation en ligne de commande rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».
+- Après chaque application, les vingt tables des données de l'établissement gardent leur nombre de lignes, et le bilan ne donne que des lignes « inchangé ».
 
-**Remarque.** Dans la même base, le réimport n'est vérifié qu'en simulation (section 7).
+**Tests automatisés (5).** `echange/test_web.py::test_page_et_telechargements_d_export` · `echange/test_commandes.py::test_gabarit` · `echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger` · `echange/test_commandes.py::test_exporter_puis_simuler_le_reimport` · `echange/test_recette_echanges.py::test_export_complet_reimporte_deux_fois_par_l_ecran_sans_doublon`
 
-**Tests automatisés (4).** `echange/test_web.py::test_page_et_telechargements_d_export` · `echange/test_commandes.py::test_gabarit` · `echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger` · `echange/test_commandes.py::test_exporter_puis_simuler_le_reimport`
-
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 4 réussis sur 4. Poste de développement, 23/11/2026 : 4 réussis sur 4.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 5 réussis sur 5. Poste de développement, 23/11/2026 : 5 réussis sur 5.
 
 **Verdict : Conforme.**
 
-#### REC-U13-2. Importer un emploi du temps existant comme référence
+#### REC-U13-2. Importer un emploi du temps existant : référence, séances verrouillées, séances à replacer
 
 *Fonctionnalités : U13 Échanges de fichiers complets ; U7 Historique et versions.*
 
-**Objectif.** Montrer qu'un emploi du temps existant, fourni en tableau de séances, s'importe comme version de référence d'un semestre, avec sa semaine type reconstituée, et qu'un semestre invalide est refusé sans rien créer.
+**Objectif.** Montrer qu'un emploi du temps existant, en tableau de séances ou en agenda iCal, s'importe comme référence, comme séances verrouillées ou comme séances à replacer, et qu'un semestre invalide est refusé sans rien créer.
 
 **Conditions de départ.** Jeu minimal (semestre 1 de 2026-2027), aucune version. Fichier fictif seances_existantes.csv : séances datées, dont une séance annulée, une déplacée et une d'un groupe inconnu.
 
 **Étapes.**
 
-1. Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier, puis appliquer.
-2. En ligne de commande : « python -m edt importer seances_existantes.csv --mode reference --semestre <n> ».
-3. Simuler le même import avec un semestre de vingt chiffres, puis le semestre -7.
+1. Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier seances_existantes.csv, puis appliquer ; de même en ligne de commande.
+2. Exporter une version vers un agenda, puis réimporter le fichier iCal comme référence.
+3. Réimporter la semaine type exportée en séances verrouillées, puis l'agenda en séances à replacer.
+4. Simuler un import avec un semestre de vingt chiffres, puis le semestre -7.
 
 **Résultat attendu.**
 
-- Les champs du semestre et de la semaine type n'apparaissent que pour un emploi du temps existant.
-- « Version d'emploi du temps créée » et « Semaine type de A1 … » ; une version existe en base.
-- La commande annonce la version créée et rend le code 1, car la séance du groupe inconnu est mise de côté.
+- « Version d'emploi du temps créée » et « Semaine type de A1 … » ; la commande rend le code 1, car la séance d'un groupe inconnu est mise de côté.
+- L'agenda réimporté donne une version de référence, non active, aux mêmes créneaux et salles, avec ses séances datées ; la version active ne change pas.
+- En séances verrouillées, la nouvelle version devient active, chaque séance à sa place et verrouillée ; en séances à replacer, seuls les besoins sont repris, sans version.
 - Semestre de vingt chiffres : « Nombre hors limites » ; semestre -7 : « Le semestre -7 n'existe pas » ; aucune version créée.
 
-**Remarque.** Seul le mode « référence » est exercé, depuis un fichier CSV (section 7).
+**Remarque.** Réimporté dans la même base, un emploi du temps recrée en double ses besoins ponctuels : anomalie ouverte ANO-21 (section 6). Les tests ne figent ni ce défaut ni sa correction.
 
-**Tests automatisés (3).** `echange/test_web.py::test_import_d_emploi_du_temps_par_le_web` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter` · `echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible`
+**Tests automatisés (6).** `echange/test_web.py::test_import_d_emploi_du_temps_par_le_web` · `echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter` · `echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible` · `echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference` · `echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran` · `echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins`
 
-**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 3 réussis sur 3. Poste de développement, 23/11/2026 : 3 réussis sur 3.
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 6 réussis sur 6. Poste de développement, 23/11/2026 : 6 réussis sur 6.
 
 **Verdict : Conforme.**
 
 ### 4.4 Fonctionnalités optionnelles réalisées
+
+#### REC-P1-1. Pages prévues pour un petit écran
+
+*Fonctionnalité : P1 Consultation sur téléphone.*
+
+**Objectif.** Montrer que les pages principales déclarent leur adaptation à la largeur de l'écran et que les feuilles de style servies contiennent les règles pour petits écrans.
+
+**Conditions de départ.** Jeu minimal et une version saisie à la main ; pages lues par HTTP.
+
+**Étapes.**
+
+1. Ouvrir l'accueil, les six onglets, « Salles » et « Enseignants » ; lire l'en-tête de chaque page.
+2. Lire les feuilles de style servies par l'application.
+
+**Résultat attendu.**
+
+- Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.
+- La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).
+
+**Remarque.** Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2.
+
+**Tests automatisés (3).** `web_edt/test_recette_affichage.py::test_ecrans_prevus_pour_un_telephone` · `socle/test_recette_petit_ecran.py::test_pages_principales_adaptees_a_la_largeur_du_telephone` · `socle/test_recette_petit_ecran.py::test_regles_pour_petits_ecrans_servies_et_elements_presents`
+
+**Résultat obtenu.** Serveur de démonstration, 23/11/2026 : 3 réussis sur 3. Poste de développement, 23/11/2026 : 3 réussis sur 3.
+
+**Verdict : Conforme.**
 
 #### REC-P1-2. Consulter l'application sur un écran de téléphone
 
@@ -2156,7 +2190,7 @@ du livret 1 et les fiches qui l'illustrent.
 | O5 | Générer l'emploi du temps d'un semestre | REC-BOUT-1, REC-BOUT-2, REC-BOUT-4, REC-BOUT-5, REC-BOUT-6, REC-O5-1, REC-O5-2, REC-O5-3 | 18 | Conforme |
 | O6 | Être prévenu quand c'est impossible | REC-O6-1, REC-O6-2, REC-U1-2 | 19 | Conforme |
 | O7 | Consulter l'emploi du temps | REC-BOUT-1, REC-O7-1, REC-O7-2, REC-U4-1 | 29 | Conforme |
-| O8 | Modifier une séance | REC-O8-1, REC-O8-2, REC-U9-1 | 13 | Conforme |
+| O8 | Modifier une séance | REC-O8-1, REC-O8-2, REC-U9-1 | 17 | Conforme |
 | O9 | Importer des données | REC-BOUT-3, REC-O9-1, REC-O9-2 | 16 | Conforme |
 | O10 | Exporter l'emploi du temps | REC-BOUT-1, REC-BOUT-2, REC-O10-1, REC-O10-2 | 15 | Conforme |
 | O11 | Charger un établissement fictif | REC-BOUT-6, REC-O11-1, REC-O11-2 | 17 | Conforme |
@@ -2166,14 +2200,14 @@ du livret 1 et les fiches qui l'illustrent.
 | U4 | Pause déjeuner réglable | REC-U4-1 | 12 | Conforme |
 | U5 | Emploi du temps plus confortable | REC-U5-1 | 5 | Conforme |
 | U6 | Suivre et piloter un calcul | REC-U6-1, REC-U6-2, REC-EXP-6 | 21 | Conforme |
-| U7 | Historique et versions | REC-BOUT-1, REC-U7-1, REC-U13-2 | 9 | Conforme |
+| U7 | Historique et versions | REC-BOUT-1, REC-U7-1, REC-U13-2 | 12 | Conforme |
 | U8 | Vues semaine type, semaine datée et jour | REC-O7-2, REC-U8-1, REC-U9-2 | 20 | Conforme |
-| U9 | Retouches et verrous | REC-BOUT-5, REC-U9-1, REC-U9-2 | 11 | Conforme |
+| U9 | Retouches et verrous | REC-BOUT-5, REC-U9-1, REC-U9-2 | 13 | Conforme |
 | U10 | Points à traiter | REC-U10-1 | 9 | Conforme |
-| U11 | Tableau de bord | REC-O5-1, REC-U5-1, REC-U11-1, REC-U11-2, REC-EXP-5 | 32 | Conforme |
-| U12 | Agenda et impression | REC-BOUT-1, REC-O10-2, REC-U12-1, REC-U12-2 | 12 | Conforme |
-| U13 | Échanges de fichiers complets | REC-BOUT-3, REC-O9-1, REC-O9-2, REC-U13-1, REC-U13-2 | 23 | Conforme |
-| P1 | Consultation sur téléphone | REC-P1-2 | 0 | Conforme |
+| U11 | Tableau de bord | REC-O5-1, REC-U5-1, REC-U11-1, REC-U11-2, REC-EXP-5 | 33 | Conforme |
+| U12 | Agenda et impression | REC-BOUT-1, REC-O10-2, REC-U12-1, REC-U12-2 | 13 | Conforme |
+| U13 | Échanges de fichiers complets | REC-BOUT-3, REC-O9-1, REC-O9-2, REC-U13-1, REC-U13-2 | 27 | Conforme |
+| P1 | Consultation sur téléphone | REC-P1-1, REC-P1-2 | 3 | Conforme |
 | P2 | Commandes pour un administrateur | REC-BOUT-2, REC-O11-1, REC-P2-1, REC-P2-2, REC-P4-3, REC-EXP-1, REC-EXP-2, REC-EXP-3, REC-EXP-4, REC-EXP-7 | 70 | Conforme |
 | P3 | Assistant conversationnel | REC-P3-1, REC-P3-2, REC-P3-3, REC-EXP-8 | 39 | Conforme |
 | P4 | Tests du logiciel lancés depuis l'application | REC-P4-1, REC-P4-2, REC-P4-3 | 21 | Conforme |
@@ -2214,9 +2248,9 @@ Chaque fonctionnalité réalisée du livret 1 a au moins une fiche.
 
 <!-- recette-bilan : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-- Serveur de démonstration, 23/11/2026 : 529 tests d'intégration exécutés, 529 réussis, 0 échec, 0 ignorés.
-- Poste de développement, 23/11/2026 : 529 tests d'intégration exécutés, 527 réussis, 0 échec, 2 ignorés.
-- 67 fiches : 67 « Conforme », 0 « Non conforme », 0 « Non exécutée ».
+- Serveur de démonstration, 23/11/2026 : 542 tests d'intégration exécutés, 542 réussis, 0 échec, 0 ignorés.
+- Poste de développement, 23/11/2026 : 542 tests d'intégration exécutés, 540 réussis, 0 échec, 2 ignorés.
+- 68 fiches : 68 « Conforme », 0 « Non conforme », 0 « Non exécutée ».
 - 28 fonctionnalités réalisées sur 28 ont au moins une fiche ; 0 est déclarée sans fiche (section 7).
 
 <!-- recette-bilan : fin de la partie générée -->
@@ -2235,7 +2269,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_commande.py** : Commande `python -m edt assistant` : état, essai et question, avec le faux client | 8 | 8 | 8/8, 1 s | 8/8, 2 s | Conforme |
+| **test_commande.py** : Commande `python -m edt assistant` : état, essai et question, avec le faux client | 8 | 8 | 8/8, 1 s | 8/8, 1 s | Conforme |
 | **test_panneau.py** : Panneau Assistant sur toutes les pages : non configuré, désactivé, prêt à charger | 5 | 3 | 5/5, 2 s | 5/5, 1 s | Conforme |
 | **test_web.py** : Panneau Assistant par HTTP, avec le faux client : question, proposition, limites, gardes | 18 | 15 | 18/18, 3 s | 18/18, 3 s | Conforme |
 
@@ -2245,54 +2279,56 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 |---|---:|---:|---|---|---|
 | **test_commande.py** : Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 4 | 4 | 4/4, 4 s | 4/4, 3 s | Conforme |
 | **test_ecrans.py** : Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 | 10 | 11/11, 6 s | 11/11, 5 s | Conforme |
-| **test_execution.py** : Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 | 7/7, 8 s | 7/7, 7 s | Conforme |
+| **test_execution.py** : Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 | 7/7, 8 s | 7/7, 8 s | Conforme |
 
 #### `echange` : Import et export par le site et la ligne de commande
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_bornes.py** : Fichiers hostiles envoyés au site, pages bornées | 6 | 6 | 6/6, 3 s | 6/6, 2 s | Conforme |
+| **test_bornes.py** : Fichiers hostiles envoyés au site, pages bornées | 6 | 6 | 6/6, 3 s | 6/6, 1 s | Conforme |
 | **test_commandes.py** : Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 | 8 | 8/8, 2 s | 8/8, 1 s | Conforme |
 | **test_export_edt.py** : Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 | 5 | 5/5, 2 s | 5/5, 1 s | Conforme |
-| **test_web.py** : Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 | 16 | 16/16, 6 s | 16/16, 4 s | Conforme |
+| **test_recette_echanges.py** : Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 | 5 | 5/5, 3 s | 5/5, 1 s | Conforme |
+| **test_web.py** : Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 | 16 | 16/16, 6 s | 16/16, 3 s | Conforme |
 
 #### `exploitation` : Contrats du déploiement
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_commandes_exploitation.py** : Commandes et service : `init-db` relançable, codes de sortie, sauvegardes | 19 | 17 | 19/19, 5 s | 19/19, 3 s | Conforme |
-| **test_scripts_deploiement.py** : Scripts de déploiement exécutés hors du serveur : bash -n, fonctions extraites, awk, Python | 13 | 13 | 13/13, 0 s | 11/13, 4 s, 2 ignorés | Conforme |
+| **test_commandes_exploitation.py** : Commandes et service : `init-db` relançable, codes de sortie, sauvegardes | 19 | 17 | 19/19, 4 s | 19/19, 3 s | Conforme |
+| **test_scripts_deploiement.py** : Scripts de déploiement exécutés hors du serveur : bash -n, fonctions extraites, awk, Python | 13 | 13 | 13/13, 0 s | 11/13, 2 s, 2 ignorés | Conforme |
 
 #### `parcours` : Scénarios de bout en bout
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_aller_retour_donnees.py** : Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
-| **test_jeu_fictif_realiste.py** : Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 2 s | Conforme |
-| **test_parcours_ligne_de_commande.py** : Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 | 1 | 1/1, 1 s | 1/1, 2 s | Conforme |
-| **test_parcours_web.py** : Scénario a : parcours complet d'un utilisateur dans l'application web | 1 | 1 | 1/1, 1 s | 1/1, 2 s | Conforme |
-| **test_regle_personnalisee.py** : Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 | 1 | 1/1, 0 s | 1/1, 1 s | Conforme |
-| **test_retouche_manuelle.py** : Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 0 s | 1/1, 1 s | Conforme |
+| **test_aller_retour_donnees.py** : Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_jeu_fictif_realiste.py** : Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_parcours_ligne_de_commande.py** : Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_parcours_web.py** : Scénario a : parcours complet d'un utilisateur dans l'application web | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_regle_personnalisee.py** : Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_retouche_manuelle.py** : Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
 
 #### `socle` : Commandes et application web du socle
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 21 | 20 | 21/21, 6 s | 21/21, 12 s | Conforme |
-| **test_config.py** : Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 | 2 | 2/2, 0 s | 2/2, 1 s | Conforme |
-| **test_generation.py** : Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 | 9 | 12/12, 6 s | 12/12, 13 s | Conforme |
-| **test_instantane.py** : Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 | 1 | 2/2, 0 s | 2/2, 1 s | Conforme |
+| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 21 | 20 | 21/21, 6 s | 21/21, 4 s | Conforme |
+| **test_config.py** : Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 | 2 | 2/2, 0 s | 2/2, 0 s | Conforme |
+| **test_generation.py** : Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 | 9 | 12/12, 6 s | 12/12, 3 s | Conforme |
+| **test_instantane.py** : Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 | 1 | 2/2, 0 s | 2/2, 0 s | Conforme |
 | **test_journal.py** : Journalisation vue par la ligne de commande : fichier journal non ouvrable, signalé par doctor | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
 | **test_moteur.py** : Moteur de base vu par la ligne de commande : URL de base refusées avec une erreur de configuration | 2 | 2 | 2/2, 0 s | 2/2, 0 s | Conforme |
 | **test_parametres.py** : Paramètres globaux vus par l'application web : l'écran reste ouvrable avec une valeur corrompue | 1 | 0 | 1/1, 0 s | 1/1, 0 s | Conforme |
-| **test_schema.py** : Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 | 9 | 9/9, 2 s | 9/9, 3 s | Conforme |
-| **test_web.py** : Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension | 27 | 22 | 27/27, 8 s | 27/27, 17 s | Conforme |
+| **test_recette_petit_ecran.py** : Recette de la consultation sur téléphone : ce qu'un test par HTTP peut prouver | 2 | 2 | 2/2, 2 s | 2/2, 1 s | Conforme |
+| **test_schema.py** : Schéma périmé vu par les interfaces : init-db, verifier-schema, doctor, jeu-minimal et /sante | 9 | 9 | 9/9, 2 s | 9/9, 1 s | Conforme |
+| **test_web.py** : Application web : accueil, santé, démarrage, erreurs lisibles, mécanisme d'extension | 27 | 22 | 27/27, 8 s | 27/27, 5 s | Conforme |
 
 #### `solveur` : Calculs complets et commandes du solveur
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_niveaux.py** : Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 | 3 | 6/6, 2 s | 6/6, 5 s | Conforme |
+| **test_niveaux.py** : Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 | 3 | 6/6, 3 s | 6/6, 1 s | Conforme |
 | **test_regles.py** : Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 | 1 | 3/3, 2 s | 3/3, 1 s | Conforme |
 | **test_services.py** : Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 | 22 | 44/45, 21 s | 44/45, 12 s | Conforme (1 charge) |
 
@@ -2300,7 +2336,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_cas_limites.py** : Une graine ou une année refusée ne vide jamais la base | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
+| **test_cas_limites.py** : Une graine ou une année refusée ne vide jamais la base | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 | **test_commande.py** : Commande `python -m edt jeu` (service `edt.services.jeux` par la ligne de commande) | 5 | 5 | 5/5, 2 s | 5/5, 1 s | Conforme |
 
 #### `verification` : Commande du vérificateur
@@ -2314,34 +2350,38 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_besoins.py** : Écran des besoins : trois modes de volume, filtres, duplication, charge hebdomadaire | 9 | 8 | 9/9, 2 s | 9/9, 1 s | Conforme |
-| **test_cas_limites.py** : Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 12 | 4 | 12/12, 8 s | 12/12, 4 s | Conforme |
+| **test_cas_limites.py** : Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 12 | 4 | 12/12, 7 s | 12/12, 4 s | Conforme |
 | **test_concurrence.py** : Un seul chargement de jeu fictif ou une seule remise à zéro à la fois | 3 | 1 | 3/3, 1 s | 3/3, 0 s | Conforme |
 | **test_entites.py** : Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 | 5 | 7/7, 5 s | 7/7, 3 s | Conforme |
 | **test_generique.py** : Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 | 7 | 9/9, 3 s | 9/9, 1 s | Conforme |
-| **test_jeux.py** : Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 9 | 8 | 8/9, 4 s | 8/9, 2 s | Conforme (1 charge) |
+| **test_jeux.py** : Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 9 | 8 | 8/9, 3 s | 8/9, 2 s | Conforme (1 charge) |
 | **test_mise_en_page.py** : Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau de l'assistant, aucune annonce | 6 | 0 | 6/6, 2 s | 6/6, 1 s | Conforme |
-| **test_parametres.py** : Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 | 3 | 11/11, 2 s | 11/11, 2 s | Conforme |
+| **test_parametres.py** : Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 | 3 | 11/11, 3 s | 11/11, 2 s | Conforme |
 | **test_performance.py** : Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 | 0 | 0/2, 0 s | 0/2, 0 s | Charge, lancé à part |
 | **test_regles.py** : Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 30 | 18 | 30/30, 11 s | 30/30, 6 s | Conforme |
-| **test_saisies_extremes.py** : Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 | 7 | 14/14, 4 s | 14/14, 3 s | Conforme |
-| **test_sans_trace.py** : Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 | 0 | 2/2, 2 s | 2/2, 1 s | Conforme |
-| **test_suppression.py** : Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 | 5 | 13/13, 5 s | 13/13, 3 s | Conforme |
+| **test_saisies_extremes.py** : Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 | 7 | 14/14, 4 s | 14/14, 10 s | Conforme |
+| **test_sans_trace.py** : Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 | 0 | 2/2, 1 s | 2/2, 4 s | Conforme |
+| **test_suppression.py** : Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 | 5 | 13/13, 5 s | 13/13, 9 s | Conforme |
 
 #### `web_edt` : Écrans Générer et emploi du temps, par HTTP
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 3 s | 6/6, 1 s | Conforme |
-| **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 3 s | Conforme |
-| **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 15 s | 26/26, 22 s | Conforme |
-| **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 28 s | 25/25, 17 s | Conforme |
-| **test_dejeuner.py** : Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 | 8 | 8/8, 3 s | 8/8, 2 s | Conforme |
-| **test_deplacement_possible.py** : Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 4 | 4 | 4/4, 45 s | 4/4, 58 s | Conforme |
-| **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 20 s | 20/20, 42 s | Conforme |
-| **test_niveaux_web.py** : Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 | 6 | 11/11, 5 s | 11/11, 11 s | Conforme |
+| **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 2 s | 6/6, 6 s | Conforme |
+| **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 5 s | Conforme |
+| **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 15 s | 26/26, 9 s | Conforme |
+| **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 28 s | 25/25, 16 s | Conforme |
+| **test_dejeuner.py** : Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 | 8 | 8/8, 4 s | 8/8, 2 s | Conforme |
+| **test_deplacement_possible.py** : Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 4 | 4 | 4/4, 45 s | 4/4, 22 s | Conforme |
+| **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 20 s | 20/20, 11 s | Conforme |
+| **test_niveaux_web.py** : Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 | 6 | 11/11, 5 s | 11/11, 3 s | Conforme |
 | **test_raccords.py** : Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 | 1 | 1/1, 0 s | 1/1, 1 s | Conforme |
-| **test_regles_web.py** : Règles personnalisées sur les écrans de l'emploi du temps : Générer, suivi, grille, anomalies | 13 | 7 | 13/13, 7 s | 13/13, 16 s | Conforme |
-| **test_revue.py** : Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 | 7 | 12/12, 6 s | 12/12, 14 s | Conforme |
+| **test_recette_affichage.py** : Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_recette_deplacement.py** : Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 | 2 | 2/2, 1 s | 2/2, 1 s | Conforme |
+| **test_recette_resultat.py** : Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_recette_verrous.py** : Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 | 2 | 2/2, 2 s | 2/2, 1 s | Conforme |
+| **test_regles_web.py** : Règles personnalisées sur les écrans de l'emploi du temps : Générer, suivi, grille, anomalies | 13 | 7 | 13/13, 8 s | 13/13, 4 s | Conforme |
+| **test_revue.py** : Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 | 7 | 12/12, 7 s | 12/12, 4 s | Conforme |
 
 <!-- recette-annexe-a : fin de la partie générée -->
 

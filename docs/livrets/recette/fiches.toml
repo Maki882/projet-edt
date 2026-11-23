@@ -508,17 +508,20 @@ etapes = [
   "Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».",
   "Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.",
   "En ligne de commande : « python -m edt exporter-edt --version 1 --format ics --couche date --groupe A1-G1 --sortie g1.ics ».",
+  "Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».",
 ]
 attendu = [
   "Le fichier est de type text/calendar, commence par BEGIN:VCALENDAR et déclare le fuseau Europe/Paris.",
   "Relu, l'export de la semaine type contient 17 événements, chacun avec son début, sa règle de répétition, son lieu et sa matière ; la semaine des vacances est exclue des séries.",
   "Deux exports successifs donnent les mêmes identifiants d'événements.",
   "La commande rend le code 0 ; le fichier g1.ics contient 7 événements.",
+  "Le lien de l'écran donne un agenda en pièce jointe qui ne contient que les séances de cet enseignant.",
 ]
 tests = [
   "tests/integration/echange/test_web.py::test_export_d_emploi_du_temps",
   "tests/integration/echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar",
   "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter",
+  "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource",
 ]
 remarque = "Aucun test n'importe le fichier dans un vrai logiciel d'agenda : la relecture par la bibliothèque icalendar en tient lieu."
 
@@ -534,44 +537,50 @@ etapes = [
   "En ligne de commande : « python -m edt gabarit --sortie gabarit.xlsx ».",
   "Réimporter le classeur exporté, sans le modifier, et cliquer sur « Simuler l'import ».",
   "En ligne de commande : « python -m edt exporter-donnees --format zip », puis « python -m edt importer <archive> --simuler ».",
+  "Appliquer deux fois de suite, par l'écran « Import », le classeur des données exporté.",
 ]
 attendu = [
   "Chaque bouton télécharge un classeur Excel ou une archive ZIP en pièce jointe ; un format non proposé est refusé.",
   "La commande « gabarit » rend le code 0 ; le classeur commence par les feuilles annees, semestres et campus, toutes vides.",
   "La simulation dit « Rien à appliquer » et que l'établissement « a déjà ces données », sans conseiller de « Corriger les fichiers ».",
   "La simulation en ligne de commande rend le code 0, dit que « rien n'a été écrit » et « salles : 6 inchangés ».",
+  "Après chaque application, les vingt tables des données de l'établissement gardent leur nombre de lignes, et le bilan ne donne que des lignes « inchangé ».",
 ]
 tests = [
   "tests/integration/echange/test_web.py::test_page_et_telechargements_d_export",
   "tests/integration/echange/test_commandes.py::test_gabarit",
   "tests/integration/echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger",
   "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport",
+  "tests/integration/echange/test_recette_echanges.py::test_export_complet_reimporte_deux_fois_par_l_ecran_sans_doublon",
 ]
-remarque = "Dans la même base, le réimport n'est vérifié qu'en simulation (section 7)."
 
 [[fiche]]
 id = "REC-U13-2"
-titre = "Importer un emploi du temps existant comme référence"
+titre = "Importer un emploi du temps existant : référence, séances verrouillées, séances à replacer"
 fonctionnalites = ["U13", "U7"]
-objectif = "Montrer qu'un emploi du temps existant, fourni en tableau de séances, s'importe comme version de référence d'un semestre, avec sa semaine type reconstituée, et qu'un semestre invalide est refusé sans rien créer."
+objectif = "Montrer qu'un emploi du temps existant, en tableau de séances ou en agenda iCal, s'importe comme référence, comme séances verrouillées ou comme séances à replacer, et qu'un semestre invalide est refusé sans rien créer."
 depart = "Jeu minimal (semestre 1 de 2026-2027), aucune version. Fichier fictif seances_existantes.csv : séances datées, dont une séance annulée, une déplacée et une d'un groupe inconnu."
 etapes = [
-  "Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier, puis appliquer.",
-  "En ligne de commande : « python -m edt importer seances_existantes.csv --mode reference --semestre <n> ».",
-  "Simuler le même import avec un semestre de vingt chiffres, puis le semestre -7.",
+  "Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier seances_existantes.csv, puis appliquer ; de même en ligne de commande.",
+  "Exporter une version vers un agenda, puis réimporter le fichier iCal comme référence.",
+  "Réimporter la semaine type exportée en séances verrouillées, puis l'agenda en séances à replacer.",
+  "Simuler un import avec un semestre de vingt chiffres, puis le semestre -7.",
 ]
 attendu = [
-  "Les champs du semestre et de la semaine type n'apparaissent que pour un emploi du temps existant.",
-  "« Version d'emploi du temps créée » et « Semaine type de A1 … » ; une version existe en base.",
-  "La commande annonce la version créée et rend le code 1, car la séance du groupe inconnu est mise de côté.",
+  "« Version d'emploi du temps créée » et « Semaine type de A1 … » ; la commande rend le code 1, car la séance d'un groupe inconnu est mise de côté.",
+  "L'agenda réimporté donne une version de référence, non active, aux mêmes créneaux et salles, avec ses séances datées ; la version active ne change pas.",
+  "En séances verrouillées, la nouvelle version devient active, chaque séance à sa place et verrouillée ; en séances à replacer, seuls les besoins sont repris, sans version.",
   "Semestre de vingt chiffres : « Nombre hors limites » ; semestre -7 : « Le semestre -7 n'existe pas » ; aucune version créée.",
 ]
 tests = [
   "tests/integration/echange/test_web.py::test_import_d_emploi_du_temps_par_le_web",
   "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter",
   "tests/integration/echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible",
+  "tests/integration/echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference",
+  "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran",
+  "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins",
 ]
-remarque = "Seul le mode « référence » est exercé, depuis un fichier CSV (section 7)."
+remarque = "Réimporté dans la même base, un emploi du temps recrée en double ses besoins ponctuels : anomalie ouverte ANO-21 (section 6). Les tests ne figent ni ce défaut ni sa correction."
 
 # =========================================================================================
 # O5, O6, U1, U5, U6, U7 : le calcul
@@ -1134,7 +1143,7 @@ tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants",
   "tests/integration/web_edt/test_emploi_du_temps.py::test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants",
 ]
-remarque = "Le test vérifie qu'une classe de couleur est posée sur chaque séance, pas le rendu visuel ; le rendu sur un petit écran est l'objet de l'essai manuel REC-P1-1."
+remarque = "Le test vérifie qu'une classe de couleur est posée sur chaque séance, pas le rendu visuel ; le rendu sur un petit écran est l'objet de l'essai manuel REC-P1-2."
 
 [[fiche]]
 id = "REC-O7-2"
@@ -1181,6 +1190,7 @@ attendu = [
   "Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.",
   "Le déplacement est accepté et la base contient le jour, le début et la salle choisis ; sur les deux versions, chaque heure annoncée possible s'enregistre.",
   "Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.",
+  "Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».",
 ]
 tests = [
   "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit",
@@ -1189,6 +1199,7 @@ tests = [
   "tests/integration/web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur",
   "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou",
   "tests/integration/web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord",
+  "tests/integration/web_edt/test_recette_deplacement.py::test_heure_acceptee_avec_un_avertissement_annoncee_et_enregistree",
 ]
 remarque = "Le test rejoue par HTTP le rechargement du formulaire que le navigateur fait à chaque changement de jour ou d'heure."
 
@@ -1210,6 +1221,7 @@ attendu = [
   "Salle occupée : refus avec la règle « Une séance par salle ».",
   "Saisie impossible : refus avec « n'est pas un début de créneau » ou « Jour invalide », sans trace technique.",
   "Jour impossible : le formulaire reste lisible, dit qu'aucun début de créneau ne convient et garde le jour actuel.",
+  "Jour où toutes les heures sont refusées : « Aucune heure possible le mardi avec les salles proposées : essayer un autre jour », avec la règle la plus souvent en cause.",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe",
@@ -1218,6 +1230,7 @@ tests = [
   "tests/integration/web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant",
   "tests/integration/web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible",
   "tests/integration/web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee",
+  "tests/integration/web_edt/test_recette_deplacement.py::test_jour_sans_aucune_heure_possible_dit_quoi_faire",
 ]
 
 [[fiche]]
@@ -1245,27 +1258,29 @@ tests = [
 
 [[fiche]]
 id = "REC-U9-1"
-titre = "Verrouiller une séance : marque dans la grille, place gardée au calcul suivant"
+titre = "Verrouiller et déverrouiller une séance ; place gardée au calcul suivant"
 fonctionnalites = ["U9", "O8"]
 cas = [3]
-objectif = "Montrer qu'une séance verrouillée est enregistrée comme telle, marquée dans la grille, et que les calculs suivants la laissent à sa place."
-depart = "Jeu minimal et une version active calculée ; pour le calcul suivant, des séances verrouillées en base par le test."
+objectif = "Montrer qu'une séance se verrouille et se déverrouille depuis son panneau, que le verrou est marqué dans la grille, et que le calcul suivant, lancé depuis « Générer », la laisse à sa place."
+depart = "Jeu minimal et une version saisie à la main (identique sur toutes les machines), puis une version calculée par le vrai moteur."
 etapes = [
-  "Ouvrir le panneau du cours magistral de mathématiques de A1 et cliquer sur « Verrouiller à cette place ».",
-  "Afficher l'emploi du temps de la salle de cette séance.",
-  "Lancer un nouveau calcul du semestre, avec puis sans la règle « Séances verrouillées ».",
+  "Ouvrir le panneau d'une séance et cliquer sur « Verrouiller à cette place » ; cliquer une seconde fois.",
+  "Afficher la grille ; lancer un nouveau calcul du semestre depuis « Générer ».",
+  "Ouvrir de nouveau le panneau et cliquer sur « Déverrouiller ».",
 ]
 attendu = [
-  "La séance est enregistrée verrouillée et la grille porte la marque « Séance verrouillée ».",
-  "Avec la règle active, chaque séance verrouillée garde son jour, son début, sa fin et sa salle, et reste verrouillée.",
-  "Règle décochée, une séance que le moteur déplace n'est plus marquée verrouillée.",
+  "« Séance verrouillée : les prochains calculs la laisseront à sa place. » ; le panneau propose « Déverrouiller » ; un second clic répond « La séance était déjà verrouillée. ».",
+  "La grille porte la marque « Séance verrouillée » ; dans la nouvelle version, la séance garde son jour, son début, sa fin et sa salle, reste verrouillée, et c'est la seule.",
+  "Après « Déverrouiller », la place est dite « Libre : un nouveau calcul peut la déplacer » et le verrou est retiré.",
+  "Règle « Séances verrouillées » décochée au calcul, une séance que le moteur déplace n'est plus marquée verrouillée.",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou",
   "tests/integration/solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee",
   "tests/integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine",
+  "tests/integration/web_edt/test_recette_verrous.py::test_verrouiller_puis_deverrouiller_une_seance_depuis_son_panneau",
+  "tests/integration/web_edt/test_recette_verrous.py::test_verrou_pose_par_le_site_tenu_par_le_calcul_suivant",
 ]
-remarque = "Le bouton « Déverrouiller » n'est vérifié par aucun test à cette passe (section 7)."
 
 [[fiche]]
 id = "REC-U9-2"
@@ -1362,10 +1377,10 @@ tests = [
 
 [[fiche]]
 id = "REC-U11-2"
-titre = "Résultat d'un calcul : compteurs des séances et bilan de qualité"
+titre = "Résultat d'un calcul : compteurs des séances, indicateurs et bilan de qualité"
 fonctionnalites = ["U11"]
 cas = [1]
-objectif = "Montrer que la page de résultat d'un calcul réussi donne les nombres de séances placées, datées et replacées, et le bilan de qualité du moteur."
+objectif = "Montrer que la page de résultat d'un calcul réussi donne les nombres de séances placées, datées et replacées, les indicateurs de qualité du vérificateur et le bilan du moteur."
 depart = "Jeu minimal, aucun calcul."
 etapes = [
   "Lancer un calcul depuis « Générer » et lire les compteurs du résultat.",
@@ -1374,12 +1389,13 @@ etapes = [
 attendu = [
   "La page affiche « Emploi du temps généré », les « séances placées dans la semaine type », les « séances datées sur le semestre » et les séances replacées, égaux aux nombres enregistrés avec le calcul.",
   "Avec l'amélioration, la page affiche le « Bilan sur l'ensemble du semestre », sans répéter les compteurs.",
+  "Sous « Qualité de l'emploi du temps », la page affiche « des séances placées », « conflits (règles non respectées) », « d'utilisation des salles » et « changements de campus », égaux aux valeurs que le vérificateur rend pour la même version.",
 ]
 tests = [
   "tests/integration/web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis",
   "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon",
+  "tests/integration/web_edt/test_recette_resultat.py::test_resultat_d_un_calcul_affiche_les_indicateurs_du_verificateur",
 ]
-remarque = "Les indicateurs de qualité affichés sous les compteurs (utilisation des salles, changements de campus) ne sont vérifiés par aucun test d'intégration à cette passe (section 7)."
 
 [[fiche]]
 id = "REC-U12-2"
@@ -1394,11 +1410,14 @@ etapes = [
   "Lire le PDF et y chercher les libellés de l'interface.",
 ]
 attendu = [
+  "L'écran porte le bouton « Imprimer » et un titre réservé à l'impression qui nomme la ressource affichée.",
   "Un document imprimable qui porte le nom du groupe, le semestre et la version, la grille de la semaine et sa légende.",
   "Aucun élément de l'interface : ni onglets, ni boutons, ni champ de recherche, ni bouton de l'assistant.",
 ]
-tests = []
-remarque = "Aucun test par HTTP ne peut produire une impression : l'essai est manuel."
+tests = [
+  "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource",
+]
+remarque = "Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel."
 
 [fiche.essai]
 date = 2026-11-23
@@ -1409,6 +1428,27 @@ reserve = "La boîte d'impression du navigateur elle-même n'est pas exercée : 
 preuves = [
   { image = "images/recette-impression.png", legende = "Emploi du temps du groupe A3-G1 imprimé en PDF (format A4) : en-tête, grille, bande du déjeuner et légende, sans les éléments de l'interface." },
 ]
+
+[[fiche]]
+id = "REC-P1-1"
+titre = "Pages prévues pour un petit écran"
+fonctionnalites = ["P1"]
+objectif = "Montrer que les pages principales déclarent leur adaptation à la largeur de l'écran et que les feuilles de style servies contiennent les règles pour petits écrans."
+depart = "Jeu minimal et une version saisie à la main ; pages lues par HTTP."
+etapes = [
+  "Ouvrir l'accueil, les six onglets, « Salles » et « Enseignants » ; lire l'en-tête de chaque page.",
+  "Lire les feuilles de style servies par l'application.",
+]
+attendu = [
+  "Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.",
+  "La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).",
+]
+tests = [
+  "tests/integration/web_edt/test_recette_affichage.py::test_ecrans_prevus_pour_un_telephone",
+  "tests/integration/socle/test_recette_petit_ecran.py::test_pages_principales_adaptees_a_la_largeur_du_telephone",
+  "tests/integration/socle/test_recette_petit_ecran.py::test_regles_pour_petits_ecrans_servies_et_elements_presents",
+]
+remarque = "Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2."
 
 [[fiche]]
 id = "REC-P1-2"
