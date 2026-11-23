@@ -785,3 +785,26 @@ def test_arret_tenu_pendant_une_construction_longue(caplog):
     assert not fil.is_alive(), "le moteur n'a pas rendu la main en 60 s"
     assert resultats[0].statut is StatutSolveur.ARRETE, resultats[0].message
     assert ecoule <= MARGE_INTERRUPTION_S, f"arrêt pris en compte {ecoule:.1f} s après la demande"
+
+
+@pytest.mark.cas_limite
+def test_contrainte_desactivee_par_l_utilisateur_reste_signalee_au_journal(caplog):
+    """Cas : calcul ordinaire avec une contrainte désactivée (pause entre deux séances).
+
+    Risque : en faisant taire le journal des essais du diagnostic, on ferait taire aussi
+    l'avertissement d'un vrai calcul, où l'utilisateur doit voir qu'une règle a été ignorée.
+    """
+    f = Fabrique()
+    f.salle()
+    f.besoin([f.groupe()], [f.enseignant()], nombre=2)
+
+    with caplog.at_level(logging.WARNING, logger="edt.solveur.moteur"):
+        resultat = resoudre(f.instantane(), options(contraintes_desactivees={"PAUSE"}))
+
+    assert resultat.statut is StatutSolveur.SOLUTION, resultat.message
+    (avertissement,) = [
+        r
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "à la demande de l'utilisateur" in r.getMessage()
+    ]
+    assert "PAUSE" in avertissement.getMessage()
