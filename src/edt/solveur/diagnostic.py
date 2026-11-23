@@ -17,8 +17,8 @@ calcul : elle cherche ce qui le rend impossible.
 
 Les contraintes qui définissent le problème (une séance par salle, par
 enseignant, par groupe, toutes les séances placées, verrous et jours fermés en
-tant que règles) ne sont jamais candidates : elles restent dans chaque essai et
-le message les rappelle. Les contraintes et règles **souples** restent aussi
+tant que règles) ne sont jamais candidates : elles restent dans chaque essai ;
+la page et la commande les rappellent. Les contraintes et règles **souples** restent aussi
 dans chaque essai, à leur niveau : les retirer n'est pas neutre (une contrainte
 `HORAIRES` ignorée ouvre des débuts hors de la grille, une règle de réglage
 ignorée rend la place au standard, qui peut être plus strict).
@@ -98,12 +98,6 @@ PART_MAX_ESSAI = 1 / 3
 """Part du temps restant qu'un essai de réduction ou de confirmation reçoit au plus (le premier
 essai, lui, peut prendre tout le budget)."""
 
-PHRASE_REGLES_DU_PROBLEME = (
-    "Les règles qui définissent le problème restent toujours en vigueur : une séance à la fois "
-    "par salle, par enseignant et par groupe, toutes les séances placées, verrous et jours fermés "
-    "respectés."
-)
-"""Rappel joint au message : ces règles ne sont jamais candidates, elles s'ajoutent à l'ensemble."""
 
 CONTRAINTES_ELARGISSANTES = frozenset({CodeContrainte.HORAIRES, CodeContrainte.JOURS})
 """Contraintes dont le retrait ouvre des débuts hors de la grille : essayées en dernier."""
@@ -569,21 +563,35 @@ class _Recherche:
                 "Le premier essai, avec toutes les règles et toutes les données, n'a pas abouti "
                 "dans le temps accordé : relancer le diagnostic avec plus de temps."
             )
-        ensemble = f"{nb_regles} règle(s) et {nb_donnees} donnée(s)"
-        if statut is StatutDiagnostic.MINIMAL:
-            return (
-                f"Ces {ensemble} rendent ensemble le calcul impossible, et aucune ne peut être "
-                f"retirée sans qu'il devienne possible. {PHRASE_REGLES_DU_PROBLEME}"
+        total = nb_regles + nb_donnees
+        if total == 0:
+            constat = (
+                "Aucune règle au choix ni aucune donnée n'est en cause : les règles qui "
+                "définissent le problème suffisent à rendre le calcul impossible"
             )
+        else:
+            parties = [
+                _nombre(n, mot) for n, mot in ((nb_regles, "règle"), (nb_donnees, "donnée")) if n
+            ]
+            verbe = "suffit" if total == 1 else "suffisent ensemble"
+            constat = f"{' et '.join(parties)} {verbe} à rendre le calcul impossible"
+        if statut is StatutDiagnostic.MINIMAL:
+            if total == 0:
+                return f"{constat}."
+            irreductible = (
+                "le retirer rend le calcul possible"
+                if total == 1
+                else "aucun de ces éléments ne peut être retiré sans que le calcul devienne possible"
+            )
+            return f"{constat} ; {irreductible}."
         cause = (
             "le temps accordé est épuisé"
             if budget_epuise
             else "un essai n'a pas abouti dans le temps qui lui restait"
         )
         return (
-            f"Ces {ensemble} rendent ensemble le calcul impossible, mais l'ensemble n'est peut-être "
-            f"pas le plus réduit : {cause}. Relancer le diagnostic avec plus de temps pour "
-            f"l'affiner. {PHRASE_REGLES_DU_PROBLEME}"
+            f"{constat}, mais l'ensemble n'est peut-être pas le plus réduit : {cause}. Relancer "
+            "le diagnostic avec plus de temps pour l'affiner."
         )
 
     def _element(self, element: _Element) -> ElementEnCause:
@@ -600,7 +608,9 @@ class _Recherche:
             besoin = inst.besoin(cle)
             nombre = sum(1 for s in inst.seances if s.besoin.id == cle)
             return ElementEnCause(
-                "besoin", str(cle), f"Besoin « {besoin.libelle} » ({nombre} séance(s) à placer)"
+                "besoin",
+                str(cle),
+                f"Besoin « {besoin.libelle} » ({_nombre(nombre, 'séance')} à placer)",
             )
         if element.nature == "verrou":
             seance = inst.seance(cle)
@@ -648,6 +658,11 @@ def _verdict(statut: StatutSolveur) -> str:
         StatutSolveur.TEMPS_DEPASSE: "sans conclusion dans le temps de l'essai",
         StatutSolveur.ARRETE: "interrompu",
     }[statut]
+
+
+def _nombre(nombre: int, mot: str) -> str:
+    """« 1 règle », « 6 données » (pluriel en « s », celui des mots de ce module)."""
+    return f"{nombre} {mot}{'s' if nombre > 1 else ''}"
 
 
 def _id(objet: object) -> int:
