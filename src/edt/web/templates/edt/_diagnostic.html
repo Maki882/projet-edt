@@ -17,7 +17,7 @@
   {%- if trouve %}
   <h4>Règles en cause</h4>
   {%- if diagnostic.regles %}
-  <ul class="edt-diagnostic-liste">
+  <ul>
     {%- for element in diagnostic.regles %}
     <li>{{ element.libelle }}</li>
     {%- endfor %}
@@ -27,7 +27,7 @@
   {%- endif %}
   <h4>Données en cause</h4>
   {%- if diagnostic.donnees %}
-  <ul class="edt-diagnostic-liste">
+  <ul>
     {%- for element in diagnostic.donnees %}
     <li>{{ element.libelle }}</li>
     {%- endfor %}

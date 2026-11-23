@@ -413,6 +413,10 @@ def diagnostiquer(request: Request, calcul_id: int):
     n'est modifié. Ses refus (calcul introuvable, pas impossible, calcul ou diagnostic en
     cours) remontent au gestionnaire d'erreurs, qui affiche leur message. Hors HTMX
     (navigateur sans JavaScript), retour à la page du calcul, qui réaffiche le diagnostic.
+
+    Pas de `SessionRequete` ici, exprès : une session de requête POST prend le verrou
+    d'écriture d'emblée (`edt.web.dependances`) et l'enregistrement du service l'attendrait
+    en vain. Accès : réservé au gestionnaire, comme tout `/calculs` (`edt.web.acces`).
     """
     resultat = diagnostic.diagnostiquer_calcul(calcul_id, diagnostic.BUDGET_PAGE_S)
     journal.info(
