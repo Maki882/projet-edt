@@ -58,7 +58,9 @@ LIVRETS = (
     "3-guide-utilisateur",
     "4-cahier-de-recette",
 )
-ADRESSE_DES_PDF = "https://github.com/Maki882/projet-edt/blob/main/docs/livrets/pdf/"
+ADRESSE_DU_DEPOT = "https://github.com/Maki882/projet-edt/blob/main/"
+"""Adresse des fichiers du dépôt sur GitHub (dépôt privé, ouvert sur invitation)."""
+ADRESSE_DES_PDF = ADRESSE_DU_DEPOT + "docs/livrets/pdf/"
 """Adresse publique des PDF des livrets : un lien vers un autre livret y mène."""
 DELAI_CHROME_S = 180
 SIGNATURE_PNG = bytes.fromhex("89504e470d0a1a0a")
@@ -117,6 +119,9 @@ figure img { max-width: 100%; box-sizing: border-box; border: 1px solid #c3c9d2;
 figcaption { font-size: 9pt; font-style: italic; color: #333; margin-top: 4pt; }
 figure.etroite { float: right; margin: 2pt 0 8pt 12pt; }
 figure.groupe img { margin: 0 3mm; vertical-align: top; }
+.insecable { white-space: nowrap; }
+.intertitre { break-after: avoid; }
+li > ol, li > ul { break-before: avoid; }
 table.recette { table-layout: fixed; }
 table.recette th:nth-child(1) { width: 14%; }
 table.recette th:nth-child(2) { width: 11%; }
@@ -175,7 +180,7 @@ def texte_brut(inline: Token) -> str:
 
 def adapter_liens(inline: Token) -> None:
     """Lien vers un autre livret : vers son PDF dans le dépôt public (adresse absolue, jamais un
-    fichier du poste) ; vers un autre fichier du dépôt : texte simple."""
+    fichier du poste) ; vers un autre fichier du dépôt : son adresse sur GitHub."""
     pile: list[Token] = []
     for enfant in inline.children or []:
         if enfant.type == "link_open":
@@ -186,6 +191,17 @@ def adapter_liens(inline: Token) -> None:
             fichier = cible.split("#", 1)[0]
             if "/" not in fichier and fichier.removesuffix(".md") in LIVRETS:
                 enfant.attrs["href"] = ADRESSE_DES_PDF + fichier.removesuffix(".md") + ".pdf"
+            elif fichier:
+                # Autre fichier du dépôt : son adresse sur GitHub, depuis la racine du dépôt.
+                racine = DOSSIER.parent.parent
+                chemin = (DOSSIER / fichier).resolve()
+                try:
+                    relatif = chemin.relative_to(racine).as_posix()
+                except ValueError:
+                    enfant.tag = "span"
+                    enfant.attrs = {"class": "lien-depot", "title": cible}
+                else:
+                    enfant.attrs["href"] = ADRESSE_DU_DEPOT + relatif
             else:
                 enfant.tag = "span"
                 enfant.attrs = {"class": "lien-depot", "title": cible}
@@ -219,7 +235,7 @@ def vers_html(markdown: str, titre: str) -> str:
     """Document HTML complet, prêt pour l'impression, d'un livret écrit en Markdown."""
     analyseur = MarkdownIt("commonmark", {"html": False}).enable("table")
     # Les marqueurs des parties générées (« <!-- … --> » seuls sur leur ligne) ne s'impriment pas.
-    markdown = re.sub(r"^<!--.*-->[ \t]*\n", "", markdown, flags=re.M)
+    markdown = re.sub(r"^<!--.*-->[ \t]*\n", "", markdown, flags=re.MULTILINE)
     jetons = analyseur.parse(markdown)
     deja: dict[str, int] = {}
     for position, jeton in enumerate(jetons):
@@ -250,16 +266,19 @@ def vers_html(markdown: str, titre: str) -> str:
         r"<p>((?:<img [^>]*>\s*)+)</p>(?:\s*<p><em>(Figure .*?)</em></p>)?",
         figure,
         corps,
-        flags=re.S,
+        flags=re.DOTALL,
     )
-    # Identifiants de tests : coupure permise après « :: », « / » ou « _ », jamais dans un mot.
+    # Code en ligne : un identifiant de test se coupe après « :: », « / » ou « _ », jamais dans
+    # un mot ; un mot qui contient « - » (option, commande) ne se coupe pas.
     corps = re.sub(
         r"(?<!<pre>)<code>([^<]*)</code>",
-        lambda m: (
-            "<code>"
-            + m.group(1).replace("::", "::<wbr>").replace("/", "/<wbr>").replace("_", "_<wbr>")
-            + "</code>"
-        ),
+        lambda m: f"<code>{code_coupable(m.group(1))}</code>",
+        corps,
+    )
+    # Intertitre en gras seul dans son paragraphe (« Étapes. ») : jamais seul en bas de page.
+    corps = re.sub(
+        r"<p><strong>([^<]{1,40})</strong></p>",
+        r'<p class="intertitre"><strong>\1</strong></p>',
         corps,
     )
     # Tableau de recette (en-tête « Fiche | Fonction. | … ») : mêmes colonnes d'un tableau à l'autre.
@@ -282,6 +301,20 @@ def vers_html(markdown: str, titre: str) -> str:
         f"<title>{html.escape(titre)}</title><style>{STYLE}</style></head>"
         f"<body>{corps}</body></html>\n"
     )
+
+
+def code_coupable(code: str) -> str:
+    """Contenu d'un code en ligne prêt à couper : après « :: », « / » ou « _ » ; un mot qui
+    contient « - » (« --simuler », « init-db ») reste d'un seul tenant."""
+    morceaux = []
+    for mot in re.split(r"(\s+)", code):
+        if "-" in mot:
+            morceaux.append(f'<span class="insecable">{mot}</span>')
+        else:
+            morceaux.append(
+                mot.replace("::", "::<wbr>").replace("/", "/<wbr>").replace("_", "_<wbr>")
+            )
+    return "".join(morceaux)
 
 
 def espaces_insecables(texte: str) -> str:
