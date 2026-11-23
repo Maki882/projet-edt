@@ -448,9 +448,9 @@ pull request) n'y est enregistrée.
 
 | Élément | Description |
 |---|---|
-| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; privé, ouvert aux quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
+| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; public depuis le 23 novembre 2026 (privé jusque-là), lisible par tous à son adresse, modifiable par les quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
 | Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
-| Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé avec l'offre gratuite de GitHub : la règle « pas d'envoi direct sur `main` » est une convention de l'équipe, appliquée depuis le 05/10. |
+| Protection de `main` | La protection automatique des branches n'était pas disponible tant que le dépôt était privé (offre gratuite de GitHub) et n'a pas été activée depuis : la règle « pas d'envoi direct sur `main` » reste une convention de l'équipe, appliquée depuis le 05/10. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
 | Langue | Code, commentaires, messages, commits et documentation en français. |
 | Fichiers exclus | Environnements virtuels, bases, journaux, réglages d'éditeurs et secrets ne sont jamais suivis (`.gitignore`). |
