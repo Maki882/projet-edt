@@ -1,4 +1,4 @@
-"""Scénario b : parcours complet en ligne de commande (`python -m edt ...`)."""
+"""Parcours REC-BOUT-2 : parcours complet en ligne de commande (`python -m edt ...`)."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve."""
+"""Parcours REC-BOUT-3 : exporter les données d'un établissement puis les réimporter dans une base neuve."""
 
 from __future__ import annotations
 

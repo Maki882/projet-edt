@@ -1,0 +1,5455 @@
+{
+ "format": 1,
+ "campagnes": [
+  {
+   "nom": "Serveur de démonstration",
+   "systeme": "Linux (noyau 7.0)",
+   "python": "3.14.4",
+   "processeurs": "2",
+   "version": "1.0.0",
+   "debut": "2026-11-23T14:43:04",
+   "fin": "2026-11-23T14:48:23",
+   "resultats": {
+    "tests/integration/assistant/test_commande.py::test_essai_en_echec_code_1_avec_le_remede": {
+     "etat": "reussi",
+     "duree_s": 0.303,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_et_question_ensemble_refuses": {
+     "etat": "reussi",
+     "duree_s": 0.092,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_reussi_avec_le_faux_client": {
+     "etat": "reussi",
+     "duree_s": 0.142,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_sans_cle_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.094,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_configuration_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.083,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_configure_code_0_sans_afficher_la_cle": {
+     "etat": "reussi",
+     "duree_s": 0.082,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_sans_cle_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.167,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_question_affiche_la_reponse_et_les_propositions": {
+     "etat": "reussi",
+     "duree_s": 0.147,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_configuration_invalide_annoncee_sans_bloquer_les_pages": {
+     "etat": "reussi",
+     "duree_s": 0.224,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_configure_le_panneau_charge_la_conversation_a_l_ouverture": {
+     "etat": "reussi",
+     "duree_s": 0.135,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_desactive_par_l_administrateur": {
+     "etat": "reussi",
+     "duree_s": 0.138,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_page_d_erreur_avec_le_panneau": {
+     "etat": "reussi",
+     "duree_s": 0.287,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_sans_cle_toutes_les_pages_s_affichent_et_le_panneau_dit_non_configure": {
+     "etat": "reussi",
+     "duree_s": 1.033,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_aucune_reponse_ne_contient_la_cle": {
+     "etat": "reussi",
+     "duree_s": 0.196,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_base_occupee_au_clic_sur_confirmer": {
+     "etat": "reussi",
+     "duree_s": 0.563,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_budget_du_jour_a_zero": {
+     "etat": "reussi",
+     "duree_s": 0.066,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_echange_perdu_apres_redemarrage": {
+     "etat": "reussi",
+     "duree_s": 0.191,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_envoi_depuis_un_autre_site_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.255,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_exemples_tires_des_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.118,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_formulaire_prerempli_du_besoin": {
+     "etat": "reussi",
+     "duree_s": 0.268,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_interrogation_sans_changement_repond_204": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_le_cookie_de_conversation_est_renouvele_a_chaque_activite": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_limite_de_la_conversation_sans_appel": {
+     "etat": "reussi",
+     "duree_s": 0.088,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_nouvelle_conversation": {
+     "etat": "reussi",
+     "duree_s": 0.099,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_page_affichee_bornee_au_chemin_d_une_page": {
+     "etat": "reussi",
+     "duree_s": 0.493,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_page_sans_javascript": {
+     "etat": "reussi",
+     "duree_s": 0.083,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_confirmee_par_le_bouton": {
+     "etat": "reussi",
+     "duree_s": 0.159,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.066,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_refusee_par_le_bouton": {
+     "etat": "reussi",
+     "duree_s": 0.144,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_question_puis_reponse": {
+     "etat": "reussi",
+     "duree_s": 0.137,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_sans_cle_l_envoi_est_refuse_proprement": {
+     "etat": "reussi",
+     "duree_s": 0.066,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_lance_un_test_de_charge_par_sa_cle": {
+     "etat": "reussi",
+     "duree_s": 1.474,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_refuse_une_cible_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.069,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_reussie_sur_un_composant": {
+     "etat": "reussi",
+     "duree_s": 1.243,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_sort_en_erreur_s_il_y_a_un_echec": {
+     "etat": "reussi",
+     "duree_s": 1.446,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_cible_inconnue_refusee_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 0.252,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_deux_onglets_colores_sur_toutes_les_pages_et_a_traiter_dans_generer": {
+     "etat": "reussi",
+     "duree_s": 0.454,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_double_clic_ne_lance_qu_une_execution_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.464,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_lancement_desactive_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 0.242,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_lancement_suivi_et_resultats_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 1.658,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_page_avec_schema_resume_et_tests_jamais_lances": {
+     "etat": "reussi",
+     "duree_s": 0.236,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_pages_lisibles_sans_dossier_de_tests_et_avec_un_historique_illisible": {
+     "etat": "reussi",
+     "duree_s": 0.449,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_relance_depuis_le_site_retardee_et_resultats_de_la_commande_affiches": {
+     "etat": "reussi",
+     "duree_s": 1.655,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_suivi_d_une_execution_inconnue_et_adresses_hors_htmx": {
+     "etat": "reussi",
+     "duree_s": 0.244,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_suivi_pendant_l_execution_puis_arret": {
+     "etat": "reussi",
+     "duree_s": 0.444,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_tests_de_charge_par_la_commande_seulement": {
+     "etat": "reussi",
+     "duree_s": 0.243,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_arret_demande_tue_le_processus_et_garde_les_resultats": {
+     "etat": "reussi",
+     "duree_s": 1.423,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_duree_maximale_depassee": {
+     "etat": "reussi",
+     "duree_s": 1.419,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_environnement_du_sous_processus_assaini": {
+     "etat": "reussi",
+     "duree_s": 1.211,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_famille_lancee_de_bout_en_bout_et_resultats_enregistres": {
+     "etat": "reussi",
+     "duree_s": 1.211,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_fichier_qui_ne_se_charge_pas": {
+     "etat": "reussi",
+     "duree_s": 1.413,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_seconde_demande_pendant_une_execution": {
+     "etat": "reussi",
+     "duree_s": 0.214,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_test_de_charge_lance_seul": {
+     "etat": "reussi",
+     "duree_s": 1.212,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_csv_d_emploi_du_temps_neutralise": {
+     "etat": "reussi",
+     "duree_s": 0.35,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_export_preselectionne_la_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.479,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_fichier_de_19_mo_refuse_vite_par_le_web": {
+     "etat": "reussi",
+     "duree_s": 0.86,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_import_web_d_une_archive_bombe": {
+     "etat": "reussi",
+     "duree_s": 0.401,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_page_bornee_et_rapport_complet_telechargeable": {
+     "etat": "reussi",
+     "duree_s": 0.362,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_un_import_ne_gele_pas_les_autres_requetes": {
+     "etat": "reussi",
+     "duree_s": 0.313,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_dossier_melange_signale_l_agenda_en_mode_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.138,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport": {
+     "etat": "reussi",
+     "duree_s": 0.277,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_fichier_introuvable_et_groupe_inconnu": {
+     "etat": "reussi",
+     "duree_s": 0.18,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_gabarit": {
+     "etat": "reussi",
+     "duree_s": 0.178,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_importer_avec_rejets_sort_en_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.141,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter": {
+     "etat": "reussi",
+     "duree_s": 0.284,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_tout_remplacer_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.194,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_version_hors_limites_en_ligne_de_commande_donne_un_message": {
+     "etat": "reussi",
+     "duree_s": 0.252,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_au_plus_un_filtre": {
+     "etat": "reussi",
+     "duree_s": 0.285,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_csv_de_la_semaine_type": {
+     "etat": "reussi",
+     "duree_s": 0.338,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_filtres_par_groupe_enseignant_salle": {
+     "etat": "reussi",
+     "duree_s": 0.35,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar": {
+     "etat": "reussi",
+     "duree_s": 0.405,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_parametres_invalides": {
+     "etat": "reussi",
+     "duree_s": 1.191,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference": {
+     "etat": "reussi",
+     "duree_s": 0.518,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource": {
+     "etat": "reussi",
+     "duree_s": 0.529,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_export_complet_reimporte_deux_fois_par_l_ecran_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.646,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins": {
+     "etat": "reussi",
+     "duree_s": 0.443,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.567,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_application": {
+     "etat": "reussi",
+     "duree_s": 0.276,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_application_sans_htmx_d_un_fichier_refuse_ne_dit_pas_0_ligne_non_importee": {
+     "etat": "reussi",
+     "duree_s": 0.226,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_envoi_sans_fichier_ou_trop_gros": {
+     "etat": "reussi",
+     "duree_s": 0.217,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_export_d_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.938,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.481,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_import_d_emploi_du_temps_par_le_web": {
+     "etat": "reussi",
+     "duree_s": 0.341,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_import_refuse_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.253,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_menu_et_page_d_import": {
+     "etat": "reussi",
+     "duree_s": 0.303,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_page_et_telechargements_d_export": {
+     "etat": "reussi",
+     "duree_s": 0.499,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_ressource_hostile_dans_l_adresse_donne_une_erreur_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.783,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.273,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger": {
+     "etat": "reussi",
+     "duree_s": 0.653,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_d_une_image_sans_bouton_appliquer": {
+     "etat": "reussi",
+     "duree_s": 0.208,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_en_htmx_affiche_apercu_bilan_rapport": {
+     "etat": "reussi",
+     "duree_s": 0.27,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_sans_htmx_rend_la_page_entiere": {
+     "etat": "reussi",
+     "duree_s": 0.27,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_tout_remplacer_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.3,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_doctor_tolere_le_port_tenu_par_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.149,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_relance_a_chaque_deploiement_n_ajoute_rien": {
+     "etat": "reussi",
+     "duree_s": 0.145,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_reset_du_deploiement_ne_pose_aucune_question": {
+     "etat": "reussi",
+     "duree_s": 0.423,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_la_base_reste_saine_apres_un_arret_brutal_en_pleine_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.75,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_la_commande_de_la_sauvegarde_quotidienne_fonctionne_telle_quelle": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_le_redemarrage_clot_le_calcul_tue_avec_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.492,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_ecrit_une_copie_verifiee_et_garde_les_plus_recentes": {
+     "etat": "reussi",
+     "duree_s": 0.199,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_garde_toutes_les_sauvegardes_manuelles": {
+     "etat": "reussi",
+     "duree_s": 0.238,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_refuse_quand_le_disque_est_plein": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_refuse_un_prefixe_reserve_ou_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.254,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_retire_un_fichier_partiel_abandonne": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_sans_base_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.033,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_une_base_illisible_echoue_sans_laisser_de_fichier": {
+     "etat": "reussi",
+     "duree_s": 0.038,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_et_le_service_lancent_la_meme_application": {
+     "etat": "reussi",
+     "duree_s": 0.119,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_refuse_un_port_ou_une_adresse_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.104,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_une_sauvegarde_restauree_a_la_place_de_la_base_est_relue_par_l_application": {
+     "etat": "reussi",
+     "duree_s": 0.264,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_accepte_une_sauvegarde_conforme_sans_la_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.221,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_refuse_un_fichier_abime_vide_ou_absent": {
+     "etat": "reussi",
+     "duree_s": 0.134,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_signale_un_schema_different": {
+     "etat": "reussi",
+     "duree_s": 0.228,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_chaque_script_passe_le_controle_de_syntaxe_de_bash": {
+     "etat": "reussi",
+     "duree_s": 0.043,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_etat_compte_les_arrets_pour_memoire_epuisee": {
+     "etat": "reussi",
+     "duree_s": 0.031,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_cle_saisie_est_ecrite_sans_jamais_etre_affichee": {
+     "etat": "reussi",
+     "duree_s": 0.011,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_lit_le_modele_et_l_environnement_l_emporte": {
+     "etat": "reussi",
+     "duree_s": 0.008,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_refuse_une_ligne_douteuse_sans_l_executer": {
+     "etat": "reussi",
+     "duree_s": 0.012,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_sauvegarde_du_deploiement_reussit_puis_retire_sa_copie_en_cas_d_echec": {
+     "etat": "reussi",
+     "duree_s": 0.05,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_le_script_de_la_cle_refuse_de_s_executer_hors_root_ou_avec_une_option_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.019,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_les_commandes_du_deploiement_lisent_la_cle_comme_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.007,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_ignore_les_processus_du_service": {
+     "etat": "reussi",
+     "duree_s": 0.021,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_liste_une_commande_de_l_utilisateur": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_un_echec_d_ecriture_de_la_cle_laisse_l_ancien_fichier": {
+     "etat": "reussi",
+     "duree_s": 0.009,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_un_script_sans_parametres_s_arrete_avant_toute_action": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_une_cle_vide_ou_mal_copiee_est_refusee_sans_rien_ecrire": {
+     "etat": "reussi",
+     "duree_s": 0.023,
+     "raison": null
+    },
+    "tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve": {
+     "etat": "reussi",
+     "duree_s": 0.578,
+     "raison": null
+    },
+    "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie": {
+     "etat": "reussi",
+     "duree_s": 0.579,
+     "raison": null
+    },
+    "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande": {
+     "etat": "reussi",
+     "duree_s": 0.546,
+     "raison": null
+    },
+    "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export": {
+     "etat": "reussi",
+     "duree_s": 0.747,
+     "raison": null
+    },
+    "tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site": {
+     "etat": "reussi",
+     "duree_s": 0.501,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_base_illisible_le_remede_annonce_permet_d_en_sortir": {
+     "etat": "reussi",
+     "duree_s": 0.333,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_commandes_de_calcul_avec_un_identifiant_inexistant": {
+     "etat": "reussi",
+     "duree_s": 0.591,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_configuration_invalide_donne_un_message_clair": {
+     "etat": "reussi",
+     "duree_s": 0.038,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor": {
+     "etat": "reussi",
+     "duree_s": 0.168,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.157,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable": {
+     "etat": "reussi",
+     "duree_s": 0.205,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_en_lecture_seule": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_non_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.041,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_cree_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.536,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_efface_les_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.32,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue": {
+     "etat": "reussi",
+     "duree_s": 0.186,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_est_refuse_pendant_un_chargement_de_jeu": {
+     "etat": "reussi",
+     "duree_s": 0.129,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.446,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_non_interactif_ne_pose_pas_de_question": {
+     "etat": "reussi",
+     "duree_s": 0.343,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde": {
+     "etat": "reussi",
+     "duree_s": 0.388,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_sans_sauvegarde_ne_double_pas_celle_du_deploiement": {
+     "etat": "reussi",
+     "duree_s": 0.333,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_jeu_minimal_puis_refus_du_second_chargement": {
+     "etat": "reussi",
+     "duree_s": 0.391,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_jeu_minimal_sans_base_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.04,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_module_de_commandes_decouvert": {
+     "etat": "reussi",
+     "duree_s": 0.133,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1": {
+     "etat": "reussi",
+     "duree_s": 1.455,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_version": {
+     "etat": "reussi",
+     "duree_s": 0.034,
+     "raison": null
+    },
+    "tests/integration/socle/test_config.py::test_doctor_signale_un_port_deja_occupe_sans_echouer": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/socle/test_config.py::test_doctor_signale_une_adresse_d_ecoute_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.158,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_arret_demande_par_l_utilisateur": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_besoin_impossible_a_deplier_refuse_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.207,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_interrompu_cloture_au_demarrage": {
+     "etat": "reussi",
+     "duree_s": 0.294,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_interrompu_ne_bloque_pas_le_suivant": {
+     "etat": "reussi",
+     "duree_s": 0.311,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_reussi_enregistre_une_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.531,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_erreur_du_moteur_journalisee_sans_version": {
+     "etat": "reussi",
+     "duree_s": 0.174,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_infaisable_ne_cree_aucune_version": {
+     "etat": "reussi",
+     "duree_s": 0.153,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_reglages_par_defaut_le_calcul_ameliore_la_solution_valide": {
+     "etat": "reussi",
+     "duree_s": 2.748,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_semestre_inconnu": {
+     "etat": "reussi",
+     "duree_s": 0.054,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_solution_incomplete_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.217,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_un_seul_calcul_a_la_fois": {
+     "etat": "reussi",
+     "duree_s": 0.33,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_une_nouvelle_version_remplace_la_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.484,
+     "raison": null
+    },
+    "tests/integration/socle/test_instantane.py::test_un_identifiant_hors_des_entiers_sqlite_est_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.2,
+     "raison": null
+    },
+    "tests/integration/socle/test_instantane.py::test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas": {
+     "etat": "reussi",
+     "duree_s": 0.252,
+     "raison": null
+    },
+    "tests/integration/socle/test_journal.py::test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.068,
+     "raison": null
+    },
+    "tests/integration/socle/test_moteur.py::test_une_url_sans_pilote_ou_de_schema_inconnu_est_une_erreur_de_configuration": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/socle/test_moteur.py::test_une_url_sqlite_sans_fichier_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.064,
+     "raison": null
+    },
+    "tests/integration/socle/test_parametres.py::test_l_ecran_des_parametres_reste_ouvrable_avec_une_valeur_corrompue": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/socle/test_recette_petit_ecran.py::test_pages_principales_adaptees_a_la_largeur_du_telephone": {
+     "etat": "reussi",
+     "duree_s": 1.341,
+     "raison": null
+    },
+    "tests/integration/socle/test_recette_petit_ecran.py::test_regles_pour_petits_ecrans_servies_et_elements_presents": {
+     "etat": "reussi",
+     "duree_s": 0.466,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_doctor_a_une_ligne_pour_le_schema": {
+     "etat": "reussi",
+     "duree_s": 0.245,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_init_db_refuse_un_schema_perime_sans_rien_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.238,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_init_db_reset_repare_un_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.428,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_jeu_minimal_refuse_une_base_au_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.141,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_sante_repond_503_quand_le_schema_est_perime": {
+     "etat": "reussi",
+     "duree_s": 0.368,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_a_jour": {
+     "etat": "reussi",
+     "duree_s": 0.152,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_avant_la_premiere_initialisation": {
+     "etat": "reussi",
+     "duree_s": 0.039,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_base_inaccessible": {
+     "etat": "reussi",
+     "duree_s": 0.043,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_perime_liste_les_ecarts_sans_rien_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.189,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_accueil_reste_lisible_sans_base_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.021,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_accueil_tait_une_base_en_bon_etat": {
+     "etat": "reussi",
+     "duree_s": 0.176,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_base_non_initialisee_une_ligne_d_avertissement_sans_trace": {
+     "etat": "reussi",
+     "duree_s": 0.257,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise": {
+     "etat": "reussi",
+     "duree_s": 0.394,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer": {
+     "etat": "reussi",
+     "duree_s": 0.02,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_inattendue_page_lisible_et_trace_journalisee": {
+     "etat": "reussi",
+     "duree_s": 0.235,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_metier_traduite_en_message": {
+     "etat": "reussi",
+     "duree_s": 0.243,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_rendue_en_fragment_pour_htmx_et_en_json": {
+     "etat": "reussi",
+     "duree_s": 0.232,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_fichiers_statiques_embarques": {
+     "etat": "reussi",
+     "duree_s": 0.064,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_head_repond_comme_get_sans_corps": {
+     "etat": "reussi",
+     "duree_s": 0.195,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue": {
+     "etat": "reussi",
+     "duree_s": 0.179,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs": {
+     "etat": "reussi",
+     "duree_s": 1.393,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_module_de_routes_decouvert_avec_son_menu": {
+     "etat": "reussi",
+     "duree_s": 0.176,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_page_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.222,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_pied_de_page_sans_reference_de_requete": {
+     "etat": "reussi",
+     "duree_s": 0.18,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.343,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_saisie_invalide_nomme_le_champ_sans_nom_technique": {
+     "etat": "reussi",
+     "duree_s": 0.26,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_sante": {
+     "etat": "reussi",
+     "duree_s": 0.13,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_sante_signale_une_base_en_lecture_seule": {
+     "etat": "reussi",
+     "duree_s": 0.142,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_session_validee_avant_la_redirection_et_message_affiche": {
+     "etat": "reussi",
+     "duree_s": 0.336,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_un_envoi_trop_volumineux_donne_une_page_qui_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.235,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes": {
+     "etat": "reussi",
+     "duree_s": 0.471,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_erreur_de_programmation_du_pilote_est_une_page_500": {
+     "etat": "reussi",
+     "duree_s": 0.238,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_methode_non_permise_donne_une_page_405": {
+     "etat": "reussi",
+     "duree_s": 0.866,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_panne_de_preparation_n_empeche_pas_de_servir": {
+     "etat": "reussi",
+     "duree_s": 0.248,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.991,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_calcul_reussi_malgre_une_indisponibilite_impossible_a_respecter": {
+     "etat": "reussi",
+     "duree_s": 0.41,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.527,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.754,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_pre_verifier_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.205,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_les_niveaux_sont_enregistres_avec_le_calcul_et_rendus_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.326,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_un_calcul_d_avant_les_niveaux_est_lu_avec_ses_contraintes_desactivees": {
+     "etat": "reussi",
+     "duree_s": 0.309,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_commande_generer_regle": {
+     "etat": "reussi",
+     "duree_s": 1.025,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_commande_pre_verifier_regle": {
+     "etat": "reussi",
+     "duree_s": 0.24,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_les_regles_sont_copiees_avec_le_calcul_et_rendues_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.538,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_arret_avec_une_solution_la_version_est_enregistree": {
+     "etat": "reussi",
+     "duree_s": 0.311,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_attente_d_un_calcul_bornee_par_son_delai": {
+     "etat": "reussi",
+     "duree_s": 0.808,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_avertissements_joints_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus": {
+     "etat": "reussi",
+     "duree_s": 0.337,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_en_cours_bien_au_dela_de_son_temps_limite_est_clos": {
+     "etat": "reussi",
+     "duree_s": 0.103,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_refuse_par_les_pre_verifications": {
+     "etat": "reussi",
+     "duree_s": 0.196,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_refuse_pendant_une_execution_des_tests": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_vivant_d_un_autre_processus_n_est_pas_clos": {
+     "etat": "reussi",
+     "duree_s": 0.114,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_ameliore_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 3.299,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_avec_optimisation_et_contrainte_desactivee": {
+     "etat": "reussi",
+     "duree_s": 2.804,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_echec_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.259,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_interrompue_au_clavier": {
+     "etat": "reussi",
+     "duree_s": 0.199,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier": {
+     "etat": "reussi",
+     "duree_s": 0.504,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_defaut_du_moteur_releve_par_le_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.178,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable": {
+     "etat": "reussi",
+     "duree_s": 0.151,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_donnees_modifiees_pendant_le_calcul_sont_dites": {
+     "etat": "reussi",
+     "duree_s": 0.236,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_echec_de_l_ecriture_finale_est_retente": {
+     "etat": "reussi",
+     "duree_s": 0.348,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_ecriture_finale_toujours_en_echec": {
+     "etat": "reussi",
+     "duree_s": 0.709,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.444,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_identifiant_hors_bornes_est_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_instanciation_idempotente_et_saisies_manuelles_conservees": {
+     "etat": "reussi",
+     "duree_s": 0.605,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_instanciation_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture": {
+     "etat": "reussi",
+     "duree_s": 1.717,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.568,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_journal_de_calcul_impossible_donne_la_vraie_cause": {
+     "etat": "reussi",
+     "duree_s": 0.301,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_chargement_est_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.303,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_import_est_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.1,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_le_vrai_moteur_signale_sa_premiere_solution": {
+     "etat": "reussi",
+     "duree_s": 0.298,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_options_hors_bornes_refusees_par_la_commande": {
+     "etat": "reussi",
+     "duree_s": 0.201,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_pre_verifications_journalisees_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.331,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_replacement_impossible_passe_a_programmer": {
+     "etat": "reussi",
+     "duree_s": 0.347,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_replacer_des_occurrences_designees_dans_une_fenetre": {
+     "etat": "reussi",
+     "duree_s": 0.395,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_salle_supprimee_pendant_le_calcul_est_dite": {
+     "etat": "reussi",
+     "duree_s": 0.233,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_seances_datees_importees_jamais_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.394,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_semestre_sans_besoin_ne_cree_pas_de_version_vide": {
+     "etat": "reussi",
+     "duree_s": 0.883,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_solution_sans_salle_ou_a_salle_inconnue_du_moteur_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.292,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.113,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_avertissement_du_moteur_est_journalise_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.301,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_calcul_illisible_est_clos_sans_bloquer_l_application": {
+     "etat": "reussi",
+     "duree_s": 0.513,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_une_retouche_reste_la_seule_seance_de_sa_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.494,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_une_seance_de_la_semaine_type_ne_prend_pas_la_place_d_une_retouche": {
+     "etat": "reussi",
+     "duree_s": 0.403,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee": {
+     "etat": "reussi",
+     "duree_s": 0.599,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_verrous_contradictoires_toleres_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.515,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation": {
+     "etat": "reussi",
+     "duree_s": 0.464,
+     "raison": null
+    },
+    "tests/integration/synthese/test_cas_limites.py::test_commande_refuse_sans_toucher_a_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.942,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_commande_jeu_charge_et_affiche_le_resume": {
+     "etat": "reussi",
+     "duree_s": 0.281,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_remise_a_zero_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.622,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_remise_a_zero_sur_une_base_neuve": {
+     "etat": "reussi",
+     "duree_s": 0.22,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_second_chargement_refuse_avec_un_message_clair": {
+     "etat": "reussi",
+     "duree_s": 0.361,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_taille_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.084,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_periode_et_contrainte_choisie": {
+     "etat": "reussi",
+     "duree_s": 0.215,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_seances_datees_avec_erreurs_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.234,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_semaine_type_valide_code_0": {
+     "etat": "reussi",
+     "duree_s": 0.194,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_semestre_sans_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.134,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_sortie_json": {
+     "etat": "reussi",
+     "duree_s": 0.236,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_verification_impossible_code_2": {
+     "etat": "reussi",
+     "duree_s": 0.877,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_charges_repliees_et_limitees_aux_groupes_concernes": {
+     "etat": "reussi",
+     "duree_s": 0.251,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_duplication": {
+     "etat": "reussi",
+     "duree_s": 0.178,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_formulaire_marque_les_champs_propres_a_chaque_mode": {
+     "etat": "reussi",
+     "duree_s": 0.15,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_abregee_au_dela_de_l_apercu": {
+     "etat": "reussi",
+     "duree_s": 0.211,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_compacte": {
+     "etat": "reussi",
+     "duree_s": 0.244,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_filtrable_et_ajout_rapide": {
+     "etat": "reussi",
+     "duree_s": 0.302,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_par_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_ponctuel": {
+     "etat": "reussi",
+     "duree_s": 0.183,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_total_entre_deux_dates": {
+     "etat": "reussi",
+     "duree_s": 0.181,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_adresse_de_retour_avec_saut_de_ligne_est_ecartee": {
+     "etat": "reussi",
+     "duree_s": 0.635,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_adresse_de_retour_hors_site_est_ecartee": {
+     "etat": "reussi",
+     "duree_s": 0.86,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_calculs_d_un_semestre_sain_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.245,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.78,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.859,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_un_semestre_bornee": {
+     "etat": "reussi",
+     "duree_s": 0.424,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_une_annee_bornee": {
+     "etat": "reussi",
+     "duree_s": 0.685,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_fragments_sans_htmx_redirigent_vers_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.383,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_hx_current_url_illisible_est_ignore": {
+     "etat": "reussi",
+     "duree_s": 0.578,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_regles_personnalisees_supprimables_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.513,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 1.281,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_suppression_du_semestre_refusee_pendant_son_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.5,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_base_occupee_n_est_pas_presentee_comme_non_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.239,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_deux_chargements_simultanes_depuis_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.319,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_tables_absentes_pendant_un_chargement_donnent_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.229,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_arbre_des_groupes": {
+     "etat": "reussi",
+     "duree_s": 0.149,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_arbre_repliable": {
+     "etat": "reussi",
+     "duree_s": 0.996,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_calendrier_et_jours_feries": {
+     "etat": "reussi",
+     "duree_s": 0.288,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_creneau_refuse_une_fin_avant_le_debut": {
+     "etat": "reussi",
+     "duree_s": 0.236,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_libelles_des_listes_lisibles": {
+     "etat": "reussi",
+     "duree_s": 0.308,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_liste_formulaire_et_creation": {
+     "etat": "reussi",
+     "duree_s": 3.253,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_matrice_des_trajets": {
+     "etat": "reussi",
+     "duree_s": 0.2,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_creation_puis_message": {
+     "etat": "reussi",
+     "duree_s": 0.195,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_edition_dans_la_ligne": {
+     "etat": "reussi",
+     "duree_s": 0.318,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_erreur_de_saisie_reaffichee_avec_les_valeurs": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_fragment_htmx_de_la_liste": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_liste_triee_recherchee_et_filtree": {
+     "etat": "reussi",
+     "duree_s": 0.221,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_modification": {
+     "etat": "reussi",
+     "duree_s": 0.168,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_pagination": {
+     "etat": "reussi",
+     "duree_s": 0.411,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_suppression_confirmee": {
+     "etat": "reussi",
+     "duree_s": 0.209,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_suppression_refusee_avant_la_base_avec_message": {
+     "etat": "reussi",
+     "duree_s": 0.227,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_chargement_du_jeu_petit": {
+     "etat": "reussi",
+     "duree_s": 0.422,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.247,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_de_resultat_rechargee_sans_second_chargement": {
+     "etat": "reussi",
+     "duree_s": 0.515,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_decrit_les_tailles": {
+     "etat": "reussi",
+     "duree_s": 0.218,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_rechargee_pendant_un_chargement_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.347,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_rechargement_exige_une_confirmation_d_effacement": {
+     "etat": "reussi",
+     "duree_s": 0.738,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_refus_clair_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.46,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_remise_a_zero_confirmee": {
+     "etat": "reussi",
+     "duree_s": 0.612,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_accueil_sans_sous_navigation_mais_avec_menu_deroulant": {
+     "etat": "reussi",
+     "duree_s": 0.499,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_aucune_page_n_annonce_une_fonction_a_venir": {
+     "etat": "reussi",
+     "duree_s": 0.465,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_compteur_des_points_a_traiter_charge_dans_l_onglet_generer": {
+     "etat": "reussi",
+     "duree_s": 0.17,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_page_donnees_affiche_onglets_et_sous_navigation": {
+     "etat": "reussi",
+     "duree_s": 0.191,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_panneau_assistant_present_sur_toutes_les_pages": {
+     "etat": "reussi",
+     "duree_s": 0.461,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_six_onglets_de_l_application_et_import_export_dans_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.195,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_ancien_parametre_de_dejeuner_illisible_reste_reparable": {
+     "etat": "reussi",
+     "duree_s": 0.294,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_bornes_refusees_et_signalees_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.201,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_ecran_des_parametres_simple_a_lire": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_enregistrement_puis_retour_aux_valeurs_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_formulaire_construit_depuis_les_metadonnees": {
+     "etat": "reussi",
+     "duree_s": 0.193,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_incoherence_d_ensemble_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.197,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_parametres_refuses_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.593,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_dejeuner_liste_deroulante_et_champs_selon_le_mode": {
+     "etat": "reussi",
+     "duree_s": 0.217,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_libre_enregistree_et_valeur_hors_choix_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.223,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_libre_plus_longue_que_sa_fenetre_signalee_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.193,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.299,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_jours_travailles_avec_apercu_et_erreurs": {
+     "etat": "reussi",
+     "duree_s": 0.352,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_pause_dejeuner_d_un_enseignant": {
+     "etat": "reussi",
+     "duree_s": 0.363,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_salles_imposees_et_portee_refusee": {
+     "etat": "reussi",
+     "duree_s": 1.31,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_aucune_page_des_regles_ne_renvoie_de_trace": {
+     "etat": "reussi",
+     "duree_s": 0.912,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_bandeau_les_voir_ignore_les_filtres_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.279,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_choix_du_type_puis_formulaire_tire_du_schema": {
+     "etat": "reussi",
+     "duree_s": 0.28,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_code_de_regle_en_minuscules_dans_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.345,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees": {
+     "etat": "reussi",
+     "duree_s": 0.289,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_propose_les_regles": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_double_clic_sur_la_suppression_d_une_regle": {
+     "etat": "reussi",
+     "duree_s": 0.307,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_double_envoi_d_une_regle_ne_cree_pas_de_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.294,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_erreurs_globales_du_service_sous_leur_bloc": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_etats_activer_ecarter_desactiver_tout_confirmer": {
+     "etat": "reussi",
+     "duree_s": 0.376,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_filtres_et_recherche": {
+     "etat": "reussi",
+     "duree_s": 0.359,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_identifiants_enormes_des_regles_sont_introuvables": {
+     "etat": "reussi",
+     "duree_s": 0.622,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_liste_de_l_annee_et_bandeau_des_regles_proposees": {
+     "etat": "reussi",
+     "duree_s": 0.308,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_modification_preremplie_et_doublon_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_niveaux_definis_comme_sur_l_ecran_generer": {
+     "etat": "reussi",
+     "duree_s": 0.352,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_pages_des_regles_sans_jargon": {
+     "etat": "reussi",
+     "duree_s": 0.344,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_parametre_jours_travailles_en_sept_cases": {
+     "etat": "reussi",
+     "duree_s": 0.369,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_parcours_reel_sur_le_jeu_moyen": {
+     "etat": "reussi",
+     "duree_s": 1.033,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_personnes_concernees_seulement_pour_la_portee_etablissement": {
+     "etat": "reussi",
+     "duree_s": 0.335,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_proposer_pour_une_annee_existante_liste_les_regles_a_revoir": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_regle_supprimee_entre_temps_dit_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.294,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_regles_sans_annee_scolaire_affiche_un_bandeau": {
+     "etat": "reussi",
+     "duree_s": 0.23,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_salle_citee_retiree_des_regles_et_cible_bloquee": {
+     "etat": "reussi",
+     "duree_s": 0.289,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_suppression_d_une_cible_et_de_ses_regles": {
+     "etat": "reussi",
+     "duree_s": 0.261,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_suppression_d_une_regle_sur_place_et_sans_javascript": {
+     "etat": "reussi",
+     "duree_s": 0.288,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_type_de_seance_cite_par_une_regle_de_base": {
+     "etat": "reussi",
+     "duree_s": 0.22,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_type_non_datable_sans_mode_dates_et_dates_refusees": {
+     "etat": "reussi",
+     "duree_s": 0.338,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_adresses_aberrantes": {
+     "etat": "reussi",
+     "duree_s": 0.622,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_annee_de_debut_exotique": {
+     "etat": "reussi",
+     "duree_s": 0.218,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_capacite_trop_grande": {
+     "etat": "reussi",
+     "duree_s": 0.166,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_chiffres_exotiques_refuses": {
+     "etat": "reussi",
+     "duree_s": 0.71,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_commentaire_de_regle_borne_cote_serveur": {
+     "etat": "reussi",
+     "duree_s": 0.295,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_effectif_trop_grand": {
+     "etat": "reussi",
+     "duree_s": 0.197,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_graine_exotique": {
+     "etat": "reussi",
+     "duree_s": 0.256,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_identifiant_trop_grand_dans_un_choix": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_jours_feries_d_une_annee_inexistante": {
+     "etat": "reussi",
+     "duree_s": 0.205,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_avec_filtre_pose": {
+     "etat": "reussi",
+     "duree_s": 0.197,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_sans_filtre_pose": {
+     "etat": "reussi",
+     "duree_s": 0.162,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_maximum_d_enseignement_nul_refuse_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.366,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_nombres_de_cinq_mille_chiffres_refuses": {
+     "etat": "reussi",
+     "duree_s": 0.515,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur": {
+     "etat": "reussi",
+     "duree_s": 0.227,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_sans_trace.py::test_adresses_erronees_expliquees": {
+     "etat": "reussi",
+     "duree_s": 0.284,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_sans_trace.py::test_toutes_les_pages_repondent_sans_trace": {
+     "etat": "reussi",
+     "duree_s": 1.319,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_annuler_ramene_a_la_fiche_quand_on_en_vient": {
+     "etat": "reussi",
+     "duree_s": 0.193,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_confirmation_garde_la_liste_et_y_revient": {
+     "etat": "reussi",
+     "duree_s": 0.226,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_lien_supprimer_de_la_ligne_porte_la_liste": {
+     "etat": "reussi",
+     "duree_s": 1.161,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_quand_la_suppression_est_possible": {
+     "etat": "reussi",
+     "duree_s": 0.175,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_refusee_avec_lien": {
+     "etat": "reussi",
+     "duree_s": 0.232,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_parcours_reel_sur_le_jeu_moyen": {
+     "etat": "reussi",
+     "duree_s": 0.86,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_refus_d_une_salle_imposee_mene_aux_besoins": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_refus_par_campus_et_par_groupe": {
+     "etat": "reussi",
+     "duree_s": 0.441,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_rejeu_d_une_suppression_et_d_une_annulation": {
+     "etat": "reussi",
+     "duree_s": 0.783,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_retour_a_la_page_precedente_si_la_page_disparait": {
+     "etat": "reussi",
+     "duree_s": 0.369,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_sans_javascript_la_suppression_depuis_la_ligne_redirige": {
+     "etat": "reussi",
+     "duree_s": 0.174,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_suppression_depuis_la_ligne_rafraichit_la_zone": {
+     "etat": "reussi",
+     "duree_s": 0.191,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_suppression_refusee_depuis_la_ligne_ne_touche_a_rien": {
+     "etat": "reussi",
+     "duree_s": 0.194,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer": {
+     "etat": "reussi",
+     "duree_s": 0.428,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_avec_le_vrai_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.443,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_compteur_memorise_puis_recalcule_quand_une_seance_change": {
+     "etat": "reussi",
+     "duree_s": 0.685,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_option_tous_les_semestres_affiche_tous_les_semestres": {
+     "etat": "reussi",
+     "duree_s": 0.662,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_sans_emploi_du_temps_actif": {
+     "etat": "reussi",
+     "duree_s": 0.123,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_sans_verificateur_l_absence_est_dite": {
+     "etat": "reussi",
+     "duree_s": 0.394,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_au_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.128,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_occupee_par_une_ecriture_n_est_pas_une_panne": {
+     "etat": "reussi",
+     "duree_s": 0.214,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante": {
+     "etat": "reussi",
+     "duree_s": 0.2,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_vide_propose_un_etablissement_fictif": {
+     "etat": "reussi",
+     "duree_s": 0.139,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_calcul_en_cours_conseille_de_le_suivre": {
+     "etat": "reussi",
+     "duree_s": 0.247,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_dernier_calcul_sans_solution_visible": {
+     "etat": "reussi",
+     "duree_s": 0.984,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_donnees_sans_emploi_du_temps_conseille_de_generer": {
+     "etat": "reussi",
+     "duree_s": 0.181,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_le_demarrage_du_serveur_prepare_l_accueil": {
+     "etat": "reussi",
+     "duree_s": 0.542,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_points_a_traiter_sans_indicateurs": {
+     "etat": "reussi",
+     "duree_s": 0.4,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_tout_va_bien_version_a_consulter_et_rien_d_autre": {
+     "etat": "reussi",
+     "duree_s": 0.47,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_version_active_sans_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.4,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_arret_avec_solution_conservee": {
+     "etat": "reussi",
+     "duree_s": 1.447,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_arret_d_un_calcul_termine_dit_qu_il_est_fini": {
+     "etat": "reussi",
+     "duree_s": 0.409,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_autre_solution_donne_un_autre_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.605,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 2.967,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif": {
+     "etat": "reussi",
+     "duree_s": 0.655,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_interrompu_par_un_redemarrage": {
+     "etat": "reussi",
+     "duree_s": 1.572,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit": {
+     "etat": "reussi",
+     "duree_s": 0.61,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_deux_messages_d_echec_distincts": {
+     "etat": "reussi",
+     "duree_s": 0.536,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_lancer_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.396,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_supprimer_une_version": {
+     "etat": "reussi",
+     "duree_s": 0.57,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_envoi_de_relancer_dit_calcul_relance": {
+     "etat": "reussi",
+     "duree_s": 0.593,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique": {
+     "etat": "reussi",
+     "duree_s": 0.282,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_generer_sans_aucun_besoin_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.16,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_historique_activation_et_suppression_des_versions": {
+     "etat": "reussi",
+     "duree_s": 0.584,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis": {
+     "etat": "reussi",
+     "duree_s": 0.475,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles": {
+     "etat": "reussi",
+     "duree_s": 0.221,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_prechauffage_apres_un_calcul_sur_une_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.474,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_prechauffage_qui_ne_peut_pas_demarrer_ne_casse_pas_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.368,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine": {
+     "etat": "reussi",
+     "duree_s": 0.235,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_relance_longue_et_autre_solution": {
+     "etat": "reussi",
+     "duree_s": 0.453,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_resultat_dit_les_memes_durees_que_le_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.424,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_retouches_de_la_version_active_annoncees_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.865,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_apres_la_recherche_ne_propose_plus_l_arret": {
+     "etat": "reussi",
+     "duree_s": 0.408,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve": {
+     "etat": "reussi",
+     "duree_s": 0.31,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret": {
+     "etat": "reussi",
+     "duree_s": 0.399,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non": {
+     "etat": "reussi",
+     "duree_s": 0.255,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_adresse_de_retour_fabriquee_ramene_a_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 5.165,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.184,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_cible_enorme_dans_l_adresse_montre_la_premiere_classe": {
+     "etat": "reussi",
+     "duree_s": 1.735,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_cookie_de_cible_illisible_ou_enorme_est_ignore": {
+     "etat": "reussi",
+     "duree_s": 0.749,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_date_tres_ancienne_ou_lointaine_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.622,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant": {
+     "etat": "reussi",
+     "duree_s": 0.561,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_deplacer_une_seance_datee_hors_du_semestre": {
+     "etat": "reussi",
+     "duree_s": 0.498,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_filtres_inconnus_refuses_lisiblement": {
+     "etat": "reussi",
+     "duree_s": 5.649,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_fragments_ouverts_sans_htmx_menent_a_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.958,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_head_sur_les_ecrans_de_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.781,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_hx_current_url_illisible_dans_les_panneaux": {
+     "etat": "reussi",
+     "duree_s": 0.667,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_identifiant_qui_n_est_pas_un_entier_donne_saisie_invalide": {
+     "etat": "reussi",
+     "duree_s": 1.386,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_identifiants_enormes_ou_negatifs_donnent_introuvable": {
+     "etat": "reussi",
+     "duree_s": 1.729,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_motif_d_annulation_borne": {
+     "etat": "reussi",
+     "duree_s": 0.672,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_panneau_d_une_seance_supprimee_entre_temps": {
+     "etat": "reussi",
+     "duree_s": 0.562,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_relance_pendant_un_calcul_mene_au_calcul_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.518,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_saisies_de_cinq_mille_chiffres_au_lancement": {
+     "etat": "reussi",
+     "duree_s": 0.313,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_seance_annulee_ni_reannulee_ni_deplacee": {
+     "etat": "reussi",
+     "duree_s": 1.633,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_seance_enorme_dans_l_adresse_ouvre_la_page_sans_panneau": {
+     "etat": "reussi",
+     "duree_s": 0.795,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_semestre_sans_grille_reste_utilisable": {
+     "etat": "reussi",
+     "duree_s": 0.692,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_une_ecriture_attend_son_tour_pendant_un_autre_ecrivain": {
+     "etat": "reussi",
+     "duree_s": 0.75,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_une_lecture_est_servie_pendant_un_autre_ecrivain": {
+     "etat": "reussi",
+     "duree_s": 1.8,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_verrou_tenu_au_dela_du_delai_donne_la_page_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.67,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_version_active_vide_sur_a_traiter_et_l_accueil": {
+     "etat": "reussi",
+     "duree_s": 0.51,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_version_sans_seance_s_affiche_et_s_exporte": {
+     "etat": "reussi",
+     "duree_s": 0.728,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_enregistres_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.563,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_mal_saisis_reaffiches_sans_lancer_ni_enregistrer": {
+     "etat": "reussi",
+     "duree_s": 0.375,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_la_grille_dessine_la_bande_selon_le_mode": {
+     "etat": "reussi",
+     "duree_s": 0.885,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_mode_inconnu_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.272,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pas_de_pause_enregistre_puis_lance": {
+     "etat": "reussi",
+     "duree_s": 0.546,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_enregistree_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.469,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_mal_saisie_refusee_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.444,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_trois_choix_preremplis_depuis_les_parametres": {
+     "etat": "reussi",
+     "duree_s": 0.564,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur": {
+     "etat": "reussi",
+     "duree_s": 16.045,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_changer_le_jour_puis_choisir_une_heure_possible": {
+     "etat": "reussi",
+     "duree_s": 18.459,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_chaque_heure_possible_du_jeu_minimal_s_enregistre": {
+     "etat": "reussi",
+     "duree_s": 9.04,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit": {
+     "etat": "reussi",
+     "duree_s": 3.016,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_bandeau_et_bascule_vers_la_vue_etendue": {
+     "etat": "reussi",
+     "duree_s": 0.926,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_deplacer_puis_annuler_une_seance_datee": {
+     "etat": "reussi",
+     "duree_s": 0.799,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.667,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee": {
+     "etat": "reussi",
+     "duree_s": 0.66,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants": {
+     "etat": "reussi",
+     "duree_s": 0.379,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_panneau_revient_sur_la_page_d_ou_vient_htmx": {
+     "etat": "reussi",
+     "duree_s": 0.796,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe": {
+     "etat": "reussi",
+     "duree_s": 0.713,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_les_retouches_survivent_au_recalcul_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.658,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.646,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou": {
+     "etat": "reussi",
+     "duree_s": 0.844,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_refusee_par_une_erreur_du_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.742,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx": {
+     "etat": "reussi",
+     "duree_s": 1.722,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord": {
+     "etat": "reussi",
+     "duree_s": 0.505,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee": {
+     "etat": "reussi",
+     "duree_s": 0.388,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_seances_datees_produites_par_le_calcul_puis_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.743,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_semaine_datee_grise_les_vacances_et_navigue": {
+     "etat": "reussi",
+     "duree_s": 0.638,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle": {
+     "etat": "reussi",
+     "duree_s": 7.713,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants": {
+     "etat": "reussi",
+     "duree_s": 0.409,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_une_classe_s_ouvre_sur_ses_seances_et_celles_de_sa_promotion": {
+     "etat": "reussi",
+     "duree_s": 0.396,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_version_sans_seances_datees_puis_produites": {
+     "etat": "reussi",
+     "duree_s": 0.735,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_a_traiter_etiquette_le_niveau_des_anomalies": {
+     "etat": "reussi",
+     "duree_s": 0.32,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_ancien_calcul_a_regle_ignoree_reste_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.515,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_choisi_transmis_et_le_reste_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.415,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_du_dejeuner_tu_sans_pause_dejeuner": {
+     "etat": "reussi",
+     "duree_s": 0.487,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_illisible_ou_interdit_reaffiche_la_page_sans_rien_lancer": {
+     "etat": "reussi",
+     "duree_s": 0.279,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_refuse_garde_la_pause_dejeuner_saisie": {
+     "etat": "reussi",
+     "duree_s": 0.262,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_preremplissage_avec_les_niveaux_du_dernier_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.556,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_relances_reprennent_les_niveaux_du_calcul_d_origine": {
+     "etat": "reussi",
+     "duree_s": 0.443,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_retouche_d_une_version_a_regle_ignoree_garde_les_niveaux": {
+     "etat": "reussi",
+     "duree_s": 0.578,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_suivi_et_historique_disent_les_niveaux_modifies_et_les_entorses": {
+     "etat": "reussi",
+     "duree_s": 0.9,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires": {
+     "etat": "reussi",
+     "duree_s": 0.267,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_raccords.py::test_pre_verifications_et_instanciation_reelles": {
+     "etat": "reussi",
+     "duree_s": 0.367,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_affichage.py::test_ecrans_prevus_pour_un_telephone": {
+     "etat": "reussi",
+     "duree_s": 0.77,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_deplacement.py::test_heure_acceptee_avec_un_avertissement_annoncee_et_enregistree": {
+     "etat": "reussi",
+     "duree_s": 0.741,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_deplacement.py::test_jour_sans_aucune_heure_possible_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.603,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_resultat.py::test_resultat_d_un_calcul_affiche_les_indicateurs_du_verificateur": {
+     "etat": "reussi",
+     "duree_s": 1.326,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_verrous.py::test_verrou_pose_par_le_site_tenu_par_le_calcul_suivant": {
+     "etat": "reussi",
+     "duree_s": 0.968,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_verrous.py::test_verrouiller_puis_deverrouiller_une_seance_depuis_son_panneau": {
+     "etat": "reussi",
+     "duree_s": 1.012,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_anomalie_regle_affiche_la_phrase_et_le_lien": {
+     "etat": "reussi",
+     "duree_s": 0.65,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_choix_illisible_sur_une_regle_reaffiche_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.301,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_la_bande_dejeuner_suit_le_reglage_du_groupe_affiche": {
+     "etat": "reussi",
+     "duree_s": 0.895,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_la_grille_montre_les_jours_travailles_samedi_compris": {
+     "etat": "reussi",
+     "duree_s": 0.358,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_les_ecarts_se_mesurent_au_niveau_que_la_regle_avait_au_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.695,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_les_jours_proposes_pour_une_retouche_suivent_les_regles": {
+     "etat": "reussi",
+     "duree_s": 0.546,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_niveau_modifie_et_regle_ignoree_transmis_au_moteur": {
+     "etat": "reussi",
+     "duree_s": 0.697,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_pre_verifications_recoivent_les_niveaux_des_regles": {
+     "etat": "reussi",
+     "duree_s": 0.214,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul": {
+     "etat": "reussi",
+     "duree_s": 1.221,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_sans_choix_chaque_regle_garde_son_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.427,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses": {
+     "etat": "reussi",
+     "duree_s": 0.883,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_tableau_des_regles_personnalisees_sur_generer": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_une_relance_applique_les_regles_creees_depuis_et_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.829,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_accueil_sans_details_techniques_en_production": {
+     "etat": "reussi",
+     "duree_s": 0.149,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_besoin_impossible_a_deplier_affiche_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.227,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_calcul_dont_la_version_a_ete_supprimee": {
+     "etat": "reussi",
+     "duree_s": 0.316,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part": {
+     "etat": "reussi",
+     "duree_s": 0.655,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_meme_nom_de_version_partout": {
+     "etat": "reussi",
+     "duree_s": 0.553,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois": {
+     "etat": "reussi",
+     "duree_s": 0.683,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_pas_de_calcul_sans_besoin": {
+     "etat": "reussi",
+     "duree_s": 0.17,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_prechauffage_remplit_la_memoire_des_ecrans": {
+     "etat": "reussi",
+     "duree_s": 0.479,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_refus_reel_de_l_instanciation_sans_erreur_500": {
+     "etat": "reussi",
+     "duree_s": 0.817,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_seances_datees_importees_jamais_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.592,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_un_refus_de_l_instanciation_devient_une_remarque": {
+     "etat": "reussi",
+     "duree_s": 0.589,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_verifications_memorisees_jusqu_a_la_prochaine_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.682,
+     "raison": null
+    }
+   },
+   "ecartes": [
+    {
+     "test": "tests/integration/socle/test_web.py::test_base_non_initialisee_une_trace_puis_une_ligne",
+     "le": "2026-11-16T19:27:36",
+     "motif": "résultat daté hors de l'exécution enregistrée"
+    }
+   ]
+  },
+  {
+   "nom": "Poste de développement",
+   "systeme": "Windows 11",
+   "python": "3.11.9",
+   "processeurs": "32",
+   "version": "1.0.0",
+   "debut": "2026-11-23T14:47:45",
+   "fin": "2026-11-23T14:51:20",
+   "resultats": {
+    "tests/integration/assistant/test_commande.py::test_essai_en_echec_code_1_avec_le_remede": {
+     "etat": "reussi",
+     "duree_s": 0.207,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_et_question_ensemble_refuses": {
+     "etat": "reussi",
+     "duree_s": 0.041,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_reussi_avec_le_faux_client": {
+     "etat": "reussi",
+     "duree_s": 0.096,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_essai_sans_cle_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.045,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_configuration_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.045,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_configure_code_0_sans_afficher_la_cle": {
+     "etat": "reussi",
+     "duree_s": 0.045,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_etat_sans_cle_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.119,
+     "raison": null
+    },
+    "tests/integration/assistant/test_commande.py::test_question_affiche_la_reponse_et_les_propositions": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_configuration_invalide_annoncee_sans_bloquer_les_pages": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_configure_le_panneau_charge_la_conversation_a_l_ouverture": {
+     "etat": "reussi",
+     "duree_s": 0.08,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_desactive_par_l_administrateur": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_page_d_erreur_avec_le_panneau": {
+     "etat": "reussi",
+     "duree_s": 0.179,
+     "raison": null
+    },
+    "tests/integration/assistant/test_panneau.py::test_sans_cle_toutes_les_pages_s_affichent_et_le_panneau_dit_non_configure": {
+     "etat": "reussi",
+     "duree_s": 0.472,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_aucune_reponse_ne_contient_la_cle": {
+     "etat": "reussi",
+     "duree_s": 0.136,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_base_occupee_au_clic_sur_confirmer": {
+     "etat": "reussi",
+     "duree_s": 0.614,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_budget_du_jour_a_zero": {
+     "etat": "reussi",
+     "duree_s": 0.044,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_echange_perdu_apres_redemarrage": {
+     "etat": "reussi",
+     "duree_s": 0.076,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_envoi_depuis_un_autre_site_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.155,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_exemples_tires_des_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.067,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_formulaire_prerempli_du_besoin": {
+     "etat": "reussi",
+     "duree_s": 0.28,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_interrogation_sans_changement_repond_204": {
+     "etat": "reussi",
+     "duree_s": 0.072,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_le_cookie_de_conversation_est_renouvele_a_chaque_activite": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_limite_de_la_conversation_sans_appel": {
+     "etat": "reussi",
+     "duree_s": 0.073,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_nouvelle_conversation": {
+     "etat": "reussi",
+     "duree_s": 0.09,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_page_affichee_bornee_au_chemin_d_une_page": {
+     "etat": "reussi",
+     "duree_s": 0.405,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_page_sans_javascript": {
+     "etat": "reussi",
+     "duree_s": 0.075,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_confirmee_par_le_bouton": {
+     "etat": "reussi",
+     "duree_s": 0.107,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.046,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_proposition_refusee_par_le_bouton": {
+     "etat": "reussi",
+     "duree_s": 0.129,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_question_puis_reponse": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/assistant/test_web.py::test_sans_cle_l_envoi_est_refuse_proprement": {
+     "etat": "reussi",
+     "duree_s": 0.041,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_lance_un_test_de_charge_par_sa_cle": {
+     "etat": "reussi",
+     "duree_s": 1.105,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_refuse_une_cible_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.028,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_reussie_sur_un_composant": {
+     "etat": "reussi",
+     "duree_s": 1.067,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_commande.py::test_commande_sort_en_erreur_s_il_y_a_un_echec": {
+     "etat": "reussi",
+     "duree_s": 1.103,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_cible_inconnue_refusee_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 0.123,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_deux_onglets_colores_sur_toutes_les_pages_et_a_traiter_dans_generer": {
+     "etat": "reussi",
+     "duree_s": 0.232,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_double_clic_ne_lance_qu_une_execution_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.62,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_lancement_desactive_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 0.119,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_lancement_suivi_et_resultats_par_la_route_web": {
+     "etat": "reussi",
+     "duree_s": 1.3,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_page_avec_schema_resume_et_tests_jamais_lances": {
+     "etat": "reussi",
+     "duree_s": 0.118,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_pages_lisibles_sans_dossier_de_tests_et_avec_un_historique_illisible": {
+     "etat": "reussi",
+     "duree_s": 0.221,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_relance_depuis_le_site_retardee_et_resultats_de_la_commande_affiches": {
+     "etat": "reussi",
+     "duree_s": 1.178,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_suivi_d_une_execution_inconnue_et_adresses_hors_htmx": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_suivi_pendant_l_execution_puis_arret": {
+     "etat": "reussi",
+     "duree_s": 0.76,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_ecrans.py::test_tests_de_charge_par_la_commande_seulement": {
+     "etat": "reussi",
+     "duree_s": 0.121,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_arret_demande_tue_le_processus_et_garde_les_resultats": {
+     "etat": "reussi",
+     "duree_s": 1.387,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_duree_maximale_depassee": {
+     "etat": "reussi",
+     "duree_s": 1.41,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_environnement_du_sous_processus_assaini": {
+     "etat": "reussi",
+     "duree_s": 0.851,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_famille_lancee_de_bout_en_bout_et_resultats_enregistres": {
+     "etat": "reussi",
+     "duree_s": 1.083,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_fichier_qui_ne_se_charge_pas": {
+     "etat": "reussi",
+     "duree_s": 1.08,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_seconde_demande_pendant_une_execution": {
+     "etat": "reussi",
+     "duree_s": 0.346,
+     "raison": null
+    },
+    "tests/integration/banc_tests/test_execution.py::test_test_de_charge_lance_seul": {
+     "etat": "reussi",
+     "duree_s": 0.854,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_csv_d_emploi_du_temps_neutralise": {
+     "etat": "reussi",
+     "duree_s": 0.162,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_export_preselectionne_la_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.211,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_fichier_de_19_mo_refuse_vite_par_le_web": {
+     "etat": "reussi",
+     "duree_s": 0.312,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_import_web_d_une_archive_bombe": {
+     "etat": "reussi",
+     "duree_s": 0.185,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_page_bornee_et_rapport_complet_telechargeable": {
+     "etat": "reussi",
+     "duree_s": 0.285,
+     "raison": null
+    },
+    "tests/integration/echange/test_bornes.py::test_un_import_ne_gele_pas_les_autres_requetes": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_dossier_melange_signale_l_agenda_en_mode_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.071,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_exporter_puis_simuler_le_reimport": {
+     "etat": "reussi",
+     "duree_s": 0.261,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_fichier_introuvable_et_groupe_inconnu": {
+     "etat": "reussi",
+     "duree_s": 0.075,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_gabarit": {
+     "etat": "reussi",
+     "duree_s": 0.147,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_importer_avec_rejets_sort_en_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.072,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_importer_un_emploi_du_temps_puis_l_exporter": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_tout_remplacer_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.085,
+     "raison": null
+    },
+    "tests/integration/echange/test_commandes.py::test_version_hors_limites_en_ligne_de_commande_donne_un_message": {
+     "etat": "reussi",
+     "duree_s": 0.127,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_au_plus_un_filtre": {
+     "etat": "reussi",
+     "duree_s": 0.15,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_csv_de_la_semaine_type": {
+     "etat": "reussi",
+     "duree_s": 0.156,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_filtres_par_groupe_enseignant_salle": {
+     "etat": "reussi",
+     "duree_s": 0.301,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_ical_de_la_semaine_type_relu_par_icalendar": {
+     "etat": "reussi",
+     "duree_s": 0.195,
+     "raison": null
+    },
+    "tests/integration/echange/test_export_edt.py::test_parametres_invalides": {
+     "etat": "reussi",
+     "duree_s": 0.447,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_agenda_ical_exporte_puis_reimporte_comme_reference": {
+     "etat": "reussi",
+     "duree_s": 0.233,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource": {
+     "etat": "reussi",
+     "duree_s": 0.383,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_export_complet_reimporte_deux_fois_par_l_ecran_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.47,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins": {
+     "etat": "reussi",
+     "duree_s": 0.233,
+     "raison": null
+    },
+    "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_verrouillees_par_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.23,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_application": {
+     "etat": "reussi",
+     "duree_s": 0.139,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_application_sans_htmx_d_un_fichier_refuse_ne_dit_pas_0_ligne_non_importee": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_envoi_sans_fichier_ou_trop_gros": {
+     "etat": "reussi",
+     "duree_s": 0.1,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_export_d_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.289,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_export_d_une_version_negative_nulle_ou_enorme_dit_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.214,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_import_d_emploi_du_temps_par_le_web": {
+     "etat": "reussi",
+     "duree_s": 0.325,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_import_refuse_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.129,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_menu_et_page_d_import": {
+     "etat": "reussi",
+     "duree_s": 0.14,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_page_et_telechargements_d_export": {
+     "etat": "reussi",
+     "duree_s": 0.454,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_ressource_hostile_dans_l_adresse_donne_une_erreur_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.499,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_semestre_enorme_ou_negatif_a_l_import_donne_une_erreur_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.129,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_d_un_export_reimporte_tel_quel_ne_conseille_pas_de_corriger": {
+     "etat": "reussi",
+     "duree_s": 0.28,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_d_une_image_sans_bouton_appliquer": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_en_htmx_affiche_apercu_bilan_rapport": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_simulation_sans_htmx_rend_la_page_entiere": {
+     "etat": "reussi",
+     "duree_s": 0.135,
+     "raison": null
+    },
+    "tests/integration/echange/test_web.py::test_tout_remplacer_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.154,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_doctor_tolere_le_port_tenu_par_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_relance_a_chaque_deploiement_n_ajoute_rien": {
+     "etat": "reussi",
+     "duree_s": 0.071,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_init_db_reset_du_deploiement_ne_pose_aucune_question": {
+     "etat": "reussi",
+     "duree_s": 0.421,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_la_base_reste_saine_apres_un_arret_brutal_en_pleine_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.573,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_la_commande_de_la_sauvegarde_quotidienne_fonctionne_telle_quelle": {
+     "etat": "reussi",
+     "duree_s": 0.076,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_le_redemarrage_clot_le_calcul_tue_avec_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.229,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_ecrit_une_copie_verifiee_et_garde_les_plus_recentes": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_garde_toutes_les_sauvegardes_manuelles": {
+     "etat": "reussi",
+     "duree_s": 0.136,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_refuse_quand_le_disque_est_plein": {
+     "etat": "reussi",
+     "duree_s": 0.043,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_refuse_un_prefixe_reserve_ou_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.136,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_retire_un_fichier_partiel_abandonne": {
+     "etat": "reussi",
+     "duree_s": 0.069,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_sans_base_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.013,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_sauvegarder_une_base_illisible_echoue_sans_laisser_de_fichier": {
+     "etat": "reussi",
+     "duree_s": 0.041,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_et_le_service_lancent_la_meme_application": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_serve_refuse_un_port_ou_une_adresse_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.039,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_une_sauvegarde_restauree_a_la_place_de_la_base_est_relue_par_l_application": {
+     "etat": "reussi",
+     "duree_s": 0.15,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_accepte_une_sauvegarde_conforme_sans_la_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.121,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_refuse_un_fichier_abime_vide_ou_absent": {
+     "etat": "reussi",
+     "duree_s": 0.058,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_commandes_exploitation.py::test_verifier_sauvegarde_signale_un_schema_different": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_chaque_script_passe_le_controle_de_syntaxe_de_bash": {
+     "etat": "reussi",
+     "duree_s": 0.31,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_etat_compte_les_arrets_pour_memoire_epuisee": {
+     "etat": "reussi",
+     "duree_s": 0.178,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_cle_saisie_est_ecrite_sans_jamais_etre_affichee": {
+     "etat": "reussi",
+     "duree_s": 0.064,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_lit_le_modele_et_l_environnement_l_emporte": {
+     "etat": "reussi",
+     "duree_s": 0.055,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_configuration_refuse_une_ligne_douteuse_sans_l_executer": {
+     "etat": "reussi",
+     "duree_s": 0.082,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_la_sauvegarde_du_deploiement_reussit_puis_retire_sa_copie_en_cas_d_echec": {
+     "etat": "reussi",
+     "duree_s": 0.118,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_le_script_de_la_cle_refuse_de_s_executer_hors_root_ou_avec_une_option_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.129,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_les_commandes_du_deploiement_lisent_la_cle_comme_le_service": {
+     "etat": "reussi",
+     "duree_s": 0.062,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_ignore_les_processus_du_service": {
+     "etat": "ignore",
+     "duree_s": 0.002,
+     "raison": "processus et /proc de Linux seulement"
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_processus_hors_service_liste_une_commande_de_l_utilisateur": {
+     "etat": "ignore",
+     "duree_s": 0.002,
+     "raison": "processus et /proc de Linux seulement"
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_un_echec_d_ecriture_de_la_cle_laisse_l_ancien_fichier": {
+     "etat": "reussi",
+     "duree_s": 0.057,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_un_script_sans_parametres_s_arrete_avant_toute_action": {
+     "etat": "reussi",
+     "duree_s": 0.795,
+     "raison": null
+    },
+    "tests/integration/exploitation/test_scripts_deploiement.py::test_une_cle_vide_ou_mal_copiee_est_refusee_sans_rien_ecrire": {
+     "etat": "reussi",
+     "duree_s": 0.156,
+     "raison": null
+    },
+    "tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve": {
+     "etat": "reussi",
+     "duree_s": 0.353,
+     "raison": null
+    },
+    "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie": {
+     "etat": "reussi",
+     "duree_s": 0.824,
+     "raison": null
+    },
+    "tests/integration/parcours/test_parcours_ligne_de_commande.py::test_parcours_ligne_de_commande": {
+     "etat": "reussi",
+     "duree_s": 0.257,
+     "raison": null
+    },
+    "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export": {
+     "etat": "reussi",
+     "duree_s": 0.396,
+     "raison": null
+    },
+    "tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.185,
+     "raison": null
+    },
+    "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site": {
+     "etat": "reussi",
+     "duree_s": 0.248,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_base_illisible_le_remede_annonce_permet_d_en_sortir": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_commandes_de_calcul_avec_un_identifiant_inexistant": {
+     "etat": "reussi",
+     "duree_s": 0.723,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_configuration_invalide_donne_un_message_clair": {
+     "etat": "reussi",
+     "duree_s": 0.011,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor": {
+     "etat": "reussi",
+     "duree_s": 0.105,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_n_attend_pas_une_base_occupee_par_une_autre_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.081,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable": {
+     "etat": "reussi",
+     "duree_s": 0.111,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_en_lecture_seule": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_doctor_signale_une_base_non_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.028,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_cree_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.25,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_efface_les_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.158,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_en_production_n_efface_rien_si_la_sauvegarde_echoue": {
+     "etat": "reussi",
+     "duree_s": 0.089,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_est_refuse_pendant_un_chargement_de_jeu": {
+     "etat": "reussi",
+     "duree_s": 0.064,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_exige_une_confirmation_dans_un_terminal_et_aucun_calcul_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.222,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_non_interactif_ne_pose_pas_de_question": {
+     "etat": "reussi",
+     "duree_s": 0.153,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_refuse_en_production_n_ecrit_pas_de_sauvegarde": {
+     "etat": "reussi",
+     "duree_s": 0.173,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_init_db_reset_sans_sauvegarde_ne_double_pas_celle_du_deploiement": {
+     "etat": "reussi",
+     "duree_s": 0.148,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_jeu_minimal_puis_refus_du_second_chargement": {
+     "etat": "reussi",
+     "duree_s": 0.16,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_jeu_minimal_sans_base_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.019,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_module_de_commandes_decouvert": {
+     "etat": "reussi",
+     "duree_s": 0.038,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_une_base_verrouillee_lecture_seule_ou_corrompue_donne_un_message_clair_et_le_code_1": {
+     "etat": "reussi",
+     "duree_s": 1.324,
+     "raison": null
+    },
+    "tests/integration/socle/test_cli.py::test_version": {
+     "etat": "reussi",
+     "duree_s": 0.012,
+     "raison": null
+    },
+    "tests/integration/socle/test_config.py::test_doctor_signale_un_port_deja_occupe_sans_echouer": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/socle/test_config.py::test_doctor_signale_une_adresse_d_ecoute_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.077,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_arret_demande_par_l_utilisateur": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_besoin_impossible_a_deplier_refuse_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.319,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_interrompu_cloture_au_demarrage": {
+     "etat": "reussi",
+     "duree_s": 0.159,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_interrompu_ne_bloque_pas_le_suivant": {
+     "etat": "reussi",
+     "duree_s": 0.163,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_calcul_reussi_enregistre_une_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.164,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_erreur_du_moteur_journalisee_sans_version": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_infaisable_ne_cree_aucune_version": {
+     "etat": "reussi",
+     "duree_s": 0.083,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_reglages_par_defaut_le_calcul_ameliore_la_solution_valide": {
+     "etat": "reussi",
+     "duree_s": 1.367,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_semestre_inconnu": {
+     "etat": "reussi",
+     "duree_s": 0.034,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_solution_incomplete_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.125,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_un_seul_calcul_a_la_fois": {
+     "etat": "reussi",
+     "duree_s": 0.179,
+     "raison": null
+    },
+    "tests/integration/socle/test_generation.py::test_une_nouvelle_version_remplace_la_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.259,
+     "raison": null
+    },
+    "tests/integration/socle/test_instantane.py::test_un_identifiant_hors_des_entiers_sqlite_est_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.138,
+     "raison": null
+    },
+    "tests/integration/socle/test_instantane.py::test_une_commande_avec_un_identifiant_hors_bornes_repond_n_existe_pas": {
+     "etat": "reussi",
+     "duree_s": 0.13,
+     "raison": null
+    },
+    "tests/integration/socle/test_journal.py::test_fichier_journal_non_ouvrable_leve_une_erreur_de_configuration_et_doctor_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.038,
+     "raison": null
+    },
+    "tests/integration/socle/test_moteur.py::test_une_url_sans_pilote_ou_de_schema_inconnu_est_une_erreur_de_configuration": {
+     "etat": "reussi",
+     "duree_s": 0.067,
+     "raison": null
+    },
+    "tests/integration/socle/test_moteur.py::test_une_url_sqlite_sans_fichier_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.026,
+     "raison": null
+    },
+    "tests/integration/socle/test_parametres.py::test_l_ecran_des_parametres_reste_ouvrable_avec_une_valeur_corrompue": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/socle/test_recette_petit_ecran.py::test_pages_principales_adaptees_a_la_largeur_du_telephone": {
+     "etat": "reussi",
+     "duree_s": 0.799,
+     "raison": null
+    },
+    "tests/integration/socle/test_recette_petit_ecran.py::test_regles_pour_petits_ecrans_servies_et_elements_presents": {
+     "etat": "reussi",
+     "duree_s": 0.204,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_doctor_a_une_ligne_pour_le_schema": {
+     "etat": "reussi",
+     "duree_s": 0.137,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_init_db_refuse_un_schema_perime_sans_rien_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.106,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_init_db_reset_repare_un_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.189,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_jeu_minimal_refuse_une_base_au_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.067,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_sante_repond_503_quand_le_schema_est_perime": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_a_jour": {
+     "etat": "reussi",
+     "duree_s": 0.071,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_avant_la_premiere_initialisation": {
+     "etat": "reussi",
+     "duree_s": 0.017,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_base_inaccessible": {
+     "etat": "reussi",
+     "duree_s": 0.016,
+     "raison": null
+    },
+    "tests/integration/socle/test_schema.py::test_verifier_schema_perime_liste_les_ecarts_sans_rien_modifier": {
+     "etat": "reussi",
+     "duree_s": 0.084,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_accueil_reste_lisible_sans_base_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.015,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_accueil_tait_une_base_en_bon_etat": {
+     "etat": "reussi",
+     "duree_s": 0.103,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_base_non_initialisee_une_ligne_d_avertissement_sans_trace": {
+     "etat": "reussi",
+     "duree_s": 0.227,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_cycle_de_vie_du_serveur_clot_les_calculs_interrompus_et_journalise": {
+     "etat": "reussi",
+     "duree_s": 0.142,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_cycle_de_vie_sans_base_initialisee_avertit_sans_echouer": {
+     "etat": "reussi",
+     "duree_s": 0.033,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_inattendue_page_lisible_et_trace_journalisee": {
+     "etat": "reussi",
+     "duree_s": 0.115,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_metier_traduite_en_message": {
+     "etat": "reussi",
+     "duree_s": 0.317,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_erreur_rendue_en_fragment_pour_htmx_et_en_json": {
+     "etat": "reussi",
+     "duree_s": 0.11,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_fichiers_statiques_embarques": {
+     "etat": "reussi",
+     "duree_s": 0.039,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_head_repond_comme_get_sans_corps": {
+     "etat": "reussi",
+     "duree_s": 0.114,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_le_serveur_demarre_et_repond_base_indisponible_malgre_une_base_corrompue": {
+     "etat": "reussi",
+     "duree_s": 0.087,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_le_serveur_demarre_malgre_une_base_verrouillee_et_reporte_la_cloture_des_calculs": {
+     "etat": "reussi",
+     "duree_s": 1.464,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_module_de_routes_decouvert_avec_son_menu": {
+     "etat": "reussi",
+     "duree_s": 0.083,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_page_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.106,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_pied_de_page_sans_reference_de_requete": {
+     "etat": "reussi",
+     "duree_s": 0.105,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_remise_a_zero_par_un_autre_processus_donne_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.174,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_saisie_invalide_nomme_le_champ_sans_nom_technique": {
+     "etat": "reussi",
+     "duree_s": 0.121,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_sante": {
+     "etat": "reussi",
+     "duree_s": 0.063,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_sante_signale_une_base_en_lecture_seule": {
+     "etat": "reussi",
+     "duree_s": 0.068,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_session_validee_avant_la_redirection_et_message_affiche": {
+     "etat": "reussi",
+     "duree_s": 0.165,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_un_envoi_trop_volumineux_donne_une_page_qui_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.109,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_base_en_lecture_seule_ou_un_disque_plein_sont_nommes": {
+     "etat": "reussi",
+     "duree_s": 0.475,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_erreur_de_programmation_du_pilote_est_une_page_500": {
+     "etat": "reussi",
+     "duree_s": 0.364,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_methode_non_permise_donne_une_page_405": {
+     "etat": "reussi",
+     "duree_s": 0.111,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_panne_de_preparation_n_empeche_pas_de_servir": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_panne_du_pilote_de_base_est_un_503_qui_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.439,
+     "raison": null
+    },
+    "tests/integration/socle/test_web.py::test_une_route_sur_une_base_corrompue_repond_503_avec_le_remede": {
+     "etat": "reussi",
+     "duree_s": 0.112,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_calcul_reussi_malgre_une_indisponibilite_impossible_a_respecter": {
+     "etat": "reussi",
+     "duree_s": 0.207,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.309,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_generer_niveau_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.58,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_commande_pre_verifier_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.091,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_les_niveaux_sont_enregistres_avec_le_calcul_et_rendus_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/solveur/test_niveaux.py::test_un_calcul_d_avant_les_niveaux_est_lu_avec_ses_contraintes_desactivees": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_commande_generer_regle": {
+     "etat": "reussi",
+     "duree_s": 0.459,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_commande_pre_verifier_regle": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/solveur/test_regles.py::test_les_regles_sont_copiees_avec_le_calcul_et_rendues_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.267,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_arret_avec_une_solution_la_version_est_enregistree": {
+     "etat": "reussi",
+     "duree_s": 0.162,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_attente_d_un_calcul_bornee_par_son_delai": {
+     "etat": "reussi",
+     "duree_s": 0.773,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_avertissements_joints_au_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.081,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_abandonne_par_un_processus_mort_ne_bloque_plus": {
+     "etat": "reussi",
+     "duree_s": 0.205,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_en_cours_bien_au_dela_de_son_temps_limite_est_clos": {
+     "etat": "reussi",
+     "duree_s": 0.062,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_refuse_par_les_pre_verifications": {
+     "etat": "reussi",
+     "duree_s": 0.104,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_refuse_pendant_une_execution_des_tests": {
+     "etat": "reussi",
+     "duree_s": 0.176,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_calcul_vivant_d_un_autre_processus_n_est_pas_clos": {
+     "etat": "reussi",
+     "duree_s": 0.07,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_ameliore_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 1.403,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_avec_optimisation_et_contrainte_desactivee": {
+     "etat": "reussi",
+     "duree_s": 1.427,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_echec_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.392,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_interrompue_au_clavier": {
+     "etat": "reussi",
+     "duree_s": 0.101,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier": {
+     "etat": "reussi",
+     "duree_s": 0.252,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_defaut_du_moteur_releve_par_le_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.101,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_doctor_signale_le_dossier_des_journaux_de_calcul_inutilisable": {
+     "etat": "reussi",
+     "duree_s": 0.081,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_donnees_modifiees_pendant_le_calcul_sont_dites": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_echec_de_l_ecriture_finale_est_retente": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_ecriture_finale_toujours_en_echec": {
+     "etat": "reussi",
+     "duree_s": 0.359,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.193,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_identifiant_hors_bornes_est_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.057,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_instanciation_idempotente_et_saisies_manuelles_conservees": {
+     "etat": "reussi",
+     "duree_s": 0.416,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_instanciation_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.972,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_jour_ferie_replace_dans_la_meme_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.254,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_journal_de_calcul_impossible_donne_la_vraie_cause": {
+     "etat": "reussi",
+     "duree_s": 0.165,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_chargement_est_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.162,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_import_est_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.056,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_le_vrai_moteur_signale_sa_premiere_solution": {
+     "etat": "reussi",
+     "duree_s": 0.159,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_options_hors_bornes_refusees_par_la_commande": {
+     "etat": "reussi",
+     "duree_s": 0.089,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_pre_verifications_journalisees_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.165,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_replacement_impossible_passe_a_programmer": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_replacer_des_occurrences_designees_dans_une_fenetre": {
+     "etat": "reussi",
+     "duree_s": 0.199,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_salle_supprimee_pendant_le_calcul_est_dite": {
+     "etat": "reussi",
+     "duree_s": 0.127,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_seances_datees_importees_jamais_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.189,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_semestre_sans_besoin_ne_cree_pas_de_version_vide": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_solution_sans_salle_ou_a_salle_inconnue_du_moteur_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.103,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_temps_limite_enregistre_illisible_ne_bloque_pas_le_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.068,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_avertissement_du_moteur_est_journalise_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_calcul_illisible_est_clos_sans_bloquer_l_application": {
+     "etat": "reussi",
+     "duree_s": 0.27,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_un_saut_d_horloge_ne_clot_pas_un_calcul_vivant": {
+     "etat": "reussi",
+     "duree_s": 0.059,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_une_retouche_reste_la_seule_seance_de_sa_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.382,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_une_seance_de_la_semaine_type_ne_prend_pas_la_place_d_une_retouche": {
+     "etat": "reussi",
+     "duree_s": 0.192,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_verrou_decoche_le_verrou_ne_suit_pas_la_seance_deplacee": {
+     "etat": "reussi",
+     "duree_s": 0.535,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_verrous_contradictoires_toleres_de_bout_en_bout": {
+     "etat": "reussi",
+     "duree_s": 0.556,
+     "raison": null
+    },
+    "tests/integration/solveur/test_services.py::test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation": {
+     "etat": "reussi",
+     "duree_s": 0.239,
+     "raison": null
+    },
+    "tests/integration/synthese/test_cas_limites.py::test_commande_refuse_sans_toucher_a_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.778,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_commande_jeu_charge_et_affiche_le_resume": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_remise_a_zero_demande_confirmation": {
+     "etat": "reussi",
+     "duree_s": 0.312,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_remise_a_zero_sur_une_base_neuve": {
+     "etat": "reussi",
+     "duree_s": 0.119,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_second_chargement_refuse_avec_un_message_clair": {
+     "etat": "reussi",
+     "duree_s": 0.191,
+     "raison": null
+    },
+    "tests/integration/synthese/test_commande.py::test_taille_inconnue": {
+     "etat": "reussi",
+     "duree_s": 0.046,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_periode_et_contrainte_choisie": {
+     "etat": "reussi",
+     "duree_s": 0.104,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_seances_datees_avec_erreurs_code_1": {
+     "etat": "reussi",
+     "duree_s": 0.125,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_semaine_type_valide_code_0": {
+     "etat": "reussi",
+     "duree_s": 0.101,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_semestre_sans_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.067,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_sortie_json": {
+     "etat": "reussi",
+     "duree_s": 0.116,
+     "raison": null
+    },
+    "tests/integration/verification/test_commande.py::test_verification_impossible_code_2": {
+     "etat": "reussi",
+     "duree_s": 0.739,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_charges_repliees_et_limitees_aux_groupes_concernes": {
+     "etat": "reussi",
+     "duree_s": 0.494,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_duplication": {
+     "etat": "reussi",
+     "duree_s": 0.104,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_formulaire_marque_les_champs_propres_a_chaque_mode": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_abregee_au_dela_de_l_apercu": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_compacte": {
+     "etat": "reussi",
+     "duree_s": 0.143,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_liste_filtrable_et_ajout_rapide": {
+     "etat": "reussi",
+     "duree_s": 0.165,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_par_semaine": {
+     "etat": "reussi",
+     "duree_s": 0.09,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_ponctuel": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_besoins.py::test_mode_total_entre_deux_dates": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_adresse_de_retour_avec_saut_de_ligne_est_ecartee": {
+     "etat": "reussi",
+     "duree_s": 0.262,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_adresse_de_retour_hors_site_est_ecartee": {
+     "etat": "reussi",
+     "duree_s": 0.396,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_calculs_d_un_semestre_sain_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.443,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.698,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_champs_libres_echappes_sur_les_pages_de_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.42,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_un_semestre_bornee": {
+     "etat": "reussi",
+     "duree_s": 0.141,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_duree_d_une_annee_bornee": {
+     "etat": "reussi",
+     "duree_s": 0.309,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_fragments_sans_htmx_redirigent_vers_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.203,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_hx_current_url_illisible_est_ignore": {
+     "etat": "reussi",
+     "duree_s": 0.16,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_regles_personnalisees_supprimables_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.238,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_suppression_d_un_besoin_ou_d_une_salle_pendant_le_calcul_est_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.546,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_cas_limites.py::test_suppression_du_semestre_refusee_pendant_son_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.256,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_base_occupee_n_est_pas_presentee_comme_non_initialisee": {
+     "etat": "reussi",
+     "duree_s": 0.122,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_deux_chargements_simultanes_depuis_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.159,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_concurrence.py::test_tables_absentes_pendant_un_chargement_donnent_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.105,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_arbre_des_groupes": {
+     "etat": "reussi",
+     "duree_s": 0.084,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_arbre_repliable": {
+     "etat": "reussi",
+     "duree_s": 0.078,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_calendrier_et_jours_feries": {
+     "etat": "reussi",
+     "duree_s": 0.143,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_creneau_refuse_une_fin_avant_le_debut": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_libelles_des_listes_lisibles": {
+     "etat": "reussi",
+     "duree_s": 0.146,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_liste_formulaire_et_creation": {
+     "etat": "reussi",
+     "duree_s": 2.007,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_entites.py::test_matrice_des_trajets": {
+     "etat": "reussi",
+     "duree_s": 0.44,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_creation_puis_message": {
+     "etat": "reussi",
+     "duree_s": 0.099,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_edition_dans_la_ligne": {
+     "etat": "reussi",
+     "duree_s": 0.1,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_erreur_de_saisie_reaffichee_avec_les_valeurs": {
+     "etat": "reussi",
+     "duree_s": 0.095,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_fragment_htmx_de_la_liste": {
+     "etat": "reussi",
+     "duree_s": 0.085,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_liste_triee_recherchee_et_filtree": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_modification": {
+     "etat": "reussi",
+     "duree_s": 0.092,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_pagination": {
+     "etat": "reussi",
+     "duree_s": 0.207,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_suppression_confirmee": {
+     "etat": "reussi",
+     "duree_s": 0.123,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_generique.py::test_suppression_refusee_avant_la_base_avec_message": {
+     "etat": "reussi",
+     "duree_s": 0.43,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_chargement_du_jeu_petit": {
+     "etat": "reussi",
+     "duree_s": 0.211,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_graine_au_dela_de_la_borne_du_generateur_refusee_par_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_de_resultat_rechargee_sans_second_chargement": {
+     "etat": "reussi",
+     "duree_s": 0.225,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_decrit_les_tailles": {
+     "etat": "reussi",
+     "duree_s": 0.109,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_page_rechargee_pendant_un_chargement_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.149,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_rechargement_exige_une_confirmation_d_effacement": {
+     "etat": "reussi",
+     "duree_s": 0.291,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_refus_clair_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.174,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_jeux.py::test_remise_a_zero_confirmee": {
+     "etat": "reussi",
+     "duree_s": 0.845,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_accueil_sans_sous_navigation_mais_avec_menu_deroulant": {
+     "etat": "reussi",
+     "duree_s": 0.107,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_aucune_page_n_annonce_une_fonction_a_venir": {
+     "etat": "reussi",
+     "duree_s": 0.196,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_compteur_des_points_a_traiter_charge_dans_l_onglet_generer": {
+     "etat": "reussi",
+     "duree_s": 0.085,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_page_donnees_affiche_onglets_et_sous_navigation": {
+     "etat": "reussi",
+     "duree_s": 0.09,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_panneau_assistant_present_sur_toutes_les_pages": {
+     "etat": "reussi",
+     "duree_s": 0.194,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_mise_en_page.py::test_six_onglets_de_l_application_et_import_export_dans_donnees": {
+     "etat": "reussi",
+     "duree_s": 0.104,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_ancien_parametre_de_dejeuner_illisible_reste_reparable": {
+     "etat": "reussi",
+     "duree_s": 0.141,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_bornes_refusees_et_signalees_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_ecran_des_parametres_simple_a_lire": {
+     "etat": "reussi",
+     "duree_s": 0.109,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_enregistrement_puis_retour_aux_valeurs_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.124,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_formulaire_construit_depuis_les_metadonnees": {
+     "etat": "reussi",
+     "duree_s": 0.097,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_incoherence_d_ensemble_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.121,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_parametres_refuses_pendant_un_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.587,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_dejeuner_liste_deroulante_et_champs_selon_le_mode": {
+     "etat": "reussi",
+     "duree_s": 0.093,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_libre_enregistree_et_valeur_hors_choix_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_pause_libre_plus_longue_que_sa_fenetre_signalee_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.099,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_parametres.py::test_valeur_corrompue_signalee_puis_reparee_depuis_l_ecran": {
+     "etat": "reussi",
+     "duree_s": 0.14,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_jours_travailles_avec_apercu_et_erreurs": {
+     "etat": "reussi",
+     "duree_s": 0.164,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_pause_dejeuner_d_un_enseignant": {
+     "etat": "reussi",
+     "duree_s": 0.167,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_ajout_salles_imposees_et_portee_refusee": {
+     "etat": "reussi",
+     "duree_s": 0.158,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_aucune_page_des_regles_ne_renvoie_de_trace": {
+     "etat": "reussi",
+     "duree_s": 0.369,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_bandeau_les_voir_ignore_les_filtres_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_choix_du_type_puis_formulaire_tire_du_schema": {
+     "etat": "reussi",
+     "duree_s": 0.128,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_code_de_regle_en_minuscules_dans_la_base": {
+     "etat": "reussi",
+     "duree_s": 0.148,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_par_le_formulaire_annonce_les_regles_proposees": {
+     "etat": "reussi",
+     "duree_s": 0.149,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_creation_d_une_annee_propose_les_regles": {
+     "etat": "reussi",
+     "duree_s": 0.171,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_double_clic_sur_la_suppression_d_une_regle": {
+     "etat": "reussi",
+     "duree_s": 0.143,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_double_envoi_d_une_regle_ne_cree_pas_de_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.134,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_erreurs_globales_du_service_sous_leur_bloc": {
+     "etat": "reussi",
+     "duree_s": 0.067,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_etats_activer_ecarter_desactiver_tout_confirmer": {
+     "etat": "reussi",
+     "duree_s": 0.565,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_filtres_et_recherche": {
+     "etat": "reussi",
+     "duree_s": 0.178,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_identifiants_enormes_des_regles_sont_introuvables": {
+     "etat": "reussi",
+     "duree_s": 0.148,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_liste_de_l_annee_et_bandeau_des_regles_proposees": {
+     "etat": "reussi",
+     "duree_s": 0.119,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_modification_preremplie_et_doublon_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.154,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_niveaux_definis_comme_sur_l_ecran_generer": {
+     "etat": "reussi",
+     "duree_s": 0.501,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_pages_des_regles_sans_jargon": {
+     "etat": "reussi",
+     "duree_s": 0.49,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_parametre_jours_travailles_en_sept_cases": {
+     "etat": "reussi",
+     "duree_s": 0.143,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_parcours_reel_sur_le_jeu_moyen": {
+     "etat": "reussi",
+     "duree_s": 0.774,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_personnes_concernees_seulement_pour_la_portee_etablissement": {
+     "etat": "reussi",
+     "duree_s": 0.15,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_proposer_pour_une_annee_existante_liste_les_regles_a_revoir": {
+     "etat": "reussi",
+     "duree_s": 0.147,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_regle_supprimee_entre_temps_dit_introuvable": {
+     "etat": "reussi",
+     "duree_s": 0.14,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_regles_sans_annee_scolaire_affiche_un_bandeau": {
+     "etat": "reussi",
+     "duree_s": 0.111,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_salle_citee_retiree_des_regles_et_cible_bloquee": {
+     "etat": "reussi",
+     "duree_s": 0.151,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_suppression_d_une_cible_et_de_ses_regles": {
+     "etat": "reussi",
+     "duree_s": 0.142,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_suppression_d_une_regle_sur_place_et_sans_javascript": {
+     "etat": "reussi",
+     "duree_s": 0.139,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_type_de_seance_cite_par_une_regle_de_base": {
+     "etat": "reussi",
+     "duree_s": 0.131,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_regles.py::test_type_non_datable_sans_mode_dates_et_dates_refusees": {
+     "etat": "reussi",
+     "duree_s": 0.161,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_adresses_aberrantes": {
+     "etat": "reussi",
+     "duree_s": 0.656,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_annee_de_debut_exotique": {
+     "etat": "reussi",
+     "duree_s": 0.113,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_capacite_trop_grande": {
+     "etat": "reussi",
+     "duree_s": 0.088,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_chiffres_exotiques_refuses": {
+     "etat": "reussi",
+     "duree_s": 1.344,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_commentaire_de_regle_borne_cote_serveur": {
+     "etat": "reussi",
+     "duree_s": 0.142,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_effectif_trop_grand": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_graine_exotique": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_identifiant_trop_grand_dans_un_choix": {
+     "etat": "reussi",
+     "duree_s": 0.326,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_jours_feries_d_une_annee_inexistante": {
+     "etat": "reussi",
+     "duree_s": 0.097,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_avec_filtre_pose": {
+     "etat": "reussi",
+     "duree_s": 0.1,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_liste_vide_sans_filtre_pose": {
+     "etat": "reussi",
+     "duree_s": 0.08,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_maximum_d_enseignement_nul_refuse_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.334,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_nombres_de_cinq_mille_chiffres_refuses": {
+     "etat": "reussi",
+     "duree_s": 0.233,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_saisies_extremes.py::test_note_de_besoin_bornee_cote_serveur": {
+     "etat": "reussi",
+     "duree_s": 0.111,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_sans_trace.py::test_adresses_erronees_expliquees": {
+     "etat": "reussi",
+     "duree_s": 1.54,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_sans_trace.py::test_toutes_les_pages_repondent_sans_trace": {
+     "etat": "reussi",
+     "duree_s": 1.332,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_annuler_ramene_a_la_fiche_quand_on_en_vient": {
+     "etat": "reussi",
+     "duree_s": 0.421,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_confirmation_garde_la_liste_et_y_revient": {
+     "etat": "reussi",
+     "duree_s": 0.465,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_lien_supprimer_de_la_ligne_porte_la_liste": {
+     "etat": "reussi",
+     "duree_s": 0.351,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_quand_la_suppression_est_possible": {
+     "etat": "reussi",
+     "duree_s": 0.384,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_ligne_de_confirmation_refusee_avec_lien": {
+     "etat": "reussi",
+     "duree_s": 0.523,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_parcours_reel_sur_le_jeu_moyen": {
+     "etat": "reussi",
+     "duree_s": 2.747,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_refus_d_une_salle_imposee_mene_aux_besoins": {
+     "etat": "reussi",
+     "duree_s": 0.515,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_refus_par_campus_et_par_groupe": {
+     "etat": "reussi",
+     "duree_s": 0.572,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_rejeu_d_une_suppression_et_d_une_annulation": {
+     "etat": "reussi",
+     "duree_s": 1.454,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_retour_a_la_page_precedente_si_la_page_disparait": {
+     "etat": "reussi",
+     "duree_s": 0.733,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_sans_javascript_la_suppression_depuis_la_ligne_redirige": {
+     "etat": "reussi",
+     "duree_s": 0.437,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_suppression_depuis_la_ligne_rafraichit_la_zone": {
+     "etat": "reussi",
+     "duree_s": 0.385,
+     "raison": null
+    },
+    "tests/integration/web_donnees/test_suppression.py::test_suppression_refusee_depuis_la_ligne_ne_touche_a_rien": {
+     "etat": "reussi",
+     "duree_s": 0.421,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer": {
+     "etat": "reussi",
+     "duree_s": 0.845,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_avec_le_vrai_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.861,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_compteur_memorise_puis_recalcule_quand_une_seance_change": {
+     "etat": "reussi",
+     "duree_s": 0.867,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_option_tous_les_semestres_affiche_tous_les_semestres": {
+     "etat": "reussi",
+     "duree_s": 2.366,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_sans_emploi_du_temps_actif": {
+     "etat": "reussi",
+     "duree_s": 0.269,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_a_traiter.py::test_sans_verificateur_l_absence_est_dite": {
+     "etat": "reussi",
+     "duree_s": 0.777,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_au_schema_perime": {
+     "etat": "reussi",
+     "duree_s": 0.28,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_occupee_par_une_ecriture_n_est_pas_une_panne": {
+     "etat": "reussi",
+     "duree_s": 0.435,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_qui_refuse_l_ecriture_signalee_sur_l_accueil_et_sante": {
+     "etat": "reussi",
+     "duree_s": 0.414,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_base_vide_propose_un_etablissement_fictif": {
+     "etat": "reussi",
+     "duree_s": 0.344,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_calcul_en_cours_conseille_de_le_suivre": {
+     "etat": "reussi",
+     "duree_s": 0.516,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_dernier_calcul_sans_solution_visible": {
+     "etat": "reussi",
+     "duree_s": 2.046,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_donnees_sans_emploi_du_temps_conseille_de_generer": {
+     "etat": "reussi",
+     "duree_s": 0.393,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_le_demarrage_du_serveur_prepare_l_accueil": {
+     "etat": "reussi",
+     "duree_s": 1.164,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_points_a_traiter_sans_indicateurs": {
+     "etat": "reussi",
+     "duree_s": 0.841,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_tout_va_bien_version_a_consulter_et_rien_d_autre": {
+     "etat": "reussi",
+     "duree_s": 0.991,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_accueil.py::test_version_active_sans_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.84,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_arret_avec_solution_conservee": {
+     "etat": "reussi",
+     "duree_s": 1.022,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_arret_d_un_calcul_termine_dit_qu_il_est_fini": {
+     "etat": "reussi",
+     "duree_s": 0.826,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_autre_solution_donne_un_autre_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 1.278,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 6.011,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif": {
+     "etat": "reussi",
+     "duree_s": 0.309,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_interrompu_par_un_redemarrage": {
+     "etat": "reussi",
+     "duree_s": 1.117,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit": {
+     "etat": "reussi",
+     "duree_s": 0.35,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_deux_messages_d_echec_distincts": {
+     "etat": "reussi",
+     "duree_s": 1.146,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_lancer_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.886,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_clic_sur_supprimer_une_version": {
+     "etat": "reussi",
+     "duree_s": 2.276,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_double_envoi_de_relancer_dit_calcul_relance": {
+     "etat": "reussi",
+     "duree_s": 0.274,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique": {
+     "etat": "reussi",
+     "duree_s": 0.578,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_generer_sans_aucun_besoin_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.086,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_historique_activation_et_suppression_des_versions": {
+     "etat": "reussi",
+     "duree_s": 1.257,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_lancement_suivi_jusqu_a_la_fin_et_rappel_des_niveaux_choisis": {
+     "etat": "reussi",
+     "duree_s": 0.997,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles": {
+     "etat": "reussi",
+     "duree_s": 1.492,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_prechauffage_apres_un_calcul_sur_une_version_active": {
+     "etat": "reussi",
+     "duree_s": 0.229,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_prechauffage_qui_ne_peut_pas_demarrer_ne_casse_pas_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.186,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_refus_par_les_verifications_prealables_distinct_d_une_recherche_vaine": {
+     "etat": "reussi",
+     "duree_s": 0.499,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_relance_longue_et_autre_solution": {
+     "etat": "reussi",
+     "duree_s": 1.019,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_resultat_dit_les_memes_durees_que_le_suivi": {
+     "etat": "reussi",
+     "duree_s": 0.202,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_retouches_de_la_version_active_annoncees_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.362,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_apres_la_recherche_ne_propose_plus_l_arret": {
+     "etat": "reussi",
+     "duree_s": 0.902,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_dit_qu_un_emploi_du_temps_est_deja_trouve": {
+     "etat": "reussi",
+     "duree_s": 0.14,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret": {
+     "etat": "reussi",
+     "duree_s": 0.808,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non": {
+     "etat": "reussi",
+     "duree_s": 0.518,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_adresse_de_retour_fabriquee_ramene_a_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 2.905,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_arret_quand_un_autre_ecrivain_valide_entre_lecture_et_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.108,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_cible_enorme_dans_l_adresse_montre_la_premiere_classe": {
+     "etat": "reussi",
+     "duree_s": 1.282,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_cookie_de_cible_illisible_ou_enorme_est_ignore": {
+     "etat": "reussi",
+     "duree_s": 0.326,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_date_tres_ancienne_ou_lointaine_sans_erreur": {
+     "etat": "reussi",
+     "duree_s": 0.319,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_deplacement_vers_un_creneau_ou_un_jour_inexistant": {
+     "etat": "reussi",
+     "duree_s": 0.267,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_deplacer_une_seance_datee_hors_du_semestre": {
+     "etat": "reussi",
+     "duree_s": 0.239,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_filtres_inconnus_refuses_lisiblement": {
+     "etat": "reussi",
+     "duree_s": 2.628,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_fragments_ouverts_sans_htmx_menent_a_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.817,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_head_sur_les_ecrans_de_l_emploi_du_temps": {
+     "etat": "reussi",
+     "duree_s": 0.359,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_hx_current_url_illisible_dans_les_panneaux": {
+     "etat": "reussi",
+     "duree_s": 0.628,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_identifiant_qui_n_est_pas_un_entier_donne_saisie_invalide": {
+     "etat": "reussi",
+     "duree_s": 0.662,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_identifiants_enormes_ou_negatifs_donnent_introuvable": {
+     "etat": "reussi",
+     "duree_s": 1.036,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_motif_d_annulation_borne": {
+     "etat": "reussi",
+     "duree_s": 0.304,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_panneau_d_une_seance_supprimee_entre_temps": {
+     "etat": "reussi",
+     "duree_s": 0.266,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_relance_pendant_un_calcul_mene_au_calcul_en_cours": {
+     "etat": "reussi",
+     "duree_s": 0.261,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_saisies_de_cinq_mille_chiffres_au_lancement": {
+     "etat": "reussi",
+     "duree_s": 0.157,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_seance_annulee_ni_reannulee_ni_deplacee": {
+     "etat": "reussi",
+     "duree_s": 0.288,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_seance_enorme_dans_l_adresse_ouvre_la_page_sans_panneau": {
+     "etat": "reussi",
+     "duree_s": 0.353,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_semestre_sans_grille_reste_utilisable": {
+     "etat": "reussi",
+     "duree_s": 0.313,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_une_ecriture_attend_son_tour_pendant_un_autre_ecrivain": {
+     "etat": "reussi",
+     "duree_s": 0.539,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_une_lecture_est_servie_pendant_un_autre_ecrivain": {
+     "etat": "reussi",
+     "duree_s": 0.773,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_verrou_tenu_au_dela_du_delai_donne_la_page_base_occupee": {
+     "etat": "reussi",
+     "duree_s": 0.54,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_version_active_vide_sur_a_traiter_et_l_accueil": {
+     "etat": "reussi",
+     "duree_s": 0.242,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_cas_limites.py::test_version_sans_seance_s_affiche_et_s_exporte": {
+     "etat": "reussi",
+     "duree_s": 0.319,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_enregistres_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.258,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_horaires_determines_mal_saisis_reaffiches_sans_lancer_ni_enregistrer": {
+     "etat": "reussi",
+     "duree_s": 0.165,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_la_grille_dessine_la_bande_selon_le_mode": {
+     "etat": "reussi",
+     "duree_s": 0.352,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_mode_inconnu_refuse": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pas_de_pause_enregistre_puis_lance": {
+     "etat": "reussi",
+     "duree_s": 0.249,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_enregistree_avant_le_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.267,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_pause_libre_mal_saisie_refusee_sous_le_champ": {
+     "etat": "reussi",
+     "duree_s": 0.19,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_dejeuner.py::test_trois_choix_preremplis_depuis_les_parametres": {
+     "etat": "reussi",
+     "duree_s": 0.54,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_balayage_changer_le_jour_puis_l_heure_de_la_version_du_moteur": {
+     "etat": "reussi",
+     "duree_s": 6.832,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_changer_le_jour_puis_choisir_une_heure_possible": {
+     "etat": "reussi",
+     "duree_s": 8.57,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_chaque_heure_possible_du_jeu_minimal_s_enregistre": {
+     "etat": "reussi",
+     "duree_s": 3.902,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_deplacement_possible.py::test_heure_possible_choisie_puis_enregistree_reussit": {
+     "etat": "reussi",
+     "duree_s": 1.647,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_bandeau_et_bascule_vers_la_vue_etendue": {
+     "etat": "reussi",
+     "duree_s": 0.654,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_deplacer_puis_annuler_une_seance_datee": {
+     "etat": "reussi",
+     "duree_s": 0.724,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_formulaire_seance_sans_debut_possible_reste_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.292,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_la_page_s_ouvre_sur_une_classe_puis_sur_la_derniere_cible_consultee": {
+     "etat": "reussi",
+     "duree_s": 0.409,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_groupe_voit_aussi_les_seances_des_groupes_qui_partagent_ses_etudiants": {
+     "etat": "reussi",
+     "duree_s": 0.19,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_panneau_revient_sur_la_page_d_ou_vient_htmx": {
+     "etat": "reussi",
+     "duree_s": 0.327,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe": {
+     "etat": "reussi",
+     "duree_s": 0.299,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_les_retouches_survivent_au_recalcul_sans_doublon": {
+     "etat": "reussi",
+     "duree_s": 0.686,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.275,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou": {
+     "etat": "reussi",
+     "duree_s": 0.403,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_refusee_par_une_erreur_du_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.317,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_page_avec_seance_ouvre_le_panneau_et_le_fragment_htmx": {
+     "etat": "reussi",
+     "duree_s": 0.341,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_salles_compatibles_libres_d_abord": {
+     "etat": "reussi",
+     "duree_s": 0.248,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_sans_verificateur_aucune_seance_n_est_deplacee": {
+     "etat": "reussi",
+     "duree_s": 0.201,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_seances_datees_produites_par_le_calcul_puis_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.357,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_semaine_datee_grise_les_vacances_et_navigue": {
+     "etat": "reussi",
+     "duree_s": 0.269,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_trois_affichages_pour_un_groupe_un_enseignant_une_salle": {
+     "etat": "reussi",
+     "duree_s": 4.359,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_un_demi_groupe_montre_tout_ce_que_suivent_ses_etudiants": {
+     "etat": "reussi",
+     "duree_s": 0.177,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_une_classe_s_ouvre_sur_ses_seances_et_celles_de_sa_promotion": {
+     "etat": "reussi",
+     "duree_s": 0.191,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_emploi_du_temps.py::test_version_sans_seances_datees_puis_produites": {
+     "etat": "reussi",
+     "duree_s": 0.351,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_a_traiter_etiquette_le_niveau_des_anomalies": {
+     "etat": "reussi",
+     "duree_s": 0.179,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_ancien_calcul_a_regle_ignoree_reste_lisible": {
+     "etat": "reussi",
+     "duree_s": 0.29,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_choisi_transmis_et_le_reste_par_defaut": {
+     "etat": "reussi",
+     "duree_s": 0.218,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_du_dejeuner_tu_sans_pause_dejeuner": {
+     "etat": "reussi",
+     "duree_s": 0.262,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_illisible_ou_interdit_reaffiche_la_page_sans_rien_lancer": {
+     "etat": "reussi",
+     "duree_s": 0.502,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_niveau_refuse_garde_la_pause_dejeuner_saisie": {
+     "etat": "reussi",
+     "duree_s": 0.159,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_preremplissage_avec_les_niveaux_du_dernier_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.254,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_relances_reprennent_les_niveaux_du_calcul_d_origine": {
+     "etat": "reussi",
+     "duree_s": 0.246,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_retouche_d_une_version_a_regle_ignoree_garde_les_niveaux": {
+     "etat": "reussi",
+     "duree_s": 0.253,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_suivi_et_historique_disent_les_niveaux_modifies_et_les_entorses": {
+     "etat": "reussi",
+     "duree_s": 0.476,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_niveaux_web.py::test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires": {
+     "etat": "reussi",
+     "duree_s": 0.126,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_raccords.py::test_pre_verifications_et_instanciation_reelles": {
+     "etat": "reussi",
+     "duree_s": 0.197,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_affichage.py::test_ecrans_prevus_pour_un_telephone": {
+     "etat": "reussi",
+     "duree_s": 0.728,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_deplacement.py::test_heure_acceptee_avec_un_avertissement_annoncee_et_enregistree": {
+     "etat": "reussi",
+     "duree_s": 0.356,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_deplacement.py::test_jour_sans_aucune_heure_possible_dit_quoi_faire": {
+     "etat": "reussi",
+     "duree_s": 0.457,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_resultat.py::test_resultat_d_un_calcul_affiche_les_indicateurs_du_verificateur": {
+     "etat": "reussi",
+     "duree_s": 0.199,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_verrous.py::test_verrou_pose_par_le_site_tenu_par_le_calcul_suivant": {
+     "etat": "reussi",
+     "duree_s": 0.796,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_recette_verrous.py::test_verrouiller_puis_deverrouiller_une_seance_depuis_son_panneau": {
+     "etat": "reussi",
+     "duree_s": 0.438,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_anomalie_regle_affiche_la_phrase_et_le_lien": {
+     "etat": "reussi",
+     "duree_s": 0.287,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_choix_illisible_sur_une_regle_reaffiche_la_page": {
+     "etat": "reussi",
+     "duree_s": 0.148,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_la_bande_dejeuner_suit_le_reglage_du_groupe_affiche": {
+     "etat": "reussi",
+     "duree_s": 0.286,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_la_grille_montre_les_jours_travailles_samedi_compris": {
+     "etat": "reussi",
+     "duree_s": 0.169,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_les_ecarts_se_mesurent_au_niveau_que_la_regle_avait_au_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.322,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_les_jours_proposes_pour_une_retouche_suivent_les_regles": {
+     "etat": "reussi",
+     "duree_s": 0.245,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_niveau_modifie_et_regle_ignoree_transmis_au_moteur": {
+     "etat": "reussi",
+     "duree_s": 0.243,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_pre_verifications_recoivent_les_niveaux_des_regles": {
+     "etat": "reussi",
+     "duree_s": 0.098,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_relance_et_preremplissage_reprennent_les_niveaux_du_calcul": {
+     "etat": "reussi",
+     "duree_s": 0.569,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_sans_choix_chaque_regle_garde_son_niveau": {
+     "etat": "reussi",
+     "duree_s": 0.214,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_suivi_et_historique_disent_les_regles_appliquees_et_leurs_entorses": {
+     "etat": "reussi",
+     "duree_s": 0.43,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_tableau_des_regles_personnalisees_sur_generer": {
+     "etat": "reussi",
+     "duree_s": 0.132,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_regles_web.py::test_une_relance_applique_les_regles_creees_depuis_et_le_dit": {
+     "etat": "reussi",
+     "duree_s": 0.777,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_accueil_sans_details_techniques_en_production": {
+     "etat": "reussi",
+     "duree_s": 0.137,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_besoin_impossible_a_deplier_affiche_une_seule_fois": {
+     "etat": "reussi",
+     "duree_s": 0.123,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_calcul_dont_la_version_a_ete_supprimee": {
+     "etat": "reussi",
+     "duree_s": 0.17,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_contraintes_decochees_tolerees_par_la_retouche_et_mises_a_part": {
+     "etat": "reussi",
+     "duree_s": 0.341,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_meme_nom_de_version_partout": {
+     "etat": "reussi",
+     "duree_s": 0.271,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_meme_nombre_de_points_partout_et_seance_a_programmer_comptee_une_fois": {
+     "etat": "reussi",
+     "duree_s": 0.347,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_pas_de_calcul_sans_besoin": {
+     "etat": "reussi",
+     "duree_s": 0.101,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_prechauffage_remplit_la_memoire_des_ecrans": {
+     "etat": "reussi",
+     "duree_s": 0.59,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_refus_reel_de_l_instanciation_sans_erreur_500": {
+     "etat": "reussi",
+     "duree_s": 0.373,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_seances_datees_importees_jamais_recalculees": {
+     "etat": "reussi",
+     "duree_s": 0.291,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_un_refus_de_l_instanciation_devient_une_remarque": {
+     "etat": "reussi",
+     "duree_s": 0.653,
+     "raison": null
+    },
+    "tests/integration/web_edt/test_revue.py::test_verifications_memorisees_jusqu_a_la_prochaine_ecriture": {
+     "etat": "reussi",
+     "duree_s": 0.31,
+     "raison": null
+    }
+   },
+   "ecartes": []
+  }
+ ]
+}

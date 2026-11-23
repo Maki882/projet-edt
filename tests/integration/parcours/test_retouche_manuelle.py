@@ -1,4 +1,4 @@
-"""Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée)."""
+"""Parcours REC-BOUT-5 : une retouche manuelle après le calcul (annulation d'une séance datée)."""
 
 from __future__ import annotations
 
