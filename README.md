@@ -63,7 +63,7 @@ les livrets 1 à 3 à la version 1.0.0, les quatre livrets à jour à la publica
 - Lancer les tests du projet depuis les onglets « Tests unitaires » et « Tests
   d'intégration », et lire le résultat et la date de dernière exécution de chacun.
 
-## Démarrage en cinq minutes
+## Démarrage en 5 minutes
 
 Il faut Python 3.11 ou plus récent. Depuis la racine du dépôt :
 

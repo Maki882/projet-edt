@@ -132,7 +132,7 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 |---|---:|---:|---:|
 | `assistant` | 141 | 31 | 172 |
 | `banc_tests` | 43 | 22 | 65 |
-| `echange` | 148 | 40 | 188 |
+| `echange` | 149 | 41 | 190 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
 | `socle` | 222 | 79 | 301 |
@@ -141,7 +141,7 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
 | `web_edt` | 37 | 143 | 180 |
-| **Total** | **1 136** | **546** | **1 682** |
+| **Total** | **1 137** | **547** | **1 684** |
 | dont cas limites (`cas_limite`) | 324 | 214 | 538 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 
