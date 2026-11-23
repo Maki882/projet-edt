@@ -598,6 +598,17 @@ test en cours), ses fichiers et ses tests.
   leur fichier, de leur composant et de la famille. Une exécution que le
   serveur ne connaît plus (redémarrage) fait recharger la page
   (`HX-Refresh`).
+- **Confettis** : la réponse du suivi qui voit une exécution finir avec
+  l'issue « terminée », aucun échec et au moins un test réussi (des tests
+  ignorés n'empêchent rien) porte le repère `data-confettis` sur
+  `#suivi-tests`. `static/js/confettis.js` le lit à l'insertion du fragment
+  (`htmx:load`), le retire, puis fait tomber des confettis pendant 2,5 s sur
+  un canevas plein écran qui ne capte aucun clic et se retire de lui-même.
+  Une exécution arrêtée, en échec ou sans test réussi ne porte pas le repère,
+  et la page entière ne le porte jamais : un rechargement ne relance rien.
+  Avec « réduire les animations » (`prefers-reduced-motion`), aucun confetti ;
+  rien à l'impression. Limite : une exécution finie avant le premier affichage
+  du suivi (page chargée après la fin) ne donne pas de confettis.
 - **Garde-fous** : une exécution à la fois (un second envoi mène au suivi en
   cours, sans erreur), refus pendant un calcul d'emploi du temps, durée
   maximale, tests de charge exclus des lancements par groupe, lancement
@@ -625,4 +636,4 @@ test en cours), ses fichiers et ses tests.
   bandeau, boutons, schéma).
 
 Fichiers : `web/routes/tests.py`, `web/templates/tests/`,
-`web/static/css/tests.css`.
+`web/static/css/tests.css`, `web/static/js/confettis.js`.
