@@ -2083,7 +2083,7 @@ traiter ».
 **Résultat attendu.**
 
 - Chaque page répond et porte la balise d'adaptation à la largeur de l'appareil et la feuille de style commune ; les écrans de l'emploi du temps chargent aussi la leur.
-- La feuille commune contient ses règles pour les écrans de moins de 56rem (onglets repliés sur plusieurs lignes, sous-navigation qui défile) ; celle de l'emploi du temps, ses règles sous 64rem (grille et panneau l'un sous l'autre).
+- Jusqu'à 58rem, le menu et les filtres du planning se replient et la sous-navigation défile horizontalement. Jusqu'à 64rem, le panneau de la séance s'affiche sous la grille.
 
 **Remarque.** Ces tests prouvent que les règles existent et sont servies ; le rendu réel, qui demande un navigateur, est l'objet de l'essai manuel REC-P1-2.
 
