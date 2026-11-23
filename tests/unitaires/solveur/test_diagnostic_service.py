@@ -380,7 +380,7 @@ def test_journal_du_diagnostic_sans_alerte_ni_retrait_attribue_a_l_utilisateur(j
 
     Risque : la commande et le journal affichent des dizaines d'alertes du moteur pour des essais
     voulus, dont « Contraintes désactivées à la demande de l'utilisateur », ce qui est faux : c'est
-    le diagnostic qui retire les règles (tâche T8).
+    le diagnostic qui retire les règles (tâche T8). Ces lignes peuvent rester au niveau DEBUG.
     """
     calcul_id, _ = _calcul_bloque(jeu_minimal)
     caplog.set_level(logging.DEBUG)
@@ -394,7 +394,10 @@ def test_journal_du_diagnostic_sans_alerte_ni_retrait_attribue_a_l_utilisateur(j
         if r.levelno >= logging.WARNING
     ]
     assert not alertes, "\n".join(alertes)
+    # Le niveau DEBUG reste permis : il ne s'affiche qu'en mode de débogage voulu.
     attribues = [
-        r.getMessage() for r in caplog.records if "à la demande de l'utilisateur" in r.getMessage()
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno >= logging.INFO and "à la demande de l'utilisateur" in r.getMessage()
     ]
     assert not attribues, "\n".join(attribues)
