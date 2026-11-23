@@ -70,12 +70,12 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'intégration.
+Le catalogue compte 544 cas : 327 cas en tests unitaires et 217 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
 | `assistant` | 50 | 7 |
-| `banc_tests` | 19 | 10 |
+| `banc_tests` | 19 | 11 |
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
 | `socle` | 67 | 35 |
@@ -84,7 +84,7 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
 | `web_edt` | 9 | 49 |
-| **Total** | **327** | **216** |
+| **Total** | **327** | **217** |
 
 ### Tests unitaires (327 cas)
 
@@ -765,7 +765,7 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (216 cas)
+### Tests d'intégration (217 cas)
 
 #### `assistant` (7 cas)
 
@@ -781,12 +781,13 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Aucune reponse ne contient la cle | la clé est dans l'environnement du serveur. | la clé recopiée dans une page, un fragment ou un en-tête. |
 | Le cookie de conversation est renouvele a chaque activite | une démonstration de plus de 30 minutes sur une même conversation. | le cookie posé au premier message expire alors que la conversation vit encore sur le serveur : la réponse en cours est « perdue », Confirmer répond « Cette proposition n'existe plus », et le message suivant ouvre une autre conversation. |
 
-#### `banc_tests` (10 cas)
+#### `banc_tests` (11 cas)
 
 [`tests/integration/banc_tests/test_ecrans.py`](../tests/integration/banc_tests/test_ecrans.py)
 
 | Test | Cas | Risque |
 |---|---|---|
+| Pas de confettis sans test reussi | l'exécution ne contient qu'un test ignoré (aucun échec, aucun réussi). | fête pour une exécution qui n'a rien vérifié. |
 | Double clic ne lance qu une execution sans erreur | double clic sur « Lancer » (deux envois du même formulaire). | deux exécutions en parallèle, ou une page d'erreur pour un geste banal. |
 | Cible inconnue refusee par la route web | formulaire envoyé avec une cible fabriquée (chemin hors du dépôt). | un texte du navigateur arrive dans la commande pytest. |
 | Lancement desactive par la route web | serveur réglé avec EDT_TESTS_LANCEMENT=non. | boutons actifs qui mènent à une erreur, ou résultats masqués. |

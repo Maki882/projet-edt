@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 553 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 7 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
+Le dépôt compte 555 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 9 tests ajoutés au dépôt après les campagnes n'y figurent pas : `banc_tests/test_ecrans.py::test_confettis_une_fois_a_la_fin_d_une_execution_entierement_reussie`, `banc_tests/test_ecrans.py::test_pas_de_confettis_sans_test_reussi`, `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -232,7 +232,7 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | Composant | Tests | Dont charge | Cités | Réussis : serveur de démonstration | Réussis : poste de développement |
 |---|---:|---:|---:|---:|---:|
 | `assistant` | 31 | 0 | 26 | 31 | 31 |
-| `banc_tests` | 22 | 0 | 21 | 22 | 22 |
+| `banc_tests` | 24 | 0 | 21 | 22 | 22 |
 | `echange` | 41 | 0 | 40 | 40 | 40 |
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
@@ -242,9 +242,9 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
 | `web_edt` | 149 | 0 | 113 | 143 | 143 |
-| **Total** | **553** | **4** | **407** | **542** | **540** |
+| **Total** | **555** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 553 tests d'intégration du dépôt (73,6 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 555 tests d'intégration du dépôt (73,3 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -2559,7 +2559,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_commande.py** : Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 4 | 4 | 4/4, 4 s | 4/4, 3 s | Conforme |
-| **test_ecrans.py** : Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 | 10 | 11/11, 6 s | 11/11, 5 s | Conforme |
+| **test_ecrans.py** : Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, confettis, refus | 13 | 10 | 11/13, 6 s | 11/13, 5 s | Conforme (2 non exécutés dans les campagnes) |
 | **test_execution.py** : Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 | 7/7, 8 s | 7/7, 7 s | Conforme |
 
 #### `echange` : Import et export par le site et la ligne de commande
