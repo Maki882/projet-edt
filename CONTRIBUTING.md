@@ -66,8 +66,9 @@ Ce qui a été appliqué dans ce projet est décrit dans le
 [livret 2](docs/livrets/2-specifications-techniques-et-organisation.md),
 sections 2.5 et 2.6. En résumé : après les premiers commits de mise en place, chaque
 changement passe par une branche et une pull request vérifiée par
-l'intégration continue ; en revanche, aucune tâche ni aucun jalon n'est ouvert
-sur GitHub, aucune approbation de pull request n'y est enregistrée, et presque
+l'intégration continue ; les anomalies ouvertes sont suivies par des tâches GitHub
+depuis la recette de la version 1.0.0 ; aucun jalon n'est ouvert, aucune
+approbation de pull request n'est enregistrée, et presque
 toutes les pull requests ont été ouvertes et fusionnées par le même compte.
 Les règles de relecture, de tâches et de commits sous le compte de chacun
 restent celles à suivre pour la suite.
