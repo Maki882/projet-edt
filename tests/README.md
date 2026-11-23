@@ -8,7 +8,9 @@ règle unique, contrôlée automatiquement.
 Pour aller plus loin : [`tests/unitaires/README.md`](unitaires/README.md)
 (chaque fichier de tests unitaires et ce qu'il vérifie) et
 [`tests/integration/README.md`](integration/README.md) (chaîne traversée,
-parcours de bout en bout, chaque fichier de tests d'intégration).
+parcours de bout en bout, chaque fichier de tests d'intégration). La recette
+de l'application par les tests d'intégration (fiches, campagnes, résultats)
+est le [cahier de recette](../docs/livrets/4-cahier-de-recette.md), livret 4.
 
 ```mermaid
 flowchart TD
@@ -130,16 +132,16 @@ est dans [`tests/unitaires/README.md`](unitaires/README.md) et
 |---|---:|---:|---:|
 | `assistant` | 141 | 31 | 172 |
 | `banc_tests` | 43 | 22 | 65 |
-| `echange` | 149 | 36 | 185 |
+| `echange` | 149 | 41 | 190 |
 | `exploitation` | 40 | 32 | 72 |
 | `parcours` | — | 6 | 6 |
-| `socle` | 223 | 77 | 300 |
+| `socle` | 239 | 79 | 318 |
 | `solveur` | 196 | 54 | 250 |
 | `synthese` | 62 | 6 | 68 |
 | `verification` | 235 | 6 | 241 |
 | `web_donnees` | 12 | 127 | 139 |
-| `web_edt` | 37 | 137 | 174 |
-| **Total** | **1 138** | **534** | **1 672** |
+| `web_edt` | 37 | 143 | 180 |
+| **Total** | **1 154** | **547** | **1 701** |
 | dont cas limites (`cas_limite`) | 324 | 214 | 538 |
 | dont tests de charge (`perf`) | 20 | 4 | 24 |
 

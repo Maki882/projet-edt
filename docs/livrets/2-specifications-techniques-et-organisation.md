@@ -6,18 +6,21 @@ Projet PTS Informatique, ISEP, année 2026-2027
 
 | | |
 |---|---|
-| Livret | 2 sur 3 : spécifications techniques et organisation du projet |
+| Livret | 2 sur 4 : spécifications techniques et organisation du projet |
 | Enseignant | Hervé Allanic |
 | Équipe | Axel, Nassim Khiri, Kerime, Hugo |
-| Date | 16 novembre 2026 |
-| Version | 1.1 |
+| Date | 23 novembre 2026 |
+| Version | 1.2 |
 | Application décrite | EDT 1.0.0 |
+| Dépôt GitHub | https://github.com/Maki882/projet-edt |
 
 Ce livret décrit comment l'application est construite (matériels, systèmes, technologies,
 langages, bibliothèques) et comment le projet a été organisé (lots, planning, outils, méthodes,
 référentiel). Il complète le livret 1, [Spécifications fonctionnelles](1-specifications-fonctionnelles.md),
-qui décrit l'application du point de vue de l'utilisateur, et le livret 3,
-[guide de l'utilisateur](3-guide-utilisateur.md). Les chiffres cités sont mesurés sur la
+qui décrit l'application du point de vue de l'utilisateur, le livret 3,
+[guide de l'utilisateur](3-guide-utilisateur.md), et le livret 4,
+[cahier de recette](4-cahier-de-recette.md), qui présente la recette par les tests
+d'intégration. Les chiffres cités sont mesurés sur la
 branche principale à la version 1.0.0 de l'application (16 novembre 2026).
 
 ---
@@ -237,7 +240,9 @@ les énumérations affichables dérivent de `EnumLibelle`. Un test vérifie que
 ### 1.11 Tests
 
 Les nombres ci-dessous sont ceux du tableau généré dans [tests/README.md](../../tests/README.md)
-(`python -m tests.outils.classement`), qui compte les fonctions de test ; pytest, qui compte
+(`python -m tests.outils.classement`) à la version 1.0.0 ; la recette a ajouté depuis 13 tests
+d'intégration et les contrôles de son outil (livret 4, [cahier de recette](4-cahier-de-recette.md),
+section 3). Ce tableau compte les fonctions de test ; pytest, qui compte
 chaque cas d'une fonction paramétrée à part, collecte 2 262 cas.
 
 | Famille | Fonctions | Contenu |
@@ -277,6 +282,10 @@ code de la version 1.0.0 : la famille des tests unitaires, lancée par
 20 tests de charge ne partent pas avec la famille), 1 101 réussis, 0 échec, 0 ignoré ;
 la famille des tests d'intégration, 5 min 00 s : 529 tests (hors les
 4 tests de charge), 529 réussis.
+
+La recette de l'application (fiches de recette reliées aux fonctionnalités et aux cas d'usage
+du livret 1, campagnes et résultats) fait l'objet du livret 4,
+[cahier de recette](4-cahier-de-recette.md).
 
 ### 1.12 Assistant conversationnel
 
@@ -327,7 +336,7 @@ dépôt (discussions, décisions en séance, relectures orales) n'y figure pas.
 | Axel | Maki882 | Création du dépôt ; questionnaire de cadrage et document des décisions ; ouverture et fusion de 52 des 53 pull requests ; 812 des 820 commits de la branche principale (code, tests, documentation, déploiement). 680 des 820 commits de la branche principale sont co-signés par un assistant de programmation (section 2.4). |
 | Hugo | HugoLec94 | Premier vérificateur de conflits du planning et ses tests, versé par la première pull request ; il a ensuite été généralisé dans le vérificateur actuel. |
 | Kerime | kerime-2 | Réponses au questionnaire de cadrage (deux commits). |
-| — | dzzmimou48-cmd | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
+| — | `dzzmimou48-cmd` | Première structure de la base de données, ses données de test et ses tests (quatre commits), reprise ensuite dans le socle. |
 | Nassim Khiri | — | Aucun commit n'est rattaché à son nom dans l'historique. |
 
 Les réponses au questionnaire, données de vive voix ou par message, sont consolidées sans
@@ -353,6 +362,7 @@ brutes restent dans l'historique du dépôt.
 | **13. Assistant (optionnel)** | Consignes et douze outils de lecture ; propositions confirmées d'un clic ; limites et budget quotidien ; commande d'état et d'essai ; script d'installation de la clé. | 16/11 |
 | **14. Tests lancés depuis l'application** | Catalogue des tests, exécution dans un processus à part, suivi et arrêt ; deux onglets avec un schéma de l'organisation des tests ; commande `tests`. | 16/11 |
 | **15. Soutenance** | Scénario de démonstration ; préparation de la soutenance. | prévu à partir du 23/11 |
+| **16. Cahier de recette** | Livret 4 : fiches de recette reliées aux fonctionnalités et aux cas d'usage du livret 1, adossées aux tests d'intégration ; campagnes ; journal des anomalies corrigées ; bilan. | 23/11 |
 
 ### 2.3 Planning prévu et réalisé
 
@@ -373,7 +383,7 @@ partie concernée.
 | Tests unitaires | 12/10 | Écrits avec chaque lot dès le 05/10 ; 13/10 : règles personnalisées et leurs tests. |
 | Tests d'intégration | 02/11 | Premiers tests d'intégration des commandes le 05/10 ; banque de cas limites le 02/11 ; parcours de bout en bout le 09/11 ; séparation unitaires et intégration, tests lancés depuis l'application le 16/11. |
 | Finalisation des développements | 16/11 | 16/11 : ergonomie, textes, versions figées, assistant, onglets de tests, livrets 1, 2 et 3. |
-| Documentation utilisateur, préparation de la soutenance | 23/11 | Livret 3 (guide de l'utilisateur) rédigé le 16/11 ; préparation de la soutenance à venir. |
+| Documentation utilisateur, préparation de la soutenance | 23/11 | Livret 3 (guide de l'utilisateur) rédigé le 16/11 ; livret 4 (cahier de recette) rédigé le 23/11 ; préparation de la soutenance à venir. |
 | Soutenance | 14/12 | À venir. |
 
 Le développement a été concentré sur les jours de séance : 16 commits le 28/09, 202 le 05/10,
@@ -427,24 +437,23 @@ réglages sont exclus du suivi (`.gitignore`).
 |---|---|
 | Questionnaire de cadrage | Le cadrage s'est appuyé sur un questionnaire de 400 questions numérotées ; les réponses de l'équipe sont consolidées dans [decisions.md](../decisions.md), qui fait autorité : une décision s'y change avant de changer le code. |
 | Pull requests | 53 pull requests, toutes fusionnées, chacune décrite selon un modèle (« Quoi », « Pourquoi », « Comment vérifier », liste de contrôle). Les 23 dernières (31 à 53) datent de la journée de finalisation du 16/11. |
-| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Jusqu'à la version 1.0.0, il n'a pas servi : aucune issue n'a été ouverte (voir ci-dessous). Depuis, les issues ouvertes par l'équipe d'agents suivent ce modèle ([organisation-agents.md](../organisation-agents.md)). |
+| Modèle de tâche | Un modèle d'issue (« Tâche ») décrit l'objectif, le classement (obligatoire, utile ou optionnelle, comme au livret 1), les détails et le critère de réussite ; des étiquettes du même nom existent sur GitHub. Il a servi pour la première fois le 23/11/2026, pour l'issue n° 54 ([lien](https://github.com/Maki882/projet-edt/issues/54)), qui suit l'anomalie ouverte relevée par la recette (livret 4) ; jusque-là, le suivi passait par les pull requests et le document des décisions. Les issues ouvertes par l'équipe d'agents suivent aussi ce modèle ([organisation-agents.md](../organisation-agents.md)). |
 | Intégration continue | Chaque pull request et chaque envoi sur la branche principale sont vérifiés automatiquement ; le résultat s'affiche sur la pull request avant la fusion. |
 | Historique des commits | La convention est un message en français, à l'impératif, un sujet par commit ; l'historique sert de journal de bord et de base au planning réalisé (section 2.3). |
 | Documentation de conception | Un document par partie de l'application (architecture, modèle de données, générateur, vérification, import et export, établissements fictifs, déploiement, tests), versé avec le code de cette partie. |
 
 Les échanges de l'équipe en dehors de GitHub (réunions, messagerie) ne sont pas consignés dans
-le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Jusqu'à la
-version 1.0.0, aucune issue ni aucun jalon n'a été ouvert sur GitHub, et aucune relecture
-formelle (approbation d'une pull request) n'y est enregistrée. Depuis, les issues ouvertes par
-l'équipe d'agents suivent le modèle « Tâche » ([organisation-agents.md](../organisation-agents.md)).
+le dépôt ; les décisions qui en résultent le sont, dans le document des décisions. Sur GitHub, une
+issue est ouverte (n° 54) ; aucun jalon n'est ouvert, et aucune relecture formelle (approbation
+d'une pull request) n'y est enregistrée.
 
 ### 2.6 Référentiel du projet
 
 | Élément | Description |
 |---|---|
-| Dépôt | GitHub `Maki882/projet-edt`, privé, ouvert aux quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
+| Dépôt | GitHub `Maki882/projet-edt`, à l'adresse <https://github.com/Maki882/projet-edt> ; dépôt privé, accès donné aux membres de l'équipe et à l'enseignant sur invitation, modifiable par les quatre membres de l'équipe. Il contient le code, les tests, les scripts de déploiement et toute la documentation, dont les livrets du cours (`docs/livrets/`). |
 | Branches | Une branche par tâche, nommée `type/description` (par exemple `feat/import-export`, `fix/schema-perime`), puis `partie/description` pendant la finalisation (par exemple `assistant/assistant-conversationnel`, `generer/suivi-et-page-repliee`) ; fusion dans `main` par pull request. Les 17 premiers commits (28/09 et 05/10 : mise en place du dépôt, base initiale, questionnaire, décisions) ont été déposés directement sur `main` ; depuis, chaque changement passe par une pull request. |
-| Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé avec l'offre gratuite de GitHub : la règle « pas d'envoi direct sur `main` » est une convention de l'équipe, appliquée depuis le 05/10. |
+| Protection de `main` | La protection automatique des branches n'est pas disponible pour ce dépôt privé (offre gratuite de GitHub) : la règle « pas d'envoi direct sur `main` » reste une convention de l'équipe, appliquée depuis le 05/10. |
 | Organisation des dossiers | `src/edt/` : l'application, un paquet par couche ou par partie ; `tests/` : `unitaires/`, `integration/`, `outils/` ; `deploy/` : serveur ; `docs/` : documentation de conception et livrets. |
 | Langue | Code, commentaires, messages, commits et documentation en français. |
 | Fichiers exclus | Environnements virtuels, bases, journaux, réglages d'éditeurs et secrets ne sont jamais suivis (`.gitignore`). |
