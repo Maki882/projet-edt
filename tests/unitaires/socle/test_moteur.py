@@ -83,6 +83,7 @@ def test_un_identifiant_hors_des_entiers_sqlite_est_invalide():
         ("attempt to write a readonly database", "lecture seule"),
         ("file is not a database", "n'est pas une base SQLite"),
         ("database or disk is full", "disque"),
+        ("no such table: semestre", "init-db"),
         ("une autre cause", "inaccessible : une autre cause"),
         (
             "RIGHT and FULL OUTER JOINs are not currently supported",
@@ -105,6 +106,20 @@ def test_les_erreurs_du_pilote_sont_expliquees_avec_leur_remede(cause, mot):
     else:
         erreur = OperationalError("INSERT ...", {}, sqlite3.OperationalError(cause))
     assert mot in expliquer_erreur_base(erreur)
+
+
+@pytest.mark.cas_limite
+def test_une_table_absente_est_expliquee_comme_une_base_non_initialisee():
+    """Cas : une commande lit une base jamais initialisée ; le pilote répond
+    « no such table: semestre ».
+
+    Risque : le message « base inaccessible » oriente vers une panne de droits ou un verrou,
+    sans remède ; il faut nommer la table absente et indiquer « python -m edt init-db ».
+    """
+    erreur = OperationalError("SELECT ...", {}, sqlite3.OperationalError("no such table: semestre"))
+    message = expliquer_erreur_base(erreur)
+    assert "inaccessible" not in message
+    assert "« semestre »" in message and "python -m edt init-db" in message
 
 
 @pytest.mark.cas_limite

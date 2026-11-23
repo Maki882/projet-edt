@@ -119,8 +119,9 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
 
     Couvre les pannes d'exploitation : base verrouillée par un autre
     processus, fichier en lecture seule, fichier qui n'est pas une base
-    SQLite, disque plein. Sinon, le message du pilote est repris. Accepte
-    l'erreur enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
+    SQLite, disque plein, base non initialisée (table absente, remède
+    « init-db »). Sinon, le message du pilote est repris. Accepte l'erreur
+    enveloppée par SQLAlchemy comme celle du pilote `sqlite3` brut.
     """
     cause = str(getattr(erreur, "orig", None) or erreur)
     minuscule = cause.lower()
@@ -143,6 +144,13 @@ def expliquer_erreur_base(erreur: DatabaseError | Exception) -> str:
         )
     if "disk is full" in minuscule:
         return "Le disque de la base de données est plein : libérer de l'espace, puis réessayer."
+    if "no such table" in minuscule:
+        table = cause.partition("no such table:")[2].strip()
+        precision = f" (table « {table} » absente)" if table else ""
+        return (
+            f"La base de données n'est pas initialisée{precision} : lancer "
+            "« python -m edt init-db », puis réessayer."
+        )
     return f"La base de données est inaccessible : {cause}"
 
 

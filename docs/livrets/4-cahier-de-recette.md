@@ -211,7 +211,7 @@ toute la famille des tests d'intégration par la commande
 
 <!-- recette-synthese : début de la partie générée par `python -m tests.outils.recette --ecrire`, ne pas modifier à la main -->
 
-Le dépôt compte 553 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 7 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
+Le dépôt compte 554 fonctions de test d'intégration, dont 4 tests de charge, lancés à part ; les campagnes enregistrées en ont exécuté 542. 8 tests ajoutés au dépôt après les campagnes n'y figurent pas : `echange/test_export_edt.py::test_reimport_de_son_propre_export_ne_modifie_pas_les_besoins`, `socle/test_cli.py::test_une_base_non_initialisee_indique_init_db_et_le_code_1`, `web_edt/test_acces.py::test_la_consultation_lit_l_emploi_du_temps_sans_pouvoir_le_modifier`, `web_edt/test_acces.py::test_la_deconnexion_redemande_le_mot_de_passe`, `web_edt/test_acces.py::test_mauvais_mot_de_passe_refuse_sans_cookie`, `web_edt/test_acces.py::test_sans_mot_de_passe_configure_le_site_reste_ouvert`, `web_edt/test_acces.py::test_toute_page_demande_la_connexion_et_y_revient_ensuite`, `web_edt/test_acces.py::test_une_ecriture_sans_connexion_est_refusee_avant_la_route` (non exécutés dans les campagnes).
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
@@ -236,15 +236,15 @@ Poste de développement : 2 tests ignorés, raison enregistrée « processus et 
 | `echange` | 41 | 0 | 40 | 40 | 40 |
 | `exploitation` | 32 | 0 | 30 | 32 | 30 |
 | `parcours` | 6 | 0 | 6 | 6 | 6 |
-| `socle` | 79 | 0 | 68 | 79 | 79 |
+| `socle` | 80 | 0 | 68 | 79 | 79 |
 | `solveur` | 54 | 1 | 26 | 53 | 53 |
 | `synthese` | 6 | 0 | 6 | 6 | 6 |
 | `verification` | 6 | 0 | 6 | 6 | 6 |
 | `web_donnees` | 127 | 3 | 65 | 124 | 124 |
 | `web_edt` | 149 | 0 | 113 | 143 | 143 |
-| **Total** | **553** | **4** | **407** | **542** | **540** |
+| **Total** | **554** | **4** | **407** | **542** | **540** |
 
-**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 553 tests d'intégration du dépôt (73,6 %) ; les autres figurent à l'annexe B, rangés par fichier.
+**Fiches.** Le cahier compte 69 fiches, dont 3 fiches d'essai manuel : 68 « Conforme », 1 « Non conforme », 0 « Non exécutée ». Les fiches citent 407 des 554 tests d'intégration du dépôt (73,5 %) ; les autres figurent à l'annexe B, rangés par fichier.
 
 **Fiche non conforme.** REC-U13-3, « Réimport, dans la même base, de l'emploi du temps exporté », suivie par l'anomalie ANO-21 (section 6) ; essai de suivi du 23/11/2026, après la recette : « Conforme ». Le verdict d'ensemble est donné à la section 8.
 
@@ -2594,7 +2594,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 21 | 20 | 21/21, 6 s | 21/21, 4 s | Conforme |
+| **test_cli.py** : Ligne de commande : commandes générales et mécanisme d'extension | 22 | 20 | 21/22, 6 s | 21/22, 4 s | Conforme (1 non exécuté dans les campagnes) |
 | **test_config.py** : Configuration vue par la commande doctor : adresse d'écoute introuvable, port occupé | 2 | 2 | 2/2, 0 s | 2/2, 0 s | Conforme |
 | **test_generation.py** : Orchestration d'un calcul : succès, calcul déjà en cours, arrêt, échecs | 12 | 9 | 12/12, 6 s | 12/12, 3 s | Conforme |
 | **test_instantane.py** : Instantané : identifiants hors des entiers SQLite, côté commandes (pre-verifier, verifier) | 2 | 1 | 2/2, 0 s | 2/2, 0 s | Conforme |

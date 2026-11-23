@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'intégration.
+Le catalogue compte 545 cas : 328 cas en tests unitaires et 217 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -78,15 +78,15 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | `banc_tests` | 19 | 10 |
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
-| `socle` | 67 | 35 |
+| `socle` | 68 | 36 |
 | `solveur` | 22 | 21 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
 | `web_edt` | 9 | 49 |
-| **Total** | **327** | **216** |
+| **Total** | **328** | **217** |
 
-### Tests unitaires (327 cas)
+### Tests unitaires (328 cas)
 
 #### `assistant` (50 cas)
 
@@ -365,7 +365,7 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Les commandes du guide passent par sudo pour les dossiers proteges | une commande du guide lit un dossier réservé à root ou à edt (/var/lib/edt, /var/log/edt-deploiements…) avec le compte SSH ubuntu, sans sudo. | « Permission denied » au milieu d'une procédure, ou pire un test [ -e … ] toujours faux qui saute une étape sans erreur (base corrompue jamais mise de côté). |
 | Aucune commande du guide n est coupee sur deux lignes | une commande citée dans le texte (entre accents graves) est coupée par un retour à la ligne du fichier. | copiée depuis le fichier, elle part en deux commandes : la seconde échoue et la première s'exécute seule, sans ses options. |
 
-#### `socle` (67 cas)
+#### `socle` (68 cas)
 
 [`tests/unitaires/socle/test_acces.py`](../tests/unitaires/socle/test_acces.py)
 
@@ -458,6 +458,7 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Un point de sauvegarde libere reste annule par la transaction englobante | un service ouvre un point de sauvegarde avant toute écriture, écrit, le libère, puis la route lève (rollback de la transaction). | le pilote sqlite3 n'ouvre une transaction qu'avant une écriture ; sans le contournement du moteur, le RELEASE du SAVEPOINT validerait l'insertion malgré le rollback. |
 | Un identifiant hors des entiers sqlite est invalide | un identifiant venu d'une adresse ou d'une option vaut 0, -1, 2**63, 10**30… | `session.get` ferait lever `OverflowError` au pilote (500 / code 2) au lieu de répondre « n'existe pas » ; la garde `identifiant_valide` doit tout refuser. |
 | Les erreurs du pilote sont expliquees avec leur remede | le pilote SQLite refuse une opération (verrou, lecture seule, fichier corrompu, disque plein). | un message technique sans remède ; l'opérateur pourrait effacer la base pour un simple verrou, ou libérer du disque pour une requête que la version de SQLite refuse (« FULL OUTER JOIN » ne veut pas dire « disque plein »). Chaque cause est enveloppée dans la classe que le pilote lève vraiment : `DatabaseError` pour un fichier qui n'est pas une base, `OperationalError` sinon. |
+| Une table absente est expliquee comme une base non initialisee | une commande lit une base jamais initialisée ; le pilote répond « no such table: semestre ». | le message « base inaccessible » oriente vers une panne de droits ou un verrou, sans remède ; il faut nommer la table absente et indiquer « python -m edt init-db ». |
 | Une ecriture attend la fin d une transaction courte | deux fils écrivent presque en même temps (fil de calcul et requête web). | sans `busy_timeout`, la seconde écriture échouerait aussitôt « database is locked » et la saisie ou la version serait perdue ; elle doit attendre puis réussir. |
 | Sous un verrou tenu l ecriture echoue apres le delai et les lecteurs sont servis | un autre processus (sqlite3, commande) tient le verrou d'écriture longtemps. | sans mode WAL les lectures seraient bloquées aussi (/sante rouge à chaque import) ; sans délai borné l'écriture attendrait sans fin. Elle doit échouer après le délai, « locked », sans rien écrire, pendant que les lecteurs sont servis. |
 | Transaction immediate prend le verrou d ecriture des l ouverture | un écrivain long (l'import) demande le verrou d'écriture dès l'ouverture de sa transaction, avant toute lecture. | avec le BEGIN différé par défaut, une transaction qui a déjà lu et veut écrire échoue aussitôt « database is locked » face à un autre écrivain (SQLite n'attend pas), et deux imports pourraient commencer en même temps ; les lecteurs doivent rester servis. |
@@ -765,7 +766,7 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (216 cas)
+### Tests d'intégration (217 cas)
 
 #### `assistant` (7 cas)
 
@@ -878,13 +879,14 @@ Le catalogue compte 543 cas : 327 cas en tests unitaires et 216 cas en tests d'i
 | Un echec d ecriture de la cle laisse l ancien fichier | l'écriture du nouveau fichier de clé échoue (droits, disque plein) après la saisie. | fichier temporaire contenant la clé laissé dans /etc/edt, ou ancien fichier abîmé. |
 | Le script de la cle refuse de s executer hors root ou avec une option inconnue | le script est lancé sans sudo, ou avec une option mal tapée. | une saisie de clé demandée pour rien, ou une option ignorée qui installe au lieu de retirer. |
 
-#### `socle` (35 cas)
+#### `socle` (36 cas)
 
 [`tests/integration/socle/test_cli.py`](../tests/integration/socle/test_cli.py)
 
 | Test | Cas | Risque |
 |---|---|---|
 | Une base verrouillee lecture seule ou corrompue donne un message clair et le code 1 | `init-db` ou `jeu-minimal` tourne alors qu'un autre processus tient le verrou d'écriture, que le fichier est en lecture seule, ou qu'il n'est plus une base SQLite. | trace brute et code 2, et le script de déploiement enchaînerait sur « --reset-base » (qui efface les données) pour un simple verrou ; il faut un message qui nomme la cause et le remède, code 1. |
+| Une base non initialisee indique init db et le code 1 | `EDT_DB_URL` désigne une base absente (première installation sans `init-db`, faute de frappe dans le chemin) et une commande de calcul la lit. | « base inaccessible : no such table » laisse croire à une panne de droits ou à un verrou ; il faut le code 1 et le remède « python -m edt init-db ». |
 | Base illisible le remede annonce permet d en sortir | le fichier de la base n'est plus une base SQLite (abîmé ou remplacé), et `init-db --reset --oui` est lancé pour la recréer, en développement puis en production. | en développement, le refus conseille cette même commande (l'utilisateur tourne en rond) ; en production, il conclut « libérer de l'espace disque ou corriger les droits », qui ne sert à rien. Le remède annoncé doit permettre de recréer la base. |
 | Init db reset exige une confirmation dans un terminal et aucun calcul en cours | `init-db --reset` tapé dans un terminal, puis demandé pendant qu'un calcul tourne dans un autre processus, puis en production hors calcul. | base de production effacée par mégarde sans question ni sauvegarde, calcul en cours qui meurt « no such table » ; ici refus dans les deux premiers cas et copie « sauvegardes/edt-<date>-avant-reset.db » dans le troisième. |
 | Init db reset en production n efface rien si la sauvegarde echoue | `init-db --reset --oui` en production alors que la sauvegarde préalable échoue (disque plein, dossier « sauvegardes » non inscriptible). | la remise à zéro détruirait une base qui n'a pas été sauvegardée ; la commande doit s'arrêter avant, code 1, en nommant la sauvegarde et le remède, sans fichier partiel. |
