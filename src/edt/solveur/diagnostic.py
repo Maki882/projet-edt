@@ -106,6 +106,65 @@ NATURES_REGLES = ("contrainte", "regle")
 NATURES_DONNEES = ("besoin", "verrou", "indisponibilite", "jour_ferme")
 
 
+PREFIXE_FIL_ESSAI = "edt-diagnostic-essai-"
+"""Nom des fils d'essai ; le filtre `_EssaiDuDiagnostic` reconnaît leurs enregistrements."""
+JOURNAUX_DES_ESSAIS = (
+    *(
+        f"edt.solveur.{module}"
+        for module in (
+            "moteur",
+            "preparation",
+            "preverification",
+            "modele",
+            "salles",
+            "regles",
+            "regles_emploi",
+            "personnalisees",
+        )
+    ),
+    "edt.calcul",
+)
+"""Journaux du moteur dont les lignes, pendant un essai, descendent au niveau DEBUG."""
+
+_verrou_essais = threading.Lock()
+_essais_en_cours = [0]
+"""Nombre d'essais en cours dans ce processus (lu par `_EssaiDuDiagnostic`)."""
+
+
+class _EssaiDuDiagnostic(logging.Filter):
+    """Fait descendre au niveau DEBUG ce que le moteur journalise pendant un essai du diagnostic.
+
+    Le moteur décrit un essai comme un calcul : « Contraintes désactivées à la demande de
+    l'utilisateur » (ce sont les retraits de l'essai), « Pré-vérification [...] » en erreur (ce
+    sont les impossibilités que l'essai cherche), « Calcul arrêté à votre demande » (l'arrêt
+    voulu à la première solution). Au niveau avertissement, ces lignes tromperaient et
+    noieraient le résultat ; le diagnostic journalise lui-même une ligne par essai.
+
+    Sont visés les enregistrements émis dans un fil d'essai (`PREFIXE_FIL_ESSAI`) et, pendant un
+    essai, ceux du journal générique `edt.calcul` : il ne sert que hors d'un calcul (un calcul
+    écrit dans son propre journal, `edt.journal.journal_calcul_courant`) et reçoit les rappels de
+    CP-SAT, émis dans ses propres fils. Un enregistrement qui porte une exception garde son
+    niveau. Un calcul ordinaire, dans son fil `calcul-<n>`, n'est pas touché.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if record.exc_info is None and (
+            record.threadName.startswith(PREFIXE_FIL_ESSAI)
+            or (record.name == "edt.calcul" and _essais_en_cours[0] > 0)
+        ):
+            record.levelno, record.levelname = logging.DEBUG, "DEBUG"
+            # Le niveau du journal a été contrôlé avant ce filtre, au niveau d'origine : sans le
+            # niveau DEBUG, l'enregistrement est écarté, comme tout `journal.debug`.
+            return logging.getLogger(record.name).isEnabledFor(logging.DEBUG)
+        return True
+
+
+_FILTRE_DES_ESSAIS = _EssaiDuDiagnostic()
+for _nom in JOURNAUX_DES_ESSAIS:
+    # Posé une fois, à l'import : un filtre de journal ne s'hérite pas, il faut chaque module.
+    logging.getLogger(_nom).addFilter(_FILTRE_DES_ESSAIS)
+
+
 class StatutDiagnostic(StrEnum):
     """Issue d'un diagnostic."""
 
@@ -389,17 +448,8 @@ class _Recherche:
         gardes = self.gardes - retires
         instantane, options = self._filtrer(gardes, temps)
         numero = self.nb_essais + 1
-        # Le moteur journalise l'essai comme un calcul : les contraintes « désactivées à la
-        # demande de l'utilisateur » sont celles que l'essai retire, et l'« arrêt à votre
-        # demande » est l'arrêt voulu à la première solution. Cette ligne le dit d'avance.
-        journal.info(
-            "Diagnostic, essai %d (%.1f s au plus) : %s retiré(s), %d élément(s) gardé(s) ; "
-            "retraits et arrêt à la première solution voulus par le diagnostic",
-            numero,
-            temps,
-            ", ".join(f"{e.nature} {e.cle}" for e in sorted(retires, key=_tri)) or "rien",
-            len(gardes),
-        )
+        retraits = ", ".join(f"{e.nature} {e.cle}" for e in sorted(retires, key=_tri)) or "rien"
+        journal.debug("Diagnostic, essai %d lancé (%.1f s au plus)", numero, temps)
         debut = time.perf_counter()
         resultat = self._executer(instantane, options, numero, reste)
         duree = time.perf_counter() - debut
@@ -413,7 +463,12 @@ class _Recherche:
         )
         self.cout_fixe_s = max(self.cout_fixe_s, fixe)
         journal.info(
-            "Diagnostic, essai %d : %s en %.2f s", numero, _verdict(resultat.statut), duree
+            "Diagnostic, essai %d : %s retiré(s), %d élément(s) gardé(s) -> %s en %.2f s",
+            numero,
+            retraits,
+            len(gardes),
+            _verdict(resultat.statut),
+            duree,
         )
         return resultat.statut
 
@@ -437,27 +492,34 @@ class _Recherche:
             except BaseException as erreur:  # rendue au fil du diagnostic, qui la relève
                 boite.append(erreur)
 
-        fil = threading.Thread(target=executer, name=f"edt-diagnostic-essai-{numero}", daemon=True)
-        fil.start()
-        fil.join(max(0.0, reste - RESERVE_ARRET_S))
-        if fil.is_alive():
-            arret.set()
-            self.nb_essais = numero
-            journal.warning(
-                "Diagnostic, essai %d : pas de réponse à la fin du temps accordé ; arrêt demandé, "
-                "le diagnostic s'arrête là",
-                numero,
-            )
-            fil.join(max(0.0, RESERVE_ARRET_S - ATTENTE_RESERVEE_S))
+        fil = threading.Thread(target=executer, name=f"{PREFIXE_FIL_ESSAI}{numero}", daemon=True)
+        with _verrou_essais:
+            _essais_en_cours[0] += 1
+        try:
+            fil.start()
+            fil.join(max(0.0, reste - RESERVE_ARRET_S))
             if fil.is_alive():
-                journal.error(
-                    "Diagnostic, essai %d : le moteur n'a pas rendu la main %.1f s après l'ordre "
-                    "d'arrêt ; il finira seul en arrière-plan (défaut du moteur, à signaler avec "
-                    "ce journal)",
+                arret.set()
+                self.nb_essais = numero
+                # Fin de budget ordinaire : le diagnostic rend un résultat partiel, comme prévu.
+                journal.info(
+                    "Diagnostic, essai %d : pas de réponse à la fin du temps accordé ; arrêt "
+                    "demandé, le diagnostic s'arrête là",
                     numero,
-                    RESERVE_ARRET_S,
                 )
-            raise _Budget
+                fil.join(max(0.0, RESERVE_ARRET_S - ATTENTE_RESERVEE_S))
+                if fil.is_alive():
+                    journal.error(
+                        "Diagnostic, essai %d : le moteur n'a pas rendu la main %.1f s après "
+                        "l'ordre d'arrêt ; il finira seul en arrière-plan (défaut du moteur, à "
+                        "signaler avec ce journal)",
+                        numero,
+                        RESERVE_ARRET_S,
+                    )
+                raise _Budget
+        finally:
+            with _verrou_essais:
+                _essais_en_cours[0] -= 1
         if isinstance(boite[0], BaseException):
             raise boite[0]
         return boite[0]
