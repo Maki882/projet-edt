@@ -58,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 122 fonctions de test** dans 10 composants, dont 324 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 138 fonctions de test** dans 10 composants, dont 324 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (141 fonctions)
 
@@ -104,7 +104,7 @@ Ce dossier compte **1 122 fonctions de test** dans 10 composants, dont 324 marqu
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-### `socle/` : Domaine, base et services transverses (207 fonctions)
+### `socle/` : Domaine, base et services transverses (223 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
@@ -118,6 +118,7 @@ Ce dossier compte **1 122 fonctions de test** dans 10 composants, dont 324 marqu
 | [`socle/test_contrats.py`](socle/test_contrats.py) | Contrats partagés : catalogue des contraintes, vérificateur, solveur, paramètres | 10 |
 | [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne | 14 |
 | [`socle/test_depliage.py`](socle/test_depliage.py) | Dépliage des besoins en séances hebdomadaires (les trois modes de volume) | 12 |
+| [`socle/test_fil_equipe.py`](socle/test_fil_equipe.py) | Fil des messages d'une équipe d'agents : relevé dans les transcriptions, ordre, erreurs | 16 |
 | [`socle/test_instantane.py`](socle/test_instantane.py) | Chargement de l'instantané d'un semestre depuis la base | 11 |
 | [`socle/test_jeux.py`](socle/test_jeux.py) | Jeux fictifs et remise à zéro : panne après remise à zéro, schéma périmé, marqueur | 13 |
 | [`socle/test_journal.py`](socle/test_journal.py) | Journalisation : fichier non ouvrable, rotation partagée entre processus, purge des calculs | 6 |
