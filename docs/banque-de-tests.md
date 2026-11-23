@@ -70,7 +70,7 @@ ou de « Risque » dans sa docstring.
 
 <!-- catalogue : début de la partie générée par `python -m tests.outils.catalogue --ecrire`, ne pas modifier à la main -->
 
-Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'intégration.
+Le catalogue compte 562 cas : 337 cas en tests unitaires et 225 cas en tests d'intégration.
 
 | Composant | Tests unitaires | Tests d'intégration |
 |---|---:|---:|
@@ -79,14 +79,14 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | `echange` | 60 | 14 |
 | `exploitation` | 40 | 32 |
 | `socle` | 64 | 35 |
-| `solveur` | 22 | 21 |
+| `solveur` | 35 | 28 |
 | `synthese` | 31 | 5 |
 | `verification` | 27 | 0 |
 | `web_donnees` | 2 | 43 |
-| `web_edt` | 9 | 47 |
-| **Total** | **324** | **214** |
+| `web_edt` | 9 | 51 |
+| **Total** | **337** | **225** |
 
-### Tests unitaires (324 cas)
+### Tests unitaires (337 cas)
 
 #### `assistant` (50 cas)
 
@@ -501,7 +501,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Requete annulee par l arret du serveur n est pas journalisee en 500 | le serveur s'arrête pendant qu'une page se prépare (préparation des premières pages au démarrage, ou visiteur en cours) : la requête est annulée (`CancelledError`). | le journal note « GET / -> 500 », une erreur qui n'a pas eu lieu, sans trace ni cause ; l'exploitant cherche une panne qui n'existe pas. |
 | Script commun contre le double envoi et le bandeau reseau qui reste | double clic sur un bouton d'envoi ; serveur redémarré pendant le suivi d'un calcul. | second envoi qui affiche « Élément introuvable » ou « Opération refusée » ; bandeau « Le serveur ne répond pas » laissé à l'écran une fois le serveur revenu. Le comportement se vérifie dans un navigateur (aucun moteur JavaScript dans les tests) : ce test garde les points d'accroche du script et les appels qui leur donnent leur effet. |
 
-#### `solveur` (22 cas)
+#### `solveur` (35 cas)
 
 [`tests/unitaires/solveur/test_contraintes.py`](../tests/unitaires/solveur/test_contraintes.py)
 
@@ -517,6 +517,29 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 |---|---|---|
 | Placement hors bornes refuse en nommant la seance | semaine type importée avec une séance au jour 7, une séance finissant après minuit (23 h - 25 h) ou une séance de durée nulle. | « Jour invalide : 7 » sans nommer la séance, ou des occurrences débordant minuit enregistrées (contrainte de plage de la base violée plus tard, ou acceptée). |
 | Semestre commencant en milieu de semaine et semestre d un jour | semestre du mercredi 09/09 au vendredi 18/09 avec une séance le lundi ; semestre d'un seul jour (un mercredi) avec cinq séances par semaine pour quatre créneaux ce jour-là. | occurrence hors semestre créée ou perdue, replacée dans une mauvaise semaine ; séances « à programmer » en cascade sans raison dite. |
+
+[`tests/unitaires/solveur/test_diagnostic.py`](../tests/unitaires/solveur/test_diagnostic.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Budget minuscule rend indetermine sans depasser le budget | budget de 0,01 s, trop court pour un seul essai utile. | un diagnostic qui lance quand même un essai dépasse son budget (la page attend au-delà du délai du serveur frontal) ou prétend un résultat sans l'avoir établi. |
+| Essais lents arretes au budget marge comprise | chaque essai de retrait consomme tout le temps qu'on lui donne sans conclure. | sans arrêt au budget (marge comprise, décision D1), la requête de la page dépasse le délai du serveur frontal et l'utilisateur reçoit une erreur au lieu d'un résultat partiel. |
+| Essai sans conclusion garde l element et rend partiel | le retrait d'un élément sans rapport (le cours de G3) ne conclut pas dans son temps. | un essai sans conclusion pris pour « pas nécessaire » ou « nécessaire » donnerait un ensemble faux, ou annoncé MINIMAL sans preuve. |
+| Premier essai sans conclusion rend indetermine | l'essai complet lui-même ne conclut pas (grand établissement, budget court). | un diagnostic qui poursuit sans preuve d'impossibilité rendrait des « causes » inventées. |
+| Contrainte souple gardee a son niveau dans les essais | horaires de la grille au niveau souple ; le calcul reste impossible (décision D3). | des essais qui retirent les contraintes souples au lieu de les garder à leur niveau rendraient POSSIBLE un calcul vraiment impossible, ou citeraient une règle souple en cause. |
+| Budget non fini ou negatif refuse | budget nul, négatif, NaN ou infini passé à la fonction du solveur. | un budget infini ou NaN supprime la borne de temps ; un budget négatif rendrait un résultat sans aucun essai présenté comme un diagnostic. |
+
+[`tests/unitaires/solveur/test_diagnostic_service.py`](../tests/unitaires/solveur/test_diagnostic_service.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Donnees corrigees depuis le calcul donnent possible | la donnée fautive est corrigée après le calcul impossible, puis le diagnostic est lancé. | un diagnostic qui relirait les données du moment du calcul, ou qui inventerait un ensemble, désignerait des causes qui n'existent plus ; il doit dire que le calcul n'est plus impossible, avec les données actuelles. |
+| Calcul introuvable | identifiant de calcul absent, nul, négatif ou hors des entiers de la base. | une erreur technique (dépassement d'entier SQLite) ou une page blanche au lieu d'un message qui dit que le calcul n'existe pas. |
+| Calcul qui n est pas impossible refuse | diagnostic demandé sur un calcul réussi, en temps dépassé, arrêté ou en erreur. | un « temps dépassé » n'a pas de preuve d'impossibilité ; le diagnostiquer présenterait comme causes des éléments qui n'en sont pas. |
+| Budget hors bornes refuse sans rien ecrire | budget sous 5 s, au-dessus de 600 s, nul, négatif, NaN, infini ou non numérique. | un budget infini ou énorme bloquerait la page ou le serveur ; un budget trop court donnerait toujours « sans conclusion » sans le dire. |
+| Budget aux bornes accepte | budget exactement à 5 s puis à 600 s. | des bornes exclues par erreur refuseraient le réglage le plus court ou le plus long que la commande propose. |
+| Lire diagnostic illisible rend none et journalise | entrée « diagnostic » des statistiques abîmée (texte, nombre, liste, clés manquantes). | une exception à l'affichage de la page du calcul, qui deviendrait inaccessible ; ou une entrée abîmée ignorée sans trace dans le journal. |
+| Lire diagnostic d un calcul introuvable ne leve pas d erreur technique | relecture du diagnostic d'un calcul supprimé ou d'un identifiant inventé. | une exception SQL brute au lieu de `None` ou d'une erreur métier lisible. |
 
 [`tests/unitaires/solveur/test_moteur.py`](../tests/unitaires/solveur/test_moteur.py)
 
@@ -757,7 +780,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Prechauffage sur toute base | préchauffage demandé deux fois de suite au démarrage du serveur ou après un changement de données, sur une base non initialisée ou initialisée sans données (le cas d'une version active est couvert après un calcul, côté intégration). | trace « no such table » au journal à chaque démarrage sur une base neuve, erreur sur une base sans version active, ou deux fils qui font le même travail en même temps. |
 | Optimum prouve garde dans le bilan de qualite | calcul fini sur l'optimum prouvé, message du moteur ou message d'un calcul déjà enregistré en base avec l'autre tournure de la même phrase. | la ligne « Qualité » de la page du calcul disparaît, faute de reconnaître la phrase du moteur. |
 
-### Tests d'intégration (214 cas)
+### Tests d'intégration (225 cas)
 
 #### `assistant` (7 cas)
 
@@ -942,7 +965,19 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Une methode non permise donne une page 405 | un client envoie PUT ou DELETE sur une page. | trace ou page blanche ; la page « Action non permise » doit répondre 405. |
 | Remise a zero par un autre processus donne base occupee | un autre processus (`edt jeu --reset`) a supprimé les tables et les recrée pendant que le serveur sert une requête. | « base non initialisée : lancer init-db » (faux et dangereux) ; le marqueur posé par l'autre processus doit faire répondre « occupée, réessayer ». |
 
-#### `solveur` (21 cas)
+#### `solveur` (28 cas)
+
+[`tests/integration/solveur/test_diagnostic.py`](../tests/integration/solveur/test_diagnostic.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Calcul et second diagnostic refuses pendant un diagnostic | un calcul, puis un second diagnostic, demandés pendant qu'un diagnostic tourne. | le calcul ou le second diagnostic se partageraient les processeurs avec le premier, qui dépasserait son budget ; le message doit dire quel calcul est diagnostiqué et quoi faire. |
+| Diagnostic refuse pendant un calcul | diagnostic demandé pendant qu'un calcul tourne. | le diagnostic lirait des données en cours de remplacement et ralentirait le calcul. |
+| Commande sans aucun calcul | `diagnostiquer` sans identifiant alors qu'aucun calcul n'a été lancé. | trace Python ou code 0 ; il faut le code des erreurs métier et dire quoi faire. |
+| Commande sur un dernier calcul reussi | le dernier calcul a réussi ; `diagnostiquer` sans identifiant. | un diagnostic lancé sur un calcul qui n'est pas impossible, ou un code de sortie 0. |
+| Commande temps hors bornes | `--temps` sous 5 s, au-dessus de 600 s, nul, négatif, NaN ou infini. | un diagnostic sans borne de temps qui bloque le terminal, ou une trace Python. |
+| Commande temps non numerique | `--temps trente`. | une trace Python au lieu de l'erreur d'usage de la ligne de commande. |
+| Commande calcul introuvable | identifiant de calcul inexistant ou nul. | trace Python ou code 0 au lieu du code des erreurs métier. |
 
 [`tests/integration/solveur/test_services.py`](../tests/integration/solveur/test_services.py)
 
@@ -1067,7 +1102,7 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 |---|---|---|
 | Rejeu d une suppression et d une annulation | la même suppression envoyée deux fois (deux onglets, double clic, bouton « Précédent »), une annulation de séance rejouée, un ajout envoyé deux fois. | une erreur 500, une double écriture ou un message trompeur ; ce test fige le comportement. |
 
-#### `web_edt` (47 cas)
+#### `web_edt` (51 cas)
 
 [`tests/integration/web_edt/test_a_traiter.py`](../tests/integration/web_edt/test_a_traiter.py)
 
@@ -1139,6 +1174,15 @@ Le catalogue compte 538 cas : 324 cas en tests unitaires et 214 cas en tests d'i
 | Heure possible choisie puis enregistree reussit | l'utilisateur choisit une heure « (possible) » ; HTMX recharge le formulaire en renvoyant la salle actuelle de la séance, occupée à cette heure par une autre séance. | la salle occupée reste sélectionnée et « Vérifier et enregistrer » refuse le déplacement (« Une séance par salle »), alors que l'heure était annoncée possible. |
 | Chaque heure possible du jeu minimal s enregistre | pour chaque séance de la version et chaque jour, la première heure annoncée « (possible) », choisie puis enregistrée telle que le formulaire se présente. | une annonce « possible » démentie à l'enregistrement par le bandeau rouge. |
 | Changer le jour puis choisir une heure possible | l'utilisateur change le jour ; le navigateur renvoie l'heure et la salle affichées, occupée ce jour-là, et le formulaire présélectionne une autre salle. Il choisit ensuite une heure « (possible) » en renvoyant cette autre salle. | l'heure a été annoncée avec la salle reçue, pas avec la salle présélectionnée que le navigateur renverra : l'enregistrement est refusé (trajet entre campus, salle indisponible). |
+
+[`tests/integration/web_edt/test_diagnostic.py`](../tests/integration/web_edt/test_diagnostic.py)
+
+| Test | Cas | Risque |
+|---|---|---|
+| Donnees corrigees depuis le calcul le fragment le dit | la donnée fautive est corrigée après le calcul ; diagnostic lancé depuis la page. | la page montrerait des listes vides comme un ensemble trouvé, ou des causes qui n'existent plus, au lieu de dire que le calcul n'est plus impossible. |
+| Diagnostic d un calcul reussi refuse proprement | POST du diagnostic sur un calcul réussi (adresse forgée, onglet resté ouvert). | une erreur technique (500, trace) ou un diagnostic enregistré sur un calcul qui n'est pas impossible. |
+| Diagnostic d un calcul introuvable | POST du diagnostic sur un calcul inexistant ou d'identifiant nul. | une erreur technique (500, trace) au lieu d'un « introuvable » lisible. |
+| Diagnostic d un identifiant non entier | POST sur /calculs/abc/diagnostic. | une erreur de validation brute (JSON 422) au lieu d'une page « introuvable ». |
 
 [`tests/integration/web_edt/test_emploi_du_temps.py`](../tests/integration/web_edt/test_emploi_du_temps.py)
 
