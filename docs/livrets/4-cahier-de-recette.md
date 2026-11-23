@@ -190,9 +190,10 @@ section 6 :
 ## 3. Synthèse des résultats
 
 Deux campagnes de référence ont été enregistrées le 23 novembre 2026, l'une sur le serveur de
-démonstration, l'autre sur le poste de développement. Elles ont tourné sur le même code : la
-version 1.0.0 de l'application, inchangée, plus les tests d'intégration ajoutés pour cette
-recette (commit f5e4401, qui n'ajoute que des tests). Le dépôt compte ainsi 546 fonctions de
+démonstration, l'autre sur le poste de développement. Elles ont tourné sur le même commit,
+77558fd : le code de l'application est celui de la version 1.0.0, inchangé ; s'y ajoutent les
+tests d'intégration écrits pour cette recette, deux assertions renforcées pendant sa relecture,
+et des documents. Le dépôt compte ainsi 546 fonctions de
 test d'intégration : les 533 de la version 1.0.0 (livret 2, section 1.11) et 13 ajoutées pour
 cette recette ; les campagnes en exécutent 542, les 4 tests de charge se lançant à part. Chacune
 a lancé toute la famille des tests d'intégration par la commande
@@ -202,8 +203,8 @@ a lancé toute la famille des tests d'intégration par la commande
 
 | Campagne | Date et heures | Système | Python | Tests | Réussis | Échecs | Ignorés | Durée |
 |---|---|---|---|---:|---:|---:|---:|---:|
-| Serveur de démonstration (EDT 1.0.0, 2 processeurs) | 23/11/2026, 14 h 00 à 14 h 05 | Linux (noyau 7.0) | 3.14.4 | 542 | 542 | 0 | 0 | 5 min 05 s |
-| Poste de développement (EDT 1.0.0, 32 processeurs) | 23/11/2026, 13 h 58 à 14 h 02 | Windows 11 | 3.11.9 | 542 | 540 | 0 | 2 | 3 min 31 s |
+| Serveur de démonstration (EDT 1.0.0, 2 processeurs) | 23/11/2026, 14 h 43 à 14 h 48 | Linux (noyau 7.0) | 3.14.4 | 542 | 542 | 0 | 0 | 5 min 19 s |
+| Poste de développement (EDT 1.0.0, 32 processeurs) | 23/11/2026, 14 h 47 à 14 h 51 | Windows 11 | 3.11.9 | 542 | 540 | 0 | 2 | 3 min 35 s |
 
 La durée va de la première à la dernière heure enregistrées par l'application pour l'exécution.
 
@@ -566,9 +567,9 @@ Chaque fonctionnalité réalisée du livret 1 a au moins une fiche.
 
 <!-- recette-bilan : fin de la partie générée -->
 
-Les deux campagnes ont tourné sur le même code : la version 1.0.0 de l'application, inchangée,
-plus les tests d'intégration ajoutés pour cette recette (commit f5e4401, qui n'ajoute que des
-tests). Aucun test automatisé n'a échoué, sur aucun des deux systèmes ; les seuls tests ignorés le sont sur
+Les deux campagnes ont tourné sur le même commit, 77558fd : le code de l'application est celui
+de la version 1.0.0, inchangé ; s'y ajoutent les tests d'intégration écrits pour cette recette,
+deux assertions renforcées pendant sa relecture, et des documents. Aucun test automatisé n'a échoué, sur aucun des deux systèmes ; les seuls tests ignorés le sont sur
 le poste de développement, pour une raison propre au système, et réussissent sur le serveur.
 
 **Verdict d'ensemble : la version 1.0.0 est acceptée, avec réserves**, selon la règle de
@@ -2507,7 +2508,7 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 |---|---:|---:|---|---|---|
 | **test_commande.py** : Commande `python -m edt tests` sur le dépôt factice : code de sortie, échecs affichés, résultats enregistrés | 4 | 4 | 4/4, 4 s | 4/4, 3 s | Conforme |
 | **test_ecrans.py** : Écrans « Tests unitaires » et « Tests d'intégration » par HTTP : onglets, schéma, lancement, suivi en direct, refus | 11 | 10 | 11/11, 6 s | 11/11, 5 s | Conforme |
-| **test_execution.py** : Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 | 7/7, 8 s | 7/7, 8 s | Conforme |
+| **test_execution.py** : Exécution réelle des tests d'un dépôt factice par le service, dans un sous-processus pytest : résultats, arrêt, durée maximale | 7 | 7 | 7/7, 8 s | 7/7, 7 s | Conforme |
 
 #### `echange` : Import et export par le site et la ligne de commande
 
@@ -2515,8 +2516,8 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 |---|---:|---:|---|---|---|
 | **test_bornes.py** : Fichiers hostiles envoyés au site, pages bornées | 6 | 6 | 6/6, 3 s | 6/6, 1 s | Conforme |
 | **test_commandes.py** : Commandes gabarit, importer, exporter-donnees et exporter-edt | 8 | 8 | 8/8, 2 s | 8/8, 1 s | Conforme |
-| **test_export_edt.py** : Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 | 5 | 5/5, 2 s | 5/5, 1 s | Conforme |
-| **test_recette_echanges.py** : Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 | 5 | 5/5, 3 s | 5/5, 1 s | Conforme |
+| **test_export_edt.py** : Export d'un emploi du temps : CSV et iCal, par ressource, relu par la bibliothèque icalendar | 5 | 5 | 5/5, 3 s | 5/5, 1 s | Conforme |
+| **test_recette_echanges.py** : Recette de l'import, de l'export et de l'impression, par les écrans de l'application | 5 | 5 | 5/5, 3 s | 5/5, 2 s | Conforme |
 | **test_web.py** : Écrans d'import et d'export : dépôt, simulation, application, téléchargements | 16 | 16 | 16/16, 6 s | 16/16, 3 s | Conforme |
 
 #### `exploitation` : Contrats du déploiement
@@ -2531,11 +2532,11 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_aller_retour_donnees.py** : Scénario c : exporter les données d'un établissement puis les réimporter dans une base neuve | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
-| **test_jeu_fictif_realiste.py** : Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_jeu_fictif_realiste.py** : Scénario f : un établissement fictif réaliste (jeu « petit ») est calculé et vérifié | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
 | **test_parcours_ligne_de_commande.py** : Scénario b : parcours complet en ligne de commande (`python -m edt ...`) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 | **test_parcours_web.py** : Scénario a : parcours complet d'un utilisateur dans l'application web | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 | **test_regle_personnalisee.py** : Scénario d : une règle personnalisée saisie par l'utilisateur est respectée par le calcul | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
-| **test_retouche_manuelle.py** : Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_retouche_manuelle.py** : Scénario e : une retouche manuelle après le calcul (annulation d'une séance datée) | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 
 #### `socle` : Commandes et application web du socle
 
@@ -2556,15 +2557,15 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_niveaux.py** : Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 | 3 | 6/6, 3 s | 6/6, 1 s | Conforme |
+| **test_niveaux.py** : Niveaux de règles, de bout en bout : enregistrement avec le calcul, suivi et ligne de commande | 6 | 3 | 6/6, 3 s | 6/6, 2 s | Conforme |
 | **test_regles.py** : Règles personnalisées, de bout en bout : copie avec le calcul, suivi et ligne de commande | 3 | 1 | 3/3, 2 s | 3/3, 1 s | Conforme |
-| **test_services.py** : Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 | 22 | 44/45, 21 s | 44/45, 12 s | Conforme (1 charge) |
+| **test_services.py** : Intégration sur le jeu minimal du socle : génération de bout en bout, instanciation, replacement | 45 | 22 | 44/45, 22 s | 44/45, 12 s | Conforme (1 charge) |
 
 #### `synthese` : Commande des jeux fictifs
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_cas_limites.py** : Une graine ou une année refusée ne vide jamais la base | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_cas_limites.py** : Une graine ou une année refusée ne vide jamais la base | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
 | **test_commande.py** : Commande `python -m edt jeu` (service `edt.services.jeux` par la ligne de commande) | 5 | 5 | 5/5, 2 s | 5/5, 1 s | Conforme |
 
 #### `verification` : Commande du vérificateur
@@ -2578,38 +2579,38 @@ Pour chaque campagne : tests réussis sur tests du fichier, puis durée cumulée
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
 | **test_besoins.py** : Écran des besoins : trois modes de volume, filtres, duplication, charge hebdomadaire | 9 | 8 | 9/9, 2 s | 9/9, 1 s | Conforme |
-| **test_cas_limites.py** : Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 12 | 4 | 12/12, 7 s | 12/12, 4 s | Conforme |
+| **test_cas_limites.py** : Calcul en cours, dates aberrantes, adresses et en-têtes fabriqués | 12 | 4 | 12/12, 8 s | 12/12, 4 s | Conforme |
 | **test_concurrence.py** : Un seul chargement de jeu fictif ou une seule remise à zéro à la fois | 3 | 1 | 3/3, 1 s | 3/3, 0 s | Conforme |
 | **test_entites.py** : Un test rapide par entité : la liste répond, le formulaire s'ouvre, une création valide passe | 7 | 5 | 7/7, 5 s | 7/7, 3 s | Conforme |
-| **test_generique.py** : Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 | 7 | 9/9, 3 s | 9/9, 1 s | Conforme |
-| **test_jeux.py** : Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 9 | 8 | 8/9, 3 s | 8/9, 2 s | Conforme (1 charge) |
+| **test_generique.py** : Mécanisme générique : liste (tri, recherche, filtres, pagination), formulaire, suppression | 9 | 7 | 9/9, 2 s | 9/9, 1 s | Conforme |
+| **test_jeux.py** : Page des jeux de données : établissement fictif, refus pendant un calcul, remise à zéro | 9 | 8 | 8/9, 4 s | 8/9, 2 s | Conforme (1 charge) |
 | **test_mise_en_page.py** : Mise en page commune : six onglets, sous-navigation, onglet vide masqué, panneau de l'assistant, aucune annonce | 6 | 0 | 6/6, 2 s | 6/6, 1 s | Conforme |
 | **test_parametres.py** : Écran des paramètres : construit depuis les métadonnées, bornes contrôlées, valeurs par défaut | 11 | 3 | 11/11, 3 s | 11/11, 2 s | Conforme |
 | **test_performance.py** : Banque des cas limites : temps et taille des pages sur l'établissement complet (jeu grand) | 2 | 0 | 0/2, 0 s | 0/2, 0 s | Charge, lancé à part |
-| **test_regles.py** : Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 30 | 17 | 30/30, 11 s | 30/30, 6 s | Conforme |
-| **test_saisies_extremes.py** : Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 | 7 | 14/14, 4 s | 14/14, 10 s | Conforme |
-| **test_sans_trace.py** : Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 | 0 | 2/2, 1 s | 2/2, 4 s | Conforme |
+| **test_regles.py** : Règles personnalisées : liste et filtres, ajout guidé, modification, états, suppressions, paramètre des jours travaillés, propositions à la création d'une année, parcours réel | 30 | 17 | 30/30, 12 s | 30/30, 6 s | Conforme |
+| **test_saisies_extremes.py** : Saisies aberrantes : jamais d'erreur 500, toujours un message | 14 | 7 | 14/14, 4 s | 14/14, 4 s | Conforme |
+| **test_sans_trace.py** : Aucune page de l'espace « Données » ne plante ni n'affiche de trace technique | 2 | 0 | 2/2, 2 s | 2/2, 3 s | Conforme |
 | **test_suppression.py** : Suppression : retour conservé, confirmation sur place, refus avec liens, conséquences expliquées | 13 | 5 | 13/13, 5 s | 13/13, 9 s | Conforme |
 
 #### `web_edt` : Écrans Générer et emploi du temps, par HTTP
 
 | Fichier : ce qu'il vérifie | Tests | Cités | Serveur de démonstration | Poste de développement | Verdict |
 |---|---:|---:|---|---|---|
-| **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 2 s | 6/6, 6 s | Conforme |
-| **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 5 s | Conforme |
-| **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 15 s | 26/26, 9 s | Conforme |
-| **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 28 s | 25/25, 16 s | Conforme |
+| **test_a_traiter.py** : Page « Points à traiter » : avec et sans vérificateur, liens vers les séances, séances à programmer | 6 | 6 | 6/6, 3 s | 6/6, 6 s | Conforme |
+| **test_accueil.py** : Accueil : prochaine étape, version active, points à traiter, calcul sans solution, base | 11 | 9 | 11/11, 4 s | 11/11, 8 s | Conforme |
+| **test_calculs.py** : Onglet « Générer » : lancement, suivi, messages de fin, vérifications préalables, versions | 26 | 24 | 26/26, 16 s | 26/26, 25 s | Conforme |
+| **test_cas_limites.py** : Adresses mal copiées, liens périmés, cookies forgés : jamais d'erreur 500 | 25 | 16 | 25/25, 30 s | 25/25, 16 s | Conforme |
 | **test_dejeuner.py** : Onglet « Générer » : pause déjeuner à trois modes, préremplie, enregistrée au lancement | 8 | 8 | 8/8, 4 s | 8/8, 2 s | Conforme |
-| **test_deplacement_possible.py** : Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 4 | 4 | 4/4, 45 s | 4/4, 22 s | Conforme |
-| **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 20 s | 20/20, 11 s | Conforme |
+| **test_deplacement_possible.py** : Déplacement d'une séance : une heure annoncée « possible » s'enregistre telle que présentée | 4 | 4 | 4/4, 47 s | 4/4, 21 s | Conforme |
+| **test_emploi_du_temps.py** : Grille, groupes liés, déplacements et annulations vérifiés | 20 | 19 | 20/20, 21 s | 20/20, 11 s | Conforme |
 | **test_niveaux_web.py** : Niveaux de règles sur l'écran « Générer », le suivi, l'historique et « Points à traiter » | 11 | 6 | 11/11, 5 s | 11/11, 3 s | Conforme |
-| **test_raccords.py** : Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 | 1 | 1/1, 0 s | 1/1, 1 s | Conforme |
-| **test_recette_affichage.py** : Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
+| **test_raccords.py** : Raccords : vraies pré-vérifications et instanciation d'une version produite par un calcul complet | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_recette_affichage.py** : Adaptation des écrans à un petit écran, vérifiable sans navigateur | 1 | 1 | 1/1, 1 s | 1/1, 1 s | Conforme |
 | **test_recette_deplacement.py** : Formulaire « Déplacer la séance » par le site, avec le vrai vérificateur : heures annoncées « possible, avec avertissement », et jour sans aucune heure possible | 2 | 2 | 2/2, 1 s | 2/2, 1 s | Conforme |
-| **test_recette_resultat.py** : Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 | 1 | 1/1, 0 s | 1/1, 0 s | Conforme |
+| **test_recette_resultat.py** : Résultat d'un calcul : les indicateurs de qualité affichés concordent avec le vérificateur | 1 | 1 | 1/1, 1 s | 1/1, 0 s | Conforme |
 | **test_recette_verrous.py** : Verrous posés et levés depuis le panneau d'une séance, puis tenus par le calcul suivant | 2 | 2 | 2/2, 2 s | 2/2, 1 s | Conforme |
 | **test_regles_web.py** : Règles personnalisées sur les écrans de l'emploi du temps : Générer, suivi, grille, anomalies | 13 | 7 | 13/13, 8 s | 13/13, 4 s | Conforme |
-| **test_revue.py** : Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 | 7 | 12/12, 7 s | 12/12, 4 s | Conforme |
+| **test_revue.py** : Écrans de l'emploi du temps : séances datées importées, points à traiter, règles décochées, mémoire des écrans | 12 | 7 | 12/12, 6 s | 12/12, 4 s | Conforme |
 
 <!-- recette-resultats-par-fichier : fin de la partie générée -->
 

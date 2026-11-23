@@ -240,7 +240,9 @@ les énumérations affichables dérivent de `EnumLibelle`. Un test vérifie que
 ### 1.11 Tests
 
 Les nombres ci-dessous sont ceux du tableau généré dans [tests/README.md](../../tests/README.md)
-(`python -m tests.outils.classement`), qui compte les fonctions de test ; pytest, qui compte
+(`python -m tests.outils.classement`) à la version 1.0.0 ; la recette a ajouté depuis 13 tests
+d'intégration et les contrôles de son outil (livret 4, [cahier de recette](4-cahier-de-recette.md),
+section 3). Ce tableau compte les fonctions de test ; pytest, qui compte
 chaque cas d'une fonction paramétrée à part, collecte 2 262 cas.
 
 | Famille | Fonctions | Contenu |
