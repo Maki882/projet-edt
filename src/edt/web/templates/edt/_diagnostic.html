@@ -37,7 +37,11 @@
   {%- endif %}
   <p class="discret">Les règles qui définissent le problème sont toujours gardées : une seule séance à la fois par salle, par enseignant et par groupe, toutes les séances placées, séances verrouillées et jours fermés respectés.</p>
   {%- endif %}
+  {#- Le message du service rappelle déjà, en principe, que le diagnostic porte sur les données
+      actuelles (décision D1) : la phrase n'est ajoutée que s'il ne la contient pas. #}
+  {%- if avertissement_donnees not in diagnostic.message %}
   <p class="discret">{{ avertissement_donnees }}</p>
+  {%- endif %}
   <p class="discret">Diagnostic du {{ diagnostic_le }} : {{ fmt.pluriel(diagnostic.nb_essais, "essai") }} en {{ fmt.duree_secondes(diagnostic.duree_s) }} (au plus {{ fmt.duree_secondes(diagnostic.budget_s) }}).</p>
   {%- endif %}
 </div>

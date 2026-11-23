@@ -461,7 +461,9 @@ def lignes_du_diagnostic(resultat: diagnostic.Diagnostic) -> list[str]:
                 "  Aucune donnée en cause : la règle suffit à rendre le calcul impossible."
             )
         lignes.append(RAPPEL_REGLES_GARDEES)
-    lignes.append(diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES)
+    if diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES not in resultat.message:
+        # Le message le rappelle déjà en principe (décision D1) : pas de répétition.
+        lignes.append(diagnostic.AVERTISSEMENT_DONNEES_ACTUELLES)
     lignes.append(
         f"{presentation.pluriel(resultat.nb_essais, 'essai')} en "
         f"{presentation.duree_secondes(resultat.duree_s)} "
