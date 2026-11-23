@@ -132,7 +132,11 @@ def test_message_rappelle_que_les_donnees_sont_les_donnees_actuelles(jeu_minimal
     diagnostic = diagnostiquer_calcul(calcul_id, BUDGET_S)
 
     assert AVERTISSEMENT_DONNEES_ACTUELLES
-    assert AVERTISSEMENT_DONNEES_ACTUELLES in diagnostic.message
+    # Décision D5 : le résumé, puis l'avertissement, toujours en dernier ; la phrase des règles
+    # qui définissent le problème est écrite par la page et la commande, pas répétée ici.
+    assert diagnostic.message.endswith(AVERTISSEMENT_DONNEES_ACTUELLES)
+    assert diagnostic.message != AVERTISSEMENT_DONNEES_ACTUELLES
+    assert "définissent le problème" not in diagnostic.message
 
 
 def test_second_diagnostic_remplace_le_premier(jeu_minimal):
