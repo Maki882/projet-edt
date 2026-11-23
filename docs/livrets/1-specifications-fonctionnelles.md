@@ -131,8 +131,11 @@ de langues et d'options, les apprentis (leur semaine de présence à l'école), 
 tiers-temps et les deux semestres de l'année. Un emploi du temps se calcule semestre par
 semestre.
 
-Elle n'a pas d'écran de connexion : la version de démonstration est ouverte, et l'ajout de
-comptes et de rôles fait partie des évolutions prévues (section 2.2).
+Par défaut, elle n'a pas d'écran de connexion : la version de démonstration est ouverte. Un
+accès par mot de passe peut être activé sur le serveur : un mot de passe de gestion (tous les
+droits) et un mot de passe de consultation (lecture seule de l'emploi du temps et de son
+export, pour les étudiants). Les comptes nominatifs font partie des évolutions prévues
+(section 2.2).
 
 ---
 
@@ -210,7 +213,7 @@ de ce qui est prévu.
 | P3 | Assistant conversationnel | Poser une question en langage courant sur les données ou l'emploi du temps (« Quelles salles de plus de 40 places sont libres le jeudi après-midi ? ») et recevoir une réponse fondée sur les données de l'application, que l'assistant consulte sans rien modifier ; demander une modification (« Mme Bertin n'est pas disponible le mercredi matin ») et recevoir une proposition : une règle personnalisée, sa modification, son activation ou sa désactivation, ou une indisponibilité. Rien n'est enregistré avant le clic sur « Confirmer ». L'assistant ne lance pas de calcul et ne supprime rien. Le nombre de messages et la dépense de la journée sont limités ; sans service configuré, le panneau le dit et le reste de l'application fonctionne. | Réalisée |
 | P4 | Tests du logiciel lancés depuis l'application | Dans les onglets « Tests unitaires » et « Tests d'intégration », lire un schéma de l'organisation des tests, lancer un test, un fichier, un composant ou toute une famille (les tests de charge, longs, se lancent seulement par une commande de l'administrateur), suivre l'exécution et l'arrêter ; chaque test affiche son résultat (réussi, échec avec son message, ignoré avec sa raison, jamais lancé) et la date de sa dernière exécution. Les tests tournent à part : les données de l'application ne sont jamais touchées. Cette fonctionnalité sert à montrer la qualité du logiciel ; le travail du responsable des emplois du temps ne l'exige pas. | Réalisée |
 | P5 | Réaménagement sur imprévu | Replacer automatiquement les séances touchées par un imprévu (absence, salle fermée) en modifiant le moins possible le reste de l'emploi du temps. | Prévue |
-| P6 | Comptes et rôles | Se connecter, avec des droits différents selon le rôle (gestionnaire, consultation). | Prévue |
+| P6 | Comptes et rôles | Se connecter, avec des droits différents selon le rôle (gestionnaire, consultation). | Partielle : un mot de passe par rôle, pas de comptes nominatifs |
 | P7 | Glisser-déposer | Déplacer une séance en la faisant glisser dans la grille. | Prévue |
 | P8 | Alternance semaine A / semaine B | Gérer des semaines qui alternent, et le calendrier d'alternance des apprentis. | Prévue |
 | P9 | Diagnostic détaillé d'un calcul impossible | Désigner précisément le plus petit ensemble de règles et de données qui rend le calcul impossible. | Prévue |

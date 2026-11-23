@@ -48,7 +48,7 @@ EDT construit l'emploi du temps d'un semestre : chaque séance reçoit un jour, 
 une salle, dans le respect des disponibilités, des salles, des groupes, du calendrier et des
 règles de l'établissement. Quand aucun emploi du temps n'est possible, l'application le dit
 et désigne la cause ; elle ne supprime jamais une règle pour réussir. Elle s'ouvre dans un
-navigateur web, sans écran de connexion. Six onglets occupent le haut de chaque page :
+navigateur web, sans écran de connexion par défaut. Six onglets occupent le haut de chaque page :
 
 | Onglet | À quoi il sert |
 |---|---|
@@ -62,6 +62,12 @@ Le bouton **Assistant**, en bas à droite de chaque page, ouvre un panneau où p
 questions en langage courant (partie 9). Le principe à retenir : **l'accueil dit toujours
 quoi faire ensuite.** Son encadré « Prochaine étape » propose l'action utile selon l'état de
 la base : charger un établissement, générer l'emploi du temps, le consulter.
+
+**Si le site demande un mot de passe** (accès activé par l'administrateur du serveur) : le
+mot de passe de **gestion** ouvre tout ce qui est décrit dans ce guide ; celui de
+**consultation**, prévu pour les étudiants, ouvre seulement l'onglet Emploi du temps, en
+lecture : consulter, imprimer et exporter vers un tableur ou un agenda, sans rien modifier.
+Le bouton **Se déconnecter**, en haut à droite, ferme l'accès.
 
 ![Accueil d'une base vide : l'encadré « Prochaine étape » propose de charger un établissement fictif, d'importer des fichiers ou de saisir à la main](images/guide-accueil-vide.png)
 
