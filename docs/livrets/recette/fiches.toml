@@ -50,7 +50,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_parcours_web.py::test_parcours_web_du_calcul_a_l_export",
 ]
-remarque = "Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux)."
+remarque = "Le test ne contrôle jamais où le moteur place une séance, seulement des propriétés (version active, aucune anomalie bloquante, nombres égaux). La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 [[fiche]]
 id = "REC-BOUT-2"
@@ -93,7 +93,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_aller_retour_donnees.py::test_export_puis_import_dans_une_base_neuve",
 ]
-remarque = "L'import appelle le service qu'utilise l'écran « Import », sans passer par son formulaire."
+remarque = "L'import appelle le service qu'utilise l'écran « Import », sans passer par son formulaire. Le classeur Excel suit le même format que les fichiers CSV de O9."
 
 [[fiche]]
 id = "REC-BOUT-4"
@@ -115,7 +115,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_regle_personnalisee.py::test_regle_jours_travailles_respectee_de_bout_en_bout",
 ]
-remarque = "La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération."
+remarque = "La règle est créée par le service qu'appelle l'écran « Règles personnalisées » ; le calcul est lancé par le service de génération. La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 [[fiche]]
 id = "REC-BOUT-5"
@@ -137,6 +137,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_retouche_manuelle.py::test_annuler_une_seance_datee_par_le_site",
 ]
+remarque = "La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 [[fiche]]
 id = "REC-BOUT-6"
@@ -159,6 +160,7 @@ attendu = [
 tests = [
   "tests/integration/parcours/test_jeu_fictif_realiste.py::test_jeu_petit_calcule_et_verifie",
 ]
+remarque = "La vérification est demandée au service du vérificateur, celui qu'emploient la commande « python -m edt verifier » (avec « --datees » pour les séances datées) et la page « Points à traiter »."
 
 # =========================================================================================
 # O1, O2, O3, O11 : données de l'établissement
@@ -176,6 +178,7 @@ etapes = [
   "Ouvrir la salle N016, porter sa capacité à 150, puis « Enregistrer ».",
   "Pour les campus, enseignants, groupes, étudiants, matières, types de séance, types de salle et équipements : ouvrir la liste et le formulaire, créer un élément valide.",
   "Dans « Campus et trajets », remplacer la durée du trajet entre NDC et ISSY par 45 ; ouvrir l'arbre des groupes.",
+  "Dans « Types de salle », modifier le libellé d'une ligne dans la ligne même, puis l'enregistrer.",
 ]
 attendu = [
   "La liste annonce « 6 salles. » ; triée par capacité, N016 passe avant N310 ; la recherche donne « 1 salle correspondant » ; le filtre ISSY, « 2 salles correspondant ».",
@@ -183,6 +186,7 @@ attendu = [
   "La salle N016 a 150 places ; l'écran revient à la liste triée d'origine.",
   "Pour chaque sorte d'élément, la liste et le formulaire s'ouvrent et l'ajout affiche un message de création.",
   "La durée du trajet passe de 60 à 45 ; l'arbre présente A1-G1 avant son demi-groupe A1-G1a et signale les groupes qui se chevauchent.",
+  "La ligne passe en édition ; après l'enregistrement, elle affiche le nouveau libellé « Grand amphi ».",
 ]
 tests = [
   "tests/integration/web_donnees/test_generique.py::test_liste_triee_recherchee_et_filtree",
@@ -206,12 +210,14 @@ etapes = [
   "Saisir une capacité de vingt chiffres, puis des chiffres d'autres écritures (« ² », « ٣ »).",
   "« Nouvel enseignant » : saisir 0 h comme maximum d'enseignement par jour.",
   "« Campus et trajets » : saisir « beaucoup » comme temps de trajet.",
+  "« Nouveau groupe » : saisir un effectif de vingt chiffres.",
 ]
 attendu = [
   "Refus avec « Nombre entier attendu. », les valeurs saisies réaffichées ; puis refus avec « Une salle porte déjà ce code sur ce campus. ».",
   "Capacité de vingt chiffres : « La valeur maximale est 100000. » ; autres écritures : « Nombre entier attendu. ».",
   "Maximum nul : refus avec, sous le champ, « La valeur minimale est … » ; aucun enseignant créé.",
   "Trajet illisible : refus avec « Nombre de minutes attendu. ».",
+  "Effectif de vingt chiffres : « La valeur maximale est 100000. ».",
 ]
 tests = [
   "tests/integration/web_donnees/test_generique.py::test_erreur_de_saisie_reaffichee_avec_les_valeurs",
@@ -236,7 +242,7 @@ etapes = [
 ]
 attendu = [
   "« Salle « N016 (NDC) » supprimée. » ; pour L115, la confirmation annonce « Son indisponibilité sera supprimée avec elle. ».",
-  "Pour Mme Martin : « Cet enseignant assure 3 besoins. », sans bouton de suppression, avec le lien « Voir ces 3 besoins » ; un envoi forcé ne supprime rien.",
+  "Pour Mme Martin : « Cet enseignant assure 3 besoins. », sans bouton de suppression, avec le lien « Voir ces 3 besoins » ; un envoi forcé est refusé avec le même message ; les 16 besoins restent.",
   "La confirmation explique que les séances « resteront sans salle » et renvoie aux « Points à traiter » et au prochain calcul.",
   "Le second envoi affiche « Cet élément n'existe plus : il a déjà été supprimé. » ; pendant le calcul, les suppressions sont refusées et rien ne disparaît.",
 ]
@@ -256,7 +262,7 @@ id = "REC-O2-1"
 titre = "Saisir, retrouver et dupliquer les besoins d'enseignement"
 fonctionnalites = ["O2"]
 objectif = "Montrer qu'un besoin se saisit « chaque semaine », en volume total réparti entre deux dates ou en séance ponctuelle datée, que seuls les champs du mode choisi sont enregistrés, et qu'un besoin incomplet ou hors du semestre est refusé ; montrer que la liste des besoins se filtre, qu'un besoin se duplique et que la charge hebdomadaire par groupe suit les filtres."
-depart = "Base chargée du jeu minimal : semestre 1 de 2026-2027, matière IM.1101, classe A1-G1, Mme Martin ; 16 besoins. Base chargée du jeu minimal : 16 besoins au semestre 1, dont 3 assurés par Mme Martin et 2 ponctuels."
+depart = "Base chargée du jeu minimal : semestre 1 de 2026-2027, matière IM.1101, classe A1-G1 ; 16 besoins, dont 3 assurés par Mme Martin et 2 ponctuels."
 etapes = [
   "« Données › Besoins › Nouveau besoin » : TD de IM.1101 pour A1-G1, 1 h 30, « Chaque semaine », 2 séances par semaine, puis « Ajouter ».",
   "Même saisie en « Volume total réparti entre deux dates » : 10 séances, 2 au plus par semaine, du 07/09/2026 au 23/10/2026 ; puis en laissant vide le nombre total.",
@@ -292,7 +298,7 @@ id = "REC-O3-1"
 titre = "Tenir le calendrier, les indisponibilités et la grille horaire ; dates aberrantes refusées"
 fonctionnalites = ["O3"]
 objectif = "Montrer que le calendrier, les indisponibilités et la grille horaire se tiennent depuis leurs écrans, qu'une année se crée avec ses semestres sans doublon, qu'une date aberrante est refusée sous le champ et que le semestre en cours de calcul ne peut pas être supprimé."
-depart = "Base initialisée (année 2026-2027, ses semestres et ses jours fériés) et chargée du jeu minimal. Base chargée du jeu minimal ; pour le dernier essai, un calcul en cours sur le semestre 1."
+depart = "Base initialisée (année 2026-2027, ses semestres et ses jours fériés) et chargée du jeu minimal ; pour le dernier essai, un calcul en cours sur le semestre 1."
 etapes = [
   "Ouvrir « Données › Calendrier » ; cliquer sur « Préremplir les jours fériés ».",
   "Dans « Ajouter une année scolaire », saisir 2028 puis « Créer l'année et ses semestres » ; recommencer.",
@@ -302,6 +308,7 @@ etapes = [
   "« Nouvelle année scolaire » du 01/09/2026 au 31/12/9999 ; puis du 01/09/9998 au 31/08/9999.",
   "Créer une année de deux ans, puis un semestre qui dure presque deux ans.",
   "Pendant le calcul, demander la suppression du semestre 1, puis de l'année 2026-2027.",
+  "Dans « Ajouter une année scolaire », saisir « ² » comme année de début.",
 ]
 attendu = [
   "La page affiche « Année 2026-2027 » et « Semestre 1 (2026-2027) » ; les jours fériés sont annoncés « déjà présents ».",
@@ -311,6 +318,7 @@ attendu = [
   "Refus sous la date de fin : « Une année scolaire dure deux ans au plus » ; pour 9998 : l'année doit « commencer entre 2000 et 2100 » ; rien n'est créé.",
   "Le semestre est refusé avec « Un semestre dure un an au plus » et n'est pas créé.",
   "La confirmation dit qu'un « calcul d'emploi du temps est en cours » ; le semestre et l'année restent ; le calcul se termine avec succès.",
+  "Le calendrier affiche « Année de début invalide ».",
 ]
 tests = [
   "tests/integration/web_donnees/test_entites.py::test_calendrier_et_jours_feries",
@@ -333,12 +341,14 @@ etapes = [
   "Ouvrir « Données › Établissement fictif » ; choisir « Petit », variante 0, puis « Charger l'établissement fictif ».",
   "Ajouter une donnée, puis recharger la page de résultat (F5).",
   "Sur une autre base vide, taper « python -m edt jeu --taille petit --reference ».",
+  "Sans fichier de base, taper « python -m edt jeu --taille petit --reset --oui ».",
 ]
 attendu = [
   "L'écran présente les tailles « Petit », « Moyen » et « Grand », variante 0 par défaut.",
   "« Établissement fictif « petit » chargé » ; le compte rendu liste « 2 campus, 14 salles », « 13 groupes, 65 étudiants » et « 7 enseignants, 7 matières, 23 besoins d'enseignement ».",
   "Le rechargement réaffiche le compte rendu sans rien recharger ni effacer : la donnée ajoutée reste.",
   "La commande rend le code 0, affiche « Jeu fictif « petit » (graine 0) » et « vérificateur sur l'emploi du temps de référence : 0 erreur, » ; la base contient une version de référence.",
+  "La commande rend le code 0 et la base contient des besoins.",
 ]
 tests = [
   "tests/integration/web_donnees/test_jeux.py::test_page_decrit_les_tailles",
@@ -356,15 +366,17 @@ objectif = "Montrer que charger un établissement fictif exige une confirmation 
 depart = "Base chargée du jeu minimal (6 salles, 16 besoins), ou base vide selon l'essai ; calcul et chargement en cours simulés par le test."
 etapes = [
   "Choisir « Petit » et charger sans cocher « Confirmer l'effacement de toutes les données actuelles ».",
-  "Sur une base vide, saisir 2147483648 comme numéro de variante.",
+  "Sur une base vide, saisir 2147483648, puis « ² », comme numéro de variante.",
   "Pendant un calcul, puis pendant un autre chargement, charger avec la case cochée.",
-  "En ligne de commande : « python -m edt jeu --taille petit » sur une base garnie, puis avec une taille inconnue, puis « --reset » en répondant « n ».",
+  "En ligne de commande : « python -m edt jeu --taille petit » sur une base garnie, puis avec une taille inconnue, puis « --reset » en répondant « n », puis « --reset --oui » avec une variante ou une année invalide.",
+  "« Remettre la base à zéro » sans cocher la confirmation, puis en la cochant.",
 ]
 attendu = [
   "Sans la case : refus avec « Cochez la case » ; toujours 16 besoins.",
-  "Variante trop grande : refus avec « de 0 à 2147483647 », aucun campus créé.",
+  "Variante trop grande : refus avec « de 0 à 2147483647 », aucun campus créé ; « ² » : « Nombre entier positif attendu ».",
   "Calcul en cours : refus qui dit qu'« un calcul d'emploi du temps est en cours » ; chargement en cours : refus du second chargement, le premier se termine.",
-  "La commande rend le code 1 avec « déjà des données » ou « Taille de jeu inconnue » ; après « n », le nombre de besoins est inchangé.",
+  "La commande rend le code 1 avec « déjà des données » ou « Taille de jeu inconnue » ; après « n », le nombre de besoins est inchangé ; avec une variante ou une année invalide, code 1 avec « invalide », et la base n'est pas vidée.",
+  "Sans la case : refus, les campus restent ; avec la case : « La base a été remise à zéro », plus aucun campus ni besoin.",
 ]
 tests = [
   "tests/integration/web_donnees/test_jeux.py::test_rechargement_exige_une_confirmation_d_effacement",
@@ -391,7 +403,7 @@ titre = "Importer un fichier CSV de salles : simulation, puis application"
 fonctionnalites = ["O9", "U13"]
 cas = [5]
 objectif = "Montrer qu'un fichier CSV s'importe en deux temps, une simulation qui n'écrit rien puis l'application, et que les lignes valides entrent tandis que les lignes fautives sont listées avec leur raison."
-depart = "Base chargée du jeu minimal (6 salles sur le campus NDC). Fichier fictif salles_avec_erreurs.csv : 6 lignes, dont une capacité « quarante », un campus « LYON » inconnu et une ligne sans code."
+depart = "Base chargée du jeu minimal (6 salles : 4 sur le campus NDC, 2 sur ISSY). Fichier fictif salles_avec_erreurs.csv : 6 lignes, dont une capacité « quarante », un campus « LYON » inconnu et une ligne sans code."
 etapes = [
   "Ouvrir l'écran « Import » ; dans « Fichiers », choisir le fichier ; laisser « Données de l'établissement ».",
   "Cliquer sur « Simuler l'import » et lire le bilan, le rapport et l'aperçu.",
@@ -401,7 +413,7 @@ etapes = [
 attendu = [
   "La simulation annonce que « rien n'a été écrit », le bilan « 2 créés, 4 rejetés » et le message « Campus « LYON » inconnu » ; la base compte toujours 6 salles.",
   "L'application affiche « Import appliqué » et signale les lignes non importées ; la base compte 2 salles de plus.",
-  "La commande rend le code 1 (des lignes sont rejetées), affiche « salles : 2 créés, 4 rejetés » et la ligne et la colonne de chaque erreur ; le rapport écrit contient « Campus « LYON » inconnu ».",
+  "La commande rend le code 1 (des lignes sont rejetées), affiche « salles : 2 créés, 4 rejetés » et situe les erreurs par ligne et par colonne (par exemple « ligne 3, colonne capacite ») ; le rapport écrit contient « Campus « LYON » inconnu ».",
 ]
 tests = [
   "tests/integration/echange/test_web.py::test_menu_et_page_d_import",
@@ -419,15 +431,19 @@ objectif = "Montrer qu'un envoi vide, trop gros, illisible ou démesuré est ref
 depart = "Base vide ou chargée du jeu minimal selon l'essai ; fichiers fabriqués pour l'essai (CSV de 21 Mo, image, archive ZIP qui se décompresse en plus de 21 Mo, fichier de 1 500 lignes fautives)."
 etapes = [
   "Cliquer sur « Simuler l'import » sans fichier, puis avec le CSV de 21 Mo, puis avec une image.",
+  "Simuler l'import d'un fichier de 19,5 Mo aux lignes invalides ; sans JavaScript, envoyer un document PDF directement à l'application de l'import.",
   "Simuler l'import de l'archive démesurée, puis du fichier de 1 500 lignes fautives, et télécharger le rapport complet.",
   "Cocher « Tout remplacer », simuler, puis appliquer sans cocher la confirmation ; puis en la cochant.",
   "Appliquer un import pendant un calcul en cours.",
+  "En ligne de commande, simuler l'import d'un dossier qui contient un fichier de salles et un agenda .ics.",
 ]
 attendu = [
   "Sans fichier : « Aucun fichier » ; 21 Mo : refus qui rappelle la limite de « 20 Mo » ; image : « « photo.png » n'est pas un fichier de données lisible ici », sans bouton « Appliquer l'import ».",
   "L'archive est refusée dans une page de moins de 200 Ko ; les 3 000 erreurs donnent une page bornée (« les 200 premières affichées ») et un rapport CSV complet.",
+  "Fichier de 19,5 Mo : réponse en moins de 15 secondes, page de moins de 200 Ko, tableau refusé car il a « plus de 50000 lignes de données » ; PDF envoyé à l'application : la page dit « Rien n'a été importé », jamais « 0 ligne ou séance ».",
   "Sans confirmation, le remplacement est refusé et aucune salle ne disparaît ; avec confirmation, il est appliqué.",
-  "Pendant un calcul, l'import est refusé avec un message qui parle du calcul.",
+  "Pendant un calcul, l'import est refusé (réponse 409) avec « Un calcul d'emploi du temps est en cours ».",
+  "Dossier mélangé : code 1, « salles : 1 créé », et l'agenda est signalé : « Un fichier iCal décrit un emploi du temps ».",
 ]
 tests = [
   "tests/integration/echange/test_web.py::test_envoi_sans_fichier_ou_trop_gros",
@@ -456,7 +472,7 @@ etapes = [
   "Sur l'écran « Emploi du temps », repérer le lien d'export pour un tableur.",
 ]
 attendu = [
-  "Le fichier emploi-du-temps-v1-hebdo.csv est de type CSV, en UTF-8 avec BOM, avec 17 lignes de séances et les colonnes jour, debut, fin, matiere, groupes, enseignants, salle, campus, semaines.",
+  "Le fichier emploi-du-temps-v1-hebdo.csv est de type CSV, en UTF-8 avec BOM, avec 17 lignes de séances et les colonnes jour, debut, fin, matiere, matiere_libelle, type, libelle, groupes, enseignants, enseignants_noms, salle, campus, semaines, verrou, besoin.",
   "Filtré sur A1-G1a : ses séances et celles de sa promotion, aucune de la classe voisine ; sur ENS001 : chaque ligne porte ENS001 ; sur N016 : chaque ligne a la salle N016.",
   "L'écran « Emploi du temps » contient le lien d'export CSV de la version affichée ; la version active reste présélectionnée dans l'écran « Export ».",
 ]
@@ -504,7 +520,7 @@ titre = "Exporter l'emploi du temps vers un agenda (format iCal)"
 fonctionnalites = ["U12"]
 cas = [6]
 objectif = "Montrer que l'emploi du temps s'exporte en un fichier iCal valide, relisible par une bibliothèque d'agenda, au bon fuseau horaire, avec des séries hebdomadaires qui sautent les vacances et des identifiants stables."
-depart = "Jeu minimal et emploi du temps calculé par le vrai moteur (17 séances dans la semaine type) ; vacances de la Toussaint dans la semaine du 26/10/2026."
+depart = "Jeu minimal et emploi du temps calculé par le vrai moteur (17 séances dans la semaine type), vacances de la Toussaint dans la semaine du 26/10/2026 ; pour la ligne de commande, la version de référence importée de seances_existantes.csv ; pour le lien de l'écran, une version saisie à la main."
 etapes = [
   "Écran « Export » : « Séances datées », puis « Télécharger en iCal (agenda) ».",
   "Exporter la semaine type, l'ouvrir avec une bibliothèque d'agenda ; exporter une seconde fois et comparer.",
@@ -512,8 +528,8 @@ etapes = [
   "Sur l'écran « Emploi du temps » d'un enseignant, suivre le lien « Exporter vers un agenda ».",
 ]
 attendu = [
-  "Le fichier est de type text/calendar, commence par BEGIN:VCALENDAR et déclare le fuseau Europe/Paris.",
-  "Relu, l'export de la semaine type contient 17 événements, chacun avec son début, sa règle de répétition, son lieu et sa matière ; la semaine des vacances est exclue des séries.",
+  "Le fichier est de type text/calendar, contient BEGIN:VCALENDAR et déclare le fuseau Europe/Paris.",
+  "Relu, l'export de la semaine type contient 17 événements, chacun avec son début, sa règle de répétition, son lieu et sa matière ; des dates de la semaine des vacances sont exclues des séries.",
   "Deux exports successifs donnent les mêmes identifiants d'événements.",
   "La commande rend le code 0 ; le fichier g1.ics contient 7 événements.",
   "Le lien de l'écran donne un agenda en pièce jointe qui ne contient que les séances de cet enseignant.",
@@ -560,7 +576,7 @@ id = "REC-U13-2"
 titre = "Importer un emploi du temps existant : référence, séances verrouillées, séances à replacer"
 fonctionnalites = ["U13", "U7"]
 objectif = "Montrer qu'un emploi du temps existant, en tableau de séances ou en agenda iCal, s'importe comme référence, comme séances verrouillées ou comme séances à replacer, et qu'un semestre invalide est refusé sans rien créer."
-depart = "Jeu minimal (semestre 1 de 2026-2027), aucune version. Fichier fictif seances_existantes.csv : séances datées, dont une séance annulée, une déplacée et une d'un groupe inconnu."
+depart = "Jeu minimal (semestre 1 de 2026-2027), aucune version pour l'import du fichier fictif ; pour les réimports, une version active saisie à la main. Fichier fictif seances_existantes.csv : séances datées, dont une séance annulée, une déplacée et une d'un groupe inconnu."
 etapes = [
   "Écran « Import » : choisir « Emploi du temps de référence (pour comparaison) », le semestre et le fichier seances_existantes.csv, puis appliquer ; de même en ligne de commande.",
   "Exporter une version vers un agenda, puis réimporter le fichier iCal comme référence.",
@@ -582,6 +598,31 @@ tests = [
   "tests/integration/echange/test_recette_echanges.py::test_import_en_seances_a_replacer_ne_cree_que_les_besoins",
 ]
 remarque = "Réimporté dans la même base, un emploi du temps recrée en double ses besoins ponctuels : anomalie ouverte ANO-21 (section 6). Les tests ne figent ni ce défaut ni sa correction."
+
+[[fiche]]
+id = "REC-U13-3"
+titre = "Réimport, dans la même base, de l'emploi du temps exporté"
+fonctionnalites = ["U13"]
+objectif = "Montrer qu'un emploi du temps exporté puis réimporté dans sa base d'origine, comme emploi du temps existant, y retrouve tous ses besoins sans en créer ni en modifier."
+depart = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande."
+etapes = [
+  "Taper « python -m edt init-db », « python -m edt jeu-minimal », puis « python -m edt generer ».",
+  "Taper « python -m edt exporter-edt --version 1 --format ics --sortie edt.ics », puis « python -m edt importer edt.ics --mode reference --simuler ».",
+  "Recommencer les deux dernières commandes avec « --format csv » et edt.csv.",
+]
+attendu = [
+  "Tous les besoins reconstitués sont retrouvés : « 0 créé, 0 mis à jour » pour les besoins, aucun enseignant fictif.",
+]
+tests = []
+remarque = "Anomalie ouverte ANO-21 (section 6), suivie par l'issue n° 54 du dépôt. La fiche REC-U13-2 reste conforme : ses tests ne portent pas sur ce réimport."
+
+[fiche.essai]
+date = 2026-11-23
+environnement = "Poste de développement (Windows 11, Python 3.11.9), base neuve, en ligne de commande, version 1.0.0."
+constat = "Avec l'agenda iCal, la simulation affiche « enseignants fictifs : 1 créé » et « besoins : 1 créé, 5 mis à jour, 9 inchangés ». Avec le fichier CSV, « besoins : 2 créés, 5 mis à jour, 9 inchangés »."
+verdict = "Non conforme"
+preuves = [
+]
 
 # =========================================================================================
 # O5, O6, U1, U5, U6, U7 : le calcul
@@ -621,12 +662,14 @@ etapes = [
   "Taper « python -m edt generer --semestre <n> --sans-optimiser --temps-limite 30 », puis « python -m edt instancier --semestre <n> ».",
   "Compter les séances datées et les séances replacées ; faire vérifier la semaine type et les séances datées.",
   "Relancer le calcul autour du TD verrouillé le mercredi et lire les séances de la semaine du 11 novembre.",
+  "Si la production des séances datées échoue après l'enregistrement de la semaine type, lire la page du calcul ; si elle est interrompue, relancer « python -m edt instancier --version <n> ».",
 ]
 attendu = [
   "« generer » rend le code 0 avec « 17 séance(s) placée(s) » et « Version enregistrée : n° 1. » ; « instancier » rend le code 0.",
   "Une séance datée existe par séance de la semaine type et par semaine active ; planifiées, replacées et à programmer font le total.",
   "Le vérificateur ne relève aucune anomalie bloquante ; aucune séance replacée ne tombe un jour fermé, et chacune garde sa date initiale et un commentaire.",
   "La séance du TD verrouillé prévue le 11 novembre est replacée dans la même semaine, avec le commentaire « jour fermé ».",
+  "Production en échec : le calcul reste réussi et sa page renvoie au bouton « Produire les séances datées » ; production interrompue : le message cite « --version <n> », et la commande relancée produit les séances datées.",
 ]
 tests = [
   "tests/integration/solveur/test_services.py::test_commande_generer_puis_instancier",
@@ -636,7 +679,7 @@ tests = [
   "tests/integration/web_edt/test_calculs.py::test_calcul_reussi_sans_seances_datees_mene_au_bouton_qui_les_produit",
   "tests/integration/solveur/test_services.py::test_version_enregistree_sans_instanciation_dit_de_relancer_l_instanciation",
 ]
-remarque = "Le verrou du TD est posé en base par le test : le moteur ne donne pas la même solution sous Linux et sous Windows, et le test ne doit pas dépendre de la place choisie."
+remarque = "Le verrou du TD est posé en base par le test : le moteur ne donne pas la même solution sous Linux et sous Windows, et le test ne doit pas dépendre de la place choisie. La panne de la production des séances datées est simulée par le test."
 
 [[fiche]]
 id = "REC-O5-3"
@@ -652,7 +695,7 @@ etapes = [
 attendu = [
   "Avant tout clic, l'écran prévient : « Une exécution des tests est en cours ».",
   "Chaque envoi ramène à l'écran « Générer » avec un seul bandeau « Le calcul n'a pas été lancé. Une exécution des tests est en cours », sans référence d'incident ; aucun calcul n'est créé.",
-  "Pendant un import ou un chargement, le refus nomme l'opération en cours ; l'opération finie, le calcul réussit.",
+  "Pendant un import ou un chargement, le refus nomme l'opération en cours ; le chargement fini, le calcul réussit.",
 ]
 tests = [
   "tests/integration/web_edt/test_calculs.py::test_calcul_demande_pendant_les_tests_revient_sur_generer_avec_le_motif",
@@ -660,6 +703,7 @@ tests = [
   "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_chargement_est_refuse",
   "tests/integration/solveur/test_services.py::test_lancer_un_calcul_pendant_un_import_est_refuse",
 ]
+remarque = "Pendant un import ou un chargement, le calcul est demandé au service de génération, celui qu'appelle l'écran « Générer »."
 
 [[fiche]]
 id = "REC-O6-1"
@@ -691,9 +735,9 @@ id = "REC-O6-2"
 titre = "Aucun emploi du temps partiel ou incohérent n'est enregistré"
 fonctionnalites = ["O6"]
 objectif = "Montrer qu'un calcul dont le résultat est incomplet, incohérent ou périmé finit en erreur lisible, sans aucune version enregistrée."
-depart = "Jeu minimal. Selon l'essai : un besoin ou une salle supprimé pendant le calcul ; un moteur d'essai qui rend une solution amputée, qui place deux séances dans la même salle au même moment, qui oublie une salle, ou qui tombe en panne."
+depart = "Jeu minimal. Selon l'essai : un besoin ou une salle supprimé pendant le calcul ; un moteur d'essai qui rend une solution amputée, qui place deux séances dans la même salle au même moment, qui oublie une salle, ou qui tombe en panne. La suppression pendant le calcul est faite par le test directement en base."
 etapes = [
-  "Lancer le calcul depuis « Générer » ; pendant le calcul, supprimer un besoin du semestre ou une salle.",
+  "Lancer le calcul ; pendant le calcul, un besoin du semestre ou une salle disparaît de la base par un autre accès que l'application (les écrans « Données » refusent toute suppression pendant un calcul, voir REC-O1-3).",
   "Lancer le calcul avec chacun des défauts du moteur.",
   "Lire la page du calcul et l'historique des versions.",
 ]
@@ -711,6 +755,7 @@ tests = [
   "tests/integration/web_edt/test_calculs.py::test_erreur_inattendue_donne_identifiant_et_journal_sans_detail_technique",
   "tests/integration/socle/test_generation.py::test_erreur_du_moteur_journalisee_sans_version",
 ]
+remarque = "Le calcul est lancé par le service de génération ; la suppression simule un accès extérieur à l'application."
 
 [[fiche]]
 id = "REC-U1-1"
@@ -728,6 +773,7 @@ attendu = [
   "Sans problème : la section « Vérifications avant le calcul » s'affiche sans « Le calcul ne peut pas être lancé » ; la commande rend le code 0 et dit que « rien n'empêche de lancer le calcul ».",
   "Point bloquant : l'erreur et l'avertissement sont affichés avec « Le calcul ne peut pas être lancé » ; le lancement est refusé et aucun calcul n'est créé.",
   "Après la retouche : « La version active compte 1 retouche à la main » et « seules les séances verrouillées gardent leur place ».",
+  "Sur un semestre calculé par le vrai moteur, les vraies vérifications préalables rendent une liste d'anomalies lisible.",
 ]
 tests = [
   "tests/integration/web_edt/test_calculs.py::test_une_erreur_prealable_empeche_de_lancer_un_avertissement_non",
@@ -743,7 +789,7 @@ id = "REC-U1-2"
 titre = "Calcul refusé avant la recherche : point bloquant, semestre sans besoin, verrous contradictoires"
 fonctionnalites = ["U1", "O6"]
 objectif = "Montrer qu'un calcul lancé malgré un point bloquant est refusé avant la recherche, avec ses raisons, sans appeler le moteur ni créer de version, et qu'un semestre sans besoin ne remplace pas la version active."
-depart = "Jeu minimal rendu impossible (un besoin porté à 500 séances, ou deux séances verrouillées au même créneau dans la même salle), ou semestre sans aucun besoin dont la version active est une référence importée."
+depart = "Jeu minimal rendu impossible (un besoin porté à 60 séances par semaine, ou un besoin total porté à 500 séances, ou deux séances verrouillées au même créneau dans la même salle), ou semestre sans aucun besoin dont la version active est une référence importée."
 etapes = [
   "Taper « python -m edt pre-verifier --semestre <n> », puis « python -m edt generer --semestre <n> ».",
   "Ouvrir « Générer » sur un semestre sans besoin ; envoyer quand même le formulaire de lancement.",
@@ -786,6 +832,7 @@ tests = [
   "tests/integration/web_edt/test_calculs.py::test_bilan_de_qualite_du_moteur_sans_doublon",
   "tests/integration/solveur/test_services.py::test_commande_generer_ameliore_par_defaut",
   "tests/integration/solveur/test_services.py::test_commande_generer_avec_optimisation_et_contrainte_desactivee",
+  "tests/integration/solveur/test_services.py::test_generation_de_bout_en_bout",
 ]
 remarque = "Les tests vérifient des propriétés (amélioration non dégradante, raison d'arrêt, bilan), jamais un nombre précis de trous ou de samedis."
 
@@ -802,6 +849,7 @@ etapes = [
   "Attendre l'annonce d'un premier emploi du temps trouvé, puis la fin.",
 ]
 attendu = [
+  "« Durée et options » propose de rechercher jusqu'à la durée courte ou jusqu'à la durée longue réglées dans les paramètres.",
   "Le suivi s'actualise chaque seconde et propose « Arrêter le calcul » ; « Générer » montre le calcul en cours ; l'accueil propose « Suivre le calcul ».",
   "Dès qu'un emploi du temps est trouvé : « Un emploi du temps est déjà trouvé » et « le meilleur sera gardé ».",
   "Le résultat reprend les durées du suivi ; une durée hors bornes passée à la commande est refusée sans créer de calcul.",
@@ -813,6 +861,7 @@ tests = [
   "tests/integration/web_edt/test_calculs.py::test_suivi_apres_la_recherche_ne_propose_plus_l_arret",
   "tests/integration/web_edt/test_calculs.py::test_resultat_dit_les_memes_durees_que_le_suivi",
   "tests/integration/solveur/test_services.py::test_options_hors_bornes_refusees_par_la_commande",
+  "tests/integration/web_edt/test_calculs.py::test_page_generer_recapitule_et_propose_les_regles",
 ]
 remarque = "Le client de test n'exécute pas le rafraîchissement du navigateur : le test interroge lui-même le fragment de suivi."
 
@@ -851,6 +900,7 @@ tests = [
   "tests/integration/web_edt/test_cas_limites.py::test_relance_pendant_un_calcul_mene_au_calcul_en_cours",
   "tests/integration/socle/test_generation.py::test_un_seul_calcul_a_la_fois",
   "tests/integration/web_edt/test_calculs.py::test_double_envoi_de_relancer_dit_calcul_relance",
+  "tests/integration/web_edt/test_calculs.py::test_suivi_sans_rechargement_second_lancement_refuse_puis_arret",
 ]
 
 [[fiche]]
@@ -864,11 +914,13 @@ etapes = [
   "Ouvrir « Historique et versions ».",
   "Sur la version 1, cliquer sur « Rendre active » ; sur la version 2, « Supprimer » (deux fois de suite).",
   "Demander la suppression de la version active ; ouvrir la page du calcul dont la version a été supprimée.",
+  "Ouvrir l'écran « Emploi du temps » et lire la liste des versions.",
 ]
 attendu = [
   "L'historique liste « Version 1 », « Version 2 » et l'étiquette « Active » ; après deux calculs, seule la version 2 est active.",
   "Après « Rendre active » puis « Supprimer », il ne reste que la version 1, active ; le second clic affiche « déjà été supprimée ».",
   "La version active « ne peut pas être supprimée » ; la page du calcul dit que sa version « a depuis été supprimée », sans lien cassé.",
+  "Le sélecteur de version affiche le libellé de la version suivi de « (active) ».",
 ]
 tests = [
   "tests/integration/socle/test_generation.py::test_une_nouvelle_version_remplace_la_version_active",
@@ -891,12 +943,12 @@ objectif = "Montrer que l'emploi du temps produit par un vrai calcul respecte to
 depart = "Jeu minimal (16 besoins, jours fériés et vacances au calendrier), puis établissement fictif « petit » ; amélioration coupée, pour n'attendre qu'un emploi du temps valide."
 etapes = [
   "Calculer le semestre du jeu minimal, en ligne de commande puis depuis l'écran « Générer ».",
-  "Faire vérifier la semaine type et les séances datées de chaque version (« python -m edt verifier --version <v> »).",
+  "Faire vérifier la semaine type (« python -m edt verifier --version <v> ») et les séances datées de chaque version.",
   "Recommencer sur l'établissement « petit ».",
 ]
 attendu = [
-  "Chaque calcul réussit et place toutes les séances demandées.",
-  "« verifier » rend le code 0 ; le vérificateur juge valides la semaine type et les séances datées, jours fermés compris.",
+  "Chaque calcul réussit ; sur le jeu minimal, les 17 séances de la semaine type sont placées.",
+  "« verifier --version <v> » rend le code 0 (semaine type valide) ; le vérificateur juge valides les séances datées, jours fermés compris.",
   "Sur l'établissement « petit », chaque semestre est calculé et vérifié sans anomalie bloquante.",
 ]
 tests = [
@@ -949,7 +1001,7 @@ etapes = [
 attendu = [
   "Chaque règle réglable propose « Nécessaire », « Important », « Facultatif », son niveau par défaut coché ; les six autres affichent « Toujours nécessaire » ; deux règles proposées sont annoncées sans effet tant qu'elles ne sont pas activées.",
   "Le calcul reçoit « Pause entre deux séances » au niveau facultatif, R001 facultative, R002 absente, toutes les autres règles à leur niveau par défaut.",
-  "La page du calcul et l'historique rappellent « Pause entre deux séances : facultatif », R001 facultative et R002 « ignorée » ; de retour sur « Générer », les niveaux du dernier calcul sont précochés.",
+  "La page du calcul et l'historique rappellent « Pause entre deux séances : facultatif », R001 facultative et R002 « ignorée » ; de retour sur « Générer », R001 est précochée à facultatif et R002 revient à son niveau, non ignorée.",
 ]
 tests = [
   "tests/integration/web_edt/test_niveaux_web.py::test_trois_niveaux_par_regle_modifiable_et_six_regles_toujours_necessaires",
@@ -975,7 +1027,7 @@ etapes = [
   "Envoyer depuis « Générer » ou par la commande un niveau inconnu, ou un niveau pour une règle toujours nécessaire.",
 ]
 attendu = [
-  "Règle nécessaire : le calcul se termine sans solution. Règle importante : il réussit, et les entorses ne concernent que la disponibilité des enseignants.",
+  "Règle nécessaire : le calcul est déclaré impossible, sans emploi du temps. Règle importante : il réussit, et les entorses ne concernent que la disponibilité des enseignants.",
   "Le déplacement qui n'enfreint que la pause (importante) est enregistré avec un avertissement ; celui qui occupe une salle prise est refusé (« Une séance par salle »).",
   "Niveau illisible ou interdit : « Le calcul n'a pas été lancé » avec le motif (« niveau inconnu », « définit le problème »), les autres choix restant cochés ; aucun calcul en base.",
 ]
@@ -1027,7 +1079,7 @@ objectif = "Montrer les états d'une règle (proposée, active, inactive), l'act
 depart = "Jeu minimal : R001 et R002 actives, R003 et R004 proposées ; pour le dernier essai, une version calculée."
 etapes = [
   "Ouvrir « Règles personnalisées » ; sur R003, « Activer » ; sur R004, « Écarter ».",
-  "Activer la règle restante depuis le bandeau des règles proposées.",
+  "Remettre R004 à l'état proposé, puis cliquer sur « Activer la règle » dans le bandeau des règles proposées.",
   "Créer l'année 2027-2028 depuis le calendrier, puis ouvrir ses règles.",
   "Ouvrir une séance de TP de A1-G1a et lire les jours proposés pour la déplacer ; « Désactiver » R001 et recommencer.",
 ]
@@ -1046,6 +1098,7 @@ tests = [
   "tests/integration/web_donnees/test_regles.py::test_proposer_pour_une_annee_existante_liste_les_regles_a_revoir",
   "tests/integration/web_edt/test_regles_web.py::test_les_jours_proposes_pour_une_retouche_suivent_les_regles",
 ]
+remarque = "R004 est remise à l'état proposé par l'envoi direct du formulaire d'état : aucun bouton ne le propose à l'écran."
 
 [[fiche]]
 id = "REC-U3-3"
@@ -1058,12 +1111,14 @@ etapes = [
   "« Pause déjeuner » sur une période datée ; puis une pause plus longue que sa fenêtre.",
   "Créer une règle identique à R002 ; envoyer deux fois de suite le même formulaire de création.",
   "Supprimer R001 dans un onglet, puis l'ouvrir depuis une page restée ouverte.",
+  "Cliquer deux fois de suite sur « Supprimer » d'une règle.",
 ]
 attendu = [
   "Chaque saisie invalide est refusée avec un message sous le champ en cause ; aucune règle n'est créée.",
   "Le doublon est refusé : « La règle R002 règle déjà … ».",
   "Double envoi : « Règle R005 déjà créée » ; une seule règle de plus en base.",
   "Règle supprimée : « Règle n° … introuvable : elle a peut-être été supprimée. ».",
+  "Second clic : « Cette règle n'existe plus : elle a déjà été supprimée. » ; la règle n'existe plus.",
 ]
 tests = [
   "tests/integration/web_donnees/test_regles.py::test_type_non_datable_sans_mode_dates_et_dates_refusees",
@@ -1072,7 +1127,6 @@ tests = [
   "tests/integration/web_donnees/test_regles.py::test_modification_preremplie_et_doublon_refuse",
   "tests/integration/web_donnees/test_regles.py::test_double_envoi_d_une_regle_ne_cree_pas_de_doublon",
   "tests/integration/web_donnees/test_regles.py::test_regle_supprimee_entre_temps_dit_introuvable",
-  "tests/integration/web_donnees/test_regles.py::test_regles_sans_annee_scolaire_affiche_un_bandeau",
   "tests/integration/web_donnees/test_regles.py::test_double_clic_sur_la_suppression_d_une_regle",
 ]
 
@@ -1156,11 +1210,13 @@ etapes = [
   "Ouvrir l'emploi du temps avec un groupe inconnu, puis un identifiant de vingt chiffres.",
   "Ouvrir une séance qui n'existe pas, ou supprimée depuis un autre onglet.",
   "Demander une semaine datée très lointaine, une vue inconnue, un numéro de version écrit en lettres.",
+  "Revenir sur l'onglet avec un témoin de dernière cible illisible ou démesuré.",
 ]
 attendu = [
   "Cible inconnue : la page dit « n'existe pas » et affiche une autre classe à la place.",
   "Séance inconnue : page sans panneau, avec « La séance a pu être déplacée ou supprimée ».",
-  "Date lointaine : la page dit que la date est « trop loin » du semestre ; paramètre illisible : page « Saisie invalide » qui nomme le champ par son libellé, sans nom technique.",
+  "Date lointaine : la page dit que la date est « trop loin » du semestre ; paramètre illisible : page « Saisie invalide » qui nomme le champ par son libellé (« Version : valeur manquante ou invalide »).",
+  "Témoin illisible : la page s'ouvre sur la cible par défaut.",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_lien_vers_un_groupe_inconnu_affiche_le_groupe_par_defaut",
@@ -1180,7 +1236,7 @@ titre = "Déplacer une séance de la semaine type : heures annoncées « (possib
 fonctionnalites = ["O8"]
 cas = [3]
 objectif = "Montrer que le panneau d'une séance propose les jours, les heures et les salles qui conviennent, et qu'une heure annoncée « (possible) », choisie telle que le formulaire se présente, est enregistrée."
-depart = "Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur."
+depart = "Jeu minimal ; version saisie à la main (identique sur toutes les machines) et version calculée par le vrai moteur ; vrai vérificateur (un vérificateur d'essai pour le message d'information et le verrou)."
 etapes = [
   "Ouvrir le panneau d'une séance ; sous « Déplacer la séance (toutes les semaines) », changer le jour.",
   "Lire l'annonce de chaque heure de début ; choisir une heure « (possible) ».",
@@ -1189,7 +1245,7 @@ etapes = [
 ]
 attendu = [
   "Après le choix d'une heure « (possible) » où la salle actuelle est occupée, le formulaire présélectionne une autre salle, libre.",
-  "Le déplacement est accepté et la base contient le jour, le début et la salle choisis ; sur les deux versions, chaque heure annoncée possible s'enregistre.",
+  "Le déplacement est accepté et la base contient le jour, le début et la salle choisis. Sur la version calculée, pour chaque séance et chaque jour, chaque heure annoncée possible est acceptée par le vérificateur, et la première s'enregistre ; sur la version saisie, il en va de même pour la séance étudiée.",
   "Le demi-groupe ne se voit proposer que des salles accessibles ; les salles libres viennent en premier, une salle occupée est marquée avec la séance qui l'occupe.",
   "Avec une pause entre deux séances portée à 60 minutes, une heure est annoncée « (possible, avec avertissement) » ; enregistrée, elle donne « Séance déplacée au jeudi à 10 h 45 » avec « Entorse à une règle importante ».",
 ]
@@ -1210,12 +1266,13 @@ titre = "Déplacement refusé : conflit, salle occupée, créneau ou jour imposs
 fonctionnalites = ["O8"]
 cas = [3]
 objectif = "Montrer qu'un déplacement qui enfreint une règle nécessaire, ou une saisie impossible, n'enregistre rien et dit pourquoi."
-depart = "Jeu minimal et une version active calculée ; vrai vérificateur, ou vérificateur d'essai qui signale une erreur."
+depart = "Jeu minimal et une version active, calculée par le moteur ou saisie à la main ; vrai vérificateur, ou vérificateur d'essai qui signale une erreur. Pour l'essai du jour impossible : fermeture à 10 h et aucune pause déjeuner réservée."
 etapes = [
   "Déplacer le TD de A1-G1 au jour et à l'heure du cours magistral de sa promotion, puis « Vérifier et enregistrer ».",
   "Forcer la salle actuelle, occupée à la nouvelle heure.",
   "Envoyer un début qui n'est pas un début de créneau, ou un jour hors de la semaine.",
   "Choisir un jour où aucun créneau ne laisse tenir la séance avant la fermeture.",
+  "Tenter un déplacement quand les vérifications automatiques sont indisponibles.",
 ]
 attendu = [
   "Conflit de groupes : « n'a pas été enregistrée » avec la règle « Une séance par groupe » ; la séance reste en place.",
@@ -1223,6 +1280,7 @@ attendu = [
   "Saisie impossible : refus avec « n'est pas un début de créneau » ou « Jour invalide », sans trace technique.",
   "Jour impossible : le formulaire reste lisible, dit qu'aucun début de créneau ne convient et garde le jour actuel.",
   "Jour où toutes les heures sont refusées : « Aucune heure possible le mardi avec les salles proposées : essayer un autre jour », avec la règle la plus souvent en cause.",
+  "Sans vérificateur disponible, aucune séance n'est déplacée et le message dit que les « vérifications automatiques sont indisponibles ».",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_le_vrai_verificateur_refuse_un_conflit_de_groupe",
@@ -1268,12 +1326,15 @@ etapes = [
   "Ouvrir le panneau d'une séance et cliquer sur « Verrouiller à cette place » ; cliquer une seconde fois.",
   "Afficher la grille ; lancer un nouveau calcul du semestre depuis « Générer ».",
   "Ouvrir de nouveau le panneau et cliquer sur « Déverrouiller ».",
+  "Lancer un calcul avec la règle « Séances verrouillées » décochée.",
+  "Verrouiller un TD un mercredi, puis recalculer : le mercredi 11/11/2026 est férié.",
 ]
 attendu = [
   "« Séance verrouillée : les prochains calculs la laisseront à sa place. » ; le panneau propose « Déverrouiller » ; un second clic répond « La séance était déjà verrouillée. ».",
   "La grille porte la marque « Séance verrouillée » ; dans la nouvelle version, la séance garde son jour, son début, sa fin et sa salle, reste verrouillée, et c'est la seule.",
   "Après « Déverrouiller », la place est dite « Libre : un nouveau calcul peut la déplacer » et le verrou est retiré.",
   "Règle « Séances verrouillées » décochée au calcul, une séance que le moteur déplace n'est plus marquée verrouillée.",
+  "Le TD verrouillé reste un mercredi ; sa séance datée du 11/11/2026 est replacée dans la même semaine.",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_modification_acceptee_puis_verrou",
@@ -1297,7 +1358,7 @@ etapes = [
   "Annuler une séance datée, renvoyer la même annulation, puis tenter de la déplacer.",
   "Déplacer une séance datée au 04/01/1999.",
   "Saisir un motif d'annulation de 2 001 caractères.",
-  "Sur une version aux séances datées importées, demander leur recalcul.",
+  "Ouvrir la semaine datée d'une version aux séances datées importées.",
 ]
 attendu = [
   "La séance déplacée a la nouvelle date et 10 h 45, garde sa date initiale et est marquée comme retouche à la main.",
@@ -1306,7 +1367,7 @@ attendu = [
   "Second envoi : « était déjà annulée » ; une séance annulée « ne peut pas être déplacée ».",
   "Date hors du semestre : refus « en dehors du semestre » ; la date ne change pas.",
   "Motif trop long : « Motif trop long : 2000 caractères au plus (lu : 2001) », séance non annulée.",
-  "Séances importées : le recalcul est refusé, car il « les doublerait » ; leur nombre ne change pas.",
+  "Le bouton « Recalculer les séances datées » est absent et la page dit que les séances datées « ont été importées » ; une demande de recalcul envoyée quand même est refusée car il « les doublerait » ; leur nombre ne change pas.",
 ]
 tests = [
   "tests/integration/web_edt/test_emploi_du_temps.py::test_deplacer_puis_annuler_une_seance_datee",
@@ -1331,12 +1392,14 @@ etapes = [
   "Lire le nombre affiché sur l'onglet « Générer » et sur l'accueil.",
   "Passer une séance datée « à programmer » et relire les trois nombres.",
   "Ouvrir la page avant tout calcul, puis sans vérifications automatiques.",
+  "Choisir « Tous les semestres » ; sur une version calculée avec la règle de capacité décochée, enregistrer une retouche qui l'enfreint.",
 ]
 attendu = [
   "Les sections « Règles non respectées », « Situations à vérifier » et « Pour information » se suivent, regroupées par règle ; chaque anomalie mène à sa séance.",
   "« Séances à programmer » liste la séance avec sa raison ; le compteur additionne erreurs, avertissements et séances à programmer.",
   "L'accueil, l'onglet et la page donnent toujours le même nombre, recalculé dès qu'une séance change.",
   "Avant tout calcul : « Aucun emploi du temps actif » ; sans vérificateur : « Les vérifications automatiques sont indisponibles », jamais « Aucune anomalie ».",
+  "Chaque anomalie d'une règle importante ou facultative porte l'étiquette « règle importante » ou « règle facultative » ; « Tous les semestres » affiche chaque semestre qui a une version active ; l'entorse à la règle décochée est présentée à part (« Entorses aux règles ignorées pour ce calcul »).",
 ]
 tests = [
   "tests/integration/web_edt/test_a_traiter.py::test_anomalies_par_gravite_et_contrainte_et_seances_a_programmer",
@@ -1453,7 +1516,7 @@ remarque = "Ces tests prouvent que les règles existent et sont servies ; le ren
 
 [[fiche]]
 id = "REC-P1-2"
-titre = "Consulter l'application sur un écran de téléphone"
+titre = "Consulter l'application sur un écran de téléphone (émulation dans Chrome)"
 fonctionnalites = ["P1"]
 objectif = "Montrer que chaque page tient dans la largeur d'un écran de téléphone, sans défilement horizontal de la page, que les onglets et les formulaires se réorganisent et que l'emploi du temps reste lisible."
 depart = "Application en version 1.0.0 en service, établissement fictif « moyen », deux semestres générés ; essai en lecture seule."
@@ -1467,17 +1530,17 @@ attendu = [
   "Les onglets et les formulaires se réorganisent ; l'emploi du temps reste lisible.",
 ]
 tests = []
-remarque = "Aucun test par HTTP ne peut juger un rendu : l'essai est manuel."
+remarque = "Aucun test par HTTP ne peut juger un rendu : l'essai est manuel, fait en émulation d'appareil mobile dans Chrome et non sur un téléphone réel."
 
 [fiche.essai]
 date = 2026-11-23
 environnement = "Chrome en émulation d'appareil mobile (390 x 844 points, densité 2, tactile), sur l'application en version 1.0.0 en service (établissement fictif « moyen »)."
-constat = "Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas."
+constat = "Largeur de mise en page et largeur du contenu : 390 et 390 sur les cinq pages (accueil ; emploi du temps, hauteur 2 348 ; Générer, 1 815 ; Salles, 2 236 ; Tests d'intégration, 3 196) ; aucune page ne dépasse la largeur de l'écran. Les six onglets passent sur trois lignes ; les boutons « Exporter pour un tableur », « Exporter vers un agenda » et « Imprimer » passent à la ligne ; les champs « Semestre », « Version » et « Pour qui » s'empilent sur toute la largeur ; la grille montre deux jours et le début du troisième et défile dans son cadre, la page ne bougeant pas. Image de la grille reprise le 23/11/2026 à 14 h 34 par les mêmes moyens, la page de l'emploi du temps défilée de 975 points."
 verdict = "Conforme"
-reserve = "Le bouton flottant « Assistant », en bas à droite, recouvre la fin de la ligne de pied de page sur une page courte, et le coin d'une séance sur l'emploi du temps. Sans effet sur l'usage."
+reserve = "Le bouton flottant « Assistant », en bas à droite, recouvre la fin de la ligne de pied de page sur une page courte, et la fin de la légende de l'emploi du temps. Sans effet sur l'usage."
 preuves = [
   { image = "images/recette-telephone-accueil.png", legende = "Accueil sur un écran de téléphone de 390 points de large." },
-  { image = "images/recette-telephone-emploi-du-temps.png", legende = "Emploi du temps d'un groupe sur le même écran : la grille défile dans son cadre." },
+  { image = "images/recette-telephone-emploi-du-temps.png", legende = "Emploi du temps d'un groupe sur le même écran, défilé jusqu'à la grille : lundi, mardi et le début du mercredi, la grille défilant dans son cadre ; la bande « Déjeuner » et la légende, dont la fin est recouverte par le bouton « Assistant »." },
 ]
 
 # =========================================================================================
@@ -1541,7 +1604,7 @@ id = "REC-P3-1"
 titre = "Poser une question à l'assistant et lire sa réponse"
 fonctionnalites = ["P3"]
 objectif = "Montrer qu'une question en langage courant, envoyée depuis le panneau « Assistant », reçoit une réponse affichée dans la conversation, avec la page consultée transmise au service, y compris sans JavaScript."
-depart = "Base chargée du jeu minimal. Assistant configuré avec une clé factice ; le service externe est remplacé par un faux service qui rejoue des réponses écrites d'avance (aucun appel réel, aucun réseau)."
+depart = "Base initialisée ; pour les exemples tirés des données, base chargée du jeu minimal. Assistant configuré avec une clé factice ; le service externe est remplacé par un faux service qui rejoue des réponses écrites d'avance (aucun appel réel, aucun réseau)."
 etapes = [
   "Ouvrir le panneau « Assistant » ; lire les exemples de demandes.",
   "Depuis l'écran des salles, écrire « Quel est le semestre courant ? » et cliquer sur « Envoyer ».",
@@ -1632,7 +1695,7 @@ titre = "Lire les onglets de tests et lancer une famille de tests depuis le site
 fonctionnalites = ["P4"]
 cas = [7]
 objectif = "Montrer que les onglets « Tests unitaires » et « Tests d'intégration » présentent le schéma et la liste des tests, lancent une famille dans un processus séparé et affichent pour chaque test son résultat et la date de sa dernière exécution."
-depart = "Base initialisée. Les onglets lisent un dépôt de tests factice (désigné par EDT_TESTS_RACINE) : un test réussi, un en échec, un ignoré, un paramétré, un test de charge, un fichier qui ne se charge pas."
+depart = "Base initialisée. Les onglets lisent un dépôt de tests factice (désigné par EDT_TESTS_RACINE) : six tests unitaires (deux réussis, dont une méthode de classe, un en échec, un ignoré, un paramétré à trois cas, un test de charge) et, en intégration, un fichier qui ne se charge pas."
 etapes = [
   "Ouvrir « Tests unitaires » ; déplier « Comment sont organisés ces tests ».",
   "Cliquer sur « Lancer tous les tests unitaires » et suivre l'avancement jusqu'à la fin.",
@@ -1716,18 +1779,18 @@ tests = [
 [[fiche]]
 id = "REC-EXP-1"
 titre = "Installer la base et diagnostiquer l'installation"
-fonctionnalites = ["P2"]
+fonctionnalites = []
 objectif = "Montrer qu'une installation se prépare par « init-db », relançable sans effet de bord, et que « doctor », « verifier-schema » et l'adresse de santé disent qu'elle est prête, ou nomment chaque défaut avec son remède."
 depart = "Dossier de travail vide, puis base initialisée ; défauts provoqués un par un : adresse d'écoute introuvable, port occupé, journal impossible à ouvrir, base en lecture seule, adresse de base refusée."
 etapes = [
   "Avant toute initialisation, taper « python -m edt doctor » ; puis « python -m edt init-db », deux fois.",
   "Taper « python -m edt verifier-schema » et « python -m edt doctor » ; interroger l'adresse de santé.",
-  "Provoquer chaque défaut et relancer « python -m edt doctor ».",
+  "Provoquer chaque défaut et relancer « python -m edt doctor » (pour une adresse de base en mémoire, « python -m edt init-db »).",
 ]
 attendu = [
   "Avant initialisation, « doctor » rend le code 0 avec « ATTENTION » et « non initialisée » ; « init-db » affiche « Base initialisée », puis, relancé, « 0 ligne(s) par défaut ajoutée(s) ».",
   "« verifier-schema » dit « schéma à jour » ; « doctor » conclut « Tout est prêt. » ; l'adresse de santé répond « ok ».",
-  "Chaque défaut est nommé avec son remède et un code qui distingue l'échec (« ECHEC », code 1) de l'avertissement (port occupé, code 0), sans trace technique.",
+  "Chaque défaut est nommé (EDT_HOST introuvable, port EDT_PORT occupé, fichier journal impossible à ouvrir et ses droits, dossier des journaux de calcul, base en lecture seule, EDT_DB_URL refusée), avec un code qui distingue l'échec (« ECHEC », code 1) de l'avertissement (port occupé, « ATTENTION », code 0).",
 ]
 tests = [
   "tests/integration/socle/test_schema.py::test_verifier_schema_avant_la_premiere_initialisation",
@@ -1749,7 +1812,7 @@ tests = [
 [[fiche]]
 id = "REC-EXP-2"
 titre = "Sauvegarder la base, contrôler une sauvegarde et la restaurer"
-fonctionnalites = ["P2"]
+fonctionnalites = []
 objectif = "Montrer que « sauvegarder » écrit une copie vérifiée avec rotation, que « verifier-sauvegarde » contrôle sans modifier et refuse un fichier inutilisable, qu'une sauvegarde impossible ne laisse rien, et qu'une sauvegarde restaurée est relue par l'application."
 depart = "Base chargée du jeu minimal (16 besoins) ; heure figée ; selon l'essai, base abîmée, disque plein simulé, ou fichiers inutilisables."
 etapes = [
@@ -1780,7 +1843,7 @@ tests = [
 [[fiche]]
 id = "REC-EXP-3"
 titre = "Remise à zéro de la base protégée par confirmation, refus et sauvegarde préalable"
-fonctionnalites = ["P2"]
+fonctionnalites = []
 objectif = "Montrer que « init-db --reset » n'efface les données que lorsque c'est sûr : confirmation dans un terminal, refus pendant un calcul ou un chargement, sauvegarde préalable en production, aucune question posée à un script."
 depart = "Base chargée du jeu minimal (6 salles) ; environnement de développement, puis de production ; calcul et chargement en cours simulés."
 etapes = [
@@ -1807,7 +1870,7 @@ tests = [
 [[fiche]]
 id = "REC-EXP-4"
 titre = "Base verrouillée, illisible ou au schéma périmé : signalée, jamais réparée en silence"
-fonctionnalites = ["P2"]
+fonctionnalites = []
 objectif = "Montrer qu'une commande qui trouve la base indisponible nomme la cause et un remède qui permet d'en sortir, et qu'une base dont les tables ne correspondent plus au modèle est signalée partout et n'est réparée que sur demande."
 depart = "Base initialisée ou chargée du jeu minimal ; pannes provoquées une par une : verrou d'écriture tenu par un autre processus, fichier en lecture seule, fichier qui n'est plus une base, colonne en trop ou table absente."
 etapes = [
@@ -1837,7 +1900,7 @@ tests = [
 [[fiche]]
 id = "REC-EXP-5"
 titre = "Le site face à une base indisponible, et des pages d'erreur qui disent quoi faire"
-fonctionnalites = ["U11"]
+fonctionnalites = []
 objectif = "Montrer que le serveur démarre et répond quel que soit l'état de la base, que l'accueil reste lisible, que l'adresse de santé signale la panne, et que chaque erreur donne une page qui dit ce qui s'est passé et quoi faire, sans trace technique."
 depart = "Selon l'essai : base non initialisée, illisible, verrouillée, en lecture seule ou en cours de remise à zéro ; pour les pannes, des pages d'essai ajoutées par le test lèvent l'erreur voulue."
 etapes = [
@@ -1846,7 +1909,7 @@ etapes = [
 ]
 attendu = [
   "Base non initialisée : l'accueil dit qu'elle n'est « pas encore initialisée » ; l'adresse de santé répond 503 ; le journal ne contient pas de trace.",
-  "Écriture sur une base illisible ou occupée : page « Base de données indisponible » avec le remède, jamais « inattendue ».",
+  "Écriture sur une base illisible : page « Base de données indisponible » qui dit de mettre le fichier de côté puis de lancer « python -m edt init-db » ; sur une base occupée : page « Base de données occupée » (code 503) ; jamais « inattendue ».",
   "Adresse inconnue : « Page introuvable » ; panne : « Une erreur inattendue » avec une référence, la trace étant au journal ; envoi trop volumineux : « Envoi trop volumineux ».",
 ]
 tests = [
@@ -1872,9 +1935,9 @@ tests = [
 [[fiche]]
 id = "REC-EXP-6"
 titre = "Double envoi d'un formulaire et requêtes simultanées : ni doublon, ni page d'erreur"
-fonctionnalites = ["U6", "O1"]
+fonctionnalites = []
 objectif = "Montrer qu'un formulaire envoyé deux fois ne crée ni doublon ni second traitement, que le second envoi reçoit une réponse compréhensible, et que deux requêtes qui se croisent ne se perdent pas."
-depart = "Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours."
+depart = "Base chargée du jeu minimal ; pour le calcul, un moteur lent qui garde le calcul en cours. Pour le double envoi, une page d'essai ajoutée par le test crée un campus."
 etapes = [
   "Cliquer deux fois sur « Lancer le calcul » ; depuis un autre onglet, lancer avec d'autres réglages.",
   "Envoyer deux fois un formulaire qui crée un élément, puis recharger la page de résultat.",
@@ -1882,7 +1945,7 @@ etapes = [
 ]
 attendu = [
   "Le second « Lancer le calcul » ramène au calcul déjà lancé ; l'autre onglet voit « déjà en cours » ; un seul calcul est enregistré.",
-  "Le premier envoi enregistre l'élément et son message n'est affiché qu'une fois ; le second envoi est refusé sans doublon.",
+  "Le premier envoi enregistre le campus et « Campus ZZ créé. » ne s'affiche qu'une fois ; le second envoi est refusé (code 409, « Opération refusée »).",
   "La demande d'arrêt n'est pas perdue ; pendant l'import, le site continue de répondre.",
 ]
 tests = [
@@ -1896,7 +1959,7 @@ remarque = "D'autres doubles envois sont dans leurs fiches : règle (REC-U3-3), 
 [[fiche]]
 id = "REC-EXP-7"
 titre = "Démarrage, arrêt brutal et redémarrage du service"
-fonctionnalites = ["P2"]
+fonctionnalites = []
 objectif = "Montrer que la base reste intacte après un arrêt brutal, qu'un calcul tué est clos au redémarrage, que le démarrage est robuste et journalisé, et que « serve » lance la même application que le service du serveur."
 depart = "Base initialisée ou chargée du jeu minimal ; un processus séparé écrit dans la base ; un calcul resté « en cours » d'un service tué."
 etapes = [
@@ -1923,17 +1986,17 @@ tests = [
 [[fiche]]
 id = "REC-EXP-8"
 titre = "Scripts de déploiement et installation de la clé de l'assistant, contrôlés hors du serveur"
-fonctionnalites = ["P3"]
+fonctionnalites = []
 objectif = "Montrer, sans se connecter au serveur, que les scripts de déploiement sont corrects, refusent de partir sans configuration, lisent leurs paramètres sans rien exécuter, et que la clé de l'assistant s'installe sans jamais être affichée."
 depart = "Copie des scripts de déploiement dans un dossier d'essai ; les outils de connexion et d'installation sont remplacés par des témoins qui notent tout appel ; clé factice."
 etapes = [
-  "Contrôler la syntaxe de chaque script ; lancer chacun sans fichier de paramètres.",
+  "Contrôler la syntaxe de chaque script ; lancer sans fichier de paramètres les cinq scripts du poste (deployer.sh, etat.sh, journaux.sh, installer-serveur.sh, activer-https.sh).",
   "Écrire des paramètres valides, puis une ligne douteuse ou une commande shell.",
   "Compter les arrêts pour mémoire épuisée dans des extraits du journal ; chercher les processus hors du service.",
   "Coller la clé à la question du script d'installation, puis une clé vide ou mal copiée.",
 ]
 attendu = [
-  "Chaque script passe le contrôle de syntaxe ; sans paramètres, il s'arrête avec « paramètre(s) manquant(s) », sans aucun appel extérieur.",
+  "Chaque script passe le contrôle de syntaxe ; sans paramètres, chacun de ces cinq scripts s'arrête avec « paramètre(s) manquant(s) », sans aucun appel extérieur.",
   "Les paramètres sont lus exactement ; une ligne douteuse est refusée et une commande shell est lue comme du texte, jamais exécutée.",
   "Les arrêts pour mémoire épuisée sont comptés ; un processus étranger au service est listé.",
   "La clé est écrite avec les bons droits sans jamais être affichée ; une saisie vide ou mal copiée est refusée sans rien modifier.",

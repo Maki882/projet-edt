@@ -337,13 +337,38 @@ def test_verdicts_et_ecriture_du_livret(depot, capsys):
     assert main(["--racine", str(depot), "--ecrire"]) == 0
     texte = (depot / LIVRET).read_text(encoding="utf-8")
     assert "#### REC-O1-1. Créer une salle" in texte
-    assert "1 réussis sur 2 ; 1 ignoré (Linux seulement)." in texte
+    assert "1 réussi sur 2 ; 1 ignoré (Linux seulement)." in texte
     assert "**Verdict : Non exécutée.**" in texte
     assert "| **test_un.py** : Vérifie alpha | 2 | 2 |" in texte
     assert blocs_perimes(texte, lire(depot)) == []
     capsys.readouterr()
     assert main(["--racine", str(depot), "--ecrire"]) == 0
     assert "déjà à jour" in capsys.readouterr().out
+
+
+def test_un_essai_manuel_non_conforme_est_compte_partout(depot):
+    """Une fiche d'essai manuel « Non conforme » rend la fiche non conforme, et la synthèse, le
+    tableau de recette, la matrice et le bilan la comptent."""
+    fiches = depot / FICHES
+    fiches.write_text(
+        FICHES_MINI.replace('verdict = "Conforme"', 'verdict = "Non conforme"'), encoding="utf-8"
+    )
+    fichier = _resultats(depot, {"tests/integration/alpha/test_un.py::test_a": _resultat("reussi")})
+    options = ["--nom", "Serveur", "--systeme", "Linux", "--python", "3.14", "--version", "1.0.0"]
+    assert main(["--racine", str(depot), "--campagne", str(fichier), *options]) == 0
+    recette = lire(depot)
+    manuelle = next(f for f in recette.fiches if f.essai is not None)
+    assert verdict(manuelle, recette.campagnes) == NON_CONFORME
+
+    assert main(["--racine", str(depot), "--ecrire"]) == 0
+    texte = (depot / LIVRET).read_text(encoding="utf-8")
+    synthese = partie_generee(texte, "recette-synthese")
+    tableau = partie_generee(texte, "recette-tableau")
+    matrice = partie_generee(texte, "recette-matrice")
+    bilan = partie_generee(texte, "recette-bilan")
+    assert "1 « Non conforme »" in synthese and "1 « Non conforme »" in bilan
+    assert "| essai manuel | — | Non conforme |" in tableau
+    assert "| U1 | Vérifier avant | REC-U1-1 | 0 | Non conforme |" in matrice
 
 
 def test_erreurs_claires_sur_des_fiches_fautives(depot, capsys):

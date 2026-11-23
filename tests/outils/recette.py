@@ -779,8 +779,13 @@ def produire_synthese(recette: Recette) -> str:
         if c.ecartes:
             lignes += [
                 "",
-                f"{c.nom} : {_pluriel(len(c.ecartes), 'entrée du fichier de résultats écartée', 'entrées du fichier de résultats écartées')}"
-                ", non comptées dans les nombres ci-dessus :",
+                f"{c.nom} : "
+                + (
+                    "1 entrée du fichier de résultats écartée, non comptée"
+                    if len(c.ecartes) == 1
+                    else f"{len(c.ecartes)} entrées du fichier de résultats écartées, non comptées"
+                )
+                + " dans les nombres ci-dessus :",
             ]
             lignes += [
                 f"- `{_court(e['test'])}` (résultat du {_date(dt.datetime.fromisoformat(e['le']))}"
@@ -842,7 +847,8 @@ def produire_synthese(recette: Recette) -> str:
 
 
 def _ligne_obtenue(o: Obtenu, total: int) -> str:
-    texte = f"{o.campagne.nom}, {_date(o.campagne.debut)} : {o.reussis} réussis sur {total}"
+    reussis = "réussi" if o.reussis <= 1 else "réussis"
+    texte = f"{o.campagne.nom}, {_date(o.campagne.debut)} : {o.reussis} {reussis} sur {total}"
     morceaux = []
     if o.echecs:
         morceaux.append(_pluriel(o.echecs, "échec"))
@@ -857,10 +863,11 @@ def produire_fiche(fiche: Fiche, recette: Recette) -> str:
     """Une fiche, en Markdown."""
     libelles = {f.code: f.libelle for f in recette.fonctionnalites}
     lignes = [f"#### {titre_de_fiche(fiche)}", ""]
-    entete = "Fonctionnalités : " if len(fiche.fonctionnalites) > 1 else "Fonctionnalité : "
-    entete += (
-        " ; ".join(f"{c} {libelles.get(c, '?')}" for c in fiche.fonctionnalites) or "exploitation"
-    )
+    if fiche.fonctionnalites:
+        entete = "Fonctionnalités : " if len(fiche.fonctionnalites) > 1 else "Fonctionnalité : "
+        entete += " ; ".join(f"{c} {libelles.get(c, '?')}" for c in fiche.fonctionnalites)
+    else:
+        entete = "Exploitation et robustesse, sans fonctionnalité du livret 1"
     if fiche.cas:
         entete += ". Cas d'usage : " + ", ".join(str(n) for n in fiche.cas)
     lignes += [f"*{entete}.*", ""]
@@ -967,8 +974,8 @@ def produire_tableau(recette: Recette) -> str:
         for f in (x for x in recette.fiches if x.famille == famille):
             tests = str(len(f.tests)) if f.tests else ""
             if f.essai is not None:
-                manuel = f"essai manuel du {_date(f.essai.date)}"
-                tests = f"{tests} + {manuel}" if tests else manuel
+                # Cellule courte : la date de l'essai reste dans la fiche détaillée.
+                tests = f"{tests} et essai manuel" if tests else "essai manuel"
             cellules = " | ".join(_cellule_obtenue(o, f) for o in obtenus(f, recette.campagnes))
             lignes.append(
                 f"| {lien_de_fiche(f)} | {', '.join(f.fonctionnalites) or '—'} "
@@ -1015,6 +1022,14 @@ def produire_matrice(recette: Recette) -> str:
         lignes.append(
             f"| {f.code} | {_cellule(f.libelle)} | {', '.join(x.id for x in fiches) or '—'} | "
             f"{len(tests)} | {etat} |"
+        )
+    exploitation = [x for x in recette.fiches if not x.fonctionnalites]
+    if exploitation:
+        tests = {t for x in exploitation for t in x.tests}
+        etat = _pire([verdict(x, recette.campagnes) for x in exploitation])
+        lignes.append(
+            f"| — | Exploitation et robustesse (hors livret 1) | "
+            f"{', '.join(x.id for x in exploitation)} | {len(tests)} | {etat} |"
         )
     lignes += ["", "| Cas d'usage du livret 1 | Fiches |", "|---|---|"]
     for numero, titre in sorted(recette.cas.items()):
