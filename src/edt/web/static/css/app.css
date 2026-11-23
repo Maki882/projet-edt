@@ -16,10 +16,10 @@
 /* ----- 1. Variables et bases ------------------------------------------------ */
 
 :root {
-  --fond: #f2f5fa;
-  --surface: #ffffff;
-  --bordure: #dae2ef;
-  --bordure-forte: #8695ac;
+  --fond: #f6f1e7;
+  --surface: #fffdf8;
+  --bordure: #e1d9cb;
+  --bordure-forte: #8b8173;
   --texte: #15233a;
   --texte-discret: #4e5d74;
   --marque: #2459bc;
