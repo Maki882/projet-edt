@@ -25,6 +25,11 @@ def test_accueil_sans_sous_navigation_mais_avec_menu_deroulant(site):
     assert '<nav class="sous-navigation"' not in page
     assert 'class="menu-deroulant"' in page
     assert '<a href="/besoins">Besoins</a>' in page  # toutes les pages restent accessibles
+    assert (
+        'aria-controls="navigation-principale" aria-expanded="false" data-volet-mobile hidden'
+        in page
+    )
+    assert '<nav class="onglets" id="navigation-principale"' in page
 
 
 def test_aucune_page_n_annonce_une_fonction_a_venir(site):

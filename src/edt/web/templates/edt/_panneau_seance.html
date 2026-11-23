@@ -22,6 +22,7 @@
 {{ edt.encart_controle(controle) }}
 {{ edt.anomalies(marques, "Anomalies de cette séance") }}
 
+{%- if not lecture_seule %}
 <div class="edt-actions-panneau">
   <form method="post" action="/emploi-du-temps/seances/{{ b.seance_hebdo_id }}/verrou">
     <input type="hidden" name="retour" value="{{ retour }}">
@@ -32,3 +33,4 @@
 <p class="discret">Pour annuler ou déplacer une seule date : passer en « Semaine datée ».</p>
 
 {% with verrouiller = false %}{% include "edt/_formulaire_seance.html" %}{% endwith %}
+{%- endif %}

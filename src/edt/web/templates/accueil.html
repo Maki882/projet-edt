@@ -9,18 +9,25 @@
 {% block contenu %}
 {%- if etape %}
 <section class="carte edt-prochaine-etape">
-  <h2>Prochaine étape</h2>
-  <p>{{ etape.phrase }}</p>
-  {%- if etape.lien or etape.autres_liens %}
-  <p class="edt-boutons">
-    {%- if etape.lien %}
-    <a class="bouton bouton-principal" href="{{ etape.lien }}">{{ etape.libelle_lien }}</a>
+  <div class="edt-etape-contenu">
+    <h2>Prochaine étape</h2>
+    <p>{{ etape.phrase }}</p>
+    {%- if etape.lien or etape.autres_liens %}
+    <p class="edt-boutons">
+      {%- if etape.lien %}
+      <a class="bouton bouton-principal" href="{{ etape.lien }}">{{ etape.libelle_lien }}</a>
+      {%- endif %}
+      {%- for adresse, libelle in etape.autres_liens %}
+      <a class="bouton" href="{{ adresse }}">{{ libelle }}</a>
+      {%- endfor %}
+    </p>
     {%- endif %}
-    {%- for adresse, libelle in etape.autres_liens %}
-    <a class="bouton" href="{{ adresse }}">{{ libelle }}</a>
-    {%- endfor %}
-  </p>
-  {%- endif %}
+  </div>
+  <div class="edt-etape-illustration" aria-hidden="true">
+    <div class="edt-etape-calendrier">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+  </div>
 </section>
 {%- endif %}
 

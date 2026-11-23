@@ -4,7 +4,7 @@ Le client de test lit le HTML et les feuilles de style servies, sans moteur de
 rendu ni JavaScript. Il prouve que chaque page principale se déclare adaptée à
 la largeur de l'appareil, que les feuilles servies contiennent les règles pour
 petits écrans prévues par le code, et que les pages portent les éléments que
-ces règles réarrangent. Le rendu réel (onglets sur deux rangées, sous-menu qui
+ces règles réarrangent. Le rendu réel (menu repliable, sous-menu qui
 défile, grille lisible à la largeur d'un téléphone) reste un essai manuel dans
 un navigateur ou sur un téléphone.
 """
@@ -60,18 +60,25 @@ def test_pages_principales_adaptees_a_la_largeur_du_telephone(jeu_minimal, clien
 def test_regles_pour_petits_ecrans_servies_et_elements_presents(jeu_minimal, client):
     """L'utilisateur consulte le menu et la grille de l'emploi du temps sur un téléphone.
 
-    Sous 56rem, `app.css` fait passer les onglets sur plusieurs rangées et la
-    sous-navigation en une bande qui défile ; sous 64rem, `edt.css` met le panneau de
-    la séance sous la grille. Les feuilles servies contiennent ces règles, et les pages
-    portent les éléments qu'elles visent (onglets, sous-navigation, grille, panneau).
+    Jusqu'à 58rem, le bouton Menu replie les onglets et la sous-navigation
+    devient une bande défilante. Jusqu'à 64rem, le panneau de la séance passe
+    sous la grille. Les pages et les feuilles servies contiennent les commandes
+    et les règles correspondantes.
     """
     with session_base() as session:
         version = enregistrer_version(session, jeu_minimal.semestre_id)
 
     app = client.get("/static/css/app.css")
     assert app.status_code == 200
-    menu = _regles_petit_ecran(app.text, "56rem")
-    for regle in (".onglets > ul", "flex-wrap: wrap", ".sous-navigation", "overflow-x: auto"):
+    menu = _regles_petit_ecran(app.text, "58rem")
+    for regle in (
+        '.bouton-mobile:not([hidden])[aria-expanded="false"] + :is(.onglets, .edt-barre-outils)',
+        "display: none",
+        ".onglets > ul",
+        "grid-template-columns: repeat(2, minmax(0, 1fr))",
+        ".sous-navigation",
+        "overflow-x: auto",
+    ):
         assert regle in menu, regle
     edt = client.get("/static/css/edt.css")
     assert edt.status_code == 200
@@ -80,8 +87,12 @@ def test_regles_pour_petits_ecrans_servies_et_elements_presents(jeu_minimal, cli
         assert regle in grille, regle
 
     donnees = client.get("/salles").text
-    assert '<nav class="onglets"' in donnees and '<nav class="sous-navigation"' in donnees
+    assert 'aria-controls="navigation-principale" aria-expanded="false"' in donnees
+    assert '<nav class="onglets" id="navigation-principale"' in donnees
+    assert '<nav class="sous-navigation"' in donnees
     emploi = client.get("/emploi-du-temps", params={"version_id": version}).text
     assert '<link rel="stylesheet" href="/static/css/edt.css' in emploi
+    assert 'aria-controls="edt-filtres" aria-expanded="false"' in emploi
+    assert '<form class="edt-barre-outils" id="edt-filtres"' in emploi
     for classe in ("edt-mise-en-page", "edt-grille", "edt-panneau"):
         assert f'class="{classe}' in emploi, classe

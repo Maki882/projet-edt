@@ -47,8 +47,9 @@ from edt.erreurs import ErreurConfiguration
 from edt.journal import configurer_journalisation
 from edt.services.generation import cloturer_calculs_interrompus
 from edt.web import routes
+from edt.web.acces import PREPARATION_INTERNE, IntergicielAcces
 from edt.web.dependances import ROUTES_ECRITURE_DELEGUEE
-from edt.web.erreurs import installer_gestionnaires
+from edt.web.erreurs import installer_gestionnaires, reponse_acces_refuse
 from edt.web.gabarits import DOSSIER_STATIQUE, precompiler_gabarits
 from edt.web.intergiciels import IntergicielHead, IntergicielJournal
 from edt.web.menu import EntreeMenu, construire_menu
@@ -191,7 +192,9 @@ async def _servir_en_interne(
         ],
         "client": ("127.0.0.1", 0),
         "server": ("localhost", 80),
-        "state": {},
+        # Préparation interne, sans visiteur : servie avec les droits du gestionnaire
+        # (`edt.web.acces.IntergicielAcces`). Un visiteur ne peut pas poser cette marque.
+        "state": {PREPARATION_INTERNE: True},
     }
     corps_lu = False
     terminee = asyncio.Event()
@@ -262,7 +265,9 @@ def creer_app() -> FastAPI:
     _verifier_routes_a_ecriture_deleguee(noms_des_routes)
     app.state.menu = construire_menu(entrees)
     installer_gestionnaires(app)
-    # Le dernier ajouté enveloppe les autres : le journal voit la méthode reçue (HEAD).
+    # Le dernier ajouté enveloppe les autres : le journal voit la méthode reçue (HEAD), et
+    # l'accès est contrôlé après la conversion de HEAD en GET.
+    app.add_middleware(IntergicielAcces, config=config, reponse_refus=reponse_acces_refuse)
     app.add_middleware(IntergicielHead)
     app.add_middleware(IntergicielJournal)
     return app

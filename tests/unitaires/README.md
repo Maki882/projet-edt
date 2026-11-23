@@ -58,7 +58,7 @@ de cas collectés par pytest s'obtient par
 
 <!-- tests-unitaires : début de la partie générée par `python -m tests.outils.classement --ecrire`, ne pas modifier à la main -->
 
-Ce dossier compte **1 155 fonctions de test** dans 10 composants, dont 325 marquées `cas_limite` et 20 marquées `perf`.
+Ce dossier compte **1 166 fonctions de test** dans 10 composants, dont 328 marquées `cas_limite` et 20 marquées `perf`.
 
 ### `assistant/` : Assistant en langage courant (141 fonctions)
 
@@ -104,16 +104,17 @@ Ce dossier compte **1 155 fonctions de test** dans 10 composants, dont 325 marqu
 | [`exploitation/test_scripts_deploiement.py`](exploitation/test_scripts_deploiement.py) | Scripts de déploiement : syntaxe, fins de ligne, cohérence entre fichiers, garde-fous | 22 |
 | [`exploitation/test_systemd_nginx.py`](exploitation/test_systemd_nginx.py) | Unités systemd, configuration nginx et pages d'erreur : cohérence avec l'application et le guide | 16 |
 
-### `socle/` : Domaine, base et services transverses (240 fonctions)
+### `socle/` : Domaine, base et services transverses (251 fonctions)
 
 | Fichier | Ce qu'il vérifie | Fonctions |
 |---|---|---:|
+| [`socle/test_acces.py`](socle/test_acces.py) | Accès au site : jetons signés, mots de passe, droits de la consultation, menu du rôle | 9 |
 | [`socle/test_base.py`](socle/test_base.py) | Initialisation de la base, unicités et règles de suppression | 15 |
 | [`socle/test_calendrier.py`](socle/test_calendrier.py) | Calendrier (Pâques, fériés, semaines) et conversions d'heures | 8 |
 | [`socle/test_catalogue.py`](socle/test_catalogue.py) | Catalogue des cas limites de `docs/banque-de-tests.md` : document à jour, « Cas » et « Risque » de chaque cas limite, générateur | 7 |
 | [`socle/test_charge.py`](socle/test_charge.py) | Charge : chargement de l'instantané d'un établissement complet (test marqué `perf`) | 1 |
 | [`socle/test_cli.py`](socle/test_cli.py) | Fonctions du module de commandes appelées directement : extension refusée, point d'entrée, sorties UTF-8 | 5 |
-| [`socle/test_config.py`](socle/test_config.py) | Configuration : variables EDT_* invalides refusées, valeurs vides au défaut, doctor | 2 |
+| [`socle/test_config.py`](socle/test_config.py) | Configuration : variables EDT_* invalides refusées, valeurs vides au défaut, doctor | 4 |
 | [`socle/test_conflits_groupes.py`](socle/test_conflits_groupes.py) | Relation de conflit entre groupes : hiérarchie, chevauchement déclaré, étudiant commun | 7 |
 | [`socle/test_contrats.py`](socle/test_contrats.py) | Contrats partagés : catalogue des contraintes, vérificateur, solveur, paramètres | 10 |
 | [`socle/test_dejeuner.py`](socle/test_dejeuner.py) | Pause déjeuner : trois modes, validation, propriétés, reprise de la clé booléenne | 14 |
