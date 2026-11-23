@@ -438,6 +438,7 @@ def _jours_fermes(
             libelle=j.libelle,
             nature=j.nature,
             groupes=lignee_descendante(j.groupe_id) if j.groupe_id is not None else None,
+            id=j.id,
         )
         for j in lignes
     )
