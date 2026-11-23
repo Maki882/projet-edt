@@ -373,8 +373,10 @@ la semaine type, `o<id>` pour une séance datée) pour mettre une séance en
   les retouches manuelles et le dit avant d'agir. Les séances datées
   importées ne se recalculent jamais depuis la semaine type (elles seraient
   doublées) : l'écran l'explique au lieu de proposer le bouton.
-- **Impression** : la feuille d'impression masque menus, sélecteurs et
-  panneau et imprime la grille en A4 paysage, avec ses couleurs et un titre.
+- **Impression** : la feuille d'impression masque menus, sélecteurs,
+  panneau et barre de navigation entre périodes (sa période figure déjà dans
+  le titre d'impression) et imprime la grille en A4 paysage, avec ses
+  couleurs et un titre.
 - **Exports** : `/export/emploi-du-temps.csv` et `/export/emploi-du-temps.ics`
   pour la version, la couche et la cible affichées.
 

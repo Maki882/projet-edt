@@ -1491,7 +1491,7 @@ attendu = [
 tests = [
   "tests/integration/echange/test_recette_echanges.py::test_ecran_emploi_du_temps_imprimer_et_agenda_de_la_ressource",
 ]
-remarque = "Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel."
+remarque = "Le test par HTTP vérifie le bouton et le titre d'impression ; le rendu imprimé lui-même, qu'aucun test par HTTP ne peut produire, est vérifié par l'essai manuel. L'essai vaut aussi pour une semaine datée, qui porte une barre de navigation entre semaines : elle doit tenir sur une page, période imprimée une seule fois."
 
 [fiche.essai]
 date = 2026-11-23
