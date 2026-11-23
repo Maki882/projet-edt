@@ -419,10 +419,12 @@ def diagnostiquer(
         if dernier is None:
             raise ErreurIntrouvable(AUCUN_CALCUL)
         calcul_id = dernier.id
-    typer.echo(
-        f"Recherche des règles et des données en cause du calcul n° {calcul_id} "
-        f"(au plus {temps:g} s)..."
-    )
+    if diagnostic.BUDGET_MIN_S <= temps <= diagnostic.BUDGET_MAX_S:
+        # Hors bornes (NaN, infini compris), le service refuse : rien à annoncer.
+        typer.echo(
+            f"Recherche des règles et des données en cause du calcul n° {calcul_id} "
+            f"(au plus {temps:g} s)..."
+        )
     # La durée hors limites, le calcul introuvable ou pas impossible : refus du service (code 1).
     resultat = diagnostic.diagnostiquer_calcul(calcul_id, temps)
     for ligne in lignes_du_diagnostic(resultat):
